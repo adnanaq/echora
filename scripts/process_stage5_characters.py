@@ -289,7 +289,15 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
 
     # Process with progressive matching and deletion
     try:
-        matched_characters = []
+        # Setup incremental output file (line-delimited JSON)
+        output_jsonl = temp_dir / f"{anime_id}" / "stage5_characters.jsonl"
+        output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+
+        # Initialize or clear JSONL file
+        with open(output_jsonl, 'w', encoding='utf-8') as f:
+            pass  # Create empty file
+
+        matched_count = 0
         working_jikan = load_working_file(working_paths['jikan'])
         working_anilist = load_working_file(working_paths['anilist'])
         working_anidb = load_working_file(working_paths['anidb'])
@@ -326,7 +334,11 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
                 # Remove internal _match_scores field before adding to output
                 if '_match_scores' in matched_char:
                     del matched_char['_match_scores']
-                matched_characters.append(matched_char)
+
+                # Write to JSONL file immediately (incremental output)
+                with open(output_jsonl, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(matched_char, ensure_ascii=False) + '\n')
+                matched_count += 1
 
                 # Remove from working pools - extract IDs from character_pages URLs
                 anilist_url = matched_char['character_pages'].get('anilist', '')
@@ -408,12 +420,24 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
                 else:
                     logger.info(f"[{i}/{total_jikan}] NO MATCH '{char_name}'")
 
-        # Save final outputs
+        # Convert JSONL to final JSON format
         output_file = temp_dir / f"{anime_id}" / "stage5_characters.json"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Read all matched characters from JSONL
+        matched_characters = []
+        if output_jsonl.exists():
+            with open(output_jsonl, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        matched_characters.append(json.loads(line))
+
+        # Write final JSON output
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump({"characters": matched_characters}, f, ensure_ascii=False, indent=2)
+
+        # Clean up JSONL file (optional - keep for debugging)
+        # output_jsonl.unlink()
 
         # Final statistics
         partial_matches = sum(1 for char in working_jikan if 'found_in' in char)
@@ -423,7 +447,7 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
         logger.info(f"AI character processing complete for {anime_id}")
         logger.info(f"=" * 80)
         logger.info(f"Total processed: {total_jikan} characters")
-        logger.info(f"  ✅ Fully matched: {len(matched_characters)} (saved to stage5_characters.json)")
+        logger.info(f"  ✅ Fully matched: {matched_count} (saved to stage5_characters.json)")
         logger.info(f"  ⚠️  Partial matches: {partial_matches} (in working_jikan.json with 'found_in' field)")
         logger.info(f"  ❌ No matches: {no_matches} (in working_jikan.json, no 'found_in' field)")
         logger.info(f"=" * 80)

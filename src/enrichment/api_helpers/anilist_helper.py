@@ -241,7 +241,25 @@ class AniListEnrichmentHelper:
           Media(id: $id, type: ANIME) {
             characters(page: $page, perPage: 25, sort: ROLE) {
               pageInfo { hasNextPage }
-              edges { node { id name { full native } image { large medium } } role voiceActors(language: JAPANESE) { id name { full native } } }
+              edges {
+                node {
+                  id
+                  name {
+                    full
+                    native
+                    alternative
+                    alternativeSpoiler
+                  }
+                  image { large medium }
+                  favourites
+                  gender
+                }
+                role
+                voiceActors(language: JAPANESE) {
+                  id
+                  name { full native }
+                }
+              }
             }
           }
         }

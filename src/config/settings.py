@@ -258,6 +258,10 @@ class Settings(BaseSettings):
             "tags": "keyword",
             "demographics": "text",       # Descriptive text content
             "content_warnings": "text",   # Descriptive text content
+            # Character physical attributes (AnimePlanet)
+            "characters.hair_color": "keyword",
+            "characters.eye_color": "keyword",
+            "characters.character_traits": "keyword",
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",

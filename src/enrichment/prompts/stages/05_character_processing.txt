@@ -13,8 +13,9 @@ Merge character data from 4 sources (Jikan, AniList, AniDB, Kitsu) into comprehe
 
 ### DATA SOURCES
 - **Jikan**: Primary character metadata (detailed biographies, favorites count, multi-language voice actors)
-- **AniList**: Structured metadata (birth dates, blood type, alternative names, detailed character info)  
+- **AniList**: Structured metadata (birth dates, blood type, alternative names, detailed character info)
 - **AniDB**: Character types and ratings (character classifications, user ratings, seiyuu focus)
+- **AnimePlanet**: Physical attributes and character traits (hair_color, eye_color, tags/traits like "Ninja", "Pirates", "Superpowers")
 - **Kitsu**: Limited relationship data (mainly for validation, requires additional API calls for details)
 
 ## INPUT DATA
@@ -91,7 +92,12 @@ Merge character data from 4 sources (Jikan, AniList, AniDB, Kitsu) into comprehe
 **Unique Source Data**:
 - **Character Type**: AniDB.character_type (unique classification)
 - **Rating**: AniDB.rating (user votes and scores)
-- **Popularity**: Combined Jikan.favorites + AniList.favourites
+- **favorites**: Combined Jikan.favorites + AniList.favourites (popularity metric)
+
+**AnimePlanet Physical Attributes** (Unique to AnimePlanet):
+- **hair_color**: Hair color (e.g., "Grey", "Brown", "Blonde")
+- **eye_color**: Eye color (e.g., "Black", "Brown", "Blue")
+- **character_traits**: Array of character traits/tags (e.g., ["Ninja", "Headbands", "Adults", "Fire Powers"])
 
 ### STEP 4: QUALITY ASSURANCE
 **Completeness Validation**:
@@ -123,18 +129,35 @@ Return ONLY valid JSON with ALL characters processed:
       // =====================================================================
       // SCALAR FIELDS (alphabetical)
       // =====================================================================
+      "age": "27",
+      "description": "Birthdate: June 26, 2044...",
+      "eye_color": "Brown",
+      "favorites": 95000,
+      "gender": "Male",
+      "hair_color": "Dark Green",
       "name": "Spike Spiegel",
+      "name_native": "スパイク・スピーゲル",
       "role": "Main",
 
       // =====================================================================
       // ARRAY FIELDS (alphabetical)
       // =====================================================================
+      "character_traits": [
+        "Bounty Hunters",
+        "Smokers",
+        "Martial Artists",
+        "Adults"
+      ],
+      "images": [
+        "https://cdn.myanimelist.net/images/characters/11/516853.jpg",
+        "https://s4.anilist.co/file/anilistcdn/character/large/b1-ChxaldmieFlQ.png",
+        "https://cdn.anidb.net/images/main/14555.jpg"
+      ],
       "name_variations": [
         "スパイク・スピーゲル",
         "Spike Spike",
         "Swimming Bird"
       ],
-      "name_native": "スパイク・スピーゲル",
       "nicknames": [],
       "voice_actors": [
         {{
@@ -153,19 +176,7 @@ Return ONLY valid JSON with ALL characters processed:
       "character_pages": {{
         "mal": "https://myanimelist.net/character/1/Spike_Spiegel",
         "anilist": "https://anilist.co/character/1/Spike-Spiegel"
-      }},
-      "images": [
-        "https://cdn.myanimelist.net/images/characters/11/516853.jpg",
-        "https://s4.anilist.co/file/anilistcdn/character/large/b1-ChxaldmieFlQ.png",
-        "https://cdn.anidb.net/images/main/14555.jpg"
-      ],
-
-      // =====================================================================
-      // REMAINING SCALAR FIELDS (alphabetical)
-      // =====================================================================
-      "age": "27",
-      "description": "Birthdate: June 26, 2044...",
-      "gender": "Male"
+      }}
     }}
   ]
 }}

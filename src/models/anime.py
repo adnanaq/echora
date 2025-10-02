@@ -63,40 +63,49 @@ class AnimeSeason(str, Enum):
 class CharacterEntry(BaseModel):
     """Character information from external APIs with multi-source support"""
 
-    # Primary identification
-    name: str = Field(..., description="Character name")
-    role: str = Field(..., description="Character role (Main, Supporting, etc.)")
-
-    # Name variations from different sources
-    name_variations: List[str] = Field(
-        default_factory=list, description="All name spellings and variations"
+    # =====================================================================
+    # SCALAR FIELDS (alphabetical)
+    # =====================================================================
+    age: Optional[str] = Field(None, description="Character age")
+    description: Optional[str] = Field(
+        None, description="Character description/biography"
     )
+    eye_color: Optional[str] = Field(None, description="Eye color")
+    favorites: Optional[int] = Field(
+        None, description="Number of users who favorited this character (from Jikan/MAL + AniList)"
+    )
+    gender: Optional[str] = Field(None, description="Character gender")
+    hair_color: Optional[str] = Field(None, description="Hair color")
+    name: str = Field(..., description="Character name")
     name_native: Optional[str] = Field(
         None, description="Native language name (Japanese/Kanji)"
+    )
+    role: str = Field(..., description="Character role (Main, Supporting, etc.)")
+
+    # =====================================================================
+    # ARRAY FIELDS (alphabetical)
+    # =====================================================================
+    character_traits: List[str] = Field(
+        default_factory=list,
+        description="Character traits/tags from AnimePlanet (e.g., 'Ninja', 'Pirates', 'Superpowers')",
+    )
+    images: List[str] = Field(default_factory=list, description="Character image URLs")
+    name_variations: List[str] = Field(
+        default_factory=list, description="All name spellings and variations"
     )
     nicknames: List[str] = Field(
         default_factory=list, description="Character nicknames from Jikan API"
     )
-
-    # Character image URLs (simplified from dict to list)
-    images: List[str] = Field(default_factory=list, description="Character image URLs")
-
-    # Character details (prefer most detailed source)
-    description: Optional[str] = Field(
-        None, description="Character description/biography"
+    voice_actors: List["SimpleVoiceActor"] = Field(
+        default_factory=list, description="Voice actor information"
     )
-    age: Optional[str] = Field(None, description="Character age")
-    gender: Optional[str] = Field(None, description="Character gender")
 
-    # Character profile page URLs from different platforms
+    # =====================================================================
+    # OBJECT/DICT FIELDS (alphabetical)
+    # =====================================================================
     character_pages: Dict[str, str] = Field(
         default_factory=dict,
         description="Character profile page URLs from different platforms (platform: url)",
-    )
-
-    # Voice actors from all sources
-    voice_actors: List["SimpleVoiceActor"] = Field(
-        default_factory=list, description="Voice actor information"
     )
 
 
