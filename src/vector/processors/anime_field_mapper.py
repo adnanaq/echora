@@ -106,8 +106,8 @@ class AnimeFieldMapper:
             # Name variations
             if char.name_variations:
                 char_info.append(f"Variations: {', '.join(char.name_variations)}")
-            if char.name_kanji:
-                char_info.append(f"Kanji: {char.name_kanji}")
+            if char.name_native:
+                char_info.append(f"Native: {char.name_native}")
             if char.nicknames:
                 char_info.append(f"Nicknames: {', '.join(char.nicknames)}")
 

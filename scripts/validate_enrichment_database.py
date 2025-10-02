@@ -298,7 +298,6 @@ class EnrichmentValidator:
         char_empty_collections = {"name_variations", "nicknames", "images"}
         char_empty_objects = {"character_ids"}
         char_empty_scalars = {
-            "name_kanji",
             "name_native",
             "description",
             "age",
@@ -753,7 +752,6 @@ class EnrichmentValidator:
 
                 # Remove null/empty scalars
                 for field in [
-                    "name_kanji",
                     "name_native",
                     "description",
                     "age",

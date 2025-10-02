@@ -76,7 +76,6 @@ class ProcessedCharacter:
     name: str
     role: str
     name_variations: List[str]
-    name_kanji: Optional[str]
     name_native: Optional[str]
     nicknames: List[str]
     voice_actors: List[Dict[str, str]]
@@ -896,16 +895,16 @@ class AICharacterMatcher:
             # Jikan format: character.name or name (depending on processing stage)
             if "character" in character and "name" in character["character"]:
                 primary_name = str(character["character"]["name"])
-                name_kanji = character["character"].get("name_kanji")
+                name_native = character["character"].get("name_kanji")
             else:
                 # Direct character object (from detailed characters)
                 primary_name = str(character.get("name", ""))
-                name_kanji = character.get("name_kanji")
+                name_native = character.get("name_kanji")
 
-            # IMPORTANT: Only include Japanese name when matching against AniList
+            # IMPORTANT: Only include Japanese/native name when matching against AniList
             # AniDB uses English-only names, so including Japanese hurts similarity scores
-            if name_kanji and target_source == "anilist":
-                primary_name += f" | {name_kanji}"
+            if name_native and target_source == "anilist":
+                primary_name += f" | {name_native}"
 
             return primary_name
         elif source == "anilist":
@@ -967,8 +966,7 @@ class AICharacterMatcher:
             name=jikan_name,
             role=jikan_char.get("role", ""),
             name_variations=[],
-            name_kanji=jikan_char.get("name_kanji"),
-            name_native=jikan_char.get("name_kanji"),  # Use kanji as native
+            name_native=jikan_char.get("name_kanji"),  # From Jikan, fallback to AniList later
             nicknames=jikan_char.get("nicknames", []),
             voice_actors=self._extract_voice_actors(jikan_char),
             character_pages={"mal": jikan_url},
@@ -980,10 +978,11 @@ class AICharacterMatcher:
             source_count=1,
         )
 
-        # Collect all name variations
-        name_variations = set([integrated.name])
-        if integrated.name_kanji:
-            name_variations.add(integrated.name_kanji)
+        # Collect all name variations with case-insensitive deduplication
+        # Use dict to preserve first occurrence while ignoring case duplicates
+        name_variations_dict: Dict[str, str] = {integrated.name.lower(): integrated.name}
+        if integrated.name_native:
+            name_variations_dict[integrated.name_native.lower()] = integrated.name_native
 
         # Collect all images
         images = []
@@ -1003,15 +1002,14 @@ class AICharacterMatcher:
             # Add AniList name variations
             anilist_name = anilist_char.get("name", {})
             if anilist_name.get("full"):
-                name_variations.add(anilist_name["full"])
+                full_name = anilist_name["full"]
+                name_variations_dict[full_name.lower()] = full_name
             if anilist_name.get("native"):
-                # Set native name if not already set
+                # Set native name with fallback: use AniList if Jikan didn't have it
                 if not integrated.name_native:
                     integrated.name_native = anilist_name["native"]
-                    integrated.name_kanji = anilist_name[
-                        "native"
-                    ]  # Kanji/native are same
-                name_variations.add(anilist_name["native"])
+                native_name = anilist_name["native"]
+                name_variations_dict[native_name.lower()] = native_name
 
             # Fill missing data from AniList
             if not integrated.age and anilist_char.get("age"):
@@ -1034,7 +1032,8 @@ class AICharacterMatcher:
 
             # Add AniDB name variation
             if anidb_char.get("name"):
-                name_variations.add(anidb_char["name"])
+                anidb_name = anidb_char["name"]
+                name_variations_dict[anidb_name.lower()] = anidb_name
 
             # Fill missing data from AniDB
             if not integrated.gender and anidb_char.get("gender"):
@@ -1060,7 +1059,8 @@ class AICharacterMatcher:
 
             # Add AnimePlanet name variation
             if ap_char.get("name"):
-                name_variations.add(ap_char["name"])
+                ap_name = ap_char["name"]
+                name_variations_dict[ap_name.lower()] = ap_name
 
             # Fill missing data from AnimePlanet (has rich metadata)
             if not integrated.gender and ap_char.get("gender"):
@@ -1079,8 +1079,8 @@ class AICharacterMatcher:
             if ap_char.get("image"):
                 images.append(ap_char["image"])
 
-        # Finalize integrated data
-        integrated.name_variations = list(name_variations)
+        # Finalize integrated data - use dict values to get deduplicated names
+        integrated.name_variations = list(name_variations_dict.values())
         integrated.images = images
 
         # Determine overall confidence based on source count and match quality
@@ -1135,7 +1135,6 @@ async def process_characters_with_ai_matching(
             "role": char.role,
             # Array fields (alphabetical)
             "name_variations": char.name_variations,
-            "name_kanji": char.name_kanji,
             "name_native": char.name_native,
             "nicknames": char.nicknames,
             "voice_actors": char.voice_actors,

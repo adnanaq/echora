@@ -46,9 +46,9 @@ Merge character data from 4 sources (Jikan, AniList, AniDB, Kitsu) into comprehe
 ### STEP 2: INTELLIGENT CHARACTER MATCHING
 
 **Phase 1: Primary Name Matching**:
-1. **Exact Name Match**: 
+1. **Exact Name Match**:
    - Jikan.name ↔ AniList.name.full
-   - Jikan.name_kanji ↔ AniList.name.native
+   - Jikan.name_kanji → name_native ↔ AniList.name.native
    - Cross-reference with AniDB.name
 
 2. **Alternative Name Validation**:
@@ -134,7 +134,6 @@ Return ONLY valid JSON with ALL characters processed:
         "Spike Spike",
         "Swimming Bird"
       ],
-      "name_kanji": "スパイク・スピーゲル",
       "name_native": "スパイク・スピーゲル",
       "nicknames": [],
       "voice_actors": [
