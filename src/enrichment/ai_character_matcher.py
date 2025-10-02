@@ -84,6 +84,10 @@ class ProcessedCharacter:
     age: Optional[str]
     description: Optional[str]
     gender: Optional[str]
+    hair_color: Optional[str]
+    eye_color: Optional[str]
+    character_traits: List[str]
+    favorites: Optional[int]
     match_confidence: MatchConfidence
     source_count: int
     match_scores: Dict[str, float] = None  # type: ignore[assignment]  # Match scores for stage5 to use
@@ -232,6 +236,135 @@ class CharacterNamePreprocessor:
     def _empty_representations(self) -> Dict[str, str]:
         """Return empty representations for null names"""
         return {"original": "", "normalized": "", "phonetic": "", "tokens": ""}
+
+    @staticmethod
+    def add_name_variation(
+        variations_dict: Dict[str, str], name: Optional[str]
+    ) -> Dict[str, str]:
+        """
+        Add name to variations dict with case-insensitive deduplication.
+        For CJK characters, also normalizes spacing to prevent duplicates like "綾瀬 桃" vs "綾瀬桃".
+
+        Uses lowercase key to preserve first occurrence and prevent case duplicates.
+        E.g., if "Naruto" exists, "naruto" won't be added.
+        For CJK: if "綾瀬 桃" exists, "綾瀬桃" won't be added.
+
+        Args:
+            variations_dict: Existing dict mapping normalized names to original names
+            name: Name to add (original casing)
+
+        Returns:
+            Updated variations dict
+        """
+        if name:
+            # Check if name contains CJK characters
+            has_cjk = any(
+                '\u4e00' <= c <= '\u9fff' or  # Chinese/Japanese kanji
+                '\u3040' <= c <= '\u309f' or  # Hiragana
+                '\u30a0' <= c <= '\u30ff' or  # Katakana
+                '\uac00' <= c <= '\ud7af'     # Korean
+                for c in name
+            )
+
+            if has_cjk:
+                # For CJK: normalize spacing and lowercase for comparison
+                normalized_key = name.replace(" ", "").lower()
+            else:
+                # For non-CJK: only lowercase for comparison (existing behavior)
+                normalized_key = name.lower()
+
+            # Only add if not already present (preserve first occurrence)
+            if normalized_key not in variations_dict:
+                variations_dict[normalized_key] = name
+        return variations_dict
+
+    @staticmethod
+    def fill_missing_field(
+        current_value: Optional[Any],
+        source_value: Optional[Any],
+        convert_to_str: bool = False
+    ) -> Optional[Any]:
+        """
+        Fill missing field with fallback priority logic.
+
+        Only fills if current value is falsy (None, "", 0, False, etc.)
+        AND source has a truthy value. Preserves first occurrence.
+
+        Args:
+            current_value: Current field value
+            source_value: New value from source
+            convert_to_str: If True, wrap result with str()
+
+        Returns:
+            Updated value (current if truthy, source if current falsy)
+
+        Examples:
+            >>> fill_missing_field(None, "value")
+            "value"
+            >>> fill_missing_field("existing", "new")
+            "existing"
+            >>> fill_missing_field(None, 25, convert_to_str=True)
+            "25"
+        """
+        if not current_value and source_value:
+            return str(source_value) if convert_to_str else source_value
+        return current_value
+
+    @staticmethod
+    def deduplicate_nicknames(nicknames: List[str], new_nickname: str) -> List[str]:
+        """
+        Smart nickname deduplication that handles exact matches and parentheses patterns.
+
+        Handles:
+        - Exact duplicates (case-insensitive)
+        - Subset duplicates: "Okarun" vs "Okarun (オカルン)" - keeps only the combined one
+
+        Args:
+            nicknames: Existing list of nicknames
+            new_nickname: New nickname to add
+
+        Returns:
+            Updated list of nicknames
+        """
+        if not new_nickname:
+            return nicknames
+
+        new_lower = new_nickname.lower()
+        should_add = True
+        nicknames_to_remove = []
+
+        # Check against existing nicknames
+        for i, existing in enumerate(nicknames):
+            existing_lower = existing.lower()
+
+            # Exact match - skip
+            if new_lower == existing_lower:
+                should_add = False
+                break
+
+            # New nickname is more complete (has parentheses, existing doesn't)
+            # e.g., existing="Okarun", new="Okarun (オカルン)"
+            if new_lower.startswith(existing_lower + " (") and ")" in new_nickname:
+                # Mark existing for removal, will add new one
+                nicknames_to_remove.append(i)
+                should_add = True
+
+            # Existing nickname is more complete (has parentheses, new doesn't)
+            # e.g., existing="Okarun (オカルン)", new="Okarun"
+            elif existing_lower.startswith(new_lower + " (") and ")" in existing:
+                # Keep existing, skip new
+                should_add = False
+                break
+
+        # Remove less complete versions (reverse order to maintain indices)
+        for idx in sorted(nicknames_to_remove, reverse=True):
+            nicknames.pop(idx)
+
+        # Add new nickname if appropriate
+        if should_add:
+            nicknames.append(new_nickname)
+
+        return nicknames
 
 
 class EnsembleFuzzyMatcher:
@@ -974,15 +1107,23 @@ class AICharacterMatcher:
             age=None,
             description=jikan_char.get("about"),
             gender=None,
+            hair_color=None,
+            eye_color=None,
+            character_traits=[],
+            favorites=jikan_char.get("favorites"),  # MAL favorites count
             match_confidence=MatchConfidence.HIGH,  # Primary source
             source_count=1,
         )
 
         # Collect all name variations with case-insensitive deduplication
         # Use dict to preserve first occurrence while ignoring case duplicates
-        name_variations_dict: Dict[str, str] = {integrated.name.lower(): integrated.name}
-        if integrated.name_native:
-            name_variations_dict[integrated.name_native.lower()] = integrated.name_native
+        name_variations_dict: Dict[str, str] = {}
+        name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+            name_variations_dict, integrated.name
+        )
+        name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+            name_variations_dict, integrated.name_native
+        )
 
         # Collect all images
         images = []
@@ -1001,21 +1142,39 @@ class AICharacterMatcher:
 
             # Add AniList name variations
             anilist_name = anilist_char.get("name", {})
-            if anilist_name.get("full"):
-                full_name = anilist_name["full"]
-                name_variations_dict[full_name.lower()] = full_name
+            name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+                name_variations_dict, anilist_name.get("full")
+            )
             if anilist_name.get("native"):
                 # Set native name with fallback: use AniList if Jikan didn't have it
                 if not integrated.name_native:
                     integrated.name_native = anilist_name["native"]
-                native_name = anilist_name["native"]
-                name_variations_dict[native_name.lower()] = native_name
+                name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+                    name_variations_dict, anilist_name["native"]
+                )
+
+            # Merge alternative and alternativeSpoiler into nicknames with smart deduplication
+            alternatives = anilist_name.get("alternative", []) or []
+            spoilers = anilist_name.get("alternativeSpoiler", []) or []
+
+            for alt_name in alternatives + spoilers:
+                integrated.nicknames = CharacterNamePreprocessor.deduplicate_nicknames(
+                    integrated.nicknames, alt_name
+                )
 
             # Fill missing data from AniList
-            if not integrated.age and anilist_char.get("age"):
-                integrated.age = str(anilist_char.get("age"))
-            if not integrated.gender and anilist_char.get("gender"):
-                integrated.gender = anilist_char.get("gender")
+            integrated.age = CharacterNamePreprocessor.fill_missing_field(
+                integrated.age, anilist_char.get("age"), convert_to_str=True
+            )
+            integrated.gender = CharacterNamePreprocessor.fill_missing_field(
+                integrated.gender, anilist_char.get("gender")
+            )
+
+            # Add AniList favourites to combined favorites
+            if anilist_char.get("favourites"):
+                mal_favs = integrated.favorites or 0
+                anilist_favs = anilist_char.get("favourites", 0)
+                integrated.favorites = mal_favs + anilist_favs
 
             # Add AniList pages and images
             if anilist_char.get("id"):
@@ -1031,13 +1190,14 @@ class AICharacterMatcher:
             integrated.source_count += 1
 
             # Add AniDB name variation
-            if anidb_char.get("name"):
-                anidb_name = anidb_char["name"]
-                name_variations_dict[anidb_name.lower()] = anidb_name
+            name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+                name_variations_dict, anidb_char.get("name")
+            )
 
             # Fill missing data from AniDB
-            if not integrated.gender and anidb_char.get("gender"):
-                integrated.gender = anidb_char.get("gender")
+            integrated.gender = CharacterNamePreprocessor.fill_missing_field(
+                integrated.gender, anidb_char.get("gender")
+            )
 
             # Add AniDB pages
             if anidb_char.get("id"):
@@ -1058,15 +1218,29 @@ class AICharacterMatcher:
             integrated.source_count += 1
 
             # Add AnimePlanet name variation
-            if ap_char.get("name"):
-                ap_name = ap_char["name"]
-                name_variations_dict[ap_name.lower()] = ap_name
+            name_variations_dict = CharacterNamePreprocessor.add_name_variation(
+                name_variations_dict, ap_char.get("name")
+            )
 
             # Fill missing data from AnimePlanet (has rich metadata)
-            if not integrated.gender and ap_char.get("gender"):
-                integrated.gender = ap_char.get("gender")
-            if not integrated.age and ap_char.get("age"):
-                integrated.age = str(ap_char.get("age"))
+            integrated.gender = CharacterNamePreprocessor.fill_missing_field(
+                integrated.gender, ap_char.get("gender")
+            )
+            integrated.age = CharacterNamePreprocessor.fill_missing_field(
+                integrated.age, ap_char.get("age"), convert_to_str=True
+            )
+
+            # Extract physical attributes from AnimePlanet
+            integrated.hair_color = CharacterNamePreprocessor.fill_missing_field(
+                integrated.hair_color, ap_char.get("hair_color")
+            )
+            integrated.eye_color = CharacterNamePreprocessor.fill_missing_field(
+                integrated.eye_color, ap_char.get("eye_color")
+            )
+
+            # Extract character traits/tags from AnimePlanet
+            if ap_char.get("tags"):
+                integrated.character_traits = ap_char.get("tags", [])
 
             # AnimePlanet URL (character slug)
             ap_url = ap_char.get("url", "")
@@ -1144,7 +1318,12 @@ async def process_characters_with_ai_matching(
             # Remaining scalar fields (alphabetical)
             "age": char.age,
             "description": char.description,
+            "eye_color": char.eye_color,
+            "favorites": char.favorites,
             "gender": char.gender,
+            "hair_color": char.hair_color,
+            # Array fields - character traits
+            "character_traits": char.character_traits,
             # Internal field for stage5 to use (not part of final output)
             "_match_scores": char.match_scores if char.match_scores else {},
         }
