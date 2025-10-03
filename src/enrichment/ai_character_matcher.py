@@ -32,6 +32,16 @@ import numpy as np
 from rapidfuzz import fuzz, process
 from sentence_transformers import SentenceTransformer
 
+# Vision processing for character image similarity
+try:
+    from ..vector.processors.vision_processor import VisionProcessor
+    from ..config.settings import Settings
+    VISION_AVAILABLE = True
+except ImportError:
+    VISION_AVAILABLE = False
+    VisionProcessor = None  # type: ignore[misc,assignment]
+    Settings = None  # type: ignore[misc,assignment]
+
 try:
     from sklearn.metrics.pairwise import cosine_similarity
 except ImportError:
@@ -370,8 +380,13 @@ class CharacterNamePreprocessor:
 class EnsembleFuzzyMatcher:
     """Multi-algorithm fuzzy matching with ensemble scoring (enhanced)"""
 
-    def __init__(self, model_name: str = "BAAI/bge-m3"):
-        """Initialize with multilingual embedding model"""
+    def __init__(self, model_name: str = "BAAI/bge-m3", enable_visual: bool = True):
+        """Initialize with multilingual embedding model and optional vision model
+
+        Args:
+            model_name: Text embedding model name
+            enable_visual: Enable visual similarity matching (requires VisionProcessor)
+        """
         try:
             self.embedding_model = SentenceTransformer(model_name)
             logger.info(f"Loaded embedding model: {model_name}")
@@ -381,16 +396,108 @@ class EnsembleFuzzyMatcher:
             )
             self.embedding_model = None  # type: ignore[assignment]
 
-    def calculate_similarity(
+        # Initialize vision model for character image similarity
+        self.enable_visual = enable_visual and VISION_AVAILABLE
+        self.vision_processor: Optional[VisionProcessor] = None
+
+        if self.enable_visual:
+            try:
+                if Settings is not None and VisionProcessor is not None:
+                    settings = Settings()
+                    self.vision_processor = VisionProcessor(settings)
+                    logger.info(f"Visual similarity enabled with {settings.image_embedding_model}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize vision processor, visual matching disabled: {e}")
+                self.enable_visual = False
+
+    async def calculate_visual_similarity(
+        self,
+        image_url1: Optional[str],
+        image_url2: Optional[str]
+    ) -> float:
+        """Calculate visual similarity between two character images using OpenCLIP embeddings
+
+        Args:
+            image_url1: URL of first character image
+            image_url2: URL of second character image
+
+        Returns:
+            Visual similarity score [0.0, 1.0], or 0.0 if calculation fails
+        """
+        if not self.enable_visual or not self.vision_processor:
+            return 0.0
+
+        if not image_url1 or not image_url2:
+            return 0.0
+
+        try:
+            # Download both images in parallel using vision processor's built-in caching
+            image_data1, image_data2 = await asyncio.gather(
+                self.vision_processor._download_and_cache_image(image_url1),
+                self.vision_processor._download_and_cache_image(image_url2),
+                return_exceptions=True
+            )
+
+            # Handle download failures
+            if isinstance(image_data1, Exception) or isinstance(image_data2, Exception):
+                logger.debug(f"Image download failed for visual similarity")
+                return 0.0
+
+            if not image_data1 or not image_data2:
+                logger.debug(f"No image data retrieved for visual similarity")
+                return 0.0
+
+            # Encode both images with OpenCLIP (768-dim embeddings)
+            embedding1 = self.vision_processor.encode_image(image_data1)
+            embedding2 = self.vision_processor.encode_image(image_data2)
+
+            if not embedding1 or not embedding2:
+                logger.debug(f"Image encoding failed for visual similarity")
+                return 0.0
+
+            # Calculate cosine similarity
+            embedding1_np = np.array(embedding1)
+            embedding2_np = np.array(embedding2)
+
+            # Normalize embeddings
+            embedding1_norm = embedding1_np / np.linalg.norm(embedding1_np)
+            embedding2_norm = embedding2_np / np.linalg.norm(embedding2_np)
+
+            # Cosine similarity (dot product of normalized vectors)
+            similarity = float(np.dot(embedding1_norm, embedding2_norm))
+
+            # Ensure result is in [0.0, 1.0] range
+            similarity = max(0.0, min(1.0, similarity))
+
+            return similarity
+
+        except Exception as e:
+            logger.debug(f"Visual similarity calculation failed: {e}")
+            return 0.0
+
+    async def calculate_similarity(
         self,
         name1_repr: Dict[str, str],
         name2_repr: Dict[str, str],
         candidate_aliases: Optional[List[str]] = None,
         source: str = "generic",
+        jikan_image_url: Optional[str] = None,
+        candidate_image_url: Optional[str] = None,
     ) -> float:
         """
         Calculate ensemble similarity score between two character name representations
-        Supports alias expansion, order-insensitive matching, adaptive weights
+        Supports alias expansion, order-insensitive matching, adaptive weights, and visual verification
+
+        Args:
+            name1_repr: Primary character name representations
+            name2_repr: Candidate character name representations
+            candidate_aliases: Additional name aliases for candidate
+            source: Source type (anilist, anidb, animeplanet, etc.)
+            jikan_image_url: Image URL from Jikan/MAL for visual verification
+            candidate_image_url: Image URL from candidate source for visual verification
+
+        Returns:
+            Ensemble similarity score [0.0, 1.0]
         """
 
         # Expand aliases: compare primary name against all aliases + candidate name
@@ -451,23 +558,34 @@ class EnsembleFuzzyMatcher:
                 ),
             )
 
-            # Adaptive weights - OPTIMIZED: Source-specific tuning for maximum accuracy
+            # 6. Visual similarity (character image verification)
+            # Calculate once per best candidate to avoid redundant downloads
+            if jikan_image_url and candidate_image_url:
+                # Run visual similarity asynchronously
+                visual_score = await self.calculate_visual_similarity(jikan_image_url, candidate_image_url)
+                scores["visual"] = visual_score
+            else:
+                scores["visual"] = 0.0
+
+            # Adaptive weights - OPTIMIZED: Source-specific tuning with visual verification
             if source.lower() == "anilist":
                 weights = {
-                    "semantic": 0.6,  # Increased: BGE-M3 is very reliable for character names
+                    "semantic": 0.45,  # Reduced from 0.6 to make room for visual
+                    "visual": 0.30,  # NEW - strong visual verification
                     "edit_distance": 0.05,
-                    "token_based": 0.25,
-                    "token_set": 0.05,
-                    "phonetic": 0.05,
+                    "token_based": 0.15,  # Reduced from 0.25
+                    "token_set": 0.03,  # Reduced from 0.05
+                    "phonetic": 0.02,  # Reduced from 0.05
                     "name_order": 0.0,  # Often fails due to different name ordering conventions
                 }
             elif source.lower() == "anidb":
                 # AniDB-SPECIFIC OPTIMIZATION: Enhanced weights for standardized AniDB format
-                # Heavily prioritize semantic, with minimal backup signals for safety
+                # Heavily prioritize semantic, with visual verification layer
                 weights = {
-                    "semantic": 0.95,  # PRIMARY: Handle partial name matches (e.g., "Sanji" → "Vinsmoke Sanji")
+                    "semantic": 0.65,  # Reduced from 0.95 to make room for visual
+                    "visual": 0.25,  # NEW - visual verification layer
                     "edit_distance": 0.02,  # SAFETY NET: Catch typos/misspellings
-                    "token_based": 0.03,  # VALIDATION: Ensure some token overlap
+                    "token_based": 0.08,  # Increased from 0.03 for validation
                     "token_set": 0.0,  # DISABLED: Not useful for partial name matching
                     "phonetic": 0.0,  # DISABLED: Not useful for partial name matching
                     "name_order": 0.0,  # DISABLED: Handled by enhanced semantic similarity
@@ -476,9 +594,10 @@ class EnsembleFuzzyMatcher:
                 # AnimePlanet-SPECIFIC OPTIMIZATION: Similar to AniList but with stronger semantic
                 # AnimePlanet uses uppercase surnames (e.g., "Ken TAKAKURA") which needs normalization
                 weights = {
-                    "semantic": 0.75,  # PRIMARY: Strong semantic matching for name variations
+                    "semantic": 0.50,  # Reduced from 0.75 to make room for visual
+                    "visual": 0.30,  # NEW - strong visual verification
                     "edit_distance": 0.05,  # SAFETY NET: Handle case differences
-                    "token_based": 0.15,  # VALIDATION: Token-level matching
+                    "token_based": 0.10,  # Reduced from 0.15
                     "token_set": 0.05,  # BACKUP: Set-based validation
                     "phonetic": 0.0,  # DISABLED: Not useful for English names
                     "name_order": 0.0,  # DISABLED: Handled by semantic similarity
@@ -486,25 +605,48 @@ class EnsembleFuzzyMatcher:
             else:
                 # Default weights for other sources
                 weights = {
-                    "semantic": 0.7,  # FIXED: Heavily prioritize semantic similarity
+                    "semantic": 0.50,  # Reduced from 0.7 to make room for visual
+                    "visual": 0.25,  # NEW - visual verification
                     "edit_distance": 0.05,  # Reduced: Different name orders cause issues
-                    "token_based": 0.15,
+                    "token_based": 0.12,  # Reduced from 0.15
                     "token_set": 0.05,  # Use as secondary validation
-                    "phonetic": 0.05,
+                    "phonetic": 0.03,  # Reduced from 0.05
                     "name_order": 0.0,  # DISABLED: Unreliable for anime character names
                 }
 
             ensemble_score = sum(scores.get(k, 0.0) * w for k, w in weights.items())
             best_score = max(best_score, ensemble_score)
 
-            # Safety monitoring: Alert when semantic and ensemble differ significantly
+            # Get semantic and visual scores for logging
             semantic_score = scores.get("semantic", 0.0)
+            visual_score = scores.get("visual", 0.0)
+
+            # Visual verification logging
+            if visual_score > 0.0:
+                if visual_score >= 0.8:
+                    logger.info(
+                        f"VISUAL VERIFICATION STRONG: {visual_score:.3f} - "
+                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
+                    )
+                elif visual_score >= 0.6:
+                    logger.info(
+                        f"VISUAL VERIFICATION MEDIUM: {visual_score:.3f} - "
+                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
+                    )
+                elif semantic_score >= 0.7:
+                    # High semantic but low visual - potential different characters with similar names
+                    logger.warning(
+                        f"VISUAL MISMATCH: semantic={semantic_score:.3f} but visual={visual_score:.3f} - "
+                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
+                    )
+
+            # Safety monitoring: Alert when semantic and ensemble differ significantly
             if semantic_score >= 0.7 and ensemble_score < 0.7:
                 # Semantic says match, but ensemble rejects - worth investigating
                 logger.warning(
                     f"⚠️  SCORE DISCREPANCY: Semantic={semantic_score:.3f} but Ensemble={ensemble_score:.3f} "
                     f"for '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}' "
-                    f"(edit={scores.get('edit_distance', 0):.2f}, token={scores.get('token_based', 0):.2f})"
+                    f"(edit={scores.get('edit_distance', 0):.2f}, token={scores.get('token_based', 0):.2f}, visual={visual_score:.2f})"
                 )
 
         # Log only high-confidence matches to reduce noise
@@ -892,7 +1034,7 @@ class AICharacterMatcher:
         candidate_chars: List[Dict[str, Any]],
         source: str,
     ) -> Optional[CharacterMatch]:
-        """Find the best matching character from a source"""
+        """Find the best matching character from a source with visual verification"""
 
         if not candidate_chars:
             return None
@@ -906,6 +1048,9 @@ class AICharacterMatcher:
         # Detect language and preprocess primary character name
         language = self.language_detector.detect_language(primary_name)
         primary_repr = self.preprocessor.preprocess_name(primary_name, language)
+
+        # Extract Jikan image URL for visual verification
+        jikan_image_url = self._extract_image_url(primary_char, "jikan")
 
         best_match = None
         best_score = 0.0
@@ -930,9 +1075,16 @@ class AICharacterMatcher:
                 candidate_name, candidate_language
             )
 
-            # Calculate similarity
-            similarity_score = self.fuzzy_matcher.calculate_similarity(
-                primary_repr, candidate_repr, source=source
+            # Extract candidate image URL for visual verification
+            candidate_image_url = self._extract_image_url(candidate_char, source)
+
+            # Calculate similarity with visual verification
+            similarity_score = await self.fuzzy_matcher.calculate_similarity(
+                primary_repr,
+                candidate_repr,
+                source=source,
+                jikan_image_url=jikan_image_url,
+                candidate_image_url=candidate_image_url
             )
 
             if similarity_score > best_score:
@@ -1053,6 +1205,60 @@ class AICharacterMatcher:
         elif source == "animeplanet":
             # AnimePlanet format: direct 'name' field with uppercase surnames (e.g., "Ken TAKAKURA")
             return str(character.get("name", ""))
+
+        return None
+
+    def _extract_image_url(self, character: Dict[str, Any], source: str) -> Optional[str]:
+        """Extract primary image URL from character data based on source format
+
+        Args:
+            character: Character data dictionary
+            source: Source of this character data (jikan, anilist, anidb, animeplanet)
+
+        Returns:
+            Image URL or None if not available
+        """
+        try:
+            if source == "jikan":
+                # Try detailed format first (images.jpg.image_url)
+                if "images" in character and isinstance(character["images"], dict):
+                    jpg_images = character["images"].get("jpg", {})
+                    if isinstance(jpg_images, dict):
+                        image_url = jpg_images.get("image_url")
+                        if image_url:
+                            return str(image_url)
+
+                # Try nested character object format
+                if "character" in character and "images" in character["character"]:
+                    char_images = character["character"]["images"]
+                    if isinstance(char_images, dict):
+                        jpg_images = char_images.get("jpg", {})
+                        if isinstance(jpg_images, dict):
+                            image_url = jpg_images.get("image_url")
+                            if image_url:
+                                return str(image_url)
+
+            elif source == "anilist":
+                # AniList format: image.large
+                if "image" in character and isinstance(character["image"], dict):
+                    image_url = character["image"].get("large")
+                    if image_url:
+                        return str(image_url)
+
+            elif source == "anidb":
+                # AniDB format: construct URL from 'picture' field
+                picture = character.get("picture")
+                if picture:
+                    return f"https://cdn.anidb.net/images/main/{picture}"
+
+            elif source == "animeplanet":
+                # AnimePlanet format: direct 'image' field
+                image_url = character.get("image")
+                if image_url:
+                    return str(image_url)
+
+        except Exception as e:
+            logger.debug(f"Failed to extract image URL from {source}: {e}")
 
         return None
 

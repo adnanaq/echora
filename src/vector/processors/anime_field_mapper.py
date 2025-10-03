@@ -213,7 +213,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-def _extract_temporal_content(self, anime: AnimeEntry) -> str:
+    def _extract_temporal_content(self, anime: AnimeEntry) -> str:
         """Extract aired dates, anime season, broadcast, premiere dates."""
         content_parts = []
 
