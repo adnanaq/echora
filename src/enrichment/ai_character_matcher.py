@@ -34,8 +34,9 @@ from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
 try:
-    from ..vector.processors.vision_processor import VisionProcessor
     from ..config.settings import Settings
+    from ..vector.processors.vision_processor import VisionProcessor
+
     VISION_AVAILABLE = True
 except ImportError:
     VISION_AVAILABLE = False
@@ -269,10 +270,10 @@ class CharacterNamePreprocessor:
         if name:
             # Check if name contains CJK characters
             has_cjk = any(
-                '\u4e00' <= c <= '\u9fff' or  # Chinese/Japanese kanji
-                '\u3040' <= c <= '\u309f' or  # Hiragana
-                '\u30a0' <= c <= '\u30ff' or  # Katakana
-                '\uac00' <= c <= '\ud7af'     # Korean
+                "\u4e00" <= c <= "\u9fff"  # Chinese/Japanese kanji
+                or "\u3040" <= c <= "\u309f"  # Hiragana
+                or "\u30a0" <= c <= "\u30ff"  # Katakana
+                or "\uac00" <= c <= "\ud7af"  # Korean
                 for c in name
             )
 
@@ -292,7 +293,7 @@ class CharacterNamePreprocessor:
     def fill_missing_field(
         current_value: Optional[Any],
         source_value: Optional[Any],
-        convert_to_str: bool = False
+        convert_to_str: bool = False,
     ) -> Optional[Any]:
         """
         Fill missing field with fallback priority logic.
@@ -405,15 +406,17 @@ class EnsembleFuzzyMatcher:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
                     self.vision_processor = VisionProcessor(settings)
-                    logger.info(f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})")
+                    logger.info(
+                        f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
+                    )
             except Exception as e:
-                logger.warning(f"Failed to initialize vision processor, visual matching disabled: {e}")
+                logger.warning(
+                    f"Failed to initialize vision processor, visual matching disabled: {e}"
+                )
                 self.enable_visual = False
 
     async def calculate_visual_similarity(
-        self,
-        image_url1: Optional[str],
-        image_url2: Optional[str]
+        self, image_url1: Optional[str], image_url2: Optional[str]
     ) -> float:
         """Calculate visual similarity between two character images using CCIP
 
@@ -535,7 +538,9 @@ class EnsembleFuzzyMatcher:
             # Calculate once per best candidate to avoid redundant downloads
             if jikan_image_url and candidate_image_url:
                 # Run visual similarity asynchronously
-                visual_score = await self.calculate_visual_similarity(jikan_image_url, candidate_image_url)
+                visual_score = await self.calculate_visual_similarity(
+                    jikan_image_url, candidate_image_url
+                )
                 scores["visual"] = visual_score
             else:
                 scores["visual"] = 0.0
@@ -601,11 +606,6 @@ class EnsembleFuzzyMatcher:
                     f"text={semantic_score:.3f}, visual={visual_score:.3f}, ensemble={ensemble_score:.3f}"
                 )
 
-        # Log only high-confidence matches to reduce noise
-        if best_score >= 0.9:
-            logger.info(
-                f"HIGH-CONFIDENCE MATCH: {best_score:.6f} - '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
-            )
         return best_score
 
     def _standardize_for_embedding(self, text: str) -> str:
@@ -917,30 +917,34 @@ class AICharacterMatcher:
             # Log if high-confidence matches were found
             anilist_score = anilist_match.similarity_score if anilist_match else 0.0
             anidb_score = anidb_match.similarity_score if anidb_match else 0.0
-            anime_planet_score = anime_planet_match.similarity_score if anime_planet_match else 0.0
+            anime_planet_score = (
+                anime_planet_match.similarity_score if anime_planet_match else 0.0
+            )
 
-            # HIGH confidence (≥0.9): Perfect matches
+            # Consolidate match confidence logging into one line
+            high_conf_matches = []
+            med_conf_matches = []
+
             if anilist_score >= 0.9:
-                logger.info(f"HIGH-CONFIDENCE ANILIST MATCH: {anilist_score:.6f}")
+                high_conf_matches.append(f"ANILIST: {anilist_score:.3f}")
             elif anilist_score >= 0.7:
-                # MEDIUM confidence (0.7-0.89): Partial matches, worth monitoring
-                logger.info(
-                    f"MEDIUM-CONFIDENCE ANILIST MATCH: {anilist_score:.6f} for '{char_name}'"
-                )
+                med_conf_matches.append(f"ANILIST: {anilist_score:.3f}")
 
             if anidb_score >= 0.9:
-                logger.info(f"HIGH-CONFIDENCE ANIDB MATCH: {anidb_score:.6f}")
+                high_conf_matches.append(f"ANIDB: {anidb_score:.3f}")
             elif anidb_score >= 0.7:
-                # MEDIUM confidence (0.7-0.89): Partial matches, worth monitoring
-                logger.info(
-                    f"MEDIUM-CONFIDENCE ANIDB MATCH: {anidb_score:.6f} for '{char_name}'"
-                )
+                med_conf_matches.append(f"ANIDB: {anidb_score:.3f}")
 
             if anime_planet_score >= 0.9:
-                logger.info(f"HIGH-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f}")
+                high_conf_matches.append(f"ANIMEPLANET: {anime_planet_score:.3f}")
             elif anime_planet_score >= 0.7:
+                med_conf_matches.append(f"ANIMEPLANET: {anime_planet_score:.3f}")
+
+            if high_conf_matches:
+                logger.info(f"HIGH-CONFIDENCE MATCHES: {' | '.join(high_conf_matches)}")
+            if med_conf_matches:
                 logger.info(
-                    f"MEDIUM-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f} for '{char_name}'"
+                    f"MEDIUM-CONFIDENCE MATCHES: {' | '.join(med_conf_matches)} for '{char_name}'"
                 )
 
             # Safety monitoring: Log when no match found (could indicate missing data)
@@ -965,9 +969,6 @@ class AICharacterMatcher:
 
             processed_characters.append(integrated_char)
 
-        logger.info(
-            f"Character matching complete: {len(processed_characters)} characters processed"
-        )
         return processed_characters
 
     async def _find_best_match(
@@ -1026,7 +1027,7 @@ class AICharacterMatcher:
                 candidate_repr,
                 source=source,
                 jikan_image_url=jikan_image_url,
-                candidate_image_url=candidate_image_url
+                candidate_image_url=candidate_image_url,
             )
 
             if similarity_score > best_score:
@@ -1150,7 +1151,9 @@ class AICharacterMatcher:
 
         return None
 
-    def _extract_image_url(self, character: Dict[str, Any], source: str) -> Optional[str]:
+    def _extract_image_url(
+        self, character: Dict[str, Any], source: str
+    ) -> Optional[str]:
         """Extract primary image URL from character data based on source format
 
         Args:
@@ -1247,7 +1250,9 @@ class AICharacterMatcher:
             name=jikan_name,
             role=jikan_char.get("role", ""),
             name_variations=[],
-            name_native=jikan_char.get("name_kanji"),  # From Jikan, fallback to AniList later
+            name_native=jikan_char.get(
+                "name_kanji"
+            ),  # From Jikan, fallback to AniList later
             nicknames=jikan_char.get("nicknames", []),
             voice_actors=self._extract_voice_actors(jikan_char),
             character_pages={"mal": jikan_url},
@@ -1433,14 +1438,24 @@ async def process_characters_with_ai_matching(
     anilist_chars: List[Dict[str, Any]],
     anidb_chars: List[Dict[str, Any]],
     anime_planet_chars: Optional[List[Dict[str, Any]]] = None,
+    matcher: Optional["AICharacterMatcher"] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Main function to process characters using AI matching
 
     Returns the same JSON format as the original Stage 5 but with AI-powered matching
+
+    Args:
+        jikan_chars: Characters from Jikan
+        anilist_chars: Characters from AniList
+        anidb_chars: Characters from AniDB
+        anime_planet_chars: Characters from AnimePlanet (optional)
+        matcher: Reusable AICharacterMatcher instance (optional, creates new if not provided)
     """
 
-    matcher = AICharacterMatcher()
+    # Reuse matcher if provided, otherwise create new instance
+    if matcher is None:
+        matcher = AICharacterMatcher()
 
     # Process all characters with AI matching
     processed_chars = await matcher.match_characters(
@@ -1452,26 +1467,30 @@ async def process_characters_with_ai_matching(
 
     for char in processed_chars:
         output_char = {
-            # Scalar fields (alphabetical)
-            "name": char.name,
-            "role": char.role,
-            # Array fields (alphabetical)
-            "name_variations": char.name_variations,
-            "name_native": char.name_native,
-            "nicknames": char.nicknames,
-            "voice_actors": char.voice_actors,
-            # Object/dict fields (alphabetical)
-            "character_pages": char.character_pages,
-            "images": char.images,
-            # Remaining scalar fields (alphabetical)
+            # =====================================================================
+            # SCALAR FIELDS (alphabetical)
+            # =====================================================================
             "age": char.age,
             "description": char.description,
             "eye_color": char.eye_color,
             "favorites": char.favorites,
             "gender": char.gender,
             "hair_color": char.hair_color,
-            # Array fields - character traits
+            "name": char.name,
+            "name_native": char.name_native,
+            "role": char.role,
+            # =====================================================================
+            # ARRAY FIELDS (alphabetical)
+            # =====================================================================
             "character_traits": char.character_traits,
+            "images": char.images,
+            "name_variations": char.name_variations,
+            "nicknames": char.nicknames,
+            "voice_actors": char.voice_actors,
+            # =====================================================================
+            # OBJECT/DICT FIELDS (alphabetical)
+            # =====================================================================
+            "character_pages": char.character_pages,
             # Internal field for stage5 to use (not part of final output)
             "_match_scores": char.match_scores if char.match_scores else {},
         }

@@ -22,7 +22,10 @@ from typing import Dict, List, Any, Optional, Union
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.enrichment.ai_character_matcher import process_characters_with_ai_matching
+from src.enrichment.ai_character_matcher import (
+    process_characters_with_ai_matching,
+    AICharacterMatcher,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -139,7 +142,7 @@ def create_working_files(anime_id: str, temp_dir: Path, jikan_chars: List[Dict[s
         anidb_count = len(load_working_file(working_paths['anidb']))
         animeplanet_count = len(load_working_file(working_paths['animeplanet']))
 
-        logger.info(f"🔄 RESUMING from existing working files in {working_dir}")
+        logger.info(f"RESUMING from existing working files in {working_dir}")
         logger.info(f"  - working_jikan.json: {jikan_count} characters remaining")
         logger.info(f"  - working_anilist.json: {anilist_count} characters remaining")
         logger.info(f"  - working_anidb.json: {anidb_count} characters remaining")
@@ -159,7 +162,7 @@ def create_working_files(anime_id: str, temp_dir: Path, jikan_chars: List[Dict[s
     with open(working_paths['animeplanet'], 'w', encoding='utf-8') as f:
         json.dump(anime_planet_chars, f, ensure_ascii=False, indent=2)
 
-    logger.info(f"✨ Created NEW working files in {working_dir}")
+    logger.info(f"Created NEW working files in {working_dir}")
     logger.info(f"  - working_jikan.json: {len(jikan_chars)} characters")
     logger.info(f"  - working_anilist.json: {len(anilist_chars)} characters")
     logger.info(f"  - working_anidb.json: {len(anidb_chars)} characters")
@@ -215,7 +218,7 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
 
     logger.info(f"Starting AI character processing for {anime_id}")
     if force_restart:
-        logger.info("⚠️  FORCE RESTART mode enabled - will create fresh working files")
+        logger.info("FORCE RESTART mode enabled - will create fresh working files")
 
     # Validate agent directory exists
     agent_dir = temp_dir / anime_id
@@ -297,6 +300,11 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
         with open(output_jsonl, 'w', encoding='utf-8') as f:
             pass  # Create empty file
 
+        # Create matcher ONCE before loop (loads models once)
+        logger.info("Initializing AI character matcher (loading models)...")
+        matcher = AICharacterMatcher()
+        logger.info("Matcher initialized, models loaded")
+
         matched_count = 0
         working_jikan = load_working_file(working_paths['jikan'])
         working_anilist = load_working_file(working_paths['anilist'])
@@ -314,12 +322,13 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
                 logger.info(f"[{i}/{total_jikan}] SKIP '{char_name}' (already processed as partial match)")
                 continue
 
-            # Match this ONE character against current pools
+            # Match this ONE character against current pools (reuse matcher)
             result = await process_characters_with_ai_matching(
                 jikan_chars=[jikan_char],
                 anilist_chars=working_anilist,
                 anidb_chars=working_anidb,
-                anime_planet_chars=working_animeplanet
+                anime_planet_chars=working_animeplanet,
+                matcher=matcher
             )
 
             matched_char = result['characters'][0]
@@ -447,9 +456,9 @@ async def process_stage5_ai_characters(anime_id: str, temp_dir: Path, force_rest
         logger.info(f"AI character processing complete for {anime_id}")
         logger.info(f"=" * 80)
         logger.info(f"Total processed: {total_jikan} characters")
-        logger.info(f"  ✅ Fully matched: {matched_count} (saved to stage5_characters.json)")
-        logger.info(f"  ⚠️  Partial matches: {partial_matches} (in working_jikan.json with 'found_in' field)")
-        logger.info(f"  ❌ No matches: {no_matches} (in working_jikan.json, no 'found_in' field)")
+        logger.info(f"  Fully matched: {matched_count} (saved to stage5_characters.json)")
+        logger.info(f"  Partial matches: {partial_matches} (in working_jikan.json with 'found_in' field)")
+        logger.info(f"  No matches: {no_matches} (in working_jikan.json, no 'found_in' field)")
         logger.info(f"=" * 80)
         logger.info(f"Pool reduction:")
         logger.info(f"  AniList: {len(anilist_chars)} → {len(working_anilist)}")
