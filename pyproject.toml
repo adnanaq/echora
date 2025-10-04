@@ -26,17 +26,11 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     # Fine-tuning capabilities
     "peft==0.16.0",
-    "accelerate==1.8.1",
-    "datasets>=3.4.0",  # HuggingFace datasets for training data
     "huggingface-hub>=0.20.0",  # For downloading from HuggingFace
-    # Security dependencies
-    "cryptography>=45.0.4",
-    "certifi>=2025.6.15",
+    # HTTP dependencies
     "requests>=2.32.4",
-    "urllib3>=2.5.0",
     "rapidfuzz>=3.14.1",
     "jellyfish>=1.2.0",
-    "langdetect>=1.0.9",
     "jaconv>=0.4.0",
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
