@@ -43,12 +43,46 @@ class AnimePlanetScraper(BaseScraper):
 
             # Extract base data
             result = self._extract_base_data(soup, url)
-            result["domain"] = "anime-planet"
             result["slug"] = slug
 
             # Extract anime-specific data
             anime_data = self._extract_anime_data(soup)
             result.update(anime_data)
+
+            # Flatten json_ld fields to top level
+            if result.get("json_ld"):
+                json_ld = result["json_ld"]
+                if json_ld.get("name"):
+                    result["title"] = json_ld["name"]
+                if json_ld.get("description"):
+                    result["description"] = json_ld["description"]
+                if json_ld.get("url"):
+                    result["url"] = json_ld["url"]
+                if json_ld.get("image"):
+                    result["image"] = json_ld["image"]
+                if json_ld.get("startDate"):
+                    result["start_date"] = json_ld["startDate"]
+                if json_ld.get("endDate"):
+                    result["end_date"] = json_ld["endDate"]
+                if json_ld.get("numberOfEpisodes"):
+                    result["episodes"] = json_ld["numberOfEpisodes"]
+                if json_ld.get("genre"):
+                    result["genres"] = json_ld["genre"]
+
+            # Extract Japanese title from <h2 class="aka">
+            aka_h2 = soup.find("h2", class_="aka")
+            if aka_h2:
+                aka_text = self._clean_text(aka_h2.get_text())
+                # Remove "Alt title: " prefix
+                if aka_text.startswith("Alt title:"):
+                    title_japanese = aka_text.replace("Alt title:", "").strip()
+                    if title_japanese:
+                        result["title_japanese"] = title_japanese
+
+            # Extract poster from opengraph meta tags
+            og_image = soup.find("meta", property="og:image")
+            if og_image and og_image.get("content"):
+                result["poster"] = og_image.get("content")
 
             # Cache the result
             if self.cache_manager and result.get("title"):
@@ -832,9 +866,6 @@ class AnimePlanetScraper(BaseScraper):
         rank_data = self._extract_ranking(soup)
         enhanced_data.update(rank_data)
 
-        # Extract alternative titles
-        alt_titles = self._extract_alternative_titles(soup)
-        enhanced_data.update(alt_titles)
 
         # Extract studio information
         studio_data = self._extract_studios(soup)
@@ -993,109 +1024,6 @@ class AnimePlanetScraper(BaseScraper):
 
         return rank_data
 
-    def _extract_alternative_titles(self, soup) -> Dict[str, Any]:
-        """Extract alternative titles including English, native, and synonyms."""
-        title_data: Dict[str, Any] = {}
-
-        # Look for alternative titles section
-        alt_title_containers = [
-            soup.find("div", class_="alt-titles"),
-            soup.find("section", class_="alt-titles"),
-            soup.find("div", class_="alternative-titles"),
-            soup.find("div", class_="titles"),
-            soup.find("ul", class_="titles"),
-        ]
-
-        # Also look for individual title elements
-        title_selectors = [
-            ("h2", {"class": "alt-title"}),
-            ("span", {"class": "english-title"}),
-            ("span", {"class": "native-title"}),
-            ("span", {"class": "japanese-title"}),
-            ("div", {"class": "english"}),
-            ("div", {"class": "japanese"}),
-        ]
-
-        synonyms = []
-        english_title = None
-        native_title = None
-
-        # Extract from containers
-        for container in alt_title_containers:
-            if not container:
-                continue
-
-            # Look for different title types
-            title_elements = container.find_all(["h2", "h3", "h4", "span", "div", "li"])
-            for elem in title_elements:
-                title_text = self._clean_text(elem.text)
-                if not title_text:
-                    continue
-
-                # Determine title type based on content or class
-                elem_class = " ".join(elem.get("class", []))
-                title_text.lower()
-
-                if "english" in elem_class or self._looks_english(title_text):
-                    if not english_title:
-                        english_title = title_text
-                elif (
-                    "native" in elem_class
-                    or "japanese" in elem_class
-                    or self._looks_japanese(title_text)
-                ):
-                    if not native_title:
-                        native_title = title_text
-                else:
-                    # Add to synonyms if it's different from main title
-                    if title_text not in synonyms:
-                        synonyms.append(title_text)
-
-        # Extract from individual selectors
-        for selector, attrs in title_selectors:
-            elem = soup.find(selector, attrs)
-            if elem:
-                title_text = self._clean_text(elem.text)
-                elem_class = " ".join(elem.get("class", []))
-
-                if "english" in elem_class and not english_title:
-                    english_title = title_text
-                elif (
-                    "native" in elem_class or "japanese" in elem_class
-                ) and not native_title:
-                    native_title = title_text
-
-        # Set extracted titles
-        if english_title:
-            title_data["title_english"] = english_title
-        if native_title:
-            title_data["title_native"] = native_title
-        if synonyms:
-            title_data["synonyms"] = synonyms[:10]  # Limit to 10 synonyms
-
-        return title_data
-
-    def _looks_english(self, text: str) -> bool:
-        """Check if text appears to be English."""
-        if not text:
-            return False
-        # Simple heuristic: if mostly ASCII characters
-        ascii_chars = sum(1 for c in text if ord(c) < 128)
-        return ascii_chars / len(text) > 0.8
-
-    def _looks_japanese(self, text: str) -> bool:
-        """Check if text appears to be Japanese."""
-        if not text:
-            return False
-        # Check for Japanese Unicode ranges
-        japanese_chars = sum(
-            1
-            for c in text
-            if 0x3040 <= ord(c) <= 0x309F  # Hiragana
-            or 0x30A0 <= ord(c) <= 0x30FF  # Katakana
-            or 0x4E00 <= ord(c) <= 0x9FAF
-        )  # Kanji
-        return japanese_chars > 0
 
     def _extract_studios(self, soup) -> Dict[str, Any]:
         """Extract studio information from multiple sources."""

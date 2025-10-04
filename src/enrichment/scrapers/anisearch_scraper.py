@@ -103,7 +103,7 @@ class AniSearchScraper(BaseScraper):
             json_ld = self._extract_json_ld(soup)
             if json_ld:
                 anime_data["title"] = json_ld.get("name")
-                anime_data["image"] = json_ld.get("image")
+                anime_data["cover"] = json_ld.get("image")
                 anime_data["episodes"] = json_ld.get("numberOfEpisodes")
                 anime_data["start_date"] = json_ld.get("startDate")
                 anime_data["end_date"] = json_ld.get("endDate")
@@ -186,9 +186,9 @@ class AniSearchScraper(BaseScraper):
                 anime_data["characters"] = characters
 
             # 10. Extract all images (screenshots only, excluding cover to avoid duplication)
-            images = await self._extract_all_images(soup, anime_id, anime_data.get("image"))
-            if images:
-                anime_data["images"] = images
+            screenshots = await self._extract_all_images(soup, anime_id, anime_data.get("cover"))
+            if screenshots:
+                anime_data["screenshots"] = screenshots
 
             # 11. Extract trailers
             trailers = self._extract_trailers(soup)

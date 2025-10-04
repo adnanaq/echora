@@ -193,34 +193,13 @@ class BaseScraper(BaseClient):
     def _extract_base_data(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         """Extract basic data common to all anime sites."""
         base_data: Dict[str, Any] = {
-            "domain": urlparse(url).netloc,
-            "page_title": None,
-            "meta_description": None,
             "json_ld": None,
-            "opengraph": None,
         }
-
-        # Page title
-        title_tag = soup.find("title")
-        if title_tag:
-            base_data["page_title"] = self._clean_text(title_tag.text)
-
-        # Meta description
-        meta_desc = soup.find("meta", {"name": "description"})
-        if meta_desc and isinstance(meta_desc, Tag):
-            content = meta_desc.get("content", "")
-            if isinstance(content, str):
-                base_data["meta_description"] = content
 
         # Structured data
         json_ld = self._extract_json_ld(soup)
         if json_ld:
             base_data["json_ld"] = json_ld
-
-        # OpenGraph
-        og_data = self._extract_opengraph(soup)
-        if og_data:
-            base_data["opengraph"] = og_data
 
         return base_data
 
