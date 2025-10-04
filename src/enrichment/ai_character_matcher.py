@@ -314,6 +314,10 @@ class CharacterNamePreprocessor:
             >>> fill_missing_field(None, 25, convert_to_str=True)
             "25"
         """
+        # Sanitize placeholder values from AnimePlanet to None
+        if source_value == "?":
+            source_value = None
+
         if not current_value and source_value:
             return str(source_value) if convert_to_str else source_value
         return current_value
