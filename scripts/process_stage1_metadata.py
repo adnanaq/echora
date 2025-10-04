@@ -49,16 +49,17 @@ def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
         'kitsu': f'{temp_dir}/kitsu.json',
         'anime_planet': f'{temp_dir}/anime_planet.json',
         'anilist': f'{temp_dir}/anilist.json',
-        'anidb': f'{temp_dir}/anidb.json'
+        'anidb': f'{temp_dir}/anidb.json',
+        'anisearch': f'{temp_dir}/anisearch.json'
     }
 
     for source_name, file_path in source_files.items():
         try:
             with open(file_path, 'r') as f:
                 sources[source_name] = json.load(f)
-                print(f"✓ Loaded {source_name} data")
+                print(f"Loaded {source_name} data")
         except Exception as e:
-            print(f"⚠ Warning: Could not load {source_name}: {e}")
+            print(f"Warning: Could not load {source_name}: {e}")
             sources[source_name] = {}
 
     return sources
@@ -218,14 +219,20 @@ def organize_images_by_type(sources: Dict[str, Dict]) -> Dict[str, List[str]]:
                 images['covers'].append(url)
                 all_urls['covers'].add(url)
 
-    # Anime-Planet images (covers)
+    # Anime-Planet images (covers) - now flattened to top level
     anime_planet = sources.get('anime_planet', {})
-    for img_field in ['json_ld', 'opengraph']:
-        if anime_planet.get(img_field, {}).get('image'):
-            url = anime_planet[img_field]['image']
-            if url not in all_urls['covers']:
-                images['covers'].append(url)
-                all_urls['covers'].add(url)
+    if anime_planet.get('image'):
+        img_url = anime_planet['image']
+        if img_url and img_url not in all_urls['covers']:
+            images['covers'].append(img_url)
+            all_urls['covers'].add(img_url)
+
+    # Anime-Planet poster - now flattened to top level
+    if anime_planet.get('poster'):
+        img_url = anime_planet['poster']
+        if img_url and img_url not in all_urls['posters']:
+            images['posters'].append(img_url)
+            all_urls['posters'].add(img_url)
 
     # AniList images (covers and banners)
     anilist = sources.get('anilist', {})
@@ -251,6 +258,20 @@ def organize_images_by_type(sources: Dict[str, Dict]) -> Dict[str, List[str]]:
         if url not in all_urls['covers']:
             images['covers'].append(url)
             all_urls['covers'].add(url)
+
+    # AniSearch images (covers and screenshots)
+    anisearch = sources.get('anisearch', {})
+    if anisearch.get('cover'):
+        img_url = anisearch['cover']
+        if img_url and img_url not in all_urls['covers']:
+            images['covers'].append(img_url)
+            all_urls['covers'].add(img_url)
+
+    # AniSearch screenshots (posters)
+    for screenshot_url in anisearch.get('screenshots', []):
+        if screenshot_url and screenshot_url not in all_urls['posters']:
+            images['posters'].append(screenshot_url)
+            all_urls['posters'].add(screenshot_url)
 
     return images
 
@@ -340,10 +361,10 @@ def extract_synopsis_with_hierarchy(sources: Dict[str, Dict]) -> Optional[str]:
     if kitsu_desc and kitsu_desc.strip():
         return kitsu_desc.strip()
 
-    # 5. Anime-Planet (lower priority)
+    # 5. Anime-Planet (lower priority) - now flattened to top level
     anime_planet = sources.get('anime_planet', {})
-    if anime_planet.get('json_ld', {}).get('description'):
-        synopsis = anime_planet['json_ld']['description']
+    if anime_planet.get('description'):
+        synopsis = anime_planet['description']
         if synopsis.strip():
             return synopsis.strip()
 
@@ -426,9 +447,9 @@ def extract_genres_from_sources(sources: Dict[str, Dict]) -> List[str]:
         elif isinstance(genre, dict) and genre.get('name'):
             all_genres.append(genre['name'])
 
-    # Anime-Planet genres (from json_ld.genre)
+    # Anime-Planet genres (now flattened to top level)
     anime_planet = sources.get('anime_planet', {})
-    for genre in anime_planet.get('json_ld', {}).get('genre', []):
+    for genre in anime_planet.get('genres', []):
         if isinstance(genre, str):
             all_genres.append(genre)
         elif isinstance(genre, dict) and genre.get('name'):
@@ -507,12 +528,6 @@ def extract_synonyms_from_sources(sources: Dict[str, Dict]) -> List[str]:
     # Kitsu abbreviated titles
     kitsu = sources.get('kitsu', {})
     for title in kitsu.get('data', {}).get('attributes', {}).get('abbreviatedTitles', []):
-        if title:
-            all_synonyms.append(title)
-
-    # Anime-Planet alternative titles
-    anime_planet = sources.get('anime_planet', {})
-    for title in anime_planet.get('alternative_titles', []):
         if title:
             all_synonyms.append(title)
 
@@ -711,7 +726,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
     print("Loading offline database as foundation...")
     offline_data = load_offline_database(current_anime_file)
     if not offline_data:
-        print("❌ Error: Could not load offline database")
+        print("Error: Could not load offline database")
         return {}
 
     # Load all external source data
@@ -773,6 +788,12 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
             output['title_english'] = title.get('title')
         elif title.get('type') == 'Japanese' and not output['title_japanese']:
             output['title_japanese'] = title.get('title')
+
+    # Fallback to Anime-Planet for Japanese title if not found in Jikan
+    if not output['title_japanese']:
+        anime_planet = sources.get('anime_planet', {})
+        if anime_planet.get('title_japanese'):
+            output['title_japanese'] = anime_planet['title_japanese']
 
     # Type from offline database
     output['type'] = offline_data.get('type')
@@ -1053,9 +1074,9 @@ Examples:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
 
-        print(f"\n✅ Stage 1 metadata extraction complete!")
-        print(f"📄 Output saved: {output_file}")
-        print(f"📊 Summary:")
+        print(f"\nStage 1 metadata extraction complete!")
+        print(f"Output saved: {output_file}")
+        print(f"Summary:")
         print(f"   - Title: {result.get('title', 'N/A')}")
         print(f"   - Genres: {len(result.get('genres', []))} entries")
         print(f"   - Synonyms: {len(result.get('synonyms', []))} entries")
@@ -1065,9 +1086,9 @@ Examples:
         print(f"   - Ending themes: {len(result.get('ending_themes', []))} entries")
         print(f"   - Images: {sum(len(urls) for urls in result.get('images', {}).values())} URLs")
         print(f"   - External links: {len(result.get('external_links', {}))} links")
-        print(f"   - Synopsis: {'✓' if result.get('synopsis') else '✗'}")
+        print(f"   - Synopsis: {'Yes' if result.get('synopsis') else 'No'}")
     else:
-        print("❌ Stage 1 metadata extraction failed")
+        print("Stage 1 metadata extraction failed")
         sys.exit(1)
 
 

@@ -24,7 +24,7 @@ class PlatformIDExtractor:
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
         "anime_planet_slug": r"anime-planet\.com/anime/([^/\?]+)",
-        "anisearch_id": r"anisearch\.com/anime/index/(\d+)",
+        "anisearch_id": r"anisearch\.com/anime/(?:index/)?(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",
     }

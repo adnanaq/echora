@@ -20,6 +20,7 @@ from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from src.enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
 from src.enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
+from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 from src.enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
@@ -48,6 +49,7 @@ class ParallelAPIFetcher:
         self.kitsu_helper = None
         self.anidb_helper = None
         self.anime_planet_helper = None
+        self.anisearch_helper = None
 
         # Track API performance
         self.api_timings: Dict[str, float] = {}
@@ -63,6 +65,8 @@ class ParallelAPIFetcher:
             self.anidb_helper = AniDBEnrichmentHelper()
         if not self.anime_planet_helper:
             self.anime_planet_helper = AnimePlanetEnrichmentHelper()
+        if not self.anisearch_helper:
+            self.anisearch_helper = AniSearchEnrichmentHelper()
 
     async def fetch_all_data(
         self, ids: Dict[str, str], offline_data: Dict, temp_dir: Optional[str] = None
@@ -105,6 +109,9 @@ class ParallelAPIFetcher:
 
         if ids.get("anime_planet_slug"):
             tasks.append(("anime_planet", self._fetch_anime_planet(offline_data)))
+
+        if ids.get("anisearch_id"):
+            tasks.append(("anisearch", self._fetch_anisearch(ids["anisearch_id"])))
 
         # Always try AnimSchedule with title search
         tasks.append(("animeschedule", self._fetch_animeschedule(offline_data)))
@@ -501,6 +508,20 @@ class ParallelAPIFetcher:
             self.api_errors["anime_planet"] = str(e)
             return None
 
+    async def _fetch_anisearch(self, anisearch_id: str) -> Optional[Dict]:
+        """Fetch AniSearch data using scraper."""
+        try:
+            start = time.time()
+            if self.anisearch_helper is None:
+                raise RuntimeError("AniSearch helper not initialized")
+            result = await self.anisearch_helper.fetch_all_data(int(anisearch_id))
+            self.api_timings["anisearch"] = time.time() - start
+            return result
+        except Exception as e:
+            logger.error(f"AniSearch fetch failed for ID {anisearch_id}: {e}")
+            self.api_errors["anisearch"] = str(e)
+            return None
+
     async def _fetch_animeschedule(self, offline_data: Dict) -> Optional[Dict]:
         """
         Fetch AnimSchedule data using sync helper.
@@ -633,4 +654,6 @@ class ParallelAPIFetcher:
         """Clean up resources."""
         if self.anilist_helper:
             await self.anilist_helper.close()
+        if self.anisearch_helper:
+            await self.anisearch_helper.close()
         # Add cleanup for other helpers as needed
