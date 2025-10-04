@@ -27,6 +27,8 @@ dependencies = [
     # Fine-tuning capabilities
     "peft==0.16.0",
     "accelerate==1.8.1",
+    "datasets>=3.4.0",  # HuggingFace datasets for training data
+    "huggingface-hub>=0.20.0",  # For downloading from HuggingFace
     # Security dependencies
     "cryptography>=45.0.4",
     "certifi>=2025.6.15",

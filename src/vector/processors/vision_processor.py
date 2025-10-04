@@ -395,6 +395,95 @@ class VisionProcessor:
             logger.error(f"Batch image encoding failed: {e}")
             return [None] * len(image_data_list)
 
+    def calculate_character_similarity(
+        self, image_url_1: str, image_url_2: str
+    ) -> float:
+        """Calculate character similarity using CCIP (anime-specialized model).
+
+        Uses DeepGHS CCIP model for anime character similarity matching.
+        Returns similarity score (0.0 - 1.0, higher = more similar).
+
+        Args:
+            image_url_1: URL or path to first character image
+            image_url_2: URL or path to second character image
+
+        Returns:
+            Similarity score (1.0 = identical, 0.0 = completely different)
+        """
+        try:
+            from imgutils.metrics import ccip_difference
+
+            # CCIP returns difference (0 = identical, 1 = different)
+            difference = ccip_difference(image_url_1, image_url_2)
+
+            # Convert to similarity
+            similarity = 1.0 - difference
+
+            return float(similarity)
+
+        except Exception as e:
+            logger.error(f"CCIP character similarity calculation failed: {e}")
+            # Fallback to OpenCLIP if CCIP fails
+            return self._calculate_openclip_similarity(image_url_1, image_url_2)
+
+    def _calculate_openclip_similarity(
+        self, image_url_1: str, image_url_2: str
+    ) -> float:
+        """Fallback: Calculate similarity using OpenCLIP embeddings.
+
+        Args:
+            image_url_1: URL or path to first image
+            image_url_2: URL or path to second image
+
+        Returns:
+            Cosine similarity score (0.0 - 1.0)
+        """
+        try:
+            import torch
+            from PIL import Image
+            import requests
+            from io import BytesIO
+
+            if not self.model:
+                return 0.0
+
+            # Load images
+            def load_image(url_or_path: str) -> Optional[Image.Image]:
+                if url_or_path.startswith('http'):
+                    response = requests.get(url_or_path, timeout=10)
+                    return Image.open(BytesIO(response.content))
+                else:
+                    return Image.open(url_or_path)
+
+            img1 = load_image(image_url_1)
+            img2 = load_image(image_url_2)
+
+            if not img1 or not img2:
+                return 0.0
+
+            # Encode images
+            preprocess = self.model["preprocess"]
+            model = self.model["model"]
+            device = self.model["device"]
+
+            img1_input = preprocess(img1).unsqueeze(0).to(device)
+            img2_input = preprocess(img2).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                emb1 = model.encode_image(img1_input).cpu().numpy().flatten()
+                emb2 = model.encode_image(img2_input).cpu().numpy().flatten()
+
+            # Normalize and calculate cosine similarity
+            emb1 = emb1 / np.linalg.norm(emb1)
+            emb2 = emb2 / np.linalg.norm(emb2)
+
+            similarity = float(np.dot(emb1, emb2))
+            return similarity
+
+        except Exception as e:
+            logger.error(f"OpenCLIP fallback similarity calculation failed: {e}")
+            return 0.0
+
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the current model.
 

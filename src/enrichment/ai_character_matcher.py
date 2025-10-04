@@ -405,7 +405,7 @@ class EnsembleFuzzyMatcher:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
                     self.vision_processor = VisionProcessor(settings)
-                    logger.info(f"Visual similarity enabled with {settings.image_embedding_model}")
+                    logger.info(f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})")
             except Exception as e:
                 logger.warning(f"Failed to initialize vision processor, visual matching disabled: {e}")
                 self.enable_visual = False
@@ -415,7 +415,10 @@ class EnsembleFuzzyMatcher:
         image_url1: Optional[str],
         image_url2: Optional[str]
     ) -> float:
-        """Calculate visual similarity between two character images using OpenCLIP embeddings
+        """Calculate visual similarity between two character images using CCIP
+
+        Uses DeepGHS CCIP model specialized for anime character recognition.
+        Falls back to OpenCLIP if CCIP is unavailable.
 
         Args:
             image_url1: URL of first character image
@@ -431,40 +434,10 @@ class EnsembleFuzzyMatcher:
             return 0.0
 
         try:
-            # Download both images in parallel using vision processor's built-in caching
-            image_data1, image_data2 = await asyncio.gather(
-                self.vision_processor._download_and_cache_image(image_url1),
-                self.vision_processor._download_and_cache_image(image_url2),
-                return_exceptions=True
+            # Use CCIP from VisionProcessor (with OpenCLIP fallback)
+            similarity = self.vision_processor.calculate_character_similarity(
+                image_url1, image_url2
             )
-
-            # Handle download failures
-            if isinstance(image_data1, Exception) or isinstance(image_data2, Exception):
-                logger.debug(f"Image download failed for visual similarity")
-                return 0.0
-
-            if not image_data1 or not image_data2:
-                logger.debug(f"No image data retrieved for visual similarity")
-                return 0.0
-
-            # Encode both images with OpenCLIP (768-dim embeddings)
-            embedding1 = self.vision_processor.encode_image(image_data1)
-            embedding2 = self.vision_processor.encode_image(image_data2)
-
-            if not embedding1 or not embedding2:
-                logger.debug(f"Image encoding failed for visual similarity")
-                return 0.0
-
-            # Calculate cosine similarity
-            embedding1_np = np.array(embedding1)
-            embedding2_np = np.array(embedding2)
-
-            # Normalize embeddings
-            embedding1_norm = embedding1_np / np.linalg.norm(embedding1_np)
-            embedding2_norm = embedding2_np / np.linalg.norm(embedding2_np)
-
-            # Cosine similarity (dot product of normalized vectors)
-            similarity = float(np.dot(embedding1_norm, embedding2_norm))
 
             # Ensure result is in [0.0, 1.0] range
             similarity = max(0.0, min(1.0, similarity))
@@ -621,38 +594,17 @@ class EnsembleFuzzyMatcher:
             semantic_score = scores.get("semantic", 0.0)
             visual_score = scores.get("visual", 0.0)
 
-            # Visual verification logging
-            if visual_score > 0.0:
-                if visual_score >= 0.8:
-                    logger.info(
-                        f"VISUAL VERIFICATION STRONG: {visual_score:.3f} - "
-                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
-                    )
-                elif visual_score >= 0.6:
-                    logger.info(
-                        f"VISUAL VERIFICATION MEDIUM: {visual_score:.3f} - "
-                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
-                    )
-                elif semantic_score >= 0.7:
-                    # High semantic but low visual - potential different characters with similar names
-                    logger.warning(
-                        f"VISUAL MISMATCH: semantic={semantic_score:.3f} but visual={visual_score:.3f} - "
-                        f"'{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
-                    )
-
-            # Safety monitoring: Alert when semantic and ensemble differ significantly
-            if semantic_score >= 0.7 and ensemble_score < 0.7:
-                # Semantic says match, but ensemble rejects - worth investigating
-                logger.warning(
-                    f"⚠️  SCORE DISCREPANCY: Semantic={semantic_score:.3f} but Ensemble={ensemble_score:.3f} "
-                    f"for '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}' "
-                    f"(edit={scores.get('edit_distance', 0):.2f}, token={scores.get('token_based', 0):.2f}, visual={visual_score:.2f})"
+            # Log match details when scores are significant
+            if ensemble_score >= 0.8:
+                logger.info(
+                    f"Match '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}' ({source.upper()}): "
+                    f"text={semantic_score:.3f}, visual={visual_score:.3f}, ensemble={ensemble_score:.3f}"
                 )
 
         # Log only high-confidence matches to reduce noise
         if best_score >= 0.9:
             logger.info(
-                f"✅ HIGH-CONFIDENCE MATCH: {best_score:.6f} - '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
+                f"HIGH-CONFIDENCE MATCH: {best_score:.6f} - '{name1_repr.get('original', '')}' vs '{name2_repr.get('original', '')}'"
             )
         return best_score
 
@@ -773,21 +725,11 @@ class EnsembleFuzzyMatcher:
                         max_similarity = similarity
                         best_pair = (n1, n2)
 
-        # DETAILED LOGGING: Show what text strings were actually compared
-        if best_pair and max_similarity >= 0.85:  # Log near-threshold matches too
-            logger.info(f"🔍 SEMANTIC SIMILARITY ANALYSIS:")
+        # Log best semantic match only
+        if best_pair and max_similarity >= 0.85:
             logger.info(
-                f"   Best Match: '{best_pair[0]}' <-> '{best_pair[1]}' = {max_similarity:.6f}"
+                f"SEMANTIC MATCH: '{best_pair[0]}' <-> '{best_pair[1]}' = {max_similarity:.3f}"
             )
-            logger.info(f"   Total comparisons tested: {len(all_comparisons)}")
-
-            # Show top 5 comparisons
-            sorted_comparisons = sorted(
-                all_comparisons, key=lambda x: x[2], reverse=True
-            )[:5]
-            logger.info(f"   Top 5 comparisons:")
-            for i, (t1, t2, score) in enumerate(sorted_comparisons, 1):
-                logger.info(f"      {i}. '{t1}' <-> '{t2}' = {score:.6f}")
 
         return max_similarity
 
@@ -979,35 +921,35 @@ class AICharacterMatcher:
 
             # HIGH confidence (≥0.9): Perfect matches
             if anilist_score >= 0.9:
-                logger.info(f"🎯 HIGH-CONFIDENCE ANILIST MATCH: {anilist_score:.6f}")
+                logger.info(f"HIGH-CONFIDENCE ANILIST MATCH: {anilist_score:.6f}")
             elif anilist_score >= 0.7:
                 # MEDIUM confidence (0.7-0.89): Partial matches, worth monitoring
                 logger.info(
-                    f"⚠️  MEDIUM-CONFIDENCE ANILIST MATCH: {anilist_score:.6f} for '{char_name}'"
+                    f"MEDIUM-CONFIDENCE ANILIST MATCH: {anilist_score:.6f} for '{char_name}'"
                 )
 
             if anidb_score >= 0.9:
-                logger.info(f"🎯 HIGH-CONFIDENCE ANIDB MATCH: {anidb_score:.6f}")
+                logger.info(f"HIGH-CONFIDENCE ANIDB MATCH: {anidb_score:.6f}")
             elif anidb_score >= 0.7:
                 # MEDIUM confidence (0.7-0.89): Partial matches, worth monitoring
                 logger.info(
-                    f"⚠️  MEDIUM-CONFIDENCE ANIDB MATCH: {anidb_score:.6f} for '{char_name}'"
+                    f"MEDIUM-CONFIDENCE ANIDB MATCH: {anidb_score:.6f} for '{char_name}'"
                 )
 
             if anime_planet_score >= 0.9:
-                logger.info(f"🎯 HIGH-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f}")
+                logger.info(f"HIGH-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f}")
             elif anime_planet_score >= 0.7:
                 logger.info(
-                    f"⚠️  MEDIUM-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f} for '{char_name}'"
+                    f"MEDIUM-CONFIDENCE ANIMEPLANET MATCH: {anime_planet_score:.6f} for '{char_name}'"
                 )
 
             # Safety monitoring: Log when no match found (could indicate missing data)
             if anilist_score == 0.0:
-                logger.debug(f"ℹ️  No AniList match found for '{char_name}'")
+                logger.debug(f"No AniList match found for '{char_name}'")
             if anidb_score == 0.0:
-                logger.debug(f"ℹ️  No AniDB match found for '{char_name}'")
+                logger.debug(f"No AniDB match found for '{char_name}'")
             if anime_planet_score == 0.0:
-                logger.debug(f"ℹ️  No AnimePlanet match found for '{char_name}'")
+                logger.debug(f"No AnimePlanet match found for '{char_name}'")
 
             # Integrate data from all matched sources
             integrated_char = await self._integrate_character_data(
@@ -1109,7 +1051,7 @@ class AICharacterMatcher:
                 source_name = source.upper()
 
                 logger.info(
-                    f"🎯 EARLY TERMINATION: {similarity_score:.6f} - '{primary_name}' → '{candidate_name}' ({source_name})"
+                    f"EARLY TERMINATION: {similarity_score:.6f} - '{primary_name}' → '{candidate_name}' ({source_name})"
                 )
 
                 # Validate the high-confidence match immediately
