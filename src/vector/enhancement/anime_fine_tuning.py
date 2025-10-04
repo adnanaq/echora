@@ -16,12 +16,12 @@ from peft import LoraConfig, TaskType
 from torch.utils.data import DataLoader
 
 from ...config import Settings
+from ..processors.text_processor import TextProcessor
+from ..processors.vision_processor import VisionProcessor
 from .anime_dataset import AnimeDataset
 from .art_style_classifier import ArtStyleClassifier
 from .character_recognition import CharacterRecognitionFinetuner
 from .genre_enhancement import GenreEnhancementFinetuner
-from ..processors.text_processor import TextProcessor
-from ..processors.vision_processor import VisionProcessor
 
 logger = logging.getLogger(__name__)
 

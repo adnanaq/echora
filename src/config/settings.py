@@ -245,8 +245,8 @@ class Settings(BaseSettings):
         default={
             # Core searchable fields
             "id": "keyword",
-            "title": "keyword",           # Exact title matching
-            "title_text": "text",        # Full-text title search
+            "title": "keyword",  # Exact title matching
+            "title_text": "text",  # Full-text title search
             "type": "keyword",
             "status": "keyword",
             "episodes": "integer",
@@ -256,8 +256,8 @@ class Settings(BaseSettings):
             # Categorical fields
             "genres": "keyword",
             "tags": "keyword",
-            "demographics": "text",       # Descriptive text content
-            "content_warnings": "text",   # Descriptive text content
+            "demographics": "text",  # Descriptive text content
+            "content_warnings": "text",  # Descriptive text content
             # Character physical attributes (AnimePlanet)
             "characters.hair_color": "keyword",
             "characters.eye_color": "keyword",
@@ -265,12 +265,12 @@ class Settings(BaseSettings):
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",
-            "duration": "integer",        # Episode duration in seconds
+            "duration": "integer",  # Episode duration in seconds
             # Platform fields
             "sources": "keyword",
             # Statistics for numerical filtering
-            "statistics": "keyword",      # Keep as-is for now
-            "score.median": "float",      # Representative score for range queries
+            "statistics": "keyword",  # Keep as-is for now
+            "score.median": "float",  # Representative score for range queries
             # Note: enrichment_metadata intentionally excluded (non-indexed operational data)
         },
         description="Payload fields with their types for optimized indexing (excludes operational metadata)",

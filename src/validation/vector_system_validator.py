@@ -9,16 +9,17 @@ Components:
 - FusionEffectivenessValidator: Test RRF fusion vs single vectors
 """
 
-import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-# from scipy.spatial.distance import cosine  # Removed due to missing stubs
 
 from ..vector.client.qdrant_client import QdrantClient
 from .dataset_analyzer import DatasetAnalyzer
+
+# from scipy.spatial.distance import cosine  # Removed due to missing stubs
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,9 @@ class VectorSystemValidator:
             dynamic_queries = await self.dataset_analyzer.generate_dynamic_queries()
 
             if "error" in dynamic_queries:
-                logger.error(f"Dynamic query generation failed: {dynamic_queries['error']}")
+                logger.error(
+                    f"Dynamic query generation failed: {dynamic_queries['error']}"
+                )
                 return {}
 
             # Filter out empty query lists and determine which vectors to skip
@@ -61,7 +64,9 @@ class VectorSystemValidator:
             for vector_name, queries in dynamic_queries.items():
                 if queries:  # Non-empty query list
                     filtered_queries[vector_name] = queries
-                    logger.info(f"✅ Generated {len(queries)} queries for {vector_name}")
+                    logger.info(
+                        f"✅ Generated {len(queries)} queries for {vector_name}"
+                    )
                 else:
                     updated_skip_vectors.add(vector_name)
                     logger.info(f"🚫 Skipping {vector_name} (no meaningful data)")
@@ -111,12 +116,14 @@ class VectorSystemValidator:
                         "tests_run": 0,
                         "tests_passed": 0,
                         "skipped": True,
-                        "skip_reason": "Vector is empty in current dataset"
+                        "skip_reason": "Vector is empty in current dataset",
                     }
                     continue
 
                 logger.info(f"Testing {vector_name}")
-                vector_result = await self._test_individual_vector(vector_name, test_queries)
+                vector_result = await self._test_individual_vector(
+                    vector_name, test_queries
+                )
                 individual_results[vector_name] = vector_result
 
             # Test image vectors dynamically (simulated for now)
@@ -134,18 +141,23 @@ class VectorSystemValidator:
 
             # Calculate overall success rate
             success_count = sum(
-                1 for result in individual_results.values()
+                1
+                for result in individual_results.values()
                 if isinstance(result, dict) and result.get("success_rate", 0) > 0.7
             )
             validation_summary["overall_success_rate"] = success_count / 14
 
             # Generate recommendations
-            validation_summary["recommendations"] = self._generate_recommendations(validation_summary)
+            validation_summary["recommendations"] = self._generate_recommendations(
+                validation_summary
+            )
 
             # Log completion
             total_time = time.time() - start_time
-            logger.info(f"11-vector validation completed in {total_time:.2f}s. "
-                       f"Success rate: {validation_summary['overall_success_rate']:.2f}")
+            logger.info(
+                f"11-vector validation completed in {total_time:.2f}s. "
+                f"Success rate: {validation_summary['overall_success_rate']:.2f}"
+            )
 
             return validation_summary
 
@@ -154,9 +166,7 @@ class VectorSystemValidator:
             return {"error": str(e), "timestamp": time.time()}
 
     async def _test_individual_vector(
-        self,
-        vector_name: str,
-        test_queries: List[Dict[str, Any]]
+        self, vector_name: str, test_queries: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Test an individual vector with domain-specific queries.
 
@@ -193,23 +203,29 @@ class VectorSystemValidator:
                     total_response_time += response_time
 
                     # Validate results meet expectations
-                    validation_passed = self._validate_query_results(results, query_config)
+                    validation_passed = self._validate_query_results(
+                        results, query_config
+                    )
 
                     if validation_passed:
                         successful_queries += 1
                     else:
-                        failed_queries.append({
-                            "query": query,
-                            "expected": query_config,
-                            "response_time": response_time,
-                        })
+                        failed_queries.append(
+                            {
+                                "query": query,
+                                "expected": query_config,
+                                "response_time": response_time,
+                            }
+                        )
 
                 except Exception as e:
                     logger.warning(f"Query failed for {vector_name}: {query} - {e}")
-                    failed_queries.append({
-                        "query": query,
-                        "error": str(e),
-                    })
+                    failed_queries.append(
+                        {
+                            "query": query,
+                            "error": str(e),
+                        }
+                    )
 
             # Update results with calculated values
             vector_results["successful_queries"] = successful_queries
@@ -219,7 +235,9 @@ class VectorSystemValidator:
             total_queries = vector_results["total_queries"]
             if total_queries > 0:
                 vector_results["success_rate"] = successful_queries / total_queries
-                vector_results["average_response_time"] = total_response_time / total_queries
+                vector_results["average_response_time"] = (
+                    total_response_time / total_queries
+                )
 
             return vector_results
 
@@ -227,7 +245,9 @@ class VectorSystemValidator:
             logger.error(f"Failed to test vector {vector_name}: {e}")
             return {"error": str(e), "vector_name": vector_name}
 
-    async def _search_with_vector(self, vector_name: str, query: str) -> List[Dict[str, Any]]:
+    async def _search_with_vector(
+        self, vector_name: str, query: str
+    ) -> List[Dict[str, Any]]:
         """Search using a specific vector (placeholder implementation).
 
         Args:
@@ -244,29 +264,27 @@ class VectorSystemValidator:
             if vector_name in ["title_vector", "character_vector", "genre_vector"]:
                 # Use text comprehensive search as approximation
                 results = await self.client.search_text_comprehensive(
-                    query=query,
-                    limit=10
+                    query=query, limit=10
                 )
             else:
                 # Use complete search for other vectors
-                results = await self.client.search_complete(
-                    query=query,
-                    limit=10
-                )
+                results = await self.client.search_complete(query=query, limit=10)
 
             # Convert results to standard format
             formatted_results = []
             for result in results:
-                formatted_results.append({
-                    "title": result.get("title", ""),
-                    "score": result.get("score", 0.0),
-                    "genres": result.get("genres", []),
-                    "studios": result.get("studios", []),
-                    "demographics": result.get("demographics", []),
-                    "type": result.get("type", ""),
-                    "year": result.get("year", 0),
-                    "rating": result.get("rating", 0.0),
-                })
+                formatted_results.append(
+                    {
+                        "title": result.get("title", ""),
+                        "score": result.get("score", 0.0),
+                        "genres": result.get("genres", []),
+                        "studios": result.get("studios", []),
+                        "demographics": result.get("demographics", []),
+                        "type": result.get("type", ""),
+                        "year": result.get("year", 0),
+                        "rating": result.get("rating", 0.0),
+                    }
+                )
 
             return formatted_results
 
@@ -275,9 +293,7 @@ class VectorSystemValidator:
             return []
 
     def _validate_query_results(
-        self,
-        results: List[Dict[str, Any]],
-        query_config: Dict[str, Any]
+        self, results: List[Dict[str, Any]], query_config: Dict[str, Any]
     ) -> bool:
         """Validate search results meet expected criteria.
 
@@ -311,7 +327,9 @@ class VectorSystemValidator:
                 found_studios = []
                 for result in results[:5]:
                     found_studios.extend(result.get("studios", []))
-                studio_matches = any(studio in found_studios for studio in expected_studios)
+                studio_matches = any(
+                    studio in found_studios for studio in expected_studios
+                )
                 if not studio_matches:
                     return False
 
@@ -331,7 +349,9 @@ class VectorSystemValidator:
                 found_demographics = []
                 for result in results[:5]:
                     found_demographics.extend(result.get("demographics", []))
-                demo_matches = any(demo in found_demographics for demo in expected_demographics)
+                demo_matches = any(
+                    demo in found_demographics for demo in expected_demographics
+                )
                 if not demo_matches:
                     return False
 
@@ -339,7 +359,11 @@ class VectorSystemValidator:
             expected_ratings = query_config.get("expected_ratings", [])
             if expected_ratings and len(expected_ratings) == 2:
                 min_rating, max_rating = expected_ratings
-                ratings = [r.get("rating", 0.0) for r in results[:3] if r.get("rating", 0.0) > 0]
+                ratings = [
+                    r.get("rating", 0.0)
+                    for r in results[:3]
+                    if r.get("rating", 0.0) > 0
+                ]
                 if ratings:
                     avg_rating = sum(ratings) / len(ratings)
                     if not (min_rating <= avg_rating <= max_rating):
@@ -352,9 +376,7 @@ class VectorSystemValidator:
             return False
 
     def _simulate_image_vector_test(
-        self,
-        vector_name: str,
-        test_cases: List[Dict[str, Any]]
+        self, vector_name: str, test_cases: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Simulate image vector testing (placeholder).
 
@@ -406,7 +428,11 @@ class VectorSystemValidator:
                 },
                 {
                     "query": "Studio Ghibli family adventure films",
-                    "expected_vectors": ["title_vector", "genre_vector", "staff_vector"],
+                    "expected_vectors": [
+                        "title_vector",
+                        "genre_vector",
+                        "staff_vector",
+                    ],
                     "min_results": 2,
                 },
                 {
@@ -423,8 +449,7 @@ class VectorSystemValidator:
 
                     # Test search_complete (uses all 11 vectors)
                     complete_results = await self.client.search_complete(
-                        query=query,
-                        limit=10
+                        query=query, limit=10
                     )
                     response_time = time.time() - start_time
 
@@ -435,21 +460,27 @@ class VectorSystemValidator:
                     else:
                         validation_passed = False
 
-                    search_complete_tests.append({
-                        "query": query,
-                        "results_count": len(complete_results),
-                        "response_time": response_time,
-                        "validation_passed": validation_passed,
-                        "top_result": complete_results[0] if complete_results else None,
-                    })
+                    search_complete_tests.append(
+                        {
+                            "query": query,
+                            "results_count": len(complete_results),
+                            "response_time": response_time,
+                            "validation_passed": validation_passed,
+                            "top_result": (
+                                complete_results[0] if complete_results else None
+                            ),
+                        }
+                    )
 
                 except Exception as e:
                     logger.warning(f"Multi-vector query failed: {query} - {e}")
-                    search_complete_tests.append({
-                        "query": query,
-                        "error": str(e),
-                        "validation_passed": False,
-                    })
+                    search_complete_tests.append(
+                        {
+                            "query": query,
+                            "error": str(e),
+                            "validation_passed": False,
+                        }
+                    )
 
             # Test text comprehensive search
             text_queries = [
@@ -462,47 +493,85 @@ class VectorSystemValidator:
                 try:
                     start_time = time.time()
                     text_results = await self.client.search_text_comprehensive(
-                        query=query,
-                        limit=5
+                        query=query, limit=5
                     )
                     response_time = time.time() - start_time
 
-                    search_text_comprehensive_tests.append({
-                        "query": query,
-                        "results_count": len(text_results),
-                        "response_time": response_time,
-                        "validation_passed": len(text_results) >= 2,
-                    })
+                    search_text_comprehensive_tests.append(
+                        {
+                            "query": query,
+                            "results_count": len(text_results),
+                            "response_time": response_time,
+                            "validation_passed": len(text_results) >= 2,
+                        }
+                    )
 
                 except Exception as e:
                     logger.warning(f"Text comprehensive search failed: {query} - {e}")
 
             # Update multi_vector_results with typed lists
             multi_vector_results["search_complete_tests"] = search_complete_tests
-            multi_vector_results["search_text_comprehensive_tests"] = search_text_comprehensive_tests
+            multi_vector_results["search_text_comprehensive_tests"] = (
+                search_text_comprehensive_tests
+            )
 
             # Calculate fusion effectiveness metrics
-            complete_success_rate = sum(
-                1 for test in search_complete_tests
-                if test.get("validation_passed", False)
-            ) / len(search_complete_tests) if search_complete_tests else 0
+            complete_success_rate = (
+                sum(
+                    1
+                    for test in search_complete_tests
+                    if test.get("validation_passed", False)
+                )
+                / len(search_complete_tests)
+                if search_complete_tests
+                else 0
+            )
 
-            text_success_rate = sum(
-                1 for test in search_text_comprehensive_tests
-                if test.get("validation_passed", False)
-            ) / len(search_text_comprehensive_tests) if search_text_comprehensive_tests else 0
+            text_success_rate = (
+                sum(
+                    1
+                    for test in search_text_comprehensive_tests
+                    if test.get("validation_passed", False)
+                )
+                / len(search_text_comprehensive_tests)
+                if search_text_comprehensive_tests
+                else 0
+            )
 
             multi_vector_results["fusion_effectiveness"] = {
                 "search_complete_success_rate": complete_success_rate,
                 "search_text_comprehensive_success_rate": text_success_rate,
-                "average_response_time_complete": float(np.mean([
-                    test["response_time"] for test in search_complete_tests
-                    if "response_time" in test
-                ])) if search_complete_tests and any("response_time" in test for test in search_complete_tests) else 0.0,
-                "average_response_time_text": float(np.mean([
-                    test["response_time"] for test in search_text_comprehensive_tests
-                    if "response_time" in test
-                ])) if search_text_comprehensive_tests and any("response_time" in test for test in search_text_comprehensive_tests) else 0.0,
+                "average_response_time_complete": (
+                    float(
+                        np.mean(
+                            [
+                                test["response_time"]
+                                for test in search_complete_tests
+                                if "response_time" in test
+                            ]
+                        )
+                    )
+                    if search_complete_tests
+                    and any("response_time" in test for test in search_complete_tests)
+                    else 0.0
+                ),
+                "average_response_time_text": (
+                    float(
+                        np.mean(
+                            [
+                                test["response_time"]
+                                for test in search_text_comprehensive_tests
+                                if "response_time" in test
+                            ]
+                        )
+                    )
+                    if search_text_comprehensive_tests
+                    and any(
+                        "response_time" in test
+                        for test in search_text_comprehensive_tests
+                    )
+                    else 0.0
+                ),
             }
 
             return multi_vector_results
@@ -511,7 +580,9 @@ class VectorSystemValidator:
             logger.error(f"Multi-vector search testing failed: {e}")
             return {"error": str(e)}
 
-    def _generate_recommendations(self, validation_summary: Dict[str, Any]) -> List[str]:
+    def _generate_recommendations(
+        self, validation_summary: Dict[str, Any]
+    ) -> List[str]:
         """Generate recommendations based on validation results.
 
         Args:
@@ -555,8 +626,13 @@ class VectorSystemValidator:
         if isinstance(fusion_results, dict):
             fusion_effectiveness = fusion_results.get("fusion_effectiveness", {})
             if isinstance(fusion_effectiveness, dict):
-                complete_success = fusion_effectiveness.get("search_complete_success_rate", 0.0)
-                if isinstance(complete_success, (int, float)) and complete_success < 0.8:
+                complete_success = fusion_effectiveness.get(
+                    "search_complete_success_rate", 0.0
+                )
+                if (
+                    isinstance(complete_success, (int, float))
+                    and complete_success < 0.8
+                ):
                     recommendations.append(
                         f"Multi-vector fusion success rate ({complete_success:.2f}) below target 0.8. "
                         f"Review RRF fusion weights and vector coordination."
@@ -570,9 +646,7 @@ class VectorSystemValidator:
         return recommendations
 
     async def validate_semantic_relevance(
-        self,
-        test_queries: List[str],
-        expected_categories: Optional[List[str]] = None
+        self, test_queries: List[str], expected_categories: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Validate semantic relevance of search results.
 
@@ -599,10 +673,7 @@ class VectorSystemValidator:
             for query in test_queries:
                 try:
                     # Get search results
-                    results = await self.client.search_complete(
-                        query=query,
-                        limit=5
-                    )
+                    results = await self.client.search_complete(query=query, limit=5)
 
                     # Simple semantic relevance check (would be enhanced with NLP)
                     semantic_score = self._calculate_semantic_relevance(query, results)
@@ -621,10 +692,14 @@ class VectorSystemValidator:
                         semantically_relevant_queries += 1
 
                 except Exception as e:
-                    logger.warning(f"Semantic relevance test failed for query: {query} - {e}")
+                    logger.warning(
+                        f"Semantic relevance test failed for query: {query} - {e}"
+                    )
 
             # Update results with calculated values
-            relevance_results["semantically_relevant_queries"] = semantically_relevant_queries
+            relevance_results["semantically_relevant_queries"] = (
+                semantically_relevant_queries
+            )
             relevance_results["query_results"] = query_results
 
             # Calculate overall semantic relevance score
@@ -641,9 +716,7 @@ class VectorSystemValidator:
             return {"error": str(e)}
 
     def _calculate_semantic_relevance(
-        self,
-        query: str,
-        results: List[Dict[str, Any]]
+        self, query: str, results: List[Dict[str, Any]]
     ) -> float:
         """Calculate semantic relevance score for query results.
 

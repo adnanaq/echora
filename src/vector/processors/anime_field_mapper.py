@@ -152,7 +152,6 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-
     def _extract_staff_content(self, anime: AnimeEntry) -> str:
         """Extract staff data including directors, composers, studios, voice actors."""
         content_parts = []
@@ -166,14 +165,16 @@ class AnimeFieldMapper:
                     staff_names = []
                     for member in staff_members:
                         # Handle both dict and object cases
-                        if hasattr(member, 'name') and member.name:
+                        if hasattr(member, "name") and member.name:
                             staff_names.append(member.name)
-                        elif isinstance(member, dict) and member.get('name'):
-                            staff_names.append(member['name'])
+                        elif isinstance(member, dict) and member.get("name"):
+                            staff_names.append(member["name"])
                     if staff_names:
                         # Format role name for display (replace underscores, title case)
-                        role_display = role_key.replace('_', ' ').title()
-                        content_parts.append(f"{role_display}: {', '.join(staff_names)}")
+                        role_display = role_key.replace("_", " ").title()
+                        content_parts.append(
+                            f"{role_display}: {', '.join(staff_names)}"
+                        )
 
             # Studios
             if anime.staff_data.studios:
@@ -488,7 +489,6 @@ class AnimeFieldMapper:
 
         # For now, join all chunks (hierarchical averaging to be implemented in embedding_manager)
         return " || CHUNK_SEPARATOR || ".join(chunks)
-
 
     # ============================================================================
     # VISUAL VECTOR EXTRACTORS (OpenCLIP ViT-L/14, 768-dim)

@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     # Only import for type checking to avoid runtime errors
@@ -26,10 +26,9 @@ import unicodedata
 from enum import Enum
 
 import jellyfish
-import numpy as np
 
 # Core libraries for fuzzy matching
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
@@ -51,10 +50,8 @@ except ImportError:
 # Language detection and processing
 try:
     import jaconv  # Japanese character conversion (has type stubs since v0.4.0)
-    import langdetect  # type: ignore[import-untyped]
     import pykakasi  # Kanji to romaji conversion
 except ImportError:
-    langdetect = None  # type: ignore[assignment]
     jaconv = None  # type: ignore[assignment]
     pykakasi = None  # type: ignore[assignment]
 
@@ -1226,20 +1223,19 @@ class AICharacterMatcher:
         # Start with Jikan as base (most comprehensive)
         # Handle Jikan data format (character.name vs name)
         jikan_name = ""
-        jikan_mal_id = None
         jikan_url = ""
 
         if "character" in jikan_char:
             # Raw Jikan API format
             char_data = jikan_char["character"]
             jikan_name = char_data.get("name", "")
-            jikan_mal_id = char_data.get("mal_id")
+            char_data.get("mal_id")
             jikan_url = char_data.get("url", "")
         else:
             # Processed format (from characters_detailed.json)
             jikan_name = jikan_char.get("name", "")
             # Jikan uses 'character_id' field, not 'mal_id'
-            jikan_mal_id = jikan_char.get("character_id") or jikan_char.get("mal_id")
+            jikan_char.get("character_id") or jikan_char.get("mal_id")
             jikan_url = jikan_char.get("url", "")
 
         logger.debug(

@@ -88,7 +88,10 @@ class ParallelAPIFetcher:
         # Create parallel tasks for each API
         if ids.get("mal_id"):
             tasks.append(
-                ("jikan", self._fetch_jikan_complete(ids["mal_id"], offline_data, temp_dir))
+                (
+                    "jikan",
+                    self._fetch_jikan_complete(ids["mal_id"], offline_data, temp_dir),
+                )
             )
 
         if ids.get("anilist_id"):
@@ -131,7 +134,9 @@ class ParallelAPIFetcher:
         This properly handles rate limiting and batch processing for large series.
         """
         try:
-            logger.info(f"🔍 [JIKAN DEBUG] Starting _fetch_jikan_complete for MAL ID {mal_id}, temp_dir={temp_dir}")
+            logger.info(
+                f"🔍 [JIKAN DEBUG] Starting _fetch_jikan_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
+            )
             start = time.time()
             loop = asyncio.get_event_loop()
 
@@ -155,7 +160,9 @@ class ParallelAPIFetcher:
                 jikan_file = os.path.join(temp_dir, "jikan.json")
                 with open(jikan_file, "w", encoding="utf-8") as f:
                     json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                logger.info(f"🔍 [JIKAN DEBUG] ✓ Saved jikan.json with anime full data to {jikan_file}")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] ✓ Saved jikan.json with anime full data to {jikan_file}"
+                )
 
             # For ongoing series, episodes might be None - use offline data as fallback
             episode_count = anime_info.get("episodes")
@@ -169,8 +176,12 @@ class ParallelAPIFetcher:
             characters_basic = await loop.run_in_executor(
                 None, self._fetch_jikan_sync, characters_url
             )
-            char_count = len(characters_basic.get("data", [])) if characters_basic else 0
-            logger.info(f"🔍 [JIKAN DEBUG] Character list fetched: {char_count} characters")
+            char_count = (
+                len(characters_basic.get("data", [])) if characters_basic else 0
+            )
+            logger.info(
+                f"🔍 [JIKAN DEBUG] Character list fetched: {char_count} characters"
+            )
 
             # Prepare file paths
             episodes_input = os.path.join(temp_dir, "episodes.json")
@@ -183,33 +194,51 @@ class ParallelAPIFetcher:
 
             # Task 1: Fetch detailed episodes (if any)
             if episode_count and episode_count > 0:
-                logger.info(f"🔍 [JIKAN DEBUG] Preparing episode task for {episode_count} episodes...")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] Preparing episode task for {episode_count} episodes..."
+                )
                 with open(episodes_input, "w") as f:
                     json.dump({"episodes": episode_count}, f)
 
                 episode_fetcher = JikanDetailedFetcher(mal_id, "episodes")
                 tasks.append(
-                    ("episodes", loop.run_in_executor(
-                        None, episode_fetcher.fetch_detailed_data, episodes_input, episodes_output
-                    ))
+                    (
+                        "episodes",
+                        loop.run_in_executor(
+                            None,
+                            episode_fetcher.fetch_detailed_data,
+                            episodes_input,
+                            episodes_output,
+                        ),
+                    )
                 )
 
             # Task 2: Fetch detailed characters (if any)
             if characters_basic and characters_basic.get("data"):
-                logger.info(f"🔍 [JIKAN DEBUG] Preparing character task for {char_count} characters...")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] Preparing character task for {char_count} characters..."
+                )
                 with open(characters_input, "w") as f:
                     json.dump(characters_basic, f)
 
                 character_fetcher = JikanDetailedFetcher(mal_id, "characters")
                 tasks.append(
-                    ("characters", loop.run_in_executor(
-                        None, character_fetcher.fetch_detailed_data, characters_input, characters_output
-                    ))
+                    (
+                        "characters",
+                        loop.run_in_executor(
+                            None,
+                            character_fetcher.fetch_detailed_data,
+                            characters_input,
+                            characters_output,
+                        ),
+                    )
                 )
 
             # Run both tasks in parallel
             if tasks:
-                logger.info(f"🔍 [JIKAN DEBUG] Running {len(tasks)} detailed fetch tasks in parallel...")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] Running {len(tasks)} detailed fetch tasks in parallel..."
+                )
                 await asyncio.gather(*[task for _, task in tasks])
                 logger.info(f"🔍 [JIKAN DEBUG] All detailed fetch tasks completed")
 
@@ -224,10 +253,14 @@ class ParallelAPIFetcher:
             if os.path.exists(characters_output):
                 with open(characters_output, "r") as f:
                     characters_data = json.load(f)
-                logger.info(f"🔍 [JIKAN DEBUG] Loaded {len(characters_data)} characters")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] Loaded {len(characters_data)} characters"
+                )
             elif characters_basic and characters_basic.get("data"):
                 characters_data = characters_basic.get("data", [])
-                logger.info(f"🔍 [JIKAN DEBUG] Using basic character data: {len(characters_data)} characters")
+                logger.info(
+                    f"🔍 [JIKAN DEBUG] Using basic character data: {len(characters_data)} characters"
+                )
 
             result = {
                 "anime": anime_info,
@@ -281,8 +314,6 @@ class ParallelAPIFetcher:
     async def _fetch_all_jikan_characters(self, mal_id: str, loop) -> List[Dict]:
         """Fetch ALL characters with pagination."""
         all_characters = []
-        has_next = True
-        page = 1
 
         # First, get initial page to see how many there are
         url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
@@ -320,7 +351,9 @@ class ParallelAPIFetcher:
             logger.error(f"Jikan API request failed: {e}")
             return None
 
-    def _fetch_anilist_sync(self, anilist_id: str, temp_dir: Optional[str] = None) -> Optional[Dict]:
+    def _fetch_anilist_sync(
+        self, anilist_id: str, temp_dir: Optional[str] = None
+    ) -> Optional[Dict]:
         """Synchronous wrapper for AniList fetch - runs in executor to avoid cancellation."""
         try:
             start = time.time()
@@ -335,7 +368,10 @@ class ParallelAPIFetcher:
 
             try:
                 # Create fresh AniList helper instance for this thread
-                from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+                from src.enrichment.api_helpers.anilist_helper import (
+                    AniListEnrichmentHelper,
+                )
+
                 anilist_helper = AniListEnrichmentHelper()
 
                 result = loop.run_until_complete(
@@ -374,10 +410,14 @@ class ParallelAPIFetcher:
             self.api_errors["anilist"] = str(e)
             return None
 
-    async def _fetch_anilist(self, anilist_id: str, temp_dir: Optional[str] = None) -> Optional[Dict]:
+    async def _fetch_anilist(
+        self, anilist_id: str, temp_dir: Optional[str] = None
+    ) -> Optional[Dict]:
         """Fetch ALL AniList data in executor to prevent timeout cancellation."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._fetch_anilist_sync, anilist_id, temp_dir)
+        return await loop.run_in_executor(
+            None, self._fetch_anilist_sync, anilist_id, temp_dir
+        )
 
     async def _fetch_kitsu(self, kitsu_id: str) -> Optional[Dict]:
         """Fetch Kitsu data using async helper."""

@@ -5,15 +5,17 @@ This module analyzes the actual dataset content to generate realistic
 validation queries instead of using hardcoded assumptions.
 """
 
-import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Set, Tuple
+import logging
 from collections import Counter
+from typing import Any, Dict, List
 
 from ..vector.client.qdrant_client import QdrantClient
 from .vector_field_mapping import (
-    VECTOR_FIELD_MAPPINGS, get_vector_fields, get_vector_description,
-    get_searchable_vectors, is_vector_populated
+    get_searchable_vectors,
+    get_vector_description,
+    get_vector_fields,
+    is_vector_populated,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,10 +64,12 @@ class DatasetAnalyzer:
                 "type_distribution": type_analysis,
                 "status_distribution": status_analysis,
                 "sample_titles": self._extract_sample_titles(points_data),
-                "timestamp": asyncio.get_event_loop().time()
+                "timestamp": asyncio.get_event_loop().time(),
             }
 
-            logger.info(f"✅ Dataset analysis complete: {len(points_data)} points analyzed")
+            logger.info(
+                f"✅ Dataset analysis complete: {len(points_data)} points analyzed"
+            )
             return self.dataset_profile
 
         except Exception as e:
@@ -93,15 +97,21 @@ class DatasetAnalyzer:
 
             for vector_name in searchable_vectors:
                 # Check if vector is actually populated in the dataset
-                population_pct = populated_vectors.get(vector_name, {}).get("population_percentage", 0)
+                population_pct = populated_vectors.get(vector_name, {}).get(
+                    "population_percentage", 0
+                )
 
                 if not is_vector_populated(vector_name):
-                    logger.info(f"Skipping {vector_name} - known to be empty in dataset type")
+                    logger.info(
+                        f"Skipping {vector_name} - known to be empty in dataset type"
+                    )
                     dynamic_queries[vector_name] = []
                     continue
 
                 if population_pct < 10:
-                    logger.info(f"Skipping {vector_name} - only {population_pct:.1f}% populated")
+                    logger.info(
+                        f"Skipping {vector_name} - only {population_pct:.1f}% populated"
+                    )
                     dynamic_queries[vector_name] = []
                     continue
 
@@ -124,16 +134,22 @@ class DatasetAnalyzer:
                     dynamic_queries[vector_name] = self._generate_related_queries()
                 else:
                     # Generic query generation for other vectors
-                    dynamic_queries[vector_name] = self._generate_generic_queries(vector_name)
+                    dynamic_queries[vector_name] = self._generate_generic_queries(
+                        vector_name
+                    )
 
-            logger.info(f"✅ Generated dynamic queries for {len(dynamic_queries)} vector types")
+            logger.info(
+                f"✅ Generated dynamic queries for {len(dynamic_queries)} vector types"
+            )
             return dynamic_queries
 
         except Exception as e:
             logger.error(f"Failed to generate dynamic queries: {e}")
             return {"error": str(e)}
 
-    async def _sample_dataset_points(self, sample_size: int = 100) -> List[Dict[str, Any]]:
+    async def _sample_dataset_points(
+        self, sample_size: int = 100
+    ) -> List[Dict[str, Any]]:
         """Sample points from the dataset for analysis."""
         try:
             # Use scroll to get all points (for small datasets) or sample
@@ -141,7 +157,7 @@ class DatasetAnalyzer:
                 collection_name=self.client.collection_name,
                 limit=sample_size,
                 with_payload=True,
-                with_vectors=True
+                with_vectors=True,
             )
 
             points_data = []
@@ -149,7 +165,7 @@ class DatasetAnalyzer:
                 point_dict = {
                     "id": str(point.id),
                     "payload": dict(point.payload) if point.payload else {},
-                    "vector": point.vector if point.vector else {}
+                    "vector": point.vector if point.vector else {},
                 }
                 points_data.append(point_dict)
 
@@ -159,7 +175,9 @@ class DatasetAnalyzer:
             logger.error(f"Failed to sample dataset points: {e}")
             return []
 
-    def _analyze_content_characteristics(self, points_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_content_characteristics(
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze general content characteristics."""
         characteristics = {
             "has_synopsis": 0,
@@ -167,7 +185,7 @@ class DatasetAnalyzer:
             "has_staff": 0,
             "total_titles": 0,
             "unique_studios": set(),
-            "content_themes": Counter()
+            "content_themes": Counter(),
         }
 
         for point in points_data:
@@ -182,7 +200,11 @@ class DatasetAnalyzer:
             staff_data = payload.get("staff_data", {})
             studios = []
             if isinstance(staff_data, dict) and "studios" in staff_data:
-                studios = [studio.get("name", "") for studio in staff_data.get("studios", []) if isinstance(studio, dict)]
+                studios = [
+                    studio.get("name", "")
+                    for studio in staff_data.get("studios", [])
+                    if isinstance(studio, dict)
+                ]
 
             if studios:
                 characteristics["unique_studios"].update(studios)
@@ -201,15 +223,25 @@ class DatasetAnalyzer:
 
         return characteristics
 
-    async def _analyze_vector_populations(self, points_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _analyze_vector_populations(
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze which vectors are populated with meaningful data."""
         vector_stats = {}
 
         vector_names = [
-            "title_vector", "episode_vector", "character_vector", "franchise_vector",
-            "genre_vector", "staff_vector", "temporal_vector",
-            "related_vector", "streaming_vector", "review_vector",
-            "image_vector", "character_image_vector"
+            "title_vector",
+            "episode_vector",
+            "character_vector",
+            "franchise_vector",
+            "genre_vector",
+            "staff_vector",
+            "temporal_vector",
+            "related_vector",
+            "streaming_vector",
+            "review_vector",
+            "image_vector",
+            "character_image_vector",
         ]
 
         for vector_name in vector_names:
@@ -228,13 +260,15 @@ class DatasetAnalyzer:
                         if non_zero_count > len(vector) * 0.1:  # At least 10% non-zero
                             populated_count += 1
 
-            population_percentage = (populated_count / total_count * 100) if total_count > 0 else 0
+            population_percentage = (
+                (populated_count / total_count * 100) if total_count > 0 else 0
+            )
 
             vector_stats[vector_name] = {
                 "populated_count": populated_count,
                 "total_count": total_count,
                 "population_percentage": population_percentage,
-                "is_meaningful": population_percentage > 10
+                "is_meaningful": population_percentage > 10,
             }
 
         return vector_stats
@@ -259,10 +293,12 @@ class DatasetAnalyzer:
             "top_genres": dict(genre_counter.most_common(10)),
             "top_demographics": dict(demographics_counter.most_common(5)),
             "total_unique_genres": len(genre_counter),
-            "total_unique_demographics": len(demographics_counter)
+            "total_unique_demographics": len(demographics_counter),
         }
 
-    def _analyze_content_types(self, points_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_content_types(
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze content type distribution."""
         type_counter = Counter()
 
@@ -273,10 +309,14 @@ class DatasetAnalyzer:
 
         return {
             "type_distribution": dict(type_counter),
-            "most_common_type": type_counter.most_common(1)[0] if type_counter else ("Unknown", 0)
+            "most_common_type": (
+                type_counter.most_common(1)[0] if type_counter else ("Unknown", 0)
+            ),
         }
 
-    def _analyze_status_distribution(self, points_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _analyze_status_distribution(
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze status distribution."""
         status_counter = Counter()
 
@@ -287,10 +327,14 @@ class DatasetAnalyzer:
 
         return {
             "status_distribution": dict(status_counter),
-            "most_common_status": status_counter.most_common(1)[0] if status_counter else ("Unknown", 0)
+            "most_common_status": (
+                status_counter.most_common(1)[0] if status_counter else ("Unknown", 0)
+            ),
         }
 
-    def _extract_sample_titles(self, points_data: List[Dict[str, Any]], limit: int = 10) -> List[str]:
+    def _extract_sample_titles(
+        self, points_data: List[Dict[str, Any]], limit: int = 10
+    ) -> List[str]:
         """Extract sample titles for reference."""
         titles = []
         for point in points_data[:limit]:
@@ -308,13 +352,18 @@ class DatasetAnalyzer:
         for i, title in enumerate(sample_titles[:3]):
             if title and title != "Unknown":
                 # Remove quotes and special characters for better matching
-                clean_title = title.replace('"', '').replace('♪', '').replace('!', '')
+                clean_title = title.replace('"', "").replace("♪", "").replace("!", "")
                 title_words = clean_title.split()
 
                 if len(title_words) >= 2:
                     # Use meaningful words, skip common articles
-                    meaningful_words = [word for word in title_words
-                                     if len(word) > 2 and word.lower() not in {'the', 'and', 'in', 'of', 'to', 'wo', 'no', 'ga', 'wa'}]
+                    meaningful_words = [
+                        word
+                        for word in title_words
+                        if len(word) > 2
+                        and word.lower()
+                        not in {"the", "and", "in", "of", "to", "wo", "no", "ga", "wa"}
+                    ]
 
                     if meaningful_words:
                         # Use 2-3 meaningful words for better semantic matching
@@ -323,11 +372,13 @@ class DatasetAnalyzer:
                         else:
                             query_term = meaningful_words[0]
 
-                        queries.append({
-                            "query": query_term,
-                            "expected_titles": [title],
-                            "min_results": 1
-                        })
+                        queries.append(
+                            {
+                                "query": query_term,
+                                "expected_titles": [title],
+                                "min_results": 1,
+                            }
+                        )
 
         return queries
 
@@ -339,11 +390,13 @@ class DatasetAnalyzer:
 
         for genre, count in list(top_genres.items())[:3]:
             if count >= 2:  # Only test genres with at least 2 entries
-                queries.append({
-                    "query": genre.lower(),
-                    "expected_genres": [genre],
-                    "min_results": min(count, 2)
-                })
+                queries.append(
+                    {
+                        "query": genre.lower(),
+                        "expected_genres": [genre],
+                        "min_results": min(count, 2),
+                    }
+                )
 
         return queries
 
@@ -355,11 +408,13 @@ class DatasetAnalyzer:
 
         for content_type, count in type_distribution.items():
             if count >= 2 and content_type != "Unknown":
-                queries.append({
-                    "query": f"{content_type.lower()} format",
-                    "expected_types": [content_type],
-                    "min_results": min(count, 2)
-                })
+                queries.append(
+                    {
+                        "query": f"{content_type.lower()} format",
+                        "expected_types": [content_type],
+                        "min_results": min(count, 2),
+                    }
+                )
 
         return queries
 
@@ -371,24 +426,19 @@ class DatasetAnalyzer:
 
         for status, count in status_distribution.items():
             if count >= 3 and status != "Unknown":
-                queries.append({
-                    "query": f"{status.lower().replace('_', ' ')}",
-                    "expected_status": [status],
-                    "min_results": min(count - 1, 3)
-                })
+                queries.append(
+                    {
+                        "query": f"{status.lower().replace('_', ' ')}",
+                        "expected_status": [status],
+                        "min_results": min(count - 1, 3),
+                    }
+                )
 
         return queries
 
     def _generate_episode_queries(self) -> List[Dict[str, Any]]:
         """Generate episode-based validation queries."""
-        return [
-            {
-                "query": "single episode",
-                "expected_episodes": [1],
-                "min_results": 3
-            }
-        ]
-
+        return [{"query": "single episode", "expected_episodes": [1], "min_results": 3}]
 
     def _generate_character_queries(self) -> List[Dict[str, Any]]:
         """Generate character-based validation queries."""
@@ -396,7 +446,7 @@ class DatasetAnalyzer:
             {
                 "query": "main character",
                 "expected_content": ["character", "protagonist"],
-                "min_results": 1
+                "min_results": 1,
             }
         ]
 
@@ -411,7 +461,7 @@ class DatasetAnalyzer:
                     {
                         "query": f"{title.split()[0]} franchise",
                         "expected_franchise": [title.split()[0]],
-                        "min_results": 1
+                        "min_results": 1,
                     }
                 ]
 
@@ -423,7 +473,7 @@ class DatasetAnalyzer:
             {
                 "query": "anime production staff",
                 "expected_content": ["staff", "creator"],
-                "min_results": 1
+                "min_results": 1,
             }
         ]
 
@@ -433,13 +483,13 @@ class DatasetAnalyzer:
             {
                 "query": "related anime",
                 "expected_content": ["related", "connection"],
-                "min_results": 1
+                "min_results": 1,
             }
         ]
 
     def _generate_generic_queries(self, vector_name: str) -> List[Dict[str, Any]]:
         """Generate generic validation queries for any vector."""
-        vector_description = get_vector_description(vector_name)
+        get_vector_description(vector_name)
         vector_fields = get_vector_fields(vector_name)
 
         # Create a basic query based on vector purpose
@@ -449,7 +499,7 @@ class DatasetAnalyzer:
                 {
                     "query": f"anime {primary_field}",
                     "expected_content": [primary_field],
-                    "min_results": 1
+                    "min_results": 1,
                 }
             ]
         else:
@@ -457,6 +507,6 @@ class DatasetAnalyzer:
                 {
                     "query": "anime content",
                     "expected_content": ["anime"],
-                    "min_results": 1
+                    "min_results": 1,
                 }
             ]

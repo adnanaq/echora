@@ -114,7 +114,7 @@ class AnimePlanetScraper(BaseScraper):
             all_characters = []
 
             # Find all role section headers
-            sections = soup.find_all('h3', class_='sub')
+            sections = soup.find_all("h3", class_="sub")
 
             for section in sections:
                 section_name = section.get_text(strip=True)
@@ -130,12 +130,12 @@ class AnimePlanetScraper(BaseScraper):
                     continue
 
                 # Find the table following this header
-                table = section.find_next('table')
+                table = section.find_next("table")
                 if not table:
                     continue
 
                 # Parse each character row
-                rows = table.find_all('tr')
+                rows = table.find_all("tr")
                 for row in rows:
                     char_data = self._parse_character_row(row, role)
                     if char_data:
@@ -144,6 +144,7 @@ class AnimePlanetScraper(BaseScraper):
             # Enrich characters with detailed data if requested
             if enrich_characters and all_characters:
                 import asyncio
+
                 for char in all_characters:
                     # Extract character slug from URL
                     char_slug = char.get("url", "").replace("/characters/", "")
@@ -159,7 +160,7 @@ class AnimePlanetScraper(BaseScraper):
             if all_characters:
                 return {
                     "characters": all_characters,
-                    "total_count": len(all_characters)
+                    "total_count": len(all_characters),
                 }
             return None
 
@@ -169,7 +170,9 @@ class AnimePlanetScraper(BaseScraper):
                 raise
             return None
 
-    async def get_character_details(self, character_slug: str) -> Optional[Dict[str, Any]]:
+    async def get_character_details(
+        self, character_slug: str
+    ) -> Optional[Dict[str, Any]]:
         """Get detailed character information from individual character page.
 
         Args:
@@ -208,7 +211,9 @@ class AnimePlanetScraper(BaseScraper):
             entry_bar = soup.find("section", class_="pure-g entryBar")
             if entry_bar:
                 # Find all divs with class containing "pure-1" (handles both "pure-1" and "pure-1 md-1-5")
-                bar_divs = entry_bar.find_all("div", class_=lambda x: x and "pure-1" in x)
+                bar_divs = entry_bar.find_all(
+                    "div", class_=lambda x: x and "pure-1" in x
+                )
 
                 for div in bar_divs:
                     text = div.get_text(strip=True)
@@ -217,12 +222,18 @@ class AnimePlanetScraper(BaseScraper):
                         char_data["gender"] = text.replace("Gender:", "").strip()
 
                     if "Hair Color:" in text:
-                        char_data["hair_color"] = text.replace("Hair Color:", "").strip()
+                        char_data["hair_color"] = text.replace(
+                            "Hair Color:", ""
+                        ).strip()
 
                     if "Rank" in text and "fa-heart" in str(div):
                         rank_link = div.find("a")
                         if rank_link:
-                            rank_text = rank_link.get_text(strip=True).replace("#", "").replace(",", "")
+                            rank_text = (
+                                rank_link.get_text(strip=True)
+                                .replace("#", "")
+                                .replace(",", "")
+                            )
                             try:
                                 char_data["loved_rank"] = int(rank_text)
                             except ValueError:
@@ -231,7 +242,11 @@ class AnimePlanetScraper(BaseScraper):
                     if "Rank" in text and "heartOff" in str(div):
                         rank_link = div.find("a")
                         if rank_link:
-                            rank_text = rank_link.get_text(strip=True).replace("#", "").replace(",", "")
+                            rank_text = (
+                                rank_link.get_text(strip=True)
+                                .replace("#", "")
+                                .replace(",", "")
+                            )
                             try:
                                 char_data["hated_rank"] = int(rank_text)
                             except ValueError:
@@ -240,7 +255,9 @@ class AnimePlanetScraper(BaseScraper):
             # Section 2: EntryMetadata - Eye color, Age, Birthday, Height, Weight, etc.
             entry_metadata = soup.find("div", class_="EntryMetadata")
             if entry_metadata:
-                metadata_items = entry_metadata.find_all("div", class_="EntryMetadata__item")
+                metadata_items = entry_metadata.find_all(
+                    "div", class_="EntryMetadata__item"
+                )
 
                 for item in metadata_items:
                     title_elem = item.find("h3", class_="EntryMetadata__title")
@@ -293,7 +310,7 @@ class AnimePlanetScraper(BaseScraper):
                         if anime_link:
                             role_data = {
                                 "anime_title": anime_link.get_text(strip=True),
-                                "anime_url": anime_link.get("href")
+                                "anime_url": anime_link.get("href"),
                             }
 
                             role_text = row.get_text()
@@ -320,7 +337,7 @@ class AnimePlanetScraper(BaseScraper):
                         if manga_link:
                             role_data = {
                                 "manga_title": manga_link.get_text(strip=True),
-                                "manga_url": manga_link.get("href")
+                                "manga_url": manga_link.get("href"),
                             }
 
                             role_text = row.get_text()
@@ -348,7 +365,9 @@ class AnimePlanetScraper(BaseScraper):
                             va_name = va_link.get_text(strip=True)
                             va_url = va_link.get("href")
 
-                            flag = row.find("div", class_=lambda x: x and "flag" in str(x))
+                            flag = row.find(
+                                "div", class_=lambda x: x and "flag" in str(x)
+                            )
                             lang = "unknown"
                             if flag:
                                 classes = flag.get("class", [])
@@ -359,10 +378,7 @@ class AnimePlanetScraper(BaseScraper):
 
                             if lang not in voice_actors:
                                 voice_actors[lang] = []
-                            voice_actors[lang].append({
-                                "name": va_name,
-                                "url": va_url
-                            })
+                            voice_actors[lang].append({"name": va_name, "url": va_url})
 
                     if voice_actors:
                         char_data["voice_actors"] = voice_actors
@@ -378,50 +394,55 @@ class AnimePlanetScraper(BaseScraper):
         """Parse a single character table row."""
         try:
             # Find character name link
-            name_link = row.find('a', class_='name', href=lambda x: x and '/characters/' in x)
+            name_link = row.find(
+                "a", class_="name", href=lambda x: x and "/characters/" in x
+            )
             if not name_link:
                 return None
 
             char_data = {
                 "name": name_link.get_text(strip=True),
-                "url": name_link.get('href'),
+                "url": name_link.get("href"),
                 "role": role,
             }
 
             # Find character image (in same row, before the name)
-            img = row.find('img', alt=char_data["name"])
+            img = row.find("img", alt=char_data["name"])
             if img:
-                char_data["image"] = img.get('src') or img.get('data-src')
+                char_data["image"] = img.get("src") or img.get("data-src")
 
             # Find character tags
-            tags_div = row.find('div', class_='tags')
+            tags_div = row.find("div", class_="tags")
             if tags_div:
-                tag_links = tags_div.find_all('a', href=lambda x: x and '/characters/tags/' in x)
+                tag_links = tags_div.find_all(
+                    "a", href=lambda x: x and "/characters/tags/" in x
+                )
                 char_data["tags"] = [tag.get_text(strip=True) for tag in tag_links]
 
             # Find voice actors by language
-            actors_td = row.find('td', class_='tableActors')
+            actors_td = row.find("td", class_="tableActors")
             if actors_td:
                 voice_actors = {}
-                flag_divs = actors_td.find_all('div', class_=lambda x: x and 'flag' in x)
+                flag_divs = actors_td.find_all(
+                    "div", class_=lambda x: x and "flag" in x
+                )
 
                 for flag_div in flag_divs:
                     # Extract language from flag class (e.g., "flagJP" -> "jp")
-                    flag_classes = flag_div.get('class', [])
+                    flag_classes = flag_div.get("class", [])
                     lang = None
                     for cls in flag_classes:
-                        if cls.startswith('flag') and len(cls) > 4:
+                        if cls.startswith("flag") and len(cls) > 4:
                             lang = cls[4:].lower()  # Remove "flag" prefix
                             break
 
                     if lang:
                         # Get all voice actor links in this language section
-                        va_links = flag_div.find_all('a', href=lambda x: x and '/people/' in x)
+                        va_links = flag_div.find_all(
+                            "a", href=lambda x: x and "/people/" in x
+                        )
                         actors = [
-                            {
-                                "name": va.get_text(strip=True),
-                                "url": va.get('href')
-                            }
+                            {"name": va.get_text(strip=True), "url": va.get("href")}
                             for va in va_links
                         ]
                         if actors:

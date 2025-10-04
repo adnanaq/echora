@@ -9,15 +9,15 @@ This module implements comprehensive embedding quality monitoring including:
 
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from scipy import stats
+
 # Note: scipy.stats has wasserstein_distance, not scipy.spatial.distance
 from scipy.stats import wasserstein_distance
 from sklearn.cluster import KMeans
-from sklearn.metrics import adjusted_rand_score, silhouette_score
+from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -39,15 +39,23 @@ class EmbeddingQualityMonitor:
         self.alert_bands = {
             "genre_clustering": {"excellent": 0.75, "warning": 0.65, "critical": 0.60},
             "studio_similarity": {"excellent": 0.70, "warning": 0.60, "critical": 0.55},
-            "temporal_consistency": {"excellent": 0.80, "warning": 0.70, "critical": 0.65},
-            "cross_modal_consistency": {"excellent": 0.75, "warning": 0.65, "critical": 0.55},
+            "temporal_consistency": {
+                "excellent": 0.80,
+                "warning": 0.70,
+                "critical": 0.65,
+            },
+            "cross_modal_consistency": {
+                "excellent": 0.75,
+                "warning": 0.65,
+                "critical": 0.55,
+            },
         }
 
     def compute_embedding_quality_metrics(
         self,
         embeddings: np.ndarray,
         metadata: List[Dict[str, Any]],
-        vector_type: str = "text"
+        vector_type: str = "text",
     ) -> Dict[str, Any]:
         """Compute comprehensive embedding quality metrics.
 
@@ -69,12 +77,16 @@ class EmbeddingQualityMonitor:
 
             # Genre clustering purity
             if vector_type in ["text", "character_image"]:
-                genre_score = self._compute_genre_clustering_purity(embeddings, metadata)
+                genre_score = self._compute_genre_clustering_purity(
+                    embeddings, metadata
+                )
                 metrics["genre_clustering"] = genre_score
 
             # Studio visual consistency (for image vectors)
             if vector_type in ["image", "character_image"]:
-                studio_score = self._compute_studio_visual_consistency(embeddings, metadata)
+                studio_score = self._compute_studio_visual_consistency(
+                    embeddings, metadata
+                )
                 metrics["studio_similarity"] = studio_score
 
             # Temporal consistency (for franchise/sequel relationships)
@@ -94,9 +106,7 @@ class EmbeddingQualityMonitor:
             return {"error": str(e), "timestamp": time.time()}
 
     def _compute_genre_clustering_purity(
-        self,
-        embeddings: np.ndarray,
-        metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
     ) -> float:
         """Compute genre clustering purity score.
 
@@ -145,9 +155,7 @@ class EmbeddingQualityMonitor:
             return 0.0
 
     def _compute_studio_visual_consistency(
-        self,
-        embeddings: np.ndarray,
-        metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
     ) -> float:
         """Compute studio visual consistency score for image embeddings."""
         try:
@@ -186,14 +194,17 @@ class EmbeddingQualityMonitor:
                 for i in range(len(studio_embeddings)):
                     for j in range(i + 1, len(studio_embeddings)):
                         sim = np.dot(studio_embeddings[i], studio_embeddings[j]) / (
-                            np.linalg.norm(studio_embeddings[i]) * np.linalg.norm(studio_embeddings[j])
+                            np.linalg.norm(studio_embeddings[i])
+                            * np.linalg.norm(studio_embeddings[j])
                         )
                         intra_similarities.append(sim)
 
                 # Inter-studio similarities (sample to avoid quadratic complexity)
                 other_studios = [s for s in unique_studios if s != studio]
                 for other_studio in other_studios[:3]:  # Limit comparisons
-                    other_indices = [i for i, s in enumerate(studio_labels) if s == other_studio]
+                    other_indices = [
+                        i for i, s in enumerate(studio_labels) if s == other_studio
+                    ]
                     if not other_indices:
                         continue
 
@@ -223,9 +234,7 @@ class EmbeddingQualityMonitor:
             return 0.0
 
     def _compute_temporal_consistency(
-        self,
-        embeddings: np.ndarray,
-        metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
     ) -> float:
         """Compute temporal consistency for franchise/sequel relationships."""
         try:
@@ -235,7 +244,7 @@ class EmbeddingQualityMonitor:
             for i, meta in enumerate(metadata):
                 # Check for franchise indicators
                 title = meta.get("title", "")
-                related = meta.get("related_anime", [])
+                meta.get("related_anime", [])
 
                 # Simple franchise detection (same base title)
                 base_title = self._extract_base_title(title)
@@ -244,7 +253,9 @@ class EmbeddingQualityMonitor:
                 franchise_groups[base_title].append(i)
 
             # Filter to franchises with multiple entries
-            valid_franchises = {k: v for k, v in franchise_groups.items() if len(v) >= 2}
+            valid_franchises = {
+                k: v for k, v in franchise_groups.items() if len(v) >= 2
+            }
 
             if not valid_franchises:
                 return 0.5  # Neutral score if no franchises found
@@ -260,8 +271,11 @@ class EmbeddingQualityMonitor:
                 # Compute pairwise similarities within franchise
                 for i in range(len(franchise_embeddings)):
                     for j in range(i + 1, len(franchise_embeddings)):
-                        sim = np.dot(franchise_embeddings[i], franchise_embeddings[j]) / (
-                            np.linalg.norm(franchise_embeddings[i]) * np.linalg.norm(franchise_embeddings[j])
+                        sim = np.dot(
+                            franchise_embeddings[i], franchise_embeddings[j]
+                        ) / (
+                            np.linalg.norm(franchise_embeddings[i])
+                            * np.linalg.norm(franchise_embeddings[j])
                         )
                         franchise_similarities.append(sim)
 
@@ -281,20 +295,34 @@ class EmbeddingQualityMonitor:
         """Extract base title for franchise detection."""
         # Remove common sequel indicators
         title = title.lower()
-        for suffix in [" season ", " s2", " s3", " 2nd", " 3rd", " ii", " iii", " part ", ": "]:
+        for suffix in [
+            " season ",
+            " s2",
+            " s3",
+            " 2nd",
+            " 3rd",
+            " ii",
+            " iii",
+            " part ",
+            ": ",
+        ]:
             if suffix in title:
                 title = title.split(suffix)[0]
                 break
         return title.strip()
 
-    def _compute_embedding_space_metrics(self, embeddings: np.ndarray) -> Dict[str, float]:
+    def _compute_embedding_space_metrics(
+        self, embeddings: np.ndarray
+    ) -> Dict[str, float]:
         """Compute general embedding space quality metrics."""
         try:
             metrics = {}
 
             # Embedding space dimensionality and variance
             if embeddings.size > 0:
-                metrics["mean_norm"] = float(np.mean(np.linalg.norm(embeddings, axis=1)))
+                metrics["mean_norm"] = float(
+                    np.mean(np.linalg.norm(embeddings, axis=1))
+                )
                 metrics["std_norm"] = float(np.std(np.linalg.norm(embeddings, axis=1)))
 
                 # Effective dimensionality (participation ratio)
@@ -304,8 +332,12 @@ class EmbeddingQualityMonitor:
                     eigenvals = eigenvals[eigenvals > 0]  # Remove negative eigenvalues
 
                     if len(eigenvals) > 0:
-                        participation_ratio = (np.sum(eigenvals) ** 2) / np.sum(eigenvals ** 2)
-                        metrics["effective_dimensionality"] = float(participation_ratio / len(eigenvals))
+                        participation_ratio = (np.sum(eigenvals) ** 2) / np.sum(
+                            eigenvals**2
+                        )
+                        metrics["effective_dimensionality"] = float(
+                            participation_ratio / len(eigenvals)
+                        )
                     else:
                         metrics["effective_dimensionality"] = 0.0
                 else:
@@ -321,7 +353,7 @@ class EmbeddingQualityMonitor:
         self,
         current_embeddings: np.ndarray,
         reference_embeddings: np.ndarray,
-        threshold: float = 0.1
+        threshold: float = 0.1,
     ) -> Dict[str, Any]:
         """Detect distribution shift using Wasserstein distance.
 
@@ -376,7 +408,7 @@ class EmbeddingQualityMonitor:
         text_embeddings: np.ndarray,
         image_embeddings: np.ndarray,
         same_anime_pairs: List[Tuple[int, int]],
-        random_pairs: List[Tuple[int, int]]
+        random_pairs: List[Tuple[int, int]],
     ) -> Dict[str, Any]:
         """Validate cross-modal consistency between text and image embeddings.
 
@@ -386,18 +418,28 @@ class EmbeddingQualityMonitor:
             # Compute similarities for same anime pairs (positive examples)
             positive_similarities = []
             for text_idx, image_idx in same_anime_pairs:
-                if text_idx < len(text_embeddings) and image_idx < len(image_embeddings):
-                    sim = np.dot(text_embeddings[text_idx], image_embeddings[image_idx]) / (
-                        np.linalg.norm(text_embeddings[text_idx]) * np.linalg.norm(image_embeddings[image_idx])
+                if text_idx < len(text_embeddings) and image_idx < len(
+                    image_embeddings
+                ):
+                    sim = np.dot(
+                        text_embeddings[text_idx], image_embeddings[image_idx]
+                    ) / (
+                        np.linalg.norm(text_embeddings[text_idx])
+                        * np.linalg.norm(image_embeddings[image_idx])
                     )
                     positive_similarities.append(sim)
 
             # Compute similarities for random pairs (negative examples)
             negative_similarities = []
             for text_idx, image_idx in random_pairs:
-                if text_idx < len(text_embeddings) and image_idx < len(image_embeddings):
-                    sim = np.dot(text_embeddings[text_idx], image_embeddings[image_idx]) / (
-                        np.linalg.norm(text_embeddings[text_idx]) * np.linalg.norm(image_embeddings[image_idx])
+                if text_idx < len(text_embeddings) and image_idx < len(
+                    image_embeddings
+                ):
+                    sim = np.dot(
+                        text_embeddings[text_idx], image_embeddings[image_idx]
+                    ) / (
+                        np.linalg.norm(text_embeddings[text_idx])
+                        * np.linalg.norm(image_embeddings[image_idx])
                     )
                     negative_similarities.append(sim)
 
@@ -406,9 +448,7 @@ class EmbeddingQualityMonitor:
 
             # Statistical validation with Mann-Whitney U test
             statistic, p_value = stats.mannwhitneyu(
-                positive_similarities,
-                negative_similarities,
-                alternative='greater'
+                positive_similarities, negative_similarities, alternative="greater"
             )
 
             # Cross-modal consistency metrics
@@ -446,8 +486,7 @@ class EmbeddingQualityMonitor:
         # Clean old entries
         cutoff_time = time.time() - (self.history_days * 24 * 3600)
         self.metrics_history = [
-            m for m in self.metrics_history
-            if m.get("timestamp", 0) > cutoff_time
+            m for m in self.metrics_history if m.get("timestamp", 0) > cutoff_time
         ]
 
     def get_trend_analysis(self, metric_name: str, days: int = 7) -> Dict[str, Any]:
@@ -455,7 +494,8 @@ class EmbeddingQualityMonitor:
         try:
             cutoff_time = time.time() - (days * 24 * 3600)
             recent_metrics = [
-                m for m in self.metrics_history
+                m
+                for m in self.metrics_history
                 if m.get("timestamp", 0) > cutoff_time and metric_name in m
             ]
 
@@ -466,7 +506,9 @@ class EmbeddingQualityMonitor:
             timestamps = [m["timestamp"] for m in recent_metrics]
 
             # Linear regression for trend
-            slope, intercept, r_value, p_value, std_err = stats.linregress(timestamps, values)
+            slope, intercept, r_value, p_value, std_err = stats.linregress(
+                timestamps, values
+            )
 
             # Trend classification
             current_value = values[-1]
@@ -521,7 +563,11 @@ class EmbeddingQualityMonitor:
             }
 
             # Analyze each tracked metric
-            for metric_name in ["genre_clustering", "studio_similarity", "temporal_consistency"]:
+            for metric_name in [
+                "genre_clustering",
+                "studio_similarity",
+                "temporal_consistency",
+            ]:
                 if metric_name in latest_metrics:
                     current_value = latest_metrics[metric_name]
                     alert_level = self._get_alert_level(metric_name, current_value)

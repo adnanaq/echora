@@ -439,17 +439,18 @@ class VisionProcessor:
             Cosine similarity score (0.0 - 1.0)
         """
         try:
+            from io import BytesIO
+
+            import requests
             import torch
             from PIL import Image
-            import requests
-            from io import BytesIO
 
             if not self.model:
                 return 0.0
 
             # Load images
             def load_image(url_or_path: str) -> Optional[Image.Image]:
-                if url_or_path.startswith('http'):
+                if url_or_path.startswith("http"):
                     response = requests.get(url_or_path, timeout=10)
                     return Image.open(BytesIO(response.content))
                 else:

@@ -441,7 +441,9 @@ class QdrantClient:
 
             for field_name, field_type in indexed_fields.items():
                 # Get the appropriate schema type
-                schema_type = type_mapping.get(field_type.lower(), PayloadSchemaType.KEYWORD)
+                schema_type = type_mapping.get(
+                    field_type.lower(), PayloadSchemaType.KEYWORD
+                )
 
                 # Create index for each field with its specific type
                 self.client.create_payload_index(
@@ -449,7 +451,9 @@ class QdrantClient:
                     field_name=field_name,
                     field_schema=schema_type,
                 )
-                logger.debug(f"✓ Created {field_type.upper()} index for field: {field_name}")
+                logger.debug(
+                    f"✓ Created {field_type.upper()} index for field: {field_name}"
+                )
 
             logger.info(
                 f"Successfully indexed {len(indexed_fields)} searchable payload fields with optimized types"
@@ -570,8 +574,6 @@ class QdrantClient:
             logger.error(f"Failed to add documents: {e}")
             return False
 
-
-
     def _build_filter(self, filters: Dict[str, Any]) -> Optional[Filter]:
         """Build Qdrant filter from filter dictionary.
 
@@ -673,7 +675,7 @@ class QdrantClient:
                     collection_name=self.collection_name,
                     ids=[point_id],
                     with_vectors=True,
-                    with_payload=True
+                    with_payload=True,
                 ),
             )
 
@@ -682,14 +684,13 @@ class QdrantClient:
                 return {
                     "id": str(point.id),
                     "vector": point.vector,
-                    "payload": dict(point.payload) if point.payload else {}
+                    "payload": dict(point.payload) if point.payload else {},
                 }
             return None
 
         except Exception as e:
             logger.error(f"Failed to get point by ID {point_id}: {e}")
             return None
-
 
     async def clear_index(self) -> bool:
         """Clear all points from the collection (for fresh re-indexing)."""
@@ -730,7 +731,6 @@ class QdrantClient:
         except Exception as e:
             logger.error(f"Failed to create collection: {e}")
             return False
-
 
     async def search_single_vector(
         self,
@@ -1027,7 +1027,7 @@ class QdrantClient:
                     "character_vector",
                     "genre_vector",
                     "staff_vector",
-                        "temporal_vector",
+                    "temporal_vector",
                     "streaming_vector",
                     "related_vector",
                     "franchise_vector",
@@ -1106,21 +1106,26 @@ class QdrantClient:
             if query_embedding is None:
                 logger.warning("Failed to create text embedding for character search")
             else:
-                vector_queries.append({
-                    "vector_name": "character_vector",
-                    "vector_data": query_embedding
-                })
+                vector_queries.append(
+                    {"vector_name": "character_vector", "vector_data": query_embedding}
+                )
 
             # Generate image embedding for character_image_vector if provided
             if image_data:
-                image_embedding = self.embedding_manager.vision_processor.encode_image(image_data)
+                image_embedding = self.embedding_manager.vision_processor.encode_image(
+                    image_data
+                )
                 if image_embedding is None:
-                    logger.warning("Failed to create image embedding for character search")
+                    logger.warning(
+                        "Failed to create image embedding for character search"
+                    )
                 else:
-                    vector_queries.append({
-                        "vector_name": "character_image_vector",
-                        "vector_data": image_embedding
-                    })
+                    vector_queries.append(
+                        {
+                            "vector_name": "character_image_vector",
+                            "vector_data": image_embedding,
+                        }
+                    )
 
             if not vector_queries:
                 logger.error("No valid embeddings generated for character search")
@@ -1134,10 +1139,11 @@ class QdrantClient:
             )
 
             search_type = "text+image" if image_data else "text-only"
-            logger.info(f"Character search ({search_type}) returned {len(results)} results across {len(vector_queries)} vectors")
+            logger.info(
+                f"Character search ({search_type}) returned {len(results)} results across {len(vector_queries)} vectors"
+            )
             return results
 
         except Exception as e:
             logger.error(f"Character search failed: {e}")
             return []
-

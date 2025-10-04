@@ -9,7 +9,7 @@ This module provides comprehensive search quality validation including:
 
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -25,7 +25,12 @@ class GoldStandardDataset:
             # Genre-based queries
             "shounen_action": {
                 "query": "shounen action anime",
-                "expected_results": ["Attack on Titan", "Demon Slayer", "Jujutsu Kaisen", "My Hero Academia"],
+                "expected_results": [
+                    "Attack on Titan",
+                    "Demon Slayer",
+                    "Jujutsu Kaisen",
+                    "My Hero Academia",
+                ],
                 "expected_genres": ["Action", "Shounen"],
                 "expected_demographics": ["Shounen"],
                 "hard_negatives": ["Your Name", "Spirited Away", "Toradora"],
@@ -39,26 +44,40 @@ class GoldStandardDataset:
             },
             "seinen_psychological": {
                 "query": "seinen psychological thriller",
-                "expected_results": ["Monster", "Psycho-Pass", "Serial Experiments Lain"],
+                "expected_results": [
+                    "Monster",
+                    "Psycho-Pass",
+                    "Serial Experiments Lain",
+                ],
                 "expected_genres": ["Psychological", "Thriller", "Seinen"],
                 "expected_demographics": ["Seinen"],
                 "hard_negatives": ["K-On!", "Lucky Star", "Azumanga Daioh"],
             },
-
             # Studio-based queries
             "studio_ghibli": {
                 "query": "Studio Ghibli films",
-                "expected_results": ["Spirited Away", "Princess Mononoke", "My Neighbor Totoro"],
+                "expected_results": [
+                    "Spirited Away",
+                    "Princess Mononoke",
+                    "My Neighbor Totoro",
+                ],
                 "expected_studios": ["Studio Ghibli"],
                 "hard_negatives": ["Attack on Titan", "Demon Slayer", "One Piece"],
             },
             "mappa_studio": {
                 "query": "MAPPA studio anime",
-                "expected_results": ["Attack on Titan Final Season", "Jujutsu Kaisen", "Chainsaw Man"],
+                "expected_results": [
+                    "Attack on Titan Final Season",
+                    "Jujutsu Kaisen",
+                    "Chainsaw Man",
+                ],
                 "expected_studios": ["MAPPA"],
-                "hard_negatives": ["Spirited Away", "Princess Mononoke", "Kiki's Delivery Service"],
+                "hard_negatives": [
+                    "Spirited Away",
+                    "Princess Mononoke",
+                    "Kiki's Delivery Service",
+                ],
             },
-
             # Character archetype queries
             "ninja_characters": {
                 "query": "anime with ninja characters",
@@ -68,15 +87,22 @@ class GoldStandardDataset:
             },
             "magical_girls": {
                 "query": "magical girl anime",
-                "expected_results": ["Sailor Moon", "Madoka Magica", "Cardcaptor Sakura"],
+                "expected_results": [
+                    "Sailor Moon",
+                    "Madoka Magica",
+                    "Cardcaptor Sakura",
+                ],
                 "expected_themes": ["magic", "transformation", "girls"],
                 "hard_negatives": ["Berserk", "Vinland Saga", "Kingdom"],
             },
-
             # Temporal queries
             "90s_classics": {
                 "query": "90s classic anime",
-                "expected_results": ["Neon Genesis Evangelion", "Cowboy Bebop", "Ghost in the Shell"],
+                "expected_results": [
+                    "Neon Genesis Evangelion",
+                    "Cowboy Bebop",
+                    "Ghost in the Shell",
+                ],
                 "expected_year_range": [1990, 1999],
                 "hard_negatives": ["Demon Slayer", "Jujutsu Kaisen", "Attack on Titan"],
             },
@@ -86,18 +112,26 @@ class GoldStandardDataset:
                 "expected_year_range": [2020, 2025],
                 "hard_negatives": ["Dragon Ball", "Sailor Moon", "Akira"],
             },
-
             # Complex multi-faceted queries
             "dark_psychological": {
                 "query": "dark psychological anime with complex characters",
-                "expected_results": ["Monster", "Psycho-Pass", "Death Note", "Serial Experiments Lain"],
+                "expected_results": [
+                    "Monster",
+                    "Psycho-Pass",
+                    "Death Note",
+                    "Serial Experiments Lain",
+                ],
                 "expected_genres": ["Psychological", "Thriller", "Drama"],
                 "expected_themes": ["dark", "complex", "psychological"],
                 "hard_negatives": ["K-On!", "Non Non Biyori", "Yuru Camp"],
             },
             "family_adventure": {
                 "query": "family-friendly adventure anime",
-                "expected_results": ["Princess Mononoke", "Castle in the Sky", "Kiki's Delivery Service"],
+                "expected_results": [
+                    "Princess Mononoke",
+                    "Castle in the Sky",
+                    "Kiki's Delivery Service",
+                ],
                 "expected_genres": ["Adventure", "Family"],
                 "expected_themes": ["family", "adventure", "wholesome"],
                 "hard_negatives": ["Berserk", "Elfen Lied", "Gantz"],
@@ -161,7 +195,7 @@ class SearchQualityValidator:
         self,
         search_function: Callable[[str, int], Any],
         test_queries: Optional[List[Dict[str, Any]]] = None,
-        limit: int = 10
+        limit: int = 10,
     ) -> Dict[str, Any]:
         """Validate a search function against gold standard dataset.
 
@@ -240,10 +274,12 @@ class SearchQualityValidator:
 
                 except Exception as e:
                     logger.warning(f"Query validation failed: {query} - {e}")
-                    failed_queries.append({
-                        "query": query_config.get("query", ""),
-                        "error": str(e),
-                    })
+                    failed_queries.append(
+                        {
+                            "query": query_config.get("query", ""),
+                            "error": str(e),
+                        }
+                    )
 
             # Calculate aggregate metrics
             validation_results["successful_queries"] = successful_queries
@@ -262,7 +298,9 @@ class SearchQualityValidator:
             # Store in history
             self.validation_history.append(validation_results)
 
-            logger.info(f"✅ Search validation completed. Success rate: {validation_results['metrics']['success_rate']:.2%}")
+            logger.info(
+                f"✅ Search validation completed. Success rate: {validation_results['metrics']['success_rate']:.2%}"
+            )
 
             return validation_results
 
@@ -271,9 +309,7 @@ class SearchQualityValidator:
             return {"error": str(e), "timestamp": time.time()}
 
     def _calculate_query_metrics(
-        self,
-        query_config: Dict[str, Any],
-        result_titles: List[str]
+        self, query_config: Dict[str, Any], result_titles: List[str]
     ) -> Dict[str, float]:
         """Calculate comprehensive metrics for a single query.
 
@@ -286,7 +322,12 @@ class SearchQualityValidator:
         """
         expected_results = query_config.get("expected_results", [])
         if not expected_results:
-            return {"precision_at_5": 0.0, "recall_at_5": 0.0, "ndcg_at_5": 0.0, "mrr": 0.0}
+            return {
+                "precision_at_5": 0.0,
+                "recall_at_5": 0.0,
+                "ndcg_at_5": 0.0,
+                "mrr": 0.0,
+            }
 
         # Convert to lowercase for matching
         expected_set = {title.lower() for title in expected_results}
@@ -298,7 +339,9 @@ class SearchQualityValidator:
                 return 0.0
 
             top_k = result_titles_lower[:k]
-            relevant_in_top_k = sum(1 for title in top_k if any(exp in title for exp in expected_set))
+            relevant_in_top_k = sum(
+                1 for title in top_k if any(exp in title for exp in expected_set)
+            )
             return relevant_in_top_k / min(k, len(top_k))
 
         # Recall@K calculation
@@ -307,7 +350,9 @@ class SearchQualityValidator:
                 return 0.0
 
             top_k = result_titles_lower[:k]
-            relevant_in_top_k = sum(1 for title in top_k if any(exp in title for exp in expected_set))
+            relevant_in_top_k = sum(
+                1 for title in top_k if any(exp in title for exp in expected_set)
+            )
             return relevant_in_top_k / len(expected_set)
 
         # NDCG@K calculation (simplified)
@@ -325,7 +370,9 @@ class SearchQualityValidator:
                     dcg += relevance / np.log2(i + 1)
 
             # Calculate IDCG (ideal DCG)
-            ideal_relevances = [1.0] * min(len(expected_set), k) + [0.0] * max(0, k - len(expected_set))
+            ideal_relevances = [1.0] * min(len(expected_set), k) + [0.0] * max(
+                0, k - len(expected_set)
+            )
             idcg = 0.0
             for i, relevance in enumerate(ideal_relevances):
                 if i == 0:
@@ -352,7 +399,7 @@ class SearchQualityValidator:
     async def validate_hard_negatives(
         self,
         search_function: Callable[[str, int], Any],
-        similarity_threshold: float = 0.3
+        similarity_threshold: float = 0.3,
     ) -> Dict[str, Any]:
         """Validate that hard negative samples are correctly rejected.
 
@@ -380,12 +427,14 @@ class SearchQualityValidator:
             for test_config in hard_negative_tests:
                 query = test_config["query"]
                 hard_negatives = test_config["hard_negatives"]
-                threshold = test_config.get("confusion_threshold", similarity_threshold)
+                test_config.get("confusion_threshold", similarity_threshold)
 
                 try:
                     # Get search results
                     results = await search_function(query, 10)
-                    result_titles = [r.get("title", "") for r in results if isinstance(r, dict)]
+                    result_titles = [
+                        r.get("title", "") for r in results if isinstance(r, dict)
+                    ]
 
                     # Check if any hard negatives appear in top results
                     confusion_found = False
@@ -393,11 +442,14 @@ class SearchQualityValidator:
                         for result_title in result_titles[:5]:  # Check top 5
                             if hard_neg.lower() in result_title.lower():
                                 confusion_found = True
-                                failed_tests.append({
-                                    "query": query,
-                                    "confused_with": hard_neg,
-                                    "position": result_titles.index(result_title) + 1,
-                                })
+                                failed_tests.append(
+                                    {
+                                        "query": query,
+                                        "confused_with": hard_neg,
+                                        "position": result_titles.index(result_title)
+                                        + 1,
+                                    }
+                                )
                                 break
 
                     if not confusion_found:
@@ -405,17 +457,23 @@ class SearchQualityValidator:
 
                 except Exception as e:
                     logger.warning(f"Hard negative test failed: {query} - {e}")
-                    failed_tests.append({
-                        "query": query,
-                        "error": str(e),
-                    })
+                    failed_tests.append(
+                        {
+                            "query": query,
+                            "error": str(e),
+                        }
+                    )
 
             validation_results["passed_tests"] = passed_tests
             validation_results["failed_tests"] = failed_tests
             validation_results["confusion_detected"] = len(failed_tests) > 0
 
-            success_rate = passed_tests / len(hard_negative_tests) if hard_negative_tests else 0.0
-            logger.info(f"🔥 Hard negative validation completed. Success rate: {success_rate:.2%}")
+            success_rate = (
+                passed_tests / len(hard_negative_tests) if hard_negative_tests else 0.0
+            )
+            logger.info(
+                f"🔥 Hard negative validation completed. Success rate: {success_rate:.2%}"
+            )
 
             return validation_results
 
@@ -475,7 +533,9 @@ class SearchQualityValidator:
                     )
 
                 if not recommendations:
-                    recommendations.append("Search quality meets targets. Continue monitoring.")
+                    recommendations.append(
+                        "Search quality meets targets. Continue monitoring."
+                    )
 
                 report["recommendations"] = recommendations
 

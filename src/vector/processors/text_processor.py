@@ -761,7 +761,6 @@ class TextProcessor:
             processed = processed.replace("Seinen", "Seinen (adult male)")
             processed = processed.replace("Josei", "Josei (adult female)")
 
-
         elif vector_name == "sources_vector":
             processed = processed.replace("Source:", "Platform:")
             processed = processed.replace("External:", "External Platform:")

@@ -72,7 +72,8 @@ class CharacterEntry(BaseModel):
     )
     eye_color: Optional[str] = Field(None, description="Eye color")
     favorites: Optional[int] = Field(
-        None, description="Number of users who favorited this character (from Jikan/MAL + AniList)"
+        None,
+        description="Number of users who favorited this character (from Jikan/MAL + AniList)",
     )
     gender: Optional[str] = Field(None, description="Character gender")
     hair_color: Optional[str] = Field(None, description="Hair color")
@@ -118,7 +119,9 @@ class EpisodeDetailEntry(BaseModel):
     aired: Optional[datetime] = Field(
         None, description="Episode air date with timezone"
     )
-    description: Optional[str] = Field(None, description="Episode description from Kitsu")
+    description: Optional[str] = Field(
+        None, description="Episode description from Kitsu"
+    )
     duration: Optional[int] = Field(None, description="Episode duration in seconds")
     episode_number: int = Field(..., description="Episode number")
     filler: bool = Field(default=False, description="Whether episode is filler")
@@ -180,8 +183,6 @@ class DelayInformation(BaseModel):
     delayed_from: Optional[str] = Field(None, description="Delay start date")
     delayed_until: Optional[str] = Field(None, description="Delay end date")
     delay_reason: Optional[str] = Field(None, description="Reason for delay")
-
-
 
 
 class PremiereDates(BaseModel):
@@ -255,7 +256,6 @@ class StreamingEntry(BaseModel):
     subtitle_languages: List[str] = Field(
         default_factory=list, description="Available subtitle languages"
     )
-
 
 
 class ThemeEntry(BaseModel):
@@ -564,5 +564,3 @@ class AnimeEntry(BaseModel):
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
     )
-
-

@@ -9,11 +9,14 @@ from .art_style_classifier import ArtStyleClassifier
 from .character_recognition import CharacterRecognitionFinetuner
 from .genre_enhancement import GenreEnhancementFinetuner
 
+
 # Fine-tuning orchestrator - may have heavy dependencies
 def get_anime_fine_tuning():
     """Lazy import for fine-tuning orchestrator."""
     from .anime_fine_tuning import AnimeFineTuning
+
     return AnimeFineTuning
+
 
 __all__ = [
     "AnimeDataset",

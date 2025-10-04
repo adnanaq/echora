@@ -197,7 +197,7 @@ class CharacterRecognitionFinetuner:
         try:
             from .text_processor import TextProcessor
 
-            text_processor = TextProcessor(self.settings)
+            TextProcessor(self.settings)
 
             # Get model info
             model_info = self.text_processor.get_model_info()

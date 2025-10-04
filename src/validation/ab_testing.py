@@ -11,7 +11,7 @@ Components:
 
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 from scipy import stats
@@ -32,13 +32,24 @@ class CascadeClickModel:
             position_bias: Position-based examination probabilities
         """
         # Default position bias (decreasing with position)
-        self.position_bias = position_bias or [0.95, 0.85, 0.70, 0.50, 0.30, 0.15, 0.10, 0.05, 0.02, 0.01]
+        self.position_bias = position_bias or [
+            0.95,
+            0.85,
+            0.70,
+            0.50,
+            0.30,
+            0.15,
+            0.10,
+            0.05,
+            0.02,
+            0.01,
+        ]
 
     def simulate_clicks(
         self,
         results: List[Dict[str, Any]],
         relevance_scores: List[float],
-        satisfaction_threshold: float = 0.7
+        satisfaction_threshold: float = 0.7,
     ) -> Dict[str, Any]:
         """Simulate user clicks on search results.
 
@@ -86,8 +97,7 @@ class CascadeClickModel:
             return {"error": str(e)}
 
     def calculate_ctr_by_position(
-        self,
-        simulation_results: List[Dict[str, Any]]
+        self, simulation_results: List[Dict[str, Any]]
     ) -> Dict[int, float]:
         """Calculate click-through rate by position.
 
@@ -134,7 +144,7 @@ class DependentClickModel:
     def __init__(
         self,
         examination_probs: Optional[List[float]] = None,
-        attractiveness_weights: Optional[List[float]] = None
+        attractiveness_weights: Optional[List[float]] = None,
     ) -> None:
         """Initialize dependent click model.
 
@@ -143,15 +153,27 @@ class DependentClickModel:
             attractiveness_weights: Relevance-based attractiveness weights
         """
         # Default examination probabilities (position-based)
-        self.examination_probs = examination_probs or [0.95, 0.85, 0.70, 0.50, 0.30, 0.15]
+        self.examination_probs = examination_probs or [
+            0.95,
+            0.85,
+            0.70,
+            0.50,
+            0.30,
+            0.15,
+        ]
 
         # Default attractiveness weights (relevance-based)
-        self.attractiveness_weights = attractiveness_weights or [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+        self.attractiveness_weights = attractiveness_weights or [
+            0.1,
+            0.3,
+            0.5,
+            0.7,
+            0.9,
+            1.0,
+        ]
 
     def simulate_clicks(
-        self,
-        results: List[Dict[str, Any]],
-        relevance_scores: List[float]
+        self, results: List[Dict[str, Any]], relevance_scores: List[float]
     ) -> Dict[str, Any]:
         """Simulate clicks using dependent click model.
 
@@ -179,8 +201,10 @@ class DependentClickModel:
 
                     # Attractiveness probability (relevance-dependent)
                     # Map relevance score to attractiveness weight
-                    weight_idx = min(int(relevance * len(self.attractiveness_weights)),
-                                   len(self.attractiveness_weights) - 1)
+                    weight_idx = min(
+                        int(relevance * len(self.attractiveness_weights)),
+                        len(self.attractiveness_weights) - 1,
+                    )
                     attractiveness = self.attractiveness_weights[weight_idx]
 
                     # Click probability = attractiveness given examination
@@ -224,7 +248,7 @@ class ABTestingFramework:
         relevance_evaluator: Callable[[str, List[Dict[str, Any]]], List[float]],
         algorithm_a_name: str = "Algorithm A",
         algorithm_b_name: str = "Algorithm B",
-        num_simulations: int = 1000
+        num_simulations: int = 1000,
     ) -> Dict[str, Any]:
         """Compare two search algorithms using statistical testing.
 
@@ -301,7 +325,11 @@ class ABTestingFramework:
 
             # Generate recommendation
             recommendation = self._generate_recommendation(
-                aggregated_a, aggregated_b, statistical_tests, algorithm_a_name, algorithm_b_name
+                aggregated_a,
+                aggregated_b,
+                statistical_tests,
+                algorithm_a_name,
+                algorithm_b_name,
             )
             comparison_results["recommendation"] = recommendation
 
@@ -320,7 +348,7 @@ class ABTestingFramework:
         self,
         results: List[Dict[str, Any]],
         relevance_scores: List[float],
-        num_simulations: int
+        num_simulations: int,
     ) -> Dict[str, float]:
         """Calculate metrics for a single query using user simulation.
 
@@ -335,18 +363,14 @@ class ABTestingFramework:
         # Run cascade model simulations
         cascade_simulations = []
         for _ in range(num_simulations):
-            sim_result = self.cascade_model.simulate_clicks(
-                results, relevance_scores
-            )
+            sim_result = self.cascade_model.simulate_clicks(results, relevance_scores)
             if "error" not in sim_result:
                 cascade_simulations.append(sim_result)
 
         # Run dependent model simulations
         dependent_simulations = []
         for _ in range(num_simulations):
-            sim_result = self.dependent_model.simulate_clicks(
-                results, relevance_scores
-            )
+            sim_result = self.dependent_model.simulate_clicks(results, relevance_scores)
             if "error" not in sim_result:
                 dependent_simulations.append(sim_result)
 
@@ -359,42 +383,61 @@ class ABTestingFramework:
                 1 for sim in cascade_simulations if sim.get("satisfaction", False)
             ) / len(cascade_simulations)
 
-            avg_click_position = np.mean([
-                sim.get("click_position", 10) for sim in cascade_simulations
-                if sim.get("clicked", False)
-            ]) if any(sim.get("clicked", False) for sim in cascade_simulations) else 10.0
+            avg_click_position = (
+                np.mean(
+                    [
+                        sim.get("click_position", 10)
+                        for sim in cascade_simulations
+                        if sim.get("clicked", False)
+                    ]
+                )
+                if any(sim.get("clicked", False) for sim in cascade_simulations)
+                else 10.0
+            )
 
-            metrics.update({
-                "cascade_satisfaction_rate": satisfaction_rate,
-                "cascade_avg_click_position": float(avg_click_position),
-            })
+            metrics.update(
+                {
+                    "cascade_satisfaction_rate": satisfaction_rate,
+                    "cascade_avg_click_position": float(avg_click_position),
+                }
+            )
 
         if dependent_simulations:
             # Dependent model metrics
-            avg_clicks = np.mean([
-                sim.get("num_clicks", 0) for sim in dependent_simulations
-            ])
+            avg_clicks = np.mean(
+                [sim.get("num_clicks", 0) for sim in dependent_simulations]
+            )
 
             click_rate = sum(
-                1 for sim in dependent_simulations if sim.get("overall_satisfaction", False)
+                1
+                for sim in dependent_simulations
+                if sim.get("overall_satisfaction", False)
             ) / len(dependent_simulations)
 
-            metrics.update({
-                "dependent_avg_clicks": float(avg_clicks),
-                "dependent_click_rate": click_rate,
-            })
+            metrics.update(
+                {
+                    "dependent_avg_clicks": float(avg_clicks),
+                    "dependent_click_rate": click_rate,
+                }
+            )
 
         # Basic relevance metrics
         if relevance_scores:
-            metrics.update({
-                "avg_relevance_top_5": float(np.mean(relevance_scores[:5])),
-                "max_relevance": float(np.max(relevance_scores)),
-                "relevance_at_1": float(relevance_scores[0]) if relevance_scores else 0.0,
-            })
+            metrics.update(
+                {
+                    "avg_relevance_top_5": float(np.mean(relevance_scores[:5])),
+                    "max_relevance": float(np.max(relevance_scores)),
+                    "relevance_at_1": (
+                        float(relevance_scores[0]) if relevance_scores else 0.0
+                    ),
+                }
+            )
 
         return metrics
 
-    def _aggregate_metrics(self, query_metrics: List[Dict[str, float]]) -> Dict[str, float]:
+    def _aggregate_metrics(
+        self, query_metrics: List[Dict[str, float]]
+    ) -> Dict[str, float]:
         """Aggregate metrics across all queries.
 
         Args:
@@ -422,9 +465,7 @@ class ABTestingFramework:
         return aggregated
 
     def _perform_statistical_tests(
-        self,
-        metrics_a: List[Dict[str, float]],
-        metrics_b: List[Dict[str, float]]
+        self, metrics_a: List[Dict[str, float]], metrics_b: List[Dict[str, float]]
     ) -> Dict[str, Any]:
         """Perform statistical significance tests.
 
@@ -451,12 +492,18 @@ class ABTestingFramework:
 
                     # Calculate effect size (Cohen's d)
                     pooled_std = np.sqrt(
-                        ((len(values_a) - 1) * np.var(values_a, ddof=1) +
-                         (len(values_b) - 1) * np.var(values_b, ddof=1)) /
-                        (len(values_a) + len(values_b) - 2)
+                        (
+                            (len(values_a) - 1) * np.var(values_a, ddof=1)
+                            + (len(values_b) - 1) * np.var(values_b, ddof=1)
+                        )
+                        / (len(values_a) + len(values_b) - 2)
                     )
 
-                    cohen_d = (np.mean(values_a) - np.mean(values_b)) / pooled_std if pooled_std > 0 else 0.0
+                    cohen_d = (
+                        (np.mean(values_a) - np.mean(values_b)) / pooled_std
+                        if pooled_std > 0
+                        else 0.0
+                    )
 
                     statistical_tests[metric_name] = {
                         "t_statistic": float(t_stat),
@@ -497,7 +544,7 @@ class ABTestingFramework:
         metrics_b: Dict[str, float],
         statistical_tests: Dict[str, Any],
         algorithm_a_name: str,
-        algorithm_b_name: str
+        algorithm_b_name: str,
     ) -> str:
         """Generate recommendation based on comparison results.
 
@@ -516,7 +563,7 @@ class ABTestingFramework:
             key_metrics = [
                 "cascade_satisfaction_rate",
                 "dependent_click_rate",
-                "avg_relevance_top_5"
+                "avg_relevance_top_5",
             ]
 
             significant_improvements = 0
@@ -568,10 +615,7 @@ class ABTestingFramework:
         return self.test_history.copy()
 
     def calculate_statistical_power(
-        self,
-        effect_size: float,
-        sample_size: int,
-        alpha: float = 0.05
+        self, effect_size: float, sample_size: int, alpha: float = 0.05
     ) -> float:
         """Calculate statistical power for given parameters.
 
@@ -586,10 +630,12 @@ class ABTestingFramework:
         try:
             # Simplified power calculation for t-test
             # This is an approximation
-            critical_value = stats.t.ppf(1 - alpha/2, 2*sample_size - 2)
+            critical_value = stats.t.ppf(1 - alpha / 2, 2 * sample_size - 2)
             non_centrality = effect_size * np.sqrt(sample_size / 2)
 
-            power = 1 - stats.t.cdf(critical_value - non_centrality, 2*sample_size - 2)
+            power = 1 - stats.t.cdf(
+                critical_value - non_centrality, 2 * sample_size - 2
+            )
             return float(power)
 
         except Exception as e:

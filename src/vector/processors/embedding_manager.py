@@ -229,7 +229,6 @@ class MultiVectorEmbeddingManager:
                     ep.model_dump() for ep in anime.episode_details
                 ]
 
-
             if anime.themes:
                 payload["themes"] = [theme.model_dump() for theme in anime.themes]
 
