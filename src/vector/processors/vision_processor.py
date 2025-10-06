@@ -395,6 +395,24 @@ class VisionProcessor:
             logger.error(f"Batch image encoding failed: {e}")
             return [None] * len(image_data_list)
 
+    def _load_image_for_ccip(self, url_or_path: str) -> Optional[Image.Image]:
+        """Load image for CCIP, handling both URLs and local paths."""
+        try:
+            if url_or_path.startswith("http"):
+                # Use requests for synchronous download
+                import requests
+                from io import BytesIO
+
+                response = requests.get(url_or_path, timeout=10)
+                response.raise_for_status()
+                return Image.open(BytesIO(response.content))
+            else:
+                # Handle local file path
+                return Image.open(url_or_path)
+        except Exception as e:
+            logger.error(f"Failed to load image from {url_or_path}: {e}")
+            return None
+
     def calculate_character_similarity(
         self, image_url_1: str, image_url_2: str
     ) -> float:
@@ -413,8 +431,18 @@ class VisionProcessor:
         try:
             from imgutils.metrics import ccip_difference
 
+            # Load images, whether from URL or local path
+            img1 = self._load_image_for_ccip(image_url_1)
+            img2 = self._load_image_for_ccip(image_url_2)
+
+            if not img1 or not img2:
+                logger.warning(
+                    "Could not load one or both images for CCIP, falling back to OpenCLIP."
+                )
+                return self._calculate_openclip_similarity(image_url_1, image_url_2)
+
             # CCIP returns difference (0 = identical, 1 = different)
-            difference = ccip_difference(image_url_1, image_url_2)
+            difference = ccip_difference(img1, img2)
 
             # Convert to similarity
             similarity = 1.0 - difference

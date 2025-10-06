@@ -35,6 +35,7 @@ dependencies = [
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
     "crawl4ai>=0.7.4",
+    "dghs-imgutils>=0.4.6",
 ]
 
 [project.optional-dependencies]
