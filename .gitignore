@@ -214,3 +214,6 @@ data/current_anime*.json
 # AI processing temporary files
 stage*_*.json
 __pycache__/
+
+.gemini/
+gha-creds-*.json
