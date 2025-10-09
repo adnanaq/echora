@@ -66,7 +66,6 @@ async def _fetch_and_process_sub_page(
     """
     extraction_strategy = JsonCssExtractionStrategy(css_schema) if css_schema else None
     config = CrawlerRunConfig(
-        magic=True,
         session_id=session_id,
         js_code=js_code,
         wait_for=wait_for,
@@ -74,16 +73,18 @@ async def _fetch_and_process_sub_page(
         js_only=use_js_only,
     )
 
-    result = await crawler.arun(url=url, config=config)
-    result = cast(CrawlResult, result)
+    results: RunManyReturn = await crawler.arun(url=url, config=config)
 
-    if not result:
+    if not results:
         return None
 
-    if result.success and result.extracted_content:
-        sub_page_data = json.loads(result.extracted_content)
-        if sub_page_data:
-            return sub_page_data[0]
+    for result in results:
+        result = cast(CrawlResult, result)
+
+        if result.success and result.extracted_content:
+            sub_page_data = json.loads(result.extracted_content)
+            if sub_page_data:
+                return sub_page_data[0]
 
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
@@ -233,7 +234,7 @@ async def fetch_anisearch_anime(url: str):
     async with AsyncWebCrawler() as crawler:
         extraction_strategy = JsonCssExtractionStrategy(css_schema)
         config = CrawlerRunConfig(
-            magic=True, session_id=session_id, extraction_strategy=extraction_strategy
+            session_id=session_id, extraction_strategy=extraction_strategy
         )
 
         print(f"Fetching main page: {url}")

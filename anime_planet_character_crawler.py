@@ -22,6 +22,7 @@ from crawl4ai import (
     CrawlResult,
     JsonCssExtractionStrategy,
 )
+from crawl4ai.types import RunManyReturn
 
 BASE_URL = "https://www.anime-planet.com"
 
@@ -152,104 +153,123 @@ async def fetch_animeplanet_characters(slug: str):
         list_config = CrawlerRunConfig(
             extraction_strategy=JsonCssExtractionStrategy(list_schema)
         )
-        list_results = await crawler.arun(url=characters_url, config=list_config)
-
-        list_result = cast(CrawlResult, list_results)
-
-        if not list_result.success or not list_result.extracted_content:
-            print("Failed to fetch character list.")
-            return None
-
-        list_data = json.loads(list_result.extracted_content)
-        if not list_data:
-            print("Extraction returned empty data.")
-            return None
-
-        # Phase 2: Process character list and assign roles
-        characters_basic = _process_character_list(list_data[0], list_result.html)
-
-        if not characters_basic:
-            print("No characters found.")
-            return None
-
-        print(f"Found {len(characters_basic)} characters")
-
-        # Phase 3: Prepare character detail URLs for concurrent enrichment
-        character_detail_urls = []
-        for char in characters_basic:
-            # Extract slug from URL using simple string operations
-            url = char.get("url", "")
-            if url and "/characters/" in url:
-                char_slug = url.split("/characters/")[1].split("?")[0].split("#")[0]
-                character_detail_urls.append(f"{BASE_URL}/characters/{char_slug}")
-
-        if not character_detail_urls:
-            print("No valid character URLs found.")
-            return None
-
-        # Phase 4: CONCURRENT BATCH ENRICHMENT using arun_many()
-        print(f"Enriching {len(character_detail_urls)} characters concurrently...")
-
-        detail_schema = _get_character_detail_schema()
-        detail_config = CrawlerRunConfig(
-            magic=True,
-            extraction_strategy=JsonCssExtractionStrategy(detail_schema),
+        results: RunManyReturn = await crawler.arun(
+            url=characters_url, config=list_config
         )
 
-        # Concurrent batch fetch of all character detail pages
-        detail_results = await crawler.arun_many(
-            urls=character_detail_urls,
-            config=detail_config,
-        )
+        if not results:
+            print(f"Failed to fetch character list: {characters_url}")
+            return None
 
-        detail_results = cast(List[CrawlResult], detail_results)
+        for result in results:
+            result = cast(CrawlResult, result)
 
-        # Phase 5: Merge enriched data
-        # Create a mapping from character name to index for proper matching
-        char_name_to_index = {
-            char["name"]: i for i, char in enumerate(characters_basic)
-        }
+            if result.success and result.extracted_content:
+                data = json.loads(result.extracted_content)
 
-        enriched_count = 0
-        for detail_result in detail_results:
+                if not data:
+                    print("Extraction returned empty data.")
+                    continue
 
-            if detail_result.success and detail_result.extracted_content:
-                try:
-                    detail_data = json.loads(detail_result.extracted_content)
-                    if detail_data:
-                        # Extract name from detail page to match with basic list
-                        detail_name = detail_data[0].get("name_h1", "").strip()
+                # Phase 2: Process character list and assign roles
+                characters_basic = _process_character_list(data[0], result.html)
 
-                        if detail_name in char_name_to_index:
-                            idx = char_name_to_index[detail_name]
-                            enriched_data = _process_character_details(
-                                detail_data[0], detail_result.html
-                            )
-                            characters_basic[idx].update(enriched_data)
-                            enriched_count += 1
-                        else:
-                            print(f"Warning: Could not match character: {detail_name}")
-                except Exception as e:
-                    print(f"Failed to process enrichment: {e}")
+                if not characters_basic:
+                    print("No characters found.")
+                    return None
+
+                print(f"Found {len(characters_basic)} characters")
+
+                # Phase 3: Prepare character detail URLs for concurrent enrichment
+                character_detail_urls = []
+                for char in characters_basic:
+                    # Extract slug from URL using simple string operations
+                    url = char.get("url", "")
+                    if url and "/characters/" in url:
+                        char_slug = (
+                            url.split("/characters/")[1].split("?")[0].split("#")[0]
+                        )
+                        character_detail_urls.append(
+                            f"{BASE_URL}/characters/{char_slug}"
+                        )
+
+                if not character_detail_urls:
+                    print("No valid character URLs found.")
+                    return None
+
+                # Phase 4: CONCURRENT BATCH ENRICHMENT using arun_many()
+                print(
+                    f"Enriching {len(character_detail_urls)} characters concurrently..."
+                )
+
+                detail_schema = _get_character_detail_schema()
+                detail_config = CrawlerRunConfig(
+                    extraction_strategy=JsonCssExtractionStrategy(detail_schema),
+                )
+
+                # Concurrent batch fetch of all character detail pages
+                detail_results = await crawler.arun_many(
+                    urls=character_detail_urls,
+                    config=detail_config,
+                )
+
+                detail_results = cast(List[CrawlResult], detail_results)
+
+                # Phase 5: Merge enriched data
+                # Create a mapping from character name to index for proper matching
+                char_name_to_index = {
+                    char["name"]: i for i, char in enumerate(characters_basic)
+                }
+
+                enriched_count = 0
+                for detail_result in detail_results:
+
+                    if detail_result.success and detail_result.extracted_content:
+                        try:
+                            detail_data = json.loads(detail_result.extracted_content)
+                            if detail_data:
+                                # Extract name from detail page to match with basic list
+                                detail_name = detail_data[0].get("name_h1", "").strip()
+
+                                if detail_name in char_name_to_index:
+                                    idx = char_name_to_index[detail_name]
+                                    enriched_data = _process_character_details(
+                                        detail_data[0], detail_result.html
+                                    )
+                                    characters_basic[idx].update(enriched_data)
+                                    enriched_count += 1
+                                else:
+                                    print(
+                                        f"Warning: Could not match character: {detail_name}"
+                                    )
+                        except Exception as e:
+                            print(f"Failed to process enrichment: {e}")
+                    else:
+                        print(
+                            f"Failed to enrich detail page - {detail_result.error_message}"
+                        )
+
+                print(
+                    f"Successfully enriched {enriched_count}/{len(characters_basic)} characters"
+                )
+
+                # Save to file
+                output_data = {
+                    "characters": characters_basic,
+                    "total_count": len(characters_basic),
+                }
+
+                output_path = (
+                    "/home/dani/code/anime-vector-service/animeplanet_characters.json"
+                )
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(output_data, f, ensure_ascii=False, indent=2)
+                print(f"Data written to {output_path}")
+
+                return output_data
             else:
-                print(f"Failed to enrich detail page - {detail_result.error_message}")
-
-        print(
-            f"Successfully enriched {enriched_count}/{len(characters_basic)} characters"
-        )
-
-        # Save to file
-        output_data = {
-            "characters": characters_basic,
-            "total_count": len(characters_basic),
-        }
-
-        output_path = "/home/dani/code/anime-vector-service/animeplanet_characters.json"
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(output_data, f, ensure_ascii=False, indent=2)
-        print(f"Data written to {output_path}")
-
-        return output_data
+                print(f"Extraction failed: {result.error_message}")
+                return None
 
 
 def _get_character_detail_schema() -> Dict[str, Any]:

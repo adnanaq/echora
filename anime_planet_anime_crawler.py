@@ -134,7 +134,7 @@ async def fetch_animeplanet_anime(slug: str):
 
     async with AsyncWebCrawler() as crawler:
         extraction_strategy = JsonCssExtractionStrategy(css_schema)
-        config = CrawlerRunConfig(extraction_strategy=extraction_strategy, magic=True)
+        config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
 
         print(f"Fetching anime data: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)

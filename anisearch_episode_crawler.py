@@ -11,10 +11,11 @@ to 'anisearch_episodes.json' in the project root.
 Usage:
     python episode_crawler.py <anisearch_url>
 """
+
+import argparse
 import asyncio
 import json
 import re
-import argparse
 from typing import cast
 
 from crawl4ai import (
@@ -98,7 +99,12 @@ async def fetch_anisearch_episodes(url: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Crawl episode data from an anisearch.com URL.")
-    parser.add_argument("url", type=str, help="The anisearch.com URL for the anime episodes page.")
+    parser = argparse.ArgumentParser(
+        description="Crawl episode data from an anisearch.com URL."
+    )
+    parser.add_argument(
+        "url", type=str, help="The anisearch.com URL for the anime episodes page."
+    )
     args = parser.parse_args()
     asyncio.run(fetch_anisearch_episodes(args.url))
+
