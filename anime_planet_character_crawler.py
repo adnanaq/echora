@@ -172,7 +172,9 @@ async def fetch_animeplanet_characters(slug: str):
                     continue
 
                 # Phase 2: Process character list and assign roles
-                characters_basic = _process_character_list(data[0], result.html)
+                characters_basic = _process_character_list(
+                    data[0],
+                )
 
                 if not characters_basic:
                     print("No characters found.")
@@ -391,14 +393,11 @@ def _get_character_detail_schema() -> Dict[str, Any]:
     }
 
 
-def _process_character_list(
-    list_data: Dict[str, Any], html: str
-) -> List[Dict[str, Any]]:
+def _process_character_list(list_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Process character list data and assign roles based on section headers.
 
     Args:
         list_data: Extracted data with main_characters, secondary_characters, minor_characters
-        html: Raw HTML (unused but kept for signature compatibility)
 
     Returns:
         Flat list of character dictionaries with role assigned
