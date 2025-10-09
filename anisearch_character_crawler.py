@@ -12,10 +12,11 @@ to 'anisearch_characters.json' in the project root.
 Usage:
     python character_crawler.py <anisearch_url>
 """
-import json
-import re
+
 import argparse
 import asyncio
+import json
+import re
 from typing import cast
 
 from crawl4ai import (
@@ -74,6 +75,7 @@ async def fetch_anisearch_characters(url: str):
     extraction_strategy = JsonCssExtractionStrategy(css_schema)
     config = CrawlerRunConfig(
         extraction_strategy=extraction_strategy,
+        magic=True,
         wait_until="networkidle",
         wait_for_images=True,
         scan_full_page=True,
@@ -82,65 +84,68 @@ async def fetch_anisearch_characters(url: str):
     )
 
     async with AsyncWebCrawler() as crawler:
-        results: RunManyReturn = await crawler.arun(url, config=config)
+        result = await crawler.arun(url, config=config)
+        result = cast(CrawlResult, result)
 
-        if not results:
+        if not result:
             print("No results found.")
             return
 
-        for result in results:
-            result = cast(CrawlResult, result)
+        print(f"URL: {result.url}")
+        print(f"Success: {result.success}")
 
-            print(f"URL: {result.url}")
-            print(f"Success: {result.success}")
+        if result.success and result.extracted_content:
+            # The result is a JSON string, so we need to load it first
+            data = json.loads(result.extracted_content)
+            # Iterate through sections
+            flattened_characters = []
 
-            if result.success and result.extracted_content:
-                # The result is a JSON string, so we need to load it first
-                data = json.loads(result.extracted_content)
-                # Iterate through sections
-                flattened_characters = []
+            for section in data:
+                role = section.get("role", "").replace("Character", "").strip()
+                for character in section.get("characters", []):
+                    # Clean up favorites
+                    if "favorites" in character:
+                        match = re.search(r"\d+", str(character["favorites"]))
+                        if match:
+                            character["favorites"] = int(match.group(0))
+                        else:
+                            del character["favorites"]
 
-                for section in data:
-                    role = section.get("role", "").replace("Character", "").strip()
-                    for character in section.get("characters", []):
-                        # Clean up favorites
-                        if "favorites" in character:
-                            match = re.search(r"\d+", str(character["favorites"]))
-                            if match:
-                                character["favorites"] = int(match.group(0))
-                            else:
-                                del character["favorites"]
-
-                        # Extract image URL from style
-                        if "image" in character and character["image"]:
-                            match = re.search(
-                                r'url\(["\\]?(.*?)["\\]?\)', character["image"] # Corrected escaping here
-                            )
-                            if match:
-                                character["image"] = match.group(1)
-
-                        # Add role directly into the character object
-                        character["role"] = role
-                        character["url"] = (
-                            "https://www.anisearch.com/" + character["url"]
+                    # Extract image URL from style
+                    if "image" in character and character["image"]:
+                        match = re.search(
+                            r'url\(["\\]?(.*?)["\\]?\)',
+                            character["image"],  # Corrected escaping here
                         )
-                        flattened_characters.append(character)
+                        if match:
+                            character["image"] = match.group(1)
 
-                output_path = "/home/dani/code/anime-vector-service/anisearch_characters.json"
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {"characters": flattened_characters},
-                        f,
-                        ensure_ascii=False,
-                        indent=2,
-                    )
-            else:
-                print(f"Extraction failed: {result.error_message}")
+                    # Add role directly into the character object
+                    character["role"] = role
+                    character["url"] = "https://www.anisearch.com/" + character["url"]
+                    flattened_characters.append(character)
+
+            output_path = (
+                "/home/dani/code/anime-vector-service/anisearch_characters.json"
+            )
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"characters": flattened_characters},
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+        else:
+            print(f"Extraction failed: {result.error_message}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Crawl character data from an anisearch.com URL.")
-    parser.add_argument("url", type=str, help="The anisearch.com URL for the anime characters page.")
+    parser = argparse.ArgumentParser(
+        description="Crawl character data from an anisearch.com URL."
+    )
+    parser.add_argument(
+        "url", type=str, help="The anisearch.com URL for the anime characters page."
+    )
     args = parser.parse_args()
 
     asyncio.run(fetch_anisearch_characters(args.url))

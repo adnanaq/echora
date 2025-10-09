@@ -17,7 +17,7 @@ import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
 import re
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -26,16 +26,6 @@ from crawl4ai import (
     JsonCssExtractionStrategy,
 )
 from crawl4ai.types import RunManyReturn
-
-
-def clean_field(text: str) -> str:
-    """
-    Helper function to clean text fields by removing leading headers like 'Type:'.
-    """
-    if text:  # Check if text is not None or empty
-        # This regex matches any characters from the start of the string up to the first colon, followed by optional whitespace.
-        return re.sub(r"^\s*[^:]+:\s*", "", text).strip()
-    return text
 
 
 def _process_relation_tooltips(relations_list: List[Dict[str, Any]]):
@@ -52,45 +42,82 @@ def _process_relation_tooltips(relations_list: List[Dict[str, Any]]):
 
 async def _fetch_and_process_sub_page(
     crawler: AsyncWebCrawler,
-    relative_url: str,
-    css_schema: Dict[str, Any],
-    url_modifier: Optional[Callable[[str], str]] = None,
+    url: str,
+    session_id: str,
+    js_code: str,
+    wait_for: str,
+    css_schema: Optional[Dict[str, Any]],
+    use_js_only: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
-    Generic function to fetch data from a sub-page. Returns the raw extracted content.
+    Generic function to navigate via JS and fetch data from a sub-page.
+
+    Args:
+        crawler: AsyncWebCrawler instance
+        url: Base URL (required even for js_only mode)
+        session_id: Browser session ID to maintain state
+        js_code: JavaScript code to execute for navigation/interaction
+        wait_for: CSS selector or JS condition to wait for
+        css_schema: CSS extraction schema for data extraction (None for navigation-only)
+        use_js_only: If True, continues existing session without full reload
+
+    Returns:
+        Extracted data dictionary or None if extraction fails
     """
-    if not relative_url:
+    extraction_strategy = JsonCssExtractionStrategy(css_schema) if css_schema else None
+    config = CrawlerRunConfig(
+        magic=True,
+        session_id=session_id,
+        js_code=js_code,
+        wait_for=wait_for,
+        extraction_strategy=extraction_strategy,
+        js_only=use_js_only,
+    )
+
+    result = await crawler.arun(url=url, config=config)
+    result = cast(CrawlResult, result)
+
+    if not result:
         return None
 
-    if url_modifier:
-        relative_url = url_modifier(relative_url)
-
-    # Use the hardcoded base URL
-    full_url = f"https://www.anisearch.com/{relative_url.lstrip('/')}"
-
-    extraction_strategy = JsonCssExtractionStrategy(css_schema)
-    config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
-    results: RunManyReturn = await crawler.arun(full_url, config=config)
-
-    if results:
-        for result in results:
-            result = cast(CrawlResult, result)
-            if result.success and result.extracted_content:
-                sub_page_data = json.loads(result.extracted_content)
-                if sub_page_data:
-                    return sub_page_data[0]
-    return None
+    if result.success and result.extracted_content:
+        sub_page_data = json.loads(result.extracted_content)
+        if sub_page_data:
+            return sub_page_data[0]
 
 
-BASE_ANIME_URL = "https://www.anisearch.com/"
+BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
-async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
+async def fetch_anisearch_anime(url: str):
     """
     Crawls, processes, and saves anime data from a given anisearch.com URL.
+    Uses JS-based navigation for screenshots and relations pages.
+
+    Args:
+        url: Can be either:
+            - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
+            - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
+
+    Raises:
+        ValueError: If URL is not from anisearch.com/anime
     """
+    # Normalize the URL
+    if not url.startswith("http"):
+        # Remove leading slash if present, then construct full URL
+        url = f"{BASE_ANIME_URL}{url.lstrip('/')}"
+
+    # Validate it's an anisearch.com anime URL
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(f"Invalid URL: URL must start with '{BASE_ANIME_URL}'")
+        raise ValueError(
+            f"Invalid URL: Must be an anisearch.com anime URL. "
+            f"Expected format: '{BASE_ANIME_URL}<anime-id>' or '/<anime-id>' or '<anime-id>'"
+        )
+
+    # Generate unique session ID for maintaining browser state
+    import uuid
+
+    session_id = f"anime_session_{uuid.uuid4().hex[:8]}"
 
     css_schema = {
         "baseSelector": "body",
@@ -154,21 +181,21 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                     {"name": "url", "type": "attribute", "attribute": "href"},
                 ],
             },
-            {
-                "name": "english_title",
-                "selector": "section#information div.title[lang='en'] strong.f16",
-                "type": "text",
-            },
-            {
-                "name": "english_status",
-                "selector": "section#information ul.xlist > li:nth-child(2) div.status",
-                "type": "text",
-            },
-            {
-                "name": "english_published",
-                "selector": "section#information ul.xlist > li:nth-child(2) div.released",
-                "type": "text",
-            },
+            # {
+            #     "name": "english_title",
+            #     "selector": "section#information div.title[lang='en'] strong.f16",
+            #     "type": "text",
+            # },
+            # {
+            #     "name": "english_status",
+            #     "selector": "section#information ul.xlist > li:nth-child(2) div.status",
+            #     "type": "text",
+            # },
+            # {
+            #     "name": "english_published",
+            #     "selector": "section#information ul.xlist > li:nth-child(2) div.released",
+            #     "type": "text",
+            # },
             {
                 "name": "publishers",
                 "selector": "section#information ul.xlist > li:nth-child(2) div.company a",
@@ -200,25 +227,16 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                 "type": "list",
                 "fields": [{"name": "tag", "type": "text"}],
             },
-            {
-                "name": "screenshots_page_url",
-                "selector": "section#images div.showall a.sbuttonA",
-                "type": "attribute",
-                "attribute": "href",
-            },
-            {
-                "name": "relations_page_url",
-                "selector": "section#relations div.showall a.sbuttonA",
-                "type": "attribute",
-                "attribute": "href",
-            },
         ],
     }
 
     async with AsyncWebCrawler() as crawler:
         extraction_strategy = JsonCssExtractionStrategy(css_schema)
-        config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
+        config = CrawlerRunConfig(
+            magic=True, session_id=session_id, extraction_strategy=extraction_strategy
+        )
 
+        print(f"Fetching main page: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
@@ -226,7 +244,7 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
             return
 
         for result in results:
-            result = cast(CrawlResult, result)
+            result: CrawlResult = result
 
             if result.success and result.extracted_content:
                 data = json.loads(result.extracted_content)
@@ -244,11 +262,11 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                     "published",
                     "source_material",
                     "synonyms",
-                    "english_status",
-                    "english_published",
                 ]:
                     if field in anime_data and isinstance(anime_data[field], str):
-                        anime_data[field] = clean_field(anime_data[field])
+                        anime_data[field] = re.sub(
+                            r"^\s*[^:]+:\s*", "", anime_data[field]
+                        ).strip()
 
                 # Extract start_date and end_date from published field
                 anime_data["start_date"] = None
@@ -352,32 +370,74 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                     ],
                 }
 
-                # Crawl screenshots
+                # Crawl screenshots using JS navigation
+                print("Navigating to screenshots page...")
+                js_navigate_screenshots = """
+                const screenshotsLink = document.querySelector('a[href*="/screenshots"]');
+                if (screenshotsLink) {
+                    screenshotsLink.click();
+                }
+                """
+
                 screenshots_raw_data = await _fetch_and_process_sub_page(
                     crawler,
-                    anime_data.get("screenshots_page_url", ""),
+                    url,
+                    session_id,
+                    js_navigate_screenshots,
+                    "css:div#screenshots",
                     screenshots_css_schema,
                 )
+
                 if screenshots_raw_data and "screenshot_urls" in screenshots_raw_data:
                     anime_data["screenshots"] = [
                         item["url"]
                         for item in screenshots_raw_data["screenshot_urls"]
                         if "url" in item
                     ]
+                    print(f"Extracted {len(anime_data['screenshots'])} screenshots")
                 else:
                     anime_data["screenshots"] = []
-                if "screenshots_page_url" in anime_data:
-                    del anime_data["screenshots_page_url"]
 
-                # Crawl relations
+                # Crawl relations using JS navigation with dropdown selection (two-step for reliability)
+                print("Navigating to relations page...")
+
+                # Step 1: Navigate to relations page
+                js_navigate_relations = """
+                const relationsLink = document.querySelector('a[href*="/relations"]');
+                if (relationsLink) {
+                    relationsLink.click();
+                }
+                """
+
+                # Navigate first (no extraction yet)
+                await _fetch_and_process_sub_page(
+                    crawler,
+                    url,
+                    session_id,
+                    js_navigate_relations,
+                    "css:select.ofilter",
+                    None,  # No extraction, just navigating
+                )
+
+                # Step 2: Select "overall" from dropdown and extract
+                js_select_overall = """
+                const dropdown = document.querySelector('select.ofilter[data-param="show"]');
+                if (dropdown) {
+                    dropdown.value = 'overall';
+                    dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                """
+
                 relations_raw_data = await _fetch_and_process_sub_page(
                     crawler,
-                    anime_data.get("relations_page_url", ""),
+                    url,
+                    session_id,
+                    js_select_overall,
+                    "css:section#relations_anime tbody",
                     relations_css_schema,
-                    url_modifier=lambda u: (
-                        u + "?show=overall" if "?show=overall" not in u else u
-                    ),
+                    use_js_only=True,
                 )
+
                 if relations_raw_data:
                     if "anime_relations" in relations_raw_data:
                         _process_relation_tooltips(
@@ -386,6 +446,9 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                         anime_data["anime_relations"] = relations_raw_data[
                             "anime_relations"
                         ]
+                        print(
+                            f"Extracted {len(anime_data['anime_relations'])} anime relations"
+                        )
                     else:
                         anime_data["anime_relations"] = []
 
@@ -396,14 +459,14 @@ async def fetch_anisearch_anime(url: str = BASE_ANIME_URL):
                         anime_data["manga_relations"] = relations_raw_data[
                             "manga_relations"
                         ]
+                        print(
+                            f"Extracted {len(anime_data['manga_relations'])} manga relations"
+                        )
                     else:
                         anime_data["manga_relations"] = []
                 else:
                     anime_data["anime_relations"] = []
                     anime_data["manga_relations"] = []
-
-                if "relations_page_url" in anime_data:
-                    del anime_data["relations_page_url"]
 
                 output_path = (
                     "/home/dani/code/anime-vector-service/anisearch_anime.json"
@@ -424,4 +487,3 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     asyncio.run(fetch_anisearch_anime(args.url))
-
