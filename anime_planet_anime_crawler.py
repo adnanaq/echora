@@ -300,14 +300,8 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
         )
         if match:
             json_text = match.group(1)
-            # Unescape HTML entities
-            json_text = (
-                json_text.replace(r"\/", "/")
-                .replace(r"&nbsp;", " ")
-                .replace(r"&rsquo;", "'")
-                .replace(r"&ldquo;", '"')
-                .replace(r"&rdquo;", '"')
-            )
+            # Unescape JSON escapes only
+            json_text = json_text.replace(r"\/", "/")
             json_ld = json.loads(json_text)
 
             # Decode HTML entities in description
@@ -321,10 +315,9 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
                 )
 
             return json_ld
-    except Exception as e:
+    except (json.JSONDecodeError, AttributeError) as e:
         print(f"Failed to extract JSON-LD: {e}")
     return None
-
 
 def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
     """Extract popularity rank from entry bar text."""
