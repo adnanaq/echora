@@ -269,11 +269,10 @@ async def fetch_animeplanet_anime(slug: str):
                                 anime_data["status"] = "UPCOMING"
                             else:
                                 anime_data["status"] = "AIRING"
-                        except:
-                            anime_data["status"] = "AIRING"
+                        except (ValueError, TypeError):
+                             anime_data["status"] = "AIRING"
                     else:
                         anime_data["status"] = "UNKNOWN"
-
                 # Save to file
                 output_path = (
                     "/home/dani/code/anime-vector-service/animeplanet_anime.json"
