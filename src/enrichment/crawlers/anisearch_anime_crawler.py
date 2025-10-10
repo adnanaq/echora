@@ -27,6 +27,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from .utils import sanitize_output_path
+
 
 def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
     """
@@ -461,12 +463,11 @@ async def fetch_anisearch_anime(url: str) -> None:
                     anime_data["anime_relations"] = []
                     anime_data["manga_relations"] = []
 
-                output_path = (
-                    "/home/dani/code/anime-vector-service/anisearch_anime.json"
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
+                output_path = "anisearch_anime.json"
+                safe_path = sanitize_output_path(output_path)
+                with open(safe_path, "w", encoding="utf-8") as f:
                     json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                print(f"Data written to {output_path}")
+                print(f"Data written to {safe_path}")
             else:
                 print(f"Extraction failed: {result.error_message}")
 

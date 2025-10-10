@@ -27,6 +27,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from .utils import sanitize_output_path
+
 
 async def fetch_anisearch_characters(url: str) -> None:
     """
@@ -131,16 +133,16 @@ async def fetch_anisearch_characters(url: str) -> None:
                         )
                         flattened_characters.append(character)
 
-                output_path = (
-                    "/home/dani/code/anime-vector-service/anisearch_characters.json"
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
+                output_path = "anisearch_characters.json"
+                safe_path = sanitize_output_path(output_path)
+                with open(safe_path, "w", encoding="utf-8") as f:
                     json.dump(
                         {"characters": flattened_characters},
                         f,
                         ensure_ascii=False,
                         indent=2,
                     )
+                print(f"Data written to {safe_path}")
             else:
                 print(f"Extraction failed: {result.error_message}")
 

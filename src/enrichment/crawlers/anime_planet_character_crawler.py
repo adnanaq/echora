@@ -24,6 +24,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from .utils import sanitize_output_path
+
 BASE_URL = "https://www.anime-planet.com"
 
 
@@ -337,9 +339,10 @@ async def fetch_animeplanet_characters(
 
                 # Conditionally write to file
                 if output_path:
-                    with open(output_path, "w", encoding="utf-8") as f:
+                    safe_path = sanitize_output_path(output_path)
+                    with open(safe_path, "w", encoding="utf-8") as f:
                         json.dump(output_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {output_path}")
+                    print(f"Data written to {safe_path}")
 
                 # Return data for programmatic usage
                 if return_data:
@@ -689,8 +692,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default="/home/dani/code/anime-vector-service/animeplanet_characters.json",
-        help="Output file path (default: animeplanet_characters.json in project root)",
+        default="animeplanet_characters.json",
+        help="Output file path (default: animeplanet_characters.json in current directory)",
     )
     args = parser.parse_args()
 

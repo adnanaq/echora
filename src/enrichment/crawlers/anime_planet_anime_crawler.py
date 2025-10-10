@@ -25,6 +25,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from .utils import sanitize_output_path
+
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 
 
@@ -200,6 +202,10 @@ async def fetch_animeplanet_anime(
                     json_ld = None
 
                 if json_ld:
+                    # Move @type to parent level
+                    if json_ld.get("@type"):
+                        anime_data["type"] = json_ld["@type"]
+
                     # Flatten essential fields to top level
                     if json_ld.get("name"):
                         anime_data["title"] = json_ld["name"]
@@ -217,27 +223,8 @@ async def fetch_animeplanet_anime(
                         anime_data["episodes"] = json_ld["numberOfEpisodes"]
                     if json_ld.get("genre"):
                         anime_data["genres"] = json_ld["genre"]
-
-                    # Remove duplicated fields from json_ld to avoid redundancy
-                    json_ld_clean = json_ld.copy()
-                    fields_to_remove = [
-                        "name",
-                        "description",
-                        "url",
-                        "image",
-                        "startDate",
-                        "endDate",
-                        "numberOfEpisodes",
-                        "genre",
-                    ]
-                    for field in fields_to_remove:
-                        json_ld_clean.pop(field, None)
-
-                    # Only include json_ld if it has remaining data
-                    if (
-                        json_ld_clean and len(json_ld_clean) > 2
-                    ):  # More than just @context and @type
-                        anime_data["json_ld"] = json_ld_clean
+                    if json_ld.get("aggregateRating"):
+                        anime_data["aggregate_rating"] = json_ld["aggregateRating"]
 
                 # Add slug (extracted from normalized URL)
                 anime_data["slug"] = slug
@@ -320,9 +307,10 @@ async def fetch_animeplanet_anime(
 
                 # Conditionally write to file
                 if output_path:
-                    with open(output_path, "w", encoding="utf-8") as f:
+                    safe_path = sanitize_output_path(output_path)
+                    with open(safe_path, "w", encoding="utf-8") as f:
                         json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {output_path}")
+                    print(f"Data written to {safe_path}")
 
                 # Return data for programmatic usage
                 if return_data:
@@ -505,8 +493,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default="/home/dani/code/anime-vector-service/animeplanet_anime.json",
-        help="Output file path (default: animeplanet_anime.json in project root)",
+        default="animeplanet_anime.json",
+        help="Output file path (default: animeplanet_anime.json in current directory)",
     )
     args = parser.parse_args()
 
