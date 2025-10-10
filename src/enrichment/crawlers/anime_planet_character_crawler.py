@@ -27,29 +27,72 @@ from crawl4ai.types import RunManyReturn
 BASE_URL = "https://www.anime-planet.com"
 
 
-async def fetch_animeplanet_characters(slug: str):
+def _normalize_characters_url(anime_identifier: str) -> str:
+    """
+    Normalize various input formats to full anime-planet characters URL.
+
+    Accepts:
+        - Full URL: "https://www.anime-planet.com/anime/dandadan/characters"
+        - Slug: "dandadan"
+        - Path: "/anime/dandadan" or "/anime/dandadan/characters"
+
+    Returns:
+        Full URL: "https://www.anime-planet.com/anime/dandadan/characters"
+    """
+    if not anime_identifier.startswith("http"):
+        # Remove leading slashes and "anime/" prefix if present
+        clean_id = anime_identifier.lstrip('/')
+        if clean_id.startswith("anime/"):
+            clean_id = clean_id[6:]  # Remove "anime/" prefix
+        # Remove "/characters" suffix if present (we'll add it back)
+        clean_id = clean_id.rstrip('/').replace('/characters', '')
+        url = f"{BASE_URL}/anime/{clean_id}/characters"
+    else:
+        url = anime_identifier
+        # Ensure URL ends with /characters
+        if not url.endswith('/characters'):
+            url = url.rstrip('/') + '/characters'
+
+    if not url.startswith(f"{BASE_URL}/anime/"):
+        raise ValueError(
+            f"Invalid URL: Must be an anime-planet.com anime URL. "
+            f"Expected format: '{BASE_URL}/anime/<slug>/characters' or just '<slug>'"
+        )
+
+    return url
+
+
+def _extract_slug_from_characters_url(url: str) -> str:
+    """Extract slug from anime-planet characters URL."""
+    # Extract slug from: https://www.anime-planet.com/anime/dandadan/characters
+    import re
+    match = re.search(r'/anime/([^/?#]+)', url)
+    if not match:
+        raise ValueError(f"Could not extract slug from URL: {url}")
+    return match.group(1)
+
+
+async def fetch_animeplanet_characters(
+    slug: str,
+    return_data: bool = True,
+    output_path: Optional[str] = None
+):
     """
     Crawls and processes character data from anime-planet.com.
     Uses concurrent batch processing for character detail enrichment.
 
     Args:
-        slug: Anime slug (e.g., "dandadan")
+        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan/characters"),
+              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan/characters")
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
 
     Returns:
-        Complete character data dictionary with enriched details
+        Complete character data dictionary with enriched details (if return_data=True), otherwise None
     """
-    # Normalize the URL
-    if not slug.startswith("http"):
-        characters_url = f"{BASE_URL}/anime/{slug}/characters"
-    else:
-        characters_url = slug
-
-    # Validate it's an anime-planet.com characters URL
-    if "/anime/" not in characters_url:
-        raise ValueError(
-            f"Invalid URL: Must be an anime-planet.com anime URL. "
-            f"Expected format: '{BASE_URL}/anime/<slug>/characters' or just '<slug>'"
-        )
+    # Normalize URL and extract slug using helper functions
+    characters_url = _normalize_characters_url(slug)
+    slug = _extract_slug_from_characters_url(characters_url)
 
     # Helper function to get reusable character field schema
     def _get_character_fields_schema():
@@ -255,20 +298,23 @@ async def fetch_animeplanet_characters(slug: str):
                     f"Successfully enriched {enriched_count}/{len(characters_basic)} characters"
                 )
 
-                # Save to file
+                # Prepare output data
                 output_data = {
                     "characters": characters_basic,
                     "total_count": len(characters_basic),
                 }
 
-                output_path = (
-                    "/home/dani/code/anime-vector-service/animeplanet_characters.json"
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(output_data, f, ensure_ascii=False, indent=2)
-                print(f"Data written to {output_path}")
+                # Conditionally write to file
+                if output_path:
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(output_data, f, ensure_ascii=False, indent=2)
+                    print(f"Data written to {output_path}")
 
-                return output_data
+                # Return data for programmatic usage
+                if return_data:
+                    return output_data
+
+                return None
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
@@ -605,6 +651,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Crawl character data from an anime-planet.com anime characters page."
     )
-    parser.add_argument("slug", type=str, help="The anime slug (e.g., 'dandadan').")
+    parser.add_argument(
+        "identifier",
+        type=str,
+        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan/characters'), or full URL"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="/home/dani/code/anime-vector-service/animeplanet_characters.json",
+        help="Output file path (default: animeplanet_characters.json in project root)"
+    )
     args = parser.parse_args()
-    asyncio.run(fetch_animeplanet_characters(args.slug))
+
+    asyncio.run(fetch_animeplanet_characters(
+        args.identifier,
+        return_data=False,  # CLI doesn't need return value
+        output_path=args.output
+    ))

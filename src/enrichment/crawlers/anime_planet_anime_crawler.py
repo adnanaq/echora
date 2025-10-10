@@ -28,29 +28,66 @@ from crawl4ai.types import RunManyReturn
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 
 
-async def fetch_animeplanet_anime(slug: str):
+def _normalize_anime_url(anime_identifier: str) -> str:
     """
-    Crawls and processes anime data from anime-planet.com.
-    All data is available on the main anime page - no navigation needed.
+    Normalize various input formats to full anime-planet URL.
 
-    Args:
-        slug: Anime slug (e.g., "dandadan")
+    Accepts:
+        - Full URL: "https://www.anime-planet.com/anime/dandadan"
+        - Slug: "dandadan"
+        - Path: "/anime/dandadan"
 
     Returns:
-        Complete anime data dictionary
+        Full URL: "https://www.anime-planet.com/anime/dandadan"
     """
-    # Normalize the URL
-    if not slug.startswith("http"):
-        url = f"{BASE_ANIME_URL}{slug.lstrip('/')}"
+    if not anime_identifier.startswith("http"):
+        # Remove leading slashes and "anime/" prefix if present
+        clean_id = anime_identifier.lstrip('/')
+        if clean_id.startswith("anime/"):
+            clean_id = clean_id[6:]  # Remove "anime/" prefix
+        url = f"{BASE_ANIME_URL}{clean_id}"
     else:
-        url = slug
+        url = anime_identifier
 
-    # Validate it's an anime-planet.com anime URL
     if not url.startswith(BASE_ANIME_URL):
         raise ValueError(
             f"Invalid URL: Must be an anime-planet.com anime URL. "
             f"Expected format: '{BASE_ANIME_URL}<slug>' or just '<slug>'"
         )
+
+    return url
+
+
+def _extract_slug_from_url(url: str) -> str:
+    """Extract slug from anime-planet URL."""
+    # Extract slug from: https://www.anime-planet.com/anime/dandadan
+    match = re.search(r'/anime/([^/?#]+)', url)
+    if not match:
+        raise ValueError(f"Could not extract slug from URL: {url}")
+    return match.group(1)
+
+
+async def fetch_animeplanet_anime(
+    slug: str,
+    return_data: bool = True,
+    output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Crawls and processes anime data from anime-planet.com.
+    All data is available on the main anime page - no navigation needed.
+
+    Args:
+        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),
+              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan")
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Complete anime data dictionary (if return_data=True), otherwise None
+    """
+    # Normalize URL and extract slug using helper functions
+    url = _normalize_anime_url(slug)
+    slug = _extract_slug_from_url(url)
 
     css_schema = {
         "baseSelector": "body",
@@ -197,7 +234,7 @@ async def fetch_animeplanet_anime(slug: str):
                     ):  # More than just @context and @type
                         anime_data["json_ld"] = json_ld_clean
 
-                # Add slug
+                # Add slug (extracted from normalized URL)
                 anime_data["slug"] = slug
 
                 # Process rank
@@ -273,15 +310,18 @@ async def fetch_animeplanet_anime(slug: str):
                              anime_data["status"] = "AIRING"
                     else:
                         anime_data["status"] = "UNKNOWN"
-                # Save to file
-                output_path = (
-                    "/home/dani/code/anime-vector-service/animeplanet_anime.json"
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                print(f"Data written to {output_path}")
 
-                return anime_data
+                # Conditionally write to file
+                if output_path:
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(anime_data, f, ensure_ascii=False, indent=2)
+                    print(f"Data written to {output_path}")
+
+                # Return data for programmatic usage
+                if return_data:
+                    return anime_data
+
+                return None
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
@@ -441,8 +481,23 @@ def _process_related_anime(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Crawl anime data from an anime-planet.com URL."
+        description="Crawl anime data from anime-planet.com"
     )
-    parser.add_argument("slug", type=str, help="The anime slug (e.g., 'dandadan').")
+    parser.add_argument(
+        "identifier",
+        type=str,
+        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan'), or full URL"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="/home/dani/code/anime-vector-service/animeplanet_anime.json",
+        help="Output file path (default: animeplanet_anime.json in project root)"
+    )
     args = parser.parse_args()
-    asyncio.run(fetch_animeplanet_anime(args.slug))
+
+    asyncio.run(fetch_animeplanet_anime(
+        args.identifier,
+        return_data=False,  # CLI doesn't need return value
+        output_path=args.output
+    ))
