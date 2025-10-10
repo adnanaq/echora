@@ -27,7 +27,7 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 
-async def fetch_anisearch_episodes(url: str):
+async def fetch_anisearch_episodes(url: str) -> None:
     """
     Crawls, processes, and saves episode data from a given anisearch.com URL.
 

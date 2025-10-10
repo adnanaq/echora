@@ -28,7 +28,7 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 
-async def fetch_anisearch_characters(url: str):
+async def fetch_anisearch_characters(url: str) -> None:
     """
     Crawls, processes, and saves character data from a given anisearch.com URL.
 

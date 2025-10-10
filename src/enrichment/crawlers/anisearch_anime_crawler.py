@@ -28,7 +28,7 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 
-def _process_relation_tooltips(relations_list: List[Dict[str, Any]]):
+def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
     """
     Processes a list of relations to extract image URLs from tooltip_html and renames the field.
     """
@@ -87,13 +87,14 @@ async def _fetch_and_process_sub_page(
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
             if sub_page_data:
-                return sub_page_data[0]
+                return cast(Dict[str, Any], sub_page_data[0])
+    return None
 
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
-async def fetch_anisearch_anime(url: str):
+async def fetch_anisearch_anime(url: str) -> None:
     """
     Crawls, processes, and saves anime data from a given anisearch.com URL.
     Uses JS-based navigation for screenshots and relations pages.

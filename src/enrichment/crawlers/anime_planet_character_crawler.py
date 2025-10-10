@@ -75,7 +75,7 @@ def _extract_slug_from_characters_url(url: str) -> str:
 
 async def fetch_animeplanet_characters(
     slug: str, return_data: bool = True, output_path: Optional[str] = None
-):
+) -> Optional[Dict[str, Any]]:
     """
     Crawls and processes character data from anime-planet.com.
     Uses concurrent batch processing for character detail enrichment.
@@ -94,7 +94,7 @@ async def fetch_animeplanet_characters(
     slug = _extract_slug_from_characters_url(characters_url)
 
     # Helper function to get reusable character field schema
-    def _get_character_fields_schema():
+    def _get_character_fields_schema() -> List[Dict[str, Any]]:
         return [
             {"name": "name", "selector": "a.name", "type": "text"},
             {
@@ -260,12 +260,36 @@ async def fetch_animeplanet_characters(
                     config=detail_config,
                 )
 
-                if not isinstance(result, list) or not all(
-                    isinstance(r, CrawlResult) for r in result
-                ):
-                    raise TypeError("Expected a list of CrawlResult")
+                # Validate the results - arun_many returns List[CrawlResultContainer]
+                if not list_results:
+                    print("No results returned from batch character fetch")
+                    return None
 
-                list_results = cast(List[CrawlResult], list_results)
+                if not isinstance(list_results, list):
+                    print(f"Unexpected return type from arun_many: {type(list_results)}")
+                    return None
+
+                # Unwrap CrawlResultContainer objects to get CrawlResult objects
+                # arun_many() returns List[CrawlResultContainer], each wrapping a CrawlResult
+                from crawl4ai.models import CrawlResultContainer
+
+                unwrapped_results: List[CrawlResult] = []
+                for container in list_results:
+                    # CrawlResultContainer is iterable and yields CrawlResult objects
+                    if isinstance(container, CrawlResultContainer):
+                        for result in container:
+                            if isinstance(result, CrawlResult):
+                                unwrapped_results.append(result)
+                    elif isinstance(container, CrawlResult):
+                        # Handle direct CrawlResult (shouldn't happen but be safe)
+                        unwrapped_results.append(container)
+
+                if not unwrapped_results:
+                    print("No valid CrawlResult objects found after unwrapping")
+                    return None
+
+                # Replace list_results with unwrapped results
+                list_results = unwrapped_results
 
                 # Phase 5: Merge enriched data
                 # Create a mapping from character name to index for proper matching
@@ -286,7 +310,7 @@ async def fetch_animeplanet_characters(
                                 if detail_name in char_name_to_index:
                                     idx = char_name_to_index[detail_name]
                                     enriched_data = _process_character_details(
-                                        detail_data[0], detail_result.html
+                                        detail_data[0]
                                     )
                                     characters_basic[idx].update(enriched_data)
                                     enriched_count += 1
@@ -325,6 +349,7 @@ async def fetch_animeplanet_characters(
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
+        return None
 
 
 def _get_character_detail_schema() -> Dict[str, Any]:
@@ -531,9 +556,7 @@ def _normalize_value(value: str) -> Optional[str]:
     return None if stripped == "?" else stripped
 
 
-def _process_character_details(
-    detail_data: Dict[str, Any], html: str
-) -> Dict[str, Any]:
+def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
     """Process character detail page data into enriched character info.
 
     Args:

@@ -191,10 +191,14 @@ async def fetch_animeplanet_anime(
                     print("Extraction returned empty data.")
                     return None
 
-                anime_data = data[0]
+                anime_data = cast(Dict[str, Any], data[0])
 
                 # Extract JSON-LD data (most comprehensive source)
-                json_ld = _extract_json_ld(result.html)
+                if result.html:
+                    json_ld = _extract_json_ld(result.html)
+                else:
+                    json_ld = None
+
                 if json_ld:
                     # Flatten essential fields to top level
                     if json_ld.get("name"):
@@ -239,7 +243,9 @@ async def fetch_animeplanet_anime(
                 anime_data["slug"] = slug
 
                 # Process rank
-                rank = _extract_rank(anime_data.get("rank_text", []))
+                rank = _extract_rank(
+                    cast(List[Dict[str, str]], anime_data.get("rank_text", []))
+                )
                 if rank:
                     anime_data["rank"] = rank
                 if "rank_text" in anime_data:
@@ -260,7 +266,7 @@ async def fetch_animeplanet_anime(
                     anime_data["title_japanese"] = title_ja
 
                 # Extract poster from og:image if not found by CSS
-                if not anime_data.get("poster"):
+                if not anime_data.get("poster") and result.html:
                     poster_match = re.search(
                         r'<meta property="og:image" content="([^"]+)"', result.html
                     )
@@ -326,6 +332,7 @@ async def fetch_animeplanet_anime(
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
+        return None
 
 
 def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
@@ -343,15 +350,20 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
             json_text = match.group(1)
             # Unescape JSON escapes only
             json_text = json_text.replace(r"\/", "/")
-            json_ld = json.loads(json_text)
+            json_ld_raw = json.loads(json_text)
+            json_ld = cast(Dict[str, Any], json_ld_raw)
 
             # Decode HTML entities in description
             if json_ld.get("description"):
-                json_ld["description"] = html_lib.unescape(json_ld["description"])
+                json_ld["description"] = html_lib.unescape(
+                    cast(str, json_ld["description"])
+                )
 
             # Fix malformed image URLs (AnimePlanet bug: double base_url)
-            if json_ld.get("image") and "anime-planet.comhttps://" in json_ld["image"]:
-                json_ld["image"] = json_ld["image"].replace(
+            if json_ld.get("image") and "anime-planet.comhttps://" in cast(
+                str, json_ld["image"]
+            ):
+                json_ld["image"] = cast(str, json_ld["image"]).replace(
                     "https://www.anime-planet.comhttps://", "https://"
                 )
 
