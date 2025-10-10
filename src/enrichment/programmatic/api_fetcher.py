@@ -69,28 +69,54 @@ class ParallelAPIFetcher:
             self.anisearch_helper = AniSearchEnrichmentHelper()
 
     async def fetch_all_data(
-        self, ids: Dict[str, str], offline_data: Dict, temp_dir: Optional[str] = None
+        self,
+        ids: Dict[str, str],
+        offline_data: Dict,
+        temp_dir: Optional[str] = None,
+        skip_services: Optional[List[str]] = None,
+        only_services: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Fetch data from all APIs in parallel.
+        Fetch data from all APIs in parallel with optional service filtering.
 
         Args:
             ids: Dictionary of platform IDs
             offline_data: Original offline anime data
             temp_dir: Optional temp directory for saving responses
+            skip_services: Optional list of service names to skip (e.g., ["jikan", "anidb"])
+            only_services: Optional list of service names to fetch exclusively (e.g., ["anime_planet"])
 
         Returns:
             Dictionary with API responses
 
         Performance: 5-10 seconds (vs 30-60 seconds sequential)
+
+        Note: skip_services and only_services are mutually exclusive.
+              If both provided, only_services takes precedence.
+
+        Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
         """
         await self.initialize_helpers()
 
         start_time = time.time()
         tasks: List[Tuple[str, Any]] = []
 
-        # Create parallel tasks for each API
-        if ids.get("mal_id"):
+        # Helper to check if service should be included
+        def should_include(service_name: str) -> bool:
+            if only_services:
+                return service_name in only_services
+            if skip_services:
+                return service_name not in skip_services
+            return True
+
+        # Log filtering info
+        if only_services:
+            logger.info(f"Only fetching services: {only_services}")
+        elif skip_services:
+            logger.info(f"Skipping services: {skip_services}")
+
+        # Create parallel tasks for each API (only if not filtered out)
+        if ids.get("mal_id") and should_include("jikan"):
             tasks.append(
                 (
                     "jikan",
@@ -98,23 +124,24 @@ class ParallelAPIFetcher:
                 )
             )
 
-        if ids.get("anilist_id"):
+        if ids.get("anilist_id") and should_include("anilist"):
             tasks.append(("anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)))
 
-        if ids.get("kitsu_id"):
+        if ids.get("kitsu_id") and should_include("kitsu"):
             tasks.append(("kitsu", self._fetch_kitsu(ids["kitsu_id"])))
 
-        if ids.get("anidb_id"):
+        if ids.get("anidb_id") and should_include("anidb"):
             tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"])))
 
-        if ids.get("anime_planet_slug"):
+        if ids.get("anime_planet_slug") and should_include("anime_planet"):
             tasks.append(("anime_planet", self._fetch_anime_planet(offline_data)))
 
-        if ids.get("anisearch_id"):
+        if ids.get("anisearch_id") and should_include("anisearch"):
             tasks.append(("anisearch", self._fetch_anisearch(ids["anisearch_id"])))
 
-        # Always try AnimSchedule with title search
-        tasks.append(("animeschedule", self._fetch_animeschedule(offline_data)))
+        # Always try AnimSchedule with title search (unless explicitly filtered)
+        if should_include("animeschedule"):
+            tasks.append(("animeschedule", self._fetch_animeschedule(offline_data)))
 
         # Execute all tasks in parallel with timeout
         results = await self._gather_with_timeout(

@@ -48,12 +48,22 @@ class ProgrammaticEnrichmentPipeline:
         if self.config.verbose_logging:
             self.config.log_configuration()
 
-    async def enrich_anime(self, offline_data: Dict) -> Dict[str, Any]:
+    async def enrich_anime(
+        self,
+        offline_data: Dict,
+        agent_dir: Optional[str] = None,
+        skip_services: Optional[List[str]] = None,
+        only_services: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Enrich a single anime with data from all APIs.
 
         Args:
             offline_data: Offline anime data from database
+            agent_dir: Optional agent directory name (e.g., "Dandadan_agent1").
+                      If not provided, auto-generates with gap filling.
+            skip_services: Optional list of services to skip (e.g., ["jikan", "anidb"])
+            only_services: Optional list of services to fetch exclusively
 
         Returns:
             Enriched anime data ready for AI enhancement
@@ -76,8 +86,15 @@ class ProgrammaticEnrichmentPipeline:
                 f"Step 1 complete: Extracted {len(valid_ids)} platform IDs in {self.timing_breakdown['id_extraction']:.3f}s"
             )
 
-            # Create temp directory for this anime
-            temp_dir = self._create_temp_dir(anime_title)
+            # Create or use specified temp directory for this anime
+            if agent_dir:
+                # Use provided agent directory
+                temp_dir = os.path.join(self.config.temp_dir, agent_dir)
+                os.makedirs(temp_dir, exist_ok=True)
+                logger.info(f"Using specified agent directory: {temp_dir}")
+            else:
+                # Auto-generate agent directory with gap filling
+                temp_dir = self._create_temp_dir(anime_title)
 
             # Save current anime entry for stage scripts
             current_anime_path = os.path.join(temp_dir, "current_anime.json")
@@ -88,7 +105,7 @@ class ProgrammaticEnrichmentPipeline:
             # Step 2: Parallel API fetching (5-10 seconds)
             step2_start = time.time()
             api_data = await self.api_fetcher.fetch_all_data(
-                valid_ids, offline_data, temp_dir
+                valid_ids, offline_data, temp_dir, skip_services, only_services
             )
             self.timing_breakdown["api_fetching"] = time.time() - step2_start
 
