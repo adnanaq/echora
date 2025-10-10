@@ -42,7 +42,7 @@ def _normalize_anime_url(anime_identifier: str) -> str:
     """
     if not anime_identifier.startswith("http"):
         # Remove leading slashes and "anime/" prefix if present
-        clean_id = anime_identifier.lstrip('/')
+        clean_id = anime_identifier.lstrip("/")
         if clean_id.startswith("anime/"):
             clean_id = clean_id[6:]  # Remove "anime/" prefix
         url = f"{BASE_ANIME_URL}{clean_id}"
@@ -61,16 +61,14 @@ def _normalize_anime_url(anime_identifier: str) -> str:
 def _extract_slug_from_url(url: str) -> str:
     """Extract slug from anime-planet URL."""
     # Extract slug from: https://www.anime-planet.com/anime/dandadan
-    match = re.search(r'/anime/([^/?#]+)', url)
+    match = re.search(r"/anime/([^/?#]+)", url)
     if not match:
         raise ValueError(f"Could not extract slug from URL: {url}")
     return match.group(1)
 
 
 async def fetch_animeplanet_anime(
-    slug: str,
-    return_data: bool = True,
-    output_path: Optional[str] = None
+    slug: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Crawls and processes anime data from anime-planet.com.
@@ -181,7 +179,10 @@ async def fetch_animeplanet_anime(
             return None
 
         for result in results:
-            result = cast(CrawlResult, result)
+            if not isinstance(result, CrawlResult):
+                raise TypeError(
+                    f"Unexpected result type: {type(result)}, expected CrawlResult."
+                )
 
             if result.success and result.extracted_content:
                 data = json.loads(result.extracted_content)
@@ -307,7 +308,7 @@ async def fetch_animeplanet_anime(
                             else:
                                 anime_data["status"] = "AIRING"
                         except (ValueError, TypeError):
-                             anime_data["status"] = "AIRING"
+                            anime_data["status"] = "AIRING"
                     else:
                         anime_data["status"] = "UNKNOWN"
 
@@ -358,6 +359,7 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
     except (json.JSONDecodeError, AttributeError) as e:
         print(f"Failed to extract JSON-LD: {e}")
     return None
+
 
 def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
     """Extract popularity rank from entry bar text."""
@@ -486,18 +488,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "identifier",
         type=str,
-        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan'), or full URL"
+        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan'), or full URL",
     )
     parser.add_argument(
         "--output",
         type=str,
         default="/home/dani/code/anime-vector-service/animeplanet_anime.json",
-        help="Output file path (default: animeplanet_anime.json in project root)"
+        help="Output file path (default: animeplanet_anime.json in project root)",
     )
     args = parser.parse_args()
 
-    asyncio.run(fetch_animeplanet_anime(
-        args.identifier,
-        return_data=False,  # CLI doesn't need return value
-        output_path=args.output
-    ))
+    asyncio.run(
+        fetch_animeplanet_anime(
+            args.identifier,
+            return_data=False,  # CLI doesn't need return value
+            output_path=args.output,
+        )
+    )

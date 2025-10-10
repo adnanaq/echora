@@ -79,7 +79,10 @@ async def _fetch_and_process_sub_page(
         return None
 
     for result in results:
-        result = cast(CrawlResult, result)
+        if not isinstance(result, CrawlResult):
+            raise TypeError(
+                f"Unexpected result type: {type(result)}, expected CrawlResult."
+            )
 
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
@@ -182,21 +185,6 @@ async def fetch_anisearch_anime(url: str):
                     {"name": "url", "type": "attribute", "attribute": "href"},
                 ],
             },
-            # {
-            #     "name": "english_title",
-            #     "selector": "section#information div.title[lang='en'] strong.f16",
-            #     "type": "text",
-            # },
-            # {
-            #     "name": "english_status",
-            #     "selector": "section#information ul.xlist > li:nth-child(2) div.status",
-            #     "type": "text",
-            # },
-            # {
-            #     "name": "english_published",
-            #     "selector": "section#information ul.xlist > li:nth-child(2) div.released",
-            #     "type": "text",
-            # },
             {
                 "name": "publishers",
                 "selector": "section#information ul.xlist > li:nth-child(2) div.company a",
@@ -245,7 +233,10 @@ async def fetch_anisearch_anime(url: str):
             return
 
         for result in results:
-            result: CrawlResult = result
+            if not isinstance(result, CrawlResult):
+                raise TypeError(
+                    f"Unexpected result type: {type(result)}, expected CrawlResult."
+                )
 
             if result.success and result.extracted_content:
                 data = json.loads(result.extracted_content)

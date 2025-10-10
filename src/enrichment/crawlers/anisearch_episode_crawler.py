@@ -77,7 +77,10 @@ async def fetch_anisearch_episodes(url: str):
             return
 
         for result in results:
-            result = cast(CrawlResult, result)
+            if not isinstance(result, CrawlResult):
+                raise TypeError(
+                    f"Unexpected result type: {type(result)}, expected CrawlResult."
+                )
 
             if result.success and result.extracted_content:
                 data = json.loads(result.extracted_content)
@@ -107,4 +110,3 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     asyncio.run(fetch_anisearch_episodes(args.url))
-

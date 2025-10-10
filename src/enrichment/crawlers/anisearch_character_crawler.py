@@ -90,7 +90,10 @@ async def fetch_anisearch_characters(url: str):
             return
 
         for result in results:
-            result = cast(CrawlResult, result)
+            if not isinstance(result, CrawlResult):
+                raise TypeError(
+                    f"Unexpected result type: {type(result)}, expected CrawlResult."
+                )
 
             print(f"URL: {result.url}")
             print(f"Success: {result.success}")

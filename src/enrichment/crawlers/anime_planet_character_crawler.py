@@ -41,17 +41,17 @@ def _normalize_characters_url(anime_identifier: str) -> str:
     """
     if not anime_identifier.startswith("http"):
         # Remove leading slashes and "anime/" prefix if present
-        clean_id = anime_identifier.lstrip('/')
+        clean_id = anime_identifier.lstrip("/")
         if clean_id.startswith("anime/"):
             clean_id = clean_id[6:]  # Remove "anime/" prefix
         # Remove "/characters" suffix if present (we'll add it back)
-        clean_id = clean_id.rstrip('/').replace('/characters', '')
+        clean_id = clean_id.rstrip("/").replace("/characters", "")
         url = f"{BASE_URL}/anime/{clean_id}/characters"
     else:
         url = anime_identifier
         # Ensure URL ends with /characters
-        if not url.endswith('/characters'):
-            url = url.rstrip('/') + '/characters'
+        if not url.endswith("/characters"):
+            url = url.rstrip("/") + "/characters"
 
     if not url.startswith(f"{BASE_URL}/anime/"):
         raise ValueError(
@@ -66,16 +66,15 @@ def _extract_slug_from_characters_url(url: str) -> str:
     """Extract slug from anime-planet characters URL."""
     # Extract slug from: https://www.anime-planet.com/anime/dandadan/characters
     import re
-    match = re.search(r'/anime/([^/?#]+)', url)
+
+    match = re.search(r"/anime/([^/?#]+)", url)
     if not match:
         raise ValueError(f"Could not extract slug from URL: {url}")
     return match.group(1)
 
 
 async def fetch_animeplanet_characters(
-    slug: str,
-    return_data: bool = True,
-    output_path: Optional[str] = None
+    slug: str, return_data: bool = True, output_path: Optional[str] = None
 ):
     """
     Crawls and processes character data from anime-planet.com.
@@ -205,7 +204,10 @@ async def fetch_animeplanet_characters(
             return None
 
         for result in results:
-            result = cast(CrawlResult, result)
+            if not isinstance(result, CrawlResult):
+                raise TypeError(
+                    f"Unexpected result type: {type(result)}, expected CrawlResult."
+                )
 
             if result.success and result.extracted_content:
                 data = json.loads(result.extracted_content)
@@ -253,12 +255,17 @@ async def fetch_animeplanet_characters(
                 )
 
                 # Concurrent batch fetch of all character detail pages
-                detail_results = await crawler.arun_many(
+                list_results = await crawler.arun_many(
                     urls=character_detail_urls,
                     config=detail_config,
                 )
 
-                detail_results = cast(List[CrawlResult], detail_results)
+                if not isinstance(result, list) or not all(
+                    isinstance(r, CrawlResult) for r in result
+                ):
+                    raise TypeError("Expected a list of CrawlResult")
+
+                list_results = cast(List[CrawlResult], list_results)
 
                 # Phase 5: Merge enriched data
                 # Create a mapping from character name to index for proper matching
@@ -267,7 +274,7 @@ async def fetch_animeplanet_characters(
                 }
 
                 enriched_count = 0
-                for detail_result in detail_results:
+                for detail_result in list_results:
 
                     if detail_result.success and detail_result.extracted_content:
                         try:
@@ -654,18 +661,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "identifier",
         type=str,
-        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan/characters'), or full URL"
+        help="Anime identifier: slug (e.g., 'dandadan'), path (e.g., '/anime/dandadan/characters'), or full URL",
     )
     parser.add_argument(
         "--output",
         type=str,
         default="/home/dani/code/anime-vector-service/animeplanet_characters.json",
-        help="Output file path (default: animeplanet_characters.json in project root)"
+        help="Output file path (default: animeplanet_characters.json in project root)",
     )
     args = parser.parse_args()
 
-    asyncio.run(fetch_animeplanet_characters(
-        args.identifier,
-        return_data=False,  # CLI doesn't need return value
-        output_path=args.output
-    ))
+    asyncio.run(
+        fetch_animeplanet_characters(
+            args.identifier,
+            return_data=False,  # CLI doesn't need return value
+            output_path=args.output,
+        )
+    )
