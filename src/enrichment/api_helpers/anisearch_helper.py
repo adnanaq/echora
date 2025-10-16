@@ -205,9 +205,8 @@ class AniSearchEnrichmentHelper:
                     character_data = await self.fetch_character_data(anisearch_id)
                     if character_data:
                         anime_data["characters"] = character_data.get("characters", [])
-                        anime_data["character_count"] = character_data.get("total_count", 0)
                         logger.info(
-                            f"Integrated {anime_data['character_count']} characters into anime data"
+                            f"Integrated {character_data.get('total_count', 0)} characters into anime data"
                         )
                 except Exception as e:
                     logger.warning(f"Failed to fetch characters for ID {anisearch_id}: {e}")
