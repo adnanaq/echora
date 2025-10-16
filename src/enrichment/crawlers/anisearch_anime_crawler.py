@@ -96,7 +96,9 @@ async def _fetch_and_process_sub_page(
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
-async def fetch_anisearch_anime(url: str) -> None:
+async def fetch_anisearch_anime(
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """
     Crawls, processes, and saves anime data from a given anisearch.com URL.
     Uses JS-based navigation for screenshots and relations pages.
@@ -105,6 +107,11 @@ async def fetch_anisearch_anime(url: str) -> None:
         url: Can be either:
             - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
             - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Complete anime data dictionary (if return_data=True), otherwise None
 
     Raises:
         ValueError: If URL is not from anisearch.com/anime
@@ -463,13 +470,22 @@ async def fetch_anisearch_anime(url: str) -> None:
                     anime_data["anime_relations"] = []
                     anime_data["manga_relations"] = []
 
-                output_path = "anisearch_anime.json"
-                safe_path = sanitize_output_path(output_path)
-                with open(safe_path, "w", encoding="utf-8") as f:
-                    json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                print(f"Data written to {safe_path}")
+                # Conditionally write to file
+                if output_path:
+                    safe_path = sanitize_output_path(output_path)
+                    with open(safe_path, "w", encoding="utf-8") as f:
+                        json.dump(anime_data, f, ensure_ascii=False, indent=2)
+                    print(f"Data written to {safe_path}")
+
+                # Return data for programmatic usage
+                if return_data:
+                    return anime_data
+
+                return None
             else:
                 print(f"Extraction failed: {result.error_message}")
+                return None
+        return None
 
 
 if __name__ == "__main__":
@@ -479,5 +495,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "url", type=str, help="The anisearch.com URL for the anime page."
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="anisearch_anime.json",
+        help="Output file path (default: anisearch_anime.json in current directory)",
+    )
     args = parser.parse_args()
-    asyncio.run(fetch_anisearch_anime(args.url))
+    asyncio.run(
+        fetch_anisearch_anime(
+            args.url,
+            return_data=False,  # CLI doesn't need return value
+            output_path=args.output,
+        )
+    )

@@ -17,7 +17,7 @@ import argparse
 import asyncio
 import json
 import re
-from typing import cast
+from typing import Any, Dict, Optional, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -30,18 +30,25 @@ from crawl4ai.types import RunManyReturn
 from .utils import sanitize_output_path
 
 
-async def fetch_anisearch_characters(url: str) -> None:
+async def fetch_anisearch_characters(
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """
     Crawls, processes, and saves character data from a given anisearch.com URL.
 
     This function defines a schema for extracting character information,
     including their name, role, URL, favorites count, and image. It then
     initializes a crawler, runs it on the provided anime character page URL,
-    processes the returned data to clean and structure it, and finally
+    processes the returned data to clean and structure it, and optionally
     writes the output to a JSON file.
 
     Args:
         url (str): The URL of the anisearch.com character page to crawl.
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Character data dictionary (if return_data=True), otherwise None
     """
     # Define a correct schema for character extraction
     css_schema = {
@@ -89,7 +96,7 @@ async def fetch_anisearch_characters(url: str) -> None:
 
         if not results:
             print("No results found.")
-            return
+            return None
 
         for result in results:
             if not isinstance(result, CrawlResult):
@@ -133,18 +140,24 @@ async def fetch_anisearch_characters(url: str) -> None:
                         )
                         flattened_characters.append(character)
 
-                output_path = "anisearch_characters.json"
-                safe_path = sanitize_output_path(output_path)
-                with open(safe_path, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {"characters": flattened_characters},
-                        f,
-                        ensure_ascii=False,
-                        indent=2,
-                    )
-                print(f"Data written to {safe_path}")
+                output_data = {"characters": flattened_characters}
+
+                # Conditionally write to file
+                if output_path:
+                    safe_path = sanitize_output_path(output_path)
+                    with open(safe_path, "w", encoding="utf-8") as f:
+                        json.dump(output_data, f, ensure_ascii=False, indent=2)
+                    print(f"Data written to {safe_path}")
+
+                # Return data for programmatic usage
+                if return_data:
+                    return output_data
+
+                return None
             else:
                 print(f"Extraction failed: {result.error_message}")
+                return None
+        return None
 
 
 if __name__ == "__main__":
@@ -154,6 +167,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "url", type=str, help="The anisearch.com URL for the anime characters page."
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="anisearch_characters.json",
+        help="Output file path (default: anisearch_characters.json in current directory)",
+    )
     args = parser.parse_args()
 
-    asyncio.run(fetch_anisearch_characters(args.url))
+    asyncio.run(
+        fetch_anisearch_characters(
+            args.url,
+            return_data=False,  # CLI doesn't need return value
+            output_path=args.output,
+        )
+    )
