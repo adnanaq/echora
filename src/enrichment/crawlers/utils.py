@@ -19,21 +19,21 @@ def sanitize_output_path(output_path: str) -> str:
         Sanitized absolute path
 
     Raises:
-        ValueError: If path contains path traversal attempts
+        ValueError: If relative path escapes working directory
     """
-    # Resolve to absolute path and normalize
-    abs_path = Path(output_path).resolve()
+    p = Path(output_path)
+    abs_path = p.resolve()
 
-    # Check for path traversal attempts
+    # Absolute paths are allowed as-is
+    if p.is_absolute():
+        return str(abs_path)
+
+    # Relative paths must remain within CWD after resolution
     try:
         abs_path.relative_to(Path.cwd())
-    except ValueError:
-        # Path is outside current directory - allow if it's a valid absolute path
-        # but ensure it doesn't contain suspicious patterns
-        if ".." in output_path or output_path.startswith("/"):
-            raise ValueError(
-                f"Potentially unsafe output path: {output_path}. "
-                "Use relative paths within current directory or explicit absolute paths."
-            )
+    except ValueError as err:
+        raise ValueError(
+            f"Output path escapes working directory: {output_path}"
+        ) from err
 
     return str(abs_path)
