@@ -48,12 +48,22 @@ class ProgrammaticEnrichmentPipeline:
         if self.config.verbose_logging:
             self.config.log_configuration()
 
-    async def enrich_anime(self, offline_data: Dict) -> Dict[str, Any]:
+    async def enrich_anime(
+        self,
+        offline_data: Dict,
+        agent_dir: Optional[str] = None,
+        skip_services: Optional[List[str]] = None,
+        only_services: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Enrich a single anime with data from all APIs.
 
         Args:
             offline_data: Offline anime data from database
+            agent_dir: Optional agent directory name (e.g., "Dandadan_agent1").
+                      If not provided, auto-generates with gap filling.
+            skip_services: Optional list of services to skip (e.g., ["jikan", "anidb"])
+            only_services: Optional list of services to fetch exclusively
 
         Returns:
             Enriched anime data ready for AI enhancement
@@ -76,8 +86,15 @@ class ProgrammaticEnrichmentPipeline:
                 f"Step 1 complete: Extracted {len(valid_ids)} platform IDs in {self.timing_breakdown['id_extraction']:.3f}s"
             )
 
-            # Create temp directory for this anime
-            temp_dir = self._create_temp_dir(anime_title)
+            # Create or use specified temp directory for this anime
+            if agent_dir:
+                # Use provided agent directory
+                temp_dir = os.path.join(self.config.temp_dir, agent_dir)
+                os.makedirs(temp_dir, exist_ok=True)
+                logger.info(f"Using specified agent directory: {temp_dir}")
+            else:
+                # Auto-generate agent directory with gap filling
+                temp_dir = self._create_temp_dir(anime_title)
 
             # Save current anime entry for stage scripts
             current_anime_path = os.path.join(temp_dir, "current_anime.json")
@@ -88,7 +105,7 @@ class ProgrammaticEnrichmentPipeline:
             # Step 2: Parallel API fetching (5-10 seconds)
             step2_start = time.time()
             api_data = await self.api_fetcher.fetch_all_data(
-                valid_ids, offline_data, temp_dir
+                valid_ids, offline_data, temp_dir, skip_services, only_services
             )
             self.timing_breakdown["api_fetching"] = time.time() - step2_start
 
@@ -186,33 +203,38 @@ class ProgrammaticEnrichmentPipeline:
 
     def _find_next_agent_id(self, anime_name: str) -> int:
         """
-        Find next available agent ID for the given anime.
-        Fills gaps first (e.g., if agent_2 and agent_3 exist, returns 1).
+        Find next available agent ID globally across ALL anime.
+        Fills gaps first (e.g., if agent2 and agent4 exist, returns 3).
         Otherwise returns max + 1.
 
         Args:
-            anime_name: Clean anime name (e.g., "One", "Dandadan")
+            anime_name: Clean anime name (unused, kept for backward compatibility)
 
         Returns:
-            Next available agent ID number
+            Next available agent ID number (global across all anime)
         """
         # Check if temp directory exists
         temp_base = self.config.temp_dir
         if not os.path.exists(temp_base):
             return 1  # First agent
 
-        # Scan for existing agent directories matching this anime
-        pattern_prefix = f"{anime_name}_agent"
+        # Scan for ALL agent directories (any anime)
+        # Pattern: *_agent<N>
         existing_ids = []
 
         try:
             for item in os.listdir(temp_base):
-                if item.startswith(pattern_prefix):
-                    # Extract agent number from directory name
-                    # Format: <AnimeName>_agent<N> or <AnimeName>_agent<N>_test<M>
-                    parts = item.replace(pattern_prefix, "").split("_")
-                    if parts and parts[0].isdigit():
-                        existing_ids.append(int(parts[0]))
+                if "_agent" in item:
+                    try:
+                        # Split on "_agent" and get the part after it
+                        after_agent = item.split("_agent")[1]
+                        # Get first segment (number part before any additional "_")
+                        num_str = after_agent.split("_")[0] if "_" in after_agent else after_agent
+                        if num_str.isdigit():
+                            existing_ids.append(int(num_str))
+                    except (IndexError, ValueError):
+                        # Skip directories that don't match expected pattern
+                        continue
         except Exception as e:
             logger.warning(f"Error scanning temp directory: {e}")
             return 1
@@ -226,10 +248,13 @@ class ProgrammaticEnrichmentPipeline:
         # Find first missing ID (gap filling)
         for i in range(1, existing_ids[-1] + 1):
             if i not in existing_ids:
+                logger.info(f"Gap-filling agent ID: Using {i} (existing: {existing_ids})")
                 return i
 
         # No gaps found, return next sequential
-        return existing_ids[-1] + 1
+        next_id = existing_ids[-1] + 1
+        logger.info(f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})")
+        return next_id
 
     def _create_temp_dir(self, anime_title: str) -> str:
         """

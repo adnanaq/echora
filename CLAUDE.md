@@ -456,6 +456,7 @@ The service follows a layered microservice architecture with clear separation of
 #### 5. Data Enrichment Pipeline (`src/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)
+- **Crawlers**: Heavy-duty browser automation using crawl4ai for robust data extraction
 - **Scrapers**: Web scraping with Cloudflare bypass capabilities
 - **Multi-stage AI Pipeline**: Modular prompt system for data enhancement
 - **Auto-Agent Assignment**: Automatic agent ID assignment for concurrent processing with gap-filling logic
@@ -470,6 +471,11 @@ The service follows a layered microservice architecture with clear separation of
 - `--index N`: Process anime at index N (0-based)
 - `--title "Title"`: Search for anime by title (case-insensitive, partial match)
 - `--file PATH`: Use custom database file (optional)
+- `--agent "name"`: Specify agent directory name (optional, auto-generated if not provided)
+- `--skip service1 service2`: Skip specific services (e.g., `--skip jikan anidb`)
+- `--only service1 service2`: Only fetch specific services (e.g., `--only anime_planet`)
+
+**Available Services**: `jikan`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
 
 **Example Usage**:
 ```bash
@@ -481,9 +487,20 @@ python run_enrichment.py --title "One Piece"
 
 # Use custom database
 python run_enrichment.py --file custom.json --index 5
+
+# Specify agent directory
+python run_enrichment.py --title "Dandadan" --agent "Dandadan_test"
+
+# Skip specific services
+python run_enrichment.py --title "Dandadan" --skip animeschedule anidb
+
+# Only fetch from specific services
+python run_enrichment.py --title "Dandadan" --only anime_planet anisearch
 ```
 
-**Auto-Agent Assignment**: Pipeline automatically assigns agent IDs using gap-filling logic (e.g., fills `agent_1` if `agent_2`, `agent_3` exist).
+**Notes**:
+- `--skip` and `--only` are mutually exclusive
+- **Auto-Agent Assignment**: Pipeline automatically assigns agent IDs using gap-filling logic if `--agent` not specified
 
 ### Stage Script Directory Detection
 

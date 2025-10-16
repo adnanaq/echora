@@ -16,7 +16,8 @@ from typing import Any, Dict, Optional
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from ..scrapers.anime_planet_scraper import AnimePlanetScraper
+from ..crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
+from ..crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class AnimePlanetEnrichmentHelper:
 
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
-        self.scraper = AnimePlanetScraper()
+        pass
 
     async def extract_slug_from_url(self, url: str) -> Optional[str]:
         """Extract Anime-Planet slug from URL."""
@@ -47,51 +48,95 @@ class AnimePlanetEnrichmentHelper:
         try:
             sources = offline_anime_data.get("sources", [])
             for source in sources:
-                if "anime-planet.com" in source:
+                if isinstance(source, str) and "anime-planet.com" in source:
                     return source
             return None
         except Exception as e:
             logger.error(f"Error finding Anime-Planet URL: {e}")
             return None
 
-    async def search_anime_by_title(
-        self, title: str, limit: int = 5
-    ) -> Optional[Dict[str, Any]]:
-        """Search for anime by title and return the best match."""
-        try:
-            search_results = await self.scraper.search_anime(title, limit=limit)
-            if search_results:
-                # Return the first result as the best match
-                return search_results[0]
-            return None
-        except Exception as e:
-            logger.error(f"Error searching anime by title '{title}': {e}")
-            return None
 
-    async def fetch_anime_data(self, slug: str) -> Optional[Dict[str, Any]]:
-        """Fetch anime data by slug, including characters."""
+    async def fetch_character_data(self, slug: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch character data by slug using the new character crawler.
+
+        Args:
+            slug: Anime-Planet anime slug (e.g., 'dandadan')
+
+        Returns:
+            Dict containing character data with keys:
+            - characters: List of character dicts with name, role, image_url, url
+            - total_count: Total number of characters
+        """
         try:
-            # Fetch main anime data
-            anime_data = await self.scraper.get_anime_by_slug(slug)
-            if not anime_data:
+            character_data = await fetch_animeplanet_characters(
+                slug=slug,
+                return_data=True,
+                output_path=None  # No file output - return data only
+            )
+
+            if not character_data:
+                logger.warning(f"Character crawler returned no data for slug '{slug}'")
                 return None
 
-            # Fetch character data
-            try:
-                characters_data = await self.scraper.get_anime_characters(slug)
-                if characters_data:
-                    anime_data["characters"] = characters_data.get("characters", [])
-                    anime_data["character_count"] = characters_data.get(
-                        "total_count", 0
-                    )
-                    logger.info(
-                        f"Fetched {anime_data['character_count']} characters for '{slug}'"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to fetch characters for '{slug}': {e}")
-                # Continue without characters data
+            logger.info(
+                f"Successfully fetched {character_data.get('total_count', 0)} characters "
+                f"for '{slug}' using crawler"
+            )
+            return character_data
 
+        except Exception as e:
+            logger.error(f"Error fetching character data for slug '{slug}': {e}")
+            return None
+
+    async def fetch_anime_data(
+        self, slug: str, include_characters: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch anime data by slug using the new crawler.
+
+        Args:
+            slug: Anime-Planet anime slug (e.g., 'dandadan')
+            include_characters: Whether to fetch and include character data (default: True)
+
+        Crawler returns comprehensive anime data including:
+        - Basic info (title, description, slug, url)
+        - Metadata (rank, studios, genres, episodes, year, season, status)
+        - Related anime (same franchise)
+        - Images (poster, image)
+        - Characters (if include_characters=True)
+        """
+        try:
+            anime_data = await fetch_animeplanet_anime(
+                slug=slug,
+                return_data=True,
+                output_path=None  # No file output - return data only
+            )
+
+            if not anime_data:
+                logger.warning(f"Crawler returned no data for slug '{slug}'")
+                return None
+
+            # Fetch character data if requested
+            if include_characters:
+                try:
+                    characters_data = await self.fetch_character_data(slug)
+                    if characters_data:
+                        anime_data["characters"] = characters_data.get("characters", [])
+                        anime_data["character_count"] = characters_data.get(
+                            "total_count", 0
+                        )
+                        logger.info(
+                            f"Integrated {anime_data['character_count']} characters "
+                            f"into anime data for '{slug}'"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch characters for '{slug}': {e}")
+                    # Continue without characters data - non-critical
+
+            logger.info(f"Successfully fetched anime data for '{slug}' using crawler")
             return anime_data
+
         except Exception as e:
             logger.error(f"Error fetching anime data for slug '{slug}': {e}")
             return None
@@ -107,9 +152,13 @@ class AnimePlanetEnrichmentHelper:
 
         Returns:
             Dict containing Anime-Planet data or None if not found
+
+        Note:
+            Requires Anime-Planet URL in offline_anime_data["sources"].
+            Title-based search is not supported by the crawler.
         """
         try:
-            # First try to find direct URL in sources
+            # Try to find direct URL in sources
             animeplanet_url = await self.find_animeplanet_url(offline_anime_data)
 
             if animeplanet_url:
@@ -118,25 +167,26 @@ class AnimePlanetEnrichmentHelper:
                 if slug:
                     logger.info(f"Found Anime-Planet slug: {slug}")
                     return await self.fetch_anime_data(slug)
+                else:
+                    logger.error(
+                        f"Failed to extract slug from Anime-Planet URL: {animeplanet_url}"
+                    )
+                    return None
 
-            # If no direct URL, try searching by title
-            title = offline_anime_data.get("title")
-            if title:
-                logger.info(f"Searching Anime-Planet for title: {title}")
-                search_result = await self.search_anime_by_title(title)
-                if search_result and search_result.get("slug"):
-                    return await self.fetch_anime_data(search_result["slug"])
-
-            logger.warning("No Anime-Planet data found")
+            # No Anime-Planet URL found in sources
+            title = offline_anime_data.get("title", "Unknown")
+            logger.debug(
+                f"No Anime-Planet URL in sources for '{title}', skipping enrichment"
+            )
             return None
 
         except Exception as e:
-            logger.error(f"Error in fetch_all_data: {e}")
+            title = offline_anime_data.get("title", "Unknown")
+            logger.error(
+                f"Error in fetch_all_data for anime '{title}': {e}",
+                exc_info=True
+            )
             return None
-
-    async def close(self) -> None:
-        """Close the scraper."""
-        await self.scraper.close()
 
 
 async def main() -> None:
@@ -149,7 +199,6 @@ async def main() -> None:
 
     helper = AnimePlanetEnrichmentHelper()
     data = await helper.fetch_anime_data(slug)
-    await helper.close()
 
     if data:
         with open(output_file, "w", encoding="utf-8") as f:

@@ -75,9 +75,20 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Basic usage
   python run_enrichment.py --index 0                    # Process first anime in database
   python run_enrichment.py --title "One Piece"          # Search by title
   python run_enrichment.py --file custom.json --index 5 # Use custom database file
+
+  # Service filtering
+  python run_enrichment.py --title "Dandadan" --skip jikan anidb          # Skip slow services
+  python run_enrichment.py --title "Dandadan" --only anime_planet         # Only fetch anime_planet
+
+  # Agent directory control
+  python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1"   # Use existing agent directory
+  python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1" --only anime_planet  # Combine with filtering
+
+Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
         """
     )
 
@@ -96,8 +107,30 @@ Examples:
         type=str,
         help="Search for anime by title (case-insensitive)"
     )
+    parser.add_argument(
+        "--agent",
+        type=str,
+        help="Agent directory name (e.g., 'Dandadan_agent1'). If not provided, auto-generates with gap filling."
+    )
+    parser.add_argument(
+        "--skip",
+        nargs="+",
+        metavar="SERVICE",
+        help="Skip specific services (e.g., --skip jikan anidb)"
+    )
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        metavar="SERVICE",
+        help="Only fetch specific services (e.g., --only anime_planet anisearch)"
+    )
 
     args = parser.parse_args()
+
+    # Validate service filtering arguments
+    if args.skip and args.only:
+        print("Error: Cannot use both --skip and --only. Choose one.")
+        sys.exit(1)
 
     # Validate arguments
     if args.index is None and args.title is None:
@@ -135,8 +168,13 @@ Examples:
     # Initialize pipeline
     pipeline = ProgrammaticEnrichmentPipeline()
 
-    # Run enrichment
-    result = await pipeline.enrich_anime(anime_entry)
+    # Run enrichment with optional service filtering and agent directory
+    result = await pipeline.enrich_anime(
+        anime_entry,
+        agent_dir=args.agent,
+        skip_services=args.skip,
+        only_services=args.only
+    )
 
     # Show results
     print(f"\n{'='*60}")
