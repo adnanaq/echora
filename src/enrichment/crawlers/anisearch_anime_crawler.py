@@ -240,7 +240,7 @@ async def fetch_anisearch_anime(
 
         if not results:
             print("No results found.")
-            return
+            return None
 
         for result in results:
             if not isinstance(result, CrawlResult):
@@ -253,7 +253,7 @@ async def fetch_anisearch_anime(
 
                 if not data:
                     print("Extraction returned empty data.")
-                    return
+                    return None
 
                 anime_data = data[0]
 
