@@ -276,12 +276,13 @@ async def fetch_anisearch_anime(
                 if "published" in anime_data and anime_data["published"]:
                     published_str = anime_data["published"]
                     match = re.search(
-                        r"(\d{2}\.\d{2}\.\d{4})\s*‑\s*(\d{2}\.\d{2}\.\d{4})",
-                        published_str,
-                    )
-                    if match:
-                        anime_data["start_date"] = match.group(1)
-                        anime_data["end_date"] = match.group(2)
+                        match = re.search(
+                            r"(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})",
+                            published_str,
+                        )
+                        if match:
+                            anime_data["start_date"] = match.group(1)
+                            anime_data["end_date"] = match.group(2)
                     else:
                         single_date_match = re.search(
                             r"(\d{2}\.\d{2}\.\d{4})", published_str
