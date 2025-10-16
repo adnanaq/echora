@@ -16,10 +16,6 @@ from typing import Any, Dict, Optional
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-# OLD SCRAPER - Replaced by crawler
-# from ..scrapers.anime_planet_scraper import AnimePlanetScraper
-
-# NEW CRAWLERS - Uses crawl4ai for comprehensive data extraction
 from ..crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
 from ..crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
 
@@ -31,7 +27,6 @@ class AnimePlanetEnrichmentHelper:
 
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
-        # No longer need scraper instance - using crawler function directly
         pass
 
     async def extract_slug_from_url(self, url: str) -> Optional[str]:
@@ -112,8 +107,6 @@ class AnimePlanetEnrichmentHelper:
         - Characters (if include_characters=True)
         """
         try:
-            # NEW CRAWLER IMPLEMENTATION
-            # Use new crawler - returns data without writing file
             anime_data = await fetch_animeplanet_anime(
                 slug=slug,
                 return_data=True,
