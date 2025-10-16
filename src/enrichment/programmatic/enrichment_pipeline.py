@@ -203,33 +203,38 @@ class ProgrammaticEnrichmentPipeline:
 
     def _find_next_agent_id(self, anime_name: str) -> int:
         """
-        Find next available agent ID for the given anime.
-        Fills gaps first (e.g., if agent_2 and agent_3 exist, returns 1).
+        Find next available agent ID globally across ALL anime.
+        Fills gaps first (e.g., if agent2 and agent4 exist, returns 3).
         Otherwise returns max + 1.
 
         Args:
-            anime_name: Clean anime name (e.g., "One", "Dandadan")
+            anime_name: Clean anime name (unused, kept for backward compatibility)
 
         Returns:
-            Next available agent ID number
+            Next available agent ID number (global across all anime)
         """
         # Check if temp directory exists
         temp_base = self.config.temp_dir
         if not os.path.exists(temp_base):
             return 1  # First agent
 
-        # Scan for existing agent directories matching this anime
-        pattern_prefix = f"{anime_name}_agent"
+        # Scan for ALL agent directories (any anime)
+        # Pattern: *_agent<N>
         existing_ids = []
 
         try:
             for item in os.listdir(temp_base):
-                if item.startswith(pattern_prefix):
-                    # Extract agent number from directory name
-                    # Format: <AnimeName>_agent<N> or <AnimeName>_agent<N>_test<M>
-                    parts = item.replace(pattern_prefix, "").split("_")
-                    if parts and parts[0].isdigit():
-                        existing_ids.append(int(parts[0]))
+                if "_agent" in item:
+                    try:
+                        # Split on "_agent" and get the part after it
+                        after_agent = item.split("_agent")[1]
+                        # Get first segment (number part before any additional "_")
+                        num_str = after_agent.split("_")[0] if "_" in after_agent else after_agent
+                        if num_str.isdigit():
+                            existing_ids.append(int(num_str))
+                    except (IndexError, ValueError):
+                        # Skip directories that don't match expected pattern
+                        continue
         except Exception as e:
             logger.warning(f"Error scanning temp directory: {e}")
             return 1
@@ -243,10 +248,13 @@ class ProgrammaticEnrichmentPipeline:
         # Find first missing ID (gap filling)
         for i in range(1, existing_ids[-1] + 1):
             if i not in existing_ids:
+                logger.info(f"Gap-filling agent ID: Using {i} (existing: {existing_ids})")
                 return i
 
         # No gaps found, return next sequential
-        return existing_ids[-1] + 1
+        next_id = existing_ids[-1] + 1
+        logger.info(f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})")
+        return next_id
 
     def _create_temp_dir(self, anime_title: str) -> str:
         """
