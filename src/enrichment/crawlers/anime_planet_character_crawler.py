@@ -320,7 +320,7 @@ async def fetch_animeplanet_characters(
                                     print(
                                         f"Warning: Could not match character: {detail_name}"
                                     )
-                        except Exception as e:
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                             print(f"Failed to process enrichment: {e}")
                     else:
                         print(
