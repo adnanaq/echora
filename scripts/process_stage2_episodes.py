@@ -43,6 +43,9 @@ def load_kitsu_episode_data(temp_dir: str):
         with open(f'{temp_dir}/kitsu.json', 'r') as f:
             kitsu_data = json.load(f)
 
+        # Extract anime slug for constructing episode URLs
+        anime_slug = kitsu_data.get('anime', {}).get('attributes', {}).get('slug', '')
+
         kitsu_episodes = kitsu_data.get('episodes', [])
 
         # Create mappings by episode number
@@ -50,6 +53,7 @@ def load_kitsu_episode_data(temp_dir: str):
         kitsu_descriptions = {}
         kitsu_synopses = {}
         kitsu_season_numbers = {}
+        kitsu_episode_urls = {}
 
         for episode in kitsu_episodes:
             attrs = episode.get('attributes', {})
@@ -76,6 +80,10 @@ def load_kitsu_episode_data(temp_dir: str):
                 if season_number is not None:
                     kitsu_season_numbers[ep_number] = season_number
 
+                # Construct Kitsu episode URL
+                if anime_slug:
+                    kitsu_episode_urls[ep_number] = f"https://kitsu.app/anime/{anime_slug}/episodes/{ep_number}"
+
         # Also create title mappings
         kitsu_titles = {}
         kitsu_titles_japanese = {}
@@ -88,8 +96,10 @@ def load_kitsu_episode_data(temp_dir: str):
             if ep_number:
                 titles = attrs.get('titles', {})
 
-                # Extract English title (en_us)
-                if titles.get('en_us'):
+                # Extract English title (try 'en' first, then 'en_us')
+                if titles.get('en'):
+                    kitsu_titles[ep_number] = titles['en']
+                elif titles.get('en_us'):
                     kitsu_titles[ep_number] = titles['en_us']
 
                 # Extract Japanese title (ja_jp)
@@ -100,15 +110,43 @@ def load_kitsu_episode_data(temp_dir: str):
                 if titles.get('en_jp'):
                     kitsu_titles_romaji[ep_number] = titles['en_jp']
 
-        print(f"Loaded Kitsu data: {len(kitsu_thumbnails)} thumbnails, {len(kitsu_descriptions)} descriptions, {len(kitsu_synopses)} synopses, {len(kitsu_titles)} en_us titles, {len(kitsu_titles_japanese)} ja_jp titles, {len(kitsu_titles_romaji)} en_jp titles, {len(kitsu_season_numbers)} season numbers")
-        return kitsu_thumbnails, kitsu_descriptions, kitsu_synopses, kitsu_titles, kitsu_titles_japanese, kitsu_titles_romaji, kitsu_season_numbers
+        print(f"Loaded Kitsu data: {len(kitsu_thumbnails)} thumbnails, {len(kitsu_descriptions)} descriptions, {len(kitsu_synopses)} synopses, {len(kitsu_titles)} titles, {len(kitsu_titles_japanese)} ja_jp titles, {len(kitsu_titles_romaji)} en_jp titles, {len(kitsu_season_numbers)} season numbers, {len(kitsu_episode_urls)} episode URLs")
+        return kitsu_thumbnails, kitsu_descriptions, kitsu_synopses, kitsu_titles, kitsu_titles_japanese, kitsu_titles_romaji, kitsu_season_numbers, kitsu_episode_urls
 
     except FileNotFoundError:
         print("Kitsu data not found, proceeding without Kitsu enhancement")
-        return {}, {}, {}, {}, {}, {}, {}
+        return {}, {}, {}, {}, {}, {}, {}, {}
     except Exception as e:
         print(f"Error loading Kitsu data: {e}")
-        return {}, {}, {}, {}, {}, {}, {}
+        return {}, {}, {}, {}, {}, {}, {}, {}
+
+def load_anisearch_episode_data(temp_dir: str):
+    """Load AniSearch episode data and create episode number mappings."""
+    try:
+        with open(f'{temp_dir}/anisearch.json', 'r') as f:
+            anisearch_data = json.load(f)
+
+        anisearch_episodes = anisearch_data.get('episodes', [])
+
+        # Create mappings by episode number
+        anisearch_titles = {}
+
+        for episode in anisearch_episodes:
+            ep_number = episode.get('episodeNumber')
+            title = episode.get('title')
+
+            if ep_number and title:
+                anisearch_titles[ep_number] = title
+
+        print(f"Loaded AniSearch data: {len(anisearch_titles)} titles")
+        return anisearch_titles
+
+    except FileNotFoundError:
+        print("AniSearch data not found, proceeding without AniSearch enhancement")
+        return {}
+    except Exception as e:
+        print(f"Error loading AniSearch data: {e}")
+        return {}
 
 def process_all_episodes(temp_dir: str):
     # Read the detailed episodes data
@@ -116,7 +154,10 @@ def process_all_episodes(temp_dir: str):
         episodes_data = json.load(f)
 
     # Load Kitsu episode data for enhancement
-    kitsu_thumbnails, kitsu_descriptions, kitsu_synopses, kitsu_titles, kitsu_titles_japanese, kitsu_titles_romaji, kitsu_season_numbers = load_kitsu_episode_data(temp_dir)
+    kitsu_thumbnails, kitsu_descriptions, kitsu_synopses, kitsu_titles, kitsu_titles_japanese, kitsu_titles_romaji, kitsu_season_numbers, kitsu_episode_urls = load_kitsu_episode_data(temp_dir)
+
+    # Load AniSearch episode data for enhancement
+    anisearch_titles = load_anisearch_episode_data(temp_dir)
 
     print(f"Processing {len(episodes_data)} episodes...")
 
@@ -134,11 +175,22 @@ def process_all_episodes(temp_dir: str):
         kitsu_title_japanese = kitsu_titles_japanese.get(ep_number)
         kitsu_title_romaji = kitsu_titles_romaji.get(ep_number)
         kitsu_season_number = kitsu_season_numbers.get(ep_number)
+        kitsu_episode_url = kitsu_episode_urls.get(ep_number)
+
+        # Get AniSearch enhancements for this episode (match by episode number)
+        anisearch_title = anisearch_titles.get(ep_number)
 
         # Build thumbnails array
         thumbnails = []
         if kitsu_thumbnail:
             thumbnails.append(kitsu_thumbnail)
+
+        # Build episode_pages object
+        episode_pages = {}
+        if episode.get("url"):
+            episode_pages["mal"] = episode.get("url")
+        if kitsu_episode_url:
+            episode_pages["kitsu"] = kitsu_episode_url
 
         # Convert according to Stage 2 prompt template schema with timezone conversion
         processed_episode = {
@@ -152,7 +204,7 @@ def process_all_episodes(temp_dir: str):
             "score": episode.get("score"),
             "season_number": kitsu_season_number,  # From Kitsu (Jikan doesn't provide this)
             "synopsis": episode.get("synopsis") or kitsu_synopsis,  # Jikan primary, Kitsu fallback
-            "title": episode.get("title") or kitsu_title,  # Jikan primary, Kitsu fallback
+            "title": episode.get("title") or kitsu_title or anisearch_title,  # Jikan → Kitsu → AniSearch
             "title_japanese": episode.get("title_japanese") or kitsu_title_japanese,  # Jikan primary, Kitsu fallback
             "title_romaji": episode.get("title_romaji") or kitsu_title_romaji,  # Jikan primary, Kitsu fallback
 
@@ -160,9 +212,7 @@ def process_all_episodes(temp_dir: str):
             "thumbnails": thumbnails,
 
             # OBJECT/DICT FIELDS (alphabetical)
-            "episode_pages": {
-                "mal": episode.get("url")
-            },
+            "episode_pages": episode_pages,
             "streaming": {}  # No streaming data from Jikan
         }
 
