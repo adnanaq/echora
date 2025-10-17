@@ -7,10 +7,10 @@ Based on the analysis:
 1. Determine if this represents a single cohesive change or multiple separate issues
 2. If multiple issues are needed, list them and ask for user approval before proceeding
 3. Only proceed after user confirms the issue breakdown
-4. After receiving approval, chose the appropriate template from the list:
-   - Feature template [link to feature temaplte(../../templates/feature.md)]
-   - Refactor template [link to refactor template(../../templates/refactor.md)]
-   - Chore template [link to chore template(../../templates/chore.md)]
+4. After receiving approval, choose the appropriate template from the list:
+   - [Feature template](../../templates/linear_feature.md)
+   - [Refactor template](../../templates/linear_refactor.md)
+   - [Chore template](../../templates/linear_chore.md)
 
 Generate a concise, descriptive title based on the changes made (this will be passed as the `title` parameter, separate from description).
 
