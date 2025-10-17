@@ -20,7 +20,7 @@ Explain the motivation behind this task
 
 ### Development Checklist [tasks to complete before closing the issue]
 
-- [ ] task 1
+- [ ] Task 1
 - [ ] Task 2
 
 ### Validation / Test
