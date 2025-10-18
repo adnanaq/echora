@@ -268,9 +268,38 @@ class Settings(BaseSettings):
             "duration": "integer",  # Episode duration in seconds
             # Platform fields
             "sources": "keyword",
-            # Statistics for numerical filtering
-            "statistics": "keyword",  # Keep as-is for now
-            "score.median": "float",  # Representative score for range queries
+            # Statistics for numerical filtering - per-platform nested fields
+            # MAL (MyAnimeList) statistics
+            "statistics.mal.score": "float",
+            "statistics.mal.scored_by": "integer",
+            "statistics.mal.members": "integer",
+            "statistics.mal.favorites": "integer",
+            "statistics.mal.rank": "integer",
+            "statistics.mal.popularity_rank": "integer",
+            # AniList statistics
+            "statistics.anilist.score": "float",
+            "statistics.anilist.favorites": "integer",
+            "statistics.anilist.popularity_rank": "integer",
+            # AniDB statistics
+            "statistics.anidb.score": "float",
+            "statistics.anidb.scored_by": "integer",
+            # Anime-Planet statistics
+            "statistics.animeplanet.score": "float",
+            "statistics.animeplanet.scored_by": "integer",
+            "statistics.animeplanet.rank": "integer",
+            # Kitsu statistics
+            "statistics.kitsu.score": "float",
+            "statistics.kitsu.members": "integer",
+            "statistics.kitsu.favorites": "integer",
+            "statistics.kitsu.rank": "integer",
+            "statistics.kitsu.popularity_rank": "integer",
+            # AnimeSchedule statistics
+            "statistics.animeschedule.score": "float",
+            "statistics.animeschedule.scored_by": "integer",
+            "statistics.animeschedule.members": "integer",
+            "statistics.animeschedule.rank": "integer",
+            # Aggregate score field
+            "score.arithmetic_mean": "float",
             # Note: enrichment_metadata intentionally excluded (non-indexed operational data)
         },
         description="Payload fields with their types for optimized indexing (excludes operational metadata)",
