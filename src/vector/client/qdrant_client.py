@@ -611,7 +611,9 @@ class QdrantClient:
                 None,
                 lambda: self.client.update_vectors(
                     collection_name=self.collection_name,
-                    points=[PointVectors(id=point_id, vector={vector_name: vector_data})],
+                    points=[
+                        PointVectors(id=point_id, vector={vector_name: vector_data})
+                    ],
                 ),
             )
 
@@ -619,7 +621,9 @@ class QdrantClient:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to update vector {vector_name} for {anime_id}: {e}")
+            logger.exception(
+                f"Failed to update vector {vector_name} for {anime_id}: {e}"
+            )
             return False
 
     async def update_batch_vectors(
@@ -684,7 +688,7 @@ class QdrantClient:
             return {"success": len(updates), "failed": 0}
 
         except Exception as e:
-            logger.error(f"Failed to batch update vectors: {e}")
+            logger.exception(f"Failed to batch update vectors: {e}")
             return {"success": 0, "failed": len(updates)}
 
     def _build_filter(self, filters: Dict[str, Any]) -> Optional[Filter]:
