@@ -604,9 +604,21 @@ class QdrantClient:
             ... )
         """
         try:
+            expected_dim = self.settings.vector_names.get(vector_name)
+
+            if expected_dim is None:
+                logger.error(f"Unknown vector: {vector_name}")
+                return False
+
+            if not is_float_vector(vector_data) or len(vector_data) != expected_dim:
+                logger.error(
+                    f"Invalid data for {vector_name}: expected len={expected_dim}, got {len(vector_data)}"
+                )
+                return False
+
             point_id = self._generate_point_id(anime_id)
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: self.client.update_vectors(
@@ -614,6 +626,7 @@ class QdrantClient:
                     points=[
                         PointVectors(id=point_id, vector={vector_name: vector_data})
                     ],
+                    wait=True,
                 ),
             )
 
@@ -658,14 +671,25 @@ class QdrantClient:
 
             # Group updates by anime_id to batch multiple vector updates per point
             grouped_updates: Dict[str, Dict[str, List[float]]] = {}
+            failed = 0
             for update in updates:
                 anime_id = update["anime_id"]
                 vector_name = update["vector_name"]
                 vector_data = update["vector_data"]
 
+                expected_dim = self.settings.vector_names.get(vector_name)
+
+                if (
+                    expected_dim is None
+                    or not is_float_vector(vector_data)
+                    or len(vector_data) != expected_dim
+                ):
+                    failed += 1
+                    continue
+
                 if anime_id not in grouped_updates:
                     grouped_updates[anime_id] = {}
-                grouped_updates[anime_id][vector_name] = vector_data
+                grouped_updates.setdefault(anime_id, {})[vector_name] = vector_data
 
             # Create PointVectors for batch update
             point_updates = []
@@ -674,21 +698,24 @@ class QdrantClient:
                 point_updates.append(PointVectors(id=point_id, vector=vectors_dict))
 
             # Execute batch update
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: self.client.update_vectors(
-                    collection_name=self.collection_name, points=point_updates
+                    collection_name=self.collection_name,
+                    points=point_updates,
+                    wait=True,
                 ),
             )
 
             logger.info(
                 f"Batch updated {len(point_updates)} points with {len(updates)} vector updates"
             )
-            return {"success": len(updates), "failed": 0}
+            success = len(updates) - failed
+            return {"success": success, "failed": failed}
 
-        except Exception as e:
-            logger.exception(f"Failed to batch update vectors: {e}")
+        except Exception:
+            logger.exception("Failed to batch update vectors")
             return {"success": 0, "failed": len(updates)}
 
     def _build_filter(self, filters: Dict[str, Any]) -> Optional[Filter]:
