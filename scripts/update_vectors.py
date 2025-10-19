@@ -8,10 +8,10 @@ Can be used both as a CLI tool and as an importable module.
 Usage Examples:
 
     # CLI: Update single vector for all anime
-    python scripts/update_vectors.py --vectors review_vector
+    python scripts/update_vectors.py --vectors title_vector
 
     # CLI: Update multiple vectors
-    python scripts/update_vectors.py --vectors review_vector episode_vector
+    python scripts/update_vectors.py --vectors title_vector episode_vector
 
     # CLI: Update specific anime by index
     python scripts/update_vectors.py --vectors title_vector --index 0
@@ -20,11 +20,11 @@ Usage Examples:
     python scripts/update_vectors.py --vectors character_vector --title "Dandadan"
 
     # CLI: Batch size control
-    python scripts/update_vectors.py --vectors review_vector --batch-size 50
+    python scripts/update_vectors.py --vectors title_vector --batch-size 50
 
     # Programmatic: Update specific vectors
     from scripts.update_vectors import update_vectors
-    await update_vectors(["review_vector", "episode_vector"])
+    await update_vectors(["title_vector", "episode_vector"])
 
     # Programmatic: Update single anime
     from scripts.update_vectors import update_single_anime_vectors
