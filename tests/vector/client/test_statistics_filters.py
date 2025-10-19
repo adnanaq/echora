@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-# Add project root to path
-project_root = Path("/home/dani/code/anime-vector-service")
+# Add project root to path (resolve dynamically from test file location)
+project_root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(project_root))
 
 from src.config.settings import get_settings
