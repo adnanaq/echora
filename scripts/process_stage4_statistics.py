@@ -265,7 +265,7 @@ def extract_all_statistics(sources: Dict[str, Dict[str, Any]]) -> Dict[str, Any]
     return statistics
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     parser = argparse.ArgumentParser(
         description="Stage 4: Extract statistics from multiple anime data sources"
