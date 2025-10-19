@@ -80,7 +80,7 @@ def _extract_nested_value(obj: Dict[str, Any], key_path: str) -> Any:
     return value
 
 
-async def run_comprehensive_tests():
+async def run_comprehensive_tests() -> None:
     """Run comprehensive tests on all statistics filters using QdrantClient."""
 
     settings = get_settings()
