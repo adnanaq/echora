@@ -185,7 +185,7 @@ def extract_anilist_statistics(anilist_data: Dict[str, Any]) -> Dict[str, Any]:
     Field mappings:
     - averageScore → score (÷10 for 0-10 scale, e.g., 86 → 8.6)
     - favourites → favorites
-    - popularity → popularity_rank
+    - popularity → members (number of users with anime on their list)
     - rankings → contextual_ranks (extract array of ranking objects)
     """
     # Extract contextual ranks
@@ -208,8 +208,8 @@ def extract_anilist_statistics(anilist_data: Dict[str, Any]) -> Dict[str, Any]:
         "score": normalize_score(safe_get(anilist_data, "averageScore"), scale_factor=0.1),
         "scored_by": None,
         "rank": None,
-        "popularity_rank": safe_get(anilist_data, "popularity"),
-        "members": None,
+        "popularity_rank": None,
+        "members": safe_get(anilist_data, "popularity"),
         "favorites": safe_get(anilist_data, "favourites"),
         "contextual_ranks": contextual_ranks
     }

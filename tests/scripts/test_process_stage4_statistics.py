@@ -343,10 +343,10 @@ class TestExtractAniListStatistics:
 
         assert result["score"] == 8.4
         assert result["favorites"] == 15497
-        assert result["popularity_rank"] == 284464
+        assert result["members"] == 284464
         assert result["scored_by"] is None
         assert result["rank"] is None
-        assert result["members"] is None
+        assert result["popularity_rank"] is None
 
         # Check contextual ranks
         assert len(result["contextual_ranks"]) == 2
@@ -737,7 +737,7 @@ class TestMainExecution:
         # Run script
         import subprocess
         result = subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -765,7 +765,7 @@ class TestMainExecution:
         # Run script
         import subprocess
         result = subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -795,7 +795,7 @@ class TestMainExecution:
         # Run script with custom temp dir
         import subprocess
         result = subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(custom_temp)],
+            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(custom_temp)],
             capture_output=True,
             text=True
         )
@@ -815,7 +815,7 @@ class TestMainExecution:
 
         import subprocess
         subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -840,7 +840,7 @@ class TestMainExecution:
 
         import subprocess
         subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
