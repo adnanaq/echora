@@ -27,7 +27,6 @@ class AnimePlanetEnrichmentHelper:
 
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
-        pass
 
     async def extract_slug_from_url(self, url: str) -> Optional[str]:
         """Extract Anime-Planet slug from URL."""

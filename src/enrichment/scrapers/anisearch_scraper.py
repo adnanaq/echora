@@ -4,8 +4,6 @@ Provides anime details, descriptions (multi-language), and metadata from AniSear
 Uses cloudscraper for reliable access without Cloudflare blocking.
 """
 
-import asyncio
-import json
 import logging
 import re
 from typing import Any, Dict, Optional
@@ -502,6 +500,7 @@ class AniSearchScraper(BaseScraper):
                     # Try to parse: find title between info and publisher
                     # Format: "Manga, 20+/190+ (2021)DandadanShuueisha Inc."
                     import re
+
                     # Extract title - it's between the date and company
                     title_match = re.search(r'\)\s*(.+?)\s*(?:[A-Z][a-z]+\s+Inc\.|$)', link_text)
                     title = title_match.group(1) if title_match else link_text.split(')')[-1].strip()

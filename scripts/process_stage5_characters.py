@@ -16,15 +16,15 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 # Add project root to path for imports (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.enrichment.ai_character_matcher import (
-    process_characters_with_ai_matching,
     AICharacterMatcher,
+    process_characters_with_ai_matching,
 )
 
 # Configure logging
