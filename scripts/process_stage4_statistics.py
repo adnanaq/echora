@@ -235,10 +235,8 @@ def extract_anidb_statistics(anidb_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def has_any_statistics(stats: Dict[str, Any]) -> bool:
     """Check if statistics object has any non-null values (excluding contextual_ranks)."""
-    return any(
-        stats[key] is not None
-        for key in ["score", "scored_by", "rank", "popularity_rank", "members", "favorites"]
-    )
+    keys = ("score", "scored_by", "rank", "popularity_rank", "members", "favorites")
+    return any(stats.get(k) is not None for k in keys)
 
 
 def extract_all_statistics(sources: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
