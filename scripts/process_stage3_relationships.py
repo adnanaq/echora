@@ -4,13 +4,13 @@ Multi-source relationship analysis according to Stage 3 prompt requirements.
 Processes Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, and offline URLs data with intelligent deduplication.
 """
 
+import argparse
 import json
+import os
 import re
 import sys
-import os
-import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Set, Optional
+from typing import Any, Dict, List, Optional, Set
 
 # Project root for resolving paths (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -35,7 +35,7 @@ def clean_animeplanet_title(title: str) -> str:
 
     return cleaned.strip()
 
-def map_animeplanet_relationship(relation_type: str, relation_subtype: str = None) -> str:
+def map_animeplanet_relationship(relation_type: str, relation_subtype: Optional[str] = None) -> str:
     """
     Map AnimePlanet relationship types to standardized types.
     Use subtype when available, otherwise map relation_type.
@@ -81,6 +81,29 @@ def map_animeschedule_relationship(category: str) -> str:
     }
     return mapping.get(category, "Other")
 
+def map_anisearch_relationship(relation_type: str) -> str:
+    """
+    Map AniSearch relationship types to standardized types.
+    """
+    mapping = {
+        "Sequel": "Sequel",
+        "Prequel": "Prequel",
+        "Character": "Character",
+        "Side Story": "Side Story",
+        "Spin-off": "Spin-off",
+        "Alternative Version": "Alternative Version",
+        "Movie": "Movie",
+        "OVA": "OVA",
+        "Special": "Special",
+        "Music Video": "Music Video",
+        "Summary": "Summary",
+        "Original Work": "Adaptation",
+        "Parent Story": "Parent story",
+        "Full Story": "Full story",
+        "Other": "Other"
+    }
+    return mapping.get(relation_type, "Other")
+
 def route_to_url(route: str) -> str:
     """
     Convert AnimSchedule route to full URL.
@@ -97,7 +120,7 @@ def route_to_title(route: str) -> str:
     title = ' '.join(word.capitalize() for word in title.split())
     return title
 
-def process_jikan_relations(jikan_data: Dict[str, Any]) -> tuple[List[Dict], List[Dict]]:
+def process_jikan_relations(jikan_data: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Process Jikan relations data (primary source).
     Returns (related_anime, relations) tuples.
@@ -126,7 +149,7 @@ def process_jikan_relations(jikan_data: Dict[str, Any]) -> tuple[List[Dict], Lis
 
     return related_anime, relations
 
-def process_animeplanet_relations(animeplanet_data: Dict[str, Any]) -> List[Dict]:
+def process_animeplanet_relations(animeplanet_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Process AnimePlanet relations (co-primary source).
     """
@@ -152,7 +175,7 @@ def process_animeplanet_relations(animeplanet_data: Dict[str, Any]) -> List[Dict
 
     return related_anime
 
-def process_animeschedule_relations(animeschedule_data: Dict[str, Any]) -> List[Dict]:
+def process_animeschedule_relations(animeschedule_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Process AnimSchedule relations (supplementary).
     """
@@ -191,13 +214,13 @@ def map_anilist_relationship(relation_type: str) -> str:
     }
     return mapping.get(relation_type, "Other")
 
-def process_anilist_relations(anilist_data: Dict[str, Any]) -> tuple[List[Dict], List[Dict]]:
+def process_anilist_relations(anilist_data: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Process AniList relations data.
     Returns (related_anime, relations) tuples.
     """
-    related_anime = []
-    relations = []
+    related_anime: List[Dict[str, Any]] = []
+    relations: List[Dict[str, Any]] = []
 
     anilist_relations = anilist_data.get("relations", {}).get("edges", [])
 
@@ -224,17 +247,61 @@ def process_anilist_relations(anilist_data: Dict[str, Any]) -> tuple[List[Dict],
 
     return related_anime, relations
 
-def process_anidb_relations(anidb_data: Dict[str, Any]) -> List[Dict]:
+def process_anidb_relations(anidb_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Process AniDB relations data (if available).
     Note: AniDB doesn't typically have explicit relations in the API response.
     """
-    related_anime = []
+    related_anime: List[Dict[str, Any]] = []
 
     # AniDB data structure doesn't typically include relations
     # This is a placeholder for consistency
 
     return related_anime
+
+def process_anisearch_relations(anisearch_data: Dict[str, Any]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Process AniSearch relations (both anime and manga).
+    Returns tuple of (anime_relations, manga_relations).
+    """
+    anime_relations = []
+    manga_relations = []
+
+    # Process anime_relations
+    anisearch_anime_relations = anisearch_data.get("anime_relations", [])
+    for relation in anisearch_anime_relations:
+        relation_type = relation.get("type", "")
+        mapped_type = map_anisearch_relationship(relation_type)
+
+        # Convert partial URL to full URL
+        partial_url = relation.get("url", "")
+        full_url = f"https://www.anisearch.com/{partial_url}" if partial_url else None
+
+        entry_data = {
+            "relation_type": mapped_type,
+            "title": relation.get("title"),
+            "url": full_url
+        }
+        anime_relations.append(entry_data)
+
+    # Process manga_relations
+    anisearch_manga_relations = anisearch_data.get("manga_relations", [])
+    for relation in anisearch_manga_relations:
+        relation_type = relation.get("type", "")
+        mapped_type = map_anisearch_relationship(relation_type)
+
+        # Convert partial URL to full URL
+        partial_url = relation.get("url", "")
+        full_url = f"https://www.anisearch.com/{partial_url}" if partial_url else None
+
+        entry_data = {
+            "relation_type": mapped_type,
+            "title": relation.get("title"),
+            "url": full_url
+        }
+        manga_relations.append(entry_data)
+
+    return anime_relations, manga_relations
 
 def extract_current_anime_related_urls(current_anime_file: str) -> List[str]:
     """
@@ -246,7 +313,7 @@ def extract_current_anime_related_urls(current_anime_file: str) -> List[str]:
             current_anime = json.load(f)
 
         # Get related anime URLs from the current anime being processed
-        related_urls = current_anime.get("relatedAnime", [])
+        related_urls: List[str] = current_anime.get("relatedAnime", [])
 
         print(f"  - Current anime: {current_anime.get('title', 'Unknown')}")
         print(f"  - Related anime URLs from current anime: {len(related_urls)}")
@@ -256,7 +323,7 @@ def extract_current_anime_related_urls(current_anime_file: str) -> List[str]:
         print(f"Error loading current anime file {current_anime_file}: {e}")
         return []
 
-def process_offline_urls(offline_urls: List[str], existing_urls: Set[str], existing_mal_base_urls: Set[str]) -> List[Dict]:
+def process_offline_urls(offline_urls: List[str], existing_urls: Set[str], existing_mal_base_urls: Set[str]) -> List[Dict[str, Any]]:
     """
     Process offline URLs data according to Stage 3 prompt requirements.
 
@@ -389,12 +456,12 @@ def infer_relationship_from_url(url: str) -> str:
     else:
         return "Other"
 
-def deduplicate_by_url(all_relations: List[Dict]) -> List[Dict]:
+def deduplicate_by_url(all_relations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Deduplicate relations using URL-based strategy with priority hierarchy.
     Priority: Jikan > AnimePlanet > AnimSchedule > Offline URLs
     """
-    url_groups = {}
+    url_groups: Dict[str, List[Dict[str, Any]]] = {}
 
     # Group by URL (normalize URLs first)
     for relation in all_relations:
@@ -431,10 +498,10 @@ def deduplicate_by_url(all_relations: List[Dict]) -> List[Dict]:
 
     return deduplicated
 
-def process_all_relationships(current_anime_file: str, temp_dir: str):
+def process_all_relationships(current_anime_file: str, temp_dir: str) -> None:
     """
     Main processing function following Stage 3 prompt requirements.
-    Processes all 6 sources: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, and Offline URLs.
+    Processes all 7 sources: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, AniSearch, and Offline URLs.
 
     Args:
         current_anime_file: Path to current_anime_N.json file
@@ -456,7 +523,10 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     with open(f'{temp_dir}/anidb.json', 'r') as f:
         anidb_data = json.load(f)
 
-    print("Processing relationships from 6 sources...")
+    with open(f'{temp_dir}/anisearch.json', 'r') as f:
+        anisearch_data = json.load(f)
+
+    print("Processing relationships from 7 sources...")
 
     # Step 1: Process Jikan relations (primary source)
     jikan_anime, jikan_manga = process_jikan_relations(jikan_data)
@@ -478,16 +548,20 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     anidb_anime = process_anidb_relations(anidb_data)
     print(f"AniDB: {len(anidb_anime)} anime relations")
 
-    # Step 6: Combine and deduplicate all NON-OFFLINE sources first
+    # Step 6: Process AniSearch relations
+    anisearch_anime, anisearch_manga = process_anisearch_relations(anisearch_data)
+    print(f"AniSearch: {len(anisearch_anime)} anime relations, {len(anisearch_manga)} manga relations")
+
+    # Step 7: Combine and deduplicate all NON-OFFLINE sources first
     non_offline_relations = (jikan_anime + animeplanet_anime + animeschedule_anime +
-                             anilist_anime + anidb_anime)
+                             anilist_anime + anidb_anime + anisearch_anime)
     print(f"Non-offline sources total: {len(non_offline_relations)} anime relations")
 
-    # Step 7: Deduplicate non-offline sources
+    # Step 8: Deduplicate non-offline sources
     deduplicated_non_offline = deduplicate_by_url(non_offline_relations)
     print(f"After non-offline deduplication: {len(deduplicated_non_offline)} anime relations")
 
-    # Step 8: Create set of existing URLs and MAL base URLs from deduplicated non-offline relations
+    # Step 9: Create set of existing URLs and MAL base URLs from deduplicated non-offline relations
     existing_urls = set()
     existing_mal_base_urls = set()
 
@@ -505,7 +579,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
                     mal_base_url = f"https://{match.group(1)}"
                     existing_mal_base_urls.add(mal_base_url)
 
-    # Step 9: Process Offline URLs (check against FINAL deduplicated list)
+    # Step 10: Process Offline URLs (check against FINAL deduplicated list)
     offline_urls = extract_current_anime_related_urls(current_anime_file)
 
     # VERIFICATION: Count what will be skipped vs processed BEFORE processing
@@ -553,12 +627,12 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     else:
         print(f"  ❌ VERIFICATION FAILED: Expected {verification_skipped} skipped, got {actual_skipped}")
 
-    # Step 10: Combine deduplicated non-offline with processed offline
+    # Step 11: Combine deduplicated non-offline with processed offline
     all_anime_relations = deduplicated_non_offline + offline_anime
     print(f"Final total: {len(all_anime_relations)} anime relations (no further deduplication needed)")
 
     # Combine manga relations from sources that have them
-    all_manga_relations = jikan_manga + anilist_manga
+    all_manga_relations = jikan_manga + anilist_manga + anisearch_manga
     print(f"Total manga relations: {len(all_manga_relations)}")
 
     # Create final output
@@ -578,7 +652,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print(f"  - Sources processed: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, Offline URLs")
     print(f"  - File saved: {output_file}")
 
-def auto_detect_temp_dir():
+def auto_detect_temp_dir() -> str:
     """Auto-detect the temp directory based on available directories."""
     temp_base = 'temp'
     if not os.path.exists(temp_base):
@@ -602,7 +676,7 @@ def auto_detect_temp_dir():
         sys.exit(1)
 
 
-def auto_detect_current_anime_file(temp_dir: str):
+def auto_detect_current_anime_file(temp_dir: str) -> str:
     """Auto-detect current anime file following consistent directory structure."""
     # First, check if current_anime.json exists in the provided temp_dir
     current_anime_in_dir = os.path.join(temp_dir, 'current_anime.json')
