@@ -9,6 +9,7 @@ Based on the analysis:
 3. Only proceed after user confirms the issue breakdown
 
 Load the appropriate template based on the classified type:
+
 - Feature → Read `templates/linear_feature.md`
 - Refactor → Read `templates/linear_refactor.md`
 - Chore → Read `templates/linear_chore.md`
@@ -34,6 +35,7 @@ Bad example: **Dependency:** `crawl4ai>=0.7.4` (browser automation)
 Good example: `crawl4ai>=0.7.4` requires `chardet>=5.2.0`
 
 Nested list example for Implementation Details:
+
 - Created `src/enrichment/api_helpers/anisearch_helper.py`
   - Added `AniSearchEnrichmentHelper` class
   - Integrated anime, episode, and character crawlers
@@ -42,12 +44,16 @@ Nested list example for Implementation Details:
   - Added Stage 4 documentation section
   - Updated usage examples
 
-Show user the title and formatted description first for review, then create the issue in Linear using `mcp__linear-server__create_issue` with:
+# Show user the title and formatted description first for review, then create the issue in Linear using `mcp__linear-server__create_issue` with:
 
-- title: Generated title
-- team: "$ARGUMENTS"
-- description: Formatted template content
-- labels: One of [Feature, Bug, Refactor, Research, Chore]
+Show user the title and formatted description first for review, then:
+
+1. Get team ID using `mcp__linear-server__list_teams` to find the team matching "$ARGUMENTS"
+2. Create the issue in Linear using `mcp__linear-server__create_issue` with:
+   - title: Generated title
+   - team: Team ID (NOT team name - use the id field from list_teams)
+   - description: Formatted template content
+   - labels: One of [Feature, Bug, Refactor, Research, Chore]
 
 Feature template example (from templates/linear_feature.md):
 

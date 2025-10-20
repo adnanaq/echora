@@ -46,9 +46,6 @@
           "nicknames": [
             "MASKING"
           ],
-          "character_ids": {
-            "anilist": 136984
-          },
           "images": [
             "https://s4.anilist.co/file/anilistcdn/character/large/b136984-8OOTRF4R5wcy.png"
           ],
@@ -76,9 +73,6 @@
             "CHU²",
             "CHUCHU"
           ],
-          "character_ids": {
-            "anilist": 136986
-          },
           "images": [
             "https://s4.anilist.co/file/anilistcdn/character/large/b136986-NjsHVOR1HXdB.png"
           ],
@@ -105,9 +99,6 @@
           "nicknames": [
             "LAYER"
           ],
-          "character_ids": {
-            "anilist": 136983
-          },
           "images": [
             "https://s4.anilist.co/file/anilistcdn/character/large/b136983-cLucL6a6d9n2.png"
           ],
@@ -133,9 +124,6 @@
           "nicknames": [
             "LOCK"
           ],
-          "character_ids": {
-            "anilist": 133744
-          },
           "images": [
             "https://s4.anilist.co/file/anilistcdn/character/large/b133744-zVyRXr4pkgXZ.jpg"
           ],
@@ -161,9 +149,6 @@
           "nicknames": [
             "PAREO"
           ],
-          "character_ids": {
-            "anilist": 136985
-          },
           "images": [
             "https://s4.anilist.co/file/anilistcdn/character/large/b136985-LMgp0lUFzjTR.png"
           ],
@@ -273,20 +258,6 @@
         "delayed_timetable": false
       },
       "duration": 120,
-      "episode_overrides": {
-        "main_override": {
-          "override_episode": 0,
-          "episodes_aired": 0
-        },
-        "sub_override": {
-          "override_episode": 0,
-          "episodes_aired": 0
-        },
-        "dub_override": {
-          "override_episode": 0,
-          "episodes_aired": 0
-        }
-      },
       "images": {
         "posters": [
           "https://media.kitsu.app/anime/47450/poster_image/d45dad4606a54f054e89f48137caf179.png"
@@ -530,7 +501,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-24T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "d0b650d5-8f51-41c5-b3e8-e9a970b7c264"
     },
     {
       "episodes": 1,
@@ -555,9 +527,6 @@
             "栗山千明"
           ],
           "name_native": "栗山千明",
-          "character_ids": {
-            "mal": 93863
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/223671.jpg"
           ],
@@ -734,7 +703,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-24T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "b7ddd5ac-3cf1-4709-85e6-a2b632faabf4"
     },
     {
       "episodes": 8,
@@ -759,9 +729,6 @@
           ],
           "name_kanji": "綾瀬 奏",
           "name_native": "綾瀬 奏",
-          "character_ids": {
-            "anisearch": 133080
-          },
           "images": [
             "https://cdn.anisearch.com/images/character/cover/133/133080_400.webp"
           ],
@@ -782,9 +749,6 @@
           ],
           "name_kanji": "花岡 桃香",
           "name_native": "花岡 桃香",
-          "character_ids": {
-            "anisearch": 133115
-          },
           "images": [
             "https://cdn.anisearch.com/images/character/cover/133/133115_400.webp"
           ],
@@ -805,9 +769,6 @@
           ],
           "name_kanji": "越智 遼太",
           "name_native": "越智 遼太",
-          "character_ids": {
-            "anisearch": 133114
-          },
           "images": [
             "https://cdn.anisearch.com/images/character/cover/133/133114_400.webp"
           ],
@@ -1008,7 +969,8 @@
         "source": "multi-source",
         "enriched_at": "2025-01-25T12:00:00Z",
         "success": true
-      }
+      },
+      "id": "8b5b790b-2ea2-4a57-8746-549f8ce70b6b"
     },
     {
       "episodes": 1,
@@ -1181,7 +1143,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T15:45:08.270624Z",
         "success": true
-      }
+      },
+      "id": "ec1e15cb-5e0e-4411-8e9f-8ad1cf151210"
     },
     {
       "episodes": 1,
@@ -1285,7 +1248,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T15:57:47.063849Z",
         "success": true
-      }
+      },
+      "id": "759d04a3-96e3-4ed1-ac09-481ae0646515"
     },
     {
       "episodes": 1,
@@ -1309,11 +1273,6 @@
             "Michiru"
           ],
           "name_native": "ミチル",
-          "character_ids": {
-            "mal": 205191,
-            "anilist": 261205,
-            "anidb": 121607
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/9/487737.jpg",
             "https://cdn.anidb.net/images/main/268755.jpg"
@@ -1337,11 +1296,6 @@
             "Yuuki"
           ],
           "name_native": "ユウキ",
-          "character_ids": {
-            "mal": 205187,
-            "anilist": 261204,
-            "anidb": 121608
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/2/487738.jpg",
             "https://cdn.anidb.net/images/main/268756.jpg"
@@ -1365,9 +1319,6 @@
             "Ryoushi"
           ],
           "name_native": "漁師",
-          "character_ids": {
-            "anilist": 346277
-          },
           "character_pages": {},
           "voice_actors": [
             {
@@ -1757,7 +1708,8 @@
         "source": "multi-source",
         "enriched_at": "2025-01-26T14:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "be3eb7a7-3e42-45d0-b0e7-c2024c630cba"
     },
     {
       "episodes": 16,
@@ -2094,7 +2046,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T18:10:02.000419Z",
         "success": true
-      }
+      },
+      "id": "b6c2a13a-d616-48a7-9876-aec4567e59b0"
     },
     {
       "episodes": 1,
@@ -2113,10 +2066,6 @@
         {
           "name": "Amano, Tooko",
           "role": "Main",
-          "character_ids": {
-            "mal": 28451,
-            "anidb": 11667
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/12/98993.jpg?s=e678bc09b1f6610d9d59d1e58f9c9fe4",
             "https://cdn.anidb.net/images/main/40614.jpg"
@@ -2134,10 +2083,6 @@
         {
           "name": "Inoue, Konoha",
           "role": "Main",
-          "character_ids": {
-            "mal": 24792,
-            "anidb": 11668
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/101327.jpg?s=63c7a553c67b49b1abaa94e7837bd96a",
             "https://cdn.anidb.net/images/main/40613.jpg"
@@ -4190,7 +4135,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T20:26:45.100539Z",
         "success": true
-      }
+      },
+      "id": "5970d216-f551-459c-b6ca-e2292e0bf539"
     },
     {
       "background": "Each episode of \"Bungaku Shoujo\" Memoire received a limited one-week run in movie theaters in May 2010.",
@@ -4215,10 +4161,6 @@
           ],
           "name_kanji": "井上 心葉",
           "name_native": "井上 心葉",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 24792
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/101327.jpg"
           ],
@@ -4245,10 +4187,6 @@
           ],
           "name_kanji": "朝倉 美羽",
           "name_native": "朝倉 美羽",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 30494
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/85718.jpg"
           ],
@@ -4271,10 +4209,6 @@
           ],
           "name_kanji": "琴吹 ななせ",
           "name_native": "琴吹 ななせ",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 28937
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/101326.jpg"
           ],
@@ -4294,9 +4228,6 @@
           "role": "Main",
           "name_kanji": "天野 遠子",
           "name_native": "天野 遠子",
-          "character_ids": {
-            "mal": 0
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/12/98993.jpg"
           ],
@@ -4316,9 +4247,6 @@
           "role": "Supporting",
           "name_kanji": "春口",
           "name_native": "春口",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140297/Haruguchi"
           },
@@ -4337,11 +4265,6 @@
           ],
           "name_kanji": "佐々木",
           "name_native": "佐々木",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 36481,
-            "anidb": 19882
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/99158.jpg",
             "https://cdn.anidb.net/images/main/238836.jpg"
@@ -4367,10 +4290,6 @@
           "nicknames": [
             "Chee"
           ],
-          "character_ids": {
-            "mal": 0,
-            "anilist": 28933
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/14/101328.jpg"
           ],
@@ -4390,9 +4309,6 @@
           "role": "Supporting",
           "name_kanji": "絵里",
           "name_native": "絵里",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140293/Eri"
           },
@@ -4408,9 +4324,6 @@
           "role": "Supporting",
           "name_kanji": "美羽の父",
           "name_native": "美羽の父",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140296/Father_Asakura"
           },
@@ -4429,10 +4342,6 @@
           ],
           "name_kanji": "天野 文陽",
           "name_native": "天野 文陽",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 36482
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/5/99159.jpg"
           ],
@@ -4455,10 +4364,6 @@
           ],
           "name_kanji": "桜井 叶子",
           "name_native": "桜井 叶子",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 36480
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/3/99157.jpg"
           ],
@@ -4480,10 +4385,6 @@
           ],
           "name_kanji": "森 紅楽々",
           "name_native": "森 紅楽々",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 28934
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/109246.jpg"
           ],
@@ -4503,9 +4404,6 @@
           "role": "Supporting",
           "name_kanji": "ミキ",
           "name_native": "ミキ",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140294/Miki"
           },
@@ -4521,9 +4419,6 @@
           "role": "Supporting",
           "name_kanji": "美羽の母",
           "name_native": "美羽の母",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140290/Mother_Asakura"
           },
@@ -4539,9 +4434,6 @@
           "role": "Supporting",
           "name_kanji": "心葉の母",
           "name_native": "心葉の母",
-          "character_ids": {
-            "mal": 0
-          },
           "character_pages": {
             "mal": "https://myanimelist.net/character/140291/Mother_Inoue"
           },
@@ -4560,10 +4452,6 @@
           ],
           "name_kanji": "桜井 流人",
           "name_native": "桜井 流人",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 28936
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/5/99156.jpg"
           ],
@@ -4586,10 +4474,6 @@
           ],
           "name_kanji": "天野 結衣",
           "name_native": "天野 結衣",
-          "character_ids": {
-            "mal": 0,
-            "anilist": 36483
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/3/99160.jpg"
           ],
@@ -5384,7 +5268,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T22:47:32.891024Z",
         "success": true
-      }
+      },
+      "id": "9bc4e747-cc66-4754-b146-c9e5d52ef0f3"
     },
     {
       "background": "\"Bungaku Shoujo\" Movie was announced with the release of the first manga volume and the first light novel in April 2009. The first trailer was included with the release of the \"Bungaku Shoujo\" Kyou no Oyatsu: Hatsukoi DVD episode. The movie adapts the events of \"Bungaku Shoujo\" to Doukoku no Palmier, the fifth volume in the light novel series. It went on to earn 59 million yen in the Japanese box office.",
@@ -5409,9 +5294,6 @@
           ],
           "name_kanji": "天野遠子",
           "name_native": "天野遠子",
-          "character_ids": {
-            "mal": 28451
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/12/98993.jpg",
             "https://cdn.anidb.net/images/main/40614.jpg"
@@ -5433,9 +5315,6 @@
           ],
           "name_kanji": "井上心葉",
           "name_native": "井上心葉",
-          "character_ids": {
-            "mal": 28452
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/101327.jpg",
             "https://cdn.anidb.net/images/main/40613.jpg"
@@ -5457,9 +5336,6 @@
           ],
           "name_kanji": "朝倉美羽",
           "name_native": "朝倉美羽",
-          "character_ids": {
-            "mal": 28453
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/85718.jpg",
             "https://cdn.anidb.net/images/main/49496.jpg"
@@ -5481,9 +5357,6 @@
           ],
           "name_kanji": "琴吹七瀬",
           "name_native": "琴吹七瀬",
-          "character_ids": {
-            "mal": 28454
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/101326.jpg",
             "https://cdn.anidb.net/images/main/40612.jpg"
@@ -5505,9 +5378,6 @@
           ],
           "name_kanji": "芥川一志",
           "name_native": "芥川一志",
-          "character_ids": {
-            "mal": 28455
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/2/117552.jpg",
             "https://cdn.anidb.net/images/main/40611.jpg"
@@ -6009,7 +5879,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T17:19:00Z",
         "success": true
-      }
+      },
+      "id": "7609f994-dd66-4bfe-921a-163ee3e10462"
     },
     {
       "episodes": 1,
@@ -6151,7 +6022,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T20:27:42.932946Z",
         "success": true
-      }
+      },
+      "id": "6ad7601c-0f3d-4b83-8e64-8bde4bb6f5b3"
     },
     {
       "episodes": 1,
@@ -6170,9 +6042,6 @@
         {
           "name": "Akagi, Eiji",
           "role": "Main",
-          "character_ids": {
-            "mal": 98515
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/7/378274.jpg?s=79d27db061477a29ff2e125a16928cba"
           ],
@@ -6187,9 +6056,6 @@
         {
           "name": "Akagi, Koujiro",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 98517
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/7/559475.jpg?s=7c2ba58de19381e8b6c09d5b440524e3"
           ],
@@ -6204,9 +6070,6 @@
         {
           "name": "Akagi, Kimie",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 98523
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/559474.jpg?s=51592172e5e65fbf8dd9653de4668fd2"
           ],
@@ -6221,9 +6084,6 @@
         {
           "name": "Kusanagi, Aya",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 98521
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/378275.jpg?s=490a0f651403c9131875523b3095947d"
           ],
@@ -6238,9 +6098,6 @@
         {
           "name": "Kusanagi, Naoya",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 169953
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/14/378276.jpg?s=585dd987da5a77c6b16137de67e6362f"
           ],
@@ -6255,9 +6112,6 @@
         {
           "name": "Nogi, Daigo",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 253394
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/16/559473.jpg?s=3d8d6ca583aa8f525fb134823bf06dd2"
           ],
@@ -6272,9 +6126,6 @@
         {
           "name": "Takasugi, Marina",
           "role": "Supporting",
-          "character_ids": {
-            "mal": 253395
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/559472.jpg?s=7012b30c38d04f9bccaf1c989dd20ee4"
           ],
@@ -6517,7 +6368,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T16:53:16.183106Z",
         "success": true
-      }
+      },
+      "id": "e1e73349-67e3-4bd9-9d33-c5fab3d0ded4"
     },
     {
       "episodes": 2,
@@ -6757,7 +6609,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T12:41:22.631259Z",
         "success": true
-      }
+      },
+      "id": "207d8b48-48fd-4f96-94ce-4ccf0d9732fa"
     },
     {
       "episodes": 1,
@@ -6785,11 +6638,6 @@
           ],
           "name_kanji": "山田 烏鷺",
           "name_native": "山田烏鷺",
-          "character_ids": {
-            "mal": 142363,
-            "anilist": 135754,
-            "anidb": 84799
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/319921.jpg",
             "https://cdn.anidb.net/images/main/307364.jpg"
@@ -6813,11 +6661,6 @@
           ],
           "name_kanji": "山田 カロン",
           "name_native": "山田カロン",
-          "character_ids": {
-            "mal": 147446,
-            "anilist": 135760,
-            "anidb": 84796
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/12/319918.jpg",
             "https://cdn.anidb.net/images/main/307366.jpg"
@@ -6841,11 +6684,6 @@
           ],
           "name_kanji": "倉敷 隘路 / アイロ",
           "name_native": "倉敷隘路",
-          "character_ids": {
-            "mal": 147447,
-            "anilist": 135759,
-            "anidb": 84797
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/14/319919.jpg",
             "https://cdn.anidb.net/images/main/307367.jpg"
@@ -6869,11 +6707,6 @@
           ],
           "name_kanji": "叶 レカ",
           "name_native": "叶レカ",
-          "character_ids": {
-            "mal": 147448,
-            "anilist": 135761,
-            "anidb": 84798
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/3/319923.jpg",
             "https://cdn.anidb.net/images/main/307365.jpg"
@@ -6897,11 +6730,6 @@
           ],
           "name_kanji": "面鳴 白亜",
           "name_native": "面鳴白亜",
-          "character_ids": {
-            "mal": 147449,
-            "anilist": 135756,
-            "anidb": 84801
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/9/319984.jpg",
             "https://cdn.anidb.net/images/main/307362.jpg"
@@ -6925,11 +6753,6 @@
           ],
           "name_kanji": "面鳴 紅玉",
           "name_native": "面鳴紅玉",
-          "character_ids": {
-            "mal": 147450,
-            "anilist": 135757,
-            "anidb": 84802
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/319926.jpg",
             "https://cdn.anidb.net/images/main/307363.jpg"
@@ -6952,11 +6775,6 @@
           ],
           "name_kanji": "眼鏡",
           "name_native": "眼鏡",
-          "character_ids": {
-            "mal": 147451,
-            "anilist": 135755,
-            "anidb": 84800
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/319924.jpg",
             "https://cdn.anidb.net/images/main/307368.jpg"
@@ -6979,11 +6797,6 @@
           ],
           "name_kanji": "アリス",
           "name_native": "アリス",
-          "character_ids": {
-            "mal": 147452,
-            "anilist": 135758,
-            "anidb": 84795
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/6/331178.jpg",
             "https://cdn.anidb.net/images/main/307219.jpg"
@@ -7366,7 +7179,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T18:31:50.491902Z",
         "success": true
-      }
+      },
+      "id": "000bdcaa-82cd-4d2f-9d76-0e2b571e974f"
     },
     {
       "episodes": 1,
@@ -7524,7 +7338,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T18:28:15.020637Z",
         "success": true
-      }
+      },
+      "id": "644d8074-0de8-483b-8efd-fe2e4a550d12"
     },
     {
       "episodes": 1,
@@ -7656,7 +7471,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T19:15:35.465131Z",
         "success": true
-      }
+      },
+      "id": "02308c91-4cde-4f01-9610-dad4fe0f8115"
     },
     {
       "episodes": 1,
@@ -7724,7 +7540,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T14:58:45.123456Z",
         "success": true
-      }
+      },
+      "id": "3a24cf05-c996-4473-a15f-192fe02d6e8b"
     },
     {
       "episodes": 1,
@@ -7851,7 +7668,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:07:13.183864Z",
         "success": true
-      }
+      },
+      "id": "e18d1049-9731-42a4-b220-18682878c0d4"
     },
     {
       "episodes": 1,
@@ -7952,7 +7770,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "4663e3e0-e621-47db-9f8d-edfa68903e6d"
     },
     {
       "episodes": 2,
@@ -8077,7 +7896,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:23:24.769332Z",
         "success": true
-      }
+      },
+      "id": "37f3d4ec-bdc1-477c-b965-457696c85ba6"
     },
     {
       "episodes": 1,
@@ -8183,7 +8003,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:38:21.942639Z",
         "success": true
-      }
+      },
+      "id": "4131c001-7482-474c-aaec-845f916ecfb4"
     },
     {
       "episodes": 1,
@@ -8240,7 +8061,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:38:41.063116Z",
         "success": true
-      }
+      },
+      "id": "6f621d97-d5fc-43f7-832a-1f51521cc2ae"
     },
     {
       "episodes": 12,
@@ -8254,11 +8076,6 @@
         {
           "name": "Apricot, Flum",
           "role": "Main",
-          "character_ids": {
-            "mal": 187661,
-            "anilist": 219037,
-            "anidb": 149412
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/597780.jpg?s=ba30d6423a9f97223da7354d4b2bfc06"
           ],
@@ -8275,9 +8092,6 @@
         {
           "name": "Milkit",
           "role": "MAIN",
-          "character_ids": {
-            "anilist": 219038
-          },
           "character_pages": {}
         }
       ],
@@ -8614,7 +8428,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:56:06.229636Z",
         "success": true
-      }
+      },
+      "id": "ee6d9170-8b83-45e7-9c08-9441502e0cb6"
     },
     {
       "background": "French composer Erik Satie (1866-1925) created the ballet music piece \"Parade\" in 1916, at the age of 50, and it was first performed in 1917, with Jean Cocteau and Pablo Picasso taking part to its creation on the scene. The ballet was introduced by the poet Guillaume Apollinaire, who described it by using the term \"surrealism\" for the very first time. Mixing quotes from Satie's essays with the music performed by a Dutch jazz band, the Willem Breuker Kollektief, this film is an animated re-creation of \"realist ballet\" images going beyond reality.",
@@ -8896,7 +8711,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T20:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "acd78996-f71b-41b5-9a78-ecb944c44d8e"
     },
     {
       "episodes": 1,
@@ -8914,9 +8730,6 @@
         {
           "name": "Pikachu",
           "role": "Main",
-          "character_ids": {
-            "mal": 3891
-          },
           "images": [
             "https://cdn.myanimelist.net/images/characters/10/289627.jpg?s=b97db39e3126c4cc184a764059abe0f6"
           ],
@@ -9067,7 +8880,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T15:57:00.759347Z",
         "success": true
-      }
+      },
+      "id": "96ed477f-003f-483e-a8e8-c742b08d295c"
     },
     {
       "episodes": 1,
@@ -9191,7 +9005,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T10:45:00Z",
         "success": true
-      }
+      },
+      "id": "fea904d7-0e70-42a7-8e2e-2cad1c78321d"
     },
     {
       "background": "Official music video for the song \" \"Star\"t\". It is the 46th song in the franchise. The song was included with the HaNaMiNa's CD of the same name, released on October 24, 2019.",
@@ -9538,7 +9353,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T12:16:41.197388Z",
         "success": true
-      }
+      },
+      "id": "dc7ce925-a976-477b-9530-8cafb47ca864"
     },
     {
       "episodes": 1,
@@ -9669,7 +9485,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T17:51:57.181978Z",
         "success": true
-      }
+      },
+      "id": "f01d4035-8619-42d7-93a4-8558f1a48fc4"
     }
   ]
 }

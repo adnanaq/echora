@@ -16,7 +16,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -33,10 +33,12 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from pydantic import ValidationError
+
     from src.models.anime import AnimeEntry
 except ImportError:
     print("Error: Could not import AnimeEntry model. Ensure you're in the correct directory.")

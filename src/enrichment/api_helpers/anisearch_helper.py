@@ -16,7 +16,6 @@ class AniSearchEnrichmentHelper:
 
     def __init__(self) -> None:
         """Initialize AniSearch helper (crawlers are stateless)."""
-        pass
 
     async def extract_anisearch_id_from_url(self, url: str) -> Optional[int]:
         """Extract AniSearch ID from URL.
@@ -221,4 +220,3 @@ class AniSearchEnrichmentHelper:
 
     async def close(self) -> None:
         """Cleanup (crawlers are stateless, no cleanup needed)."""
-        pass
