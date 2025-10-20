@@ -39,10 +39,16 @@ def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 sources[source_name] = json.load(f)
                 print(f"Loaded {source_name} data")
-        except Exception as e:
+        except FileNotFoundError as e:
+            print(f"Warning: Could not load {source_name}: {e}")
+            sources[source_name] = {}
+        except json.JSONDecodeError as e:
+            print(f"Warning: Malformed JSON for {source_name}: {e}")
+            sources[source_name] = {}
+        except OSError as e:
             print(f"Warning: Could not load {source_name}: {e}")
             sources[source_name] = {}
 
