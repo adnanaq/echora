@@ -55,6 +55,7 @@ dev = [
 
     # Pretty output formatting
     "rich>=13.0.0",
+    "pip-audit>=2.7.0",
 ]
 
 [build-system]

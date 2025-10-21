@@ -1,0 +1,97 @@
+name: 'Main CI'
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  code-quality-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-root
+
+      - name: Run Ruff (Linting and Formatting)
+        run: poetry run ruff check . && poetry run ruff format . --check
+
+      - name: Run MyPy (Type Checking)
+        run: poetry run mypy src/
+
+      - name: Run isort (Import Sorting)
+        run: poetry run isort . --check-only
+
+      - name: Run Dependency Vulnerability Scan (pip-audit)
+        run: poetry run pip-audit
+
+  test-execution:
+    runs-on: ubuntu-latest
+    needs: code-quality-checks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-root
+
+      - name: Run Pytest (Unit and Integration Tests)
+        run: poetry run pytest
+
+      - name: Generate Coverage Report
+        run: poetry run coverage run -m pytest && poetry run coverage report
+
+  application-health-check:
+    runs-on: ubuntu-latest
+    needs: test-execution
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker Images
+        run: docker-compose -f docker/docker-compose.yml build
+
+      - name: Start Docker Containers
+        run: docker-compose -f docker/docker-compose.yml up -d
+
+      - name: Wait for services to be ready
+        run: sleep 10 # Give services time to start
+
+      - name: Run Health Checks
+        run: |
+          curl --fail http://localhost:8000/docs || exit 1
+          curl --fail http://localhost:8000/health || exit 1 # Assuming a /health endpoint exists
+
+      - name: Teardown Docker Containers
+        run: docker-compose -f docker/docker-compose.yml down
+
+  ai-code-review:
+    needs: application-health-check
+    uses: ./.github/workflows/gemini-review.yml
+    with:
+      additional_context: "Focus on potential performance bottlenecks and security vulnerabilities."
+
+  ai-triage:
+    if: github.event_name == 'issues'
+    uses: ./.github/workflows/gemini-triage.yml
