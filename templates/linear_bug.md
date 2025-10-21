@@ -1,8 +1,8 @@
 ### Environment
 
-- [] Dev
-- [] Staging
-- [] Production
+- [ ] Dev
+- [ ] Staging
+- [ ] Production
 
 ### What Happened
 
