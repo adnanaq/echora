@@ -4,7 +4,6 @@ import asyncio
 import json
 import re
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
 
 import cloudscraper  # type: ignore
 from bs4 import BeautifulSoup, Tag

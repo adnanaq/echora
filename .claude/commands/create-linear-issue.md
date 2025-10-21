@@ -1,5 +1,3 @@
-Read the file at: $1
-
 Analyze the codebase to understand what changes were made. Check git status and recent commits to identify modified files.
 
 Classify the change type and assign appropriate label: Feature, Bug, Refactor, Research, or Chore.
@@ -10,38 +8,54 @@ Based on the analysis:
 2. If multiple issues are needed, list them and ask for user approval before proceeding
 3. Only proceed after user confirms the issue breakdown
 
+Load the appropriate template based on the classified type:
+
+- Feature → Read `templates/linear_feature.md`
+- Refactor → Read `templates/linear_refactor.md`
+- Chore → Read `templates/linear_chore.md`
+- Bug/Research → Use Feature template structure as fallback
+
 Generate a concise, descriptive title based on the changes made (this will be passed as the `title` parameter, separate from description).
 
-Fill the template sections with actual implementation details based on code changes. Use template headings exactly as provided - do NOT add or modify sections:
-
-- What: Brief description of what was implemented/changed
-- Why: Reason and impact
-- Implementation Details: Files created/modified, dependencies added/updated
-- Acceptance Criteria: What the implementation achieves
-- Testing/Validation: Test files, coverage, test cases
-- Related Issues/Dependencies: Dependencies and related issues
+Fill the template sections with actual implementation details based on code changes. CRITICAL: Use the loaded template's exact section headings and structure - do NOT modify section names or add/remove sections
 
 Format the description with:
 
-- Use `###` for section headings (as in template)
+- Use `###` for section headings exactly as they appear in the loaded template
+- Preserve all section names including bracketed notes (e.g., "Development Checklist [tasks to complete before closing the issue]")
 - Use `backticks` for code, file paths, library versions
 - Use **bold** for library names only (e.g., **crawl4ai**)
-- Testing/Validation items MUST be markdown checkboxes `[ ]`
+- All checklist items MUST be markdown checkboxes `[ ]`
+- List items can have nested sublists when needed (e.g., file changes with sub-bullets for modifications)
 - Do NOT add bold anywhere except library names
 - Do NOT use colons after prefixes like "Dependency:" or "Conflict:" - write naturally without labels
-- Do NOT use plain bullet points for Testing/Validation - they MUST be checkboxes
+- Preserve template-specific formatting (e.g., `<details>` tags in refactor template)
 
 Bad example: **Dependency:** `crawl4ai>=0.7.4` (browser automation)
 Good example: `crawl4ai>=0.7.4` requires `chardet>=5.2.0`
 
-Show user the title and formatted description first for review, then create the issue in Linear using `mcp__linear-server__create_issue` with:
+Nested list example for Implementation Details:
 
-- title: Generated title
-- team: "$2"
-- description: Formatted template content
-- labels: One of [Feature, Bug, Refactor, Research, Chore]
+- Created `src/enrichment/api_helpers/anisearch_helper.py`
+  - Added `AniSearchEnrichmentHelper` class
+  - Integrated anime, episode, and character crawlers
+  - Implemented error handling for `AttributeError`, `TypeError`, `ValueError`
+- Modified `CLAUDE.md`
+  - Added Stage 4 documentation section
+  - Updated usage examples
 
-Example:
+# Show user the title and formatted description first for review, then create the issue in Linear using `mcp__linear-server__create_issue` with:
+
+Show user the title and formatted description first for review, then:
+
+1. Get team ID using `mcp__linear-server__list_teams` to find the team matching "$ARGUMENTS"
+2. Create the issue in Linear using `mcp__linear-server__create_issue` with:
+   - title: Generated title
+   - team: Team ID (NOT team name - use the id field from list_teams)
+   - description: Formatted template content
+   - labels: One of [Feature, Bug, Refactor, Research, Chore]
+
+Feature template example (from templates/linear_feature.md):
 
 Title: Integrate AniSearch Crawlers into API Helper System
 
