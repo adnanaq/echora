@@ -93,6 +93,6 @@ jobs:
     with:
       additional_context: "Focus on potential performance bottlenecks and security vulnerabilities."
 
-  ai-triage:
-    if: github.event_name == 'issues'
-    uses: ./.github/workflows/gemini-triage.yml
+#  ai-triage:
+#    if: github.event_name == 'issues'
+#    uses: ./.github/workflows/gemini-triage.yml
