@@ -400,8 +400,9 @@ class VisionProcessor:
         try:
             if url_or_path.startswith("http"):
                 # Use requests for synchronous download
-                import requests
                 from io import BytesIO
+
+                import requests
 
                 response = requests.get(url_or_path, timeout=10)
                 response.raise_for_status()

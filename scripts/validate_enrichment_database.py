@@ -17,13 +17,13 @@ Usage:
 import argparse
 import json
 import logging
+import sys
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:

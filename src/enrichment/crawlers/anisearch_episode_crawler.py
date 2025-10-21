@@ -16,7 +16,7 @@ import argparse
 import asyncio
 import json
 import re
-from typing import Optional, cast
+from typing import Optional
 
 from crawl4ai import (
     AsyncWebCrawler,

@@ -14,7 +14,7 @@ Usage:
 import argparse
 import asyncio
 import json
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 from crawl4ai import (
     AsyncWebCrawler,

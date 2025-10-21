@@ -561,6 +561,19 @@ python process_stage3_relationships.py One_agent1 --temp-dir custom_temp
 python process_stage3_relationships.py --current-anime temp/One_agent1/current_anime.json
 ```
 
+#### Stage 4: Statistics Extraction (`process_stage4_statistics.py`)
+
+**Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`)
+
+**Example Usage**:
+```bash
+# Recommended: Use agent_id
+python scripts/process_stage4_statistics.py Dandadan_agent1
+
+# Custom temp directory
+python scripts/process_stage4_statistics.py Dandadan_agent1 --temp-dir custom_temp
+```
+
 #### Stage 5: AI Character Matching (`process_stage5_characters.py`)
 
 **Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--restart` (optional flag)
