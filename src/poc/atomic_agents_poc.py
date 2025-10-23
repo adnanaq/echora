@@ -10,13 +10,12 @@ a local LLM instead of OpenAI API.
 
 Requirements:
     - Ollama running locally (http://localhost:11434)
-    - Model: qwen3:30b (pull with: ollama pull qwen3:30b)
+    - Model: qwen3:8b (pull with: ollama pull qwen3:8b)
     - instructor package: pip install instructor
     - atomic-agents package: pip install atomic-agents
 """
 
 import asyncio
-import json
 import logging
 import os
 from typing import Any, Dict, List, Optional, Union
@@ -40,19 +39,19 @@ except ImportError:
     )
 
 from src.config.settings import get_settings
-from src.vector.client.qdrant_client import QdrantClient
 from src.poc.tools import (
-    CharacterSearchTool,
     CharacterSearchInputSchema,
-    ImageSearchTool,
+    CharacterSearchTool,
     ImageSearchInputSchema,
-    MultimodalSearchTool,
+    ImageSearchTool,
     MultimodalSearchInputSchema,
+    MultimodalSearchTool,
     QdrantToolConfig,
     SearchOutputSchema,
-    TextSearchTool,
     TextSearchInputSchema,
+    TextSearchTool,
 )
+from src.vector.client.qdrant_client import QdrantClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -60,10 +59,6 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Agent Input/Output Schemas
-# ============================================================================
-
-
 # Agent Input/Output Schemas
 # ============================================================================
 
@@ -89,10 +84,43 @@ class QueryParsingOutputSchema(BaseIOSchema):
         MultimodalSearchInputSchema,
         CharacterSearchInputSchema,
     ] = Field(
-        ..., description="Parameters for the selected tool (type determines which tool to use)"
+        ...,
+        description="Parameters for the selected tool (type determines which tool to use)",
+        discriminator="tool_type",
     )
     reasoning: str = Field(
         ..., description="Explanation of why this tool and parameters were chosen"
+    )
+
+
+class FormattedAnimeResult(BaseIOSchema):
+    """Single formatted anime result."""
+
+    title: str = Field(..., description="English or Romaji title of the anime")
+    anime_id: Optional[str] = Field(None, description="Unique anime identifier")
+    year: Optional[int] = Field(None, description="Release year")
+    similarity_score: float = Field(
+        ..., description="Search similarity/relevance score"
+    )
+    average_score: Optional[float] = Field(
+        None, description="Cross-platform arithmetic mean score (0-10)"
+    )
+    mal_score: Optional[float] = Field(None, description="MyAnimeList score (0-10)")
+    anilist_score: Optional[float] = Field(None, description="AniList score (0-10)")
+    animeplanet_score: Optional[float] = Field(
+        None, description="AnimePlanet score (0-10)"
+    )
+
+
+class FormattedResultsSchema(BaseIOSchema):
+    """Output schema for formatted search results."""
+
+    results: List[FormattedAnimeResult] = Field(
+        ..., description="List of formatted anime search results"
+    )
+    total_count: int = Field(..., description="Total number of results found")
+    summary: str = Field(
+        ..., description="Brief summary of the search results and key findings"
     )
 
 
@@ -133,9 +161,10 @@ class AnimeQueryAgent:
             api_key="ollama",  # Dummy API key for Ollama
         )
 
+        # Use TOOLS mode for Qwen3 (supports function calling for better JSON adherence)
         self.client = instructor.from_openai(
             ollama_client,
-            mode=instructor.Mode.JSON,
+            mode=instructor.Mode.JSON_SCHEMA,  # Most reliable mode for Ollama with JSON schema
         )
 
         # Initialize search tools as direct instance variables (orchestrator pattern)
@@ -155,7 +184,7 @@ class AnimeQueryAgent:
             model=self.model,
             system_prompt_generator=self.system_prompt,
             model_api_parameters={
-                "temperature": 0.7,
+                "temperature": 0,  # Deterministic output for consistent JSON
                 "max_tokens": 2000,
             },
         )
@@ -165,6 +194,8 @@ class AnimeQueryAgent:
             config=self.agent_config
         )
 
+        # Note: Formatting is done with simple Python code, no second agent needed
+
     def _create_system_prompt(self) -> SystemPromptGenerator:
         """Create the system prompt for query parsing.
 
@@ -173,151 +204,164 @@ class AnimeQueryAgent:
         """
         return SystemPromptGenerator(
             background=[
-                "You are an expert anime search query parser.",
-                "Your job is to analyze user queries and determine the best search approach.",
-                "You understand anime terminology, genres, statistics, and filter requirements.",
-                "You MUST return a JSON response with exactly three fields: tool_name, parameters, and reasoning.",
-                "",
-                "=== AVAILABLE TOOLS ===",
-                "",
-                "TOOL 1: text_search",
-                "Description: Semantic text search using BGE-M3 embeddings across 9 text vectors",
-                "Parameters:",
-                "  - query (string, REQUIRED): The search query text",
-                "  - limit (integer, optional): Max results to return (1-100, default: 10)",
-                "  - fusion_method (string, optional): 'rrf' or 'dbsf' (default: 'rrf')",
-                "  - filters (object, optional): Filter conditions (see FILTER FORMAT below)",
-                "Returns: List of anime with similarity scores",
-                "",
-                "TOOL 2: image_search",
-                "Description: Visual search using OpenCLIP ViT-L/14 embeddings",
-                "Parameters:",
-                "  - image_data (string, REQUIRED): Base64 encoded image",
-                "  - limit (integer, optional): Max results (default: 10)",
-                "  - fusion_method (string, optional): 'rrf' or 'dbsf' (default: 'rrf')",
-                "  - filters (object, optional): Filter conditions",
-                "Returns: List of visually similar anime",
-                "",
-                "TOOL 3: multimodal_search",
-                "Description: Combined text + image semantic search",
-                "Parameters:",
-                "  - query (string, REQUIRED): The search query text",
-                "  - image_data (string, optional): Base64 encoded image",
-                "  - limit (integer, optional): Max results (default: 10)",
-                "  - fusion_method (string, optional): 'rrf' or 'dbsf' (default: 'rrf')",
-                "  - filters (object, optional): Filter conditions",
-                "Returns: List of anime matching text and/or visual similarity",
-                "",
-                "TOOL 4: character_search",
-                "Description: Search focused on character names and appearances",
-                "Parameters:",
-                "  - query (string, REQUIRED): Character-focused query",
-                "  - image_data (string, optional): Base64 character image",
-                "  - limit (integer, optional): Max results (default: 10)",
-                "  - fusion_method (string, optional): 'rrf' or 'dbsf' (default: 'rrf')",
-                "  - filters (object, optional): Filter conditions",
-                "Returns: List of anime with matching characters",
-                "",
-                "=== FILTER FORMAT ===",
-                "",
-                "Filters support the following field types:",
-                "",
-                "1. STATISTICS FILTERS (range queries with gte/lte/gt/lt):",
-                "   - statistics.mal.score: float (0-10, MAL rating)",
-                "   - statistics.mal.scored_by: integer (number of MAL ratings)",
-                "   - statistics.mal.members: integer (MAL member count)",
-                "   - statistics.mal.favorites: integer (MAL favorites)",
-                "   - statistics.mal.rank: integer (MAL rank position, lower is better)",
-                "   - statistics.mal.popularity_rank: integer (MAL popularity rank)",
-                "   - statistics.anilist.score: float (0-10, AniList rating)",
-                "   - statistics.anilist.favorites: integer (AniList favorites)",
-                "   - statistics.anilist.popularity_rank: integer",
-                "   - statistics.anidb.score: float (0-10, AniDB rating)",
-                "   - statistics.anidb.scored_by: integer",
-                "   - statistics.animeplanet.score: float (0-10)",
-                "   - statistics.animeplanet.scored_by: integer",
-                "   - statistics.animeplanet.rank: integer",
-                "   - statistics.kitsu.score: float (0-10)",
-                "   - statistics.kitsu.members: integer",
-                "   - statistics.kitsu.favorites: integer",
-                "   - statistics.kitsu.rank: integer",
-                "   - statistics.kitsu.popularity_rank: integer",
-                "   - statistics.animeschedule.score: float (0-10)",
-                "   - statistics.animeschedule.scored_by: integer",
-                "   - statistics.animeschedule.members: integer",
-                "   - statistics.animeschedule.rank: integer",
-                "   - score.arithmetic_mean: float (0-10, cross-platform average)",
-                "",
-                "2. LIST FILTERS (match any):",
-                "   - genres: array of strings (e.g., ['Action', 'Adventure'])",
-                "   - tags: array of strings",
-                "   - type: string (e.g., 'TV', 'Movie', 'OVA', 'Special')",
-                "   - status: string (e.g., 'FINISHED', 'RELEASING', 'NOT_YET_RELEASED')",
-                "",
-                "3. RANGE FILTER OPERATORS:",
-                "   - gte: Greater than or equal (>=)",
-                "   - lte: Less than or equal (<=)",
-                "   - gt: Greater than (>)",
-                "   - lt: Less than (<)",
-                "",
-                "FILTER EXAMPLES:",
-                "  High rated: {'statistics.mal.score': {'gte': 8.0}}",
-                "  Popular: {'statistics.mal.members': {'gte': 100000}}",
-                "  Top ranked: {'statistics.mal.rank': {'lte': 100}}",
-                "  Multiple platforms: {'statistics.mal.score': {'gte': 7.5}, 'statistics.anilist.score': {'gte': 7.5}}",
-                "  Genre filter: {'genres': ['Action', 'Shounen']}",
-                "  Combined: {'statistics.mal.score': {'gte': 7.0}, 'genres': ['Action'], 'type': 'TV'}",
+                "You are an AI agent that parses anime search queries and extracts structured filters for search tools.",
+                "Your task is to determine user intent, map filters to a predefined JSON schema, and select the appropriate search tool.",
+                "Understand anime terminology, genres, statistics, score sources, and filtering requirements.",
+                "Vague/adjective-based score interpretations (apply when no explicit source or numeric threshold is mentioned):",
+                "  - 'highly rated', 'excellent': aggregated_score.arithmetic_mean >= 8.0",
+                "  - 'well-rated', 'good': aggregated_score.arithmetic_mean >= 7.0",
+                "  - 'average', 'decent': aggregated_score.arithmetic_mean >= 5.0",
+                # Filters
+                "Filters include:",
+                "  1. Statistics filters: range queries (gte, lte, gt, lt).",
+                "     - Generic score (cross-platform average): aggregated_score.arithmetic_mean (0-10).",
+                "       Use this by default when the query does not specify a source.",
+                "     - Source-specific scores used only when the query explicitly mentions a source:",
+                "       - statistics.mal.{score|scored_by|members|favorites|rank|popularity_rank}",
+                "       - statistics.anilist.{score|favorites|popularity_rank}",
+                "       - statistics.anidb.{score|scored_by}",
+                "       - statistics.animeplanet.{score|scored_by|rank}",
+                "       - statistics.kitsu.{score|members|favorites|rank|popularity_rank}",
+                "       - statistics.animeschedule.{score|scored_by|members|rank}",
+                "  2. List filters: genres, tags, type, status",
+                "     - type: uppercase string ['TV','MOVIE','OVA','ONA','SPECIAL','MUSIC','PV','UNKNOWN']",
+                "     - status: uppercase string ['FINISHED','ONGOING','UPCOMING','UNKNOWN']",
+                "     - genres: list of strings ['Action', 'Adventure', ...]",
+                "  3. Range operators: gte, lte, gt, lt",
+                # Examples
+                "Example filters:",
+                "  Generic score (no source mentioned):",
+                "    {'aggregated_score.arithmetic_mean': {'gte': 8.0}}",
+                "    {'aggregated_score.arithmetic_mean': {'gte': 7.5}, 'genres': ['Action']}",
+                "  Source-specific (source explicitly mentioned):",
+                "    {'statistics.mal.score': {'gte': 8.0}}",
+                "    {'statistics.mal.score': {'gte': 7.5}, 'statistics.anilist.score': {'gte': 7.5}}",
+                "  Other filters:",
+                "    {'genres': ['Action','Adventure'], 'type': 'MOVIE', 'status': 'FINISHED'}",
+                # Tool selection instructions
+                "You must select the appropriate tool based on the query:",
+                "  - text_search: semantic search for anime titles, genres, themes, or staff",
+                "  - image_search: visual similarity search using cover art or posters",
+                "  - multimodal_search: combined text + image search",
+                "  - character_search: search specifically for character names or character-focused queries",
+                "Always set the tool_type field in tool_parameters accordingly.",
+                # Additional guidance
+                "For queries mentioning generic terms like 'highly rated', 'popular', or 'quality', interpret them as needing a score filter using aggregated_score.arithmetic_mean unless a specific platform is mentioned.",
+                "Do not return the input or user query in your response.",
+                "Only return tool_parameters and reasoning in the output JSON.",
             ],
             steps=[
-                "Analyze the user's natural language query",
-                "Identify the search intent (text-only, image-only, multimodal, character-focused)",
-                "Extract any filter requirements from the query (score thresholds, genres, year ranges, etc.)",
-                "Map filter requirements to Qdrant filter format",
-                "Select the appropriate search tool",
-                "Format parameters correctly for the selected tool",
-                "Return JSON with tool_name, parameters, and reasoning fields",
+                "Analyze the user's query to clearly identify the intent (e.g., searching for anime, characters, or images).",
+                "Determine whether the query is source-specific (mentions MAL, Anilist, etc.) or generic.",
+                "Extract all relevant filters, including scores, genres, types, statuses, and tags.",
+                "If no explicit source is mentioned, use the generic field 'aggregated_score.arithmetic_mean' for score-based filters.",
+                "Map all extracted filters to the predefined JSON schema exactly as defined in the background.",
+                "Select the appropriate tool_type based on the query intent:",
+                "  - text_search: for anime title, genre, or thematic queries.",
+                "  - image_search: for visual similarity or cover/poster-based queries.",
+                "  - multimodal_search: when both text and image inputs are relevant.",
+                "  - character_search: for queries that explicitly reference character names or character-specific searches.",
+                "Populate tool_parameters with all required fields: tool_type, query (text), image_data (if applicable), limit (default 10), fusion_method (default 'rrf'), and filters.",
+                "Ensure the final response strictly matches the JSON schema described in output_instructions, with only 'tool_parameters' and 'reasoning' fields.",
             ],
             output_instructions=[
-                "YOU MUST RETURN ONLY JSON WITH EXACTLY THESE TWO FIELDS:",
-                "",
-                "REQUIRED OUTPUT STRUCTURE:",
-                "{",
-                '  "tool_parameters": {',
-                '    "query": string (required for text/multimodal/character search),',
-                '    "image_data": string (required for image search, optional for multimodal/character),',
-                '    "limit": number (optional, default 10),',
-                '    "fusion_method": "rrf" | "dbsf" (optional, default "rrf"),',
-                '    "filters": {} (optional)',
-                "  },",
-                '  "reasoning": "your explanation here"',
-                "}",
-                "",
-                "DO NOT return the input. DO NOT include user_query in your response.",
-                "ONLY return tool_parameters and reasoning.",
-                "The structure of tool_parameters determines which tool will be used automatically.",
-                "",
-                "Filter format examples:",
-                "  - Single score: {'statistics.mal.score': {'gte': 8.0}}",
-                "  - Multiple scores: {'statistics.mal.score': {'gte': 7.0}, 'statistics.anilist.score': {'gte': 7.0}}",
-                "  - Genre filter: {'genres': ['Action', 'Adventure']}",
-                "  - Combined: {'statistics.mal.score': {'gte': 7.0}, 'genres': ['Drama'], 'type': 'MOVIE'}",
-                "",
-                "COMPLETE VALID EXAMPLE:",
-                '{"tool_parameters": {"query": "action anime", "limit": 10, "fusion_method": "rrf", "filters": {"statistics.mal.score": {"gte": 7.5}}}, "reasoning": "Text search with MAL score filter for highly rated action anime"}',
+                "Return ONLY a JSON object with exactly these fields: tool_parameters, reasoning.",
+                "tool_parameters schema:",
+                "  tool_type (required): 'text_search', 'image_search', 'multimodal_search', or 'character_search'.",
+                "  query (required for text/multimodal/character searches): string.",
+                "  image_data (required for image search, optional otherwise): string.",
+                "  limit (optional, default 10): number.",
+                "  fusion_method (optional, default 'rrf'): 'rrf' | 'dbsf'.",
+                "  filters (optional): dictionary of filter criteria (see background).",
+                "reasoning: string explaining the choice of tool and filters.",
+                "Important:",
+                "  - Do NOT include user_query in the output.",
+                "  - Do NOT return any text outside the JSON object.",
+                "Examples (valid JSON, all in single-line to avoid parsing errors):",
+                '{"tool_parameters":{"tool_type":"text_search","query":"highly rated action anime","limit":10,"fusion_method":"rrf","filters":{"aggregated_score.arithmetic_mean":{"gte":7.5},"genres":["Action"]}},"reasoning":"generic text search with cross-platform average score filter"}',
+                '{"tool_parameters":{"tool_type":"character_search","query":"masuki satou","limit":10,"fusion_method":"rrf","filters":{}},"reasoning":"character search for anime featuring the character masuki satou"}',
             ],
         )
 
+    def format_results(
+        self, search_results: SearchOutputSchema
+    ) -> FormattedResultsSchema:
+        """Format raw search results into clean, structured output.
+
+        Args:
+            search_results: Raw search results from Qdrant
+
+        Returns:
+            Formatted results with extracted key information
+        """
+        formatted_results = []
+
+        for result in search_results.results:
+            # Convert to dict if it's a Pydantic model
+            if hasattr(result, "model_dump"):
+                result_dict = result.model_dump()
+            else:
+                result_dict = dict(result)
+
+            # Extract title
+            title = result_dict.get("title", "Unknown")
+
+            # Extract scores
+            aggregated_score_data = result_dict.get("aggregated_score", {})
+            avg_score = (
+                aggregated_score_data.get("arithmetic_mean")
+                if isinstance(aggregated_score_data, dict)
+                else None
+            )
+
+            # Get similarity score from Qdrant's score field
+            similarity = result_dict.get("score", 0.0)
+
+            # Extract platform scores
+            stats = result_dict.get("statistics", {})
+            mal_score = stats.get("mal", {}).get("score") if stats else None
+            anilist_score = stats.get("anilist", {}).get("score") if stats else None
+            animeplanet_score = (
+                stats.get("animeplanet", {}).get("score") if stats else None
+            )
+
+            formatted_results.append(
+                FormattedAnimeResult(
+                    title=title,
+                    anime_id=result_dict.get("id"),
+                    year=result_dict.get("year"),
+                    similarity_score=similarity,
+                    average_score=avg_score,
+                    mal_score=mal_score,
+                    anilist_score=anilist_score,
+                    animeplanet_score=animeplanet_score,
+                )
+            )
+
+        # Create simple summary
+        summary = f"Found {len(formatted_results)} {search_results.search_type} search results"
+
+        return FormattedResultsSchema(
+            results=formatted_results,
+            total_count=len(formatted_results),
+            summary=summary,
+        )
+
     def parse_and_search(
-        self, user_query: str, image_data: Optional[str] = None
-    ) -> SearchOutputSchema:
+        self,
+        user_query: str,
+        image_data: Optional[str] = None,
+        format_results: bool = True,
+    ) -> Union[SearchOutputSchema, FormattedResultsSchema]:
         """Parse a natural language query and execute the appropriate search.
 
         Args:
             user_query: Natural language query from the user
             image_data: Optional base64 encoded image data
+            format_results: Whether to format results using LLM (default: True)
 
         Returns:
-            Search results from the appropriate tool
+            Raw search results (SearchOutputSchema) or formatted results (FormattedResultsSchema)
 
         Example queries:
             - "Find highly rated action anime" -> text search with score filter
@@ -353,116 +397,19 @@ class AnimeQueryAgent:
                 logger.error(f"Unknown tool parameters type: {type(tool_params)}")
                 return SearchOutputSchema(results=[], count=0, search_type="error")
 
-            # Log agent decision with clear formatting
-            logger.info("=" * 80)
-            logger.info("AGENT DECISION")
-            logger.info("=" * 80)
-            logger.info(f"Selected Tool: {tool_name}")
+            # Log essential decision info
+            logger.info(
+                f"Tool: {tool_name} | Filters: {tool_params.filters} | Count: {result.count}"
+            )
             logger.info(f"Reasoning: {agent_output.reasoning}")
-            logger.info("-" * 80)
-            logger.info("Parsed Parameters:")
-            logger.info(json.dumps(tool_params.model_dump(), indent=2))
-            logger.info("=" * 80)
-            logger.info(f"Executing {tool_name} with parsed parameters...")
+            # logger.info(f"Results: {result.results}")  # Commented out - too verbose
 
-            # Log the actual values being passed to Qdrant
-            logger.info("-" * 80)
-            logger.info("VALUES PASSED TO QDRANT:")
-            logger.info(f"  Query: {tool_params.query if hasattr(tool_params, 'query') else 'N/A'}")
-            logger.info(f"  Limit: {tool_params.limit}")
-            logger.info(f"  Fusion Method: {tool_params.fusion_method}")
-            logger.info(f"  Filters: {json.dumps(tool_params.filters, indent=4) if tool_params.filters else 'None'}")
-            logger.info("-" * 80)
-
-            logger.info(f"Tool returned {result.count} results")
-            logger.info("=" * 80 + "\n")
+            # Optionally format results with Python extraction
+            if format_results:
+                return self.format_results(result)
 
             return result
 
         except Exception as e:
             logger.error(f"Query parsing and search failed: {e}", exc_info=True)
-            return SearchOutputSchema(
-                results=[], count=0, search_type="error"
-            )
-
-
-# ============================================================================
-# Example Usage
-# ============================================================================
-
-
-def main() -> None:
-    """Demonstrate the atomic agents POC with example queries."""
-    # Initialize settings and Qdrant client
-    settings = get_settings()
-    qdrant_client = QdrantClient(
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-        settings=settings,
-    )
-
-    # Initialize the agent with Ollama
-    # Note: Ensure Ollama is running with qwen3:30b model
-    # Run: ollama pull qwen3:30b
-    agent = AnimeQueryAgent(
-        qdrant_client=qdrant_client,
-        model="qwen3:30b",
-        ollama_base_url="http://localhost:11434/v1",
-    )
-
-    # Example queries demonstrating different search patterns
-    example_queries = [
-        # Text search with filters
-        "Find highly rated action anime with scores above 7.5 on MAL",
-
-        # Simple text search
-        "Anime about pirates and adventure",
-
-        # Character search
-        "Shows featuring characters like Spike Spiegel",
-
-        # Complex filters
-        "Popular romance anime from 2020-2023 with at least 50k members on MAL",
-
-        # Genre-based search
-        "Psychological thriller anime with good ratings",
-    ]
-
-    print("\n" + "=" * 80)
-    print("ATOMIC AGENTS POC - ANIME SEARCH QUERY PARSING")
-    print("=" * 80 + "\n")
-
-    for i, query in enumerate(example_queries, 1):
-        print(f"\n{'-' * 80}")
-        print(f"Example {i}: {query}")
-        print(f"{'-' * 80}\n")
-
-        result = agent.parse_and_search(query)
-
-        print(f"Search Type: {result.search_type}")
-        print(f"Results Count: {result.count}")
-
-        if result.count > 0:
-            print("\nTop 3 Results:")
-            for j, anime in enumerate(result.results[:3], 1):
-                title = anime.get("title", {})
-                if isinstance(title, dict):
-                    title_str = title.get("english") or title.get("romaji") or "Unknown"
-                else:
-                    title_str = str(title)
-
-                score = anime.get("score", anime.get("_score", 0))
-                mal_score = anime.get("statistics", {}).get("mal", {}).get("score", "N/A")
-
-                print(f"  {j}. {title_str}")
-                print(f"     Similarity: {score:.4f}, MAL Score: {mal_score}")
-
-        print()
-
-    print("\n" + "=" * 80)
-    print("POC Demonstration Complete")
-    print("=" * 80 + "\n")
-
-
-if __name__ == "__main__":
-    main()
+            return SearchOutputSchema(results=[], count=0, search_type="error")

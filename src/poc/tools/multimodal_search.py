@@ -81,17 +81,7 @@ class MultimodalSearchTool(BaseTool[MultimodalSearchInputSchema, SearchOutputSch
             # Build Qdrant filter from filter dictionary
             qdrant_filter = None
             if params.filters:
-                logger.info(f"Building Qdrant Filter object from: {params.filters}")
                 qdrant_filter = self.client._build_filter(params.filters)
-                logger.info(f"Built Qdrant Filter: {qdrant_filter}")
-
-            # Log the call to Qdrant
-            logger.info(f"Calling Qdrant search_complete:")
-            logger.info(f"  - Query: '{params.query}'")
-            logger.info(f"  - Image data: {'Provided' if params.image_data else 'None'}")
-            logger.info(f"  - Limit: {params.limit}")
-            logger.info(f"  - Fusion: {params.fusion_method}")
-            logger.info(f"  - Filter: {'Applied' if qdrant_filter else 'None'}")
 
             # Run async search in sync context
             loop = asyncio.get_event_loop()
@@ -103,10 +93,6 @@ class MultimodalSearchTool(BaseTool[MultimodalSearchInputSchema, SearchOutputSch
                     fusion_method=params.fusion_method,
                     filters=qdrant_filter,
                 )
-            )
-
-            logger.info(
-                f"Multimodal search for '{params.query}' returned {len(results)} results"
             )
 
             return SearchOutputSchema(

@@ -4,13 +4,13 @@ This module contains all input/output schemas and configuration classes
 used across the different search tools.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from atomic_agents import BaseIOSchema, BaseToolConfig  # type: ignore[import-untyped]
 from pydantic import Field
 
+from src.models.anime import AnimeEntry
 from src.vector.client.qdrant_client import QdrantClient
-
 
 # ============================================================================
 # Tool Configuration
@@ -33,6 +33,7 @@ class QdrantToolConfig(BaseToolConfig):  # type: ignore[misc]
 class TextSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
     """Input schema for text-based anime search."""
 
+    tool_type: Literal["text_search"] = Field(default="text_search", description="Tool type discriminator")
     query: str = Field(..., description="Text query to search for anime content")
     limit: int = Field(
         default=10, description="Maximum number of results to return", ge=1, le=100
@@ -50,6 +51,7 @@ class TextSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
 class ImageSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
     """Input schema for image-based anime search."""
 
+    tool_type: Literal["image_search"] = Field(default="image_search", description="Tool type discriminator")
     image_data: str = Field(..., description="Base64 encoded image data")
     limit: int = Field(
         default=10, description="Maximum number of results to return", ge=1, le=100
@@ -67,6 +69,7 @@ class ImageSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
 class MultimodalSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
     """Input schema for multimodal (text + image) anime search."""
 
+    tool_type: Literal["multimodal_search"] = Field(default="multimodal_search", description="Tool type discriminator")
     query: str = Field(..., description="Text query to search for anime content")
     image_data: Optional[str] = Field(
         default=None, description="Optional base64 encoded image data"
@@ -87,6 +90,7 @@ class MultimodalSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
 class CharacterSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
     """Input schema for character-focused anime search."""
 
+    tool_type: Literal["character_search"] = Field(default="character_search", description="Tool type discriminator")
     query: str = Field(
         ..., description="Text query focused on character names or descriptions"
     )
@@ -114,8 +118,8 @@ class CharacterSearchInputSchema(BaseIOSchema):  # type: ignore[misc]
 class SearchOutputSchema(BaseIOSchema):  # type: ignore[misc]
     """Output schema for all search operations."""
 
-    results: List[Dict[str, Any]] = Field(
-        default_factory=list, description="List of search results with scores"
+    results: List[AnimeEntry] = Field(
+        default_factory=list, description="List of search results"
     )
     count: int = Field(default=0, description="Number of results returned")
     search_type: str = Field(

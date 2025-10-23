@@ -77,16 +77,7 @@ class ImageSearchTool(BaseTool[ImageSearchInputSchema, SearchOutputSchema]):  # 
             # Build Qdrant filter from filter dictionary
             qdrant_filter = None
             if params.filters:
-                logger.info(f"Building Qdrant Filter object from: {params.filters}")
                 qdrant_filter = self.client._build_filter(params.filters)
-                logger.info(f"Built Qdrant Filter: {qdrant_filter}")
-
-            # Log the call to Qdrant
-            logger.info(f"Calling Qdrant search_visual_comprehensive:")
-            logger.info(f"  - Image data length: {len(params.image_data) if params.image_data else 0} bytes")
-            logger.info(f"  - Limit: {params.limit}")
-            logger.info(f"  - Fusion: {params.fusion_method}")
-            logger.info(f"  - Filter: {'Applied' if qdrant_filter else 'None'}")
 
             # Run async search in sync context
             loop = asyncio.get_event_loop()
@@ -98,8 +89,6 @@ class ImageSearchTool(BaseTool[ImageSearchInputSchema, SearchOutputSchema]):  # 
                     filters=qdrant_filter,
                 )
             )
-
-            logger.info(f"Image search returned {len(results)} results")
 
             return SearchOutputSchema(
                 results=results, count=len(results), search_type="image"
