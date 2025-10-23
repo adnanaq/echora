@@ -13,7 +13,8 @@ Load the appropriate template based on the classified type:
 - Feature → Read `templates/linear_feature.md`
 - Refactor → Read `templates/linear_refactor.md`
 - Chore → Read `templates/linear_chore.md`
-- Bug/Research → Use Feature template structure as fallback
+- Bug → Read `templates/linear_bug.md`
+- Research → Read `templates/linear_research.md`
 
 Generate a concise, descriptive title based on the changes made (this will be passed as the `title` parameter, separate from description).
 
