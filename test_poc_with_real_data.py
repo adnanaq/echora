@@ -38,38 +38,9 @@ def print_separator(title: str) -> None:
 
 
 def print_results(result, original_query: str, max_results: int = 3) -> None:
-    """Print search results in a readable format."""
+    """Print search results - just show the raw result."""
     print(f'\nOriginal Query: "{original_query}"')
-    print(f"Search Type: {result.search_type}")
-    print(f"Results Count: {result.count}\n")
-
-    if result.count > 0:
-        print(f"Top {min(max_results, result.count)} Results:")
-        for i, anime in enumerate(result.results[:max_results], 1):
-            title = anime.get("title", "Unknown")
-            score = anime.get("score", anime.get("_score", 0))
-
-            # Extract statistics
-            stats = anime.get("statistics", {})
-            mal_score = stats.get("mal", {}).get("score", "N/A")
-            anilist_score = stats.get("anilist", {}).get("score", "N/A")
-            mal_members = stats.get("mal", {}).get("members", "N/A")
-
-            # Extract metadata
-            genres = anime.get("genres", [])
-            anime_type = anime.get("type", "N/A")
-            status = anime.get("status", "N/A")
-
-            print(f"  {i}. {title}")
-            print(f"     Similarity: {score:.4f}")
-            print(
-                f"     MAL Score: {mal_score}, AniList Score: {anilist_score}, Members: {mal_members}"
-            )
-            print(f"     Type: {anime_type}, Status: {status}")
-            if genres:
-                print(f"     Genres: {', '.join(genres[:5])}")
-    else:
-        print("No results found.")
+    print(f"Result: {result}")
 
 
 def main() -> None:
@@ -189,18 +160,55 @@ def main() -> None:
     print_results(result15, query15)
 
     # ========================================================================
+    # GENERIC SCORE vs SOURCE-SPECIFIC TESTS
+    # ========================================================================
+
+    print_separator("TEST 16: Generic Score (should use score.arithmetic_mean)")
+    query16 = "Find highly rated action anime"
+    result16 = agent.parse_and_search(query16)
+    print_results(result16, query16)
+
+    print_separator("TEST 17: Source-Specific Score (should use statistics.mal.score)")
+    query17 = "Shows with MAL score above 8.0"
+    result17 = agent.parse_and_search(query17)
+    print_results(result17, query17)
+
+    print_separator("TEST 18: Generic Score with Genre")
+    query18 = "Romance anime with good scores"
+    result18 = agent.parse_and_search(query18)
+    print_results(result18, query18)
+
+    # ========================================================================
+    # CHARACTER SEARCH TESTS
+    # ========================================================================
+
+    print_separator("TEST 19: Character Search (should use character_search tool)")
+    query19 = "Anime featuring characters like Masuki Satou or CHU²"
+    result19 = agent.parse_and_search(query19)
+    print_results(result19, query19)
+
+    print_separator("TEST 20: Character Search with Filters")
+    query20 = "Shows with characters like LAYER and high ratings"
+    result20 = agent.parse_and_search(query20)
+    print_results(result20, query20)
+
+    # ========================================================================
     # Summary
     # ========================================================================
 
     print_separator("TEST SUMMARY")
-    print("✓ Tested 15 different query patterns")
+    print("✓ Tested 20 different query patterns")
     print("✓ Covered single filters, multiple filters, and complex constraints")
     print("✓ Tested numerical ranges (gte, lte, gt, lt)")
     print("✓ Tested genre, type, status, and multi-platform score filters")
+    print("✓ Tested generic vs source-specific score filters")
+    print("✓ Tested character search tool routing")
     print("\nCheck the logs above to verify:")
     print("  - LLM correctly parsed each query")
+    print("  - Generic scores use score.arithmetic_mean")
+    print("  - Source-specific scores use statistics.<source>.score")
+    print("  - Character queries route to character_search tool")
     print("  - Filters were properly formatted")
-    print("  - Qdrant Filter objects show correct Range values")
     print("  - Results match the filter criteria")
     print("\n" + "=" * 80 + "\n")
 
