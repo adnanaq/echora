@@ -590,6 +590,45 @@ python process_stage5_characters.py One_agent1 --restart
 python process_stage5_characters.py One_agent1 --temp-dir custom_temp
 ```
 
+### Vector Database Management
+
+#### Selective Vector Updates (`scripts/update_vectors.py`)
+
+Update specific vectors without full reindexing.
+
+**Arguments**:
+- `--vectors VECTOR [VECTOR ...]`: Vector names to update (required)
+- `--index N`: Update specific anime by index (0-based)
+- `--title "TITLE"`: Update anime matching title (partial match)
+- `--batch-size N`: Anime per batch (default: 100)
+- `--file PATH`: Custom data file path
+
+**Example Usage**:
+```bash
+# Update single vector for all anime
+uv run python scripts/update_vectors.py --vectors title_vector
+
+# Update multiple vectors
+uv run python scripts/update_vectors.py --vectors genre_vector character_vector
+
+# Update specific anime by index
+uv run python scripts/update_vectors.py --vectors staff_vector --index 5
+
+# Update by title search
+uv run python scripts/update_vectors.py --vectors temporal_vector --title "Bungaku"
+
+# Custom batch size
+uv run python scripts/update_vectors.py --vectors image_vector --batch-size 50
+```
+
+#### Full Database Reindexing (`scripts/reindex_anime_database.py`)
+
+Complete reindexing with all 11 vectors. Deletes and recreates collection.
+
+```bash
+uv run python scripts/reindex_anime_database.py
+```
+
 ### Multi-Vector Collection Design
 
 The service uses a single Qdrant collection with named vectors:
