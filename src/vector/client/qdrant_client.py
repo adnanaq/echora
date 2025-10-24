@@ -48,6 +48,7 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
 from ...config import Settings
 from ...models.anime import AnimeEntry
 from ..processors.embedding_manager import MultiVectorEmbeddingManager
+from .vector_db_client import VectorDBClient
 
 logger = logging.getLogger(__name__)
 
@@ -61,22 +62,18 @@ def is_float_vector(vector: Any) -> TypeGuard[List[float]]:
     )
 
 
-class QdrantClient:
+class QdrantClient(VectorDBClient):
     """Qdrant client wrapper optimized for anime search operations."""
 
     def __init__(
         self,
+        embedding_manager: MultiVectorEmbeddingManager,
         url: Optional[str] = None,
         collection_name: Optional[str] = None,
         settings: Optional[Settings] = None,
     ):
-        """Initialize Qdrant client with FastEmbed and configuration.
+        super().__init__(url, collection_name, settings)
 
-        Args:
-            url: Qdrant server URL (optional, uses settings if not provided)
-            collection_name: Name of the anime collection (optional, uses settings if not provided)
-            settings: Configuration settings instance (optional, will import default if not provided)
-        """
         # Use provided settings or import default settings
         if settings is None:
             from ...config.settings import Settings
@@ -95,11 +92,20 @@ class QdrantClient:
 
         self._distance_metric = settings.qdrant_distance_metric
 
-        # Initialize embedding manager
-        self.embedding_manager = MultiVectorEmbeddingManager(settings)
+        # Use the provided embedding manager
+        self.embedding_manager = embedding_manager
 
-        # Initialize processors
-        self._init_processors()
+        # Update vector sizes based on embedding manager's models
+        text_info = self.embedding_manager.text_processor.get_model_info()
+        vision_info = self.embedding_manager.vision_processor.get_model_info()
+
+        self._vector_size = text_info.get("embedding_size", 384)
+        self._image_vector_size = vision_info.get("embedding_size", 512)
+
+        logger.info(
+            f"QdrantClient initialized - Text: {text_info['model_name']} ({self._vector_size}), "
+            f"Vision: {vision_info['model_name']} ({self._image_vector_size})"
+        )
 
         # Create collection if it doesn't exist
         self._initialize_collection()

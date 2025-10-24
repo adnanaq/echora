@@ -15,7 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import admin, search, similarity
 from .config import get_settings
-from .vector.client.qdrant_client import QdrantClient
+from .vector.client.vector_db_client import VectorDBClient
+from .vector.client.vector_db_factory import VectorDBClientFactory
+from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
 
 # Get application settings
 settings = get_settings()
@@ -27,26 +29,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Global instances
-qdrant_client: QdrantClient | None = None
+vector_db_client: VectorDBClient | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize services on startup"""
-    global qdrant_client
+    global vector_db_client
 
-    # Initialize Qdrant client
-    logger.info("Initializing Qdrant client...")
-    qdrant_client = QdrantClient(
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
+    # Initialize embedding manager
+    logger.info("Initializing embedding manager...")
+    embedding_manager = MultiVectorEmbeddingManager(settings)
+
+    # Initialize VectorDB client using the factory
+    logger.info(f"Initializing {settings.vector_db_provider} client...")
+    vector_db_client = VectorDBClientFactory.get_client(
+        embedding_manager=embedding_manager,
         settings=settings,
+        url=settings.qdrant_url if settings.vector_db_provider == "qdrant" else None, # Pass Qdrant URL only if Qdrant
+        collection_name=settings.qdrant_collection_name if settings.vector_db_provider == "qdrant" else None, # Pass Qdrant collection name only if Qdrant
     )
 
     # Health check
-    healthy = await qdrant_client.health_check()
+    healthy = await vector_db_client.health_check()
     if not healthy:
-        logger.error("Qdrant health check failed!")
+        logger.error(f"{settings.vector_db_provider} health check failed!")
         raise RuntimeError("Vector database is not available")
 
     logger.info("Vector service initialized successfully")
@@ -79,16 +86,16 @@ app.add_middleware(
 async def health_check() -> Dict[str, Any]:
     """Health check endpoint."""
     try:
-        if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
+        if vector_db_client is None:
+            raise HTTPException(status_code=503, detail="VectorDB client not initialized")
 
-        qdrant_status = await qdrant_client.health_check()
+        db_status = await vector_db_client.health_check()
         return {
-            "status": "healthy" if qdrant_status else "unhealthy",
+            "status": "healthy" if db_status else "unhealthy",
             "timestamp": datetime.utcnow().isoformat(),
             "service": "anime-vector-service",
             "version": settings.api_version,
-            "qdrant_status": qdrant_status,
+            f"{settings.vector_db_provider}_status": db_status,
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")

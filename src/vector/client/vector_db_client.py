@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client.models import Filter
 
+from ...config import Settings
 from ...models.anime import AnimeEntry
 
 
@@ -18,7 +19,7 @@ class VectorDBClient(abc.ABC):
         self,
         url: Optional[str] = None,
         collection_name: Optional[str] = None,
-        settings: Optional[Any] = None,  # Use Any to avoid circular dependency with Settings
+        settings: Optional[Settings] = None,
     ):
         """Initialize the vector database client."""
         pass

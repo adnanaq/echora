@@ -41,6 +41,11 @@ class Settings(BaseSettings):
         default="cosine", description="Distance metric for similarity"
     )
 
+    # Vector Database Provider Configuration
+    vector_db_provider: Literal["qdrant", "pinecone", "weaviate", "milvus", "marqo"] = Field(
+        default="qdrant", description="Vector database provider to use"
+    )
+
     # Multi-Vector Configuration
     image_vector_size: int = Field(
         default=768,
