@@ -124,6 +124,12 @@ async def main():
         if successful_entries > 0:
             print("\n Indexing completed with some success!")
 
+            # Save updated anime data with generated IDs
+            print("\n💾 Saving updated anime data with generated IDs...")
+            with open("./data/qdrant_storage/enriched_anime_database.json", "w", encoding="utf-8") as f:
+                json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
+            print("✅ Updated data saved successfully")
+
             # Verify results
             info = client.client.get_collection(settings.qdrant_collection_name)
             print(f"\n Final collection status:")
