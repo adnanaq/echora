@@ -4,7 +4,7 @@ This module contains all input/output schemas and configuration classes
 used across the different search tools.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from atomic_agents import BaseIOSchema, BaseToolConfig  # type: ignore[import-untyped]
 from pydantic import Field

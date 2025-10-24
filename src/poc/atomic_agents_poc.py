@@ -208,13 +208,13 @@ class AnimeQueryAgent:
                 "Your task is to determine user intent, map filters to a predefined JSON schema, and select the appropriate search tool.",
                 "Understand anime terminology, genres, statistics, score sources, and filtering requirements.",
                 "Vague/adjective-based score interpretations (apply when no explicit source or numeric threshold is mentioned):",
-                "  - 'highly rated', 'excellent': aggregated_score.arithmetic_mean >= 8.0",
-                "  - 'well-rated', 'good': aggregated_score.arithmetic_mean >= 7.0",
-                "  - 'average', 'decent': aggregated_score.arithmetic_mean >= 5.0",
+                "  - 'highly rated', 'excellent': score.arithmetic_mean >= 8.0",
+                "  - 'well-rated', 'good': score.arithmetic_mean >= 7.0",
+                "  - 'average', 'decent': score.arithmetic_mean >= 5.0",
                 # Filters
                 "Filters include:",
                 "  1. Statistics filters: range queries (gte, lte, gt, lt).",
-                "     - Generic score (cross-platform average): aggregated_score.arithmetic_mean (0-10).",
+                "     - Generic score (cross-platform average): score.arithmetic_mean (0-10).",
                 "       Use this by default when the query does not specify a source.",
                 "     - Source-specific scores used only when the query explicitly mentions a source:",
                 "       - statistics.mal.{score|scored_by|members|favorites|rank|popularity_rank}",
@@ -231,8 +231,8 @@ class AnimeQueryAgent:
                 # Examples
                 "Example filters:",
                 "  Generic score (no source mentioned):",
-                "    {'aggregated_score.arithmetic_mean': {'gte': 8.0}}",
-                "    {'aggregated_score.arithmetic_mean': {'gte': 7.5}, 'genres': ['Action']}",
+                "    {'score.arithmetic_mean': {'gte': 8.0}}",
+                "    {'score.arithmetic_mean': {'gte': 7.5}, 'genres': ['Action']}",
                 "  Source-specific (source explicitly mentioned):",
                 "    {'statistics.mal.score': {'gte': 8.0}}",
                 "    {'statistics.mal.score': {'gte': 7.5}, 'statistics.anilist.score': {'gte': 7.5}}",
@@ -246,7 +246,7 @@ class AnimeQueryAgent:
                 "  - character_search: search specifically for character names or character-focused queries",
                 "Always set the tool_type field in tool_parameters accordingly.",
                 # Additional guidance
-                "For queries mentioning generic terms like 'highly rated', 'popular', or 'quality', interpret them as needing a score filter using aggregated_score.arithmetic_mean unless a specific platform is mentioned.",
+                "For queries mentioning generic terms like 'highly rated', 'popular', or 'quality', interpret them as needing a score filter using score.arithmetic_mean unless a specific platform is mentioned.",
                 "Do not return the input or user query in your response.",
                 "Only return tool_parameters and reasoning in the output JSON.",
             ],
@@ -254,7 +254,7 @@ class AnimeQueryAgent:
                 "Analyze the user's query to clearly identify the intent (e.g., searching for anime, characters, or images).",
                 "Determine whether the query is source-specific (mentions MAL, Anilist, etc.) or generic.",
                 "Extract all relevant filters, including scores, genres, types, statuses, and tags.",
-                "If no explicit source is mentioned, use the generic field 'aggregated_score.arithmetic_mean' for score-based filters.",
+                "If no explicit source is mentioned, use the generic field 'score.arithmetic_mean' for score-based filters.",
                 "Map all extracted filters to the predefined JSON schema exactly as defined in the background.",
                 "Select the appropriate tool_type based on the query intent:",
                 "  - text_search: for anime title, genre, or thematic queries.",
@@ -278,7 +278,7 @@ class AnimeQueryAgent:
                 "  - Do NOT include user_query in the output.",
                 "  - Do NOT return any text outside the JSON object.",
                 "Examples (valid JSON, all in single-line to avoid parsing errors):",
-                '{"tool_parameters":{"tool_type":"text_search","query":"highly rated action anime","limit":10,"fusion_method":"rrf","filters":{"aggregated_score.arithmetic_mean":{"gte":7.5},"genres":["Action"]}},"reasoning":"generic text search with cross-platform average score filter"}',
+                '{"tool_parameters":{"tool_type":"text_search","query":"highly rated action anime","limit":10,"fusion_method":"rrf","filters":{"score.arithmetic_mean":{"gte":7.5},"genres":["Action"]}},"reasoning":"generic text search with cross-platform average score filter"}',
                 '{"tool_parameters":{"tool_type":"character_search","query":"masuki satou","limit":10,"fusion_method":"rrf","filters":{}},"reasoning":"character search for anime featuring the character masuki satou"}',
             ],
         )
@@ -307,15 +307,15 @@ class AnimeQueryAgent:
             title = result_dict.get("title", "Unknown")
 
             # Extract scores
-            aggregated_score_data = result_dict.get("aggregated_score", {})
+            score_data = result_dict.get("score", {})
             avg_score = (
-                aggregated_score_data.get("arithmetic_mean")
-                if isinstance(aggregated_score_data, dict)
+                score_data.get("arithmetic_mean")
+                if isinstance(score_data, dict)
                 else None
             )
 
-            # Get similarity score from Qdrant's score field
-            similarity = result_dict.get("score", 0.0)
+            # Get similarity score from Qdrant search results
+            similarity = result_dict.get("similarity_score", 0.0)
 
             # Extract platform scores
             stats = result_dict.get("statistics", {})
