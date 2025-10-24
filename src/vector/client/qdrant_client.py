@@ -914,9 +914,7 @@ class QdrantClient:
                     "anime_id": str(point.id),
                     "_id": str(point.id),
                     **payload,
-                    # Use raw similarity scores
-                    "score": point.score,
-                    "_score": point.score,
+                    # Vector similarity score from Qdrant search
                     "similarity_score": point.score,
                 }
                 results.append(result)
@@ -1001,10 +999,8 @@ class QdrantClient:
                     "anime_id": str(point.id),
                     "_id": str(point.id),
                     **payload,
-                    # Search scores override any payload scores
-                    "score": point.score,
-                    "_score": point.score,
-                    "fusion_score": point.score,
+                    # Vector similarity score from Qdrant search
+                    "similarity_score": point.score,
                 }
                 results.append(result)
 
