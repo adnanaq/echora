@@ -273,9 +273,6 @@ class MultiVectorEmbeddingManager:
             if anime.delay_information:
                 payload["delay_information"] = anime.delay_information.model_dump()
 
-            if anime.episode_overrides:
-                payload["episode_overrides"] = anime.episode_overrides.model_dump()
-
             if anime.premiere_dates:
                 payload["premiere_dates"] = anime.premiere_dates.model_dump()
 

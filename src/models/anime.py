@@ -448,6 +448,9 @@ class AnimeEntry(BaseModel):
     id: str = Field(..., description="Unique identifier for the anime entry")
     month: Optional[str] = Field(None, description="Premiere month from AnimSchedule")
     nsfw: Optional[bool] = Field(None, description="Not Safe For Work flag from Kitsu")
+    similarity_score: Optional[float] = Field(
+        None, description="Vector similarity score from Qdrant search (populated at query time, not persisted)"
+    )
     rating: Optional[AnimeRating] = Field(
         None, description="Content rating (PG-13, R, etc.)"
     )
