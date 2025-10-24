@@ -302,8 +302,8 @@
         "original": "2020-10-07T00:00:00Z"
       },
       "score": {
-        "arithmeticGeometricMean": 6.310053602130257,
-        "arithmeticMean": 6.313454545454545,
+        "arithmetic_geometric_mean": 6.310053602130257,
+        "arithmetic_mean": 6.313454545454545,
         "median": 6.374
       },
       "staff_data": {
@@ -530,7 +530,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-24T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "c58ec818-5c85-4e82-9727-142ad59220b5"
     },
     {
       "episodes": 1,
@@ -647,8 +648,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 4.926305192716743,
-        "arithmeticMean": 4.932815398886827,
+        "arithmetic_geometric_mean": 4.926305192716743,
+        "arithmetic_mean": 4.932815398886827,
         "median": 4.919090909090909
       },
       "staff_data": {
@@ -734,7 +735,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-24T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "ef9f80af-9e9f-48cd-a0b9-45232e364f67"
     },
     {
       "episodes": 8,
@@ -982,8 +984,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.553123023932788,
-        "arithmeticMean": 5.554081632653061,
+        "arithmetic_geometric_mean": 5.553123023932788,
+        "arithmetic_mean": 5.554081632653061,
         "median": 5.554081632653061
       },
       "staff_data": {
@@ -1008,7 +1010,8 @@
         "source": "multi-source",
         "enriched_at": "2025-01-25T12:00:00Z",
         "success": true
-      }
+      },
+      "id": "43298373-9ffc-4417-9b45-66f5b5103874"
     },
     {
       "episodes": 1,
@@ -1119,8 +1122,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.078269583554134,
-        "arithmeticMean": 5.220118738404453,
+        "arithmetic_geometric_mean": 5.078269583554134,
+        "arithmetic_mean": 5.220118738404453,
         "median": 5.0
       },
       "staff_data": {
@@ -1181,7 +1184,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T15:45:08.270624Z",
         "success": true
-      }
+      },
+      "id": "5b38e15f-0851-40d0-8d91-7c90186dd680"
     },
     {
       "episodes": 1,
@@ -1285,7 +1289,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T15:57:47.063849Z",
         "success": true
-      }
+      },
+      "id": "ae2e8f4b-558a-4071-853f-ccb3241c2a4b"
     },
     {
       "episodes": 1,
@@ -1532,8 +1537,8 @@
         "dub": "0001-01-01"
       },
       "score": {
-        "arithmeticGeometricMean": 6.204015433344115,
-        "arithmeticMean": 6.205748917748918,
+        "arithmetic_geometric_mean": 6.204015433344115,
+        "arithmetic_mean": 6.205748917748918,
         "median": 6.263999999999999
       },
       "staff_data": {
@@ -1757,7 +1762,8 @@
         "source": "multi-source",
         "enriched_at": "2025-01-26T14:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "4be1a134-5ca5-4873-9a2a-5f5ea6a91871"
     },
     {
       "episodes": 16,
@@ -2055,8 +2061,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.85,
-        "arithmeticMean": 5.85,
+        "arithmetic_geometric_mean": 5.85,
+        "arithmetic_mean": 5.85,
         "median": 5.85
       },
       "staff_data": {
@@ -2094,7 +2100,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T18:10:02.000419Z",
         "success": true
-      }
+      },
+      "id": "37f02510-d893-4f83-9439-55aff414453b"
     },
     {
       "episodes": 1,
@@ -2513,8 +2520,8 @@
         "original": "2009-12-26T00:00:00Z"
       },
       "score": {
-        "arithmeticGeometricMean": 6.81263149311991,
-        "arithmeticMean": 6.820472232529374,
+        "arithmetic_geometric_mean": 6.81263149311991,
+        "arithmetic_mean": 6.820472232529374,
         "median": 6.829090909090909
       },
       "staff_data": {
@@ -4190,7 +4197,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T20:26:45.100539Z",
         "success": true
-      }
+      },
+      "id": "7bf423d8-a0f6-4d1c-abb8-d8897756362f"
     },
     {
       "background": "Each episode of \"Bungaku Shoujo\" Memoire received a limited one-week run in movie theaters in May 2010.",
@@ -4899,8 +4907,8 @@
         "original": "2010-06-25T00:00:00Z"
       },
       "score": {
-        "arithmeticGeometricMean": 7.1869361406374255,
-        "arithmeticMean": 7.189672669067627,
+        "arithmetic_geometric_mean": 7.1869361406374255,
+        "arithmetic_mean": 7.189672669067627,
         "median": 7.181818181818182
       },
       "staff_data": {
@@ -5384,7 +5392,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T22:47:32.891024Z",
         "success": true
-      }
+      },
+      "id": "bdafbd60-43df-44a4-a2b6-15b088c69f17"
     },
     {
       "background": "\"Bungaku Shoujo\" Movie was announced with the release of the first manga volume and the first light novel in April 2009. The first trailer was included with the release of the \"Bungaku Shoujo\" Kyou no Oyatsu: Hatsukoi DVD episode. The movie adapts the events of \"Bungaku Shoujo\" to Doukoku no Palmier, the fifth volume in the light novel series. It went on to earn 59 million yen in the Japanese box office.",
@@ -5747,8 +5756,8 @@
         "original": "2010-05-01"
       },
       "score": {
-        "arithmeticGeometricMean": 7.438897515292618,
-        "arithmeticMean": 7.440200695612987,
+        "arithmetic_geometric_mean": 7.438897515292618,
+        "arithmetic_mean": 7.440200695612987,
         "median": 7.394
       },
       "staff_data": {
@@ -6009,7 +6018,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-25T17:19:00Z",
         "success": true
-      }
+      },
+      "id": "3a029e12-765e-4d3c-98e1-a22fe8c2c544"
     },
     {
       "episodes": 1,
@@ -6100,8 +6110,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 4.883875656788059,
-        "arithmeticMean": 4.94654025974026,
+        "arithmetic_geometric_mean": 4.883875656788059,
+        "arithmetic_mean": 4.94654025974026,
         "median": 4.74
       },
       "staff_data": {
@@ -6151,7 +6161,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T20:27:42.932946Z",
         "success": true
-      }
+      },
+      "id": "45152445-fee7-458f-bcd8-ed0cb6531c57"
     },
     {
       "episodes": 1,
@@ -6409,8 +6420,8 @@
         "original": "1990-08-25"
       },
       "score": {
-        "arithmeticGeometricMean": 5.875847412893119,
-        "arithmeticMean": 5.880999587713873,
+        "arithmetic_geometric_mean": 5.875847412893119,
+        "arithmetic_mean": 5.880999587713873,
         "median": 5.709181818181818
       },
       "staff_data": {
@@ -6517,7 +6528,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-28T16:53:16.183106Z",
         "success": true
-      }
+      },
+      "id": "ca40ab84-da19-4d1b-aa46-73ac87bca471"
     },
     {
       "episodes": 2,
@@ -6640,8 +6652,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 6.3,
-        "arithmeticMean": 6.3,
+        "arithmetic_geometric_mean": 6.3,
+        "arithmetic_mean": 6.3,
         "median": 6.3
       },
       "staff_data": {
@@ -6757,7 +6769,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T12:41:22.631259Z",
         "success": true
-      }
+      },
+      "id": "12bfd61e-b680-49ba-94c9-d03ea0876463"
     },
     {
       "episodes": 1,
@@ -7143,8 +7156,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 6.050887528647611,
-        "arithmeticMean": 6.057183123754553,
+        "arithmetic_geometric_mean": 6.050887528647611,
+        "arithmetic_mean": 6.057183123754553,
         "median": 6.0
       },
       "staff_data": {
@@ -7366,7 +7379,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T18:31:50.491902Z",
         "success": true
-      }
+      },
+      "id": "d9a2e564-9c73-41bc-92bd-cb979997e9b2"
     },
     {
       "episodes": 1,
@@ -7462,8 +7476,8 @@
         "original": "2021-08-18"
       },
       "score": {
-        "arithmeticGeometricMean": 5.857452738666607,
-        "arithmeticMean": 5.892130797773655,
+        "arithmetic_geometric_mean": 5.857452738666607,
+        "arithmetic_mean": 5.892130797773655,
         "median": 6.126363636363637
       },
       "staff_data": {
@@ -7524,7 +7538,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T18:28:15.020637Z",
         "success": true
-      }
+      },
+      "id": "99d8830b-2a60-423e-a4ef-c0fbd3e00d57"
     },
     {
       "episodes": 1,
@@ -7615,8 +7630,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 6.584,
-        "arithmeticMean": 6.584,
+        "arithmetic_geometric_mean": 6.584,
+        "arithmetic_mean": 6.584,
         "median": 6.584
       },
       "staff_data": {
@@ -7656,7 +7671,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T19:15:35.465131Z",
         "success": true
-      }
+      },
+      "id": "403ea7d5-a8b5-4229-8346-f36a8bc24b08"
     },
     {
       "episodes": 1,
@@ -7715,8 +7731,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 6.326530612244898,
-        "arithmeticMean": 6.326530612244898,
+        "arithmetic_geometric_mean": 6.326530612244898,
+        "arithmetic_mean": 6.326530612244898,
         "median": 6.326530612244898
       },
       "statistics": {},
@@ -7724,7 +7740,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-29T14:58:45.123456Z",
         "success": true
-      }
+      },
+      "id": "cb626657-8dff-48c9-a9ea-520e6763b052"
     },
     {
       "episodes": 1,
@@ -7824,8 +7841,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.285680835051567,
-        "arithmeticMean": 5.287,
+        "arithmetic_geometric_mean": 5.285680835051567,
+        "arithmetic_mean": 5.287,
         "median": 5.287
       },
       "statistics": {
@@ -7851,7 +7868,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:07:13.183864Z",
         "success": true
-      }
+      },
+      "id": "1516af6c-dbb8-4904-bd13-1c34cf72e555"
     },
     {
       "episodes": 1,
@@ -7926,8 +7944,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.364611492721679,
-        "arithmeticMean": 5.37,
+        "arithmetic_geometric_mean": 5.364611492721679,
+        "arithmetic_mean": 5.37,
         "median": 5.37
       },
       "statistics": {
@@ -7952,7 +7970,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T19:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "50f9c73a-ccf0-42ae-8614-4ea5b29ca45b"
     },
     {
       "episodes": 2,
@@ -8050,8 +8069,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 4.7969976530219665,
-        "arithmeticMean": 4.8,
+        "arithmetic_geometric_mean": 4.7969976530219665,
+        "arithmetic_mean": 4.8,
         "median": 4.8
       },
       "statistics": {
@@ -8077,7 +8096,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:23:24.769332Z",
         "success": true
-      }
+      },
+      "id": "006649fb-e098-4414-a2ee-99de42487005"
     },
     {
       "episodes": 1,
@@ -8163,8 +8183,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.77,
-        "arithmeticMean": 5.77,
+        "arithmetic_geometric_mean": 5.77,
+        "arithmetic_mean": 5.77,
         "median": 5.77
       },
       "statistics": {
@@ -8183,7 +8203,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:38:21.942639Z",
         "success": true
-      }
+      },
+      "id": "28120d7c-cce1-4804-8163-1c04b9ee82d7"
     },
     {
       "episodes": 1,
@@ -8240,7 +8261,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:38:41.063116Z",
         "success": true
-      }
+      },
+      "id": "10f5239b-e714-4f82-9bb2-55e85b779dfe"
     },
     {
       "episodes": 12,
@@ -8614,7 +8636,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T16:56:06.229636Z",
         "success": true
-      }
+      },
+      "id": "38fcf8f2-ad59-4634-bded-37bb909b6e6a"
     },
     {
       "background": "French composer Erik Satie (1866-1925) created the ballet music piece \"Parade\" in 1916, at the age of 50, and it was first performed in 1917, with Jean Cocteau and Pablo Picasso taking part to its creation on the scene. The ballet was introduced by the poet Guillaume Apollinaire, who described it by using the term \"surrealism\" for the very first time. Mixing quotes from Satie's essays with the music performed by a Dutch jazz band, the Willem Breuker Kollektief, this film is an animated re-creation of \"realist ballet\" images going beyond reality.",
@@ -8771,8 +8794,8 @@
         "original": "2016-05-01"
       },
       "score": {
-        "arithmeticGeometricMean": 5.596835011311798,
-        "arithmeticMean": 5.611168831168832,
+        "arithmetic_geometric_mean": 5.596835011311798,
+        "arithmetic_mean": 5.611168831168832,
         "median": 5.363636363636363
       },
       "staff_data": {
@@ -8896,7 +8919,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-30T20:42:09.282039Z",
         "success": true
-      }
+      },
+      "id": "6100dccf-6e7e-4483-a80c-aeb91852279d"
     },
     {
       "episodes": 1,
@@ -9004,8 +9028,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 6.400639304289912,
-        "arithmeticMean": 6.417,
+        "arithmetic_geometric_mean": 6.400639304289912,
+        "arithmetic_mean": 6.417,
         "median": 6.417
       },
       "staff_data": {
@@ -9067,7 +9091,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T15:57:00.759347Z",
         "success": true
-      }
+      },
+      "id": "79458c4a-c5e7-41a1-895c-748d5b11a162"
     },
     {
       "episodes": 1,
@@ -9163,8 +9188,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 4.562772442755971,
-        "arithmeticMean": 4.5978095238095245,
+        "arithmetic_geometric_mean": 4.562772442755971,
+        "arithmetic_mean": 4.5978095238095245,
         "median": 4.75
       },
       "statistics": {
@@ -9191,7 +9216,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T10:45:00Z",
         "success": true
-      }
+      },
+      "id": "d081ea6b-075a-4159-8eb9-b2d1304462cc"
     },
     {
       "background": "Official music video for the song \" \"Star\"t\". It is the 46th song in the franchise. The song was included with the HaNaMiNa's CD of the same name, released on October 24, 2019.",
@@ -9506,8 +9532,8 @@
         "banners": []
       },
       "score": {
-        "arithmeticGeometricMean": 5.807899142506913,
-        "arithmeticMean": 5.811727891156463,
+        "arithmetic_geometric_mean": 5.807899142506913,
+        "arithmetic_mean": 5.811727891156463,
         "median": 5.959183673469387
       },
       "staff_data": {
@@ -9538,7 +9564,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T12:16:41.197388Z",
         "success": true
-      }
+      },
+      "id": "0c80a3f5-3581-4ab3-93d5-bb954e3a90b0"
     },
     {
       "episodes": 1,
@@ -9610,8 +9637,8 @@
         "dub": "2017-10-05"
       },
       "score": {
-        "arithmeticGeometricMean": 4.1432847839681575,
-        "arithmeticMean": 4.171515151515151,
+        "arithmetic_geometric_mean": 4.1432847839681575,
+        "arithmetic_mean": 4.171515151515151,
         "median": 3.94
       },
       "staff_data": {
@@ -9669,7 +9696,8 @@
         "source": "multi-source",
         "enriched_at": "2025-07-31T17:51:57.181978Z",
         "success": true
-      }
+      },
+      "id": "36993be1-fbf0-4d62-94d1-38c868c2166d"
     }
   ]
 }
