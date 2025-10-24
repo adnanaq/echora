@@ -96,148 +96,8 @@ VALID_VECTORS = [
 ]
 
 
-async def update_single_anime_vectors(
-    anime_entry: AnimeEntry,
-    vector_names: List[str],
-    client: QdrantClient,
-) -> Dict[str, bool]:
-    """Update specific vectors for a single anime entry.
-
-    Args:
-        anime_entry: AnimeEntry object to process
-        vector_names: List of vector names to update
-        client: QdrantClient instance
-
-    Returns:
-        Dictionary mapping vector names to success status
-
-    Raises:
-        InvalidVectorNameError: If any vector name is not valid
-    """
-    # Validate vector names first
-    invalid_vectors = [v for v in vector_names if v not in VALID_VECTORS]
-    if invalid_vectors:
-        raise InvalidVectorNameError(
-            f"Invalid vector names: {', '.join(invalid_vectors)}. "
-            f"Valid vectors: {', '.join(VALID_VECTORS)}"
-        )
-
-    results = {}
-
-    for vector_name in vector_names:
-        try:
-            vector_data = await _generate_vector_data(anime_entry, vector_name, client)
-
-            if not vector_data:
-                logger.warning(
-                    f"No vector data generated for {vector_name} (anime: {anime_entry.title})"
-                )
-                results[vector_name] = False
-                continue
-
-            success = await client.update_single_vector(
-                anime_id=anime_entry.id,
-                vector_name=vector_name,
-                vector_data=vector_data,
-            )
-            results[vector_name] = success
-
-            if success:
-                logger.debug(f"Updated {vector_name} for {anime_entry.title}")
-            else:
-                logger.error(f"Failed to update {vector_name} for {anime_entry.title}")
-
-        except Exception as e:
-            logger.error(
-                f"Error updating {vector_name} for {anime_entry.title}: {e}",
-                exc_info=True,
-            )
-            results[vector_name] = False
-
-    return results
-
-
-async def _generate_vector_data(
-    anime_entry: AnimeEntry, vector_name: str, client: QdrantClient
-) -> Optional[List[float]]:
-    """Generate vector data for a specific vector type.
-
-    Args:
-        anime_entry: AnimeEntry object
-        vector_name: Name of the vector to generate
-        client: QdrantClient instance
-
-    Returns:
-        Vector data as list of floats, or None if generation failed
-    """
-    # Text vectors - use field mapper extractors
-    if vector_name == "title_vector":
-        content = client.embedding_manager.field_mapper._extract_title_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "character_vector":
-        content = client.embedding_manager.field_mapper._extract_character_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "genre_vector":
-        content = client.embedding_manager.field_mapper._extract_genre_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "staff_vector":
-        content = client.embedding_manager.field_mapper._extract_staff_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "temporal_vector":
-        content = client.embedding_manager.field_mapper._extract_temporal_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "streaming_vector":
-        content = client.embedding_manager.field_mapper._extract_streaming_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "related_vector":
-        content = client.embedding_manager.field_mapper._extract_related_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "franchise_vector":
-        content = client.embedding_manager.field_mapper._extract_franchise_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    elif vector_name == "episode_vector":
-        content = client.embedding_manager.field_mapper._extract_episode_content(
-            anime_entry
-        )
-        return client.embedding_manager.text_processor.encode_text(content)
-
-    # Image vectors
-    elif vector_name == "image_vector":
-        return await client.embedding_manager.vision_processor.process_anime_image_vector(
-            anime_entry
-        )
-
-    elif vector_name == "character_image_vector":
-        return await client.embedding_manager.vision_processor.process_anime_character_image_vector(
-            anime_entry
-        )
-
-    else:
-        raise InvalidVectorNameError(f"Unknown vector type: {vector_name}")
+# NOTE: Vector generation is now handled by QdrantClient.update_batch_anime_vectors()
+# using the existing embedding_manager. No need for manual generation in this script.
 
 
 async def update_vectors(
@@ -247,7 +107,13 @@ async def update_vectors(
     batch_size: int = 100,
     data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
 ) -> Dict[str, Any]:
-    """Update specific vectors for anime entries.
+    """Update specific vectors for anime entries using QdrantClient.update_batch_anime_vectors().
+
+    This is a thin CLI wrapper that:
+    1. Loads and filters anime data from JSON file
+    2. Validates input parameters
+    3. Calls QdrantClient.update_batch_anime_vectors() to handle all processing
+    4. Formats and logs results for CLI display
 
     Args:
         vector_names: List of vector names to update
@@ -321,109 +187,68 @@ async def update_vectors(
         target_anime = anime_data
         logger.info(f"Processing all {len(target_anime)} anime")
 
-    # Statistics tracking
-    total_anime = len(target_anime)
-    total_updates = total_anime * len(vector_names)
-    successful_anime = 0
-    failed_anime = 0
-    vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
+    # Convert to AnimeEntry objects, adding UUIDs if missing
+    anime_entries: List[AnimeEntry] = []
+    for anime_dict in target_anime:
+        if "id" not in anime_dict or not anime_dict["id"]:
+            anime_dict["id"] = str(uuid.uuid4())
+        anime_entries.append(AnimeEntry(**anime_dict))
 
-    # Process anime entries in batches
+    total_anime = len(anime_entries)
     logger.info(
         f"Updating {len(vector_names)} vector(s) across {total_anime} anime entries "
         f"(batch size: {batch_size})"
     )
 
-    # Process in batches
-    for batch_start in range(0, total_anime, batch_size):
-        batch_end = min(batch_start + batch_size, total_anime)
-        batch = target_anime[batch_start:batch_end]
-        batch_num = (batch_start // batch_size) + 1
-        total_batches = (total_anime + batch_size - 1) // batch_size
+    # Define progress callback for CLI logging
+    def log_progress(current: int, total: int, batch_result: Dict[str, Any]) -> None:
+        """Progress callback for batch completion logging."""
+        batch_num = (current + batch_size - 1) // batch_size
+        total_batches = (total + batch_size - 1) // batch_size
+        batch_success = batch_result.get("success", 0)
+        batch_failed = batch_result.get("failed", 0)
 
         logger.info(
-            f"Processing batch {batch_num}/{total_batches} "
-            f"(anime {batch_start + 1}-{batch_end}/{total_anime})"
+            f"Batch {batch_num}/{total_batches} completed: "
+            f"{current}/{total} anime processed, "
+            f"{batch_success} vector updates succeeded, "
+            f"{batch_failed} failed"
         )
 
-        # Collect all updates for this batch
-        batch_updates = []
+    # Call the high-level method - it handles everything
+    result = await client.update_batch_anime_vectors(
+        anime_entries=anime_entries,
+        vector_names=vector_names,
+        batch_size=batch_size,
+        progress_callback=log_progress,
+    )
 
-        for i, anime_dict in enumerate(batch, batch_start + 1):
-            try:
-                # Add UUID if missing
-                if "id" not in anime_dict:
-                    anime_dict["id"] = str(uuid.uuid4())
+    # Calculate per-vector statistics from results
+    vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
+    for update_result in result["results"]:
+        vector_name = update_result["vector_name"]
+        if vector_name in vector_stats:
+            if update_result["success"]:
+                vector_stats[vector_name]["success"] += 1
+            else:
+                vector_stats[vector_name]["failed"] += 1
 
-                anime_entry = AnimeEntry(**anime_dict)
-                logger.info(f"[{i}/{total_anime}] Preparing: {anime_entry.title}")
+    # Calculate per-anime success (all vectors must succeed)
+    anime_success_map: Dict[str, Dict[str, int]] = {}
+    for update_result in result["results"]:
+        anime_id = update_result["anime_id"]
+        if anime_id not in anime_success_map:
+            anime_success_map[anime_id] = {"total": 0, "success": 0}
+        anime_success_map[anime_id]["total"] += 1
+        if update_result["success"]:
+            anime_success_map[anime_id]["success"] += 1
 
-                # Generate vectors for this anime
-                for vector_name in vector_names:
-                    try:
-                        vector_data = await _generate_vector_data(
-                            anime_entry, vector_name, client
-                        )
-
-                        if vector_data:
-                            batch_updates.append(
-                                {
-                                    "anime_id": anime_entry.id,
-                                    "vector_name": vector_name,
-                                    "vector_data": vector_data,
-                                }
-                            )
-                        else:
-                            logger.warning(
-                                f"No vector data for {vector_name} ({anime_entry.title})"
-                            )
-                            vector_stats[vector_name]["failed"] += 1
-
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to generate {vector_name} for {anime_entry.title}: {e}",
-                            exc_info=True,
-                        )
-                        vector_stats[vector_name]["failed"] += 1
-
-            except Exception as e:
-                anime_title = anime_dict.get("title", "Unknown")
-                logger.error(f"Failed to process {anime_title}: {e}", exc_info=True)
-                failed_anime += 1
-                # Mark all vectors as failed for this anime
-                for vector_name in vector_names:
-                    vector_stats[vector_name]["failed"] += 1
-
-        # Execute batch update if we have any updates
-        if batch_updates:
-            logger.info(f"Executing batch update for {len(batch_updates)} vector updates")
-            update_result = await client.update_batch_vectors(batch_updates)
-
-            # Track batch results
-            batch_success = update_result.get("success", 0)
-            batch_failed = update_result.get("failed", 0)
-
-            # Update statistics based on batch results
-            # Note: We track per-anime success, so we need to calculate from vector updates
-            anime_in_batch = len(batch)
-            vectors_per_anime = len(vector_names)
-            expected_updates = anime_in_batch * vectors_per_anime
-
-            # Update vector stats with successful updates
-            for update in batch_updates[:batch_success]:
-                vector_stats[update["vector_name"]]["success"] += 1
-
-            # Calculate anime success rate for this batch
-            batch_anime_success = batch_success // vectors_per_anime if vectors_per_anime > 0 else 0
-            successful_anime += batch_anime_success
-            failed_anime += anime_in_batch - batch_anime_success
-
-            logger.info(
-                f"Batch {batch_num} completed: {batch_success}/{len(batch_updates)} updates successful"
-            )
-        else:
-            logger.warning(f"Batch {batch_num} had no valid updates to process")
-            failed_anime += len(batch)
+    successful_anime = sum(
+        1
+        for stats in anime_success_map.values()
+        if stats["success"] == stats["total"]
+    )
+    failed_anime = total_anime - successful_anime
 
     # Log summary
     logger.info("=" * 80)
@@ -435,7 +260,7 @@ async def update_vectors(
         f"{failed_anime} failed ({failed_anime/total_anime*100:.1f}%)"
     )
 
-    logger.info(f"Vector Updates (Total: {total_updates}):")
+    logger.info(f"Vector Updates (Total: {result['total_requested_updates']}):")
     for vector_name in vector_names:
         stats = vector_stats[vector_name]
         total = stats["success"] + stats["failed"]
@@ -444,11 +269,19 @@ async def update_vectors(
             f"  {vector_name}: {stats['success']}/{total} ({success_rate:.1f}%)"
         )
 
+    if result["generation_failures"] > 0:
+        logger.warning(
+            f"Generation Failures: {result['generation_failures']} vectors failed to generate"
+        )
+
     return {
         "total_anime": total_anime,
         "successful_anime": successful_anime,
         "failed_anime": failed_anime,
-        "total_updates": total_updates,
+        "total_updates": result["total_requested_updates"],
+        "successful_updates": result["successful_updates"],
+        "failed_updates": result["failed_updates"],
+        "generation_failures": result["generation_failures"],
         "vector_stats": vector_stats,
     }
 
