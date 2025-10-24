@@ -13,7 +13,7 @@ from typing import Any, AsyncGenerator, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, search, similarity
+from .api import admin
 from .config import get_settings
 from .vector.client.vector_db_client import VectorDBClient
 from .vector.client.vector_db_factory import VectorDBClientFactory
@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Initialize VectorDB client using the factory
     logger.info(f"Initializing {settings.vector_db_provider} client...")
+    settings.vector_db_provider = "milvus" # TEMPORARY: For testing Milvus initialization
     vector_db_client = VectorDBClientFactory.get_client(
         embedding_manager=embedding_manager,
         settings=settings,
@@ -103,8 +104,6 @@ async def health_check() -> Dict[str, Any]:
 
 
 # Include API routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(similarity.router, prefix="/api/v1", tags=["similarity"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 

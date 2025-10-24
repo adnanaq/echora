@@ -46,6 +46,43 @@ class Settings(BaseSettings):
         default="qdrant", description="Vector database provider to use"
     )
 
+    # Milvus Vector Database Configuration
+    milvus_host: str = Field(
+        default="localhost", description="Milvus server host"
+    )
+    milvus_port: str = Field(
+        default="19530", description="Milvus server port"
+    )
+    milvus_collection_name: str = Field(
+        default="anime_milvus_collection", description="Milvus collection name"
+    )
+    milvus_metric_type: Literal["L2", "IP", "COSINE"] = Field(
+        default="COSINE", description="Milvus metric type for vector similarity search"
+    )
+    milvus_index_type: Literal["FLAT", "IVF_FLAT", "IVF_SQ8", "IVF_PQ"] = Field(
+        default="IVF_FLAT", description="Milvus index type"
+    )
+    milvus_nlist: int = Field(
+        default=128, description="Milvus IVF_FLAT index parameter nlist"
+    )
+    milvus_nprobe: int = Field(
+        default=10, description="Milvus search parameter nprobe"
+    )
+
+    # Marqo Vector Database Configuration
+    marqo_url: str = Field(
+        default="http://localhost:8882", description="Marqo server URL"
+    )
+    marqo_index_name: str = Field(
+        default="anime_marqo_index", description="Marqo index name"
+    )
+    marqo_model: str = Field(
+        default="hf/e5-base-v2", description="Marqo model to use for embedding"
+    )
+    marqo_treat_urls_and_pointers_as_images: bool = Field(
+        default=True, description="Marqo setting to treat URLs as images for embedding"
+    )
+
     # Multi-Vector Configuration
     image_vector_size: int = Field(
         default=768,

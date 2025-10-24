@@ -43,10 +43,14 @@ class MilvusClient(VectorDBClient):
         self.settings = settings
         self.embedding_manager = embedding_manager
 
-        # Milvus connection details (will be configurable in settings later)
-        self.host = "localhost" # settings.milvus_host
-        self.port = "19530" # settings.milvus_port
-        self.collection_name = collection_name or "anime_milvus_collection" # settings.milvus_collection_name
+        # Milvus connection details
+        self.host = settings.milvus_host
+        self.port = settings.milvus_port
+        self.collection_name = collection_name or settings.milvus_collection_name
+        self.metric_type = settings.milvus_metric_type
+        self.index_type = settings.milvus_index_type
+        self.nlist = settings.milvus_nlist
+        self.nprobe = settings.milvus_nprobe
 
         # Connect to Milvus
         connections.connect(host=self.host, port=self.port)
@@ -190,11 +194,11 @@ class MilvusClient(VectorDBClient):
         """Create Milvus index for vector fields."""
         # Check if index already exists
         if not self.collection.has_index():
-            # Define common index parameters (can be made configurable)
+            # Define common index parameters from settings
             index_params = {
-                "metric_type": "COSINE",  # Will be configurable
-                "index_type": "IVF_FLAT",  # Will be configurable
-                "params": {"nlist": 128},  # Will be configurable
+                "metric_type": self.metric_type,
+                "index_type": self.index_type,
+                "params": {"nlist": self.nlist},
             }
 
             # Create index for each vector field dynamically
@@ -210,39 +214,56 @@ class MilvusClient(VectorDBClient):
         vector_name: str,
         vector_data: List[float],
     ) -> bool:
-        """Update a single named vector for an existing anime point."""
-        logger.warning("Milvus does not support direct single vector updates like Qdrant. "
-                       "This operation will re-insert the entity, which might be inefficient.")
+        """Update a single named vector for an existing anime point.
+
+        Milvus does not support direct in-place updates of specific vector fields.
+        This operation is implemented as a delete-and-insert of the entire entity.
+        """
         try:
-            # Milvus update is more like a delete + insert for specific fields
-            # For now, we'll fetch the existing entity, update the vector, and re-insert.
-            # This is a simplified approach and needs optimization for production.
-            existing_entity = await self.get_by_id(anime_id)
-            if not existing_entity:
+            # 1. Fetch the existing entity
+            existing_entity_data = await self.get_point(self._generate_point_id(anime_id))
+            if not existing_entity_data:
                 logger.error(f"Anime ID {anime_id} not found for update.")
                 return False
             
-            # Assuming vector_name maps directly to a field in Milvus
-            # This needs a more robust mapping for the 11-vector architecture
-            milvus_field_name = vector_name # This needs to be mapped correctly
+            # 2. Prepare the updated entity data
+            updated_entity = existing_entity_data["payload"].copy() # Start with existing payload
+            updated_entity["id"] = existing_entity_data["id"]
+            updated_entity["anime_id"] = anime_id
 
-            # Prepare new entity data
-            new_entity_data = {
-                "id": self._generate_point_id(anime_id),
-                "anime_id": anime_id,
-                "payload": existing_entity, # Existing payload
-            }
             # Update the specific vector field
-            new_entity_data[milvus_field_name] = vector_data
+            # Ensure the vector_name exists in our schema
+            if vector_name not in self.settings.vector_names:
+                logger.error(f"Unknown vector name: {vector_name}")
+                return False
+            updated_entity[vector_name] = vector_data
 
-            # Delete existing entity
-            await asyncio.to_thread(self.collection.delete, expr=f"anime_id == \"{anime_id}\" ")
+            # Also ensure all other vector fields are present, even if unchanged
+            for vn, dim in self.settings.vector_names.items():
+                if vn not in updated_entity:
+                    # Try to get from existing vectors, or use zero vector
+                    existing_vec = existing_entity_data["vector"].get(vn)
+                    updated_entity[vn] = existing_vec if existing_vec is not None else [0.0] * dim
+
+            # 3. Delete the old entity
+            await asyncio.to_thread(self.collection.delete, expr=f"anime_id == \"{anime_id}\"")
             await asyncio.to_thread(self.collection.flush)
 
-            # Insert updated entity
-            await asyncio.to_thread(self.collection.insert, [new_entity_data])
+            # 4. Insert the new (updated) entity
+            # Milvus insert expects a list of entities, each entity is a dict
+            entity_to_insert = {}
+            for field in self.collection.schema.fields:
+                if field.name in updated_entity:
+                    entity_to_insert[field.name] = updated_entity[field.name]
+                elif field.name == "payload": # Special handling for payload
+                    entity_to_insert[field.name] = updated_entity["payload"]
+                else: # Ensure all fields are present, even if empty
+                    entity_to_insert[field.name] = None # Or a default value
+
+            await asyncio.to_thread(self.collection.insert, [entity_to_insert])
             await asyncio.to_thread(self.collection.flush)
-            self._create_milvus_index() # Re-create index after flush
+            # No need to re-create index after flush, just ensure it's loaded
+            self.collection.load()
 
             logger.debug(f"Updated {vector_name} for anime {anime_id} in Milvus")
             return True
@@ -260,8 +281,11 @@ class MilvusClient(VectorDBClient):
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> Dict[str, Any]:
-        """Update multiple vectors across multiple anime points in a single batch."""
-        logger.warning("Milvus batch vector update is not optimized and will perform delete+insert for each affected entity.")
+        """Update multiple vectors across multiple anime points in a single batch.
+
+        Milvus does not support direct in-place batch updates of specific vector fields.
+        This operation is implemented as a batch delete-and-insert of affected entities.
+        """
         results: List[Dict[str, Any]] = []
         success_count = 0
         failed_count = 0
@@ -270,40 +294,53 @@ class MilvusClient(VectorDBClient):
         grouped_updates: Dict[str, Dict[str, Any]] = {}
         for update in updates:
             anime_id = update["anime_id"]
+            vector_name = update["vector_name"]
+            vector_data = update["vector_data"]
+
             if anime_id not in grouped_updates:
-                grouped_updates[anime_id] = {"vectors": {}, "payload": None}
-            grouped_updates[anime_id]["vectors"].update(update["vector_data"])
+                grouped_updates[anime_id] = {"vectors": {}, "original_payload": None}
+            grouped_updates[anime_id]["vectors"][vector_name] = vector_data
         
+        entities_to_delete_exprs = []
+        entities_to_insert = []
+
         for anime_id, data in grouped_updates.items():
             try:
-                existing_entity = await self.get_by_id(anime_id)
-                if not existing_entity:
+                # 1. Fetch the existing entity
+                existing_entity_data = await self.get_point(self._generate_point_id(anime_id))
+                if not existing_entity_data:
                     raise ValueError(f"Anime ID {anime_id} not found for batch update.")
                 
-                # Merge existing payload with new vector data
-                updated_payload = existing_entity.copy()
-                # This part needs careful mapping of vector_name to Milvus field names
-                # For now, assuming 'title_vector' and 'image_vector' are the main ones
-                if "title_vector" in data["vectors"]:
-                    updated_payload["text_vector"] = data["vectors"]["title_vector"]
-                if "image_vector" in data["vectors"]:
-                    updated_payload["image_vector"] = data["vectors"]["image_vector"]
-                
-                # Re-insert logic (delete + insert)
-                point_id = self._generate_point_id(anime_id)
-                await asyncio.to_thread(self.collection.delete, expr=f"anime_id == \"{anime_id}\" ")
-                await asyncio.to_thread(self.collection.flush)
+                # 2. Prepare the updated entity data
+                updated_entity = existing_entity_data["payload"].copy() # Start with existing payload
+                updated_entity["id"] = existing_entity_data["id"]
+                updated_entity["anime_id"] = anime_id
 
-                new_entity_data = {
-                    "id": point_id,
-                    "anime_id": anime_id,
-                    "text_vector": updated_payload.get("text_vector", [0.0] * self._vector_size),
-                    "image_vector": updated_payload.get("image_vector", [0.0] * self._image_vector_size),
-                    "payload": updated_payload,
-                }
-                await asyncio.to_thread(self.collection.insert, [new_entity_data])
-                await asyncio.to_thread(self.collection.flush)
-                self._create_milvus_index()
+                # Update specific vector fields
+                for vector_name, vector_data in data["vectors"].items():
+                    if vector_name not in self.settings.vector_names:
+                        logger.warning(f"Unknown vector name {vector_name} for anime {anime_id}. Skipping.")
+                        continue
+                    updated_entity[vector_name] = vector_data
+                
+                # Ensure all other vector fields are present, even if unchanged
+                for vn, dim in self.settings.vector_names.items():
+                    if vn not in updated_entity: # If not updated in this batch
+                        existing_vec = existing_entity_data["vector"].get(vn)
+                        updated_entity[vn] = existing_vec if existing_vec is not None else [0.0] * dim
+
+                # 3. Add to batch delete and insert lists
+                entities_to_delete_exprs.append(f"anime_id == \"{anime_id}\"")
+                
+                entity_to_insert = {}
+                for field in self.collection.schema.fields:
+                    if field.name in updated_entity:
+                        entity_to_insert[field.name] = updated_entity[field.name]
+                    elif field.name == "payload":
+                        entity_to_insert[field.name] = updated_entity["payload"]
+                    else:
+                        entity_to_insert[field.name] = None
+                entities_to_insert.append(entity_to_insert)
 
                 for vector_name in data["vectors"].keys():
                     results.append({"anime_id": anime_id, "vector_name": vector_name, "success": True})
@@ -314,6 +351,16 @@ class MilvusClient(VectorDBClient):
                 for vector_name in data["vectors"].keys():
                     results.append({"anime_id": anime_id, "vector_name": vector_name, "success": False, "error": str(e)})
                 failed_count += len(data["vectors"])
+        
+        # Perform batch delete and insert operations
+        if entities_to_delete_exprs:
+            await asyncio.to_thread(self.collection.delete, expr=" or ".join(entities_to_delete_exprs))
+            await asyncio.to_thread(self.collection.flush)
+        
+        if entities_to_insert:
+            await asyncio.to_thread(self.collection.insert, entities_to_insert)
+            await asyncio.to_thread(self.collection.flush)
+            self.collection.load()
 
         return {
             "success": success_count,
@@ -329,13 +376,151 @@ class MilvusClient(VectorDBClient):
         batch_size: int = 100,
         progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Generate and update vectors for anime entries with automatic batching."""
-        # This method can largely reuse the logic from QdrantClient, as it relies on embedding_manager
-        # and then calls add_documents or update_batch_vectors.
-        # For Milvus, we'll simplify and call add_documents for now.
-        logger.warning("Milvus update_anime_vectors currently re-adds documents. Optimization needed.")
-        return {"success": 0, "failed": len(anime_entries), "results": [], "generation_failures": 0}
+        """Generate and update vectors for anime entries with automatic batching.
 
+        This method generates vectors from AnimeEntry objects using the embedding manager
+        and then updates Milvus with the generated vectors.
+        """
+        try:
+            if not anime_entries:
+                return {
+                    "total_anime": 0,
+                    "total_requested_updates": 0,
+                    "successful_updates": 0,
+                    "failed_updates": 0,
+                    "generation_failures": 0,
+                    "results": [],
+                    "generation_failures_detail": [],
+                }
+
+            total_anime = len(anime_entries)
+            all_batch_results: List[Dict[str, Any]] = []
+            all_generation_failures: List[Dict[str, Any]] = []
+
+            # Process in batches for memory efficiency
+            for batch_start in range(0, total_anime, batch_size):
+                batch_end = min(batch_start + batch_size, total_anime)
+                batch = anime_entries[batch_start:batch_end]
+
+                logger.debug(
+                    f"Processing batch {batch_start//batch_size + 1}: "
+                    f"anime {batch_start + 1}-{batch_end}/{total_anime}"
+                )
+
+                # Generate vectors for this batch using embedding manager
+                gen_results = await self.embedding_manager.process_anime_batch(batch)
+
+                # Prepare updates and track generation failures
+                batch_updates: List[Dict[str, Any]] = []
+
+                for i, anime_entry in enumerate(batch):
+                    gen_result = gen_results[i]
+                    vectors = gen_result.get("vectors", {})
+
+                    # Filter to requested vectors if specified
+                    if vector_names:
+                        requested_vectors = {
+                            k: v for k, v in vectors.items() if k in vector_names
+                        }
+                        # Track which requested vectors failed to generate
+                        for requested_vec in vector_names:
+                            if (
+                                requested_vec not in vectors
+                                or not vectors[requested_vec]
+                            ):
+                                all_generation_failures.append(
+                                    {
+                                        "anime_id": anime_entry.id,
+                                        "vector_name": requested_vec,
+                                        "error": "Vector generation failed or returned None",
+                                    }
+                                )
+                    else:
+                        requested_vectors = vectors
+
+                    # Add valid vectors to batch updates
+                    for vector_name, vector_data in requested_vectors.items():
+                        if vector_data and len(vector_data) > 0:
+                            batch_updates.append(
+                                {
+                                    "anime_id": anime_entry.id,
+                                    "vector_name": vector_name,
+                                    "vector_data": vector_data,
+                                }
+                            )
+
+                # Update in Milvus if we have valid updates
+                if batch_updates:
+                    batch_result = await self.update_batch_vectors(batch_updates)
+                else:
+                    batch_result = {"success": 0, "failed": 0, "results": []}
+                    logger.warning(
+                        f"Batch {batch_start//batch_size + 1} had no valid updates"
+                    )
+
+                all_batch_results.append(batch_result)
+
+                # Call progress callback if provided
+                if progress_callback:
+                    progress_callback(batch_end, total_anime, batch_result)
+
+            # Aggregate all batch results
+            num_vectors = len(vector_names) if vector_names else len(self.settings.vector_names)
+            return self._aggregate_batch_results(
+                all_batch_results, all_generation_failures, total_anime, num_vectors
+            )
+
+        except Exception as e:
+            logger.exception(f"Failed to update anime vectors in Milvus: {e}")
+            raise
+
+    def _aggregate_batch_results(
+        self,
+        batch_results: List[Dict[str, Any]],
+        generation_failures: List[Dict[str, Any]],
+        total_anime: int,
+        num_vectors: int,
+    ) -> Dict[str, Any]:
+        """Aggregate results from multiple batches.
+
+        Args:
+            batch_results: List of batch update results
+            generation_failures: List of generation failure details
+            total_anime: Total number of anime processed
+            num_vectors: Number of vectors requested per anime
+
+        Returns:
+            Aggregated statistics dictionary
+        """
+        try:
+            total_successful = sum(r["success"] for r in batch_results)
+            total_failed = sum(r["failed"] for r in batch_results)
+            combined_results: List[Dict[str, Any]] = []
+
+            for batch_result in batch_results:
+                combined_results.extend(batch_result.get("results", []))
+
+            return {
+                "total_anime": total_anime,
+                "total_requested_updates": total_anime * num_vectors,
+                "successful_updates": total_successful,
+                "failed_updates": total_failed,
+                "generation_failures": len(generation_failures),
+                "results": combined_results,
+                "generation_failures_detail": generation_failures,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to aggregate batch results: {e}")
+            return {
+                "total_anime": total_anime,
+                "total_requested_updates": total_anime * num_vectors,
+                "successful_updates": 0,
+                "failed_updates": 0,
+                "generation_failures": len(generation_failures),
+                "results": [],
+                "generation_failures_detail": generation_failures,
+            }
     async def get_by_id(self, anime_id: str) -> Optional[Dict[str, Any]]:
         """Get anime by ID."""
         try:
@@ -418,7 +603,7 @@ class MilvusClient(VectorDBClient):
         """Search a single vector with raw similarity scores."""
         try:
             # Milvus search parameters
-            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+            search_params = {"metric_type": self.metric_type, "params": {"nprobe": self.nprobe}}
             # Map vector_name to Milvus field name
             milvus_vector_field = vector_name # This needs proper mapping
 
@@ -457,32 +642,60 @@ class MilvusClient(VectorDBClient):
 
     def _convert_qdrant_filter_to_milvus_expr(self, qdrant_filter: Optional[Filter]) -> str:
         """Converts Qdrant Filter object to Milvus expression string."""
-        if not qdrant_filter or not qdrant_filter.must:
+        if not qdrant_filter:
             return ""
-        
+
         milvus_conditions = []
-        for condition in qdrant_filter.must:
-            if isinstance(condition, FieldCondition):
-                key = condition.key
-                if condition.match:
-                    if condition.match.any:
-                        # Milvus 'in' operator for multiple values
-                        values = [f"\"{v}\"" if isinstance(v, str) else str(v) for v in condition.match.any]
-                        milvus_conditions.append(f"{key} in [{', '.join(values)}] ")
-                    elif condition.match.value is not None:
-                        # Exact match
-                        value = f"\"{condition.match.value}\"" if isinstance(condition.match.value, str) else str(condition.match.value)
-                        milvus_conditions.append(f"{key} == {value}")
-                elif condition.range:
-                    # Range conditions
-                    range_parts = []
-                    if condition.range.gte is not None: range_parts.append(f"{key} >= {condition.range.gte}")
-                    if condition.range.lte is not None: range_parts.append(f"{key} <= {condition.range.lte}")
-                    if condition.range.gt is not None: range_parts.append(f"{key} > {condition.range.gt}")
-                    if condition.range.lt is not None: range_parts.append(f"{key} < {condition.range.lt}")
-                    milvus_conditions.append(" and ".join(range_parts))
-        
+
+        # Handle 'must' conditions (AND logic)
+        if qdrant_filter.must:
+            must_conditions = []
+            for condition in qdrant_filter.must:
+                milvus_expr = self._convert_field_condition_to_milvus_expr(condition)
+                if milvus_expr: must_conditions.append(milvus_expr)
+            if must_conditions: milvus_conditions.append(f"({" and ".join(must_conditions)})")
+
+        # Handle 'should' conditions (OR logic)
+        if qdrant_filter.should:
+            should_conditions = []
+            for condition in qdrant_filter.should:
+                milvus_expr = self._convert_field_condition_to_milvus_expr(condition)
+                if milvus_expr: should_conditions.append(milvus_expr)
+            if should_conditions: milvus_conditions.append(f"({" or ".join(should_conditions)})")
+
+        # Handle 'must_not' conditions (NOT logic)
+        if qdrant_filter.must_not:
+            must_not_conditions = []
+            for condition in qdrant_filter.must_not:
+                milvus_expr = self._convert_field_condition_to_milvus_expr(condition)
+                if milvus_expr: must_not_conditions.append(f"not ({milvus_expr})")
+            if must_not_conditions: milvus_conditions.append(f"({" and ".join(must_not_conditions)})")
+
         return " and ".join(milvus_conditions)
+
+    def _convert_field_condition_to_milvus_expr(self, condition: Any) -> Optional[str]:
+        """Converts a single Qdrant FieldCondition to Milvus expression string."""
+        # Assuming condition is a FieldCondition from qdrant_client.models
+        if not hasattr(condition, "key"): return None
+
+        key = condition.key
+
+        if hasattr(condition, "match") and condition.match:
+            if hasattr(condition.match, "any") and condition.match.any:
+                values = [f"\"{v}\"" if isinstance(v, str) else str(v) for v in condition.match.any]
+                return f"{key} in [{', '.join(values)}]"
+            elif hasattr(condition.match, "value") and condition.match.value is not None:
+                value = f"\"{condition.match.value}\"" if isinstance(condition.match.value, str) else str(condition.match.value)
+                return f"{key} == {value}"
+        elif hasattr(condition, "range") and condition.range:
+            range_parts = []
+            if condition.range.gte is not None: range_parts.append(f"{key} >= {condition.range.gte}")
+            if condition.range.lte is not None: range_parts.append(f"{key} <= {condition.range.lte}")
+            if condition.range.gt is not None: range_parts.append(f"{key} > {condition.range.gt}")
+            if condition.range.lt is not None: range_parts.append(f"{key} < {condition.range.lt}")
+            return " and ".join(range_parts)
+        
+        return None
 
     async def search_multi_vector(
         self,
@@ -492,21 +705,80 @@ class MilvusClient(VectorDBClient):
         filters: Optional[Filter] = None,
     ) -> List[Dict[str, Any]]:
         """Search across multiple vectors using Milvus (simulated fusion)."""
-        logger.warning("Milvus does not have native multi-vector fusion like Qdrant. Simulating fusion.")
-        
-        # This will require multiple individual searches and then re-ranking/fusion logic
-        # For now, we'll just do a single vector search as a placeholder.
         if not vector_queries:
             return []
-        
-        # Take the first query as a placeholder
-        first_query = vector_queries[0]
-        return await self.search_single_vector(
-            vector_name=first_query["vector_name"],
-            vector_data=first_query["vector_data"],
-            limit=limit,
-            filters=filters,
-        )
+
+        # Check if all query vectors are the same
+        first_vector_data = vector_queries[0]["vector_data"]
+        all_vectors_same = all(q["vector_data"] == first_vector_data for q in vector_queries)
+
+        if all_vectors_same:
+            logger.info("Performing multi-field search in Milvus (all query vectors are the same).")
+            # Use Milvus's multi-anns_field capability
+            anns_fields = [q["vector_name"] for q in vector_queries]
+            query_vector = first_vector_data
+
+            search_params = {"metric_type": self.metric_type, "params": {"nprobe": self.nprobe}}
+            expr = self._convert_qdrant_filter_to_milvus_expr(filters)
+
+            res = await asyncio.to_thread(
+                self.collection.search,
+                data=[query_vector],
+                anns_field=anns_fields,
+                param=search_params,
+                limit=limit,
+                expr=expr,
+                output_fields=["anime_id", "payload"], # Include payload for results
+            )
+
+            results = []
+            for hit in res[0]: # res[0] contains hits for the first query
+                payload = hit.entity.get("payload", {}) # Get payload from entity
+                results.append({
+                    "id": hit.id,
+                    "anime_id": hit.entity.get("anime_id"),
+                    "_id": hit.id,
+                    **payload,
+                    "similarity_score": hit.distance, # Milvus returns distance, convert to similarity if needed
+                })
+            
+            logger.info(
+                f"Milvus multi-field search returned {len(results)} results across {len(anns_fields)} fields"
+            )
+            return results
+
+        else:
+            logger.warning("Milvus does not have native multi-vector fusion like Qdrant. Simulating fusion with RRF.")
+            all_results: Dict[str, Dict[str, Any]] = {}
+            # Perform individual searches for each vector query
+            for query_config in vector_queries:
+                vector_name = query_config["vector_name"]
+                vector_data = query_config["vector_data"]
+
+                # Perform single vector search
+                single_search_results = await self.search_single_vector(
+                    vector_name=vector_name,
+                    vector_data=vector_data,
+                    limit=limit * 2, # Fetch more results for better fusion
+                    filters=filters,
+                )
+
+                # Aggregate results for fusion
+                for rank, result in enumerate(single_search_results):
+                    anime_id = result["anime_id"]
+                    if anime_id not in all_results:
+                        all_results[anime_id] = {"anime_id": anime_id, "scores": [], "payload": result}
+                    
+                    # Store score and rank for fusion
+                    all_results[anime_id]["scores"].append({"score": result["similarity_score"], "rank": rank, "vector_name": vector_name})
+
+            # Apply fusion method (RRF for now)
+            fused_results = self._apply_rrf_fusion(list(all_results.values()), limit)
+
+            logger.info(
+                f"Milvus multi-vector search returned {len(fused_results)} results using simulated {fusion_method.upper()}"
+            )
+            return fused_results
 
     async def search_text_comprehensive(
         self,

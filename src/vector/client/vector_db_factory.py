@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ...config import Settings
 from ..processors.embedding_manager import MultiVectorEmbeddingManager
 from .milvus_client import MilvusClient
