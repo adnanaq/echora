@@ -1,19 +1,11 @@
 """Comprehensive test for all statistics filters using QdrantClient infrastructure."""
-import asyncio
-import json
-import sys
-from pathlib import Path
+import pytest
 from typing import Any, Dict, List
 
-# Add project root to path (resolve dynamically from test file location)
-project_root = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(project_root))
-
-from src.config.settings import get_settings
 from src.vector.client.qdrant_client import QdrantClient
 
 
-async def test_filter(
+async def _test_single_filter(
     client: QdrantClient,
     filter_dict: Dict[str, Any],
     description: str,
@@ -80,21 +72,9 @@ def _extract_nested_value(obj: Dict[str, Any], key_path: str) -> Any:
     return value
 
 
-async def run_comprehensive_tests() -> None:
-    """Run comprehensive tests on all statistics filters using QdrantClient."""
-
-    settings = get_settings()
-
-    # Initialize QdrantClient (same way as main.py)
-    client = QdrantClient(
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-        settings=settings,
-    )
-
-    print("COMPREHENSIVE STATISTICS FILTER TESTING (Using QdrantClient)")
-    print("=" * 80)
-    print()
+@pytest.mark.asyncio
+async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
+    """Test all statistics filters using QdrantClient with proper pytest integration."""
 
     # Define all test cases with proper filter dict format
     test_cases = [
@@ -143,62 +123,21 @@ async def run_comprehensive_tests() -> None:
 
     print(f"Running {len(test_cases)} filter tests...\n")
 
+    # Run all filter tests and collect results
     for filter_dict, description, expected_fields in test_cases:
-        result = await test_filter(client, filter_dict, description, expected_fields)
+        result = await _test_single_filter(client, filter_dict, description, expected_fields)
         results.append(result)
 
-        # Print result
-        status_icon = "[PASS]" if "PASS" in result["status"] else "[FAIL]"
-        print(f"{status_icon} {description}")
-        print(f"   Filter: {filter_dict}")
-        print(f"   Results: {result['result_count']} matches")
+        # Assert each filter test passed
+        assert "PASS" in result["status"], f"Filter test failed: {description} - {result['status']}"
 
-        if result["sample_results"]:
-            print(f"   Samples:")
-            for sample in result["sample_results"]:
-                print(f"      - {sample['title']}: {sample['values']}")
-
-        print()
-
-    # Summary
-    print("=" * 80)
-    print("TEST SUMMARY")
-    print("=" * 80)
-
+    # Assert all tests passed
+    assert len(results) == len(test_cases)
     passed = sum(1 for r in results if "PASS" in r["status"])
-    failed = sum(1 for r in results if "FAIL" in r["status"])
+    assert passed == len(test_cases), f"Only {passed}/{len(test_cases)} filter tests passed"
 
-    print(f"Total Tests: {len(results)}")
-    print(f"Passed: {passed}")
-    print(f"Failed: {failed}")
-    print()
-
-    # Group by platform
-    platforms = {
-        "MAL": [r for r in results if "MAL" in r["description"]],
-        "AniList": [r for r in results if "AniList" in r["description"]],
-        "AniDB": [r for r in results if "AniDB" in r["description"]],
-        "Anime-Planet": [r for r in results if "Anime-Planet" in r["description"]],
-        "Kitsu": [r for r in results if "Kitsu" in r["description"]],
-        "AnimeSchedule": [r for r in results if "AnimeSchedule" in r["description"]],
-        "Aggregate": [r for r in results if "Aggregate" in r["description"]],
-    }
-
-    for platform, platform_results in platforms.items():
-        if platform_results:
-            platform_passed = sum(1 for r in platform_results if "PASS" in r["status"])
-            print(f"{platform}: {platform_passed}/{len(platform_results)} tests passed")
-
-    print()
-
-    # Test multi-platform combinations
-    print("=" * 80)
-    print("MULTI-PLATFORM COMBINATION TESTS")
-    print("=" * 80)
-    print()
-
+    # Test multi-platform combination filters
     # Test 1: High score on multiple platforms
-    print("Test: Anime with MAL score >= 7.0 AND AniList score >= 7.0")
     multi_filter_dict = {
         "statistics.mal.score": {"gte": 7.0},
         "statistics.anilist.score": {"gte": 7.0}
@@ -211,16 +150,10 @@ async def run_comprehensive_tests() -> None:
         with_payload=True,
         with_vectors=False
     )
-
-    print(f"Results: {len(multi_results)} matches")
-    for point in multi_results[:3]:
-        mal_score = _extract_nested_value(point.payload, "statistics.mal.score")
-        anilist_score = _extract_nested_value(point.payload, "statistics.anilist.score")
-        print(f"   - {point.payload['title']}: MAL={mal_score}, AniList={anilist_score}")
-    print()
+    # Should find some results with both scores high (test collection may be empty, so just check it doesn't error)
+    assert isinstance(multi_results, list)
 
     # Test 2: Popular on MAL with high aggregate score
-    print("Test: MAL members >= 50K AND aggregate score >= 7.0")
     combo_filter_dict = {
         "statistics.mal.members": {"gte": 50000},
         "score.arithmetic_mean": {"gte": 7.0}
@@ -233,25 +166,5 @@ async def run_comprehensive_tests() -> None:
         with_payload=True,
         with_vectors=False
     )
-
-    print(f"Results: {len(combo_results)} matches")
-    for point in combo_results[:3]:
-        members = _extract_nested_value(point.payload, "statistics.mal.members")
-        avg_score = _extract_nested_value(point.payload, "score.arithmetic_mean")
-        print(f"   - {point.payload['title']}: {members} members, {avg_score:.2f} score")
-    print()
-
-    print("=" * 80)
-    print("COMPREHENSIVE TESTING COMPLETED")
-    print("=" * 80)
-
-    # Save detailed results
-    output_path = Path(__file__).parent / "filter_test_results.json"
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2, default=str)
-
-    print(f"\nDetailed results saved to: {output_path}")
-
-
-if __name__ == "__main__":
-    asyncio.run(run_comprehensive_tests())
+    # Combination filters work without error
+    assert isinstance(combo_results, list)
