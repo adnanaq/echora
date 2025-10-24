@@ -22,13 +22,17 @@ Usage Examples:
     # CLI: Batch size control
     python scripts/update_vectors.py --vectors title_vector --batch-size 50
 
-    # Programmatic: Update specific vectors
+    # Programmatic: Update vectors for all anime
     from scripts.update_vectors import update_vectors
     await update_vectors(["title_vector", "episode_vector"])
 
-    # Programmatic: Update single anime
-    from scripts.update_vectors import update_single_anime_vectors
-    await update_single_anime_vectors(anime_entry, ["character_vector"])
+    # Programmatic: Update vectors for specific anime by index
+    from scripts.update_vectors import update_vectors
+    await update_vectors(["character_vector"], anime_index=0)
+
+    # Programmatic: Update vectors for specific anime by title
+    from scripts.update_vectors import update_vectors
+    await update_vectors(["character_vector"], anime_title="Dandadan")
 """
 
 import argparse
@@ -80,22 +84,6 @@ class VectorGenerationError(VectorUpdateError):
     pass
 
 
-# Valid vector names in the system
-VALID_VECTORS = [
-    "title_vector",
-    "character_vector",
-    "genre_vector",
-    "staff_vector",
-    "temporal_vector",
-    "streaming_vector",
-    "related_vector",
-    "franchise_vector",
-    "episode_vector",
-    "image_vector",
-    "character_image_vector",
-]
-
-
 # NOTE: Vector generation is now handled by QdrantClient.update_batch_anime_vectors()
 # using the existing embedding_manager. No need for manual generation in this script.
 
@@ -132,16 +120,18 @@ async def update_vectors(
     """
     logger.info(f"Starting vector update for: {', '.join(vector_names)}")
 
-    # Validate vector names
-    invalid_vectors = [v for v in vector_names if v not in VALID_VECTORS]
+    # Load settings and client
+    settings = get_settings()
+
+    # Validate vector names against settings.vector_names
+    valid_vectors = list(settings.vector_names.keys())
+    invalid_vectors = [v for v in vector_names if v not in valid_vectors]
     if invalid_vectors:
         raise InvalidVectorNameError(
             f"Invalid vector names: {', '.join(invalid_vectors)}. "
-            f"Valid vectors: {', '.join(VALID_VECTORS)}"
+            f"Valid vectors: {', '.join(valid_vectors)}"
         )
 
-    # Load settings and client
-    settings = get_settings()
     client = QdrantClient(settings=settings)
 
     # Load anime data
@@ -288,16 +278,20 @@ async def update_vectors(
 
 def main():
     """CLI entry point."""
+    # Load settings to get valid vector names for help text
+    settings = get_settings()
+    valid_vectors = list(settings.vector_names.keys())
+
     parser = argparse.ArgumentParser(
         description="Generic vector update script for selective Qdrant updates",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Update single vector for all anime
-  python scripts/update_vectors.py --vectors review_vector
+  python scripts/update_vectors.py --vectors genre_vector
 
   # Update multiple vectors
-  python scripts/update_vectors.py --vectors review_vector episode_vector
+  python scripts/update_vectors.py --vectors genre_vector episode_vector
 
   # Update specific anime by index
   python scripts/update_vectors.py --vectors title_vector --index 0
@@ -306,7 +300,7 @@ Examples:
   python scripts/update_vectors.py --vectors character_vector --title "Dandadan"
 
   # Control batch size
-  python scripts/update_vectors.py --vectors review_vector --batch-size 50
+  python scripts/update_vectors.py --vectors staff_vector --batch-size 50
         """,
     )
 
@@ -314,7 +308,7 @@ Examples:
         "--vectors",
         nargs="+",
         required=True,
-        help=f"Vector name(s) to update. Valid: {', '.join(VALID_VECTORS)}",
+        help=f"Vector name(s) to update. Valid: {', '.join(valid_vectors)}",
     )
     parser.add_argument(
         "--index", type=int, help="Process anime at specific index (0-based)"
