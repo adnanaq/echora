@@ -182,7 +182,6 @@ dev = [
     { name = "scikit-learn-stubs" },
     { name = "scipy-stubs" },
     { name = "types-beautifulsoup4" },
-    { name = "types-pillow" },
     { name = "types-python-dateutil" },
     { name = "types-requests" },
     { name = "types-setuptools" },
@@ -225,7 +224,6 @@ requires-dist = [
     { name = "torch", specifier = ">=2.0.0" },
     { name = "transformers", specifier = "==4.55.0" },
     { name = "types-beautifulsoup4", marker = "extra == 'dev'", specifier = ">=4.12.0.20250516" },
-    { name = "types-pillow", marker = "extra == 'dev'", specifier = ">=10.2.0.20240822" },
     { name = "types-python-dateutil", marker = "extra == 'dev'", specifier = ">=2.9.0.20250822" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.32.4.20250913" },
     { name = "types-setuptools", marker = "extra == 'dev'", specifier = ">=80.9.0.20250822" },
@@ -3728,15 +3726,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8a/b8/0ce98d9b20a4e8bdac4f4914054acadf5b3a36a7a832e11e0d1938e4c3ce/types_html5lib-1.1.11.20251014.tar.gz", hash = "sha256:cc628d626e0111a2426a64f5f061ecfd113958b69ff6b3dc0eaaed2347ba9455", size = 16895, upload-time = "2025-10-14T02:54:50.003Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/cb/df12640506b8dbd2f2bd0643c5ef4a72fa6285ec4cd7f4b20457842e7fd5/types_html5lib-1.1.11.20251014-py3-none-any.whl", hash = "sha256:4ff2cf18dfc547009ab6fa4190fc3de464ba815c9090c3dd4a5b65f664bfa76c", size = 22916, upload-time = "2025-10-14T02:54:48.686Z" },
-]
-
-[[package]]
-name = "types-pillow"
-version = "10.2.0.20240822"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/18/4a/4495264dddaa600d65d68bcedb64dcccf9d9da61adff51f7d2ffd8e4c9ce/types-Pillow-10.2.0.20240822.tar.gz", hash = "sha256:559fb52a2ef991c326e4a0d20accb3bb63a7ba8d40eb493e0ecb0310ba52f0d3", size = 35389, upload-time = "2024-08-22T02:32:48.15Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/23/e81a5354859831fcf54d488d33b80ba6133ea84f874a9c0ec40a4881e133/types_Pillow-10.2.0.20240822-py3-none-any.whl", hash = "sha256:d9dab025aba07aeb12fd50a6799d4eac52a9603488eca09d7662543983f16c5d", size = 54354, upload-time = "2024-08-22T02:32:46.664Z" },
 ]
 
 [[package]]

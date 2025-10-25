@@ -10,7 +10,7 @@ repos:
 
   # Ruff - Fast Python linter and formatter (replaces black, flake8, isort in pre-commit)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.14.2
     hooks:
       # Run linter
       - id: ruff
@@ -30,7 +30,6 @@ repos:
         additional_dependencies:
           # Type stubs for external libraries
           - types-requests
-          - types-pillow
           - types-beautifulsoup4
           - types-python-dateutil
           - types-setuptools
