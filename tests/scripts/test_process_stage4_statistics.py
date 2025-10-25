@@ -7,22 +7,21 @@ Achieves 100% code coverage including all edge cases.
 
 import json
 import sys
-import pytest
 from pathlib import Path
-from unittest.mock import patch
 
+import pytest
 from process_stage4_statistics import (
-    load_source_data,
-    safe_get,
-    normalize_score,
-    extract_mal_statistics,
+    extract_all_statistics,
+    extract_anidb_statistics,
+    extract_anilist_statistics,
+    extract_animeplanet_statistics,
     extract_animeschedule_statistics,
     extract_kitsu_statistics,
-    extract_animeplanet_statistics,
-    extract_anilist_statistics,
-    extract_anidb_statistics,
+    extract_mal_statistics,
     has_any_statistics,
-    extract_all_statistics,
+    load_source_data,
+    normalize_score,
+    safe_get,
 )
 
 
@@ -137,7 +136,7 @@ class TestExtractMALStatistics:
                 "rank": 164,
                 "popularity": 247,
                 "members": 843430,
-                "favorites": 13839
+                "favorites": 13839,
             }
         }
         result = extract_mal_statistics(jikan_data)
@@ -190,7 +189,7 @@ class TestExtractAnimeScheduleStatistics:
                 "averageScore": 86.7052993774414,
                 "ratingCount": 327,
                 "trackedRating": 31,
-                "trackedCount": 1909
+                "trackedCount": 1909,
             }
         }
         result = extract_animeschedule_statistics(animeschedule_data)
@@ -212,9 +211,7 @@ class TestExtractAnimeScheduleStatistics:
 
     def test_extract_animeschedule_partial_data(self):
         """Test extraction with partial data."""
-        animeschedule_data = {
-            "stats": {"averageScore": 75.5}
-        }
+        animeschedule_data = {"stats": {"averageScore": 75.5}}
         result = extract_animeschedule_statistics(animeschedule_data)
 
         assert result["score"] == pytest.approx(7.55, rel=1e-9)
@@ -233,7 +230,7 @@ class TestExtractKitsuStatistics:
                     "userCount": 9836,
                     "favoritesCount": 140,
                     "ratingRank": 18,
-                    "popularityRank": 1666
+                    "popularityRank": 1666,
                 }
             }
         }
@@ -248,11 +245,7 @@ class TestExtractKitsuStatistics:
 
     def test_extract_kitsu_string_score(self):
         """Test that string scores are properly converted."""
-        kitsu_data = {
-            "anime": {
-                "attributes": {"averageRating": "82.5"}
-            }
-        }
+        kitsu_data = {"anime": {"attributes": {"averageRating": "82.5"}}}
         result = extract_kitsu_statistics(kitsu_data)
 
         assert result["score"] == 8.25
@@ -278,11 +271,8 @@ class TestExtractAnimePlanetStatistics:
     def test_extract_animeplanet_complete_data(self):
         """Test extraction with all fields present."""
         animeplanet_data = {
-            "aggregate_rating": {
-                "ratingValue": 4.346,
-                "ratingCount": 12268
-            },
-            "rank": 105
+            "aggregate_rating": {"ratingValue": 4.346, "ratingCount": 12268},
+            "rank": 105,
         }
         result = extract_animeplanet_statistics(animeplanet_data)
 
@@ -310,9 +300,7 @@ class TestExtractAnimePlanetStatistics:
 
     def test_extract_animeplanet_score_scaling(self):
         """Test that 0-5 scale is properly converted to 0-10."""
-        animeplanet_data = {
-            "aggregate_rating": {"ratingValue": 5.0}
-        }
+        animeplanet_data = {"aggregate_rating": {"ratingValue": 5.0}}
         result = extract_animeplanet_statistics(animeplanet_data)
 
         assert result["score"] == 10.0
@@ -334,7 +322,7 @@ class TestExtractAniListStatistics:
                     "format": "TV",
                     "year": None,
                     "season": None,
-                    "allTime": True
+                    "allTime": True,
                 },
                 {
                     "rank": 1,
@@ -342,9 +330,9 @@ class TestExtractAniListStatistics:
                     "format": "TV",
                     "year": 2024,
                     "season": "FALL",
-                    "allTime": False
-                }
-            ]
+                    "allTime": False,
+                },
+            ],
         }
         result = extract_anilist_statistics(anilist_data)
 
@@ -365,10 +353,7 @@ class TestExtractAniListStatistics:
 
     def test_extract_anilist_no_rankings(self):
         """Test extraction with no rankings."""
-        anilist_data = {
-            "averageScore": 80,
-            "favourites": 100
-        }
+        anilist_data = {"averageScore": 80, "favourites": 100}
         result = extract_anilist_statistics(anilist_data)
 
         assert result["score"] == 8.0
@@ -376,10 +361,7 @@ class TestExtractAniListStatistics:
 
     def test_extract_anilist_empty_rankings(self):
         """Test extraction with empty rankings array."""
-        anilist_data = {
-            "averageScore": 80,
-            "rankings": []
-        }
+        anilist_data = {"averageScore": 80, "rankings": []}
         result = extract_anilist_statistics(anilist_data)
 
         assert result["contextual_ranks"] is None
@@ -388,11 +370,7 @@ class TestExtractAniListStatistics:
         """Test handling of non-dict ranking items."""
         anilist_data = {
             "averageScore": 80,
-            "rankings": [
-                {"rank": 1, "type": "RATED"},
-                "invalid_item",
-                None
-            ]
+            "rankings": [{"rank": 1, "type": "RATED"}, "invalid_item", None],
         }
         result = extract_anilist_statistics(anilist_data)
 
@@ -406,7 +384,7 @@ class TestExtractAniListStatistics:
             "rankings": [
                 {
                     "rank": 10,
-                    "type": "RATED"
+                    "type": "RATED",
                     # allTime field missing
                 }
             ]
@@ -421,14 +399,7 @@ class TestExtractAniDBStatistics:
 
     def test_extract_anidb_complete_data(self):
         """Test extraction with all fields present."""
-        anidb_data = {
-            "ratings": {
-                "permanent": {
-                    "value": 8.35,
-                    "count": 1427
-                }
-            }
-        }
+        anidb_data = {"ratings": {"permanent": {"value": 8.35, "count": 1427}}}
         result = extract_anidb_statistics(anidb_data)
 
         assert result["score"] == 8.35
@@ -481,7 +452,7 @@ class TestHasAnyStatistics:
             "rank": None,
             "popularity_rank": None,
             "members": None,
-            "favorites": None
+            "favorites": None,
         }
         assert has_any_statistics(stats) is True
 
@@ -493,7 +464,7 @@ class TestHasAnyStatistics:
             "rank": None,
             "popularity_rank": None,
             "members": None,
-            "favorites": None
+            "favorites": None,
         }
         assert has_any_statistics(stats) is True
 
@@ -505,7 +476,7 @@ class TestHasAnyStatistics:
             "rank": None,
             "popularity_rank": None,
             "members": None,
-            "favorites": None
+            "favorites": None,
         }
         assert has_any_statistics(stats) is False
 
@@ -518,7 +489,7 @@ class TestHasAnyStatistics:
             "popularity_rank": None,
             "members": None,
             "favorites": None,
-            "contextual_ranks": [{"rank": 1}]
+            "contextual_ranks": [{"rank": 1}],
         }
         # Should return False even though contextual_ranks is present
         assert has_any_statistics(stats) is False
@@ -531,7 +502,7 @@ class TestHasAnyStatistics:
             "rank": 50,
             "popularity_rank": None,
             "members": None,
-            "favorites": None
+            "favorites": None,
         }
         assert has_any_statistics(stats) is True
 
@@ -548,12 +519,12 @@ class TestLoadSourceData:
             "kitsu": {"anime": {"attributes": {"averageRating": "85"}}},
             "anidb": {"ratings": {"permanent": {"value": 8.5}}},
             "anime_planet": {"aggregate_rating": {"ratingValue": 4.25}},
-            "animeschedule": {"stats": {"averageScore": 85}}
+            "animeschedule": {"stats": {"averageScore": 85}},
         }
 
         for name, data in sources.items():
             file_path = tmp_path / f"{name}.json"
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump(data, f)
 
         return str(tmp_path)
@@ -580,7 +551,7 @@ class TestLoadSourceData:
     def test_load_source_data_partial_files(self, tmp_path):
         """Test loading when only some files are present."""
         jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, 'w') as f:
+        with open(jikan_file, "w") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         result = load_source_data(str(tmp_path))
@@ -591,7 +562,7 @@ class TestLoadSourceData:
     def test_load_source_data_malformed_json(self, tmp_path):
         """Test handling of malformed JSON files."""
         jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, 'w') as f:
+        with open(jikan_file, "w") as f:
             f.write("{invalid json")
 
         result = load_source_data(str(tmp_path))
@@ -614,14 +585,10 @@ class TestExtractAllStatistics:
                     "rank": 164,
                     "popularity": 247,
                     "members": 800000,
-                    "favorites": 13000
+                    "favorites": 13000,
                 }
             },
-            "anilist": {
-                "averageScore": 84,
-                "favourites": 15000,
-                "popularity": 284464
-            },
+            "anilist": {"averageScore": 84, "favourites": 15000, "popularity": 284464},
             "kitsu": {
                 "anime": {
                     "attributes": {
@@ -629,33 +596,23 @@ class TestExtractAllStatistics:
                         "userCount": 9836,
                         "favoritesCount": 140,
                         "ratingRank": 18,
-                        "popularityRank": 1666
+                        "popularityRank": 1666,
                     }
                 }
             },
-            "anidb": {
-                "ratings": {
-                    "permanent": {
-                        "value": 8.35,
-                        "count": 1427
-                    }
-                }
-            },
+            "anidb": {"ratings": {"permanent": {"value": 8.35, "count": 1427}}},
             "anime_planet": {
-                "aggregate_rating": {
-                    "ratingValue": 4.346,
-                    "ratingCount": 12268
-                },
-                "rank": 105
+                "aggregate_rating": {"ratingValue": 4.346, "ratingCount": 12268},
+                "rank": 105,
             },
             "animeschedule": {
                 "stats": {
                     "averageScore": 86.7,
                     "ratingCount": 327,
                     "trackedRating": 31,
-                    "trackedCount": 1909
+                    "trackedCount": 1909,
                 }
-            }
+            },
         }
 
     def test_extract_all_statistics_complete(self, all_sources_data):
@@ -678,7 +635,7 @@ class TestExtractAllStatistics:
             "kitsu": {},
             "anidb": {},
             "anime_planet": {},
-            "animeschedule": {}
+            "animeschedule": {},
         }
         result = extract_all_statistics(sources)
 
@@ -693,7 +650,7 @@ class TestExtractAllStatistics:
             "kitsu": {},
             "anidb": {},
             "anime_planet": {},
-            "animeschedule": {}
+            "animeschedule": {},
         }
         result = extract_all_statistics(sources)
 
@@ -708,7 +665,7 @@ class TestExtractAllStatistics:
             "kitsu": {},
             "anidb": {},
             "anime_planet": {},
-            "animeschedule": {}
+            "animeschedule": {},
         }
         result = extract_all_statistics(sources)
 
@@ -733,27 +690,34 @@ class TestMainExecution:
             "kitsu": {"anime": {"attributes": {"averageRating": "85"}}},
             "anidb": {"ratings": {"permanent": {"value": 8.5}}},
             "anime_planet": {"aggregate_rating": {"ratingValue": 4.25}},
-            "animeschedule": {"stats": {"averageScore": 85}}
+            "animeschedule": {"stats": {"averageScore": 85}},
         }
 
         for name, data in sources.items():
             file_path = agent_dir / f"{name}.json"
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump(data, f)
 
         # Run script
         import subprocess
+
         result = subprocess.run(
-            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
+            [
+                sys.executable,
+                str(stage4_script_path),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 0
         assert (agent_dir / "stage4_statistics.json").exists()
 
         # Verify output
-        with open(agent_dir / "stage4_statistics.json", 'r') as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         assert "statistics" in output
@@ -766,21 +730,28 @@ class TestMainExecution:
 
         # Only create jikan file
         jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, 'w') as f:
+        with open(jikan_file, "w") as f:
             json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
 
         # Run script
         import subprocess
+
         result = subprocess.run(
-            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
+            [
+                sys.executable,
+                str(stage4_script_path),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 0
 
         # Verify output
-        with open(agent_dir / "stage4_statistics.json", 'r') as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         # Only mal should be present
@@ -796,15 +767,22 @@ class TestMainExecution:
 
         # Create minimal data
         jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, 'w') as f:
+        with open(jikan_file, "w") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         # Run script with custom temp dir
         import subprocess
+
         result = subprocess.run(
-            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(custom_temp)],
+            [
+                sys.executable,
+                str(stage4_script_path),
+                "test_agent",
+                "--temp-dir",
+                str(custom_temp),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 0
@@ -817,18 +795,25 @@ class TestMainExecution:
 
         # Create minimal data
         jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, 'w') as f:
+        with open(jikan_file, "w") as f:
             json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
 
         import subprocess
+
         subprocess.run(
-            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
+            [
+                sys.executable,
+                str(stage4_script_path),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         # Verify structure
-        with open(agent_dir / "stage4_statistics.json", 'r') as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         assert isinstance(output, dict)
@@ -842,22 +827,31 @@ class TestMainExecution:
 
         # Create data with unicode
         jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, 'w', encoding='utf-8') as f:
+        with open(jikan_file, "w", encoding="utf-8") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         import subprocess
+
         subprocess.run(
-            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
+            [
+                sys.executable,
+                str(stage4_script_path),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         # Verify file encoding
-        with open(agent_dir / "stage4_statistics.json", 'r', encoding='utf-8') as f:
+        with open(agent_dir / "stage4_statistics.json", encoding="utf-8") as f:
             content = f.read()
             # Should be valid UTF-8
             assert content is not None
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=process_stage4_statistics", "--cov-report=term-missing"])
+    pytest.main(
+        [__file__, "-v", "--cov=process_stage4_statistics", "--cov-report=term-missing"]
+    )

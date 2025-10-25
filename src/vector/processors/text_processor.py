@@ -5,7 +5,7 @@ for optimal performance.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ...config import Settings
 from ...models.anime import AnimeEntry
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TextProcessor:
     """Text embedding processor supporting multiple models."""
 
-    def __init__(self, settings: Optional[Settings] = None):
+    def __init__(self, settings: Settings | None = None):
         """Initialize modern text processor with configuration.
 
         Args:
@@ -36,16 +36,16 @@ class TextProcessor:
         self.cache_dir = settings.model_cache_dir
 
         # Model instance
-        self.model: Optional[Dict[str, Any]] = None
+        self.model: dict[str, Any] | None = None
 
         # Model metadata
-        self.model_info: Dict[str, Any] = {}
+        self.model_info: dict[str, Any] = {}
 
         # Initialize models
         self._init_models()
 
         # Initialize field mapper for multi-vector processing
-        self._field_mapper: Optional["AnimeFieldMapper"] = None
+        self._field_mapper: AnimeFieldMapper | None = None
 
     def _init_models(self) -> None:
         """Initialize text embedding model."""
@@ -65,7 +65,7 @@ class TextProcessor:
             logger.error(f"Failed to initialize modern text processor: {e}")
             raise
 
-    def _create_model(self, provider: str, model_name: str) -> Dict[str, Any]:
+    def _create_model(self, provider: str, model_name: str) -> dict[str, Any]:
         """Create a model instance based on provider and model name.
 
         Args:
@@ -84,7 +84,7 @@ class TextProcessor:
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-    def _create_fastembed_model(self, model_name: str) -> Dict[str, Any]:
+    def _create_fastembed_model(self, model_name: str) -> dict[str, Any]:
         """Create FastEmbed model instance.
 
         Args:
@@ -97,7 +97,7 @@ class TextProcessor:
             from fastembed import TextEmbedding
 
             # Initialize FastEmbed model
-            init_kwargs: Dict[str, Any] = {"model_name": model_name}
+            init_kwargs: dict[str, Any] = {"model_name": model_name}
             if self.cache_dir:
                 init_kwargs["cache_dir"] = self.cache_dir
 
@@ -121,7 +121,7 @@ class TextProcessor:
             logger.error("FastEmbed not installed. Install with: pip install fastembed")
             raise ImportError("FastEmbed dependencies missing") from e
 
-    def _create_huggingface_model(self, model_name: str) -> Dict[str, Any]:
+    def _create_huggingface_model(self, model_name: str) -> dict[str, Any]:
         """Create HuggingFace model instance.
 
         Args:
@@ -136,7 +136,9 @@ class TextProcessor:
 
             # Load model and tokenizer
             model = AutoModel.from_pretrained(model_name, cache_dir=self.cache_dir)
-            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=self.cache_dir)  # type: ignore[no-untyped-call]
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name, cache_dir=self.cache_dir
+            )  # type: ignore[no-untyped-call]
 
             # Set device
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -167,7 +169,7 @@ class TextProcessor:
             )
             raise ImportError("HuggingFace dependencies missing") from e
 
-    def _create_sentence_transformers_model(self, model_name: str) -> Dict[str, Any]:
+    def _create_sentence_transformers_model(self, model_name: str) -> dict[str, Any]:
         """Create Sentence Transformers model instance.
 
         Args:
@@ -288,7 +290,7 @@ class TextProcessor:
         except Exception as e:
             logger.warning(f"Text model warm-up failed: {e}")
 
-    def encode_text(self, text: str) -> Optional[List[float]]:
+    def encode_text(self, text: str) -> list[float] | None:
         """Encode text to embedding vector.
 
         Args:
@@ -315,8 +317,8 @@ class TextProcessor:
             return None
 
     def _encode_text_with_model(
-        self, text: str, model_dict: Dict[str, Any]
-    ) -> Optional[List[float]]:
+        self, text: str, model_dict: dict[str, Any]
+    ) -> list[float] | None:
         """Encode text with specific model.
 
         Args:
@@ -344,8 +346,8 @@ class TextProcessor:
             return None
 
     def _encode_with_fastembed(
-        self, text: str, model_dict: Dict[str, Any]
-    ) -> Optional[List[float]]:
+        self, text: str, model_dict: dict[str, Any]
+    ) -> list[float] | None:
         """Encode text with FastEmbed model.
 
         Args:
@@ -361,7 +363,7 @@ class TextProcessor:
             # Generate embedding
             embeddings = list(model.embed([text]))
             if embeddings:
-                return cast(List[float], embeddings[0].tolist())
+                return cast(list[float], embeddings[0].tolist())
             else:
                 return None
 
@@ -370,8 +372,8 @@ class TextProcessor:
             return None
 
     def _encode_with_huggingface(
-        self, text: str, model_dict: Dict[str, Any]
-    ) -> Optional[List[float]]:
+        self, text: str, model_dict: dict[str, Any]
+    ) -> list[float] | None:
         """Encode text with HuggingFace model.
 
         Args:
@@ -411,15 +413,15 @@ class TextProcessor:
                 embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
                 embedding = embeddings.cpu().numpy().flatten().tolist()
 
-            return cast(List[float], embedding)
+            return cast(list[float], embedding)
 
         except Exception as e:
             logger.error(f"HuggingFace encoding failed: {e}")
             return None
 
     def _encode_with_sentence_transformers(
-        self, text: str, model_dict: Dict[str, Any]
-    ) -> Optional[List[float]]:
+        self, text: str, model_dict: dict[str, Any]
+    ) -> list[float] | None:
         """Encode text with Sentence Transformers model.
 
         Args:
@@ -434,13 +436,13 @@ class TextProcessor:
 
             # Generate embedding
             embedding = model.encode(text)
-            return cast(List[float], embedding.tolist())
+            return cast(list[float], embedding.tolist())
 
         except Exception as e:
             logger.error(f"Sentence Transformers encoding failed: {e}")
             return None
 
-    def _create_zero_vector(self) -> List[float]:
+    def _create_zero_vector(self) -> list[float]:
         """Create zero vector for empty text.
 
         Returns:
@@ -453,8 +455,8 @@ class TextProcessor:
             return [0.0] * 384  # Default size
 
     def encode_texts_batch(
-        self, texts: List[str], batch_size: Optional[int] = None
-    ) -> List[Optional[List[float]]]:
+        self, texts: list[str], batch_size: int | None = None
+    ) -> list[list[float] | None]:
         """Encode multiple texts in batches.
 
         Args:
@@ -493,7 +495,7 @@ class TextProcessor:
             logger.error(f"Batch text encoding failed: {e}")
             return [None] * len(texts)
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get information about the current model.
 
         Returns:
@@ -589,7 +591,7 @@ class TextProcessor:
             self._field_mapper = AnimeFieldMapper()
         return self._field_mapper
 
-    def process_anime_vectors(self, anime: AnimeEntry) -> Dict[str, List[float]]:
+    def process_anime_vectors(self, anime: AnimeEntry) -> dict[str, list[float]]:
         """
         Process anime data into multiple semantic text embeddings.
 
@@ -662,7 +664,7 @@ class TextProcessor:
 
     def _encode_with_hierarchical_averaging(
         self, chunked_text: str
-    ) -> Optional[List[float]]:
+    ) -> list[float] | None:
         """
         Encode text with hierarchical averaging for episode chunks.
 
@@ -716,8 +718,8 @@ class TextProcessor:
             averaged_embedding = np.mean(chunk_matrix, axis=0)
 
             # Convert back to list with proper typing
-            result_embedding: List[float] = cast(
-                List[float], averaged_embedding.tolist()
+            result_embedding: list[float] = cast(
+                list[float], averaged_embedding.tolist()
             )
 
             logger.debug(
@@ -767,7 +769,7 @@ class TextProcessor:
 
         return processed
 
-    def _get_zero_embedding(self) -> List[float]:
+    def _get_zero_embedding(self) -> list[float]:
         """Get zero embedding vector for empty/failed content."""
         if self.model:
             embedding_size = self.model["embedding_size"]
@@ -775,7 +777,7 @@ class TextProcessor:
         else:
             return [0.0] * 384  # Default size
 
-    def get_text_vector_names(self) -> List[str]:
+    def get_text_vector_names(self) -> list[str]:
         """Get list of text vector names supported by this processor."""
         field_mapper = self._get_field_mapper()
         return [

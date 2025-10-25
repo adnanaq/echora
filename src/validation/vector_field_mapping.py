@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Vector field mapping definitions based on 11-vector architecture."""
 
-from typing import Dict, List
-
 # 11-Vector Architecture Field Mappings (from tasks/tasks_plan.md)
-VECTOR_FIELD_MAPPINGS: Dict[str, Dict[str, List[str]]] = {
+VECTOR_FIELD_MAPPINGS: dict[str, dict[str, list[str]]] = {
     # Text Vectors (BGE-M3, 1024-dim each)
     "title_vector": {
         "fields": [
@@ -86,7 +84,7 @@ PAYLOAD_ONLY_FIELDS = [
 NON_INDEXED_PAYLOAD = ["enrichment_metadata", "images"]
 
 
-def get_vector_fields(vector_name: str) -> List[str]:
+def get_vector_fields(vector_name: str) -> list[str]:
     """Get the list of fields indexed in a specific vector."""
     return VECTOR_FIELD_MAPPINGS.get(vector_name, {}).get("fields", [])
 
@@ -98,7 +96,7 @@ def get_vector_description(vector_name: str) -> str:
     )
 
 
-def get_text_vectors() -> List[str]:
+def get_text_vectors() -> list[str]:
     """Get list of all text vector names."""
     return [
         name
@@ -107,7 +105,7 @@ def get_text_vectors() -> List[str]:
     ]
 
 
-def get_image_vectors() -> List[str]:
+def get_image_vectors() -> list[str]:
     """Get list of all image vector names."""
     return ["image_vector", "character_image_vector"]
 
@@ -119,6 +117,6 @@ def is_vector_populated(vector_name: str) -> bool:
     return vector_name not in typically_empty
 
 
-def get_searchable_vectors() -> List[str]:
+def get_searchable_vectors() -> list[str]:
     """Get list of vectors that should contain meaningful data for search."""
     return [name for name in VECTOR_FIELD_MAPPINGS.keys() if is_vector_populated(name)]

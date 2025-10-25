@@ -331,4 +331,3 @@ Load Balancer ’ [Vector Service Instances] ’ Qdrant Cluster
 - **Auto-scaling**: Kubernetes HPA based on CPU/memory/queue depth
 - **Model Serving**: Dedicated model inference services
 - **Data Pipeline**: Stream processing for real-time updates
-

@@ -42,7 +42,7 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -89,12 +89,12 @@ class VectorGenerationError(VectorUpdateError):
 
 
 async def update_vectors(
-    vector_names: List[str],
-    anime_index: Optional[int] = None,
-    anime_title: Optional[str] = None,
+    vector_names: list[str],
+    anime_index: int | None = None,
+    anime_title: str | None = None,
     batch_size: int = 100,
     data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Update specific vectors for anime entries using QdrantClient.update_batch_anime_vectors().
 
     This is a thin CLI wrapper that:
@@ -140,7 +140,7 @@ async def update_vectors(
         raise FileNotFoundError(f"Data file not found: {data_file}")
 
     logger.info(f"Loading anime data from {data_file}")
-    with open(data_file, "r") as f:
+    with open(data_file) as f:
         enrichment_data = json.load(f)
 
     anime_data = enrichment_data["data"]
@@ -178,7 +178,7 @@ async def update_vectors(
         logger.info(f"Processing all {len(target_anime)} anime")
 
     # Convert to AnimeEntry objects, adding UUIDs if missing
-    anime_entries: List[AnimeEntry] = []
+    anime_entries: list[AnimeEntry] = []
     for anime_dict in target_anime:
         if "id" not in anime_dict or not anime_dict["id"]:
             anime_dict["id"] = str(uuid.uuid4())
@@ -191,7 +191,7 @@ async def update_vectors(
     )
 
     # Define progress callback for CLI logging
-    def log_progress(current: int, total: int, batch_result: Dict[str, Any]) -> None:
+    def log_progress(current: int, total: int, batch_result: dict[str, Any]) -> None:
         """Progress callback for batch completion logging."""
         batch_num = (current + batch_size - 1) // batch_size
         total_batches = (total + batch_size - 1) // batch_size
@@ -224,7 +224,7 @@ async def update_vectors(
                 vector_stats[vector_name]["failed"] += 1
 
     # Calculate per-anime success (all vectors must succeed)
-    anime_success_map: Dict[str, Dict[str, int]] = {}
+    anime_success_map: dict[str, dict[str, int]] = {}
     for update_result in result["results"]:
         anime_id = update_result["anime_id"]
         if anime_id not in anime_success_map:
@@ -234,9 +234,7 @@ async def update_vectors(
             anime_success_map[anime_id]["success"] += 1
 
     successful_anime = sum(
-        1
-        for stats in anime_success_map.values()
-        if stats["success"] == stats["total"]
+        1 for stats in anime_success_map.values() if stats["success"] == stats["total"]
     )
     failed_anime = total_anime - successful_anime
 

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 import cloudscraper  # type: ignore
 from bs4 import BeautifulSoup, Tag
@@ -27,7 +27,7 @@ class BaseScraper(BaseClient):
         )
         return scraper
 
-    async def _make_request(self, url: str, **kwargs) -> Dict[str, Any]:
+    async def _make_request(self, url: str, **kwargs) -> dict[str, Any]:
         """Make HTTP request using cloudscraper.
 
         Args:
@@ -96,7 +96,7 @@ class BaseScraper(BaseClient):
         """Parse HTML content with BeautifulSoup."""
         return BeautifulSoup(html, "html.parser")
 
-    def _extract_json_ld(self, soup: BeautifulSoup) -> Optional[Dict]:
+    def _extract_json_ld(self, soup: BeautifulSoup) -> dict | None:
         """Extract JSON-LD structured data from HTML."""
         scripts = soup.find_all("script", type="application/ld+json")
 
@@ -141,7 +141,7 @@ class BaseScraper(BaseClient):
 
         return None
 
-    def _extract_opengraph(self, soup: BeautifulSoup) -> Dict[str, str]:
+    def _extract_opengraph(self, soup: BeautifulSoup) -> dict[str, str]:
         """Extract OpenGraph metadata."""
         og_data = {}
 
@@ -158,7 +158,7 @@ class BaseScraper(BaseClient):
 
         return og_data
 
-    def _extract_meta_tags(self, soup: BeautifulSoup) -> Dict[str, str]:
+    def _extract_meta_tags(self, soup: BeautifulSoup) -> dict[str, str]:
         """Extract standard meta tags."""
         meta_data = {}
 
@@ -189,9 +189,9 @@ class BaseScraper(BaseClient):
 
         return text
 
-    def _extract_base_data(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
+    def _extract_base_data(self, soup: BeautifulSoup, url: str) -> dict[str, Any]:
         """Extract basic data common to all anime sites."""
-        base_data: Dict[str, Any] = {
+        base_data: dict[str, Any] = {
             "json_ld": None,
         }
 

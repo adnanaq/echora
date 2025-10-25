@@ -36,6 +36,6 @@ Optional, can be filled during triage
 
 +++ Suggested Fix / Notes
 
-* Optional fix / suggestions
+- Optional fix / suggestions
 
 +++

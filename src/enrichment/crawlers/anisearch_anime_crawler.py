@@ -17,7 +17,7 @@ import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
 import re
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -30,7 +30,7 @@ from crawl4ai.types import RunManyReturn
 from .utils import sanitize_output_path
 
 
-def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
+def _process_relation_tooltips(relations_list: list[dict[str, Any]]) -> None:
     """
     Processes a list of relations to extract image URLs from tooltip_html and renames the field.
     """
@@ -48,9 +48,9 @@ async def _fetch_and_process_sub_page(
     session_id: str,
     js_code: str,
     wait_for: str,
-    css_schema: Optional[Dict[str, Any]],
+    css_schema: dict[str, Any] | None,
     use_js_only: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Generic function to navigate via JS and fetch data from a sub-page.
 
@@ -89,7 +89,7 @@ async def _fetch_and_process_sub_page(
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
             if sub_page_data:
-                return cast(Dict[str, Any], sub_page_data[0])
+                return cast(dict[str, Any], sub_page_data[0])
     return None
 
 
@@ -97,8 +97,8 @@ BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
 async def fetch_anisearch_anime(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    url: str, return_data: bool = True, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Crawls, processes, and saves anime data from a given anisearch.com URL.
     Uses JS-based navigation for screenshots and relations pages.

@@ -7,7 +7,7 @@ art style classification, and genre understanding tasks.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import torch
 from torch.utils.data import Dataset
@@ -25,18 +25,18 @@ class DataSample:
     anime_id: str
     title: str
     text: str
-    image_data: Optional[str] = None
+    image_data: str | None = None
 
     # Labels for different tasks
-    character_labels: Optional[List[str]] = None
-    art_style_label: Optional[str] = None
-    genre_labels: Optional[List[str]] = None
+    character_labels: list[str] | None = None
+    art_style_label: str | None = None
+    genre_labels: list[str] | None = None
 
     # Additional metadata
-    studio: Optional[str] = None
-    year: Optional[int] = None
-    type: Optional[str] = None
-    tags: Optional[List[str]] = None
+    studio: str | None = None
+    year: int | None = None
+    type: str | None = None
+    tags: list[str] | None = None
 
 
 class AnimeDataset(Dataset):
@@ -44,7 +44,7 @@ class AnimeDataset(Dataset):
 
     def __init__(
         self,
-        anime_data: List[Dict[str, Any]],
+        anime_data: list[dict[str, Any]],
         text_processor: TextProcessor,
         vision_processor: VisionProcessor,
         config: Any,
@@ -78,7 +78,7 @@ class AnimeDataset(Dataset):
         logger.info(f"Art style vocabulary size: {len(self.art_style_vocab)}")
         logger.info(f"Genre vocabulary size: {len(self.genre_vocab)}")
 
-    def _prepare_samples(self) -> List[DataSample]:
+    def _prepare_samples(self) -> list[DataSample]:
         """Prepare training samples from anime data.
 
         Returns:
@@ -106,7 +106,7 @@ class AnimeDataset(Dataset):
 
         return samples
 
-    def _create_base_sample(self, anime: Dict[str, Any]) -> Optional[DataSample]:
+    def _create_base_sample(self, anime: dict[str, Any]) -> DataSample | None:
         """Create base training sample from anime data.
 
         Args:
@@ -156,7 +156,7 @@ class AnimeDataset(Dataset):
             logger.warning(f"Error creating base sample: {e}")
             return None
 
-    def _create_augmented_samples(self, anime: Dict[str, Any]) -> List[DataSample]:
+    def _create_augmented_samples(self, anime: dict[str, Any]) -> list[DataSample]:
         """Create augmented training samples from anime data.
 
         Args:
@@ -165,7 +165,7 @@ class AnimeDataset(Dataset):
         Returns:
             List of augmented samples
         """
-        augmented_samples: List[DataSample] = []
+        augmented_samples: list[DataSample] = []
         base_sample = self._create_base_sample(anime)
 
         if not base_sample:
@@ -198,7 +198,7 @@ class AnimeDataset(Dataset):
 
         return augmented_samples
 
-    def _generate_anime_id(self, anime: Dict[str, Any]) -> str:
+    def _generate_anime_id(self, anime: dict[str, Any]) -> str:
         """Generate unique anime ID.
 
         Args:
@@ -218,7 +218,7 @@ class AnimeDataset(Dataset):
             # Fallback to title-based ID
             return title.replace(" ", "_").lower()
 
-    def _create_text_representation(self, anime: Dict[str, Any]) -> str:
+    def _create_text_representation(self, anime: dict[str, Any]) -> str:
         """Create comprehensive text representation.
 
         Args:
@@ -260,7 +260,7 @@ class AnimeDataset(Dataset):
 
         return " | ".join(parts)
 
-    def _extract_image_data(self, anime: Dict[str, Any]) -> Optional[str]:
+    def _extract_image_data(self, anime: dict[str, Any]) -> str | None:
         """Extract image data from anime entry.
 
         Args:
@@ -279,7 +279,7 @@ class AnimeDataset(Dataset):
 
         return None
 
-    def _extract_character_labels(self, anime: Dict[str, Any]) -> List[str]:
+    def _extract_character_labels(self, anime: dict[str, Any]) -> list[str]:
         """Extract character labels from anime data.
 
         Args:
@@ -311,7 +311,7 @@ class AnimeDataset(Dataset):
 
         return list(set(character_tags))
 
-    def _extract_art_style_label(self, anime: Dict[str, Any]) -> str:
+    def _extract_art_style_label(self, anime: dict[str, Any]) -> str:
         """Extract art style label from anime data.
 
         Args:
@@ -355,7 +355,7 @@ class AnimeDataset(Dataset):
 
         return "unknown"
 
-    def _extract_genre_labels(self, anime: Dict[str, Any]) -> List[str]:
+    def _extract_genre_labels(self, anime: dict[str, Any]) -> list[str]:
         """Extract genre labels from anime data.
 
         Args:
@@ -392,7 +392,7 @@ class AnimeDataset(Dataset):
 
         return list(set(genres))
 
-    def _extract_year(self, anime: Dict[str, Any]) -> Optional[int]:
+    def _extract_year(self, anime: dict[str, Any]) -> int | None:
         """Extract year from anime data.
 
         Args:
@@ -407,7 +407,7 @@ class AnimeDataset(Dataset):
 
         return None
 
-    def _create_synopsis_variant(self, anime: Dict[str, Any]) -> str:
+    def _create_synopsis_variant(self, anime: dict[str, Any]) -> str:
         """Create synopsis-focused text variant.
 
         Args:
@@ -424,7 +424,7 @@ class AnimeDataset(Dataset):
 
         return title
 
-    def _create_tag_variant(self, anime: Dict[str, Any]) -> str:
+    def _create_tag_variant(self, anime: dict[str, Any]) -> str:
         """Create tag-focused text variant.
 
         Args:
@@ -441,7 +441,7 @@ class AnimeDataset(Dataset):
 
         return title
 
-    def _create_studio_variant(self, anime: Dict[str, Any]) -> str:
+    def _create_studio_variant(self, anime: dict[str, Any]) -> str:
         """Create studio-focused text variant.
 
         Args:
@@ -458,7 +458,7 @@ class AnimeDataset(Dataset):
 
         return title
 
-    def _create_character_variant(self, anime: Dict[str, Any]) -> str:
+    def _create_character_variant(self, anime: dict[str, Any]) -> str:
         """Create character-focused text variant.
 
         Args:
@@ -475,7 +475,7 @@ class AnimeDataset(Dataset):
 
         return title
 
-    def _build_character_vocab(self) -> Dict[str, int]:
+    def _build_character_vocab(self) -> dict[str, int]:
         """Build character vocabulary from samples.
 
         Returns:
@@ -493,7 +493,7 @@ class AnimeDataset(Dataset):
 
         return vocab
 
-    def _build_art_style_vocab(self) -> Dict[str, int]:
+    def _build_art_style_vocab(self) -> dict[str, int]:
         """Build art style vocabulary from samples.
 
         Returns:
@@ -509,7 +509,7 @@ class AnimeDataset(Dataset):
 
         return vocab
 
-    def _build_genre_vocab(self) -> Dict[str, int]:
+    def _build_genre_vocab(self) -> dict[str, int]:
         """Build genre vocabulary from samples.
 
         Returns:
@@ -531,7 +531,7 @@ class AnimeDataset(Dataset):
         """Get dataset length."""
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         """Get dataset item.
 
         Args:
@@ -591,7 +591,7 @@ class AnimeDataset(Dataset):
             },
         }
 
-    def get_vocab_sizes(self) -> Dict[str, int]:
+    def get_vocab_sizes(self) -> dict[str, int]:
         """Get vocabulary sizes for each task.
 
         Returns:
@@ -603,16 +603,16 @@ class AnimeDataset(Dataset):
             "genre": len(self.genre_vocab),
         }
 
-    def get_class_weights(self) -> Dict[str, torch.Tensor]:
+    def get_class_weights(self) -> dict[str, torch.Tensor]:
         """Calculate class weights for balanced training.
 
         Returns:
             Class weights for each task
         """
         # Calculate character weights
-        character_counts: Dict[str, int] = defaultdict(int)
-        art_style_counts: Dict[str, int] = defaultdict(int)
-        genre_counts: Dict[str, int] = defaultdict(int)
+        character_counts: dict[str, int] = defaultdict(int)
+        art_style_counts: dict[str, int] = defaultdict(int)
+        genre_counts: dict[str, int] = defaultdict(int)
 
         for sample in self.samples:
             if sample.character_labels:

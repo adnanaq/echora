@@ -6,7 +6,7 @@ for the comprehensive anime search system with error handling and validation.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...config import Settings
 from ...models.anime import AnimeEntry
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class MultiVectorEmbeddingManager:
     """Manager for coordinated generation of all 11 embedding vectors."""
 
-    def __init__(self, settings: Optional[Settings] = None):
+    def __init__(self, settings: Settings | None = None):
         """Initialize the multi-vector embedding manager.
 
         Args:
@@ -53,7 +53,7 @@ class MultiVectorEmbeddingManager:
             f"Initialized MultiVectorEmbeddingManager with {len(self.vector_names)} vectors"
         )
 
-    async def process_anime_vectors(self, anime: AnimeEntry) -> Dict[str, Any]:
+    async def process_anime_vectors(self, anime: AnimeEntry) -> dict[str, Any]:
         """Process anime data to generate all embedding vectors.
 
         Args:
@@ -91,7 +91,7 @@ class MultiVectorEmbeddingManager:
                 "metadata": {"error": str(e), "processing_failed": True},
             }
 
-    async def _generate_text_vectors(self, anime: AnimeEntry) -> Dict[str, List[float]]:
+    async def _generate_text_vectors(self, anime: AnimeEntry) -> dict[str, list[float]]:
         """Generate all text-based embedding vectors.
 
         Args:
@@ -131,7 +131,7 @@ class MultiVectorEmbeddingManager:
 
     async def _generate_image_vectors(
         self, anime: AnimeEntry
-    ) -> Dict[str, List[float]]:
+    ) -> dict[str, list[float]]:
         """Generate both image embedding vectors.
 
         Args:
@@ -174,7 +174,7 @@ class MultiVectorEmbeddingManager:
             logger.error(f"Image vector generation failed: {e}")
             return {}
 
-    def _generate_payload(self, anime: AnimeEntry) -> Dict[str, Any]:
+    def _generate_payload(self, anime: AnimeEntry) -> dict[str, Any]:
         """Generate payload data for Qdrant storage.
 
         Stores ALL fields from AnimeEntry to preserve complete data.
@@ -206,7 +206,7 @@ class MultiVectorEmbeddingManager:
             if anime.statistics:
                 payload["statistics"] = {}
                 for platform, stats in anime.statistics.items():
-                    stats_dict: Dict[str, Any] = {
+                    stats_dict: dict[str, Any] = {
                         "score": getattr(stats, "score", None),
                         "scored_by": getattr(stats, "scored_by", None),
                         "popularity_rank": getattr(stats, "popularity_rank", None),
@@ -291,7 +291,7 @@ class MultiVectorEmbeddingManager:
             logger.error(f"Payload generation failed: {e}")
             return {"error": str(e)}
 
-    def _add_flattened_fields(self, payload: Dict[str, Any], anime: AnimeEntry) -> None:
+    def _add_flattened_fields(self, payload: dict[str, Any], anime: AnimeEntry) -> None:
         """Add flattened fields for optimized Qdrant indexing.
 
         Creates flattened fields that enable efficient filtering:
@@ -319,8 +319,8 @@ class MultiVectorEmbeddingManager:
             # Don't fail payload generation if flattening fails
 
     def _generate_metadata(
-        self, vectors: Dict[str, List[float]], anime: AnimeEntry
-    ) -> Dict[str, Any]:
+        self, vectors: dict[str, list[float]], anime: AnimeEntry
+    ) -> dict[str, Any]:
         """Generate processing metadata.
 
         Args:
@@ -344,7 +344,7 @@ class MultiVectorEmbeddingManager:
             # Missing vectors
             missing_vectors = [v for v in self.vector_names if v not in vectors]
 
-            metadata: Dict[str, Any] = {
+            metadata: dict[str, Any] = {
                 "processing_timestamp": None,  # Will be set by caller
                 "total_vectors_expected": total_expected,
                 "total_vectors_generated": total_generated,
@@ -360,7 +360,7 @@ class MultiVectorEmbeddingManager:
             }
 
             # Add vector dimensions for validation
-            vector_dimensions: Dict[str, int] = {}
+            vector_dimensions: dict[str, int] = {}
             for vector_name, vector_data in vectors.items():
                 if vector_data:
                     vector_dimensions[vector_name] = len(vector_data)
@@ -374,8 +374,8 @@ class MultiVectorEmbeddingManager:
             return {"error": str(e)}
 
     async def process_anime_batch(
-        self, anime_list: List[AnimeEntry]
-    ) -> List[Dict[str, Any]]:
+        self, anime_list: list[AnimeEntry]
+    ) -> list[dict[str, Any]]:
         """Process multiple anime entries in batch.
 
         Args:
@@ -396,7 +396,7 @@ class MultiVectorEmbeddingManager:
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"Batch processing error for anime {i}: {result}")
-                    error_result: Dict[str, Any] = {
+                    error_result: dict[str, Any] = {
                         "vectors": {},
                         "payload": {},
                         "metadata": {
@@ -425,7 +425,7 @@ class MultiVectorEmbeddingManager:
             logger.error(f"Batch processing failed: {e}")
             return []
 
-    def validate_vectors(self, vectors: Dict[str, List[float]]) -> Dict[str, Any]:
+    def validate_vectors(self, vectors: dict[str, list[float]]) -> dict[str, Any]:
         """Validate generated vectors.
 
         Args:
@@ -435,7 +435,7 @@ class MultiVectorEmbeddingManager:
             Validation report dictionary
         """
         try:
-            validation_report: Dict[str, Any] = {
+            validation_report: dict[str, Any] = {
                 "valid": True,
                 "errors": [],
                 "warnings": [],
@@ -499,7 +499,7 @@ class MultiVectorEmbeddingManager:
             logger.error(f"Vector validation failed: {e}")
             return {"valid": False, "errors": [str(e)]}
 
-    def get_embedding_stats(self) -> Dict[str, Any]:
+    def get_embedding_stats(self) -> dict[str, Any]:
         """Get embedding manager statistics.
 
         Returns:

@@ -5,7 +5,7 @@ Provides database statistics, health monitoring, and administrative operations.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ router = APIRouter()
 class UpsertRequest(BaseModel):
     """Request model for upserting vectors."""
 
-    documents: List[Dict[str, Any]] = Field(
+    documents: list[dict[str, Any]] = Field(
         ...,
         description="List of AnimeEntry-compatible documents to upsert. Required fields: id, status, title, type, sources",
     )
@@ -35,10 +35,10 @@ class UpsertResponse(BaseModel):
 
     success: bool = Field(..., description="Whether operation was successful")
     documents_processed: int = Field(..., description="Number of documents processed")
-    processing_time_seconds: Optional[float] = Field(
+    processing_time_seconds: float | None = Field(
         None, description="Processing time in seconds"
     )
-    errors: List[str] = Field(
+    errors: list[str] = Field(
         default_factory=list, description="Any errors encountered"
     )
 
@@ -51,7 +51,7 @@ class StatsResponse(BaseModel):
     vector_size: int = Field(..., description="Vector embedding size")
     distance_metric: str = Field(..., description="Distance metric used")
     status: str = Field(..., description="Collection status")
-    additional_stats: Dict[str, Any] = Field(
+    additional_stats: dict[str, Any] = Field(
         default_factory=dict, description="Additional statistics"
     )
 
@@ -101,7 +101,7 @@ async def get_database_stats() -> StatsResponse:
 
 
 @router.get("/health")
-async def admin_health_check() -> Dict[str, Any]:
+async def admin_health_check() -> dict[str, Any]:
     """
     Detailed health check for admin purposes.
 
@@ -232,7 +232,7 @@ async def upsert_vectors(request: UpsertRequest) -> UpsertResponse:
 
 
 @router.delete("/vectors/{anime_id}")
-async def delete_vector(anime_id: str) -> Dict[str, Any]:
+async def delete_vector(anime_id: str) -> dict[str, Any]:
     """
     Delete a vector from the database.
 
@@ -270,7 +270,7 @@ async def delete_vector(anime_id: str) -> Dict[str, Any]:
 
 
 @router.post("/reindex")
-async def reindex_collection() -> Dict[str, Any]:
+async def reindex_collection() -> dict[str, Any]:
     """
     Rebuild the vector index.
 
@@ -305,7 +305,7 @@ async def reindex_collection() -> Dict[str, Any]:
 
 
 @router.get("/collection/info")
-async def get_collection_info() -> Dict[str, Any]:
+async def get_collection_info() -> dict[str, Any]:
     """
     Get detailed collection information.
 

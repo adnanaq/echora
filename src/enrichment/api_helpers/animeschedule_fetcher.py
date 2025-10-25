@@ -7,14 +7,14 @@ Follows gemini_instructions.md Step 2.4
 
 import json
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
 
 def fetch_animeschedule_data(
     search_term: str, save_file: bool = False
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Fetch AnimSchedule data for an anime"""
 
     print(f"🔄 Fetching AnimSchedule data for: {search_term}")

@@ -8,15 +8,15 @@ Reason and impact
 
 ### Implementation Details
 
-* Step 1
-* Step 2
-* Step 3
+- Step 1
+- Step 2
+- Step 3
 
 ### Acceptance Criteria
 
-* Criteria 1
-* Criteria 2
-* Criteria 3
+- Criteria 1
+- Criteria 2
+- Criteria 3
 
 ### Testing / Validation
 
@@ -26,5 +26,5 @@ Reason and impact
 
 ### Related Issues / Dependencies
 
-* Dependency 1
-* Related issue 2
+- Dependency 1
+- Related issue 2

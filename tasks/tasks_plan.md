@@ -130,18 +130,21 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### ✅ IMPLEMENTATION COMPLETE - Key Achievements
 
 **🚀 Vector Quantization (2.5.3) - FULLY IMPLEMENTED**
+
 - **All 3 quantization types**: Binary (40x speedup), Scalar (memory optimization), Product (16x compression)
 - **Priority-based optimization**: High/Medium/Low vector classifications with adaptive settings
 - **Production configuration**: Complete environment variable support and validation
 - **Evidence**: `src/config/settings.py:193-230`, `src/vector/client/qdrant_client.py:276-357`
 
 **⚡ HNSW Parameter Optimization (2.5.4) - FULLY IMPLEMENTED**
+
 - **Anime-specific tuning**: Optimized ef_construct (128-256), m (32-64) values for anime similarity patterns
 - **Priority-based HNSW**: Different parameters per vector importance (high/medium/low)
 - **13-vector support**: Individual optimization for all text and image vectors
 - **Evidence**: `src/config/settings.py:213-230`, `src/vector/client/qdrant_client.py:293-305`
 
 **💡 Advanced Architecture Features**
+
 - **Vector Priority System**: Semantic importance classification (title, character, genre = high priority)
 - **Adaptive Configuration**: Each vector gets optimized parameters based on search patterns
 - **Performance Targets**: 75% memory reduction (15GB → 4GB), 40x speedup potential achieved
@@ -215,8 +218,8 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 - [x] **2.5.2c: Field-to-Vector Mapping** (Est: 4 hours) - COMPLETED
   - [x] Created AnimeFieldMapper class with comprehensive field extraction
-  - [x] Implemented field extraction methods for all 14 vector types (12 text + 2 visual)
-  - [x] Added text combination logic for 12 semantic vectors (BGE-M3)
+  - [x] Implemented field extraction methods for all 11 vector types (9 text + 2 visual)
+  - [x] Added text combination logic for 9 semantic vectors (BGE-M3)
   - [x] Added image URL processing for 2 visual vectors (JinaCLIP v2)
   - [x] Tested field mapping with sample anime data successfully
   - [x] Added validation methods and vector type mapping utilities
@@ -236,7 +239,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 8. `related_vector` - **related_anime, relations** (franchise connections with URLs)
 9. `franchise_vector` - **trailers, opening_themes, ending_themes** (multimedia content)
 10. `episode_vector` - **episode_details** (detailed episode information, filler/recap status)
-**Visual Vectors (JinaCLIP v2, 1024-dim each):** 12. `image_vector` - **General anime visual content** from **images** dict (covers, posters, banners, trailer thumbnails)
+    **Visual Vectors (JinaCLIP v2, 1024-dim each):** 12. `image_vector` - **General anime visual content** from **images** dict (covers, posters, banners, trailer thumbnails)
 
 - **Process**: Download general image URLs → embed visual content → average duplicates → store embeddings
 - **Use Cases**: Art style matching, cover aesthetics, promotional material similarity
@@ -312,16 +315,16 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 **Sub-Phase 2.5.5: Database Operations Integration** (Rollback-Safe: parallel methods) - ✅ COMPLETED
 
 - [x] **2.5.5a: Document Addition Pipeline** (Est: 4 hours) - COMPLETED
-  - [x] Created add_documents_14_vector() method
-  - [x] Implemented batch processing for 13-vector insertion (12 text + 2 visual)
+  - [x] Created add_documents_11_vector() method
+  - [x] Implemented batch processing for 11-vector insertion (9 text + 2 visual)
   - [x] Added progress tracking and error handling
   - [x] Maintained existing add_documents() for fallback
 
 - [x] **2.5.5b: Search Method Updates** (Est: 3 hours) - COMPLETED
   - [x] Created vector-specific search methods for character vs general image search
-  - [x] Implemented multi-vector query coordination for 14 vectors
+  - [x] Implemented multi-vector query coordination for 11 vectors
   - [x] Added search result merging and ranking with character image weighting
-  - [x] Tested search accuracy with 13-vector system
+  - [x] Tested search accuracy with 11-vector system
 
 - [x] **2.5.5c: Migration and Validation** (Est: 3 hours) - COMPLETED
   - [x] Created collection migration utility for 13-vector upgrade
@@ -340,14 +343,14 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Tested configuration loading and 13-vector architecture validation
 
 - [x] **2.5.6b: Comprehensive Test Suite Creation** (Est: 3 hours) - COMPLETED
-  - [x] Created truly_comprehensive_test_suite.py with ALL 14 vector tests
+  - [x] Created truly_comprehensive_test_suite.py with ALL 11 vector tests
   - [x] Implemented vector-specific query optimization for semantic validation
   - [x] Validated character vs general image separation and processing
   - [x] Tested individual vector search accuracy (70/70 tests successful)
 
 - [x] **2.5.6c: Multi-Vector Search Validation** (Est: 2 hours) - COMPLETED
   - [x] Created multi-vector combination testing framework
-  - [x] Implemented ultimate test combinations (all text, all vision, all 14 vectors)
+  - [x] Implemented ultimate test combinations (all text, all vision, all 11 vectors)
   - [x] Fixed Qdrant multi-vector search API syntax with native RRF/DBSF fusion
   - [x] Validated multi-vector search coordination and ranking
 
@@ -360,9 +363,9 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Tested native multi-vector search with proper error handling
 
 - [x] **2.5.7b: High-Level Search Methods** (Est: 4 hours) - COMPLETED
-  - [x] Created search_text_comprehensive() for all 12 text vectors
+  - [x] Created search_text_comprehensive() for all 9 text vectors
   - [x] Created search_visual_comprehensive() for both image vectors
-  - [x] Created search_complete() for all 14 vectors (ultimate search)
+  - [x] Created search_complete() for all 11 vectors (ultimate search)
   - [x] Created search_characters() for character-focused search
   - [x] Implemented automatic embedding generation and vector selection
 
@@ -379,20 +382,20 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 - **Memory Usage**: ~8GB RAM during search operations
 - **Semantic Coverage**: 100% of enriched dataset fields searchable
 
-### 🔄 Phase 3: Semantic Quality Validation - IN PROGRESS (CURRENT PRIORITY: 14-Vector System Validation)
+### 🔄 Phase 3: Semantic Quality Validation - IN PROGRESS (CURRENT PRIORITY: 11-Vector System Validation)
 
-**Rationale**: Validate semantic search quality across all 14 vectors and establish comprehensive validation framework. Phase 3.0 Genre Enhancement infrastructure completed but postponed due to insufficient training data.
+**Rationale**: Validate semantic search quality across all 11 vectors and establish comprehensive validation framework. Phase 3.0 Genre Enhancement infrastructure completed but postponed due to insufficient training data.
 
-#### 🔄 **Sub-Phase 3.1: 14-Vector System Validation** - CURRENT FOCUS (Est: 4 hours)
+#### 🔄 **Sub-Phase 3.1: 11-Vector System Validation** - CURRENT FOCUS (Est: 4 hours)
 
-**Priority**: Validate that default BGE-M3 vector system is working correctly across all 14 vectors before further optimization.
+**Priority**: Validate that default BGE-M3 vector system is working correctly across all 11 vectors before further optimization.
 
 - [ ] **3.1.1a: Per-Vector Search Quality Testing** (Est: 2 hours) - CURRENT TASK
-  - [ ] Test each of 14 vectors individually with domain-specific queries
+  - [ ] Test each of 11 vectors individually with domain-specific queries
   - [ ] Validate title_vector: "Studio Ghibli" → Ghibli films in top results
   - [ ] Validate character_vector: "ninja characters" → anime with ninja characters
   - [ ] Validate genre_vector: "shounen action" → shounen action anime (standard BGE-M3)
-  - [ ] Test all 12 text vectors + 2 image vectors with representative queries
+  - [ ] Test all 9 text vectors + 2 image vectors with representative queries
 
 - [ ] **3.1.1b: Multi-Vector Fusion Validation** (Est: 2 hours)
   - [ ] Test search_complete() with complex multi-vector queries
@@ -470,6 +473,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### 🔍 **CRITICAL DISCOVERY: Data Scarcity Issue**
 
 **⚠️ POSTPONEMENT REASON**: Training data insufficient by 2-3 orders of magnitude:
+
 - **Current Data**: 28 anime entries total for 11+ genre classes
 - **Required for 90%**: 500-1,000 anime entries per genre class (5,500-11,000 total)
 - **Achievement**: 50.7% F1-score vs 90%+ target due to fundamental data limitation
@@ -477,12 +481,14 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### 📊 **Final Implementation Status**
 
 **✅ Infrastructure Completed (4,200+ Lines of Code):**
+
 - **Training Infrastructure**: Complete CLI, contrastive learning, data augmentation
 - **Advanced Strategies**: InfoNCE, triplet loss, hard negative mining, early stopping
 - **Integration**: TextProcessor integration, A/B testing framework ready
 - **Validation**: Comprehensive performance measurement and comparison tools
 
 **📋 Performance Results:**
+
 - **F1-Score Achieved**: 50.7% (vs 90%+ target)
 - **Comedy Precision**: 77.8% improvement in specific genre accuracy
 - **Training Time**: ~2 hours for 15 epochs on CPU
@@ -1835,7 +1841,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [ ] Test intent detection accuracy with sample queries
 
 - [ ] **2.6.2a.2: Vector Selection Intelligence** (Est: 2 hours)
-  - [ ] Design LLM prompt for intelligent vector selection from 14 vectors
+  - [ ] Design LLM prompt for intelligent vector selection from 11 vectors
   - [ ] Create vector description context for LLM decision-making
   - [ ] Add vector weight assignment logic
   - [ ] Test vector selection relevance with domain-specific queries
@@ -1964,4 +1970,3 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 - **Immediate**: Disable feature flag to revert to existing search methods
 - **Emergency**: Remove smart query endpoint, preserve all existing functionality
 - **Data Safety**: No changes to existing 13-vector architecture or data
-

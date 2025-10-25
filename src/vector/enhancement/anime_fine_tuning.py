@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from peft import LoraConfig, TaskType
@@ -35,7 +35,7 @@ class FineTuningConfig:
     lora_r: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.1
-    lora_target_modules: List[str] = field(
+    lora_target_modules: list[str] = field(
         default_factory=lambda: ["q_proj", "v_proj", "k_proj", "out_proj"]
     )
 
@@ -87,10 +87,10 @@ class AnimeFineTuner:
         self.genre_enhancer = GenreEnhancementFinetuner(settings, self.text_processor)
 
         # Training state
-        self.training_stats: Dict[str, Any] = {}
-        self.best_model_path: Optional[Path] = None
+        self.training_stats: dict[str, Any] = {}
+        self.best_model_path: Path | None = None
 
-    def prepare_dataset(self, data_path: str) -> Optional[AnimeDataset]:
+    def prepare_dataset(self, data_path: str) -> AnimeDataset | None:
         """Prepare anime dataset for fine-tuning.
 
         Args:
@@ -101,7 +101,7 @@ class AnimeFineTuner:
         """
         logger.info(f"Preparing anime dataset from {data_path}")
         try:
-            with open(data_path, "r", encoding="utf-8") as f:
+            with open(data_path, encoding="utf-8") as f:
                 anime_data = json.load(f)
         except FileNotFoundError:
             logger.error(f"Data file not found at path: {data_path}")
@@ -163,7 +163,7 @@ class AnimeFineTuner:
             self.create_lora_config(TaskType.FEATURE_EXTRACTION), self.config
         )
 
-    def train_multi_task(self, dataset: AnimeDataset) -> Dict[str, Any]:
+    def train_multi_task(self, dataset: AnimeDataset) -> dict[str, Any]:
         """Train all fine-tuning tasks simultaneously.
 
         Args:
@@ -187,7 +187,7 @@ class AnimeFineTuner:
         self.setup_models_for_finetuning()
 
         # Training loop
-        training_stats: Dict[str, Any] = {
+        training_stats: dict[str, Any] = {
             "character_loss": [],
             "art_style_loss": [],
             "genre_loss": [],
@@ -218,7 +218,7 @@ class AnimeFineTuner:
 
         return training_stats
 
-    def _train_epoch(self, dataloader: DataLoader, epoch: int) -> Dict[str, float]:
+    def _train_epoch(self, dataloader: DataLoader, epoch: int) -> dict[str, float]:
         """Train one epoch with multi-task learning.
 
         Args:
@@ -303,7 +303,7 @@ class AnimeFineTuner:
         except Exception as e:
             logger.error(f"An unexpected error occurred while saving the model: {e}")
 
-    def evaluate_models(self, validation_dataset: AnimeDataset) -> Dict[str, float]:
+    def evaluate_models(self, validation_dataset: AnimeDataset) -> dict[str, float]:
         """Evaluate fine-tuned models on validation set.
 
         Args:
@@ -359,7 +359,7 @@ class AnimeFineTuner:
             # Load configuration
             config_path = model_dir / "fine_tuning_config.json"
             if config_path.exists():
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     config_data = json.load(f)
                     # Update configuration
                     for key, value in config_data.items():
@@ -372,8 +372,8 @@ class AnimeFineTuner:
             logger.error(f"An unexpected error occurred while loading the models: {e}")
 
     def get_enhanced_embeddings(
-        self, text: str, image_data: Optional[str] = None
-    ) -> Dict[str, np.ndarray]:
+        self, text: str, image_data: str | None = None
+    ) -> dict[str, np.ndarray]:
         """Get enhanced embeddings using fine-tuned models.
 
         Args:
@@ -421,7 +421,7 @@ class AnimeFineTuner:
 
         return embeddings
 
-    def get_training_summary(self) -> Dict[str, Any]:
+    def get_training_summary(self) -> dict[str, Any]:
         """Get comprehensive training summary.
 
         Returns:

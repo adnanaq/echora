@@ -1,7 +1,8 @@
 """Anime-Planet scraping client implementation."""
 
 import re
-from typing import Any, Dict, List, Optional
+from datetime import UTC
+from typing import Any
 from urllib.parse import quote, urljoin
 
 from .base_scraper import BaseScraper
@@ -15,7 +16,7 @@ class AnimePlanetScraper(BaseScraper):
         super().__init__(service_name="animeplanet", **kwargs)
         self.base_url = "https://www.anime-planet.com"
 
-    async def get_anime_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+    async def get_anime_by_slug(self, slug: str) -> dict[str, Any] | None:
         """Get anime information by Anime-Planet slug."""
         # Check cache first
         cache_key = f"animeplanet_anime_{slug}"
@@ -99,7 +100,7 @@ class AnimePlanetScraper(BaseScraper):
                 raise
             return None
 
-    async def search_anime(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    async def search_anime(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Search anime on Anime-Planet."""
         try:
             # Anime-Planet search URL
@@ -117,7 +118,7 @@ class AnimePlanetScraper(BaseScraper):
 
     async def get_anime_characters(
         self, slug: str, enrich_characters: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get anime character information by Anime-Planet slug.
 
         Args:
@@ -204,9 +205,7 @@ class AnimePlanetScraper(BaseScraper):
                 raise
             return None
 
-    async def get_character_details(
-        self, character_slug: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_character_details(self, character_slug: str) -> dict[str, Any] | None:
         """Get detailed character information from individual character page.
 
         Args:
@@ -230,7 +229,7 @@ class AnimePlanetScraper(BaseScraper):
                 return None
 
             soup = self._parse_html(response["content"])
-            char_data: Dict[str, Any] = {}
+            char_data: dict[str, Any] = {}
 
             # Basic info
             name_h1 = soup.find("h1", itemprop="name")
@@ -424,7 +423,7 @@ class AnimePlanetScraper(BaseScraper):
                 raise
             return None
 
-    def _parse_character_row(self, row, role: str) -> Optional[Dict[str, Any]]:
+    def _parse_character_row(self, row, role: str) -> dict[str, Any] | None:
         """Parse a single character table row."""
         try:
             # Find character name link
@@ -490,7 +489,7 @@ class AnimePlanetScraper(BaseScraper):
         except Exception:
             return None
 
-    def _extract_json_ld(self, soup) -> Optional[Dict[str, Any]]:
+    def _extract_json_ld(self, soup) -> dict[str, Any] | None:
         """Override base method to fix Anime-Planet's malformed image URLs."""
         json_ld = super()._extract_json_ld(soup)
 
@@ -504,7 +503,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return json_ld
 
-    def _extract_anime_data(self, soup) -> Dict[str, Any]:
+    def _extract_anime_data(self, soup) -> dict[str, Any]:
         """Extract anime-specific data from Anime-Planet page."""
         data = {}
 
@@ -523,9 +522,9 @@ class AnimePlanetScraper(BaseScraper):
 
         return data
 
-    def _extract_info_table(self, soup) -> Dict[str, Any]:
+    def _extract_info_table(self, soup) -> dict[str, Any]:
         """Extract information from the anime info table."""
-        info_data: Dict[str, Any] = {}
+        info_data: dict[str, Any] = {}
 
         # Look for info table in various locations
         info_containers = [
@@ -569,7 +568,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return info_data
 
-    def _extract_tags(self, soup) -> List[str]:
+    def _extract_tags(self, soup) -> list[str]:
         """Extract tags/genres from the page."""
         tags = []
 
@@ -602,7 +601,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return tags[:10]  # Limit to 10 tags
 
-    def _extract_rating(self, soup) -> Optional[str]:
+    def _extract_rating(self, soup) -> str | None:
         """Extract rating/score if available."""
         rating_selectors = [
             (".rating", {}),
@@ -626,7 +625,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return None
 
-    def _parse_search_results(self, soup, limit: int) -> List[Dict[str, Any]]:
+    def _parse_search_results(self, soup, limit: int) -> list[dict[str, Any]]:
         """Parse search results from Anime-Planet search page."""
         results = []
 
@@ -653,7 +652,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return results[:limit]
 
-    def _parse_single_search_result(self, container) -> Optional[Dict[str, Any]]:
+    def _parse_single_search_result(self, container) -> dict[str, Any] | None:
         """Parse a single search result item with rich tooltip data."""
         try:
             # Extract title and link - Anime-Planet structure: <a><h3 class="cardName">Title</h3></a>
@@ -719,7 +718,7 @@ class AnimePlanetScraper(BaseScraper):
         except Exception:
             return None
 
-    def _extract_tooltip_data(self, title_link) -> Optional[Dict[str, Any]]:
+    def _extract_tooltip_data(self, title_link) -> dict[str, Any] | None:
         """Extract rich data from tooltip hover information."""
         try:
             import html
@@ -745,7 +744,7 @@ class AnimePlanetScraper(BaseScraper):
             # Parse the tooltip HTML
             tooltip_soup = self._parse_html(decoded_html)
 
-            tooltip_data: Dict[str, Any] = {}
+            tooltip_data: dict[str, Any] = {}
 
             # Extract title (should match main title, but might be more complete)
             title_elem = tooltip_soup.find("h5", class_="theme-font")
@@ -829,7 +828,7 @@ class AnimePlanetScraper(BaseScraper):
         except Exception:
             return None
 
-    def _extract_card_attributes(self, container) -> Optional[Dict[str, Any]]:
+    def _extract_card_attributes(self, container) -> dict[str, Any] | None:
         """Extract data attributes from card container."""
         try:
             card_data = {}
@@ -854,7 +853,7 @@ class AnimePlanetScraper(BaseScraper):
         except Exception:
             return None
 
-    def _extract_enhanced_data(self, soup) -> Dict[str, Any]:
+    def _extract_enhanced_data(self, soup) -> dict[str, Any]:
         """Extract enhanced data including ratings, rankings, alternative titles, studios, and characters."""
         enhanced_data = {}
 
@@ -865,7 +864,6 @@ class AnimePlanetScraper(BaseScraper):
         # Extract ranking information
         rank_data = self._extract_ranking(soup)
         enhanced_data.update(rank_data)
-
 
         # Extract studio information
         studio_data = self._extract_studios(soup)
@@ -881,9 +879,9 @@ class AnimePlanetScraper(BaseScraper):
 
         return enhanced_data
 
-    def _extract_enhanced_json_ld(self, soup) -> Dict[str, Any]:
+    def _extract_enhanced_json_ld(self, soup) -> dict[str, Any]:
         """Extract enhanced data from JSON-LD structured data."""
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         json_ld = self._extract_json_ld(soup)
 
         if not json_ld:
@@ -891,7 +889,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return data
 
-    def _extract_staff_from_json_ld(self, json_ld) -> Dict[str, Any]:
+    def _extract_staff_from_json_ld(self, json_ld) -> dict[str, Any]:
         """Extract staff information from JSON-LD data."""
         staff_data = {}
 
@@ -921,7 +919,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return staff_data
 
-    def _extract_comprehensive_rating(self, soup) -> Dict[str, Any]:
+    def _extract_comprehensive_rating(self, soup) -> dict[str, Any]:
         """Extract rating/score from multiple sources with fallbacks."""
         rating_data = {}
 
@@ -985,7 +983,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return rating_data
 
-    def _extract_ranking(self, soup) -> Dict[str, Any]:
+    def _extract_ranking(self, soup) -> dict[str, Any]:
         """Extract ranking information from the page."""
         rank_data = {}
 
@@ -1024,8 +1022,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return rank_data
 
-
-    def _extract_studios(self, soup) -> Dict[str, Any]:
+    def _extract_studios(self, soup) -> dict[str, Any]:
         """Extract studio information from multiple sources."""
         studio_data = {}
 
@@ -1068,9 +1065,9 @@ class AnimePlanetScraper(BaseScraper):
 
         return studio_data
 
-    def _extract_enhanced_status(self, soup) -> Dict[str, Any]:
+    def _extract_enhanced_status(self, soup) -> dict[str, Any]:
         """Extract status information with enhanced date logic."""
-        status_data: Dict[str, Any] = {}
+        status_data: dict[str, Any] = {}
 
         # Get JSON-LD data for dates
         json_ld = self._extract_json_ld(soup)
@@ -1094,11 +1091,11 @@ class AnimePlanetScraper(BaseScraper):
                 status_data["status"] = "COMPLETED"
             elif start_date and not end_date:
                 # Check if start date is in the future
-                from datetime import datetime, timezone
+                from datetime import datetime
 
                 try:
                     start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     if start_dt > now:
                         status_data["status"] = "UPCOMING"
                     else:
@@ -1110,7 +1107,7 @@ class AnimePlanetScraper(BaseScraper):
 
         return status_data
 
-    def _determine_season_from_date(self, date_str: str) -> Optional[str]:
+    def _determine_season_from_date(self, date_str: str) -> str | None:
         """Determine anime season from date string."""
         if not date_str:
             return None
@@ -1135,9 +1132,9 @@ class AnimePlanetScraper(BaseScraper):
 
         return None
 
-    def _extract_related_anime(self, soup) -> Dict[str, Any]:
+    def _extract_related_anime(self, soup) -> dict[str, Any]:
         """Extract related anime from same franchise section."""
-        related_data: Dict[str, Any] = {}
+        related_data: dict[str, Any] = {}
 
         # Look for the same franchise relations section
         same_franchise_section = soup.find(id="tabs--relations--anime--same_franchise")
