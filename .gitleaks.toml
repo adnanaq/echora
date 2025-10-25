@@ -1,0 +1,109 @@
+# Gitleaks Configuration for Anime Vector Service
+# Detects secrets, API keys, and credentials in git history and staged files
+#
+# Documentation: https://github.com/gitleaks/gitleaks
+
+title = "Anime Vector Service - Gitleaks Configuration"
+
+# Use default Gitleaks rules as baseline
+[extend]
+useDefault = true
+
+# ===== Custom Rules for AI/ML API Keys =====
+
+[[rules]]
+description = "Anthropic API Key"
+id = "anthropic-api-key"
+regex = '''sk-ant-[a-zA-Z0-9\-_]{95}'''
+keywords = ["sk-ant-", "ANTHROPIC_API_KEY", "anthropic"]
+tags = ["key", "Anthropic", "AI"]
+
+[[rules]]
+description = "OpenAI API Key"
+id = "openai-api-key"
+regex = '''sk-[a-zA-Z0-9]{32,}'''
+keywords = ["sk-", "OPENAI_API_KEY", "openai"]
+tags = ["key", "OpenAI", "AI"]
+
+[[rules]]
+description = "Qdrant API Key"
+id = "qdrant-api-key"
+regex = '''[a-zA-Z0-9_-]{32,}'''
+path = '''.env|config\.py|settings\.py'''
+keywords = ["QDRANT_API_KEY", "QDRANT_CLOUD_URL"]
+tags = ["key", "Qdrant", "database"]
+
+[[rules]]
+description = "HuggingFace Token"
+id = "huggingface-token"
+regex = '''hf_[a-zA-Z0-9]{34}'''
+keywords = ["hf_", "HUGGINGFACE_TOKEN", "HF_TOKEN"]
+tags = ["key", "HuggingFace", "AI"]
+
+[[rules]]
+description = "AWS Access Key ID"
+id = "aws-access-key"
+regex = '''AKIA[0-9A-Z]{16}'''
+keywords = ["AKIA", "AWS_ACCESS_KEY_ID"]
+tags = ["key", "AWS", "cloud"]
+
+[[rules]]
+description = "AWS Secret Access Key"
+id = "aws-secret-key"
+regex = '''[A-Za-z0-9/+=]{40}'''
+keywords = ["AWS_SECRET_ACCESS_KEY"]
+tags = ["key", "AWS", "cloud"]
+
+[[rules]]
+description = "GitHub Personal Access Token"
+id = "github-pat"
+regex = '''ghp_[a-zA-Z0-9]{36}'''
+keywords = ["ghp_", "GITHUB_TOKEN"]
+tags = ["key", "GitHub"]
+
+[[rules]]
+description = "Slack Webhook URL"
+id = "slack-webhook"
+regex = '''https://hooks\.slack\.com/services/[A-Z0-9/]+'''
+keywords = ["hooks.slack.com"]
+tags = ["webhook", "Slack"]
+
+[[rules]]
+description = "Generic API Key Pattern"
+id = "generic-api-key"
+regex = '''[aA][pP][iI][-_]?[kK][eE][yY]\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{20,}['"]?'''
+keywords = ["api-key", "api_key", "apikey"]
+tags = ["key", "API"]
+
+# ===== Allowlist Configuration =====
+
+[allowlist]
+description = "Allowlisted paths and patterns"
+
+# Paths to exclude from scanning
+paths = [
+  '''\.github/workflows/.*\.yml''',  # GitHub Actions workflow files
+  '''docs/.*\.md''',                  # Documentation examples
+  '''tests/fixtures/.*''',            # Test fixtures may contain fake keys
+  '''\.pre-commit-config\.yaml''',   # Pre-commit config has repo URLs
+]
+
+# Regex patterns to allow (false positives)
+regexes = [
+  # Example/placeholder keys
+  '''(example|sample|test|fake|dummy)[-_]?api[-_]?key''',
+  '''sk-test-[a-zA-Z0-9]+''',  # Test keys
+  '''<YOUR_API_KEY>''',         # Documentation placeholders
+  '''YOUR_KEY_HERE''',
+  '''REPLACE_WITH_YOUR_KEY''',
+]
+
+# Specific commits to ignore (if needed for historical reasons)
+# commits = [
+#   "abc123def456",
+# ]
+
+# ===== Global Configuration =====
+
+# Stop scanning at merge commits (performance optimization)
+stopwords = []

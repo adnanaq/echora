@@ -1,0 +1,120 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+#
+# Install hooks: uv run pre-commit install
+# Run manually: uv run pre-commit run --all-files
+# Update hooks: uv run pre-commit autoupdate
+
+repos:
+  # ===== Code Quality =====
+
+  # Ruff - Fast Python linter and formatter (replaces black, flake8, isort in pre-commit)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        name: Ruff Linting
+      # Run formatter
+      - id: ruff-format
+        name: Ruff Formatting
+
+  # MyPy - Type checking (matches CI strict mode)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: MyPy Type Checking
+        args: [--strict, --show-error-codes]
+        additional_dependencies:
+          # Type stubs for external libraries
+          - types-requests
+          - types-pillow
+          - types-beautifulsoup4
+          - types-python-dateutil
+          - types-setuptools
+        # Only check src/ and tests/ (matches CI)
+        files: ^(src|tests)/.*\.py$
+
+  # isort - Import sorting (matches CI configuration)
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: isort Import Sorting
+        args: [--profile, black, --line-length, "88"]
+
+  # ===== Security =====
+
+  # Gitleaks - Secret detection (prevents credential leaks)
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Gitleaks Secret Detection
+
+  # ===== File Safety & Quality =====
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # File content fixes
+      - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+      - id: end-of-file-fixer
+        name: Fix End of Files
+      - id: mixed-line-ending
+        name: Fix Mixed Line Endings
+        args: [--fix=lf]
+
+      # File validation
+      - id: check-yaml
+        name: Check YAML Syntax
+        exclude: ^\.github/workflows/ # GitHub Actions has custom syntax
+      - id: check-json
+        name: Check JSON Syntax
+        exclude: ^model_cache/ # Exclude ML model cache files
+      - id: check-toml
+        name: Check TOML Syntax
+
+      # Security checks
+      - id: detect-private-key
+        name: Detect Private Keys
+
+      # Conflict prevention
+      - id: check-merge-conflict
+        name: Check for Merge Conflicts
+      - id: check-case-conflict
+        name: Check for Case Conflicts
+
+      # Size protection
+      - id: check-added-large-files
+        name: Check for Large Files
+        args: [--maxkb=5000] # 5MB limit
+
+  # ===== Documentation =====
+
+  # Prettier - Markdown/YAML/JSON formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: Prettier Formatting
+        types_or: [markdown, yaml, json]
+        exclude: |
+          (?x)^(
+            uv\.lock|
+            \.github/workflows/.*\.yml
+          )$
+
+# Global configuration
+default_language_version:
+  python: python3.12
+
+# Performance optimization
+default_stages: [pre-commit] # Only run on commit, not push
+
+# Fail fast - stop on first failure
+fail_fast: false # Set to true for faster feedback during development
