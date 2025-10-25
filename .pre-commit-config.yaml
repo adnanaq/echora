@@ -37,14 +37,6 @@ repos:
         # Only check src/ and tests/ (matches CI)
         files: ^(src|tests)/.*\.py$
 
-  # isort - Import sorting (matches CI configuration)
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        name: isort Import Sorting
-        args: [--profile, black, --line-length, "88"]
-
   # ===== Security =====
 
   # Gitleaks - Secret detection (prevents credential leaks)

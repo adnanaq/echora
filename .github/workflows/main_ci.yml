@@ -39,9 +39,6 @@ jobs:
       - name: Run MyPy (Type Checking)
         run: uv run mypy --strict src/ tests/ --show-error-codes
 
-      - name: Run isort (Import Sorting)
-        run: uv run isort . --check-only
-
       - name: Run Dependency Vulnerability Scan (pip-audit)
         run: uv run pip-audit
 

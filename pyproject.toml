@@ -47,11 +47,9 @@ dev = [
     "pytest-cov==6.2.1",
     "pytest-mock==3.14.1",
 
-    # Development dependencies (versions aligned with dependency-groups)
-    "black>=25.1.0",
-    "isort>=6.0.1",
-    "autoflake>=2.3.1",
+    # Development dependencies
     "mypy>=1.18.1",
+    "ruff>=0.8.4",
 
     # Pre-commit hooks
     "pre-commit>=4.0.0",
@@ -79,14 +77,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
-
-[tool.black]
-line-length = 88
-target-version = ["py312"]
-
-[tool.isort]
-profile = "black"
-line_length = 88
 
 [tool.ruff]
 line-length = 88
