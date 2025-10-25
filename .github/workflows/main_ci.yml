@@ -31,13 +31,13 @@ jobs:
         run: pip install uv
 
       - name: Install dependencies
-        run: uv pip sync
+        run: uv sync --extra dev
 
       - name: Run Ruff (Linting and Formatting)
         run: uv run ruff check . && uv run ruff format . --check
 
       - name: Run MyPy (Type Checking)
-        run: uv run mypy src/
+        run: uv run mypy --strict src/ tests/ --show-error-codes
 
       - name: Run isort (Import Sorting)
         run: uv run isort . --check-only
@@ -72,13 +72,10 @@ jobs:
         run: pip install uv
 
       - name: Install dependencies
-        run: uv pip sync
+        run: uv sync --extra dev
 
-      - name: Run Pytest (Unit and Integration Tests)
-        run: uv run pytest
-
-      - name: Generate Coverage Report
-        run: uv run coverage run -m pytest && uv run coverage report
+      - name: Run Pytest with Coverage
+        run: uv run pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80
 
   application-health-check:
     runs-on: ubuntu-latest
@@ -93,13 +90,22 @@ jobs:
       - name: Start Docker Containers
         run: docker-compose -f docker/docker-compose.yml up -d
 
-      - name: Wait for services to be ready
-        run: sleep 10 # Give services time to start
+      - name: Wait for Qdrant to be ready
+        run: |
+          echo "Waiting for Qdrant..."
+          timeout 60 bash -c 'until curl -f http://localhost:6333/health 2>/dev/null; do echo "Waiting for Qdrant..."; sleep 2; done'
+          echo "Qdrant is ready!"
+
+      - name: Wait for Vector Service to be ready
+        run: |
+          echo "Waiting for Vector Service..."
+          timeout 90 bash -c 'until curl -f http://localhost:8002/health 2>/dev/null; do echo "Waiting for Vector Service..."; sleep 5; done'
+          echo "Vector Service is ready!"
 
       - name: Run Health Checks
         run: |
           curl --fail http://localhost:8002/docs || exit 1
-          curl --fail http://localhost:8002/health || exit 1 # Assuming a /health endpoint exists
+          curl --fail http://localhost:8002/health || exit 1
 
       - name: Teardown Docker Containers
         run: docker-compose -f docker/docker-compose.yml down
@@ -112,4 +118,3 @@ jobs:
 #  ai-triage:
 #    if: github.event_name == 'issues'
 #    uses: ./.github/workflows/gemini-triage.yml
-
