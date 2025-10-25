@@ -198,8 +198,8 @@ class MultiVectorEmbeddingManager:
 
             if anime.score:
                 payload["score"] = {
-                    "arithmetic_geometric_mean": anime.score.arithmeticGeometricMean,
-                    "arithmetic_mean": anime.score.arithmeticMean,
+                    "arithmetic_geometric_mean": anime.score.arithmetic_geometric_mean,
+                    "arithmetic_mean": anime.score.arithmetic_mean,
                     "median": anime.score.median,
                 }
 
@@ -272,9 +272,6 @@ class MultiVectorEmbeddingManager:
 
             if anime.delay_information:
                 payload["delay_information"] = anime.delay_information.model_dump()
-
-            if anime.episode_overrides:
-                payload["episode_overrides"] = anime.episode_overrides.model_dump()
 
             if anime.premiere_dates:
                 payload["premiere_dates"] = anime.premiere_dates.model_dump()
