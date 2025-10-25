@@ -198,8 +198,8 @@ class MultiVectorEmbeddingManager:
 
             if anime.score:
                 payload["score"] = {
-                    "arithmetic_geometric_mean": anime.score.arithmeticGeometricMean,
-                    "arithmetic_mean": anime.score.arithmeticMean,
+                    "arithmetic_geometric_mean": anime.score.arithmetic_geometric_mean,
+                    "arithmetic_mean": anime.score.arithmetic_mean,
                     "median": anime.score.median,
                 }
 

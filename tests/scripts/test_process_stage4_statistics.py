@@ -11,11 +11,6 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
-
 from process_stage4_statistics import (
     load_source_data,
     safe_get,
@@ -29,6 +24,18 @@ from process_stage4_statistics import (
     has_any_statistics,
     extract_all_statistics,
 )
+
+
+@pytest.fixture
+def stage4_script_path():
+    """Get path to stage4 script for subprocess calls."""
+    # Find project root by looking for pyproject.toml
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / "pyproject.toml").exists():
+            return current / "scripts" / "process_stage4_statistics.py"
+        current = current.parent
+    raise RuntimeError("Could not find project root")
 
 
 class TestSafeGet:
@@ -713,7 +720,7 @@ class TestExtractAllStatistics:
 class TestMainExecution:
     """Test main script execution."""
 
-    def test_main_with_complete_data(self, tmp_path):
+    def test_main_with_complete_data(self, tmp_path, stage4_script_path):
         """Test main execution with complete data."""
         # Create test environment
         agent_dir = tmp_path / "test_agent"
@@ -737,7 +744,7 @@ class TestMainExecution:
         # Run script
         import subprocess
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -752,7 +759,7 @@ class TestMainExecution:
         assert "statistics" in output
         assert len(output["statistics"]) == 6
 
-    def test_main_with_missing_sources(self, tmp_path):
+    def test_main_with_missing_sources(self, tmp_path, stage4_script_path):
         """Test main execution when some sources are missing."""
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
@@ -765,7 +772,7 @@ class TestMainExecution:
         # Run script
         import subprocess
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -780,7 +787,7 @@ class TestMainExecution:
         assert "mal" in output["statistics"]
         assert len(output["statistics"]) == 1
 
-    def test_main_with_custom_temp_dir(self, tmp_path):
+    def test_main_with_custom_temp_dir(self, tmp_path, stage4_script_path):
         """Test main execution with custom temp directory."""
         custom_temp = tmp_path / "custom_temp"
         custom_temp.mkdir()
@@ -795,7 +802,7 @@ class TestMainExecution:
         # Run script with custom temp dir
         import subprocess
         result = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(custom_temp)],
+            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(custom_temp)],
             capture_output=True,
             text=True
         )
@@ -803,7 +810,7 @@ class TestMainExecution:
         assert result.returncode == 0
         assert (agent_dir / "stage4_statistics.json").exists()
 
-    def test_main_output_structure(self, tmp_path):
+    def test_main_output_structure(self, tmp_path, stage4_script_path):
         """Test that output has correct structure."""
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
@@ -815,7 +822,7 @@ class TestMainExecution:
 
         import subprocess
         subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )
@@ -828,7 +835,7 @@ class TestMainExecution:
         assert "statistics" in output
         assert isinstance(output["statistics"], dict)
 
-    def test_main_ensure_ascii_false(self, tmp_path):
+    def test_main_ensure_ascii_false(self, tmp_path, stage4_script_path):
         """Test that ensure_ascii=False preserves unicode characters."""
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
@@ -840,7 +847,7 @@ class TestMainExecution:
 
         import subprocess
         subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / 'process_stage4_statistics.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [sys.executable, str(stage4_script_path), 'test_agent', '--temp-dir', str(tmp_path)],
             capture_output=True,
             text=True
         )

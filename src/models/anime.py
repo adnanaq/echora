@@ -426,10 +426,10 @@ class StatisticsEntry(BaseModel):
 class ScoreCalculations(BaseModel):
     """Aggregated score calculations across platforms"""
 
-    arithmeticGeometricMean: Optional[float] = Field(
+    arithmetic_geometric_mean: Optional[float] = Field(
         None, description="Arithmetic-geometric mean of scores"
     )
-    arithmeticMean: Optional[float] = Field(
+    arithmetic_mean: Optional[float] = Field(
         None, description="Arithmetic mean of scores"
     )
     median: Optional[float] = Field(None, description="Median of scores")
