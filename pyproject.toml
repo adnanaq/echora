@@ -20,7 +20,7 @@ dependencies = [
     # Image processing
     "pillow>=11.2.1",
     # HTTP client for external requests
-    "aiohttp==3.12.13",
+    "aiohttp==3.13.1",
     # Web scraping dependencies
     "cloudscraper>=1.2.71",
     "beautifulsoup4>=4.12.0",
