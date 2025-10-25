@@ -128,7 +128,7 @@ Return staff_data object with this structure:
       ],
       "directors": [
         {
-          // StaffMember fields ordered: scalar → array → dict  
+          // StaffMember fields ordered: scalar → array → dict
           "name": "Watanabe Shinichiro",
           "native_name": "渡辺信一郎",
           "role": "Director",
@@ -151,7 +151,7 @@ Return staff_data object with this structure:
       "music_composers": [
         {
           // StaffMember fields ordered: scalar → array → dict
-          "name": "Kanno Yoko", 
+          "name": "Kanno Yoko",
           "native_name": "菅野洋子",
           "role": "Music_Composer",
           "birth_date": "1963-03-18",
@@ -185,7 +185,7 @@ Return staff_data object with this structure:
       {
         // CompanyEntry fields ordered: scalar → scalar → scalar
         "name": "Bandai Visual",
-        "type": "producer", 
+        "type": "producer",
         "url": "https://myanimelist.net/anime/producer/23/Bandai_Visual"
       }
     ],

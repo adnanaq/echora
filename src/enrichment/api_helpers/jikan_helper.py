@@ -16,7 +16,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -65,7 +65,7 @@ class JikanDetailedFetcher:
         ):
             time.sleep(1)
 
-    def fetch_episode_detail(self, episode_id: int) -> Optional[Dict[str, Any]]:
+    def fetch_episode_detail(self, episode_id: int) -> dict[str, Any] | None:
         """Fetch detailed episode data from Jikan API."""
         self.respect_rate_limits()
 
@@ -111,8 +111,8 @@ class JikanDetailedFetcher:
             return None
 
     def fetch_character_detail(
-        self, character_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, character_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Fetch detailed character data from Jikan API."""
         character_id = character_data["character"]["mal_id"]
         self.respect_rate_limits()
@@ -156,12 +156,12 @@ class JikanDetailedFetcher:
             return None
 
     def append_batch_to_file(
-        self, batch_data: List[Dict[str, Any]], progress_file: str
+        self, batch_data: list[dict[str, Any]], progress_file: str
     ) -> int:
         """Append batch data to progress file."""
         # Load existing data
         if os.path.exists(progress_file):
-            with open(progress_file, "r", encoding="utf-8") as f:
+            with open(progress_file, encoding="utf-8") as f:
                 all_data = json.load(f)
         else:
             all_data = []
@@ -195,7 +195,7 @@ class JikanDetailedFetcher:
         }
         """
         # Load input data
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             input_data = json.load(f)
 
         if self.data_type == "episodes":
@@ -223,7 +223,7 @@ class JikanDetailedFetcher:
         # Progress tracking
         progress_file = f"{output_file}.progress"
         if os.path.exists(progress_file):
-            with open(progress_file, "r", encoding="utf-8") as f:
+            with open(progress_file, encoding="utf-8") as f:
                 existing_data = json.load(f)
             print(
                 f"Found existing progress: {len(existing_data)} items already fetched"
@@ -269,7 +269,7 @@ class JikanDetailedFetcher:
             )
 
         # Load final data and create final file
-        with open(progress_file, "r", encoding="utf-8") as f:
+        with open(progress_file, encoding="utf-8") as f:
             all_detailed_data = json.load(f)
 
         print(f"\\nCompleted fetching {len(all_detailed_data)} detailed {item_type}s")

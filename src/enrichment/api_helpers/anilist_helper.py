@@ -9,7 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 
@@ -27,8 +27,8 @@ class AniListEnrichmentHelper:
         self.rate_limit_reset = None
 
     async def _make_request(
-        self, query: str, variables: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Make GraphQL request to AniList API."""
         headers = {
             "Content-Type": "application/json",
@@ -205,9 +205,7 @@ class AniListEnrichmentHelper:
     #     response = await self._make_request(query, variables)
     #     return response.get("Media")
 
-    async def fetch_anime_by_anilist_id(
-        self, anilist_id: int
-    ) -> Optional[Dict[str, Any]]:
+    async def fetch_anime_by_anilist_id(self, anilist_id: int) -> dict[str, Any] | None:
         query = self._build_query_by_anilist_id()
         variables = {"id": anilist_id}
         response = await self._make_request(query, variables)
@@ -215,7 +213,7 @@ class AniListEnrichmentHelper:
 
     async def _fetch_paginated_data(
         self, anilist_id: int, query_template: str, data_key: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         all_items = []
         page = 1
         has_next_page = True
@@ -235,7 +233,7 @@ class AniListEnrichmentHelper:
             await asyncio.sleep(0.5)
         return all_items
 
-    async def fetch_all_characters(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_characters(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -266,7 +264,7 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
-    async def fetch_all_staff(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_staff(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -279,7 +277,7 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "staff")
 
-    async def fetch_all_episodes(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_episodes(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -293,8 +291,8 @@ class AniListEnrichmentHelper:
         return await self._fetch_paginated_data(anilist_id, query, "airingSchedule")
 
     async def _fetch_and_populate_details(
-        self, anime_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, anime_data: dict[str, Any]
+    ) -> dict[str, Any]:
         anilist_id = anime_data.get("id")
         if not anilist_id:
             return anime_data
@@ -321,7 +319,7 @@ class AniListEnrichmentHelper:
 
     async def fetch_all_data_by_anilist_id(
         self, anilist_id: int
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         anime_data = await self.fetch_anime_by_anilist_id(anilist_id)
         if not anime_data:
             logger.warning(f"No AniList data found for AniList ID: {anilist_id}")

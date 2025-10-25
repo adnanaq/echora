@@ -1,10 +1,10 @@
 # Anime Vector Service
 
-A specialized microservice for semantic search over anime content using a 14-vector architecture with Qdrant vector database.
+A specialized microservice for semantic search over anime content using an 11-vector architecture with Qdrant vector database.
 
 ## Features
 
-- **14-Vector Semantic Architecture**: 12 text vectors + 2 image vectors for comprehensive anime understanding
+- **11-Vector Semantic Architecture**: 9 text vectors + 2 image vectors for comprehensive anime understanding
 - **Advanced Text Search**: BGE-M3 embeddings across multiple semantic domains (title, character, genre, technical, etc.)
 - **Visual Search**: OpenCLIP ViT-L/14 embeddings for cover art and character image similarity
 - **Character-Focused Search**: Specialized character vector + character image vector search
@@ -51,9 +51,9 @@ python -m src.main
 
 ## API Architecture
 
-This service provides semantic search capabilities through a 14-vector architecture:
+This service provides semantic search capabilities through an 11-vector architecture:
 
-- **Text Vectors (12)**: title, character, genre, technical, staff, review, temporal, streaming, related, franchise, episode, identifiers
+- **Text Vectors (9)**: title, character, genre, staff, temporal, streaming, related, franchise, episode
 - **Image Vectors (2)**: general image similarity, character image similarity
 
 ### Available Endpoints
@@ -114,4 +114,3 @@ uv lock --upgrade
 - **OpenCLIP ViT-L/14**: High-quality image embeddings (768-dim)
 - **Docker**: Containerized deployment
 - **UV**: Fast Python package manager
-

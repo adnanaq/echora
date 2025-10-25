@@ -12,7 +12,7 @@ import logging
 import os
 import socket
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -49,7 +49,7 @@ class AniDBUDPHelper:
 
         self.last_request_time = time.time()
 
-    def _send_command(self, command: str) -> Optional[str]:
+    def _send_command(self, command: str) -> str | None:
         """Send UDP command to AniDB API."""
         self._wait_for_rate_limit()
 
@@ -85,7 +85,7 @@ class AniDBUDPHelper:
         logger.info("Attempting to access AniDB UDP API without authentication")
         return True
 
-    def get_anime_character_ids(self, anidb_id: int) -> Optional[List[int]]:
+    def get_anime_character_ids(self, anidb_id: int) -> list[int] | None:
         """Get character IDs for an anime using ANIME command with character amask."""
         try:
             # ANIME command with amask for character id list (Byte 6, Bit 7 = 0x80)
@@ -116,7 +116,7 @@ class AniDBUDPHelper:
             logger.error(f"Failed to get character IDs for anime {anidb_id}: {e}")
             return None
 
-    def _extract_character_ids_from_response(self, parts: List[str]) -> List[int]:
+    def _extract_character_ids_from_response(self, parts: list[str]) -> list[int]:
         """Extract character IDs from ANIME response."""
         # This will need to be adjusted based on actual response format
         # For now, try to find comma-separated numbers
@@ -135,7 +135,7 @@ class AniDBUDPHelper:
         logger.warning("No character IDs found in response")
         return []
 
-    def get_character_details(self, char_id: int) -> Optional[Dict[str, Any]]:
+    def get_character_details(self, char_id: int) -> dict[str, Any] | None:
         """Get detailed character information by character ID."""
         try:
             command = f"CHARACTER charid={char_id}"
@@ -169,7 +169,7 @@ class AniDBUDPHelper:
 
     def get_all_characters_for_anime(
         self, anidb_id: int
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """Get all character data for an anime."""
         try:
             # First get character IDs

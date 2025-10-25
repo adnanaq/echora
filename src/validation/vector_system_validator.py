@@ -11,7 +11,7 @@ Components:
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -34,14 +34,14 @@ class VectorSystemValidator:
             qdrant_client: The Qdrant client instance to test
         """
         self.client = qdrant_client
-        self.validation_results: List[Dict[str, Any]] = []
+        self.validation_results: list[dict[str, Any]] = []
         self.dataset_analyzer = DatasetAnalyzer(qdrant_client)
 
         # Dynamic validation - no hardcoded queries
         # All validation queries are generated from actual dataset analysis
         self.skip_vectors: set[str] = set()
 
-    async def _get_dynamic_queries(self) -> Dict[str, List[Dict[str, Any]]]:
+    async def _get_dynamic_queries(self) -> dict[str, list[dict[str, Any]]]:
         """Generate dynamic queries based on actual dataset content.
 
         Returns:
@@ -80,7 +80,7 @@ class VectorSystemValidator:
             logger.error(f"Failed to generate dynamic queries: {e}")
             return {}
 
-    async def validate_all_vectors(self) -> Dict[str, Any]:
+    async def validate_all_vectors(self) -> dict[str, Any]:
         """Validate all 11 vectors systematically.
 
         Returns:
@@ -106,7 +106,7 @@ class VectorSystemValidator:
             dynamic_queries = await self._get_dynamic_queries()
 
             # Test each text vector individually (skip known empty vectors)
-            individual_results: Dict[str, Any] = {}
+            individual_results: dict[str, Any] = {}
             for vector_name, test_queries in dynamic_queries.items():
                 if vector_name in self.skip_vectors:
                     logger.info(f"Skipping {vector_name} (known to be empty)")
@@ -166,8 +166,8 @@ class VectorSystemValidator:
             return {"error": str(e), "timestamp": time.time()}
 
     async def _test_individual_vector(
-        self, vector_name: str, test_queries: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, vector_name: str, test_queries: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Test an individual vector with domain-specific queries.
 
         Args:
@@ -178,7 +178,7 @@ class VectorSystemValidator:
             Test results for the vector
         """
         try:
-            vector_results: Dict[str, Any] = {
+            vector_results: dict[str, Any] = {
                 "vector_name": vector_name,
                 "total_queries": len(test_queries),
                 "successful_queries": 0,
@@ -189,7 +189,7 @@ class VectorSystemValidator:
 
             total_response_time = 0.0
             successful_queries = 0
-            failed_queries: List[Dict[str, Any]] = []
+            failed_queries: list[dict[str, Any]] = []
 
             for query_config in test_queries:
                 query = query_config["query"]
@@ -247,7 +247,7 @@ class VectorSystemValidator:
 
     async def _search_with_vector(
         self, vector_name: str, query: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Search using a specific vector (placeholder implementation).
 
         Args:
@@ -293,7 +293,7 @@ class VectorSystemValidator:
             return []
 
     def _validate_query_results(
-        self, results: List[Dict[str, Any]], query_config: Dict[str, Any]
+        self, results: list[dict[str, Any]], query_config: dict[str, Any]
     ) -> bool:
         """Validate search results meet expected criteria.
 
@@ -376,8 +376,8 @@ class VectorSystemValidator:
             return False
 
     def _simulate_image_vector_test(
-        self, vector_name: str, test_cases: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, vector_name: str, test_cases: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Simulate image vector testing (placeholder).
 
         Args:
@@ -400,7 +400,7 @@ class VectorSystemValidator:
             "note": "Image vector testing requires image processing implementation",
         }
 
-    async def _test_multi_vector_search(self) -> Dict[str, Any]:
+    async def _test_multi_vector_search(self) -> dict[str, Any]:
         """Test multi-vector search methods for fusion effectiveness.
 
         Returns:
@@ -409,15 +409,15 @@ class VectorSystemValidator:
         try:
             logger.info("Testing multi-vector search fusion")
 
-            multi_vector_results: Dict[str, Any] = {
+            multi_vector_results: dict[str, Any] = {
                 "search_complete_tests": [],
                 "search_text_comprehensive_tests": [],
                 "search_visual_comprehensive_tests": [],
                 "fusion_effectiveness": {},
             }
 
-            search_complete_tests: List[Dict[str, Any]] = []
-            search_text_comprehensive_tests: List[Dict[str, Any]] = []
+            search_complete_tests: list[dict[str, Any]] = []
+            search_text_comprehensive_tests: list[dict[str, Any]] = []
 
             # Test search_complete with complex queries
             complex_queries = [
@@ -581,8 +581,8 @@ class VectorSystemValidator:
             return {"error": str(e)}
 
     def _generate_recommendations(
-        self, validation_summary: Dict[str, Any]
-    ) -> List[str]:
+        self, validation_summary: dict[str, Any]
+    ) -> list[str]:
         """Generate recommendations based on validation results.
 
         Args:
@@ -591,7 +591,7 @@ class VectorSystemValidator:
         Returns:
             List of actionable recommendations
         """
-        recommendations: List[str] = []
+        recommendations: list[str] = []
 
         # Check overall success rate
         overall_success = validation_summary.get("overall_success_rate", 0.0)
@@ -646,8 +646,8 @@ class VectorSystemValidator:
         return recommendations
 
     async def validate_semantic_relevance(
-        self, test_queries: List[str], expected_categories: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        self, test_queries: list[str], expected_categories: list[str] | None = None
+    ) -> dict[str, Any]:
         """Validate semantic relevance of search results.
 
         Args:
@@ -660,7 +660,7 @@ class VectorSystemValidator:
         try:
             logger.info("Validating semantic relevance of search results")
 
-            relevance_results: Dict[str, Any] = {
+            relevance_results: dict[str, Any] = {
                 "total_queries": len(test_queries),
                 "semantically_relevant_queries": 0,
                 "query_results": [],
@@ -668,7 +668,7 @@ class VectorSystemValidator:
             }
 
             semantically_relevant_queries = 0
-            query_results: List[Dict[str, Any]] = []
+            query_results: list[dict[str, Any]] = []
 
             for query in test_queries:
                 try:
@@ -716,7 +716,7 @@ class VectorSystemValidator:
             return {"error": str(e)}
 
     def _calculate_semantic_relevance(
-        self, query: str, results: List[Dict[str, Any]]
+        self, query: str, results: list[dict[str, Any]]
     ) -> float:
         """Calculate semantic relevance score for query results.
 

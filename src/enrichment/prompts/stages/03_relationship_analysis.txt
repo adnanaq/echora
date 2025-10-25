@@ -6,7 +6,7 @@ You are the **MULTI-SOURCE RELATIONSHIP PROCESSOR** responsible for consolidatin
 
 ### YOUR RESPONSIBILITY
 Merge relationship data from 4 sources (Jikan, AnimePlanet, AnimSchedule, Offline URLs) into comprehensive relationship lists ensuring:
-- Accurate relationship consolidation with intelligent deduplication  
+- Accurate relationship consolidation with intelligent deduplication
 - Standardized relationship types and proper categorization
 - Complete data integration with source attribution
 - Quality validation and consistency checks
@@ -25,7 +25,7 @@ Merge relationship data from 4 sources (Jikan, AnimePlanet, AnimSchedule, Offlin
 ### ANIMEPLANET RELATIONS DATA:
 {animeplanet_relations_data}
 
-### ANIMESCHEDULE RELATIONS DATA:  
+### ANIMESCHEDULE RELATIONS DATA:
 {animeschedule_relations_data}
 
 ### OFFLINE RELATED ANIME URLS:
@@ -46,7 +46,7 @@ Merge relationship data from 4 sources (Jikan, AnimePlanet, AnimSchedule, Offlin
 ```yaml
 Jikan Types (Comprehensive Set):
   - Adaptation → Adaptation
-  - Sequel → Sequel  
+  - Sequel → Sequel
   - Prequel → Prequel
   - Side Story → Side Story
   - Spin-off → Spin-off
@@ -80,7 +80,7 @@ AnimePlanet Subtypes (Keep Specific Types):
   Special → Special
   Music Video → Music Video
   Live Action → Live Action
-  
+
   # Only use generic types when subtype unavailable
   same_franchise → Other          # Fallback only
 ```
@@ -104,7 +104,7 @@ Examples:
 ```yaml
 AnimSchedule Categories (Use for validation/gaps):
   sequels → Sequel
-  prequels → Prequel  
+  prequels → Prequel
   sideStories → Side Story
   movies → Movie
   specials → Special
@@ -184,19 +184,19 @@ notify.moe:
    Example - Keep Both (Different URLs):
      - title: "Attack on Titan Season 2", url: "myanimelist.net/anime/25777", relationship: "Sequel"
      - title: "Attack on Titan Season 2", url: "anime-planet.com/anime/attack-on-titan-season-2", relationship: "Movie"
-   
+
    Reason: Different URLs = Different valuable platform references
-   
+
    Example - Deduplicate (Same URL):
      - url: "myanimelist.net/anime/123", relationship: "Side Story" (Jikan)
      - url: "myanimelist.net/anime/123", relationship: "Movie" (AnimePlanet)
-   
+
    Result: Keep AnimePlanet "Movie" (higher quality relationship type)
    ```
 
 **Priority Hierarchy** (when same URL has multiple relationship types):
 1. **Jikan** (comprehensive relationship types, manga support)
-2. **AnimePlanet** (granular subtypes, complete metadata) 
+2. **AnimePlanet** (granular subtypes, complete metadata)
 3. **AnimSchedule** (validation source, gap-filling)
 4. **Offline URLs** (expansion source, lowest priority)
 
@@ -220,7 +220,7 @@ notify.moe:
 
 **Data Quality Scoring**:
 - **High Quality**: Complete title, URL, and specific relationship type (Movie, OVA, Special, etc.)
-- **Medium Quality**: Complete title, URL, but generic relationship type (Side Story, Other)  
+- **Medium Quality**: Complete title, URL, but generic relationship type (Side Story, Other)
 - **Low Quality**: Generic title or missing/unknown relationship type
 
 **Type Quality Hierarchy** (Prefer Higher Quality):
@@ -230,7 +230,7 @@ Specific Types (High Quality):
   - Sequel, Prequel, Spin-off, Character
   - Alternative Version, Adaptation
 
-Generic Types (Medium Quality):  
+Generic Types (Medium Quality):
   - Side Story, Parent Story, Full Story, Summary
 
 Fallback Types (Low Quality):
@@ -247,7 +247,7 @@ Return ONLY valid JSON with this exact structure:
   "related_anime": [
     {{
       "relation_type": "Side Story",
-      "title": "Cowboy Bebop: Tengoku no Tobira", 
+      "title": "Cowboy Bebop: Tengoku no Tobira",
       "url": "https://myanimelist.net/anime/5/Cowboy_Bebop__Tengoku_no_Tobira"
     }}
   ],
@@ -266,7 +266,7 @@ Return ONLY valid JSON with this exact structure:
 
 ### PROCESSING RULES
 - Process Jikan relations first (highest priority)
-- Skip URLs already in Jikan/AnimePlanet data  
+- Skip URLs already in Jikan/AnimePlanet data
 - Use helper functions for anisearch.com and simkl.com
 - Infer relationships from extracted context
 

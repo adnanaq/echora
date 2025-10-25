@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from .api_fetcher import ParallelAPIFetcher
 from .assembly import assemble_anime_entry, validate_and_fix_entry
@@ -27,7 +27,7 @@ class ProgrammaticEnrichmentPipeline:
     Implements Steps 1-3 of enrichment process programmatically.
     """
 
-    def __init__(self, config: Optional[EnrichmentConfig] = None):
+    def __init__(self, config: EnrichmentConfig | None = None):
         """
         Initialize pipeline with configuration.
 
@@ -42,7 +42,7 @@ class ProgrammaticEnrichmentPipeline:
         self.episode_processor = EpisodeProcessor()
 
         # Performance tracking
-        self.timing_breakdown: Dict[str, float] = {}
+        self.timing_breakdown: dict[str, float] = {}
 
         # Log configuration if verbose
         if self.config.verbose_logging:
@@ -50,11 +50,11 @@ class ProgrammaticEnrichmentPipeline:
 
     async def enrich_anime(
         self,
-        offline_data: Dict,
-        agent_dir: Optional[str] = None,
-        skip_services: Optional[List[str]] = None,
-        only_services: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        offline_data: dict,
+        agent_dir: str | None = None,
+        skip_services: list[str] | None = None,
+        only_services: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Enrich a single anime with data from all APIs.
 
@@ -158,7 +158,7 @@ class ProgrammaticEnrichmentPipeline:
                 }
             raise
 
-    async def enrich_batch(self, anime_list: List[Dict]) -> List[Dict]:
+    async def enrich_batch(self, anime_list: list[dict]) -> list[dict]:
         """
         Enrich multiple anime in parallel.
 
@@ -184,7 +184,7 @@ class ProgrammaticEnrichmentPipeline:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle results and exceptions
-        successful: List[Dict[str, Any]] = []
+        successful: list[dict[str, Any]] = []
         failed = []
 
         for anime, result in zip(anime_list, results):
@@ -193,7 +193,7 @@ class ProgrammaticEnrichmentPipeline:
                 failed.append(anime)
             else:
                 # result is guaranteed to be Dict[str, Any] here due to the isinstance check above
-                successful.append(cast(Dict[str, Any], result))
+                successful.append(cast(dict[str, Any], result))
 
         logger.info(
             f"Batch complete: {len(successful)} successful, {len(failed)} failed"
@@ -229,7 +229,11 @@ class ProgrammaticEnrichmentPipeline:
                         # Split on "_agent" and get the part after it
                         after_agent = item.split("_agent")[1]
                         # Get first segment (number part before any additional "_")
-                        num_str = after_agent.split("_")[0] if "_" in after_agent else after_agent
+                        num_str = (
+                            after_agent.split("_")[0]
+                            if "_" in after_agent
+                            else after_agent
+                        )
                         if num_str.isdigit():
                             existing_ids.append(int(num_str))
                     except (IndexError, ValueError):
@@ -248,12 +252,16 @@ class ProgrammaticEnrichmentPipeline:
         # Find first missing ID (gap filling)
         for i in range(1, existing_ids[-1] + 1):
             if i not in existing_ids:
-                logger.info(f"Gap-filling agent ID: Using {i} (existing: {existing_ids})")
+                logger.info(
+                    f"Gap-filling agent ID: Using {i} (existing: {existing_ids})"
+                )
                 return i
 
         # No gaps found, return next sequential
         next_id = existing_ids[-1] + 1
-        logger.info(f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})")
+        logger.info(
+            f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})"
+        )
         return next_id
 
     def _create_temp_dir(self, anime_title: str) -> str:
@@ -283,7 +291,7 @@ class ProgrammaticEnrichmentPipeline:
 
         return temp_dir
 
-    def _process_episodes(self, api_data: Dict) -> List[Dict]:
+    def _process_episodes(self, api_data: dict) -> list[dict]:
         """Process and merge episode data from all APIs."""
         episode_sources = []
 
@@ -303,7 +311,7 @@ class ProgrammaticEnrichmentPipeline:
 
         return []
 
-    async def load_and_enrich_from_file(self, file_path: str) -> Dict:
+    async def load_and_enrich_from_file(self, file_path: str) -> dict:
         """
         Load anime from file and enrich it.
 
@@ -313,14 +321,14 @@ class ProgrammaticEnrichmentPipeline:
         Returns:
             Enriched anime data
         """
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             offline_data = json.load(f)
 
         return await self.enrich_anime(offline_data)
 
     async def enrich_anime_with_assembly(
-        self, offline_data: Dict, stage_outputs_dir: Optional[Path] = None
-    ) -> Dict[str, Any]:
+        self, offline_data: dict, stage_outputs_dir: Path | None = None
+    ) -> dict[str, Any]:
         """
         Complete enrichment pipeline including Step 5 assembly.
 
@@ -345,7 +353,7 @@ class ProgrammaticEnrichmentPipeline:
 
         # Step 5: Assembly (if stage outputs available)
         if stage_outputs_dir and stage_outputs_dir.exists():
-            logger.info(f"Running Step 5 assembly...")
+            logger.info("Running Step 5 assembly...")
 
             try:
                 # Extract anime sources
@@ -388,7 +396,7 @@ class ProgrammaticEnrichmentPipeline:
                 programmatic_result["assembly_error"] = str(e)
                 programmatic_result["assembly_success"] = False
         else:
-            logger.info(f"No stage outputs found, skipping Step 5 assembly")
+            logger.info("No stage outputs found, skipping Step 5 assembly")
             programmatic_result["assembly_skipped"] = True
 
         return programmatic_result

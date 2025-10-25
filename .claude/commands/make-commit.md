@@ -25,6 +25,7 @@ You are helping create a semantic versioning commit following Conventional Commi
    - **IMPORTANT**: No Co-Authored-By or AI generation footers
 
 5. **Present commit plan** to user:
+
    ```
    Commit Plan (X commits required):
 
@@ -49,6 +50,7 @@ You are helping create a semantic versioning commit following Conventional Commi
    - **NEVER add**: Emojis, "Generated with Claude Code", Co-Authored-By, or AI attribution
 
 **Version Impact Guide:**
+
 - `feat:` → Minor version bump (0.X.0)
 - `fix:` → Patch version bump (0.0.X)
 - `BREAKING CHANGE:` → Major version bump (X.0.0)
@@ -57,6 +59,7 @@ You are helping create a semantic versioning commit following Conventional Commi
 **Examples:**
 
 **Single type commit:**
+
 ```
 feat: add character similarity search endpoint
 
@@ -69,11 +72,13 @@ Closes #42
 **Multiple types (SPLIT INTO SEPARATE COMMITS):**
 
 **BAD** - Mixed types in one commit:
+
 ```
 INCORRECT: feat: add search endpoint and fix timeout bug
 ```
 
 **GOOD** - Split into logical commits:
+
 ```
 Commit 1:
 feat: add character similarity search endpoint
@@ -85,18 +90,21 @@ fix(api): resolve timeout in multimodal search
 **Real-world splitting example:**
 
 If staged changes include:
+
 - New API endpoint (feat)
 - Bug fix in existing endpoint (fix)
 - Updated README (docs)
 - Moved scripts to scripts/ folder (chore)
 
 Then create 4 separate commits:
+
 1. `feat(api): add character similarity endpoint`
 2. `fix(api): resolve connection pool exhaustion`
 3. `docs: update API usage examples in README`
 4. `chore: reorganize scripts into scripts/ directory`
 
 **Arguments** (optional):
+
 - `$ARGUMENTS`: Custom context or message hint
 
 If arguments provided: "$ARGUMENTS"
