@@ -15,6 +15,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
+from typing import List
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,7 +50,7 @@ async def main():
 
     # Load anime data
     print(" Loading anime data...")
-    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
+    with open("./data/qdrant_storage/enriched_anime_database.json", "r") as f:
         enrichment_data = json.load(f)
 
     anime_data = enrichment_data["data"]
@@ -57,7 +58,7 @@ async def main():
 
     # Convert to AnimeEntry objects
     print(" Converting to AnimeEntry objects...")
-    anime_entries: list[AnimeEntry] = []
+    anime_entries: List[AnimeEntry] = []
 
     for i, anime_dict in enumerate(anime_data):
         try:
@@ -81,7 +82,7 @@ async def main():
         return
 
     # Start indexing with existing infrastructure
-    print("\n Starting vector indexing using existing infrastructure...")
+    print(f"\n Starting vector indexing using existing infrastructure...")
     print(" This will generate:")
     print("   - 9 text vectors (BGE-M3 1024D)")
     print("   - 2 image vectors (OpenCLIP 768D)")
@@ -97,7 +98,9 @@ async def main():
 
         for i, anime_entry in enumerate(anime_entries):
             try:
-                print(f"\n Processing {i+1}/{len(anime_entries)}: {anime_entry.title}")
+                print(
+                    f"\n Processing {i+1}/{len(anime_entries)}: {anime_entry.title}"
+                )
 
                 # Process single entry
                 success = await client.add_documents([anime_entry], batch_size=1)
@@ -114,7 +117,7 @@ async def main():
                 failed_entries += 1
                 continue
 
-        print("\n Processing Summary:")
+        print(f"\n Processing Summary:")
         print(f"   Successful: {successful_entries}/{len(anime_entries)}")
         print(f"   Failed: {failed_entries}/{len(anime_entries)}")
 
@@ -123,17 +126,13 @@ async def main():
 
             # Save updated anime data with generated IDs
             print("\n💾 Saving updated anime data with generated IDs...")
-            with open(
-                "./data/qdrant_storage/enriched_anime_database.json",
-                "w",
-                encoding="utf-8",
-            ) as f:
+            with open("./data/qdrant_storage/enriched_anime_database.json", "w", encoding="utf-8") as f:
                 json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
             print("✅ Updated data saved successfully")
 
             # Verify results
             info = client.client.get_collection(settings.qdrant_collection_name)
-            print("\n Final collection status:")
+            print(f"\n Final collection status:")
             print(f"   Points: {info.points_count}")
             print(f"   Expected: {len(anime_entries)} points")
 

@@ -16,13 +16,13 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 # Type annotations for optional imports
-_AnimeEntry: type[Any] | None = None
-_EnrichmentMetadata: type[Any] | None = None
-_EnrichmentValidator: type[Any] | None = None
-_ValidationError: type[Exception] = Exception
+_AnimeEntry: Optional[Type[Any]] = None
+_EnrichmentMetadata: Optional[Type[Any]] = None
+_EnrichmentValidator: Optional[Type[Any]] = None
+_ValidationError: Type[Exception] = Exception
 
 try:
     # Import the existing validator
@@ -55,9 +55,9 @@ class AssemblyResult:
     """Result of assembly operation"""
 
     success: bool
-    anime_entry: dict[str, Any] | None
-    errors: list[str]
-    warnings: list[str]
+    anime_entry: Optional[Dict[str, Any]]
+    errors: List[str]
+    warnings: List[str]
     validation_passed: bool
 
 
@@ -132,9 +132,9 @@ class EnrichmentAssembler:
 
     def assemble_from_stages(
         self,
-        stage_outputs: dict[str, Any],
-        programmatic_data: dict[str, Any],
-        anime_sources: list[str],
+        stage_outputs: Dict[str, Any],
+        programmatic_data: Dict[str, Any],
+        anime_sources: List[str],
     ) -> AssemblyResult:
         """
         Assemble complete AnimeEntry from stage outputs and programmatic data
@@ -188,7 +188,7 @@ class EnrichmentAssembler:
                 validation_passed=False,
             )
 
-    def _create_base_entry(self, sources: list[str]) -> dict[str, Any]:
+    def _create_base_entry(self, sources: List[str]) -> Dict[str, Any]:
         """Create base anime entry with required fields"""
         return {
             "sources": sources,
@@ -202,8 +202,8 @@ class EnrichmentAssembler:
         }
 
     def _merge_programmatic_data(
-        self, entry: dict[str, Any], programmatic_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], programmatic_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge data from programmatic Steps 1-3"""
         if not programmatic_data:
             return entry
@@ -237,8 +237,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_ai_stages(
-        self, entry: dict[str, Any], stage_outputs: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage_outputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge AI stage outputs into entry"""
 
         # Stage 1: Metadata extraction
@@ -268,8 +268,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage1_metadata(
-        self, entry: dict[str, Any], stage1_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage1_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge Stage 1: Metadata extraction"""
         if not stage1_data:
             return entry
@@ -331,8 +331,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage2_episodes(
-        self, entry: dict[str, Any], stage2_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage2_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Merge Stage 2: Episodes (supplement programmatic data)"""
         if not stage2_data or not isinstance(stage2_data, list):
             return entry
@@ -362,8 +362,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage3_relationships(
-        self, entry: dict[str, Any], stage3_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage3_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge Stage 3: Relationships"""
         if not stage3_data:
             return entry
@@ -381,8 +381,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage4_statistics(
-        self, entry: dict[str, Any], stage4_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage4_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge Stage 4: Statistics and media"""
         if not stage4_data:
             return entry
@@ -393,8 +393,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage5_characters(
-        self, entry: dict[str, Any], stage5_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage5_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Merge Stage 5: Characters"""
         if not stage5_data or not isinstance(stage5_data, list):
             return entry
@@ -405,8 +405,8 @@ class EnrichmentAssembler:
         return entry
 
     def _merge_stage6_staff(
-        self, entry: dict[str, Any], stage6_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, entry: Dict[str, Any], stage6_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Merge Stage 6: Staff"""
         if not stage6_data:
             return entry
@@ -417,7 +417,7 @@ class EnrichmentAssembler:
 
         return entry
 
-    def _apply_field_mapping(self, entry: dict[str, Any]) -> dict[str, Any]:
+    def _apply_field_mapping(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Apply intelligent field mapping and conflict resolution"""
 
         # Ensure required fields have appropriate defaults
@@ -446,7 +446,7 @@ class EnrichmentAssembler:
     # Note: No cleanup in Step 5 - just merge the data
     # Validation and cleanup will be done separately after assembly
 
-    def _add_enrichment_metadata(self, entry: dict[str, Any]) -> dict[str, Any]:
+    def _add_enrichment_metadata(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Add enrichment metadata and apply proper schema field ordering"""
         entry["enrichment_metadata"] = {
             "source": "programmatic_ai_pipeline",
@@ -458,7 +458,7 @@ class EnrichmentAssembler:
         # Apply proper AnimeEntry schema field ordering
         return self._apply_schema_ordering(entry)
 
-    def _apply_schema_ordering(self, entry: dict[str, Any]) -> dict[str, Any]:
+    def _apply_schema_ordering(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Apply AnimeEntry schema field ordering: SCALAR → ARRAY → OBJECT → enrichment_metadata"""
 
         # Define field order per AnimeEntry schema
@@ -539,7 +539,7 @@ class EnrichmentAssembler:
 
         return ordered_entry
 
-    def _validate_final_output(self, entry: dict[str, Any]) -> bool:
+    def _validate_final_output(self, entry: Dict[str, Any]) -> bool:
         """Run validator on final merged output"""
         if not _EnrichmentValidator:
             self.warnings.append(
@@ -591,7 +591,7 @@ class EnrichmentAssembler:
             self.errors.append(f"Final validation exception: {str(e)}")
             return False
 
-    def _is_empty_object(self, obj: dict[str, Any]) -> bool:
+    def _is_empty_object(self, obj: Dict[str, Any]) -> bool:
         """Check if object is effectively empty"""
         if not obj:
             return True
@@ -607,7 +607,7 @@ class EnrichmentAssembler:
         return True
 
 
-def load_stage_outputs(stage_dir: Path) -> dict[str, Any]:
+def load_stage_outputs(stage_dir: Path) -> Dict[str, Any]:
     """Load all stage outputs from directory"""
     stage_outputs = {}
 
@@ -618,7 +618,7 @@ def load_stage_outputs(stage_dir: Path) -> dict[str, Any]:
         if stage_files:
             stage_file = stage_files[0]  # Take first match
             try:
-                with open(stage_file, encoding="utf-8") as f:
+                with open(stage_file, "r", encoding="utf-8") as f:
                     stage_outputs[f"stage{stage_num}"] = json.load(f)
             except Exception as e:
                 logger.error(f"Failed to load {stage_file}: {e}")
@@ -631,8 +631,8 @@ def load_stage_outputs(stage_dir: Path) -> dict[str, Any]:
 
 
 def validate_and_fix_entry(
-    anime_entry: dict[str, Any],
-) -> tuple[dict[str, Any], bool, list[str]]:
+    anime_entry: Dict[str, Any],
+) -> Tuple[Dict[str, Any], bool, List[str]]:
     """
     Validate and optionally fix an assembled anime entry using validate_enrichment_database.py
 
@@ -674,7 +674,7 @@ def validate_and_fix_entry(
 
 
 def assemble_anime_entry(
-    stage_dir: Path, programmatic_data: dict[str, Any], anime_sources: list[str]
+    stage_dir: Path, programmatic_data: Dict[str, Any], anime_sources: List[str]
 ) -> AssemblyResult:
     """
     Main entry point for assembly process

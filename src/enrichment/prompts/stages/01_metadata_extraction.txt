@@ -43,7 +43,7 @@ Extract metadata from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList APIs
   2. For each source in priority order (Jikan → AniList → Kitsu → Anime-Planet → AnimSchedule → AniDB):
      - Jikan: Process all entries from titles.synonyms array
      - AniList: Process all entries from synonyms array
-     - Kitsu: Process all entries from abbreviatedTitles array
+     - Kitsu: Process all entries from abbreviatedTitles array  
      - Anime-Planet: Process all entries from alternative titles
      - AnimSchedule: Process all entries from names.synonyms array
      - AniDB: Process all entries from titles.synonyms array
@@ -165,7 +165,7 @@ Extract metadata from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList APIs
 
 ## CRITICAL REQUIREMENTS
 
-1. **INTELLIGENT CATEGORIZATION MERGING**:
+1. **INTELLIGENT CATEGORIZATION MERGING**: 
    - Combine Jikan and AnimSchedule genres, remove duplicates
    - Intelligent theme merging with case-insensitive comparison:
      - Skip Kitsu categories, AniList tags, and AniDB tags that match existing genre names
@@ -174,7 +174,7 @@ Extract metadata from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList APIs
      - Add new themes from Kitsu "categories", AniList "tags", and AniDB "tags" that don't conflict
      - Process Kitsu "categories" first, then AniList "tags", then AniDB "tags" to avoid race conditions
 
-2. **PROPER THEMES STRUCTURE**:
+2. **PROPER THEMES STRUCTURE**: 
    - Output themes as single unified array of objects: [{"name": "Theme Name", "description": "Description or null"}]
    - Merge all themes from all sources into one array using the intelligent merging rules above
    - Each theme object format: {"name": "theme_name", "description": "description_text_or_null"}
@@ -184,7 +184,7 @@ Extract metadata from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList APIs
      - AniList tags: tag.name → name, tag.description → description
      - AniDB tags: tag.name → name, tag.description → description
 
-3. **ORGANIZED IMAGE TYPE HANDLING**:
+3. **ORGANIZED IMAGE TYPE HANDLING**: 
    - Extract images from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList organized by image type
    - Create separate arrays: posters, covers, banners (and potentially screenshots in future)
    - Type inference rules:
@@ -204,7 +204,7 @@ Extract metadata from Jikan, AnimSchedule, Kitsu, Anime-Planet, and AniList APIs
    - Ensure no duplication of URLs or normalized property names
    - If same normalized key exists from multiple sources, keep only one instance
 
-5. **HANDLE MISSING DATA**:
+5. **HANDLE MISSING DATA**: 
    - If any API data is missing or null, set corresponding output fields to null
    - Continue processing with available data sources
    - Do not include statistics section (handled in separate Stage 4)

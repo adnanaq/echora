@@ -59,7 +59,7 @@ Merge character data from 4 sources (Jikan, AniList, AniDB, Kitsu) into comprehe
 
 **Phase 2: Role Consistency Check**:
 - Jikan "Main" ↔ AniList "MAIN" ↔ AniDB "main character"
-- Jikan "Supporting" ↔ AniList "SUPPORTING" ↔ AniDB "secondary character"
+- Jikan "Supporting" ↔ AniList "SUPPORTING" ↔ AniDB "secondary character"  
 - Flag role mismatches for manual review
 
 **Phase 3: Content Similarity Validation**:
@@ -193,7 +193,7 @@ Return ONLY valid JSON with ALL characters processed:
 
 ### DATA VALIDATION
 - **Process ALL Jikan characters** (primary source completeness requirement)
-- **Cross-validate character names** for matched characters across sources
+- **Cross-validate character names** for matched characters across sources  
 - **Include characters even if matching fails** (with null values for unmatched fields)
 - **Report matching confidence levels** for quality assurance and manual review
 

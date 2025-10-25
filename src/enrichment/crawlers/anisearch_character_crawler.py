@@ -17,7 +17,7 @@ import argparse
 import asyncio
 import json
 import re
-from typing import Any
+from typing import Any, Dict, Optional
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -31,8 +31,8 @@ from .utils import sanitize_output_path
 
 
 async def fetch_anisearch_characters(
-    url: str, return_data: bool = True, output_path: str | None = None
-) -> dict[str, Any] | None:
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """
     Crawls, processes, and saves character data from a given anisearch.com URL.
 

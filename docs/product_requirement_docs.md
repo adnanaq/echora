@@ -2,8 +2,8 @@
 
 ## Anime Vector Service
 
-**Document Version:** 1.0
-**Date:** August 5, 2025
+**Document Version:** 1.0  
+**Date:** August 5, 2025  
 **Product Owner:** Anime Data Platform Team
 
 ---
@@ -119,7 +119,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 1. **Semantic Search Engine**
 
-**Priority**: Critical (P0)
+**Priority**: Critical (P0)  
 **Description**: Natural language search capabilities using advanced text embeddings
 
 **Functional Requirements**:
@@ -147,7 +147,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 2. **Visual Similarity Search**
 
-**Priority**: Critical (P0)
+**Priority**: Critical (P0)  
 **Description**: Image-based search using computer vision embeddings
 
 **Functional Requirements**:
@@ -175,7 +175,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 3. **Multimodal Search**
 
-**Priority**: High (P1)
+**Priority**: High (P1)  
 **Description**: Combined text and image search with configurable weighting
 
 **Functional Requirements**:
@@ -203,7 +203,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 4. **Similarity Recommendation Engine**
 
-**Priority**: High (P1)
+**Priority**: High (P1)  
 **Description**: Find similar anime based on content, visual, or vector similarity
 
 **Functional Requirements**:
@@ -231,7 +231,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 5. **Vector Database Management**
 
-**Priority**: Critical (P0)
+**Priority**: Critical (P0)  
 **Description**: Comprehensive vector storage and retrieval system
 
 **Functional Requirements**:
@@ -261,7 +261,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 6. **Fine-tuning Infrastructure**
 
-**Priority**: Medium (P2)
+**Priority**: Medium (P2)  
 **Description**: Support for domain-specific model customization
 
 **Functional Requirements**:
@@ -289,7 +289,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 7. **Data Enrichment Pipeline**
 
-**Priority**: Medium (P2)
+**Priority**: Medium (P2)  
 **Description**: Comprehensive anime data enrichment from multiple sources
 
 **Functional Requirements**:
@@ -317,7 +317,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### 8. **Performance Optimization**
 
-**Priority**: High (P1)
+**Priority**: High (P1)  
 **Description**: Advanced performance optimization and scalability features
 
 **Functional Requirements**:

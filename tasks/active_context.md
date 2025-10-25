@@ -12,14 +12,13 @@
 
 **Today's Focus**: Phase 3.1 - 14-Vector System Validation with default BGE-M3 embeddings
 
-**Active Task**: Per-Vector Search Quality Testing - Validate semantic accuracy across all 11 vectors (50% Complete)
+**Active Task**: Per-Vector Search Quality Testing - Validate semantic accuracy across all 14 vectors (50% Complete)
 
-**Current Status**: Staff vector comprehensively tested and validated, 7/11 vectors comprehensively tested, staff extraction fixes implemented
+**Current Status**: Staff vector comprehensively tested and validated, 7/14 vectors comprehensively tested, staff extraction fixes implemented
 
 **Current Priority**: Continue validating remaining 7 text vectors with domain-specific queries
 
 **Current Session Tasks**:
-
 - [ ] **Per-Vector Search Quality Testing** (Est: 2 hours) - IN PROGRESS
   - [x] Test title_vector → COMPLETED - comprehensive validation with available data
   - [x] Test character_vector → COMPLETED - comprehensive validation including character_image_vector
@@ -53,7 +52,7 @@
 
 **Decision Point**: System validation approach before optimization
 
-- **Current Database**: 28 anime entries successfully indexed with 11-vector architecture
+- **Current Database**: 28 anime entries successfully indexed with 14-vector architecture
 - **Validation Strategy**: Test each vector individually before multi-vector fusion testing
 - **Success Criteria**: Semantic relevance validation for each vector type
 - **Next Phase Dependency**: Validation results will inform Phase 4 sparse vector optimization
@@ -91,7 +90,7 @@
 - ✅ **COMPLETED**: Git workflow fix - switched to main branch successfully
 - ✅ **COMPLETED**: Database reindexing with default BGE-M3 system (28/28 anime entries)
 - ✅ **UPDATED**: Tasks plan with comprehensive genre enhancement documentation
-- ✅ **UPDATED**: Active context to reflect current 11-vector validation priority
+- ✅ **UPDATED**: Active context to reflect current 14-vector validation priority
 - ✅ **COMPLETED**: Comprehensive related_vector validation test (900+ LOC)
   - 8 comprehensive query patterns (Multi-Relation, Franchise Wide, Type Collection, etc.)
   - True field combination testing methodology matching character_vector approach
@@ -103,9 +102,9 @@
 
 - **Major Achievement**: Complete genre enhancement infrastructure with advanced training strategies
 - **Key Discovery**: Fundamental data limitation preventing 90%+ accuracy achievement
-- **System Status**: 11-vector architecture operational and ready for validation
+- **System Status**: 14-vector architecture operational and ready for validation
 - **Priority Shift**: From genre enhancement training to baseline system validation
-- **Vector Validation Progress**: 6/11 vectors comprehensively validated (title, character+character_image, related, image, episode, staff)
+- **Vector Validation Progress**: 6/14 vectors comprehensively validated (title, character+character_image, related, image, episode, staff)
 - **Testing Methodology**: Established comprehensive field combination testing approach with rich formatting
 - **Performance Baseline**: High semantic accuracy confirmed (75-100% success rates)
 - **Staff Vector Achievement**: Critical extraction bugs fixed, 100% rich vector generation, 80% search accuracy

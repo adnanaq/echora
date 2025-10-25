@@ -1,7 +1,7 @@
 """Vector Service Configuration Settings."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Dict, List, Literal, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(
         default="http://localhost:6333", description="Qdrant server URL"
     )
-    qdrant_api_key: str | None = Field(
+    qdrant_api_key: Optional[str] = Field(
         default=None, description="Qdrant API key for cloud authentication"
     )
     qdrant_collection_name: str = Field(
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     )
 
     # 11-Vector Semantic Architecture Configuration
-    vector_names: dict[str, int] = Field(
+    vector_names: Dict[str, int] = Field(
         default={
             "title_vector": 1024,
             "character_vector": 1024,
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     )
 
     # Vector Priority Classification for Optimization
-    vector_priorities: dict[str, list[str]] = Field(
+    vector_priorities: Dict[str, List[str]] = Field(
         default={
             "high": [
                 "title_vector",
@@ -124,7 +124,7 @@ class Settings(BaseSettings):
         default=77, description="OpenCLIP maximum text sequence length"
     )
 
-    model_cache_dir: str | None = Field(
+    model_cache_dir: Optional[str] = Field(
         default=None, description="Custom cache directory for embedding models"
     )
     model_warm_up: bool = Field(
@@ -153,7 +153,7 @@ class Settings(BaseSettings):
         le=0.5,
         description="LoRA dropout probability for regularization",
     )
-    lora_target_modules: list[str] = Field(
+    lora_target_modules: List[str] = Field(
         default=[
             "q_proj",
             "k_proj",
@@ -190,12 +190,12 @@ class Settings(BaseSettings):
     qdrant_quantization_type: str = Field(
         default="scalar", description="Quantization type: binary, scalar, product"
     )
-    qdrant_quantization_always_ram: bool | None = Field(
+    qdrant_quantization_always_ram: Optional[bool] = Field(
         default=None, description="Keep quantized vectors in RAM"
     )
 
     # Advanced Quantization Configuration per Vector Priority
-    quantization_config: dict[str, dict[str, object]] = Field(
+    quantization_config: Dict[str, Dict[str, object]] = Field(
         default={
             "high": {"type": "scalar", "scalar_type": "int8", "always_ram": True},
             "medium": {"type": "scalar", "scalar_type": "int8", "always_ram": False},
@@ -205,16 +205,16 @@ class Settings(BaseSettings):
     )
 
     # HNSW Configuration
-    qdrant_hnsw_ef_construct: int | None = Field(
+    qdrant_hnsw_ef_construct: Optional[int] = Field(
         default=None, description="HNSW ef_construct parameter"
     )
-    qdrant_hnsw_m: int | None = Field(default=None, description="HNSW M parameter")
-    qdrant_hnsw_max_indexing_threads: int | None = Field(
+    qdrant_hnsw_m: Optional[int] = Field(default=None, description="HNSW M parameter")
+    qdrant_hnsw_max_indexing_threads: Optional[int] = Field(
         default=None, description="Maximum indexing threads"
     )
 
     # Anime-Optimized HNSW Parameters per Vector Priority
-    hnsw_config: dict[str, dict[str, int]] = Field(
+    hnsw_config: Dict[str, Dict[str, int]] = Field(
         default={
             "high": {"ef_construct": 256, "m": 64, "ef": 128},
             "medium": {"ef_construct": 200, "m": 48, "ef": 64},
@@ -224,7 +224,7 @@ class Settings(BaseSettings):
     )
 
     # Memory and Storage Configuration
-    qdrant_memory_mapping_threshold: int | None = Field(
+    qdrant_memory_mapping_threshold: Optional[int] = Field(
         default=None, description="Memory mapping threshold in KB"
     )
 
@@ -233,7 +233,7 @@ class Settings(BaseSettings):
         default=50,
         description="Memory mapping threshold in MB for large collection optimization",
     )
-    qdrant_enable_wal: bool | None = Field(
+    qdrant_enable_wal: Optional[bool] = Field(
         default=None, description="Enable Write-Ahead Logging"
     )
 
@@ -241,7 +241,7 @@ class Settings(BaseSettings):
     qdrant_enable_payload_indexing: bool = Field(
         default=True, description="Enable payload field indexing"
     )
-    qdrant_indexed_payload_fields: dict[str, str] = Field(
+    qdrant_indexed_payload_fields: Dict[str, str] = Field(
         default={
             # Core searchable fields
             "id": "keyword",
@@ -337,13 +337,13 @@ class Settings(BaseSettings):
     )
 
     # CORS Configuration
-    allowed_origins: list[str] = Field(
+    allowed_origins: List[str] = Field(
         default=["*"], description="Allowed CORS origins"
     )
-    allowed_methods: list[str] = Field(
+    allowed_methods: List[str] = Field(
         default=["*"], description="Allowed HTTP methods"
     )
-    allowed_headers: list[str] = Field(
+    allowed_headers: List[str] = Field(
         default=["*"], description="Allowed HTTP headers"
     )
 
@@ -388,7 +388,7 @@ class Settings(BaseSettings):
         return v.upper()
 
 
-@lru_cache
+@lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

@@ -8,17 +8,18 @@ import argparse
 import asyncio
 import json
 import sys
-from typing import Any
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 from src.enrichment.programmatic.enrichment_pipeline import (
     ProgrammaticEnrichmentPipeline,
 )
 
 
-def load_database(file_path: str) -> dict[str, Any]:
+def load_database(file_path: str) -> Dict[str, Any]:
     """Load anime database from JSON file."""
     try:
-        with open(file_path, encoding="utf-8") as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
         print(f"Error: Database file not found: {file_path}")
@@ -28,7 +29,7 @@ def load_database(file_path: str) -> dict[str, Any]:
         sys.exit(1)
 
 
-def get_anime_by_index(database: dict[str, Any], index: int) -> dict[str, Any] | None:
+def get_anime_by_index(database: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
     """Get anime entry by index from database."""
     data = database.get("data", [])
     if 0 <= index < len(data):
@@ -38,7 +39,7 @@ def get_anime_by_index(database: dict[str, Any], index: int) -> dict[str, Any] |
         return None
 
 
-def get_anime_by_title(database: dict[str, Any], title: str) -> dict[str, Any] | None:
+def get_anime_by_title(database: Dict[str, Any], title: str) -> Optional[Dict[str, Any]]:
     """Search for anime by title (case-insensitive, partial match)."""
     data = database.get("data", [])
     title_lower = title.lower()
@@ -88,36 +89,40 @@ Examples:
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1" --only anime_planet  # Combine with filtering
 
 Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
-        """,
+        """
     )
 
     parser.add_argument(
         "--file",
         default="data/qdrant_storage/anime-offline-database.json",
-        help="Path to anime database JSON file (default: data/qdrant_storage/anime-offline-database.json)",
+        help="Path to anime database JSON file (default: data/qdrant_storage/anime-offline-database.json)"
     )
     parser.add_argument(
-        "--index", type=int, help="Index of anime entry in database (0-based)"
+        "--index",
+        type=int,
+        help="Index of anime entry in database (0-based)"
     )
     parser.add_argument(
-        "--title", type=str, help="Search for anime by title (case-insensitive)"
+        "--title",
+        type=str,
+        help="Search for anime by title (case-insensitive)"
     )
     parser.add_argument(
         "--agent",
         type=str,
-        help="Agent directory name (e.g., 'Dandadan_agent1'). If not provided, auto-generates with gap filling.",
+        help="Agent directory name (e.g., 'Dandadan_agent1'). If not provided, auto-generates with gap filling."
     )
     parser.add_argument(
         "--skip",
         nargs="+",
         metavar="SERVICE",
-        help="Skip specific services (e.g., --skip jikan anidb)",
+        help="Skip specific services (e.g., --skip jikan anidb)"
     )
     parser.add_argument(
         "--only",
         nargs="+",
         metavar="SERVICE",
-        help="Only fetch specific services (e.g., --only anime_planet anisearch)",
+        help="Only fetch specific services (e.g., --only anime_planet anisearch)"
     )
 
     args = parser.parse_args()
@@ -168,7 +173,7 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
         anime_entry,
         agent_dir=args.agent,
         skip_services=args.skip,
-        only_services=args.only,
+        only_services=args.only
     )
 
     # Show results

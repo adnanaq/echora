@@ -6,7 +6,7 @@ vision models for anime art style recognition tasks.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -58,7 +58,7 @@ class LoRAEnhancedVisionModel(nn.Module):
 
         logger.info(f"LoRA-enhanced vision model initialized with r={lora_config.r}")
 
-    def _apply_lora_to_vision_model(self) -> nn.Module | PeftModel | Any:
+    def _apply_lora_to_vision_model(self) -> Union[nn.Module, PeftModel, Any]:
         """Apply LoRA to vision transformer layers.
 
         Returns:
@@ -183,7 +183,7 @@ class VisionTransformerWrapper(PreTrainedModel):
         self.visual_model = visual_model
 
         # Identify and store transformer layers for LoRA targeting
-        self.transformer_layers: list[nn.Module] = []
+        self.transformer_layers: List[nn.Module] = []
         if hasattr(visual_model, "transformer"):
             transformer = visual_model.transformer
 
@@ -197,9 +197,7 @@ class VisionTransformerWrapper(PreTrainedModel):
                     try:
                         # Test if it's iterable
                         iterator = iter(resblocks)  # type: ignore[arg-type]
-                        self.transformer_layers = [
-                            block for block in resblocks if isinstance(block, nn.Module)
-                        ]  # type: ignore[union-attr]
+                        self.transformer_layers = [block for block in resblocks if isinstance(block, nn.Module)]  # type: ignore[union-attr]
                     except (TypeError, AttributeError):
                         logger.warning("Could not iterate over transformer resblocks")
                         self.transformer_layers = []
@@ -214,9 +212,7 @@ class VisionTransformerWrapper(PreTrainedModel):
                     try:
                         # Test if it's iterable
                         iterator = iter(layers)  # type: ignore[arg-type]
-                        self.transformer_layers = [
-                            layer for layer in layers if isinstance(layer, nn.Module)
-                        ]  # type: ignore[union-attr]
+                        self.transformer_layers = [layer for layer in layers if isinstance(layer, nn.Module)]  # type: ignore[union-attr]
                     except (TypeError, AttributeError):
                         logger.warning("Could not iterate over transformer layers")
                         self.transformer_layers = []
@@ -388,7 +384,7 @@ class ArtStyleClassifierModel(nn.Module):
         # Dropout
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, image_embeddings: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, image_embeddings: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Forward pass through art style classifier.
 
         Args:
@@ -431,16 +427,16 @@ class ArtStyleClassifier:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Model components
-        self.classifier_model: ArtStyleClassifierModel | None = None
-        self.lora_vision_model: LoRAEnhancedVisionModel | None = None
-        self.optimizer: AdamW | None = None
-        self.loss_fn: dict[str, nn.CrossEntropyLoss] | None = None
+        self.classifier_model: Optional[ArtStyleClassifierModel] = None
+        self.lora_vision_model: Optional[LoRAEnhancedVisionModel] = None
+        self.optimizer: Optional[AdamW] = None
+        self.loss_fn: Optional[Dict[str, nn.CrossEntropyLoss]] = None
 
         # Training state
         self.num_styles = 0
-        self.style_vocab: dict[str, int] = {}
-        self.studio_vocab: dict[str, int] = {}
-        self.era_vocab: dict[str, int] = {}
+        self.style_vocab: Dict[str, int] = {}
+        self.studio_vocab: Dict[str, int] = {}
+        self.era_vocab: Dict[str, int] = {}
         self.is_trained = False
 
         logger.info(f"Art style classifier initialized on {self.device}")
@@ -617,7 +613,7 @@ class ArtStyleClassifier:
             f"Created auxiliary vocabularies: {len(self.studio_vocab)} studios, {len(self.era_vocab)} eras"
         )
 
-    def _get_era_from_year(self, year: int | None) -> str:
+    def _get_era_from_year(self, year: Optional[int]) -> str:
         """Get era from year.
 
         Args:
@@ -640,7 +636,7 @@ class ArtStyleClassifier:
         else:
             return "contemporary"
 
-    def train_step(self, batch: dict[str, Any]) -> float:
+    def train_step(self, batch: Dict[str, Any]) -> float:
         """Perform one training step.
 
         Args:
@@ -702,7 +698,7 @@ class ArtStyleClassifier:
 
         return total_loss.item()
 
-    def evaluate(self, dataloader: DataLoader) -> dict[str, float]:
+    def evaluate(self, dataloader: DataLoader) -> Dict[str, float]:
         """Evaluate model on validation set.
 
         Args:
@@ -813,7 +809,7 @@ class ArtStyleClassifier:
                 return np.array([])
             return np.array(original_embedding)
 
-    def predict_style(self, image_embedding: np.ndarray) -> list[tuple[str, float]]:
+    def predict_style(self, image_embedding: np.ndarray) -> List[Tuple[str, float]]:
         """Predict art style from image embedding.
 
         Args:
@@ -1030,7 +1026,7 @@ class ArtStyleClassifier:
 
         logger.info(f"Art style classifier loaded from {load_path}")
 
-    def get_model_info(self) -> dict[str, Any]:
+    def get_model_info(self) -> Dict[str, Any]:
         """Get model information including LoRA enhancement status.
 
         Returns:

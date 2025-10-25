@@ -5,7 +5,7 @@ needed by BaseScraper, without the complex error handling infrastructure.
 """
 
 import logging
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 class SimpleCircuitBreaker:
@@ -43,13 +43,13 @@ class SimpleCacheManager:
     """Minimal in-memory cache manager implementation."""
 
     def __init__(self) -> None:
-        self._cache: dict[str, Any] = {}
+        self._cache: Dict[str, Any] = {}
 
-    async def get(self, key: str) -> Any | None:
+    async def get(self, key: str) -> Optional[Any]:
         """Get value from cache."""
         return self._cache.get(key)
 
-    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         """Set value in cache (ignoring TTL for simplicity)."""
         self._cache[key] = value
 
@@ -71,9 +71,9 @@ class SimpleBaseClient:
     def __init__(
         self,
         service_name: str,
-        circuit_breaker: SimpleCircuitBreaker | None = None,
-        cache_manager: SimpleCacheManager | None = None,
-        error_handler: SimpleErrorHandler | None = None,
+        circuit_breaker: Optional[SimpleCircuitBreaker] = None,
+        cache_manager: Optional[SimpleCacheManager] = None,
+        error_handler: Optional[SimpleErrorHandler] = None,
         timeout: float = 30.0,
     ):
         """Initialize SimpleBaseClient.

@@ -22,7 +22,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -54,7 +54,7 @@ class ValidationIssue:
     field_path: str
     description: str
     severity: str  # 'error', 'warning', 'info'
-    suggested_fix: str | None = None
+    suggested_fix: Optional[str] = None
 
 
 @dataclass
@@ -64,7 +64,7 @@ class ValidationResult:
     anime_title: str
     anime_index: int
     is_valid: bool
-    issues: list[ValidationIssue]
+    issues: List[ValidationIssue]
 
     @property
     def error_count(self) -> int:
@@ -142,14 +142,14 @@ class EnrichmentValidator:
     }
 
     def __init__(self) -> None:
-        self.validation_results: list[ValidationResult] = []
+        self.validation_results: List[ValidationResult] = []
 
-    def validate_database(self, file_path: str) -> dict[str, Any]:
+    def validate_database(self, file_path: str) -> Dict[str, Any]:
         """Validate entire enriched database"""
         logger.info(f"Starting validation of {file_path}")
 
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load database file: {e}")
@@ -171,10 +171,10 @@ class EnrichmentValidator:
         # Generate summary report
         return self.generate_report()
 
-    def validate_entry(self, entry: dict[str, Any], index: int) -> ValidationResult:
+    def validate_entry(self, entry: Dict[str, Any], index: int) -> ValidationResult:
         """Validate a single anime entry"""
         title = entry.get("title", f"Entry #{index}")
-        issues: list[ValidationIssue] = []
+        issues: List[ValidationIssue] = []
 
         # 1. Core field validation
         issues.extend(self.check_required_fields(entry))
@@ -195,7 +195,7 @@ class EnrichmentValidator:
             anime_title=title, anime_index=index, is_valid=is_valid, issues=issues
         )
 
-    def check_required_fields(self, entry: dict[str, Any]) -> list[ValidationIssue]:
+    def check_required_fields(self, entry: Dict[str, Any]) -> List[ValidationIssue]:
         """Check that all required fields are present"""
         issues = []
 
@@ -227,8 +227,8 @@ class EnrichmentValidator:
         return issues
 
     def check_empty_field_compliance(
-        self, entry: dict[str, Any]
-    ) -> list[ValidationIssue]:
+        self, entry: Dict[str, Any]
+    ) -> List[ValidationIssue]:
         """Check that empty fields are handled correctly"""
         issues = []
 
@@ -288,19 +288,14 @@ class EnrichmentValidator:
         return issues
 
     def _check_character_empty_fields(
-        self, char: dict[str, Any], char_index: int
-    ) -> list[ValidationIssue]:
+        self, char: Dict[str, Any], char_index: int
+    ) -> List[ValidationIssue]:
         """Check for empty fields within character objects"""
         issues = []
         char_name = char.get("name", f"Character {char_index}")
 
         # Character fields that should be omitted when empty
-        char_empty_collections = {
-            "name_variations",
-            "nicknames",
-            "images",
-            "character_traits",
-        }
+        char_empty_collections = {"name_variations", "nicknames", "images", "character_traits"}
         char_empty_objects = {"character_ids", "character_pages"}
         char_empty_scalars = {
             "name_native",
@@ -362,8 +357,8 @@ class EnrichmentValidator:
         return issues
 
     def _check_staff_data_empty_fields(
-        self, staff_data: dict[str, Any]
-    ) -> list[ValidationIssue]:
+        self, staff_data: Dict[str, Any]
+    ) -> List[ValidationIssue]:
         """Check for empty fields within staff_data structure"""
         issues = []
 
@@ -426,7 +421,7 @@ class EnrichmentValidator:
 
         return issues
 
-    def validate_voice_actors(self, entry: dict[str, Any]) -> list[ValidationIssue]:
+    def validate_voice_actors(self, entry: Dict[str, Any]) -> List[ValidationIssue]:
         """Validate voice actor structure"""
         issues = []
 
@@ -470,7 +465,7 @@ class EnrichmentValidator:
                                 field_path=f"characters[{i}].voice_actors",
                                 description=f"Empty voice_actors for character '{char.get('name', 'Unknown')}' should be omitted",
                                 severity="warning",
-                                suggested_fix="Remove voice_actors field from character",
+                                suggested_fix=f"Remove voice_actors field from character",
                             )
                         )
                     elif isinstance(va_list, list):
@@ -494,8 +489,8 @@ class EnrichmentValidator:
         return issues
 
     def validate_schema_compliance(
-        self, entry: dict[str, Any]
-    ) -> list[ValidationIssue]:
+        self, entry: Dict[str, Any]
+    ) -> List[ValidationIssue]:
         """Validate entry against Pydantic schema"""
         issues = []
 
@@ -527,7 +522,7 @@ class EnrichmentValidator:
 
         return issues
 
-    def _is_empty_object(self, obj: dict[str, Any]) -> bool:
+    def _is_empty_object(self, obj: Dict[str, Any]) -> bool:
         """Check if object is effectively empty"""
         if not obj:
             return True
@@ -543,13 +538,13 @@ class EnrichmentValidator:
 
         return True
 
-    def generate_report(self) -> dict[str, Any]:
+    def generate_report(self) -> Dict[str, Any]:
         """Generate comprehensive validation report"""
         total_entries = len(self.validation_results)
         valid_entries = len([r for r in self.validation_results if r.is_valid])
 
         # Count issues by type
-        issue_counts: dict[str, int] = {}
+        issue_counts: Dict[str, int] = {}
         severity_counts = {"error": 0, "warning": 0, "info": 0}
 
         for result in self.validation_results:
@@ -622,7 +617,7 @@ class EnrichmentValidator:
 
         return report
 
-    def auto_fix_database(self, file_path: str, backup: bool = True) -> dict[str, Any]:
+    def auto_fix_database(self, file_path: str, backup: bool = True) -> Dict[str, Any]:
         """Auto-fix common issues in the database"""
         logger.info(f"Starting auto-fix for {file_path}")
 
@@ -632,14 +627,14 @@ class EnrichmentValidator:
                 f"{file_path}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             )
             with (
-                open(file_path) as original,
+                open(file_path, "r") as original,
                 open(backup_path, "w") as backup_file,
             ):
                 backup_file.write(original.read())
             logger.info(f"Created backup: {backup_path}")
 
         # Load database
-        with open(file_path, encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         fixed_count = 0
@@ -666,7 +661,7 @@ class EnrichmentValidator:
             "backup_created": backup_path if backup else None,
         }
 
-    def auto_fix_entry(self, entry: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    def auto_fix_entry(self, entry: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
         """Auto-fix a single entry"""
         fixed_entry = deepcopy(entry)
         fixes_applied = []
@@ -735,12 +730,7 @@ class EnrichmentValidator:
                     )
 
                 # Remove empty collections
-                for field in [
-                    "name_variations",
-                    "nicknames",
-                    "images",
-                    "character_traits",
-                ]:
+                for field in ["name_variations", "nicknames", "images", "character_traits"]:
                     if (
                         field in char
                         and isinstance(char[field], list)
@@ -870,7 +860,7 @@ def main() -> int:
     # Auto-fix if requested
     if args.fix:
         fix_result = validator.auto_fix_database(str(file_path), args.backup)
-        print("Auto-fix completed:")
+        print(f"Auto-fix completed:")
         print(f"  Fixed entries: {fix_result['fixed_entries']}")
         print(f"  Total fixes: {fix_result['total_fixes']}")
         if fix_result.get("backup_created"):
@@ -886,7 +876,7 @@ def main() -> int:
 
     # Print summary
     summary = report["validation_summary"]
-    print("Validation Summary:")
+    print(f"Validation Summary:")
     print(f"  Total entries: {summary['total_entries']}")
     print(f"  Valid entries: {summary['valid_entries']}")
     print(f"  Invalid entries: {summary['invalid_entries']}")
@@ -895,7 +885,7 @@ def main() -> int:
 
     # Print issue statistics
     issue_stats = report["issue_statistics"]
-    print("Issue Statistics:")
+    print(f"Issue Statistics:")
     print(f"  Errors: {issue_stats['by_severity']['error']}")
     print(f"  Warnings: {issue_stats['by_severity']['warning']}")
     print(f"  Info: {issue_stats['by_severity']['info']}")
@@ -929,3 +919,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     exit(main())
+

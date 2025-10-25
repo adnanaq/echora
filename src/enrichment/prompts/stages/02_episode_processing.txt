@@ -13,7 +13,7 @@ Merge episode data from 3 sources (Jikan, AniList, Kitsu) into comprehensive epi
 
 ### DATA SOURCES
 - **Jikan**: Primary episode metadata (titles, synopsis, duration, aired dates, technical flags)
-- **AniList**: Streaming integration (thumbnails, streaming URLs, platform information)
+- **AniList**: Streaming integration (thumbnails, streaming URLs, platform information)  
 - **Kitsu**: Season organization (seasonNumber), additional thumbnails, alternative titles
 
 ## INPUT DATA
@@ -44,7 +44,7 @@ Merge episode data from 3 sources (Jikan, AniList, Kitsu) into comprehensive epi
 1. **Primary Source**: Use Jikan episode_number as base reference (1, 2, 3...)
 2. **Kitsu Validation**: Match directly with Kitsu "number" field
 3. **AniList Extraction**: Extract episode number from AniList title pattern:
-   - Pattern: "Episode X - Episode Title"
+   - Pattern: "Episode X - Episode Title" 
    - Extract "X" and match with Jikan episode_number
    - Example: "Episode 1 - Asteroid Blues" → Extract "1" → Match with Jikan episode 1
 
@@ -56,7 +56,7 @@ Merge episode data from 3 sources (Jikan, AniList, Kitsu) into comprehensive epi
 
 - Episodes requiring REVIEW if:
   ⚠️ Episode numbers don't match across sources
-  ⚠️ Titles are completely different between sources
+  ⚠️ Titles are completely different between sources  
   ⚠️ Episode exists in one source but missing in others
 
 ### STEP 3: DATA INTEGRATION WITH HIERARCHY

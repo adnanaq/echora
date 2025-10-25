@@ -8,7 +8,7 @@ defined in Phase 2.5 architecture with character image semantic separation.
 """
 
 import logging
-from typing import Any
+from typing import Any, Dict, List, Union
 
 from src.models.anime import AnimeEntry
 
@@ -30,7 +30,9 @@ class AnimeFieldMapper:
         """Initialize the anime field mapper."""
         self.logger = logger
 
-    def map_anime_to_vectors(self, anime: AnimeEntry) -> dict[str, str | list[str]]:
+    def map_anime_to_vectors(
+        self, anime: AnimeEntry
+    ) -> Dict[str, Union[str, List[str]]]:
         """
         Map complete anime entry to all 13 vectors.
 
@@ -40,7 +42,7 @@ class AnimeFieldMapper:
         Returns:
             Dict mapping vector names to their content for embedding
         """
-        vector_data: dict[str, str | list[str]] = {}
+        vector_data: Dict[str, Union[str, List[str]]] = {}
 
         # Text vectors (9)
         vector_data["title_vector"] = self._extract_title_content(anime)
@@ -492,7 +494,7 @@ class AnimeFieldMapper:
     # VISUAL VECTOR EXTRACTORS (OpenCLIP ViT-L/14, 768-dim)
     # ============================================================================
 
-    def _extract_image_content(self, anime: AnimeEntry) -> list[str]:
+    def _extract_image_content(self, anime: AnimeEntry) -> List[str]:
         """Extract general anime image URLs (covers, posters, banners, trailers) excluding character images."""
         image_urls = []
 
@@ -532,7 +534,7 @@ class AnimeFieldMapper:
         unique_urls = list(dict.fromkeys(image_urls))
         return unique_urls
 
-    def _extract_character_image_content(self, anime: AnimeEntry) -> list[str]:
+    def _extract_character_image_content(self, anime: AnimeEntry) -> List[str]:
         """Extract character image URLs for character-specific visual embedding."""
         character_image_urls = []
 
@@ -552,7 +554,7 @@ class AnimeFieldMapper:
     # UTILITY METHODS
     # ============================================================================
 
-    def get_vector_types(self) -> dict[str, str]:
+    def get_vector_types(self) -> Dict[str, str]:
         """Get mapping of vector names to their types (text/visual)."""
         return {
             # Text vectors (BGE-M3, 1024-dim)
@@ -570,7 +572,7 @@ class AnimeFieldMapper:
             "character_image_vector": "visual",
         }
 
-    def validate_mapping(self, vector_data: dict[str, Any]) -> bool:
+    def validate_mapping(self, vector_data: Dict[str, Any]) -> bool:
         """Validate that vector data contains all expected vectors."""
         expected_vectors = set(self.get_vector_types().keys())
         actual_vectors = set(vector_data.keys())

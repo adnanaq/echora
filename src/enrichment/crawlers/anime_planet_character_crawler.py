@@ -14,7 +14,7 @@ Usage:
 import argparse
 import asyncio
 import json
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -76,8 +76,8 @@ def _extract_slug_from_characters_url(url: str) -> str:
 
 
 async def fetch_animeplanet_characters(
-    slug: str, return_data: bool = True, output_path: str | None = None
-) -> dict[str, Any] | None:
+    slug: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """
     Crawls and processes character data from anime-planet.com.
     Uses concurrent batch processing for character detail enrichment.
@@ -96,7 +96,7 @@ async def fetch_animeplanet_characters(
     slug = _extract_slug_from_characters_url(characters_url)
 
     # Helper function to get reusable character field schema
-    def _get_character_fields_schema() -> list[dict[str, Any]]:
+    def _get_character_fields_schema() -> List[Dict[str, Any]]:
         return [
             {"name": "name", "selector": "a.name", "type": "text"},
             {
@@ -268,16 +268,14 @@ async def fetch_animeplanet_characters(
                     return None
 
                 if not isinstance(list_results, list):
-                    print(
-                        f"Unexpected return type from arun_many: {type(list_results)}"
-                    )
+                    print(f"Unexpected return type from arun_many: {type(list_results)}")
                     return None
 
                 # Unwrap CrawlResultContainer objects to get CrawlResult objects
                 # arun_many() returns List[CrawlResultContainer], each wrapping a CrawlResult
                 from crawl4ai.models import CrawlResultContainer
 
-                unwrapped_results: list[CrawlResult] = []
+                unwrapped_results: List[CrawlResult] = []
                 for container in list_results:
                     # CrawlResultContainer is iterable and yields CrawlResult objects
                     if isinstance(container, CrawlResultContainer):
@@ -303,6 +301,7 @@ async def fetch_animeplanet_characters(
 
                 enriched_count = 0
                 for detail_result in list_results:
+
                     if detail_result.success and detail_result.extracted_content:
                         try:
                             detail_data = json.loads(detail_result.extracted_content)
@@ -321,12 +320,7 @@ async def fetch_animeplanet_characters(
                                     print(
                                         f"Warning: Could not match character: {detail_name}"
                                     )
-                        except (
-                            json.JSONDecodeError,
-                            KeyError,
-                            IndexError,
-                            TypeError,
-                        ) as e:
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                             print(f"Failed to process enrichment: {e}")
                     else:
                         print(
@@ -361,7 +355,7 @@ async def fetch_animeplanet_characters(
         return None
 
 
-def _get_character_detail_schema() -> dict[str, Any]:
+def _get_character_detail_schema() -> Dict[str, Any]:
     """Get CSS schema for character detail page extraction.
 
     Note: We don't extract tables here since CSS can't easily get
@@ -480,7 +474,7 @@ def _get_character_detail_schema() -> dict[str, Any]:
     }
 
 
-def _process_character_list(list_data: dict[str, Any]) -> list[dict[str, Any]]:
+def _process_character_list(list_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Process character list data and assign roles based on section headers.
 
     Args:
@@ -536,7 +530,7 @@ def _process_character_list(list_data: dict[str, Any]) -> list[dict[str, Any]]:
     return characters
 
 
-def _extract_voice_actors(character: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+def _extract_voice_actors(character: Dict[str, Any]) -> Dict[str, List[Dict[str, str]]]:
     """Extract voice actors by language from character data.
 
     Args:
@@ -545,7 +539,7 @@ def _extract_voice_actors(character: dict[str, Any]) -> dict[str, list[dict[str,
     Returns:
         Dictionary mapping language codes to voice actor lists
     """
-    voice_actors: dict[str, list[dict[str, str]]] = {}
+    voice_actors: Dict[str, List[Dict[str, str]]] = {}
 
     for lang_code in ["jp", "us", "es", "fr"]:
         va_list = character.get(f"voice_actors_{lang_code}", [])
@@ -559,13 +553,13 @@ def _extract_voice_actors(character: dict[str, Any]) -> dict[str, list[dict[str,
     return voice_actors
 
 
-def _normalize_value(value: str) -> str | None:
+def _normalize_value(value: str) -> Optional[str]:
     """Convert '?' to None, otherwise return stripped value."""
     stripped = value.strip()
     return None if stripped == "?" else stripped
 
 
-def _process_character_details(detail_data: dict[str, Any]) -> dict[str, Any]:
+def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
     """Process character detail page data into enriched character info.
 
     Args:
@@ -575,7 +569,7 @@ def _process_character_details(detail_data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dictionary of enriched character data
     """
-    enriched: dict[str, Any] = {}
+    enriched: Dict[str, Any] = {}
 
     # Extract gender and hair color from entry bar
     entry_bar_items = detail_data.get("entry_bar_items", [])

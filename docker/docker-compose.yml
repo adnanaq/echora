@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   # Qdrant Vector Database
   qdrant:
@@ -37,17 +39,17 @@ services:
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION_NAME=anime_database
-      - QDRANT_VECTOR_SIZE=1024
+      - QDRANT_VECTOR_SIZE=384
       - QDRANT_DISTANCE_METRIC=cosine
 
       # Multi-Vector Configuration
-      - IMAGE_VECTOR_SIZE=768
+      - IMAGE_VECTOR_SIZE=512
 
       # Modern Embedding Configuration
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
-      - IMAGE_EMBEDDING_PROVIDER=openclip
-      - IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
+      - IMAGE_EMBEDDING_PROVIDER=jinaclip
+      - IMAGE_EMBEDDING_MODEL=jinaai/jina-clip-v2
 
       # Performance Configuration
       - QDRANT_ENABLE_QUANTIZATION=false
@@ -86,3 +88,4 @@ volumes:
     driver: local
   model_cache:
     driver: local
+

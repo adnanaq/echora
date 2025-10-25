@@ -6,7 +6,7 @@ multimodal models for anime character identification tasks.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -100,9 +100,9 @@ class MultimodalCharacterRecognizer(nn.Module):
 
     def forward(
         self,
-        text_embeddings: torch.Tensor | None = None,
-        image_embeddings: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
+        text_embeddings: Optional[torch.Tensor] = None,
+        image_embeddings: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
         """Forward pass through multimodal character recognizer.
 
         Args:
@@ -170,14 +170,14 @@ class CharacterRecognitionFinetuner:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Model components
-        self.base_model: Any | None = None
-        self.recognition_model: MultimodalCharacterRecognizer | None = None
-        self.optimizer: torch.optim.AdamW | None = None
-        self.loss_fn: nn.BCEWithLogitsLoss | None = None
+        self.base_model: Optional[Any] = None
+        self.recognition_model: Optional[MultimodalCharacterRecognizer] = None
+        self.optimizer: Optional[torch.optim.AdamW] = None
+        self.loss_fn: Optional[nn.BCEWithLogitsLoss] = None
 
         # Training state
         self.num_characters = 0
-        self.character_vocab: dict[str, int] = {}
+        self.character_vocab: Dict[str, int] = {}
         self.is_trained = False
 
         logger.info(f"Character recognition fine-tuner initialized on {self.device}")
@@ -275,7 +275,7 @@ class CharacterRecognitionFinetuner:
             f"Model prepared for training with {self.num_characters} characters"
         )
 
-    def train_step(self, batch: dict[str, Any]) -> float:
+    def train_step(self, batch: Dict[str, Any]) -> float:
         """Perform one training step.
 
         Args:
@@ -320,7 +320,7 @@ class CharacterRecognitionFinetuner:
 
         return loss.item()
 
-    def evaluate(self, dataloader: DataLoader) -> dict[str, float]:
+    def evaluate(self, dataloader: DataLoader) -> Dict[str, float]:
         """Evaluate model on validation set.
 
         Args:
@@ -377,8 +377,8 @@ class CharacterRecognitionFinetuner:
 
     def get_enhanced_embedding(
         self,
-        text_embedding: np.ndarray | None = None,
-        image_embedding: np.ndarray | None = None,
+        text_embedding: Optional[np.ndarray] = None,
+        image_embedding: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """Get enhanced character-aware embedding.
 
@@ -429,10 +429,10 @@ class CharacterRecognitionFinetuner:
 
     def predict_characters(
         self,
-        text_embedding: np.ndarray | None = None,
-        image_embedding: np.ndarray | None = None,
+        text_embedding: Optional[np.ndarray] = None,
+        image_embedding: Optional[np.ndarray] = None,
         threshold: float = 0.5,
-    ) -> list[tuple[str, float]]:
+    ) -> List[Tuple[str, float]]:
         """Predict characters from embeddings.
 
         Args:
@@ -558,7 +558,7 @@ class CharacterRecognitionFinetuner:
 
         logger.info(f"Character recognition model loaded from {load_path}")
 
-    def get_model_info(self) -> dict[str, Any]:
+    def get_model_info(self) -> Dict[str, Any]:
         """Get model information.
 
         Returns:

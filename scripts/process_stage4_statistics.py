@@ -13,31 +13,33 @@ Key Features:
 - Standard StatisticsEntry format
 """
 
-import argparse
 import json
+import sys
+import argparse
 from pathlib import Path
-from typing import Any
+from typing import Dict, List, Optional, Any
+
 
 # Project root for resolving paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
+def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
     """Load all external source data files."""
     sources = {}
 
     source_files = {
-        "jikan": f"{temp_dir}/jikan.json",
-        "animeschedule": f"{temp_dir}/animeschedule.json",
-        "kitsu": f"{temp_dir}/kitsu.json",
-        "anime_planet": f"{temp_dir}/anime_planet.json",
-        "anilist": f"{temp_dir}/anilist.json",
-        "anidb": f"{temp_dir}/anidb.json",
+        'jikan': f'{temp_dir}/jikan.json',
+        'animeschedule': f'{temp_dir}/animeschedule.json',
+        'kitsu': f'{temp_dir}/kitsu.json',
+        'anime_planet': f'{temp_dir}/anime_planet.json',
+        'anilist': f'{temp_dir}/anilist.json',
+        'anidb': f'{temp_dir}/anidb.json',
     }
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 sources[source_name] = json.load(f)
                 print(f"Loaded {source_name} data")
         except FileNotFoundError as e:
@@ -53,7 +55,7 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     return sources
 
 
-def safe_get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
+def safe_get(data: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     """Safely navigate nested dictionaries."""
     current = data
     for key in keys:
@@ -65,7 +67,7 @@ def safe_get(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
     return current
 
 
-def normalize_score(score: Any, scale_factor: float = 1.0) -> float | None:
+def normalize_score(score: Any, scale_factor: float = 1.0) -> Optional[float]:
     """
     Normalize score to 0-10 scale.
 
@@ -90,7 +92,7 @@ def normalize_score(score: Any, scale_factor: float = 1.0) -> float | None:
         return None
 
 
-def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
+def extract_mal_statistics(jikan_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract MAL statistics from Jikan data.
 
@@ -109,13 +111,11 @@ def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
         "rank": safe_get(data, "rank"),
         "popularity_rank": safe_get(data, "popularity"),
         "members": safe_get(data, "members"),
-        "favorites": safe_get(data, "favorites"),
+        "favorites": safe_get(data, "favorites")
     }
 
 
-def extract_animeschedule_statistics(
-    animeschedule_data: dict[str, Any],
-) -> dict[str, Any]:
+def extract_animeschedule_statistics(animeschedule_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract AnimeSchedule statistics.
 
@@ -132,11 +132,11 @@ def extract_animeschedule_statistics(
         "rank": safe_get(stats, "trackedRating"),
         "popularity_rank": None,
         "members": safe_get(stats, "trackedCount"),
-        "favorites": None,
+        "favorites": None
     }
 
 
-def extract_kitsu_statistics(kitsu_data: dict[str, Any]) -> dict[str, Any]:
+def extract_kitsu_statistics(kitsu_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract Kitsu statistics.
 
@@ -149,18 +149,16 @@ def extract_kitsu_statistics(kitsu_data: dict[str, Any]) -> dict[str, Any]:
     """
     attributes = safe_get(kitsu_data, "anime", "attributes", default={})
     return {
-        "score": normalize_score(
-            safe_get(attributes, "averageRating"), scale_factor=0.1
-        ),
+        "score": normalize_score(safe_get(attributes, "averageRating"), scale_factor=0.1),
         "scored_by": None,
         "rank": safe_get(attributes, "ratingRank"),
         "popularity_rank": safe_get(attributes, "popularityRank"),
         "members": safe_get(attributes, "userCount"),
-        "favorites": safe_get(attributes, "favoritesCount"),
+        "favorites": safe_get(attributes, "favoritesCount")
     }
 
 
-def extract_animeplanet_statistics(animeplanet_data: dict[str, Any]) -> dict[str, Any]:
+def extract_animeplanet_statistics(animeplanet_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract Anime-Planet statistics.
 
@@ -172,14 +170,15 @@ def extract_animeplanet_statistics(animeplanet_data: dict[str, Any]) -> dict[str
     aggregate_rating = safe_get(animeplanet_data, "aggregate_rating", default={})
     return {
         "score": normalize_score(
-            safe_get(aggregate_rating, "ratingValue"), scale_factor=2.0
+            safe_get(aggregate_rating, "ratingValue"),
+            scale_factor=2.0
         ),
         "scored_by": safe_get(aggregate_rating, "ratingCount"),
-        "rank": safe_get(animeplanet_data, "rank"),
+        "rank": safe_get(animeplanet_data, "rank")
     }
 
 
-def extract_anilist_statistics(anilist_data: dict[str, Any]) -> dict[str, Any]:
+def extract_anilist_statistics(anilist_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract AniList statistics.
 
@@ -196,31 +195,27 @@ def extract_anilist_statistics(anilist_data: dict[str, Any]) -> dict[str, Any]:
         contextual_ranks = []
         for rank_obj in rankings:
             if isinstance(rank_obj, dict):
-                contextual_ranks.append(
-                    {
-                        "rank": rank_obj.get("rank"),
-                        "type": rank_obj.get("type"),
-                        "format": rank_obj.get("format"),
-                        "year": rank_obj.get("year"),
-                        "season": rank_obj.get("season"),
-                        "all_time": rank_obj.get("allTime", False),
-                    }
-                )
+                contextual_ranks.append({
+                    "rank": rank_obj.get("rank"),
+                    "type": rank_obj.get("type"),
+                    "format": rank_obj.get("format"),
+                    "year": rank_obj.get("year"),
+                    "season": rank_obj.get("season"),
+                    "all_time": rank_obj.get("allTime", False)
+                })
 
     return {
-        "score": normalize_score(
-            safe_get(anilist_data, "averageScore"), scale_factor=0.1
-        ),
+        "score": normalize_score(safe_get(anilist_data, "averageScore"), scale_factor=0.1),
         "scored_by": None,
         "rank": None,
         "popularity_rank": None,
         "members": safe_get(anilist_data, "popularity"),
         "favorites": safe_get(anilist_data, "favourites"),
-        "contextual_ranks": contextual_ranks,
+        "contextual_ranks": contextual_ranks
     }
 
 
-def extract_anidb_statistics(anidb_data: dict[str, Any]) -> dict[str, Any]:
+def extract_anidb_statistics(anidb_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract AniDB statistics.
 
@@ -234,17 +229,17 @@ def extract_anidb_statistics(anidb_data: dict[str, Any]) -> dict[str, Any]:
         "rank": None,
         "popularity_rank": None,
         "members": None,
-        "favorites": None,
+        "favorites": None
     }
 
 
-def has_any_statistics(stats: dict[str, Any]) -> bool:
+def has_any_statistics(stats: Dict[str, Any]) -> bool:
     """Check if statistics object has any non-null values (excluding contextual_ranks)."""
     keys = ("score", "scored_by", "rank", "popularity_rank", "members", "favorites")
     return any(stats.get(k) is not None for k in keys)
 
 
-def extract_all_statistics(sources: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def extract_all_statistics(sources: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     """
     Extract statistics from all available sources.
 
@@ -274,7 +269,7 @@ def extract_all_statistics(sources: dict[str, dict[str, Any]]) -> dict[str, Any]
     return statistics
 
 
-def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> dict[str, Any]:
+def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> Dict[str, Any]:
     """Process Stage 4 statistics extraction.
 
     This function can be called programmatically or via CLI.
@@ -297,7 +292,7 @@ def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> dict[str, 
         }
     """
     if verbose:
-        print("Stage 4: Statistics Extraction")
+        print(f"Stage 4: Statistics Extraction")
         print(f"Temp directory: {temp_dir}")
         print("=" * 80)
 
@@ -314,21 +309,10 @@ def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> dict[str, 
     # Print summary
     if verbose:
         print("\nStatistics extraction summary:")
-        for source in [
-            "mal",
-            "animeschedule",
-            "kitsu",
-            "animeplanet",
-            "anilist",
-            "anidb",
-        ]:
+        for source in ["mal", "animeschedule", "kitsu", "animeplanet", "anilist", "anidb"]:
             if source in statistics:
                 stats = statistics[source]
-                fields = [
-                    k
-                    for k, v in stats.items()
-                    if v is not None and k != "contextual_ranks"
-                ]
+                fields = [k for k, v in stats.items() if v is not None and k != "contextual_ranks"]
                 print(f"  {source}: {len(fields)} fields extracted")
             else:
                 print(f"  {source}: No statistics available")
@@ -337,7 +321,7 @@ def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> dict[str, 
     output_file = f"{temp_dir}/stage4_statistics.json"
     result = {"statistics": statistics}
 
-    with open(output_file, "w", encoding="utf-8") as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
 
     if verbose:
@@ -353,9 +337,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Stage 4: Extract statistics from multiple anime data sources"
     )
-    parser.add_argument("agent_id", help="Agent ID (directory name in temp/)")
     parser.add_argument(
-        "--temp-dir", default="temp", help="Base temp directory (default: temp)"
+        "agent_id",
+        help="Agent ID (directory name in temp/)"
+    )
+    parser.add_argument(
+        "--temp-dir",
+        default="temp",
+        help="Base temp directory (default: temp)"
     )
 
     args = parser.parse_args()

@@ -1,6 +1,6 @@
 # Validation Framework Documentation
 
-This directory contains a comprehensive ML validation framework for the anime vector search service. The framework provides quality assurance, performance monitoring, and statistical testing capabilities for the 11-vector architecture.
+This directory contains a comprehensive ML validation framework for the anime vector search service. The framework provides quality assurance, performance monitoring, and statistical testing capabilities for the 14-vector architecture.
 
 ## Overview
 
@@ -11,7 +11,7 @@ The validation framework is designed to ensure semantic correctness, embedding q
 ```
 src/validation/
 ├── __init__.py                    # Framework exports and imports
-├── vector_field_mapping.py       # 11-vector architecture definitions
+├── vector_field_mapping.py       # 14-vector architecture definitions
 ├── vector_system_validator.py    # Complete system validation suite
 ├── dataset_analyzer.py           # Dynamic query generation from dataset
 ├── search_quality.py            # Search quality metrics and gold standards
@@ -23,16 +23,14 @@ src/validation/
 
 ## 📊 vector_field_mapping.py
 
-**Purpose**: Defines the complete 11-vector architecture field mappings and utility functions for vector management.
+**Purpose**: Defines the complete 14-vector architecture field mappings and utility functions for vector management.
 
 ### Key Components
 
 #### `VECTOR_FIELD_MAPPINGS`
-
-Comprehensive mapping of all 11 vectors to their respective data fields:
+Comprehensive mapping of all 14 vectors to their respective data fields:
 
 **Text Vectors (BGE-M3, 1024-dim each):**
-
 - `title_vector`: Title information and basic descriptions
 - `character_vector`: Character names, descriptions, relationships
 - `genre_vector`: Comprehensive classification and content categorization
@@ -45,12 +43,10 @@ Comprehensive mapping of all 11 vectors to their respective data fields:
 - `episode_vector`: Detailed episode information
 
 **Visual Vectors (OpenCLIP ViT-L/14, 768-dim each):**
-
 - `image_vector`: General anime visual content (covers, posters, banners)
 - `character_image_vector`: Character visual content from character images
 
 #### Utility Functions
-
 - `get_vector_fields(vector_name)`: Get fields indexed in a specific vector
 - `get_vector_description(vector_name)`: Get description of vector contents
 - `get_text_vectors()` / `get_image_vectors()`: Get vector lists by type
@@ -58,7 +54,6 @@ Comprehensive mapping of all 11 vectors to their respective data fields:
 - `get_searchable_vectors()`: Get vectors suitable for search validation
 
 ### Usage Example
-
 ```python
 from src.validation.vector_field_mapping import get_vector_fields, get_searchable_vectors
 
@@ -75,39 +70,34 @@ searchable = get_searchable_vectors()
 
 ## 🔍 vector_system_validator.py
 
-**Purpose**: Comprehensive validation suite for the 11-vector anime search system, testing individual vectors and multi-vector fusion effectiveness.
+**Purpose**: Comprehensive validation suite for the 14-vector anime search system, testing individual vectors and multi-vector fusion effectiveness.
 
 ### Key Components
 
 #### `VectorSystemValidator`
-
 Main validation class that orchestrates complete system testing.
 
 **Key Methods:**
-
-- `validate_all_vectors()`: Complete 11-vector system validation
+- `validate_all_vectors()`: Complete 14-vector system validation
 - `validate_semantic_relevance()`: Semantic correctness validation
 - `_test_individual_vector()`: Test single vector with domain queries
 - `_test_multi_vector_search()`: Test fusion methods effectiveness
 - `_generate_recommendations()`: Generate actionable improvement suggestions
 
 #### Validation Process
-
 1. **Dynamic Query Generation**: Uses `DatasetAnalyzer` to generate queries from actual data
-2. **Individual Vector Testing**: Tests each of 11 vectors with vector-specific queries
+2. **Individual Vector Testing**: Tests each of 14 vectors with vector-specific queries
 3. **Multi-Vector Fusion Testing**: Tests `search_complete()`, `search_text_comprehensive()`, etc.
 4. **Semantic Relevance Validation**: Ensures results are actually relevant to users
 5. **Performance Metrics**: Response time, success rate, recommendation generation
 
 #### Validation Metrics
-
 - **Success Rate**: Percentage of queries passing validation (target: >80%)
 - **Response Time**: Average search response time (target: <500ms)
 - **Semantic Relevance**: Jaccard similarity between query and results
 - **Fusion Effectiveness**: RRF fusion improvement over single vectors
 
 ### Usage Example
-
 ```python
 from src.validation.vector_system_validator import VectorSystemValidator
 
@@ -123,7 +113,6 @@ recommendations = results["recommendations"]
 ```
 
 ### Validation Targets
-
 - Individual vector success rate: >70%
 - Overall system success rate: >80%
 - Response time: <500ms per query
@@ -138,11 +127,9 @@ recommendations = results["recommendations"]
 ### Key Components
 
 #### `DatasetAnalyzer`
-
 Intelligent dataset analysis for dynamic validation.
 
 **Key Methods:**
-
 - `analyze_dataset()`: Complete dataset content analysis
 - `generate_dynamic_queries()`: Create validation queries from real data
 - `_sample_dataset_points()`: Sample dataset for analysis
@@ -150,14 +137,12 @@ Intelligent dataset analysis for dynamic validation.
 - `_analyze_genres()` / `_analyze_content_types()`: Content distribution analysis
 
 #### Analysis Capabilities
-
 1. **Content Characteristics**: Synopsis availability, studio distribution, content themes
 2. **Vector Population Analysis**: Which vectors are actually populated with meaningful data
 3. **Genre/Type Distribution**: Most common genres, demographics, content types
 4. **Dynamic Query Generation**: Creates vector-specific test queries from actual content
 
 #### Query Generation Strategy
-
 - **Title Queries**: Uses meaningful words from actual titles, skipping common articles
 - **Genre Queries**: Tests most frequent genres with sufficient data
 - **Technical Queries**: Tests content types and formats from dataset
@@ -165,7 +150,6 @@ Intelligent dataset analysis for dynamic validation.
 - **Vector-Specific**: Generates appropriate queries for each vector type
 
 ### Usage Example
-
 ```python
 from src.validation.dataset_analyzer import DatasetAnalyzer
 
@@ -182,7 +166,6 @@ title_queries = queries.get("title_vector", [])
 ```
 
 ### Analysis Output
-
 - Dataset size and characteristics
 - Vector population percentages
 - Genre/type/status distributions
@@ -198,11 +181,9 @@ title_queries = queries.get("title_vector", [])
 ### Key Components
 
 #### `GoldStandardDataset`
-
 Expert-curated test datasets for search validation.
 
 **Test Categories:**
-
 - **Genre-based**: shounen action, shoujo romance, seinen psychological
 - **Studio-based**: Studio Ghibli, MAPPA studio
 - **Character archetypes**: ninja characters, magical girls
@@ -210,24 +191,20 @@ Expert-curated test datasets for search validation.
 - **Complex multi-faceted**: dark psychological, family adventure
 
 **Hard Negative Tests:**
-
 - Genre confusion detection (romance vs action)
 - Demographic confusion (cute girls vs dark psychological)
 - Temporal confusion (classic vs modern)
 
 #### `SearchQualityValidator`
-
 Automated search quality validation with ML metrics.
 
 **Key Methods:**
-
 - `validate_search_function()`: Complete search function validation
 - `validate_hard_negatives()`: Hard negative confusion detection
 - `generate_quality_report()`: Comprehensive quality assessment
 - `_calculate_query_metrics()`: Per-query metric calculation
 
 #### Evaluation Metrics
-
 - **Precision@K**: Relevant results in top K positions
 - **Recall@K**: Coverage of relevant results in top K
 - **NDCG@K**: Normalized Discounted Cumulative Gain
@@ -235,7 +212,6 @@ Automated search quality validation with ML metrics.
 - **Success Rate**: Percentage of queries meeting quality thresholds
 
 ### Usage Example
-
 ```python
 from src.validation.search_quality import SearchQualityValidator
 
@@ -254,7 +230,6 @@ success_rate = results["metrics"]["success_rate"]
 ```
 
 ### Quality Thresholds
-
 - Precision@5: >60% (target >80% for excellent)
 - Success rate: >70% (target >80% for excellent)
 - Hard negative rejection: <30% similarity threshold
@@ -268,11 +243,9 @@ success_rate = results["metrics"]["success_rate"]
 ### Key Components
 
 #### `EmbeddingQualityMonitor`
-
 Comprehensive embedding quality assessment.
 
 **Key Methods:**
-
 - `compute_embedding_quality_metrics()`: Complete quality assessment
 - `detect_distribution_shift()`: Wasserstein distance drift detection
 - `validate_cross_modal_consistency()`: Text-image embedding validation
@@ -280,27 +253,23 @@ Comprehensive embedding quality assessment.
 - `generate_quality_report()`: Quality assessment with recommendations
 
 #### Quality Metrics
-
 1. **Genre Clustering Purity**: How well embeddings cluster by genre (silhouette score)
 2. **Studio Visual Consistency**: Intra-studio vs inter-studio similarity for images
 3. **Temporal Consistency**: Franchise/sequel relationship preservation
 4. **Embedding Space Quality**: Dimensionality, variance, participation ratio
 
 #### Drift Detection
-
 - **Distribution Shift**: Wasserstein distance between current and reference embeddings
 - **Dimension-wise Analysis**: Per-dimension drift detection
 - **Alert Thresholds**: >10% dimensions showing drift triggers alert
 - **Trend Analysis**: 7-day and 30-day rolling windows
 
 #### Cross-Modal Validation
-
 - **Contrastive Testing**: Same anime text vs image similarity
 - **Statistical Significance**: Mann-Whitney U test (p < 0.001)
 - **Effect Size**: Cohen's d for practical significance
 
 ### Usage Example
-
 ```python
 from src.validation.embedding_quality import EmbeddingQualityMonitor
 
@@ -321,7 +290,6 @@ drift_results = monitor.detect_distribution_shift(
 ```
 
 ### Alert Bands
-
 - **Excellent**: Genre clustering >75%, Studio similarity >70%
 - **Warning**: Genre clustering 65-75%, Studio similarity 60-70%
 - **Critical**: Genre clustering <60%, Studio similarity <55%
@@ -335,47 +303,39 @@ drift_results = monitor.detect_distribution_shift(
 ### Key Components
 
 #### `CascadeClickModel`
-
 User behavior simulation using cascade click model.
 
 **Behavior Model:**
-
 - Users scan results top-to-bottom
 - Position bias decreases with rank
 - Click first satisfying result and stop
 - Satisfaction threshold configurable
 
 #### `DependentClickModel`
-
 Advanced click model separating examination and attractiveness.
 
 **Features:**
-
 - Position-dependent examination probabilities
 - Relevance-dependent attractiveness weights
 - Multiple clicks possible per session
 - More realistic user behavior modeling
 
 #### `ABTestingFramework`
-
 Complete statistical testing framework.
 
 **Key Methods:**
-
 - `compare_search_algorithms()`: Full A/B test comparison
 - `calculate_statistical_power()`: Statistical power analysis
 - `_perform_statistical_tests()`: t-tests and effect size calculation
 - `_generate_recommendation()`: Evidence-based recommendations
 
 #### Statistical Tests
-
 - **t-tests**: Statistical significance testing
 - **Effect Size**: Cohen's d for practical significance
 - **Power Analysis**: Sample size adequacy assessment
 - **Confidence Intervals**: Uncertainty quantification
 
 ### Usage Example
-
 ```python
 from src.validation.ab_testing import ABTestingFramework
 
@@ -405,7 +365,6 @@ print(results["recommendation"])
 ```
 
 ### Simulation Metrics
-
 - **Cascade Model**: Satisfaction rate, average click position
 - **Dependent Model**: Click rate, average clicks per session
 - **Statistical**: t-statistics, p-values, effect sizes
@@ -416,7 +375,6 @@ print(results["recommendation"])
 ## 🚀 Usage Patterns
 
 ### Complete System Validation
-
 ```python
 from src.validation import VectorSystemValidator, DatasetAnalyzer
 
@@ -437,7 +395,6 @@ else:
 ```
 
 ### Search Quality Assessment
-
 ```python
 from src.validation import SearchQualityValidator
 
@@ -456,7 +413,6 @@ print(f"Quality Grade: {report['quality_grade']}")
 ```
 
 ### Embedding Quality Monitoring
-
 ```python
 from src.validation import EmbeddingQualityMonitor
 
@@ -476,7 +432,6 @@ if drift["drift_detected"]:
 ```
 
 ### A/B Testing
-
 ```python
 from src.validation import ABTestingFramework
 
@@ -498,7 +453,6 @@ print(f"Recommendation: {comparison['recommendation']}")
 ## 📋 Framework Integration
 
 ### With Main Application
-
 The validation framework integrates seamlessly with the main anime vector service:
 
 ```python
@@ -516,7 +470,6 @@ async def validate_system():
 ```
 
 ### Automated Monitoring
-
 Set up periodic validation for production monitoring:
 
 ```python
@@ -538,26 +491,22 @@ scheduler.add_job(daily_validation, 'cron', hour=2)  # Daily at 2 AM
 ## 🎯 Performance Targets
 
 ### Individual Vector Performance
-
 - **Success Rate**: >70% per vector
 - **Response Time**: <500ms per query
 - **Semantic Relevance**: >60% Jaccard similarity
 
 ### Overall System Performance
-
 - **Success Rate**: >80% overall
 - **Multi-Vector Fusion**: Measurable improvement over single vectors
 - **Hard Negative Rejection**: <30% confusion rate
 
 ### Embedding Quality
-
 - **Genre Clustering**: >65% purity (excellent: >75%)
 - **Studio Consistency**: >60% similarity (excellent: >70%)
 - **Cross-Modal Consistency**: Statistically significant (p < 0.001)
 - **Model Drift**: <10% dimensions showing drift
 
 ### Search Quality
-
 - **Precision@5**: >60% (excellent: >80%)
 - **NDCG@5**: >60%
 - **MRR**: >70%
@@ -568,7 +517,6 @@ scheduler.add_job(daily_validation, 'cron', hour=2)  # Daily at 2 AM
 ## 🔧 Configuration
 
 ### Environment Variables
-
 ```bash
 # Validation settings
 VALIDATION_SAMPLE_SIZE=100          # Dataset sample size for analysis
@@ -578,9 +526,7 @@ VALIDATION_HISTORY_DAYS=30          # Metrics retention period
 ```
 
 ### Alert Thresholds
-
 Configure in `embedding_quality.py`:
-
 ```python
 alert_bands = {
     "genre_clustering": {"excellent": 0.75, "warning": 0.65, "critical": 0.60},
@@ -594,9 +540,7 @@ alert_bands = {
 ## 📊 Reporting and Analytics
 
 ### Quality Reports
-
 All validators generate comprehensive reports with:
-
 - Current performance metrics
 - Trend analysis over time
 - Alert levels and thresholds
@@ -604,7 +548,6 @@ All validators generate comprehensive reports with:
 - Historical comparisons
 
 ### Export Capabilities
-
 ```python
 # Export validation results
 results = await validator.validate_all_vectors()
@@ -620,7 +563,6 @@ report = validator.generate_quality_report()
 ## 🛠️ Extension Points
 
 ### Custom Metrics
-
 Add new quality metrics by extending base classes:
 
 ```python
@@ -631,7 +573,6 @@ class CustomEmbeddingMonitor(EmbeddingQualityMonitor):
 ```
 
 ### Custom Test Cases
-
 Add domain-specific test cases:
 
 ```python
@@ -644,7 +585,6 @@ gold_standard.anime_domain_queries["custom_test"] = {
 ```
 
 ### Integration Hooks
-
 Add custom validation hooks:
 
 ```python
@@ -659,4 +599,4 @@ validator.add_custom_validator(custom_validator)
 
 ---
 
-This validation framework provides production-ready quality assurance for the anime vector search service, ensuring semantic correctness, performance optimization, and continuous monitoring of the 11-vector architecture.
+This validation framework provides production-ready quality assurance for the anime vector search service, ensuring semantic correctness, performance optimization, and continuous monitoring of the 14-vector architecture.

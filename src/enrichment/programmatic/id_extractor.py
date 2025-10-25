@@ -6,7 +6,7 @@ Performance: ~0.001 seconds vs 5+ seconds for AI extraction.
 
 import logging
 import re
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class PlatformIDExtractor:
         "livechart_id": r"livechart\.me/anime/(\d+)",
     }
 
-    def extract_all_ids(self, offline_data: dict[str, Any]) -> dict[str, str | None]:
+    def extract_all_ids(self, offline_data: Dict[str, Any]) -> Dict[str, Optional[str]]:
         """
         Extract all platform IDs from sources array.
 
@@ -57,7 +57,7 @@ class PlatformIDExtractor:
 
         return ids
 
-    def _extract_id(self, sources: list[str], pattern: str) -> str | None:
+    def _extract_id(self, sources: List[str], pattern: str) -> Optional[str]:
         """
         Extract single ID using regex pattern.
 
@@ -78,7 +78,7 @@ class PlatformIDExtractor:
 
         return None
 
-    def get_platform_from_url(self, url: str) -> str | None:
+    def get_platform_from_url(self, url: str) -> Optional[str]:
         """
         Identify which platform a URL belongs to.
 
@@ -94,8 +94,8 @@ class PlatformIDExtractor:
         return None
 
     def extract_animeschedule_search_terms(
-        self, offline_data: dict[str, Any]
-    ) -> list[str]:
+        self, offline_data: Dict[str, Any]
+    ) -> List[str]:
         """
         Extract potential search terms for AnimSchedule.
         AnimSchedule doesn't use IDs, so we need search terms.
@@ -130,7 +130,7 @@ class PlatformIDExtractor:
         # Limit to first 3 unique terms for efficiency
         return search_terms[:3]
 
-    def validate_ids(self, ids: dict[str, str | None]) -> dict[str, str]:
+    def validate_ids(self, ids: Dict[str, Optional[str]]) -> Dict[str, str]:
         """
         Validate and clean extracted IDs.
 

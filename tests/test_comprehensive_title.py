@@ -3,44 +3,42 @@
 Comprehensive title vector validation test with random entry selection, field combinations, and multimodal testing.
 """
 
-import asyncio
-import base64
 import json
-import os
-import random
 import sys
+import random
 import tempfile
+import os
 import time
+import base64
+import asyncio
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import requests
-
 from src.config import get_settings
-from src.vector.client.qdrant_client import QdrantClient
 from src.vector.processors.text_processor import TextProcessor
 from src.vector.processors.vision_processor import VisionProcessor
+from src.vector.client.qdrant_client import QdrantClient
+import requests
 
-
-def load_anime_database() -> dict:
+def load_anime_database() -> Dict:
     """Load full anime database from enrichment file."""
-    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
+    with open('./data/qdrant_storage/enriched_anime_database.json', 'r') as f:
         return json.load(f)
 
-
-def download_anime_image(image_url: str) -> str | None:
+def download_anime_image(image_url: str) -> Optional[str]:
     """Download anime image to temporary file and return path."""
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         response = requests.get(image_url, headers=headers, timeout=10)
         response.raise_for_status()
 
         # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
             temp_file.write(response.content)
             return temp_file.name
 
@@ -48,23 +46,13 @@ def download_anime_image(image_url: str) -> str | None:
         print(f"   ⚠️  Failed to download image {image_url}: {e}")
         return None
 
-
 def get_title_related_fields():
     """Get all title-related fields that map to title_vector."""
-    return [
-        "title",
-        "title_english",
-        "title_japanese",
-        "synonyms",
-        "synopsis",
-        "background",
-    ]
-
+    return ['title', 'title_english', 'title_japanese', 'synonyms', 'synopsis', 'background']
 
 def generate_all_field_combinations(fields):
     """Generate all possible combinations of title fields (1 to N fields)."""
     from itertools import combinations
-
     all_combinations = []
 
     for r in range(1, len(fields) + 1):
@@ -73,23 +61,20 @@ def generate_all_field_combinations(fields):
 
     return all_combinations
 
-
-def create_field_combination_query(anime: dict, field_combination: list[str]) -> str:
+def create_field_combination_query(anime: Dict, field_combination: List[str]) -> str:
     """Create a query using specific field combination with actual anime data."""
     query_parts = []
 
     for field in field_combination:
         field_value = anime.get(field)
         if field_value:
-            if field == "synonyms":
+            if field == 'synonyms':
                 # Handle synonyms as list
                 if isinstance(field_value, list) and field_value:
                     # Randomly select 1-3 synonyms to avoid overly long queries
-                    selected_synonyms = random.sample(
-                        field_value, min(3, len(field_value))
-                    )
-                    query_parts.append(" ".join(selected_synonyms))
-            elif field in ["synopsis", "background"]:
+                    selected_synonyms = random.sample(field_value, min(3, len(field_value)))
+                    query_parts.append(' '.join(selected_synonyms))
+            elif field in ['synopsis', 'background']:
                 # Truncate long text fields
                 text_value = str(field_value)
                 if len(text_value) > 100:
@@ -99,22 +84,20 @@ def create_field_combination_query(anime: dict, field_combination: list[str]) ->
             else:
                 query_parts.append(str(field_value))
 
-    return " ".join(query_parts).strip()
+    return ' '.join(query_parts).strip()
 
-
-def extract_random_images(anime: dict) -> list[str]:
+def extract_random_images(anime: Dict) -> List[str]:
     """Extract random images from anime (covers, posters, banners)."""
     all_images = []
 
-    if anime.get("images"):
-        images = anime["images"]
+    if anime.get('images'):
+        images = anime['images']
         # Collect all available image types
-        for image_type in ["covers", "posters", "banners", "screenshots"]:
+        for image_type in ['covers', 'posters', 'banners', 'screenshots']:
             if image_type in images and images[image_type]:
                 all_images.extend(images[image_type])
 
     return all_images
-
 
 def test_title_vector_comprehensive():
     """Test title_vector with true field combination testing using random entries."""
@@ -122,7 +105,7 @@ def test_title_vector_comprehensive():
 
     formatter.print_header(
         "🎯 Comprehensive Title Vector Validation",
-        "Testing all field combinations with production search_single_vector() method",
+        "Testing all field combinations with production search_single_vector() method"
     )
 
     settings = get_settings()
@@ -130,7 +113,7 @@ def test_title_vector_comprehensive():
 
     # Load anime database
     anime_database = load_anime_database()
-    anime_data = anime_database.get("data", [])
+    anime_data = anime_database.get('data', [])
 
     if not anime_data:
         print("   ❌ No anime data found for testing")
@@ -154,7 +137,7 @@ def test_title_vector_comprehensive():
         len(anime_data),
         len(test_anime),
         len(all_field_combinations),
-        random_seed,
+        random_seed
     )
 
     passed_tests = 0
@@ -165,7 +148,7 @@ def test_title_vector_comprehensive():
     formatter.create_anime_test_panels()
 
     for i, anime in enumerate(test_anime):
-        anime_title = anime.get("title", "Unknown")
+        anime_title = anime.get('title', 'Unknown')
 
         # Filter combinations to only those with available fields
         valid_combinations = []
@@ -198,11 +181,11 @@ def test_title_vector_comprehensive():
             qdrant_client = QdrantClient(settings=settings)
 
             # Use search_single_vector to get real similarity scores
-            results = asyncio.run(
-                qdrant_client.search_single_vector(
-                    vector_name="title_vector", vector_data=embedding, limit=5
-                )
-            )
+            results = asyncio.run(qdrant_client.search_single_vector(
+                vector_name="title_vector",
+                vector_data=embedding,
+                limit=5
+            ))
 
             if results:
                 top_result = results[0]
@@ -220,12 +203,9 @@ def test_title_vector_comprehensive():
                     passed_tests += 1
                 else:
                     # Check if any synonyms match
-                    anime_synonyms = anime.get("synonyms", [])
+                    anime_synonyms = anime.get('synonyms', [])
                     for synonym in anime_synonyms:
-                        if any(
-                            synonym.lower() in r.get("title", "").lower()
-                            for r in results[:3]
-                        ):
+                        if any(synonym.lower() in r.get("title", "").lower() for r in results[:3]):
                             test_passed = True
                             synonym_match = True
                             passed_tests += 1
@@ -233,22 +213,12 @@ def test_title_vector_comprehensive():
 
                 # Print detailed test result using stacked panels
                 formatter.print_detailed_test_result(
-                    i + 1,
-                    anime,
-                    selected_combination,
-                    text_query,
-                    results,
-                    test_passed,
-                    synonym_match,
+                    i+1, anime, selected_combination, text_query, results, test_passed, synonym_match
                 )
 
                 # Track field combination effectiveness
                 if combination_key not in field_combination_stats:
-                    field_combination_stats[combination_key] = {
-                        "tests": 0,
-                        "passes": 0,
-                        "avg_score": 0.0,
-                    }
+                    field_combination_stats[combination_key] = {"tests": 0, "passes": 0, "avg_score": 0.0}
 
                 field_combination_stats[combination_key]["tests"] += 1
                 if test_passed:
@@ -259,7 +229,7 @@ def test_title_vector_comprehensive():
             else:
                 # Print detailed result for no results case
                 formatter.print_detailed_test_result(
-                    i + 1, anime, selected_combination, text_query, [], False
+                    i+1, anime, selected_combination, text_query, [], False
                 )
                 total_tests += 1
 
@@ -267,16 +237,14 @@ def test_title_vector_comprehensive():
             # Print error case
             error_results = [{"title": f"Error: {str(e)}", "score": 0.0}]
             formatter.print_detailed_test_result(
-                i + 1, anime, selected_combination, text_query, error_results, False
+                i+1, anime, selected_combination, text_query, error_results, False
             )
             total_tests += 1
 
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key]["avg_score"] /= (
-                field_combination_stats[combination_key]["tests"]
-            )
+            field_combination_stats[combination_key]["avg_score"] /= field_combination_stats[combination_key]["tests"]
 
     # Print field combination analysis
     if field_combination_stats:
@@ -287,13 +255,16 @@ def test_title_vector_comprehensive():
         "True field combination testing validates all possible query patterns",
         "Random field selection ensures comprehensive coverage",
         "Each anime tested with available field combinations",
-        "Uses production search_single_vector() method with real similarity scores",
+        "Uses production search_single_vector() method with real similarity scores"
     ]
 
     formatter.print_final_results(
-        "Title Vector Test", passed_tests, total_tests, random_seed, insights
+        "Title Vector Test",
+        passed_tests,
+        total_tests,
+        random_seed,
+        insights
     )
-
 
 def test_image_vector_comprehensive():
     """Test image_vector with random image downloads from titles."""
@@ -301,7 +272,7 @@ def test_image_vector_comprehensive():
 
     formatter.print_header(
         "📸 Comprehensive Image Vector Validation",
-        "Testing image_vector with random image downloads using search_single_vector() method",
+        "Testing image_vector with random image downloads using search_single_vector() method"
     )
 
     settings = get_settings()
@@ -309,7 +280,7 @@ def test_image_vector_comprehensive():
 
     # Load anime database
     anime_database = load_anime_database()
-    anime_data = anime_database.get("data", [])
+    anime_data = anime_database.get('data', [])
 
     # Find anime with images
     anime_with_images = []
@@ -335,7 +306,7 @@ def test_image_vector_comprehensive():
         len(anime_data),
         len(test_anime),
         len(anime_with_images),  # Total anime with images
-        random_seed,
+        random_seed
     )
 
     passed_tests = 0
@@ -344,7 +315,7 @@ def test_image_vector_comprehensive():
 
     try:
         for i, (anime, available_images) in enumerate(test_anime):
-            anime_title = anime.get("title", "Unknown")
+            anime_title = anime.get('title', 'Unknown')
 
             # Randomly select an image
             selected_image_url = random.choice(available_images)
@@ -359,8 +330,8 @@ def test_image_vector_comprehensive():
 
             try:
                 # Convert to base64
-                with open(temp_image_path, "rb") as f:
-                    image_data = base64.b64encode(f.read()).decode("utf-8")
+                with open(temp_image_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
                     image_b64 = f"data:image/jpeg;base64,{image_data}"
 
                 # Generate embedding
@@ -373,11 +344,11 @@ def test_image_vector_comprehensive():
                 qdrant_client = QdrantClient(settings=settings)
 
                 # Use search_single_vector to get real similarity scores
-                results = asyncio.run(
-                    qdrant_client.search_single_vector(
-                        vector_name="image_vector", vector_data=embedding, limit=5
-                    )
-                )
+                results = asyncio.run(qdrant_client.search_single_vector(
+                    vector_name="image_vector",
+                    vector_data=embedding,
+                    limit=5
+                ))
 
                 if results:
                     # Validation logic
@@ -395,20 +366,20 @@ def test_image_vector_comprehensive():
 
                     # Use detailed formatter for results
                     formatter.print_detailed_image_test_result(
-                        test_num=i + 1,
+                        test_num=i+1,
                         anime_data=anime,
                         image_url=selected_image_url,
                         available_images=len(available_images),
                         embedding_dim=len(embedding),
                         results=results,
-                        test_passed=test_passed,
+                        test_passed=test_passed
                     )
 
                     total_tests += 1
                 else:
                     total_tests += 1
 
-            except Exception:
+            except Exception as e:
                 total_tests += 1
                 continue
 
@@ -442,11 +413,10 @@ def test_image_vector_comprehensive():
             success_rate,
             status_msg,
             status_color,
-            random_seed,
+            random_seed
         )
     else:
         formatter.print_error_summary("❌ No image vector tests completed")
-
 
 def test_multimodal_title_search():
     """Test multimodal title search with true field combination testing."""
@@ -454,7 +424,7 @@ def test_multimodal_title_search():
 
     formatter.print_header(
         "🔄 Comprehensive Multimodal Search Validation",
-        "Testing title_vector + image_vector fusion with RRF method",
+        "Testing title_vector + image_vector fusion with RRF method"
     )
 
     settings = get_settings()
@@ -462,7 +432,7 @@ def test_multimodal_title_search():
 
     # Load anime database
     anime_database = load_anime_database()
-    anime_data = anime_database.get("data", [])
+    anime_data = anime_database.get('data', [])
 
     # Find anime with images
     anime_with_images = []
@@ -472,9 +442,7 @@ def test_multimodal_title_search():
             anime_with_images.append((anime, images))
 
     if not anime_with_images:
-        formatter.print_error_summary(
-            "❌ No anime with images found for multimodal testing"
-        )
+        formatter.print_error_summary("❌ No anime with images found for multimodal testing")
         return
 
     # True randomization
@@ -494,7 +462,7 @@ def test_multimodal_title_search():
         "Vectors": "title_vector (BGE-M3) + image_vector (OpenCLIP)",
         "Fusion Method": "RRF (Reciprocal Rank Fusion)",
         "Field Combinations": f"{len(all_field_combinations)} total combinations",
-        "Test Count": f"{len(test_anime)} anime selected",
+        "Test Count": f"{len(test_anime)} anime selected"
     }
     formatter.print_config_summary(config_data)
 
@@ -505,7 +473,7 @@ def test_multimodal_title_search():
 
     try:
         for i, (anime, available_images) in enumerate(test_anime):
-            anime_title = anime.get("title", "Unknown")
+            anime_title = anime.get('title', 'Unknown')
 
             # Filter combinations to only those with available fields
             valid_combinations = []
@@ -536,8 +504,8 @@ def test_multimodal_title_search():
 
             try:
                 # Convert to base64
-                with open(temp_image_path, "rb") as f:
-                    image_data = base64.b64encode(f.read()).decode("utf-8")
+                with open(temp_image_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
                     image_b64 = f"data:image/jpeg;base64,{image_data}"
 
                 # Generate embeddings
@@ -554,74 +522,47 @@ def test_multimodal_title_search():
                 # Perform multimodal search using search_multi_vector
                 vector_queries = [
                     {"vector_name": "title_vector", "vector_data": text_embedding},
-                    {"vector_name": "image_vector", "vector_data": image_embedding},
+                    {"vector_name": "image_vector", "vector_data": image_embedding}
                 ]
 
-                multimodal_results = asyncio.run(
-                    qdrant_client.search_multi_vector(
-                        vector_queries=vector_queries, limit=5, fusion_method="rrf"
-                    )
-                )
+                multimodal_results = asyncio.run(qdrant_client.search_multi_vector(
+                    vector_queries=vector_queries,
+                    limit=5,
+                    fusion_method="rrf"
+                ))
 
                 # Individual vector searches for comparison
-                text_only_results = asyncio.run(
-                    qdrant_client.search_multi_vector(
-                        vector_queries=[
-                            {
-                                "vector_name": "title_vector",
-                                "vector_data": text_embedding,
-                            }
-                        ],
-                        limit=5,
-                    )
-                )
+                text_only_results = asyncio.run(qdrant_client.search_multi_vector(
+                    vector_queries=[{"vector_name": "title_vector", "vector_data": text_embedding}],
+                    limit=5
+                ))
 
-                image_only_results = asyncio.run(
-                    qdrant_client.search_multi_vector(
-                        vector_queries=[
-                            {
-                                "vector_name": "image_vector",
-                                "vector_data": image_embedding,
-                            }
-                        ],
-                        limit=5,
-                    )
-                )
+                image_only_results = asyncio.run(qdrant_client.search_multi_vector(
+                    vector_queries=[{"vector_name": "image_vector", "vector_data": image_embedding}],
+                    limit=5
+                ))
 
                 if multimodal_results:
                     top_result = multimodal_results[0]
                     top_title = top_result.get("title", "Unknown")
                     top_score = top_result.get("score", 0.0)
 
-                    text_score = (
-                        text_only_results[0].get("score", 0.0)
-                        if text_only_results
-                        else 0.0
-                    )
-                    image_score = (
-                        image_only_results[0].get("score", 0.0)
-                        if image_only_results
-                        else 0.0
-                    )
+                    text_score = text_only_results[0].get("score", 0.0) if text_only_results else 0.0
+                    image_score = image_only_results[0].get("score", 0.0) if image_only_results else 0.0
 
                     # Validation
                     test_passed = False
                     if top_title == anime_title:
                         test_passed = True
                         passed_tests += 1
-                    elif any(
-                        r.get("title") == anime_title for r in multimodal_results[:3]
-                    ):
+                    elif any(r.get("title") == anime_title for r in multimodal_results[:3]):
                         test_passed = True
                         passed_tests += 1
                     else:
                         # Check if any synonyms match
-                        anime_synonyms = anime.get("synonyms", [])
+                        anime_synonyms = anime.get('synonyms', [])
                         for synonym in anime_synonyms:
-                            if any(
-                                synonym.lower() in r.get("title", "").lower()
-                                for r in multimodal_results[:3]
-                            ):
+                            if any(synonym.lower() in r.get("title", "").lower() for r in multimodal_results[:3]):
                                 test_passed = True
                                 passed_tests += 1
                                 break
@@ -634,7 +575,7 @@ def test_multimodal_title_search():
                     # Use detailed formatter for results
                     combination_key = "+".join(selected_combination)
                     formatter.print_detailed_multimodal_test_result(
-                        test_num=i + 1,
+                        test_num=i+1,
                         anime_data=anime,
                         selected_combination=selected_combination,
                         text_query=text_query,
@@ -645,17 +586,12 @@ def test_multimodal_title_search():
                         multimodal_score=top_score,
                         multimodal_results=multimodal_results,
                         test_passed=test_passed,
-                        fusion_boost=fusion_boost,
+                        fusion_boost=fusion_boost
                     )
 
                     # Track field combination effectiveness
                     if combination_key not in field_combination_stats:
-                        field_combination_stats[combination_key] = {
-                            "tests": 0,
-                            "passes": 0,
-                            "fusion_boost": 0,
-                            "avg_score": 0.0,
-                        }
+                        field_combination_stats[combination_key] = {"tests": 0, "passes": 0, "fusion_boost": 0, "avg_score": 0.0}
 
                     field_combination_stats[combination_key]["tests"] += 1
                     if test_passed:
@@ -668,7 +604,7 @@ def test_multimodal_title_search():
                 else:
                     total_tests += 1
 
-            except Exception:
+            except Exception as e:
                 total_tests += 1
                 continue
 
@@ -683,9 +619,7 @@ def test_multimodal_title_search():
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key]["avg_score"] /= (
-                field_combination_stats[combination_key]["tests"]
-            )
+            field_combination_stats[combination_key]["avg_score"] /= field_combination_stats[combination_key]["tests"]
 
     # Results Summary using Rich formatter
     if total_tests > 0:
@@ -709,7 +643,7 @@ def test_multimodal_title_search():
             success_rate,
             status_msg,
             status_color,
-            random_seed,
+            random_seed
         )
 
         # Field combination analysis
@@ -717,7 +651,6 @@ def test_multimodal_title_search():
             formatter.print_field_combination_analysis(field_combination_stats)
     else:
         formatter.print_error_summary("❌ No multimodal tests completed")
-
 
 if __name__ == "__main__":
     # Run comprehensive title vector tests

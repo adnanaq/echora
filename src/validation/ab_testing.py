@@ -11,8 +11,7 @@ Components:
 
 import logging
 import time
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 from scipy import stats
@@ -26,7 +25,7 @@ class CascadeClickModel:
     Users scan results top-to-bottom, click first satisfying result.
     """
 
-    def __init__(self, position_bias: list[float] | None = None) -> None:
+    def __init__(self, position_bias: Optional[List[float]] = None) -> None:
         """Initialize cascade click model.
 
         Args:
@@ -48,10 +47,10 @@ class CascadeClickModel:
 
     def simulate_clicks(
         self,
-        results: list[dict[str, Any]],
-        relevance_scores: list[float],
+        results: List[Dict[str, Any]],
+        relevance_scores: List[float],
         satisfaction_threshold: float = 0.7,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Simulate user clicks on search results.
 
         Args:
@@ -63,7 +62,7 @@ class CascadeClickModel:
             Click simulation results
         """
         try:
-            clicks: list[int] = []
+            clicks: List[int] = []
             click_position = -1
             examined_positions = 0
 
@@ -98,8 +97,8 @@ class CascadeClickModel:
             return {"error": str(e)}
 
     def calculate_ctr_by_position(
-        self, simulation_results: list[dict[str, Any]]
-    ) -> dict[int, float]:
+        self, simulation_results: List[Dict[str, Any]]
+    ) -> Dict[int, float]:
         """Calculate click-through rate by position.
 
         Args:
@@ -108,8 +107,8 @@ class CascadeClickModel:
         Returns:
             CTR by position mapping
         """
-        position_clicks: dict[int, int] = {}
-        position_examinations: dict[int, int] = {}
+        position_clicks: Dict[int, int] = {}
+        position_examinations: Dict[int, int] = {}
 
         for sim_result in simulation_results:
             if "error" in sim_result:
@@ -127,7 +126,7 @@ class CascadeClickModel:
                 position_clicks[clicked_pos] = position_clicks.get(clicked_pos, 0) + 1
 
         # Calculate CTR
-        ctr_by_position: dict[int, float] = {}
+        ctr_by_position: Dict[int, float] = {}
         for pos in position_examinations:
             examinations = position_examinations[pos]
             clicks = position_clicks.get(pos, 0)
@@ -144,8 +143,8 @@ class DependentClickModel:
 
     def __init__(
         self,
-        examination_probs: list[float] | None = None,
-        attractiveness_weights: list[float] | None = None,
+        examination_probs: Optional[List[float]] = None,
+        attractiveness_weights: Optional[List[float]] = None,
     ) -> None:
         """Initialize dependent click model.
 
@@ -174,8 +173,8 @@ class DependentClickModel:
         ]
 
     def simulate_clicks(
-        self, results: list[dict[str, Any]], relevance_scores: list[float]
-    ) -> dict[str, Any]:
+        self, results: List[Dict[str, Any]], relevance_scores: List[float]
+    ) -> Dict[str, Any]:
         """Simulate clicks using dependent click model.
 
         Args:
@@ -186,8 +185,8 @@ class DependentClickModel:
             Click simulation results
         """
         try:
-            clicks: list[int] = []
-            examined_positions: list[int] = []
+            clicks: List[int] = []
+            examined_positions: List[int] = []
 
             for i, (result, relevance) in enumerate(zip(results, relevance_scores)):
                 if i >= len(self.examination_probs):
@@ -239,18 +238,18 @@ class ABTestingFramework:
         self.significance_level = significance_level
         self.cascade_model = CascadeClickModel()
         self.dependent_model = DependentClickModel()
-        self.test_history: list[dict[str, Any]] = []
+        self.test_history: List[Dict[str, Any]] = []
 
     async def compare_search_algorithms(
         self,
         algorithm_a: Callable[[str, int], Any],
         algorithm_b: Callable[[str, int], Any],
-        test_queries: list[str],
-        relevance_evaluator: Callable[[str, list[dict[str, Any]]], list[float]],
+        test_queries: List[str],
+        relevance_evaluator: Callable[[str, List[Dict[str, Any]]], List[float]],
         algorithm_a_name: str = "Algorithm A",
         algorithm_b_name: str = "Algorithm B",
         num_simulations: int = 1000,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Compare two search algorithms using statistical testing.
 
         Args:
@@ -268,7 +267,7 @@ class ABTestingFramework:
         try:
             logger.info(f"🧪 Comparing {algorithm_a_name} vs {algorithm_b_name}")
 
-            comparison_results: dict[str, Any] = {
+            comparison_results: Dict[str, Any] = {
                 "timestamp": time.time(),
                 "algorithm_a": algorithm_a_name,
                 "algorithm_b": algorithm_b_name,
@@ -280,8 +279,8 @@ class ABTestingFramework:
             }
 
             # Collect metrics for both algorithms
-            metrics_a: list[dict[str, float]] = []
-            metrics_b: list[dict[str, float]] = []
+            metrics_a: List[Dict[str, float]] = []
+            metrics_b: List[Dict[str, float]] = []
 
             for query in test_queries:
                 try:
@@ -347,10 +346,10 @@ class ABTestingFramework:
 
     def _calculate_query_metrics(
         self,
-        results: list[dict[str, Any]],
-        relevance_scores: list[float],
+        results: List[Dict[str, Any]],
+        relevance_scores: List[float],
         num_simulations: int,
-    ) -> dict[str, float]:
+    ) -> Dict[str, float]:
         """Calculate metrics for a single query using user simulation.
 
         Args:
@@ -376,7 +375,7 @@ class ABTestingFramework:
                 dependent_simulations.append(sim_result)
 
         # Calculate metrics
-        metrics: dict[str, float] = {}
+        metrics: Dict[str, float] = {}
 
         if cascade_simulations:
             # Cascade model metrics
@@ -437,8 +436,8 @@ class ABTestingFramework:
         return metrics
 
     def _aggregate_metrics(
-        self, query_metrics: list[dict[str, float]]
-    ) -> dict[str, float]:
+        self, query_metrics: List[Dict[str, float]]
+    ) -> Dict[str, float]:
         """Aggregate metrics across all queries.
 
         Args:
@@ -450,7 +449,7 @@ class ABTestingFramework:
         if not query_metrics:
             return {}
 
-        aggregated: dict[str, float] = {}
+        aggregated: Dict[str, float] = {}
 
         # Get all metric names
         all_metric_names: set[str] = set()
@@ -466,8 +465,8 @@ class ABTestingFramework:
         return aggregated
 
     def _perform_statistical_tests(
-        self, metrics_a: list[dict[str, float]], metrics_b: list[dict[str, float]]
-    ) -> dict[str, Any]:
+        self, metrics_a: List[Dict[str, float]], metrics_b: List[Dict[str, float]]
+    ) -> Dict[str, Any]:
         """Perform statistical significance tests.
 
         Args:
@@ -477,7 +476,7 @@ class ABTestingFramework:
         Returns:
             Statistical test results
         """
-        statistical_tests: dict[str, Any] = {}
+        statistical_tests: Dict[str, Any] = {}
 
         try:
             # Get common metric names
@@ -541,9 +540,9 @@ class ABTestingFramework:
 
     def _generate_recommendation(
         self,
-        metrics_a: dict[str, float],
-        metrics_b: dict[str, float],
-        statistical_tests: dict[str, Any],
+        metrics_a: Dict[str, float],
+        metrics_b: Dict[str, float],
+        statistical_tests: Dict[str, Any],
         algorithm_a_name: str,
         algorithm_b_name: str,
     ) -> str:
@@ -607,7 +606,7 @@ class ABTestingFramework:
             logger.warning(f"Recommendation generation failed: {e}")
             return "Unable to generate recommendation due to insufficient data."
 
-    def get_test_history(self) -> list[dict[str, Any]]:
+    def get_test_history(self) -> List[Dict[str, Any]]:
         """Get history of A/B tests.
 
         Returns:

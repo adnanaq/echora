@@ -4,12 +4,13 @@ Uses OpenCLIP ViT-L/14 model for high-quality image embeddings
 with commercial-friendly licensing.
 """
 
+import asyncio
 import base64
 import hashlib
 import io
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 import numpy as np
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 class VisionProcessor:
     """Vision processor supporting multiple embedding models."""
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Optional[Settings] = None):
         """Initialize modern vision processor with configuration.
 
         Args:
@@ -42,13 +43,13 @@ class VisionProcessor:
         self.cache_dir = settings.model_cache_dir
 
         # Model instance
-        self.model: dict[str, Any] | None = None
+        self.model: Optional[Dict[str, Any]] = None
 
         # Device configuration
-        self.device: str | None = None
+        self.device: Optional[str] = None
 
         # Model metadata
-        self.model_info: dict[str, Any] = {}
+        self.model_info: Dict[str, Any] = {}
 
         # Image caching configuration
         self.image_cache_dir = (
@@ -59,7 +60,7 @@ class VisionProcessor:
         self.image_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Field mapper for anime data extraction
-        self._field_mapper: AnimeFieldMapper | None = None
+        self._field_mapper: Optional[AnimeFieldMapper] = None
 
         # Initialize models
         self._init_models()
@@ -82,7 +83,7 @@ class VisionProcessor:
             logger.error(f"Failed to initialize modern vision processor: {e}")
             raise
 
-    def _create_model(self, provider: str, model_name: str) -> dict[str, Any]:
+    def _create_model(self, provider: str, model_name: str) -> Dict[str, Any]:
         """Create OpenCLIP model instance.
 
         Args:
@@ -97,7 +98,7 @@ class VisionProcessor:
 
         return self._create_openclip_model(model_name)
 
-    def _create_openclip_model(self, model_name: str) -> dict[str, Any]:
+    def _create_openclip_model(self, model_name: str) -> Dict[str, Any]:
         """Create OpenCLIP model instance.
 
         Args:
@@ -227,7 +228,7 @@ class VisionProcessor:
         img_str = base64.b64encode(buffer.getvalue()).decode()
         return img_str
 
-    def encode_image(self, image_data: str) -> list[float] | None:
+    def encode_image(self, image_data: str) -> Optional[List[float]]:
         """Encode image to embedding vector.
 
         Args:
@@ -250,8 +251,8 @@ class VisionProcessor:
             return None
 
     def _encode_image_with_model(
-        self, image_data: str, model_dict: dict[str, Any]
-    ) -> list[float] | None:
+        self, image_data: str, model_dict: Dict[str, Any]
+    ) -> Optional[List[float]]:
         """Encode image with specific model.
 
         Args:
@@ -281,8 +282,8 @@ class VisionProcessor:
             return None
 
     def _encode_with_openclip(
-        self, image: Image.Image, model_dict: dict[str, Any]
-    ) -> list[float] | None:
+        self, image: Image.Image, model_dict: Dict[str, Any]
+    ) -> Optional[List[float]]:
         """Encode image using OpenCLIP model.
 
         Args:
@@ -313,7 +314,7 @@ class VisionProcessor:
                 image_features = image_features / image_features.norm(
                     dim=-1, keepdim=True
                 )
-                embedding: list[float] = image_features.cpu().numpy().flatten().tolist()
+                embedding: List[float] = image_features.cpu().numpy().flatten().tolist()
 
             return embedding
 
@@ -321,7 +322,7 @@ class VisionProcessor:
             logger.error(f"OpenCLIP encoding failed: {e}")
             return None
 
-    def _decode_base64_image(self, image_data: str) -> Image.Image | None:
+    def _decode_base64_image(self, image_data: str) -> Optional[Image.Image]:
         """Decode base64 image data to PIL Image.
 
         Args:
@@ -354,8 +355,8 @@ class VisionProcessor:
             return None
 
     def encode_images_batch(
-        self, image_data_list: list[str], batch_size: int | None = None
-    ) -> list[list[float] | None]:
+        self, image_data_list: List[str], batch_size: Optional[int] = None
+    ) -> List[Optional[List[float]]]:
         """Encode multiple images in batches.
 
         Args:
@@ -394,7 +395,7 @@ class VisionProcessor:
             logger.error(f"Batch image encoding failed: {e}")
             return [None] * len(image_data_list)
 
-    def _load_image_for_ccip(self, url_or_path: str) -> Image.Image | None:
+    def _load_image_for_ccip(self, url_or_path: str) -> Optional[Image.Image]:
         """Load image for CCIP, handling both URLs and local paths."""
         try:
             if url_or_path.startswith("http"):
@@ -477,7 +478,7 @@ class VisionProcessor:
                 return 0.0
 
             # Load images
-            def load_image(url_or_path: str) -> Image.Image | None:
+            def load_image(url_or_path: str) -> Optional[Image.Image]:
                 if url_or_path.startswith("http"):
                     response = requests.get(url_or_path, timeout=10)
                     return Image.open(BytesIO(response.content))
@@ -513,7 +514,7 @@ class VisionProcessor:
             logger.error(f"OpenCLIP fallback similarity calculation failed: {e}")
             return 0.0
 
-    def get_model_info(self) -> dict[str, Any]:
+    def get_model_info(self) -> Dict[str, Any]:
         """Get information about the current model.
 
         Returns:
@@ -580,7 +581,9 @@ class VisionProcessor:
             self._field_mapper = AnimeFieldMapper()
         return self._field_mapper
 
-    async def process_anime_image_vector(self, anime: AnimeEntry) -> list[float] | None:
+    async def process_anime_image_vector(
+        self, anime: AnimeEntry
+    ) -> Optional[List[float]]:
         """Process general anime images (covers, posters, banners, trailers) excluding character images.
 
         Args:
@@ -637,7 +640,7 @@ class VisionProcessor:
                     return successful_embeddings[0]
                 else:
                     # Average multiple embeddings for comprehensive visual representation
-                    combined_embedding: list[float] = np.mean(
+                    combined_embedding: List[float] = np.mean(
                         successful_embeddings, axis=0
                     ).tolist()
                     logger.debug(
@@ -657,7 +660,7 @@ class VisionProcessor:
 
     async def process_anime_character_image_vector(
         self, anime: AnimeEntry
-    ) -> list[float] | None:
+    ) -> Optional[List[float]]:
         """Process character images from anime data for character identification and recommendations.
 
         Args:
@@ -714,7 +717,7 @@ class VisionProcessor:
                     return successful_embeddings[0]
                 else:
                     # Average multiple embeddings for comprehensive character visual representation
-                    combined_embedding: list[float] = np.mean(
+                    combined_embedding: List[float] = np.mean(
                         successful_embeddings, axis=0
                     ).tolist()
                     logger.debug(
@@ -732,7 +735,7 @@ class VisionProcessor:
             logger.error(f"Character image vector processing failed: {e}")
             return None
 
-    def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:
+    def _hash_embedding(self, embedding: List[float], precision: int = 4) -> str:
         """Create hash of embedding vector to detect duplicates.
 
         Args:
@@ -752,7 +755,7 @@ class VisionProcessor:
             # Fallback to string representation
             return str(hash(tuple(embedding)))
 
-    async def _download_and_cache_image(self, image_url: str) -> str | None:
+    async def _download_and_cache_image(self, image_url: str) -> Optional[str]:
         """Download image from URL and cache locally.
 
         Args:
@@ -807,14 +810,14 @@ class VisionProcessor:
                         )
                         return None
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             logger.warning(f"Timeout downloading image from {image_url}")
             return None
         except Exception as e:
             logger.error(f"Error downloading image from {image_url}: {e}")
             return None
 
-    def get_cache_stats(self) -> dict[str, Any]:
+    def get_cache_stats(self) -> Dict[str, Any]:
         """Get image cache statistics.
 
         Returns:
@@ -834,7 +837,7 @@ class VisionProcessor:
             logger.error(f"Error getting cache stats: {e}")
             return {"cache_enabled": False, "error": str(e)}
 
-    def clear_cache(self, max_age_days: int | None = None) -> dict[str, Any]:
+    def clear_cache(self, max_age_days: Optional[int] = None) -> Dict[str, Any]:
         """Clear image cache.
 
         Args:
@@ -873,7 +876,7 @@ class VisionProcessor:
             logger.error(f"Error clearing cache: {e}")
             return {"error": str(e)}
 
-    def get_supported_formats(self) -> list[str]:
+    def get_supported_formats(self) -> List[str]:
         """Get list of supported image formats.
 
         Returns:

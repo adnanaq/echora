@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any
+from typing import Any, Dict, Optional
 
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -28,7 +28,7 @@ class AnimePlanetEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
 
-    async def extract_slug_from_url(self, url: str) -> str | None:
+    async def extract_slug_from_url(self, url: str) -> Optional[str]:
         """Extract Anime-Planet slug from URL."""
         try:
             # Pattern: https://www.anime-planet.com/anime/SLUG
@@ -41,8 +41,8 @@ class AnimePlanetEnrichmentHelper:
             return None
 
     async def find_animeplanet_url(
-        self, offline_anime_data: dict[str, Any]
-    ) -> str | None:
+        self, offline_anime_data: Dict[str, Any]
+    ) -> Optional[str]:
         """Find Anime-Planet URL from offline anime data sources."""
         try:
             sources = offline_anime_data.get("sources", [])
@@ -54,7 +54,8 @@ class AnimePlanetEnrichmentHelper:
             logger.error(f"Error finding Anime-Planet URL: {e}")
             return None
 
-    async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
+
+    async def fetch_character_data(self, slug: str) -> Optional[Dict[str, Any]]:
         """
         Fetch character data by slug using the new character crawler.
 
@@ -70,7 +71,7 @@ class AnimePlanetEnrichmentHelper:
             character_data = await fetch_animeplanet_characters(
                 slug=slug,
                 return_data=True,
-                output_path=None,  # No file output - return data only
+                output_path=None  # No file output - return data only
             )
 
             if not character_data:
@@ -89,7 +90,7 @@ class AnimePlanetEnrichmentHelper:
 
     async def fetch_anime_data(
         self, slug: str, include_characters: bool = True
-    ) -> dict[str, Any] | None:
+    ) -> Optional[Dict[str, Any]]:
         """
         Fetch anime data by slug using the new crawler.
 
@@ -108,7 +109,7 @@ class AnimePlanetEnrichmentHelper:
             anime_data = await fetch_animeplanet_anime(
                 slug=slug,
                 return_data=True,
-                output_path=None,  # No file output - return data only
+                output_path=None  # No file output - return data only
             )
 
             if not anime_data:
@@ -140,8 +141,8 @@ class AnimePlanetEnrichmentHelper:
             return None
 
     async def fetch_all_data(
-        self, offline_anime_data: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        self, offline_anime_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """
         Fetch all Anime-Planet data for an anime.
 
@@ -181,7 +182,8 @@ class AnimePlanetEnrichmentHelper:
         except Exception as e:
             title = offline_anime_data.get("title", "Unknown")
             logger.error(
-                f"Error in fetch_all_data for anime '{title}': {e}", exc_info=True
+                f"Error in fetch_all_data for anime '{title}': {e}",
+                exc_info=True
             )
             return None
 

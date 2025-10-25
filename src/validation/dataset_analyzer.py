@@ -8,7 +8,7 @@ validation queries instead of using hardcoded assumptions.
 import asyncio
 import logging
 from collections import Counter
-from typing import Any
+from typing import Any, Dict, List
 
 from ..vector.client.qdrant_client import QdrantClient
 from .vector_field_mapping import (
@@ -31,9 +31,9 @@ class DatasetAnalyzer:
             qdrant_client: The Qdrant client instance to analyze
         """
         self.client = qdrant_client
-        self.dataset_profile: dict[str, Any] = {}
+        self.dataset_profile: Dict[str, Any] = {}
 
-    async def analyze_dataset(self) -> dict[str, Any]:
+    async def analyze_dataset(self) -> Dict[str, Any]:
         """Analyze the dataset to understand its content characteristics.
 
         Returns:
@@ -76,7 +76,7 @@ class DatasetAnalyzer:
             logger.error(f"Failed to analyze dataset: {e}")
             return {"error": str(e)}
 
-    async def generate_dynamic_queries(self) -> dict[str, list[dict[str, Any]]]:
+    async def generate_dynamic_queries(self) -> Dict[str, List[Dict[str, Any]]]:
         """Generate validation queries based on actual dataset content.
 
         Returns:
@@ -89,7 +89,7 @@ class DatasetAnalyzer:
             if "error" in self.dataset_profile:
                 return {"error": self.dataset_profile["error"]}
 
-            dynamic_queries: dict[str, list[dict[str, Any]]] = {}
+            dynamic_queries: Dict[str, List[Dict[str, Any]]] = {}
 
             # Generate queries for searchable vectors based on field mapping
             searchable_vectors = get_searchable_vectors()
@@ -149,7 +149,7 @@ class DatasetAnalyzer:
 
     async def _sample_dataset_points(
         self, sample_size: int = 100
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """Sample points from the dataset for analysis."""
         try:
             # Use scroll to get all points (for small datasets) or sample
@@ -176,8 +176,8 @@ class DatasetAnalyzer:
             return []
 
     def _analyze_content_characteristics(
-        self, points_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze general content characteristics."""
         characteristics = {
             "has_synopsis": 0,
@@ -224,8 +224,8 @@ class DatasetAnalyzer:
         return characteristics
 
     async def _analyze_vector_populations(
-        self, points_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze which vectors are populated with meaningful data."""
         vector_stats = {}
 
@@ -273,7 +273,7 @@ class DatasetAnalyzer:
 
         return vector_stats
 
-    def _analyze_genres(self, points_data: list[dict[str, Any]]) -> dict[str, Any]:
+    def _analyze_genres(self, points_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze genre distribution in the dataset."""
         genre_counter = Counter()
         demographics_counter = Counter()
@@ -297,8 +297,8 @@ class DatasetAnalyzer:
         }
 
     def _analyze_content_types(
-        self, points_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze content type distribution."""
         type_counter = Counter()
 
@@ -315,8 +315,8 @@ class DatasetAnalyzer:
         }
 
     def _analyze_status_distribution(
-        self, points_data: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+        self, points_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Analyze status distribution."""
         status_counter = Counter()
 
@@ -333,8 +333,8 @@ class DatasetAnalyzer:
         }
 
     def _extract_sample_titles(
-        self, points_data: list[dict[str, Any]], limit: int = 10
-    ) -> list[str]:
+        self, points_data: List[Dict[str, Any]], limit: int = 10
+    ) -> List[str]:
         """Extract sample titles for reference."""
         titles = []
         for point in points_data[:limit]:
@@ -343,7 +343,7 @@ class DatasetAnalyzer:
             titles.append(title)
         return titles
 
-    def _generate_title_queries(self) -> list[dict[str, Any]]:
+    def _generate_title_queries(self) -> List[Dict[str, Any]]:
         """Generate title-based validation queries."""
         queries = []
         sample_titles = self.dataset_profile.get("sample_titles", [])
@@ -382,7 +382,7 @@ class DatasetAnalyzer:
 
         return queries
 
-    def _generate_genre_queries(self) -> list[dict[str, Any]]:
+    def _generate_genre_queries(self) -> List[Dict[str, Any]]:
         """Generate genre-based validation queries."""
         queries = []
         genre_dist = self.dataset_profile.get("genre_distribution", {})
@@ -400,7 +400,7 @@ class DatasetAnalyzer:
 
         return queries
 
-    def _generate_technical_queries(self) -> list[dict[str, Any]]:
+    def _generate_technical_queries(self) -> List[Dict[str, Any]]:
         """Generate technical-based validation queries."""
         queries = []
         type_dist = self.dataset_profile.get("type_distribution", {})
@@ -418,7 +418,7 @@ class DatasetAnalyzer:
 
         return queries
 
-    def _generate_temporal_queries(self) -> list[dict[str, Any]]:
+    def _generate_temporal_queries(self) -> List[Dict[str, Any]]:
         """Generate temporal-based validation queries."""
         queries = []
         status_dist = self.dataset_profile.get("status_distribution", {})
@@ -436,11 +436,11 @@ class DatasetAnalyzer:
 
         return queries
 
-    def _generate_episode_queries(self) -> list[dict[str, Any]]:
+    def _generate_episode_queries(self) -> List[Dict[str, Any]]:
         """Generate episode-based validation queries."""
         return [{"query": "single episode", "expected_episodes": [1], "min_results": 3}]
 
-    def _generate_character_queries(self) -> list[dict[str, Any]]:
+    def _generate_character_queries(self) -> List[Dict[str, Any]]:
         """Generate character-based validation queries."""
         return [
             {
@@ -450,7 +450,7 @@ class DatasetAnalyzer:
             }
         ]
 
-    def _generate_franchise_queries(self) -> list[dict[str, Any]]:
+    def _generate_franchise_queries(self) -> List[Dict[str, Any]]:
         """Generate franchise-based validation queries."""
         sample_titles = self.dataset_profile.get("sample_titles", [])
 
@@ -467,7 +467,7 @@ class DatasetAnalyzer:
 
         return []
 
-    def _generate_staff_queries(self) -> list[dict[str, Any]]:
+    def _generate_staff_queries(self) -> List[Dict[str, Any]]:
         """Generate staff-based validation queries."""
         return [
             {
@@ -477,7 +477,7 @@ class DatasetAnalyzer:
             }
         ]
 
-    def _generate_related_queries(self) -> list[dict[str, Any]]:
+    def _generate_related_queries(self) -> List[Dict[str, Any]]:
         """Generate related content validation queries."""
         return [
             {
@@ -487,7 +487,7 @@ class DatasetAnalyzer:
             }
         ]
 
-    def _generate_generic_queries(self, vector_name: str) -> list[dict[str, Any]]:
+    def _generate_generic_queries(self, vector_name: str) -> List[Dict[str, Any]]:
         """Generate generic validation queries for any vector."""
         get_vector_description(vector_name)
         vector_fields = get_vector_fields(vector_name)

@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import re
+from typing import Optional
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -29,8 +30,8 @@ from .utils import sanitize_output_path
 
 
 async def fetch_anisearch_episodes(
-    url: str, return_data: bool = True, output_path: str | None = None
-) -> list | None:
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[list]:
     """
     Crawls, processes, and saves episode data from a given anisearch.com URL.
 

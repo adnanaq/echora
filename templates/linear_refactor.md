@@ -12,7 +12,8 @@ Why this refactor is needed—readability, maintainability, performance, technic
 - Area 2
 - Functions/classes/modules being reorganized
 
-+++ Implementation Notes
+<details>
+<summary>Implementation Notes</summary>
 
 Key points for implementation:
 
@@ -20,9 +21,10 @@ Key points for implementation:
 - Pattern 2
 - Performance considerations
 
-+++
+</details>
 
-+++ Testing / Validation
+<details>
+<summary>Testing / Validation</summary>
 
 How to verify the refactor didn't break existing functionality:
 
@@ -30,9 +32,10 @@ How to verify the refactor didn't break existing functionality:
 - Log checks
 - Integration tests
 
-+++
+</details>
 
-+++ Risks / Dependencies
+<details>
+<summary>Risks / Dependencies</summary>
 
 Modules, data, or services that could be affected:
 
@@ -40,4 +43,4 @@ Modules, data, or services that could be affected:
 - Dependency 1
 - Service 1
 
-+++
+</details>

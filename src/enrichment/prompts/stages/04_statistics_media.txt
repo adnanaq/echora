@@ -27,7 +27,7 @@ Extract ONLY statistics from multiple data sources with proper normalization and
 Extract statistics from ALL available data sources with standardized StatisticsEntry format:
 
 ### SOURCE-SPECIFIC MAPPINGS:
-- **JIKAN (MAL)**:
+- **JIKAN (MAL)**: 
   - score → score (already 0-10 scale)
   - scored_by → scored_by
   - rank → rank
@@ -134,7 +134,7 @@ Return ONLY statistics in JSON format:
             "score": 8.11,
             "scored_by": 916846,
             "rank": 530,
-            "popularity_rank": 85,
+            "popularity_rank": 85,  
             "members": 1524895,
             "favorites": 26442,
             "contextual_ranks": null

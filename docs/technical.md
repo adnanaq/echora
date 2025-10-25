@@ -15,7 +15,7 @@
 - **Qdrant 1.14+**: Selected for its superior performance with HNSW indexing, multi-vector support, and production-ready features
 - **HNSW Algorithm**: Hierarchical Navigable Small World for fast approximate nearest neighbor search
 - **Advanced Quantization**: Binary, scalar, and product quantization for 40x speedup potential
-- **11-Vector Primary Collection**: Main anime collection with named vectors (9×1024-dim text + 2×768-dim visual)
+- **13-Vector Primary Collection**: Main anime collection with named vectors (11×1024-dim text + 2×768-dim visual)
 - **Dual-Collection Architecture**:
   - **Primary Collection**: 38K+ anime entries with comprehensive 13-vector semantic coverage
   - **Episode Collection**: Granular episode-level search with BGE-M3 chunking (Phase 3.5)
@@ -333,7 +333,7 @@ low_priority_hnsw = {
 **Rollback-Safe Implementation Strategy:**
 
 - **Configuration-First:** All optimizations start with settings.py changes
-- **Parallel Methods:** New 11-vector methods alongside existing 3-vector methods
+- **Parallel Methods:** New 14-vector methods alongside existing 3-vector methods
 - **Graceful Fallbacks:** All systems degrade to current functionality on failure
 - **Feature Flags:** Production toggles without code deployment
 - **Atomic Sub-Phases:** 2-4 hour implementation windows with independent testing
@@ -348,7 +348,7 @@ low_priority_hnsw = {
 #### **Frontend Integration Technical Specifications**
 
 **Customer-Facing Payload Design:**
-Based on comprehensive AnimeEntry schema analysis and 11-vector architecture:
+Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
 
 - **Search Results (Fast Loading):** Essential display fields for listing pages
 - **Detail View (Complete):** All 65+ fields for comprehensive anime pages
@@ -668,9 +668,9 @@ def personalization_coverage(recommendations, user_profiles):
 ```python
 # src/vector/qdrant_client.py - Modify existing collection creation
 def _create_multi_vector_config(self) -> Dict:
-    """Extend existing 11-vector config with sparse vectors"""
+    """Extend existing 14-vector config with sparse vectors"""
     vectors_config = {
-        # EXISTING: 11 dense vectors (preserve compatibility)
+        # EXISTING: 14 dense vectors (preserve compatibility)
         "title_vector": VectorParams(size=1024, distance=Distance.COSINE),
         "character_vector": VectorParams(size=1024, distance=Distance.COSINE),
         "genre_vector": VectorParams(size=1024, distance=Distance.COSINE),
@@ -905,7 +905,7 @@ baseline_performance = {
     "text_search_latency": "80ms",          # BGE-M3 title_vector search
     "image_search_latency": "250ms",        # OpenCLIP image_vector search
     "multimodal_search_latency": "350ms",   # Combined text + image
-    "memory_usage_per_anime": "~5KB",       # 11 vectors + payload
+    "memory_usage_per_anime": "~5KB",       # 14 vectors + payload
     "total_memory_38k_anime": "~190MB",     # Current proven scale
     "concurrent_requests": "50+ RPS",       # Tested throughput
     "precision_at_5": "0.82",              # Estimated from query patterns
@@ -1041,7 +1041,7 @@ class PerformanceBenchmarkSuite:
         """Project memory usage at different scales"""
 
         base_memory_per_anime = {
-            "dense_vectors": 4.8,      # KB: 11 vectors (9×1024×4 + 2×768×4 bytes)
+            "dense_vectors": 4.8,      # KB: 14 vectors (12×1024×4 + 2×768×4 bytes)
             "payload_metadata": 0.2,   # KB: JSON payload
             "sparse_vectors": 0.5,     # KB: Estimated sparse vector overhead
         }
@@ -1100,7 +1100,7 @@ class ProductionPerformanceMonitor:
 
 ### Architecture Overview
 
-**Design Philosophy**: Enhance existing 11-vector search capabilities with intelligent LLM-powered query analysis without modifying the core vector architecture.
+**Design Philosophy**: Enhance existing 14-vector search capabilities with intelligent LLM-powered query analysis without modifying the core vector architecture.
 
 #### **Core Components**
 ```python
@@ -1200,7 +1200,7 @@ class SmartQueryAnalyzer:
         return json.loads(response)
 
     async def select_optimal_vectors(self, query: str, intent: str) -> List[Dict[str, Any]]:
-        """Intelligent vector selection with weights from 11-vector architecture"""
+        """Intelligent vector selection with weights from 14-vector architecture"""
 
         vector_descriptions = {
             "title_vector": "Anime titles, synopsis, background - semantic content matching",
@@ -1489,7 +1489,7 @@ smart_query_latency = {
     "llm_intent_analysis": "0.5-1.0s",     # OpenAI/Anthropic API call
     "llm_vector_selection": "0.5-1.0s",    # Vector selection reasoning
     "llm_query_enhancement": "0.3-0.5s",   # Query optimization
-    "vector_search": "80-120ms",           # Existing 11-vector search
+    "vector_search": "80-120ms",           # Existing 14-vector search
     "result_formatting": "10-20ms",        # Response preparation
     "total_target": "<3.0s",               # End-to-end target
 }
@@ -1653,3 +1653,4 @@ future_features = {
 ```
 
 ```
+

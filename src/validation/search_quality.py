@@ -9,8 +9,7 @@ This module provides comprehensive search quality validation including:
 
 import logging
 import time
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -22,7 +21,7 @@ class GoldStandardDataset:
 
     def __init__(self) -> None:
         """Initialize gold standard dataset manager."""
-        self.anime_domain_queries: dict[str, dict[str, Any]] = {
+        self.anime_domain_queries: Dict[str, Dict[str, Any]] = {
             # Genre-based queries
             "shounen_action": {
                 "query": "shounen action anime",
@@ -140,7 +139,7 @@ class GoldStandardDataset:
         }
 
         # Hard negative test cases for confusion detection
-        self.hard_negative_tests: dict[str, dict[str, Any]] = {
+        self.hard_negative_tests: Dict[str, Dict[str, Any]] = {
             "genre_confusion": {
                 "query": "romantic comedy anime like Toradora",
                 "expected_genres": ["Romance", "Comedy"],
@@ -161,7 +160,7 @@ class GoldStandardDataset:
             },
         }
 
-    def get_test_queries(self, category: str | None = None) -> list[dict[str, Any]]:
+    def get_test_queries(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get test queries for validation.
 
         Args:
@@ -175,7 +174,7 @@ class GoldStandardDataset:
         else:
             return list(self.anime_domain_queries.values())
 
-    def get_hard_negative_tests(self) -> list[dict[str, Any]]:
+    def get_hard_negative_tests(self) -> List[Dict[str, Any]]:
         """Get hard negative test cases.
 
         Returns:
@@ -190,14 +189,14 @@ class SearchQualityValidator:
     def __init__(self) -> None:
         """Initialize search quality validator."""
         self.gold_standard = GoldStandardDataset()
-        self.validation_history: list[dict[str, Any]] = []
+        self.validation_history: List[Dict[str, Any]] = []
 
     async def validate_search_function(
         self,
         search_function: Callable[[str, int], Any],
-        test_queries: list[dict[str, Any]] | None = None,
+        test_queries: Optional[List[Dict[str, Any]]] = None,
         limit: int = 10,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Validate a search function against gold standard dataset.
 
         Args:
@@ -214,7 +213,7 @@ class SearchQualityValidator:
             if test_queries is None:
                 test_queries = self.gold_standard.get_test_queries()
 
-            validation_results: dict[str, Any] = {
+            validation_results: Dict[str, Any] = {
                 "timestamp": time.time(),
                 "total_queries": len(test_queries),
                 "successful_queries": 0,
@@ -223,15 +222,15 @@ class SearchQualityValidator:
                 "query_results": [],
             }
 
-            query_results: list[dict[str, Any]] = []
+            query_results: List[Dict[str, Any]] = []
             successful_queries = 0
-            failed_queries: list[dict[str, Any]] = []
+            failed_queries: List[Dict[str, Any]] = []
 
             # Track metrics across all queries
-            precision_scores: list[float] = []
-            recall_scores: list[float] = []
-            ndcg_scores: list[float] = []
-            mrr_scores: list[float] = []
+            precision_scores: List[float] = []
+            recall_scores: List[float] = []
+            ndcg_scores: List[float] = []
+            mrr_scores: List[float] = []
 
             for query_config in test_queries:
                 try:
@@ -310,8 +309,8 @@ class SearchQualityValidator:
             return {"error": str(e), "timestamp": time.time()}
 
     def _calculate_query_metrics(
-        self, query_config: dict[str, Any], result_titles: list[str]
-    ) -> dict[str, float]:
+        self, query_config: Dict[str, Any], result_titles: List[str]
+    ) -> Dict[str, float]:
         """Calculate comprehensive metrics for a single query.
 
         Args:
@@ -401,7 +400,7 @@ class SearchQualityValidator:
         self,
         search_function: Callable[[str, int], Any],
         similarity_threshold: float = 0.3,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Validate that hard negative samples are correctly rejected.
 
         Args:
@@ -415,7 +414,7 @@ class SearchQualityValidator:
             logger.info("🔥 Validating hard negative samples")
 
             hard_negative_tests = self.gold_standard.get_hard_negative_tests()
-            validation_results: dict[str, Any] = {
+            validation_results: Dict[str, Any] = {
                 "total_tests": len(hard_negative_tests),
                 "passed_tests": 0,
                 "failed_tests": [],
@@ -423,7 +422,7 @@ class SearchQualityValidator:
             }
 
             passed_tests = 0
-            failed_tests: list[dict[str, Any]] = []
+            failed_tests: List[Dict[str, Any]] = []
 
             for test_config in hard_negative_tests:
                 query = test_config["query"]
@@ -482,7 +481,7 @@ class SearchQualityValidator:
             logger.error(f"Hard negative validation failed: {e}")
             return {"error": str(e)}
 
-    def generate_quality_report(self) -> dict[str, Any]:
+    def generate_quality_report(self) -> Dict[str, Any]:
         """Generate comprehensive search quality report.
 
         Returns:
@@ -494,7 +493,7 @@ class SearchQualityValidator:
 
             latest_validation = self.validation_history[-1]
 
-            report: dict[str, Any] = {
+            report: Dict[str, Any] = {
                 "timestamp": time.time(),
                 "latest_metrics": latest_validation.get("metrics", {}),
                 "trend_analysis": {},
@@ -519,7 +518,7 @@ class SearchQualityValidator:
                     report["quality_grade"] = "Poor"
 
                 # Generate recommendations
-                recommendations: list[str] = []
+                recommendations: List[str] = []
 
                 if avg_precision < 0.6:
                     recommendations.append(
@@ -545,7 +544,7 @@ class SearchQualityValidator:
                 current_metrics = self.validation_history[-1].get("metrics", {})
                 previous_metrics = self.validation_history[-2].get("metrics", {})
 
-                trend_analysis: dict[str, str] = {}
+                trend_analysis: Dict[str, str] = {}
 
                 for metric_name in ["average_precision_at_5", "success_rate"]:
                     current_val = current_metrics.get(metric_name, 0.0)

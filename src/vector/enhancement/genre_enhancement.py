@@ -6,7 +6,7 @@ text models for better anime genre classification and semantic understanding.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -155,7 +155,7 @@ class GenreEnhancementModel(nn.Module):
         # Dropout
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, text_embeddings: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, text_embeddings: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Forward pass through genre enhancement model.
 
         Args:
@@ -200,16 +200,16 @@ class GenreEnhancementFinetuner:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Model components
-        self.enhancement_model: GenreEnhancementModel | None = None
-        self.optimizer: AdamW | None = None
-        self.loss_fn: dict[str, nn.Module] | None = None
+        self.enhancement_model: Optional[GenreEnhancementModel] = None
+        self.optimizer: Optional[AdamW] = None
+        self.loss_fn: Optional[Dict[str, nn.Module]] = None
 
         # Training state
         self.num_genres = 0
-        self.genre_vocab: dict[str, int] = {}
-        self.theme_vocab: dict[str, int] = {}
-        self.target_vocab: dict[str, int] = {}
-        self.mood_vocab: dict[str, int] = {}
+        self.genre_vocab: Dict[str, int] = {}
+        self.theme_vocab: Dict[str, int] = {}
+        self.target_vocab: Dict[str, int] = {}
+        self.mood_vocab: Dict[str, int] = {}
         self.is_trained = False
 
         logger.info(f"Genre enhancement fine-tuner initialized on {self.device}")
@@ -359,7 +359,7 @@ class GenreEnhancementFinetuner:
             f"Created auxiliary vocabularies: {len(self.theme_vocab)} themes, {len(self.target_vocab)} targets, {len(self.mood_vocab)} moods"
         )
 
-    def _infer_auxiliary_labels(self, sample) -> tuple[list[str], str, str]:
+    def _infer_auxiliary_labels(self, sample) -> Tuple[List[str], str, str]:
         """Infer auxiliary labels from sample data.
 
         Args:
@@ -422,7 +422,7 @@ class GenreEnhancementFinetuner:
 
         return themes, target, mood
 
-    def train_step(self, batch: dict[str, Any]) -> float:
+    def train_step(self, batch: Dict[str, Any]) -> float:
         """Perform one training step.
 
         Args:
@@ -501,7 +501,7 @@ class GenreEnhancementFinetuner:
 
         return total_loss.item()
 
-    def evaluate(self, dataloader: DataLoader) -> dict[str, float]:
+    def evaluate(self, dataloader: DataLoader) -> Dict[str, float]:
         """Evaluate model on validation set.
 
         Args:
@@ -589,7 +589,7 @@ class GenreEnhancementFinetuner:
 
     def predict_genres(
         self, text_embedding: np.ndarray, threshold: float = 0.5
-    ) -> list[tuple[str, float]]:
+    ) -> List[Tuple[str, float]]:
         """Predict genres from text embedding.
 
         Args:
@@ -722,7 +722,7 @@ class GenreEnhancementFinetuner:
 
         logger.info(f"Genre enhancement model loaded from {load_path}")
 
-    def get_model_info(self) -> dict[str, Any]:
+    def get_model_info(self) -> Dict[str, Any]:
         """Get model information.
 
         Returns:
