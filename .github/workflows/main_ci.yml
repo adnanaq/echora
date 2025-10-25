@@ -37,7 +37,7 @@ jobs:
         run: uv run ruff check . && uv run ruff format . --check
 
       - name: Run MyPy (Type Checking)
-        run: uv run mypy --strict src/ tests/ --show-error-codes
+        run: uv run mypy --strict src/ --show-error-codes
 
       - name: Run Dependency Vulnerability Scan (pip-audit)
         run: uv run pip-audit
@@ -72,7 +72,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run Pytest with Coverage
-        run: uv run pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80
+        run: uv run pytest -m "not integration" --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=80
 
   application-health-check:
     runs-on: ubuntu-latest

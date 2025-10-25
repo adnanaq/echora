@@ -6,7 +6,8 @@ Provides isolated test collection to avoid touching production data.
 
 import pytest
 import pytest_asyncio
-from src.config.settings import Settings, get_settings
+
+from src.config.settings import get_settings
 from src.vector.client.qdrant_client import QdrantClient
 
 
@@ -35,6 +36,6 @@ async def client(settings):
     # Cleanup: Delete test collection after tests for isolation
     try:
         await client.delete_collection()
-    except Exception as e:
+    except Exception:
         # Ignore cleanup errors to avoid test failures
         pass

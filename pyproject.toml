@@ -106,6 +106,10 @@ filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit tests (default)",
+]
 
 [tool.mypy]
 mypy_path = "stubs"
