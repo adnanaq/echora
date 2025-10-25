@@ -1,0 +1,11 @@
+# Trivy Ignore File
+# List CVE IDs that should be ignored during scanning
+# Format: One CVE-ID per line
+#
+# Example:
+# CVE-2024-12345
+#
+# Use this file to suppress known false positives or accepted risks
+# Document the reason for each ignored CVE
+
+# Add ignored CVEs below this line
