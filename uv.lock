@@ -188,11 +188,6 @@ dev = [
     { name = "types-setuptools" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = "==3.12.13" },
@@ -222,7 +217,7 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.14.1" },
     { name = "requests", specifier = ">=2.32.4" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=13.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.4" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "scikit-learn-stubs", marker = "extra == 'dev'", specifier = ">=0.0.3" },
     { name = "scipy-stubs", marker = "extra == 'dev'", specifier = ">=1.16.2.0" },
@@ -237,9 +232,6 @@ requires-dist = [
     { name = "uvicorn", specifier = "==0.34.3" },
 ]
 provides-extras = ["dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.14.2" }]
 
 [[package]]
 name = "annotated-types"
