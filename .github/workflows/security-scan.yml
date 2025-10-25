@@ -44,7 +44,7 @@ jobs:
         with:
           image-ref: "anime-vector-service:${{ github.sha }}"
           format: "sarif"
-          output: "trivy-container-results.sarif"
+          output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
           exit-code: "1" # Fail CI on critical/high vulnerabilities
           timeout: "10m"
@@ -53,8 +53,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: success() || failure()
         with:
-          sarif_file: "trivy-container-results.sarif"
-          category: "container-scan"
+          sarif_file: "trivy-results.sarif"
 
   trivy-filesystem-scan:
     name: Trivy Filesystem Scan
@@ -72,7 +71,7 @@ jobs:
           scan-type: "fs"
           scan-ref: "."
           format: "sarif"
-          output: "trivy-fs-results.sarif"
+          output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH,MEDIUM"
           exit-code: "0" # Don't fail CI, just report
 
@@ -80,8 +79,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: "trivy-fs-results.sarif"
-          category: "filesystem-scan"
+          sarif_file: "trivy-results.sarif"
 
   trivy-config-scan:
     name: Trivy Config Scan
@@ -99,7 +97,7 @@ jobs:
           scan-type: "config"
           scan-ref: "."
           format: "sarif"
-          output: "trivy-config-results.sarif"
+          output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
           exit-code: "0" # Don't fail CI, just report
 
@@ -107,5 +105,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: "trivy-config-results.sarif"
-          category: "config-scan"
+          sarif_file: "trivy-results.sarif"
