@@ -49,12 +49,6 @@ jobs:
           exit-code: "1" # Fail CI on critical/high vulnerabilities
           timeout: "10m"
 
-      - name: Show Trivy vulnerabilities in logs
-        run: trivy image --severity CRITICAL,HIGH --format table anime-vector-service:${{ github.sha }}
-
-      - name: Inspect SARIF file
-        run: jq '.runs[].results | length' trivy-results.sarif
-
       - name: Upload Trivy container scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: success() || failure()
