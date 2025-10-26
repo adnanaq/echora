@@ -50,6 +50,7 @@ dev = [
     # Development dependencies
     "mypy>=1.18.1",
     "ruff>=0.14.2",
+    "black>=25.9.0",
 
     # Pre-commit hooks
     "pre-commit>=4.0.0",
