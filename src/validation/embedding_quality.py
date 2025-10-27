@@ -9,7 +9,7 @@ This module implements comprehensive embedding quality monitoring including:
 
 import logging
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import numpy as np
 from scipy import stats
@@ -33,7 +33,7 @@ class EmbeddingQualityMonitor:
             history_days: Number of days to retain metrics history
         """
         self.history_days = history_days
-        self.metrics_history: List[Dict[str, Any]] = []
+        self.metrics_history: list[dict[str, Any]] = []
 
         # Alert thresholds from technical.md specifications
         self.alert_bands = {
@@ -54,9 +54,9 @@ class EmbeddingQualityMonitor:
     def compute_embedding_quality_metrics(
         self,
         embeddings: np.ndarray,
-        metadata: List[Dict[str, Any]],
+        metadata: list[dict[str, Any]],
         vector_type: str = "text",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute comprehensive embedding quality metrics.
 
         Args:
@@ -68,7 +68,7 @@ class EmbeddingQualityMonitor:
             Dict of quality metrics with scores
         """
         try:
-            metrics: Dict[str, Any] = {
+            metrics: dict[str, Any] = {
                 "timestamp": time.time(),
                 "vector_type": vector_type,
                 "n_samples": len(embeddings),
@@ -106,7 +106,7 @@ class EmbeddingQualityMonitor:
             return {"error": str(e), "timestamp": time.time()}
 
     def _compute_genre_clustering_purity(
-        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: list[dict[str, Any]]
     ) -> float:
         """Compute genre clustering purity score.
 
@@ -155,7 +155,7 @@ class EmbeddingQualityMonitor:
             return 0.0
 
     def _compute_studio_visual_consistency(
-        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: list[dict[str, Any]]
     ) -> float:
         """Compute studio visual consistency score for image embeddings."""
         try:
@@ -177,8 +177,6 @@ class EmbeddingQualityMonitor:
             valid_embeddings = embeddings[valid_indices]
 
             # Compute intra-studio vs inter-studio similarity
-            studio_similarities: Dict[str, List[float]] = {}
-
             unique_studios = list(set(studio_labels))
             intra_similarities = []
             inter_similarities = []
@@ -234,12 +232,12 @@ class EmbeddingQualityMonitor:
             return 0.0
 
     def _compute_temporal_consistency(
-        self, embeddings: np.ndarray, metadata: List[Dict[str, Any]]
+        self, embeddings: np.ndarray, metadata: list[dict[str, Any]]
     ) -> float:
         """Compute temporal consistency for franchise/sequel relationships."""
         try:
             # Look for franchise relationships in metadata
-            franchise_groups: Dict[str, List[int]] = {}
+            franchise_groups: dict[str, list[int]] = {}
 
             for i, meta in enumerate(metadata):
                 # Check for franchise indicators
@@ -313,7 +311,7 @@ class EmbeddingQualityMonitor:
 
     def _compute_embedding_space_metrics(
         self, embeddings: np.ndarray
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Compute general embedding space quality metrics."""
         try:
             metrics = {}
@@ -354,7 +352,7 @@ class EmbeddingQualityMonitor:
         current_embeddings: np.ndarray,
         reference_embeddings: np.ndarray,
         threshold: float = 0.1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Detect distribution shift using Wasserstein distance.
 
         Args:
@@ -368,7 +366,7 @@ class EmbeddingQualityMonitor:
         try:
             # Compute dimension-wise Wasserstein distances
             n_dims = min(current_embeddings.shape[1], reference_embeddings.shape[1])
-            wasserstein_distances: List[float] = []
+            wasserstein_distances: list[float] = []
 
             for dim in range(n_dims):
                 current_dim = current_embeddings[:, dim]
@@ -407,9 +405,9 @@ class EmbeddingQualityMonitor:
         self,
         text_embeddings: np.ndarray,
         image_embeddings: np.ndarray,
-        same_anime_pairs: List[Tuple[int, int]],
-        random_pairs: List[Tuple[int, int]],
-    ) -> Dict[str, Any]:
+        same_anime_pairs: list[tuple[int, int]],
+        random_pairs: list[tuple[int, int]],
+    ) -> dict[str, Any]:
         """Validate cross-modal consistency between text and image embeddings.
 
         Implementation of contrastive testing protocol from technical.md.
@@ -479,7 +477,7 @@ class EmbeddingQualityMonitor:
             logger.error(f"Failed to validate cross-modal consistency: {e}")
             return {"error": str(e)}
 
-    def _add_to_history(self, metrics: Dict[str, Any]) -> None:
+    def _add_to_history(self, metrics: dict[str, Any]) -> None:
         """Add metrics to historical tracking."""
         self.metrics_history.append(metrics)
 
@@ -489,7 +487,7 @@ class EmbeddingQualityMonitor:
             m for m in self.metrics_history if m.get("timestamp", 0) > cutoff_time
         ]
 
-    def get_trend_analysis(self, metric_name: str, days: int = 7) -> Dict[str, Any]:
+    def get_trend_analysis(self, metric_name: str, days: int = 7) -> dict[str, Any]:
         """Analyze metric trends over specified period."""
         try:
             cutoff_time = time.time() - (days * 24 * 3600)
@@ -546,7 +544,7 @@ class EmbeddingQualityMonitor:
         else:
             return "critical"
 
-    def generate_quality_report(self) -> Dict[str, Any]:
+    def generate_quality_report(self) -> dict[str, Any]:
         """Generate comprehensive embedding quality report."""
         try:
             if not self.metrics_history:
@@ -554,7 +552,7 @@ class EmbeddingQualityMonitor:
 
             latest_metrics = self.metrics_history[-1]
 
-            report: Dict[str, Any] = {
+            report: dict[str, Any] = {
                 "timestamp": time.time(),
                 "latest_metrics": latest_metrics,
                 "alert_summary": {},

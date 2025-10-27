@@ -22,7 +22,7 @@ Usage:
 import logging
 import re
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -30,7 +30,7 @@ from bs4 import BeautifulSoup, Tag
 logger = logging.getLogger(__name__)
 
 
-def fetch_anisearch_url_data(url: str) -> Optional[Dict[str, Any]]:
+def fetch_anisearch_url_data(url: str) -> dict[str, Any] | None:
     """
     Fetch title and relationship data from an AniSearch URL.
 
@@ -81,7 +81,7 @@ def fetch_anisearch_url_data(url: str) -> Optional[Dict[str, Any]]:
 
 def _parse_anisearch_response(
     html_content: str, url: str, anime_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Parse AniSearch HTML response to extract title and relationship info."""
     try:
         soup = BeautifulSoup(html_content, "html.parser")
@@ -111,7 +111,7 @@ def _parse_anisearch_response(
         return _create_fallback_result(url, anime_id)
 
 
-def _extract_title_from_page(soup: BeautifulSoup) -> Optional[str]:
+def _extract_title_from_page(soup: BeautifulSoup) -> str | None:
     """Extract anime title from AniSearch page using multiple strategies."""
 
     # Strategy 1: Try h1 heading (most reliable for anime pages)
@@ -157,19 +157,22 @@ def _extract_title_from_page(soup: BeautifulSoup) -> Optional[str]:
                 name = data["name"].strip()
                 if name and not name.lower().startswith("anisearch"):
                     return name
-        except:
+        except (json.JSONDecodeError, KeyError, AttributeError):
+            # json.JSONDecodeError: Malformed JSON in script tag
+            # KeyError: Expected key not in data
+            # AttributeError: .strip() failed on non-string
             pass
 
     return None
 
 
-def _extract_context_data(soup: BeautifulSoup) -> Dict[str, Any]:
+def _extract_context_data(soup: BeautifulSoup) -> dict[str, Any]:
     """
     Extract contextual data for AI-powered relationship inference.
 
     Instead of hardcoded regex patterns, extract rich context that AI can analyze.
     """
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {}
 
     # Extract description from OpenGraph or meta description
     og_desc = soup.find("meta", property="og:description")
@@ -206,7 +209,9 @@ def _extract_context_data(soup: BeautifulSoup) -> Dict[str, Any]:
                     context["episodes"] = json_data["numberOfEpisodes"]
                 if "@type" in json_data:
                     context["type"] = json_data["@type"]
-        except:
+        except (json.JSONDecodeError, KeyError):
+            # json.JSONDecodeError: Malformed JSON in script tag
+            # KeyError: Expected key not in json_data dict
             pass
 
     # Extract genre information
@@ -240,7 +245,7 @@ def _extract_context_data(soup: BeautifulSoup) -> Dict[str, Any]:
     return context
 
 
-def _create_fallback_result(url: str, anime_id: str) -> Dict[str, Any]:
+def _create_fallback_result(url: str, anime_id: str) -> dict[str, Any]:
     """Create fallback result when extraction fails."""
     return {
         "title": f"AniSearch Anime {anime_id}",
@@ -252,7 +257,7 @@ def _create_fallback_result(url: str, anime_id: str) -> Dict[str, Any]:
 
 
 # Batch processing function for multiple URLs
-def fetch_multiple_anisearch_urls(urls: list[str]) -> Dict[str, Dict[str, Any]]:
+def fetch_multiple_anisearch_urls(urls: list[str]) -> dict[str, dict[str, Any]]:
     """
     Fetch data for multiple AniSearch URLs with proper rate limiting.
 
@@ -265,7 +270,7 @@ def fetch_multiple_anisearch_urls(urls: list[str]) -> Dict[str, Dict[str, Any]]:
     results = {}
 
     for i, url in enumerate(urls):
-        logger.info(f"Processing AniSearch URL {i+1}/{len(urls)}: {url}")
+        logger.info(f"Processing AniSearch URL {i + 1}/{len(urls)}: {url}")
 
         result = fetch_anisearch_url_data(url)
         if result:
