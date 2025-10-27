@@ -208,8 +208,6 @@ service.pid
 
 # Enrichment process temp files
 temp/
-current_anime*.json
-data/current_anime*.json
 
 # AI processing temporary files
 stage*_*.json
@@ -217,3 +215,4 @@ __pycache__/
 
 .gemini/
 gha-creds-*.json
+.github/workflows/gemini-*.yml
