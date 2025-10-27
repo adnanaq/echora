@@ -103,14 +103,14 @@ async def test_vector_persistence_after_update(client: QdrantClient):
 
     # Should find the anime we just updated (should be top result)
     found_ids = [hit["id"] for hit in search_results]
-    assert (
-        test_anime.id in found_ids
-    ), "Updated anime should be searchable by title_vector"
+    assert test_anime.id in found_ids, (
+        "Updated anime should be searchable by title_vector"
+    )
 
     # Verify it's actually the first result (highest similarity)
-    assert (
-        search_results[0]["id"] == test_anime.id
-    ), "Updated anime should be the top search result"
+    assert search_results[0]["id"] == test_anime.id, (
+        "Updated anime should be the top search result"
+    )
 
 
 @pytest.mark.asyncio
@@ -179,15 +179,15 @@ async def test_detailed_results_provide_accurate_tracking(client: QdrantClient):
     failed_anime_ids = [r["anime_id"] for r in result["results"] if not r["success"]]
     successful_anime_ids = [r["anime_id"] for r in result["results"] if r["success"]]
 
-    assert (
-        test_anime[1].id in failed_anime_ids
-    ), "anime-1 should be identified as failed"
-    assert (
-        test_anime[0].id in successful_anime_ids
-    ), "anime-0 should be identified as successful"
-    assert (
-        test_anime[2].id in successful_anime_ids
-    ), "anime-2 should be identified as successful"
+    assert test_anime[1].id in failed_anime_ids, (
+        "anime-1 should be identified as failed"
+    )
+    assert test_anime[0].id in successful_anime_ids, (
+        "anime-0 should be identified as successful"
+    )
+    assert test_anime[2].id in successful_anime_ids, (
+        "anime-2 should be identified as successful"
+    )
 
     # Verify error messages are provided for failures
     for result_detail in result["results"]:
@@ -270,12 +270,12 @@ async def test_all_or_nothing_anime_success_logic(client: QdrantClient):
     )
 
     # This anime should NOT be counted as successful because genre_vector failed
-    assert (
-        anime_fully_successful == 0
-    ), "Anime with partial vector success should NOT be counted as successful"
-    assert (
-        anime_success_map[test_anime.id]["success"] == 2
-    ), "Should have 2 successful vectors"
+    assert anime_fully_successful == 0, (
+        "Anime with partial vector success should NOT be counted as successful"
+    )
+    assert anime_success_map[test_anime.id]["success"] == 2, (
+        "Should have 2 successful vectors"
+    )
     assert anime_success_map[test_anime.id]["total"] == 3, "Should have 3 total vectors"
 
 
@@ -361,17 +361,17 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient)
             vector_stats[vector_name]["failed"] += 1
 
     # Verify per-vector statistics
-    assert (
-        vector_stats["title_vector"]["success"] == 3
-    ), "All 3 title vectors should succeed"
+    assert vector_stats["title_vector"]["success"] == 3, (
+        "All 3 title vectors should succeed"
+    )
     assert vector_stats["title_vector"]["failed"] == 0, "No title vector failures"
 
-    assert (
-        vector_stats["genre_vector"]["success"] == 2
-    ), "2 genre vectors should succeed"
-    assert (
-        vector_stats["genre_vector"]["failed"] == 1
-    ), "1 genre vector should fail (anime-1)"
+    assert vector_stats["genre_vector"]["success"] == 2, (
+        "2 genre vectors should succeed"
+    )
+    assert vector_stats["genre_vector"]["failed"] == 1, (
+        "1 genre vector should fail (anime-1)"
+    )
 
 
 @pytest.mark.asyncio
@@ -561,29 +561,29 @@ async def test_mixed_batch_all_combinations(client: QdrantClient):
             anime_success_map[anime_id]["success"] += 1
 
     # Verify all combinations
-    assert (
-        anime_success_map[test_anime[0].id]["success"] == 3
-    ), "Anime 0: all should succeed"
+    assert anime_success_map[test_anime[0].id]["success"] == 3, (
+        "Anime 0: all should succeed"
+    )
     assert anime_success_map[test_anime[0].id]["total"] == 3
 
-    assert (
-        anime_success_map[test_anime[1].id]["success"] == 2
-    ), "Anime 1: 2/3 should succeed"
+    assert anime_success_map[test_anime[1].id]["success"] == 2, (
+        "Anime 1: 2/3 should succeed"
+    )
     assert anime_success_map[test_anime[1].id]["total"] == 3
 
-    assert (
-        anime_success_map[test_anime[2].id]["success"] == 1
-    ), "Anime 2: 1/3 should succeed"
+    assert anime_success_map[test_anime[2].id]["success"] == 1, (
+        "Anime 2: 1/3 should succeed"
+    )
     assert anime_success_map[test_anime[2].id]["total"] == 3
 
-    assert (
-        anime_success_map[test_anime[3].id]["success"] == 0
-    ), "Anime 3: 0/3 should succeed"
+    assert anime_success_map[test_anime[3].id]["success"] == 0, (
+        "Anime 3: 0/3 should succeed"
+    )
     assert anime_success_map[test_anime[3].id]["total"] == 3
 
-    assert (
-        anime_success_map[test_anime[4].id]["success"] == 3
-    ), "Anime 4: all should succeed"
+    assert anime_success_map[test_anime[4].id]["success"] == 3, (
+        "Anime 4: all should succeed"
+    )
     assert anime_success_map[test_anime[4].id]["total"] == 3
 
     # Count fully successful anime (only anime 0 and 4)
@@ -653,9 +653,9 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient):
 
     # Verify all vector names are present
     result_vector_names = {r["vector_name"] for r in result["results"]}
-    assert result_vector_names == set(
-        vector_names
-    ), "All vector names should be present"
+    assert result_vector_names == set(vector_names), (
+        "All vector names should be present"
+    )
 
 
 @pytest.mark.asyncio
@@ -900,9 +900,9 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
     # All should have error messages about invalid vector names
     for r in result["results"]:
         assert not r["success"], "All should fail"
-        assert (
-            "invalid" in r["error"].lower() or "vector" in r["error"].lower()
-        ), "Error should mention invalid vector"
+        assert "invalid" in r["error"].lower() or "vector" in r["error"].lower(), (
+            "Error should mention invalid vector"
+        )
 
 
 @pytest.mark.asyncio
@@ -1209,9 +1209,9 @@ async def test_batch_size_boundaries(client: QdrantClient):
 
         result = await client._update_batch_vectors(batch_updates)
 
-        assert (
-            result["success"] == batch_size
-        ), f"Batch size {batch_size} should have {batch_size} successes"
+        assert result["success"] == batch_size, (
+            f"Batch size {batch_size} should have {batch_size} successes"
+        )
         assert result["failed"] == 0, f"Batch size {batch_size} should have 0 failures"
         assert len(result["results"]) == batch_size, f"Should have {batch_size} results"
 
@@ -1329,12 +1329,12 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient):
     similar2_result = next(r for r in search_results if r["id"] == "similar-2")
 
     # Both action anime should have high similarity scores (>0.7) for "Action Hero" query
-    assert (
-        similar1_result["similarity_score"] > 0.7
-    ), "Action Hero Adventure should have high similarity"
-    assert (
-        similar2_result["similarity_score"] > 0.7
-    ), "Action Hero Story should have high similarity"
+    assert similar1_result["similarity_score"] > 0.7, (
+        "Action Hero Adventure should have high similarity"
+    )
+    assert similar2_result["similarity_score"] > 0.7, (
+        "Action Hero Story should have high similarity"
+    )
 
     # If romance anime is in results, action anime should score higher
     different_result = next(
@@ -1449,13 +1449,13 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient):
 
     # Check error types are distinct and meaningful
     errors = [r["error"].lower() for r in result["results"]]
-    assert any(
-        "invalid" in e and "vector" in e for e in errors
-    ), "Should have invalid vector name error"
+    assert any("invalid" in e and "vector" in e for e in errors), (
+        "Should have invalid vector name error"
+    )
     assert any("dimension" in e for e in errors), "Should have dimension error"
-    assert any(
-        "valid" in e or "type" in e for e in errors
-    ), "Should have data type errors"
+    assert any("valid" in e or "type" in e for e in errors), (
+        "Should have data type errors"
+    )
 
 
 @pytest.mark.asyncio
@@ -1572,9 +1572,9 @@ async def test_result_structure_completeness(client: QdrantClient):
     assert "vector_name" in success_result, "Success must have vector_name"
     assert "success" in success_result, "Success must have success field"
     assert success_result["success"] is True, "success field must be True"
-    assert (
-        "error" not in success_result or success_result.get("error") is None
-    ), "Success should not have error"
+    assert "error" not in success_result or success_result.get("error") is None, (
+        "Success should not have error"
+    )
 
     # Check failure result structure
     failure_result = next(r for r in result["results"] if not r["success"])

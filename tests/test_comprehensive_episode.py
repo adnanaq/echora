@@ -476,7 +476,9 @@ async def test_comprehensive_episode_vector():
         assessment = (
             "EXCELLENT"
             if success_rate >= 90
-            else "GOOD" if success_rate >= 70 else "NEEDS WORK"
+            else "GOOD"
+            if success_rate >= 70
+            else "NEEDS WORK"
         )
         print(
             f"│ │ 🔬 Assessment:   │ {assessment:<10} │                                            │"

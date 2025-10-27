@@ -466,9 +466,7 @@ class QdrantClient:
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             # Simple health check by getting collections
-            await loop.run_in_executor(
-                None, lambda: self.client.get_collections()
-            )
+            await loop.run_in_executor(None, lambda: self.client.get_collections())
             return True
         except Exception as e:
             logger.error(f"Health check failed: {e}")

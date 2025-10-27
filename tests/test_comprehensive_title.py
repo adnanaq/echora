@@ -279,9 +279,9 @@ def test_title_vector_comprehensive():
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key][
-                "avg_score"
-            ] /= field_combination_stats[combination_key]["tests"]
+            field_combination_stats[combination_key]["avg_score"] /= (
+                field_combination_stats[combination_key]["tests"]
+            )
 
     # Print field combination analysis
     if field_combination_stats:
@@ -688,9 +688,9 @@ def test_multimodal_title_search():
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key][
-                "avg_score"
-            ] /= field_combination_stats[combination_key]["tests"]
+            field_combination_stats[combination_key]["avg_score"] /= (
+                field_combination_stats[combination_key]["tests"]
+            )
 
     # Results Summary using Rich formatter
     if total_tests > 0:

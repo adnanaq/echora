@@ -180,7 +180,9 @@ class TestResultFormatter:
             score_style = (
                 "bright_green"
                 if result_score >= 0.8
-                else "yellow" if result_score >= 0.6 else "white"
+                else "yellow"
+                if result_score >= 0.6
+                else "white"
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
 
@@ -298,7 +300,9 @@ class TestResultFormatter:
                 else (
                     "yellow"
                     if result_score >= 0.7
-                    else "red" if result_score >= 0.5 else "dim"
+                    else "red"
+                    if result_score >= 0.5
+                    else "dim"
                 )
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
@@ -404,7 +408,9 @@ class TestResultFormatter:
                 rate_style = (
                     "bright_green"
                     if success_rate >= 80
-                    else "yellow" if success_rate >= 60 else "red"
+                    else "yellow"
+                    if success_rate >= 60
+                    else "red"
                 )
                 rate_display = f"[{rate_style}]{success_rate:.0f}%[/{rate_style}]"
 
@@ -412,7 +418,9 @@ class TestResultFormatter:
                 score_style = (
                     "bright_green"
                     if avg_score >= 0.7
-                    else "yellow" if avg_score >= 0.4 else "red"
+                    else "yellow"
+                    if avg_score >= 0.4
+                    else "red"
                 )
                 score_display = f"[{score_style}]{avg_score:.3f}[/{score_style}]"
 
@@ -427,7 +435,9 @@ class TestResultFormatter:
                     fusion_style = (
                         "bright_green"
                         if fusion_rate >= 70
-                        else "yellow" if fusion_rate >= 40 else "dim"
+                        else "yellow"
+                        if fusion_rate >= 40
+                        else "dim"
                     )
                     fusion_display = (
                         f"[{fusion_style}]{fusion_rate:.0f}%[/{fusion_style}]"
@@ -492,7 +502,9 @@ class TestResultFormatter:
         border_style = (
             "bright_green"
             if success_rate >= 80
-            else "yellow" if success_rate >= 60 else "red"
+            else "yellow"
+            if success_rate >= 60
+            else "red"
         )
 
         self.console.print(
@@ -550,17 +562,23 @@ class TestResultFormatter:
         text_style = (
             "bright_green"
             if text_score >= 0.7
-            else "yellow" if text_score >= 0.4 else "red"
+            else "yellow"
+            if text_score >= 0.4
+            else "red"
         )
         image_style = (
             "bright_green"
             if image_score >= 0.7
-            else "yellow" if image_score >= 0.4 else "red"
+            else "yellow"
+            if image_score >= 0.4
+            else "red"
         )
         multi_style = (
             "bright_green"
             if multimodal_score >= 0.7
-            else "yellow" if multimodal_score >= 0.4 else "red"
+            else "yellow"
+            if multimodal_score >= 0.4
+            else "red"
         )
 
         details += (
@@ -596,7 +614,9 @@ class TestResultFormatter:
             border_style=(
                 "green"
                 if success_rate >= 80
-                else "yellow" if success_rate >= 60 else "red"
+                else "yellow"
+                if success_rate >= 60
+                else "red"
             ),
             padding=(1, 2),
         )
@@ -704,17 +724,23 @@ class TestResultFormatter:
         text_style = (
             "bright_green"
             if text_score >= 0.7
-            else "yellow" if text_score >= 0.4 else "red"
+            else "yellow"
+            if text_score >= 0.4
+            else "red"
         )
         image_style = (
             "bright_green"
             if image_score >= 0.7
-            else "yellow" if image_score >= 0.4 else "red"
+            else "yellow"
+            if image_score >= 0.4
+            else "red"
         )
         multi_style = (
             "bright_green"
             if multimodal_score >= 0.7
-            else "yellow" if multimodal_score >= 0.4 else "red"
+            else "yellow"
+            if multimodal_score >= 0.4
+            else "red"
         )
 
         score_content = f"[{text_style}]Text-only ({combination_key}):[/{text_style}] {text_score:.4f}\n"
@@ -939,7 +965,9 @@ class TestResultFormatter:
             score_style = (
                 "bright_green"
                 if result_score >= 0.8
-                else "yellow" if result_score >= 0.6 else "white"
+                else "yellow"
+                if result_score >= 0.6
+                else "white"
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
 

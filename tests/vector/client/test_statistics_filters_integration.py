@@ -238,16 +238,16 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         results.append(result)
 
         # Assert each filter test passed
-        assert (
-            "PASS" in result["status"]
-        ), f"Filter test failed: {description} - {result['status']}"
+        assert "PASS" in result["status"], (
+            f"Filter test failed: {description} - {result['status']}"
+        )
 
     # Assert all tests passed
     assert len(results) == len(test_cases)
     passed = sum(1 for r in results if "PASS" in r["status"])
-    assert passed == len(
-        test_cases
-    ), f"Only {passed}/{len(test_cases)} filter tests passed"
+    assert passed == len(test_cases), (
+        f"Only {passed}/{len(test_cases)} filter tests passed"
+    )
 
     # Test multi-platform combination filters
     # Test 1: High score on multiple platforms

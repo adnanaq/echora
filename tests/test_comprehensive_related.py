@@ -375,16 +375,14 @@ def create_comprehensive_related_query_patterns():
         # Pattern 1: Single Relation Direct (current approach)
         {
             "name": "Single Relation",
-            "generator": lambda anime_data, all_relations: generate_single_relation_query(
-                all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_single_relation_query(all_relations),
         },
         # Pattern 2: Multiple Relations Combined
         {
             "name": "Multi-Relation",
-            "generator": lambda anime_data, all_relations: generate_multi_relation_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_multi_relation_query(anime_data, all_relations),
         },
         # Pattern 3: Franchise-Wide Search
         {
@@ -396,37 +394,34 @@ def create_comprehensive_related_query_patterns():
         # Pattern 4: Type-Specific Collection
         {
             "name": "Type Collection",
-            "generator": lambda anime_data, all_relations: generate_type_collection_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_type_collection_query(anime_data, all_relations),
         },
         # Pattern 5: Source Material Hunt
         {
             "name": "Source Hunt",
-            "generator": lambda anime_data, all_relations: generate_source_material_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_source_material_query(anime_data, all_relations),
         },
         # Pattern 6: Character Universe Connection
         {
             "name": "Universe Connection",
-            "generator": lambda anime_data, all_relations: generate_universe_connection_query(
+            "generator": lambda anime_data,
+            all_relations: generate_universe_connection_query(
                 anime_data, all_relations
             ),
         },
         # Pattern 7: Temporal Relationship (sequence-based)
         {
             "name": "Temporal Sequence",
-            "generator": lambda anime_data, all_relations: generate_temporal_sequence_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_temporal_sequence_query(anime_data, all_relations),
         },
         # Pattern 8: Minimal Context (stress test)
         {
             "name": "Minimal Context",
-            "generator": lambda anime_data, all_relations: generate_minimal_context_query(
-                all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_minimal_context_query(all_relations),
         },
     ]
 
