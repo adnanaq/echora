@@ -130,15 +130,15 @@ async def test_update_batch_vectors(
     assert "results" in result, "Result should contain detailed results list"
     assert result["success"] == len(seeded_test_data), "All updates should succeed"
     assert result["failed"] == 0, "No updates should fail"
-    assert len(result["results"]) == len(seeded_test_data), (
-        "Should have result for each update"
-    )
+    assert len(result["results"]) == len(
+        seeded_test_data
+    ), "Should have result for each update"
 
     # Verify all detailed results show success
     for update_result in result["results"]:
-        assert update_result["success"] is True, (
-            f"Update should succeed: {update_result}"
-        )
+        assert (
+            update_result["success"] is True
+        ), f"Update should succeed: {update_result}"
         assert "anime_id" in update_result, "Result should contain anime_id"
         assert "vector_name" in update_result, "Result should contain vector_name"
 
@@ -369,9 +369,9 @@ async def test_update_batch_vectors_with_failures(
 
     # Check failed update has error message
     assert "error" in failed_updates[0], "Failed update should have error message"
-    assert "invalid_vector_name" in str(failed_updates[0]["error"]).lower(), (
-        "Error should mention invalid vector"
-    )
+    assert (
+        "invalid_vector_name" in str(failed_updates[0]["error"]).lower()
+    ), "Error should mention invalid vector"
 
 
 @pytest.mark.asyncio
@@ -457,12 +457,12 @@ async def test_update_batch_vectors_partial_anime_success(
 
     # Verify we can identify which specific update failed
     failed_result = [r for r in result["results"] if not r["success"]][0]
-    assert failed_result["vector_name"] == "genre_vector", (
-        "Should identify genre_vector as failed"
-    )
-    assert "dimension" in failed_result["error"].lower(), (
-        "Error should mention dimension mismatch"
-    )
+    assert (
+        failed_result["vector_name"] == "genre_vector"
+    ), "Should identify genre_vector as failed"
+    assert (
+        "dimension" in failed_result["error"].lower()
+    ), "Error should mention dimension mismatch"
 
 
 @pytest.mark.asyncio
@@ -549,9 +549,9 @@ async def test_update_batch_vectors_dimension_validation(
     ]
     validation_errors = [r for r in result["results"] if "valid" in r["error"].lower()]
 
-    assert len(dimension_errors) >= 2, (
-        "Should have at least 2 dimension mismatch errors"
-    )
+    assert (
+        len(dimension_errors) >= 2
+    ), "Should have at least 2 dimension mismatch errors"
     assert len(validation_errors) >= 1, "Empty vector should fail validation check"
 
 
@@ -628,9 +628,9 @@ async def test_update_batch_vectors_same_vector_multiple_updates(
     assert result["success"] == 1, "Should have 1 successful update (deduplicated)"
     assert result["failed"] == 0, "No failures expected"
     assert len(result["results"]) == 1, "Should have 1 result (deduplicated)"
-    assert result["results"][0]["vector_name"] == "title_vector", (
-        "Should be title_vector"
-    )
+    assert (
+        result["results"][0]["vector_name"] == "title_vector"
+    ), "Should be title_vector"
     assert result["results"][0]["anime_id"] == anime.id, "Should be correct anime_id"
 
 
@@ -711,9 +711,9 @@ async def test_update_batch_vectors_large_batch(
 
     # Verify all vector names are present in results
     result_vector_names = {r["vector_name"] for r in result["results"]}
-    assert result_vector_names == set(text_vector_names), (
-        "All vectors should be in results"
-    )
+    assert result_vector_names == set(
+        text_vector_names
+    ), "All vectors should be in results"
 
 
 @pytest.mark.asyncio
@@ -806,9 +806,9 @@ async def test_deduplication_last_wins_policy(client: QdrantClient):
     # Find our anime in results
     our_anime = next((r for r in search_result if r["id"] == anime.id), None)
     assert our_anime is not None, f"Should find anime {anime.id} in results"
-    assert our_anime["similarity_score"] > 0.99, (
-        "Should match the last vector with high similarity"
-    )
+    assert (
+        our_anime["similarity_score"] > 0.99
+    ), "Should match the last vector with high similarity"
 
 
 @pytest.mark.asyncio
@@ -846,9 +846,9 @@ async def test_deduplication_first_wins_policy(client: QdrantClient):
     )
     our_anime = next((r for r in search_result if r["id"] == anime.id), None)
     assert our_anime is not None, f"Should find anime {anime.id} in results"
-    assert our_anime["similarity_score"] > 0.99, (
-        "Should match the first vector with high similarity"
-    )
+    assert (
+        our_anime["similarity_score"] > 0.99
+    ), "Should match the first vector with high similarity"
 
 
 @pytest.mark.asyncio
@@ -902,9 +902,9 @@ async def test_deduplication_warn_policy(client: QdrantClient, caplog):
     assert result["duplicates_removed"] == 1, "Should track duplicate removal"
 
     # Verify warning was logged
-    assert any("Duplicate update for" in record.message for record in caplog.records), (
-        "Should log warning about duplicate"
-    )
+    assert any(
+        "Duplicate update for" in record.message for record in caplog.records
+    ), "Should log warning about duplicate"
 
 
 @pytest.mark.asyncio
@@ -928,12 +928,12 @@ async def test_no_duplicates_all_policies(client: QdrantClient):
 
     for policy in ["first-wins", "last-wins", "fail", "warn"]:
         result = await client._update_batch_vectors(batch_updates, dedup_policy=policy)
-        assert result["success"] == 2, (
-            f"Policy {policy} should succeed with no duplicates"
-        )
-        assert result["duplicates_removed"] == 0, (
-            f"Policy {policy} should report 0 duplicates"
-        )
+        assert (
+            result["success"] == 2
+        ), f"Policy {policy} should succeed with no duplicates"
+        assert (
+            result["duplicates_removed"] == 0
+        ), f"Policy {policy} should report 0 duplicates"
 
 
 # ============================================================================
@@ -1014,9 +1014,9 @@ async def test_max_retries_exceeded(client: QdrantClient):
     assert call_count[0] == 3, "Should try initial + 2 retries = 3 total attempts"
     assert result["success"] == 0, "Should fail after max retries"
     assert result["failed"] == 1, "Should mark update as failed"
-    assert "failed after" in result["results"][0]["error"].lower(), (
-        "Error should mention retry attempts"
-    )
+    assert (
+        "failed after" in result["results"][0]["error"].lower()
+    ), "Error should mention retry attempts"
 
 
 @pytest.mark.asyncio
@@ -1075,12 +1075,12 @@ async def test_update_batch_anime_vectors_basic(client: QdrantClient):
     )
 
     assert result["total_anime"] == 2, "Should process 2 anime"
-    assert result["total_requested_updates"] == 4, (
-        "Should request 2 vectors × 2 anime = 4 updates"
-    )
-    assert result["successful_updates"] >= 2, (
-        "Should have at least some successful updates"
-    )
+    assert (
+        result["total_requested_updates"] == 4
+    ), "Should request 2 vectors × 2 anime = 4 updates"
+    assert (
+        result["successful_updates"] >= 2
+    ), "Should have at least some successful updates"
     assert "results" in result, "Should have detailed results"
     assert "generation_failures_detail" in result, "Should track generation failures"
 
@@ -1132,9 +1132,9 @@ async def test_update_batch_anime_vectors_with_progress_callback(client: QdrantC
     )
 
     assert len(callback_calls) >= 2, "Should call callback for multiple batches"
-    assert callback_calls[-1]["current"] == 5, (
-        "Last callback should report all 5 anime processed"
-    )
+    assert (
+        callback_calls[-1]["current"] == 5
+    ), "Last callback should report all 5 anime processed"
     assert callback_calls[-1]["total"] == 5, "Should report correct total"
 
 
@@ -1163,9 +1163,9 @@ async def test_update_batch_anime_vectors_handles_generation_failures(
     # Some generations should fail due to empty data
     assert result["generation_failures"] >= 0, "Should track generation failures"
     if result["generation_failures"] > 0:
-        assert len(result["generation_failures_detail"]) > 0, (
-            "Should provide failure details"
-        )
+        assert (
+            len(result["generation_failures_detail"]) > 0
+        ), "Should provide failure details"
 
 
 @pytest.mark.asyncio

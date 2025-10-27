@@ -15,7 +15,8 @@ import argparse
 import asyncio
 import json
 import re
-from typing import Any, Dict, List, Optional, cast
+from datetime import UTC
+from typing import Any, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -70,8 +71,8 @@ def _extract_slug_from_url(url: str) -> str:
 
 
 async def fetch_animeplanet_anime(
-    slug: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    slug: str, return_data: bool = True, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Crawls and processes anime data from anime-planet.com.
     All data is available on the main anime page - no navigation needed.
@@ -193,7 +194,7 @@ async def fetch_animeplanet_anime(
                     print("Extraction returned empty data.")
                     return None
 
-                anime_data = cast(Dict[str, Any], data[0])
+                anime_data = cast(dict[str, Any], data[0])
 
                 # Extract JSON-LD data (most comprehensive source)
                 if result.html:
@@ -231,7 +232,7 @@ async def fetch_animeplanet_anime(
 
                 # Process rank
                 rank = _extract_rank(
-                    cast(List[Dict[str, str]], anime_data.get("rank_text", []))
+                    cast(list[dict[str, str]], anime_data.get("rank_text", []))
                 )
                 if rank:
                     anime_data["rank"] = rank
@@ -289,13 +290,13 @@ async def fetch_animeplanet_anime(
                     if start_date and end_date:
                         anime_data["status"] = "COMPLETED"
                     elif start_date and not end_date:
-                        from datetime import datetime, timezone
+                        from datetime import datetime
 
                         try:
                             start_dt = datetime.fromisoformat(
                                 start_date.replace("Z", "+00:00")
                             )
-                            now = datetime.now(timezone.utc)
+                            now = datetime.now(UTC)
                             if start_dt > now:
                                 anime_data["status"] = "UPCOMING"
                             else:
@@ -323,7 +324,7 @@ async def fetch_animeplanet_anime(
         return None
 
 
-def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
+def _extract_json_ld(html: str) -> dict[str, Any] | None:
     """Extract JSON-LD structured data from HTML."""
     try:
         import html as html_lib
@@ -339,7 +340,7 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
             # Unescape JSON escapes only
             json_text = json_text.replace(r"\/", "/")
             json_ld_raw = json.loads(json_text)
-            json_ld = cast(Dict[str, Any], json_ld_raw)
+            json_ld = cast(dict[str, Any], json_ld_raw)
 
             # Decode HTML entities in description
             if json_ld.get("description"):
@@ -361,7 +362,7 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
+def _extract_rank(rank_texts: list[dict[str, str]]) -> int | None:
     """Extract popularity rank from entry bar text."""
     for item in rank_texts:
         text = item.get("text", "")
@@ -375,7 +376,7 @@ def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
     return None
 
 
-def _extract_studios(studios_raw: List[Dict[str, str]]) -> List[str]:
+def _extract_studios(studios_raw: list[dict[str, str]]) -> list[str]:
     """Extract unique studio names."""
     studios = []
     for item in studios_raw:
@@ -385,7 +386,7 @@ def _extract_studios(studios_raw: List[Dict[str, str]]) -> List[str]:
     return studios[:5]  # Limit to 5 main studios
 
 
-def _determine_season_from_date(date_str: str) -> Optional[str]:
+def _determine_season_from_date(date_str: str) -> str | None:
     """Determine anime season from start date string."""
     if not date_str:
         return None
@@ -412,8 +413,8 @@ def _determine_season_from_date(date_str: str) -> Optional[str]:
 
 
 def _process_related_anime(
-    related_anime_raw: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    related_anime_raw: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Process related anime data from raw extracted list."""
     related_anime = []
 

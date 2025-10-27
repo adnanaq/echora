@@ -23,14 +23,14 @@ Usage:
 import asyncio
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .anidb_helper import AniDBEnrichmentHelper
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_anidb_url_data(url: str) -> Optional[Dict[str, Any]]:
+def fetch_anidb_url_data(url: str) -> dict[str, Any] | None:
     """
     Fetch title and relationship data from an AniDB URL.
 
@@ -72,7 +72,7 @@ def fetch_anidb_url_data(url: str) -> Optional[Dict[str, Any]]:
         return _create_fallback_result(url, "error")
 
 
-async def _fetch_anidb_data_async(anidb_id: int) -> Optional[Dict[str, Any]]:
+async def _fetch_anidb_data_async(anidb_id: int) -> dict[str, Any] | None:
     """Fetch data from AniDB API using the existing helper."""
     helper = AniDBEnrichmentHelper()
     try:
@@ -82,7 +82,7 @@ async def _fetch_anidb_data_async(anidb_id: int) -> Optional[Dict[str, Any]]:
         await helper.close()
 
 
-def _extract_anidb_id_from_url(url: str) -> Optional[int]:
+def _extract_anidb_id_from_url(url: str) -> int | None:
     """Extract AniDB anime ID from various URL formats."""
 
     # Common AniDB URL patterns
@@ -104,8 +104,8 @@ def _extract_anidb_id_from_url(url: str) -> Optional[int]:
 
 
 def _parse_anidb_response(
-    anime_data: Dict[str, Any], url: str, anidb_id: int
-) -> Dict[str, Any]:
+    anime_data: dict[str, Any], url: str, anidb_id: int
+) -> dict[str, Any]:
     """Parse AniDB API response to extract title and context info."""
     try:
         # Extract title from AniDB titles hierarchy
@@ -133,7 +133,7 @@ def _parse_anidb_response(
         return _create_fallback_result(url, anidb_id)
 
 
-def _extract_best_title(anime_data: Dict[str, Any]) -> Optional[str]:
+def _extract_best_title(anime_data: dict[str, Any]) -> str | None:
     """Extract the best title from AniDB data using title hierarchy."""
     titles = anime_data.get("titles", {})
 
@@ -150,7 +150,7 @@ def _extract_best_title(anime_data: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _extract_context_data(anime_data: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_context_data(anime_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract contextual data for AI-powered relationship inference.
 
@@ -218,7 +218,7 @@ def _extract_context_data(anime_data: Dict[str, Any]) -> Dict[str, Any]:
     return context
 
 
-def _create_fallback_result(url: str, anidb_id) -> Dict[str, Any]:
+def _create_fallback_result(url: str, anidb_id) -> dict[str, Any]:
     """Create fallback result when extraction fails."""
     return {
         "title": f"AniDB Anime {anidb_id}",
@@ -230,7 +230,7 @@ def _create_fallback_result(url: str, anidb_id) -> Dict[str, Any]:
 
 
 # Batch processing function for multiple URLs
-def fetch_multiple_anidb_urls(urls: list[str]) -> Dict[str, Dict[str, Any]]:
+def fetch_multiple_anidb_urls(urls: list[str]) -> dict[str, dict[str, Any]]:
     """
     Fetch data for multiple AniDB URLs with proper rate limiting.
 
@@ -274,8 +274,8 @@ def fetch_multiple_anidb_urls(urls: list[str]) -> Dict[str, Dict[str, Any]]:
 
 
 async def _fetch_multiple_anidb_data_async(
-    url_to_id: Dict[str, int],
-) -> Dict[str, Dict[str, Any]]:
+    url_to_id: dict[str, int],
+) -> dict[str, dict[str, Any]]:
     """Fetch multiple AniDB URLs using single helper instance for proper rate limiting."""
     helper = AniDBEnrichmentHelper()
     results = {}
@@ -283,7 +283,7 @@ async def _fetch_multiple_anidb_data_async(
     try:
         for i, (url, anidb_id) in enumerate(url_to_id.items()):
             logger.info(
-                f"Processing AniDB URL {i+1}/{len(url_to_id)}: {url} (ID: {anidb_id})"
+                f"Processing AniDB URL {i + 1}/{len(url_to_id)}: {url} (ID: {anidb_id})"
             )
 
             anime_data = await helper.fetch_all_data(anidb_id)
@@ -293,7 +293,7 @@ async def _fetch_multiple_anidb_data_async(
                 results[url] = _create_fallback_result(url, anidb_id)
 
             # The helper already handles rate limiting, but log progress
-            logger.debug(f"Completed AniDB request {i+1}/{len(url_to_id)}")
+            logger.debug(f"Completed AniDB request {i + 1}/{len(url_to_id)}")
     finally:
         await helper.close()
 

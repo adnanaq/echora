@@ -6,12 +6,11 @@ Achieves 100% code coverage including all edge cases.
 """
 
 import json
-import os
 import sys
-import tempfile
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 
 # Add scripts directory to path for imports
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -19,11 +18,11 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from process_stage2_episodes import (
-    convert_jst_to_utc,
-    load_kitsu_episode_data,
-    load_anisearch_episode_data,
-    process_all_episodes,
     auto_detect_temp_dir,
+    convert_jst_to_utc,
+    load_anisearch_episode_data,
+    load_kitsu_episode_data,
+    process_all_episodes,
 )
 
 
@@ -97,11 +96,7 @@ class TestKitsuDataLoading:
     def mock_kitsu_data(self):
         """Create mock Kitsu data with all possible fields."""
         return {
-            "anime": {
-                "attributes": {
-                    "slug": "one-piece"
-                }
-            },
+            "anime": {"attributes": {"slug": "one-piece"}},
             "episodes": [
                 {
                     "attributes": {
@@ -114,17 +109,15 @@ class TestKitsuDataLoading:
                             "en": "English Title",
                             "en_us": "US English Title",
                             "ja_jp": "日本語タイトル",
-                            "en_jp": "Romaji Title"
-                        }
+                            "en_jp": "Romaji Title",
+                        },
                     }
                 },
                 {
                     "attributes": {
                         "number": 2,
                         "thumbnail": {"original": "https://example.com/thumb2.jpg"},
-                        "titles": {
-                            "en_us": "US Only Title"
-                        }
+                        "titles": {"en_us": "US Only Title"},
                     }
                 },
                 {
@@ -134,7 +127,7 @@ class TestKitsuDataLoading:
                         "description": "   ",  # Whitespace only
                         "synopsis": "",  # Empty string
                         "seasonNumber": 0,  # Zero is valid
-                        "titles": {}  # No titles
+                        "titles": {},  # No titles
                     }
                 },
                 {
@@ -142,15 +135,15 @@ class TestKitsuDataLoading:
                         # Missing number - should be skipped
                         "titles": {"en": "No Episode Number"}
                     }
-                }
-            ]
+                },
+            ],
         }
 
     @pytest.fixture
     def temp_dir_with_kitsu(self, mock_kitsu_data, tmp_path):
         """Create temporary directory with Kitsu data."""
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             json.dump(mock_kitsu_data, f)
         return str(tmp_path)
 
@@ -158,7 +151,16 @@ class TestKitsuDataLoading:
         """Test successful loading of Kitsu episode data."""
         result = load_kitsu_episode_data(temp_dir_with_kitsu)
 
-        thumbnails, descriptions, synopses, titles, titles_jp, titles_romaji, season_nums, episode_urls = result
+        (
+            thumbnails,
+            descriptions,
+            synopses,
+            titles,
+            titles_jp,
+            titles_romaji,
+            season_nums,
+            episode_urls,
+        ) = result
 
         # Check thumbnails
         assert len(thumbnails) == 2
@@ -218,18 +220,11 @@ class TestKitsuDataLoading:
         """Test handling when anime slug is missing."""
         data = {
             "anime": {"attributes": {}},
-            "episodes": [
-                {
-                    "attributes": {
-                        "number": 1,
-                        "titles": {"en": "Test"}
-                    }
-                }
-            ]
+            "episodes": [{"attributes": {"number": 1, "titles": {"en": "Test"}}}],
         }
 
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             json.dump(data, f)
 
         result = load_kitsu_episode_data(str(tmp_path))
@@ -250,7 +245,7 @@ class TestKitsuDataLoading:
     def test_load_kitsu_episode_data_exception_handling(self, tmp_path):
         """Test exception handling for corrupted JSON."""
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             f.write("{invalid json")
 
         result = load_kitsu_episode_data(str(tmp_path))
@@ -266,20 +261,20 @@ class TestKitsuDataLoading:
                 {
                     "attributes": {
                         "number": 1,
-                        "thumbnail": {}  # Empty thumbnail
+                        "thumbnail": {},  # Empty thumbnail
                     }
                 },
                 {
                     "attributes": {
                         "number": 2,
-                        "thumbnail": {"original": None}  # None original
+                        "thumbnail": {"original": None},  # None original
                     }
-                }
-            ]
+                },
+            ],
         }
 
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             json.dump(data, f)
 
         result = load_kitsu_episode_data(str(tmp_path))
@@ -297,26 +292,20 @@ class TestAniSearchDataLoading:
         """Create mock AniSearch data."""
         return {
             "episodes": [
-                {
-                    "episodeNumber": 1,
-                    "title": "AniSearch Episode 1"
-                },
-                {
-                    "episodeNumber": 2,
-                    "title": "AniSearch Episode 2"
-                },
+                {"episodeNumber": 1, "title": "AniSearch Episode 1"},
+                {"episodeNumber": 2, "title": "AniSearch Episode 2"},
                 {
                     "episodeNumber": 3,
-                    "title": ""  # Empty title should be skipped
+                    "title": "",  # Empty title should be skipped
                 },
                 {
                     "episodeNumber": None,  # None episode number
-                    "title": "No Episode Number"
+                    "title": "No Episode Number",
                 },
                 {
                     # Missing episodeNumber
                     "title": "Missing Episode Number"
-                }
+                },
             ]
         }
 
@@ -324,7 +313,7 @@ class TestAniSearchDataLoading:
     def temp_dir_with_anisearch(self, mock_anisearch_data, tmp_path):
         """Create temporary directory with AniSearch data."""
         anisearch_file = tmp_path / "anisearch.json"
-        with open(anisearch_file, 'w') as f:
+        with open(anisearch_file, "w") as f:
             json.dump(mock_anisearch_data, f)
         return str(tmp_path)
 
@@ -347,7 +336,7 @@ class TestAniSearchDataLoading:
         data = {"episodes": []}
 
         anisearch_file = tmp_path / "anisearch.json"
-        with open(anisearch_file, 'w') as f:
+        with open(anisearch_file, "w") as f:
             json.dump(data, f)
 
         titles = load_anisearch_episode_data(str(tmp_path))
@@ -356,7 +345,7 @@ class TestAniSearchDataLoading:
     def test_load_anisearch_episode_data_exception_handling(self, tmp_path):
         """Test exception handling for corrupted JSON."""
         anisearch_file = tmp_path / "anisearch.json"
-        with open(anisearch_file, 'w') as f:
+        with open(anisearch_file, "w") as f:
             f.write("{malformed json")
 
         titles = load_anisearch_episode_data(str(tmp_path))
@@ -367,7 +356,7 @@ class TestAniSearchDataLoading:
         data = {"other_key": "value"}
 
         anisearch_file = tmp_path / "anisearch.json"
-        with open(anisearch_file, 'w') as f:
+        with open(anisearch_file, "w") as f:
             json.dump(data, f)
 
         titles = load_anisearch_episode_data(str(tmp_path))
@@ -392,7 +381,7 @@ class TestEpisodeProcessing:
                 "score": 8.5,
                 "filler": False,
                 "recap": False,
-                "url": "https://myanimelist.net/anime/21/One_Piece/episode/1"
+                "url": "https://myanimelist.net/anime/21/One_Piece/episode/1",
             },
             {
                 "episode_number": 2,
@@ -405,7 +394,7 @@ class TestEpisodeProcessing:
                 "score": None,
                 "filler": True,  # Test filler flag
                 "recap": False,
-                "url": "https://myanimelist.net/anime/21/One_Piece/episode/2"
+                "url": "https://myanimelist.net/anime/21/One_Piece/episode/2",
             },
             {
                 "episode_number": 3,
@@ -414,9 +403,9 @@ class TestEpisodeProcessing:
                 "aired": "1999-11-03T00:00:00+09:00",
                 "duration": 1440,
                 "filler": False,
-                "recap": True  # Test recap flag
+                "recap": True,  # Test recap flag
                 # No URL
-            }
+            },
         ]
 
     @pytest.fixture
@@ -424,7 +413,7 @@ class TestEpisodeProcessing:
         """Create complete test environment with all data sources."""
         # Episodes detailed
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(mock_episodes_detailed, f)
 
         # Kitsu data
@@ -435,29 +424,28 @@ class TestEpisodeProcessing:
                     "attributes": {
                         "number": 2,
                         "thumbnail": {"original": "https://kitsu.io/thumb2.jpg"},
-                        "titles": {"en": "Kitsu Title 2", "ja_jp": "Kitsu Japanese 2", "en_jp": "Kitsu Romaji 2"},
+                        "titles": {
+                            "en": "Kitsu Title 2",
+                            "ja_jp": "Kitsu Japanese 2",
+                            "en_jp": "Kitsu Romaji 2",
+                        },
                         "synopsis": "Kitsu synopsis 2",
                         "description": "Kitsu description 2",
-                        "seasonNumber": 1
+                        "seasonNumber": 1,
                     }
                 }
-            ]
+            ],
         }
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             json.dump(kitsu_data, f)
 
         # AniSearch data
         anisearch_data = {
-            "episodes": [
-                {
-                    "episodeNumber": 3,
-                    "title": "AniSearch Title 3"
-                }
-            ]
+            "episodes": [{"episodeNumber": 3, "title": "AniSearch Title 3"}]
         }
         anisearch_file = tmp_path / "anisearch.json"
-        with open(anisearch_file, 'w') as f:
+        with open(anisearch_file, "w") as f:
             json.dump(anisearch_data, f)
 
         return str(tmp_path)
@@ -471,7 +459,7 @@ class TestEpisodeProcessing:
         assert output_file.exists()
 
         # Load and verify output
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert "episode_details" in output
@@ -490,7 +478,10 @@ class TestEpisodeProcessing:
         assert ep1["score"] == 8.5
         assert ep1["filler"] is False
         assert ep1["recap"] is False
-        assert ep1["episode_pages"]["mal"] == "https://myanimelist.net/anime/21/One_Piece/episode/1"
+        assert (
+            ep1["episode_pages"]["mal"]
+            == "https://myanimelist.net/anime/21/One_Piece/episode/1"
+        )
         assert ep1["streaming"] == {}
 
         # Test Episode 2: Kitsu fallback for title
@@ -506,7 +497,10 @@ class TestEpisodeProcessing:
         assert ep2["filler"] is True
         assert ep2["thumbnails"] == ["https://kitsu.io/thumb2.jpg"]
         assert "kitsu" in ep2["episode_pages"]
-        assert ep2["episode_pages"]["kitsu"] == "https://kitsu.app/anime/one-piece/episodes/2"
+        assert (
+            ep2["episode_pages"]["kitsu"]
+            == "https://kitsu.app/anime/one-piece/episodes/2"
+        )
 
         # Test Episode 3: AniSearch fallback for title
         ep3 = episodes[2]
@@ -521,7 +515,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -540,7 +534,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -560,7 +554,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -569,9 +563,9 @@ class TestEpisodeProcessing:
             aired = episode.get("aired")
             if aired:
                 # Should end with 'Z' (UTC)
-                assert aired.endswith('Z')
+                assert aired.endswith("Z")
                 # Should not contain timezone offset
-                assert '+09:00' not in aired
+                assert "+09:00" not in aired
 
     def test_process_all_episodes_minimal_data(self, tmp_path):
         """Test processing with minimal data (no Kitsu or AniSearch)."""
@@ -582,12 +576,12 @@ class TestEpisodeProcessing:
                 "title": "Episode 1",
                 "aired": "2024-01-01T00:00:00+09:00",
                 "filler": False,
-                "recap": False
+                "recap": False,
             }
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
         process_all_episodes(str(tmp_path))
@@ -595,7 +589,7 @@ class TestEpisodeProcessing:
         output_file = tmp_path / "stage2_episodes.json"
         assert output_file.exists()
 
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert len(output["episode_details"]) == 1
@@ -611,7 +605,7 @@ class TestEpisodeProcessing:
         assert output_file.exists()
 
         # Verify file is valid JSON
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         # Verify structure
@@ -622,19 +616,25 @@ class TestEpisodeProcessing:
     def test_process_all_episodes_with_four_episodes(self, tmp_path):
         """Test timezone conversion examples print (covers lines 236-239)."""
         episodes_data = [
-            {"episode_number": i, "title": f"Ep {i}", "aired": f"1999-10-{20+i}T00:00:00+09:00", "filler": False, "recap": False}
+            {
+                "episode_number": i,
+                "title": f"Ep {i}",
+                "aired": f"1999-10-{20 + i}T00:00:00+09:00",
+                "filler": False,
+                "recap": False,
+            }
             for i in range(1, 5)
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
         # This will print examples for first 3 episodes (line 236-239)
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert len(output["episode_details"]) == 4
@@ -702,13 +702,13 @@ class TestEdgeCases:
     def test_empty_episodes_list(self, tmp_path):
         """Test processing empty episodes list."""
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump([], f)
 
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert output["episode_details"] == []
@@ -717,7 +717,7 @@ class TestEdgeCases:
         """Test graceful handling of malformed JSON files."""
         # Create malformed Kitsu file
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             f.write("{invalid json")
 
         # Should handle error and return empty dicts
@@ -734,13 +734,13 @@ class TestEdgeCases:
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         ep = output["episode_details"][0]
@@ -760,18 +760,18 @@ class TestEdgeCases:
                 "title": "Test",
                 "aired": None,
                 "filler": False,
-                "recap": False
+                "recap": False,
             }
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         ep = output["episode_details"][0]
@@ -784,12 +784,12 @@ class TestEdgeCases:
                 "episode_number": 1,
                 "title": "テスト",  # Japanese characters
                 "filler": False,
-                "recap": False
+                "recap": False,
             }
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w', encoding='utf-8') as f:
+        with open(episodes_file, "w", encoding="utf-8") as f:
             json.dump(episodes_data, f, ensure_ascii=False)
 
         process_all_episodes(str(tmp_path))
@@ -797,10 +797,10 @@ class TestEdgeCases:
         output_file = tmp_path / "stage2_episodes.json"
 
         # Read raw file content
-        with open(output_file, 'r', encoding='utf-8') as f:
+        with open(output_file, encoding="utf-8") as f:
             content = f.read()
             # Should contain actual Japanese characters, not unicode escapes
-            assert 'テスト' in content
+            assert "テスト" in content
 
     def test_synopsis_fallback_with_empty_jikan(self, tmp_path):
         """Test synopsis fallback when Jikan has empty string."""
@@ -809,34 +809,27 @@ class TestEdgeCases:
                 "episode_number": 1,
                 "synopsis": "",  # Empty string
                 "filler": False,
-                "recap": False
+                "recap": False,
             }
         ]
 
         episodes_file = tmp_path / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
+        with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
         # Kitsu data with synopsis
         kitsu_data = {
             "anime": {"attributes": {"slug": "test"}},
-            "episodes": [
-                {
-                    "attributes": {
-                        "number": 1,
-                        "synopsis": "Kitsu synopsis"
-                    }
-                }
-            ]
+            "episodes": [{"attributes": {"number": 1, "synopsis": "Kitsu synopsis"}}],
         }
         kitsu_file = tmp_path / "kitsu.json"
-        with open(kitsu_file, 'w') as f:
+        with open(kitsu_file, "w") as f:
             json.dump(kitsu_data, f)
 
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         # Empty string is falsy, should fallback to Kitsu
@@ -854,20 +847,37 @@ class TestMainExecution:
         anime_dir.mkdir()
 
         episodes_file = anime_dir / "episodes_detailed.json"
-        with open(episodes_file, 'w') as f:
-            json.dump([{"episode_number": 1, "title": "Test", "filler": False, "recap": False}], f)
+        with open(episodes_file, "w") as f:
+            json.dump(
+                [
+                    {
+                        "episode_number": 1,
+                        "title": "Test",
+                        "filler": False,
+                        "recap": False,
+                    }
+                ],
+                f,
+            )
 
         # Simulate command line arguments
-        test_args = ['script_name', 'test_agent', '--temp-dir', str(tmp_path)]
+        test_args = ["script_name", "test_agent", "--temp-dir", str(tmp_path)]
 
-        with patch('sys.argv', test_args):
-            with patch('process_stage2_episodes.PROJECT_ROOT', tmp_path):
+        with patch("sys.argv", test_args):
+            with patch("process_stage2_episodes.PROJECT_ROOT", tmp_path):
                 # Import and run main block
                 import subprocess
+
                 result = subprocess.run(
-                    ['python', str(SCRIPTS_DIR / 'process_stage2_episodes.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+                    [
+                        "python",
+                        str(SCRIPTS_DIR / "process_stage2_episodes.py"),
+                        "test_agent",
+                        "--temp-dir",
+                        str(tmp_path),
+                    ],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
 
         assert result.returncode == 0
@@ -876,10 +886,17 @@ class TestMainExecution:
     def test_main_with_nonexistent_directory(self, tmp_path):
         """Test main execution with non-existent directory."""
         import subprocess
+
         result = subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage2_episodes.py'), 'nonexistent_agent', '--temp-dir', str(tmp_path)],
+            [
+                "python",
+                str(SCRIPTS_DIR / "process_stage2_episodes.py"),
+                "nonexistent_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 1
@@ -891,10 +908,17 @@ class TestMainExecution:
         anime_dir.mkdir()
 
         import subprocess
+
         result = subprocess.run(
-            ['python', str(SCRIPTS_DIR / 'process_stage2_episodes.py'), 'test_agent', '--temp-dir', str(tmp_path)],
+            [
+                "python",
+                str(SCRIPTS_DIR / "process_stage2_episodes.py"),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 1
@@ -902,4 +926,6 @@ class TestMainExecution:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=process_stage2_episodes", "--cov-report=term-missing"])
+    pytest.main(
+        [__file__, "-v", "--cov=process_stage2_episodes", "--cov-report=term-missing"]
+    )

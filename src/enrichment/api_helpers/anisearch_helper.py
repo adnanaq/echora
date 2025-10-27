@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
@@ -17,7 +17,7 @@ class AniSearchEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize AniSearch helper (crawlers are stateless)."""
 
-    async def extract_anisearch_id_from_url(self, url: str) -> Optional[int]:
+    async def extract_anisearch_id_from_url(self, url: str) -> int | None:
         """Extract AniSearch ID from URL.
 
         Args:
@@ -38,8 +38,8 @@ class AniSearchEnrichmentHelper:
             return None
 
     async def find_anisearch_url(
-        self, offline_anime_data: Dict[str, Any]
-    ) -> Optional[str]:
+        self, offline_anime_data: dict[str, Any]
+    ) -> str | None:
         """Find AniSearch URL from offline anime data sources.
 
         Args:
@@ -58,7 +58,7 @@ class AniSearchEnrichmentHelper:
             logger.error(f"Error finding AniSearch URL: {e}")
             return None
 
-    async def fetch_anime_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
+    async def fetch_anime_data(self, anisearch_id: int) -> dict[str, Any] | None:
         """Fetch anime data using anisearch_anime_crawler.
 
         Args:
@@ -77,7 +77,7 @@ class AniSearchEnrichmentHelper:
             anime_data = await fetch_anisearch_anime(
                 url=url,
                 return_data=True,
-                output_path=None  # No file output - return data only
+                output_path=None,  # No file output - return data only
             )
 
             if not anime_data:
@@ -94,7 +94,9 @@ class AniSearchEnrichmentHelper:
             logger.error(f"Error fetching anime data for ID {anisearch_id}: {e}")
             return None
 
-    async def fetch_episode_data(self, anisearch_id: int) -> Optional[List[Dict[str, Any]]]:
+    async def fetch_episode_data(
+        self, anisearch_id: int
+    ) -> list[dict[str, Any]] | None:
         """Fetch episode data using anisearch_episode_crawler.
 
         Args:
@@ -113,21 +115,23 @@ class AniSearchEnrichmentHelper:
             episode_data = await fetch_anisearch_episodes(
                 url=url,
                 return_data=True,
-                output_path=None  # No file output - return data only
+                output_path=None,  # No file output - return data only
             )
 
             if not episode_data:
                 logger.debug(f"No episode data found for ID {anisearch_id}")
                 return None
 
-            logger.info(f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}")
+            logger.info(
+                f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}"
+            )
             return episode_data
 
         except Exception as e:
             logger.error(f"Error fetching episode data for ID {anisearch_id}: {e}")
             return None
 
-    async def fetch_character_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
+    async def fetch_character_data(self, anisearch_id: int) -> dict[str, Any] | None:
         """Fetch character data using anisearch_character_crawler.
 
         Args:
@@ -146,7 +150,7 @@ class AniSearchEnrichmentHelper:
             character_data = await fetch_anisearch_characters(
                 url=url,
                 return_data=True,
-                output_path=None  # No file output - return data only
+                output_path=None,  # No file output - return data only
             )
 
             if not character_data:
@@ -154,7 +158,9 @@ class AniSearchEnrichmentHelper:
                 return None
 
             char_count = character_data.get("total_count", 0)
-            logger.info(f"Successfully fetched {char_count} characters for ID {anisearch_id}")
+            logger.info(
+                f"Successfully fetched {char_count} characters for ID {anisearch_id}"
+            )
             return character_data
 
         except Exception as e:
@@ -165,8 +171,8 @@ class AniSearchEnrichmentHelper:
         self,
         anisearch_id: int,
         include_episodes: bool = True,
-        include_characters: bool = True
-    ) -> Optional[Dict[str, Any]]:
+        include_characters: bool = True,
+    ) -> dict[str, Any] | None:
         """Fetch comprehensive AniSearch data (anime + episodes + characters).
 
         Args:
@@ -193,9 +199,13 @@ class AniSearchEnrichmentHelper:
                     episode_data = await self.fetch_episode_data(anisearch_id)
                     if episode_data:
                         anime_data["episodes"] = episode_data
-                        logger.info(f"Integrated {len(episode_data)} episodes into anime data")
+                        logger.info(
+                            f"Integrated {len(episode_data)} episodes into anime data"
+                        )
                 except Exception as e:
-                    logger.warning(f"Failed to fetch episodes for ID {anisearch_id}: {e}")
+                    logger.warning(
+                        f"Failed to fetch episodes for ID {anisearch_id}: {e}"
+                    )
                     # Continue without episodes - non-critical
 
             # Fetch characters if requested
@@ -208,10 +218,14 @@ class AniSearchEnrichmentHelper:
                             f"Integrated {character_data.get('total_count', 0)} characters into anime data"
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to fetch characters for ID {anisearch_id}: {e}")
+                    logger.warning(
+                        f"Failed to fetch characters for ID {anisearch_id}: {e}"
+                    )
                     # Continue without characters - non-critical
 
-            logger.info(f"Successfully fetched all AniSearch data for ID {anisearch_id}")
+            logger.info(
+                f"Successfully fetched all AniSearch data for ID {anisearch_id}"
+            )
             return anime_data
 
         except Exception as e:

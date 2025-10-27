@@ -6,14 +6,15 @@ with multi-modal embeddings (text + image) for anime content.
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, search, similarity
+from .api import admin
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
 
@@ -76,7 +77,7 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """Health check endpoint."""
     try:
         if qdrant_client is None:
@@ -96,14 +97,12 @@ async def health_check() -> Dict[str, Any]:
 
 
 # Include API routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(similarity.router, prefix="/api/v1", tags=["similarity"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 # Root endpoint
 @app.get("/")
-async def root() -> Dict[str, Any]:
+async def root() -> dict[str, Any]:
     """Root endpoint with service information."""
     return {
         "service": "Anime Vector Service",

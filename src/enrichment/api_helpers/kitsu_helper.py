@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 
@@ -24,8 +24,8 @@ class KitsuEnrichmentHelper:
         self.base_url = "https://kitsu.io/api/edge"
 
     async def _make_request(
-        self, endpoint: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Make request to Kitsu API."""
         headers = {
             "Accept": "application/vnd.api+json",
@@ -48,7 +48,7 @@ class KitsuEnrichmentHelper:
             logger.error(f"Kitsu API request failed: {e}")
             return {}
 
-    async def get_anime_by_id(self, anime_id: int) -> Optional[Dict[str, Any]]:
+    async def get_anime_by_id(self, anime_id: int) -> dict[str, Any] | None:
         """Get anime by Kitsu ID."""
         try:
             response = await self._make_request(f"/anime/{anime_id}")
@@ -57,7 +57,7 @@ class KitsuEnrichmentHelper:
             logger.error(f"Kitsu get_anime_by_id failed for ID {anime_id}: {e}")
             return None
 
-    async def get_anime_episodes(self, anime_id: int) -> List[Dict[str, Any]]:
+    async def get_anime_episodes(self, anime_id: int) -> list[dict[str, Any]]:
         """Get ALL anime episodes by Kitsu ID with pagination."""
         all_episodes = []
         page = 0
@@ -105,7 +105,7 @@ class KitsuEnrichmentHelper:
             logger.error(f"Kitsu get_anime_episodes failed for ID {anime_id}: {e}")
             return all_episodes  # Return what we got so far
 
-    async def get_anime_categories(self, anime_id: int) -> List[Dict[str, Any]]:
+    async def get_anime_categories(self, anime_id: int) -> list[dict[str, Any]]:
         """Get anime categories by Kitsu ID."""
         try:
             response = await self._make_request(f"/anime/{anime_id}/categories")
@@ -114,7 +114,7 @@ class KitsuEnrichmentHelper:
             logger.error(f"Kitsu get_anime_categories failed for ID {anime_id}: {e}")
             return []
 
-    async def fetch_all_data(self, anime_id: int) -> Dict[str, Any]:
+    async def fetch_all_data(self, anime_id: int) -> dict[str, Any]:
         """Fetch all Kitsu data for an anime ID."""
         try:
             # Fetch all data concurrently
