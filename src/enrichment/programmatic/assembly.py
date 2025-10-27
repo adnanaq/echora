@@ -49,6 +49,58 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# AnimeEntry schema field ordering constants
+SCALAR_FIELDS = [
+    "background",
+    "episodes",
+    "month",
+    "nsfw",
+    "picture",
+    "rating",
+    "source_material",
+    "status",
+    "synopsis",
+    "thumbnail",
+    "title",
+    "title_english",
+    "title_japanese",
+    "type",
+]
+
+ARRAY_FIELDS = [
+    "awards",
+    "characters",
+    "content_warnings",
+    "demographics",
+    "ending_themes",
+    "episode_details",
+    "genres",
+    "licensors",
+    "opening_themes",
+    "related_anime",
+    "relations",
+    "sources",
+    "streaming_info",
+    "synonyms",
+    "tags",
+    "themes",
+    "trailers",
+]
+
+OBJECT_FIELDS = [
+    "aired_dates",
+    "anime_season",
+    "broadcast",
+    "broadcast_schedule",
+    "delay_information",
+    "duration",
+    "external_links",
+    "producers",
+    "score",
+    "statistics",
+    "studios",
+]
+
 
 @dataclass
 class AssemblyResult:
@@ -460,60 +512,6 @@ class EnrichmentAssembler:
 
     def _apply_schema_ordering(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Apply AnimeEntry schema field ordering: SCALAR → ARRAY → OBJECT → enrichment_metadata"""
-
-        # Define field order per AnimeEntry schema
-        SCALAR_FIELDS = [
-            "background",
-            "episodes",
-            "month",
-            "nsfw",
-            "picture",
-            "rating",
-            "source_material",
-            "status",
-            "synopsis",
-            "thumbnail",
-            "title",
-            "title_english",
-            "title_japanese",
-            "type",
-        ]
-
-        ARRAY_FIELDS = [
-            "awards",
-            "characters",
-            "content_warnings",
-            "demographics",
-            "ending_themes",
-            "episode_details",
-            "genres",
-            "licensors",
-            "opening_themes",
-            "related_anime",
-            "relations",
-            "sources",
-            "streaming_info",
-            "synonyms",
-            "tags",
-            "themes",
-            "trailers",
-        ]
-
-        OBJECT_FIELDS = [
-            "aired_dates",
-            "anime_season",
-            "broadcast",
-            "broadcast_schedule",
-            "delay_information",
-            "duration",
-            "external_links",
-            "images",
-            "popularity_trends",
-            "premiere_dates",
-            "score",
-            "staff_data",
-            "statistics",
-        ]
 
         # Build ordered entry
         ordered_entry = {}

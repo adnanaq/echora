@@ -4,7 +4,7 @@ Advanced AI features for anime-specific improvements including character recogni
 art style classification, and domain-specific fine-tuning.
 """
 
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .anime_fine_tuning import AnimeFineTuner
@@ -16,7 +16,7 @@ from .genre_enhancement import GenreEnhancementFinetuner
 
 
 # Fine-tuning orchestrator - may have heavy dependencies
-def get_anime_fine_tuning() -> Type["AnimeFineTuner"]:
+def get_anime_fine_tuning() -> type["AnimeFineTuner"]:
     """Lazy import for fine-tuning orchestrator."""
     from .anime_fine_tuning import AnimeFineTuner
 

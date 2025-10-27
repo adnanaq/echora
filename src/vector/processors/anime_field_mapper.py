@@ -390,7 +390,7 @@ class AnimeFieldMapper:
             return ""
 
         # Constants for chunking strategy
-        EPISODES_PER_CHUNK = 50  # Future-proof for rich episode data
+        episodes_per_chunk = 50  # Future-proof for rich episode data
 
         # Extract episode info with all available semantic fields
         episode_info = []
@@ -475,13 +475,13 @@ class AnimeFieldMapper:
             return ""
 
         # For small series (≤50 episodes), return directly
-        if len(episode_info) <= EPISODES_PER_CHUNK:
+        if len(episode_info) <= episodes_per_chunk:
             return " | ".join(episode_info)
 
         # For large series, chunk episodes for future hierarchical averaging
         chunks = []
-        for i in range(0, len(episode_info), EPISODES_PER_CHUNK):
-            chunk = episode_info[i : i + EPISODES_PER_CHUNK]
+        for i in range(0, len(episode_info), episodes_per_chunk):
+            chunk = episode_info[i : i + episodes_per_chunk]
             chunk_content = " | ".join(chunk)
             chunks.append(chunk_content)
 
