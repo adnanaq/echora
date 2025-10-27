@@ -269,8 +269,71 @@ def extract_all_statistics(sources: Dict[str, Dict[str, Any]]) -> Dict[str, Any]
     return statistics
 
 
+def process_stage4_statistics(temp_dir: str, verbose: bool = True) -> Dict[str, Any]:
+    """Process Stage 4 statistics extraction.
+
+    This function can be called programmatically or via CLI.
+
+    Args:
+        temp_dir: Path to agent temp directory (e.g., 'temp/Dandadan_agent1')
+        verbose: Whether to print progress messages (default: True)
+
+    Returns:
+        Dictionary containing extracted statistics with structure:
+        {
+            "statistics": {
+                "mal": {...},
+                "anilist": {...},
+                "anidb": {...},
+                "animeplanet": {...},
+                "kitsu": {...},
+                "animeschedule": {...}
+            }
+        }
+    """
+    if verbose:
+        print(f"Stage 4: Statistics Extraction")
+        print(f"Temp directory: {temp_dir}")
+        print("=" * 80)
+
+    # Load source data
+    if verbose:
+        print("\nLoading source data...")
+    sources = load_source_data(temp_dir)
+
+    # Extract statistics
+    if verbose:
+        print("\nExtracting statistics from all sources...")
+    statistics = extract_all_statistics(sources)
+
+    # Print summary
+    if verbose:
+        print("\nStatistics extraction summary:")
+        for source in ["mal", "animeschedule", "kitsu", "animeplanet", "anilist", "anidb"]:
+            if source in statistics:
+                stats = statistics[source]
+                fields = [k for k, v in stats.items() if v is not None and k != "contextual_ranks"]
+                print(f"  {source}: {len(fields)} fields extracted")
+            else:
+                print(f"  {source}: No statistics available")
+
+    # Save statistics to stage4 output file
+    output_file = f"{temp_dir}/stage4_statistics.json"
+    result = {"statistics": statistics}
+
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+
+    if verbose:
+        print(f"\nStatistics successfully saved to {output_file}")
+        print("=" * 80)
+        print("Stage 4 completed successfully!")
+
+    return result
+
+
 def main() -> None:
-    """Main execution function."""
+    """Main execution function for CLI usage."""
     parser = argparse.ArgumentParser(
         description="Stage 4: Extract statistics from multiple anime data sources"
     )
@@ -289,37 +352,8 @@ def main() -> None:
     # Construct temp directory path
     temp_dir = f"{args.temp_dir}/{args.agent_id}"
 
-    print(f"Stage 4: Statistics Extraction")
-    print(f"Agent ID: {args.agent_id}")
-    print(f"Temp directory: {temp_dir}")
-    print("=" * 80)
-
-    # Load source data
-    print("\nLoading source data...")
-    sources = load_source_data(temp_dir)
-
-    # Extract statistics
-    print("\nExtracting statistics from all sources...")
-    statistics = extract_all_statistics(sources)
-
-    # Print summary
-    print("\nStatistics extraction summary:")
-    for source in ["mal", "animeschedule", "kitsu", "animeplanet", "anilist", "anidb"]:
-        if source in statistics:
-            stats = statistics[source]
-            fields = [k for k, v in stats.items() if v is not None and k != "contextual_ranks"]
-            print(f"  {source}: {len(fields)} fields extracted")
-        else:
-            print(f"  {source}: No statistics available")
-
-    # Save statistics to stage4 output file
-    output_file = f"{temp_dir}/stage4_statistics.json"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump({"statistics": statistics}, f, indent=2, ensure_ascii=False)
-
-    print(f"\nStatistics successfully saved to {output_file}")
-    print("=" * 80)
-    print("Stage 4 completed successfully!")
+    # Call the main processing function
+    process_stage4_statistics(temp_dir, verbose=True)
 
 
 if __name__ == "__main__":
