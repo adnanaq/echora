@@ -98,40 +98,20 @@ class QdrantClient:
         # Initialize embedding manager
         self.embedding_manager = MultiVectorEmbeddingManager(settings)
 
-        # Initialize processors
-        self._init_processors()
+        # Update vector sizes based on modern models from embedding manager
+        text_info = self.embedding_manager.text_processor.get_model_info()
+        vision_info = self.embedding_manager.vision_processor.get_model_info()
+
+        self._vector_size = text_info.get("embedding_size", 384)
+        self._image_vector_size = vision_info.get("embedding_size", 512)
+
+        logger.info(
+            f"Initialized processors - Text: {text_info['model_name']} ({self._vector_size}), "
+            f"Vision: {vision_info['model_name']} ({self._image_vector_size})"
+        )
 
         # Create collection if it doesn't exist
         self._initialize_collection()
-
-    def _init_processors(self) -> None:
-        """Initialize embedding processors."""
-        try:
-            # Import processors
-            from ..processors.text_processor import TextProcessor
-            from ..processors.vision_processor import VisionProcessor
-
-            # Initialize text processor
-            self.text_processor = TextProcessor(self.settings)
-
-            # Initialize vision processor
-            self.vision_processor = VisionProcessor(self.settings)
-
-            # Update vector sizes based on modern models
-            text_info = self.text_processor.get_model_info()
-            vision_info = self.vision_processor.get_model_info()
-
-            self._vector_size = text_info.get("embedding_size", 384)
-            self._image_vector_size = vision_info.get("embedding_size", 512)
-
-            logger.info(
-                f"Initialized processors - Text: {text_info['model_name']} ({self._vector_size}), "
-                f"Vision: {vision_info['model_name']} ({self._image_vector_size})"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to initialize processors: {e}")
-            raise
 
     def _initialize_collection(self) -> None:
         """Initialize and validate anime collection with 11-vector architecture and performance optimization."""

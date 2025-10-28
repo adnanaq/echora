@@ -15,17 +15,13 @@ Requirements:
     - atomic-agents package: pip install atomic-agents
 """
 
-import asyncio
 import logging
-import os
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 from atomic_agents import (  # type: ignore[import-untyped]
     AgentConfig,
     AtomicAgent,
     BaseIOSchema,
-    BaseTool,
-    BaseToolConfig,
 )
 from atomic_agents.context import SystemPromptGenerator  # type: ignore[import-untyped]
 from openai import OpenAI
@@ -38,7 +34,7 @@ except ImportError:
         "instructor package required. Install with: pip install instructor"
     )
 
-from src.config.settings import get_settings
+from src.config.settings import Settings
 from src.poc.tools import (
     CharacterSearchInputSchema,
     CharacterSearchTool,
@@ -142,22 +138,20 @@ class AnimeQueryAgent:
     def __init__(
         self,
         qdrant_client: QdrantClient,
-        model: str = "qwen3:30b",
-        ollama_base_url: str = "http://localhost:11434/v1",
+        settings: Settings,
     ):
         """Initialize the query parsing agent with Ollama.
 
         Args:
             qdrant_client: Qdrant client instance for search operations
-            model: Ollama model name (default: qwen3:30b)
-            ollama_base_url: Ollama API base URL (default: http://localhost:11434/v1)
+            settings: Configuration settings instance
         """
         self.qdrant_client = qdrant_client
-        self.model = model
+        self.model = settings.ollama_model
 
         # Initialize Ollama client with Instructor
         ollama_client = OpenAI(
-            base_url=ollama_base_url,
+            base_url=settings.ollama_base_url,
             api_key="ollama",  # Dummy API key for Ollama
         )
 
@@ -347,7 +341,7 @@ class AnimeQueryAgent:
             summary=summary,
         )
 
-    def parse_and_search(
+    async def parse_and_search(
         self,
         user_query: str,
         image_data: Optional[str] = None,
@@ -383,16 +377,16 @@ class AnimeQueryAgent:
             tool_params = agent_output.tool_parameters
             if isinstance(tool_params, TextSearchInputSchema):
                 tool_name = "text_search"
-                result = self.text_search_tool.run(tool_params)  # type: ignore[attr-defined]
+                result = await self.text_search_tool.run(tool_params)  # type: ignore[attr-defined]
             elif isinstance(tool_params, ImageSearchInputSchema):
                 tool_name = "image_search"
-                result = self.image_search_tool.run(tool_params)  # type: ignore[attr-defined]
+                result = await self.image_search_tool.run(tool_params)  # type: ignore[attr-defined]
             elif isinstance(tool_params, MultimodalSearchInputSchema):
                 tool_name = "multimodal_search"
-                result = self.multimodal_search_tool.run(tool_params)  # type: ignore[attr-defined]
+                result = await self.multimodal_search_tool.run(tool_params)  # type: ignore[attr-defined]
             elif isinstance(tool_params, CharacterSearchInputSchema):
                 tool_name = "character_search"
-                result = self.character_search_tool.run(tool_params)  # type: ignore[attr-defined]
+                result = await self.character_search_tool.run(tool_params)  # type: ignore[attr-defined]
             else:
                 logger.error(f"Unknown tool parameters type: {type(tool_params)}")
                 return SearchOutputSchema(results=[], count=0, search_type="error")

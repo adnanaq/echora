@@ -52,7 +52,7 @@ class CharacterSearchTool(BaseTool[CharacterSearchInputSchema, SearchOutputSchem
         super().__init__(config)
         self.client: QdrantClient = config.qdrant_client
 
-    def run(self, params: CharacterSearchInputSchema) -> SearchOutputSchema:
+    async def run(self, params: CharacterSearchInputSchema) -> SearchOutputSchema:
         """Execute character search with filters.
 
         Args:
@@ -71,7 +71,7 @@ class CharacterSearchTool(BaseTool[CharacterSearchInputSchema, SearchOutputSchem
 
         Example:
             >>> tool = CharacterSearchTool(config)
-            >>> result = tool.run(CharacterSearchInputSchema(
+            >>> result = await tool.run(CharacterSearchInputSchema(
             ...     query="strong female protagonist",
             ...     filters={"type": "TV"}
             ... ))
@@ -83,16 +83,12 @@ class CharacterSearchTool(BaseTool[CharacterSearchInputSchema, SearchOutputSchem
             if params.filters:
                 qdrant_filter = self.client._build_filter(params.filters)
 
-            # Run async search in sync context
-            loop = asyncio.get_event_loop()
-            results = loop.run_until_complete(
-                self.client.search_characters(
-                    query=params.query,
-                    image_data=params.image_data,
-                    limit=params.limit,
-                    fusion_method=params.fusion_method,
-                    filters=qdrant_filter,
-                )
+            results = await self.client.search_characters(
+                query=params.query,
+                image_data=params.image_data,
+                limit=params.limit,
+                fusion_method=params.fusion_method,
+                filters=qdrant_filter,
             )
 
             return SearchOutputSchema(

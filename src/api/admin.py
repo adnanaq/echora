@@ -304,7 +304,7 @@ async def reindex_collection() -> Dict[str, Any]:
         )
 
 
-@router.get("/collection/info")
+@router.get("/collection")
 async def get_collection_info() -> Dict[str, Any]:
     """
     Get detailed collection information.
@@ -328,13 +328,13 @@ async def get_collection_info() -> Dict[str, Any]:
             "stats": stats,
             "processors": {
                 "text_processor": (
-                    qdrant_client.text_processor.get_model_info()
-                    if qdrant_client.text_processor
+                    qdrant_client.embedding_manager.text_processor.get_model_info()
+                    if qdrant_client.embedding_manager.text_processor
                     else None
                 ),
                 "vision_processor": (
-                    qdrant_client.vision_processor.get_model_info()
-                    if qdrant_client.vision_processor
+                    qdrant_client.embedding_manager.vision_processor.get_model_info()
+                    if qdrant_client.embedding_manager.vision_processor
                     else None
                 ),
             },

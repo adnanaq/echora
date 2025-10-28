@@ -51,7 +51,7 @@ class MultimodalSearchTool(BaseTool[MultimodalSearchInputSchema, SearchOutputSch
         super().__init__(config)
         self.client: QdrantClient = config.qdrant_client
 
-    def run(self, params: MultimodalSearchInputSchema) -> SearchOutputSchema:
+    async def run(self, params: MultimodalSearchInputSchema) -> SearchOutputSchema:
         """Execute multimodal search with filters.
 
         Args:
@@ -70,7 +70,7 @@ class MultimodalSearchTool(BaseTool[MultimodalSearchInputSchema, SearchOutputSch
 
         Example:
             >>> tool = MultimodalSearchTool(config)
-            >>> result = tool.run(MultimodalSearchInputSchema(
+            >>> result = await tool.run(MultimodalSearchInputSchema(
             ...     query="dark fantasy",
             ...     image_data="base64_gothic_art...",
             ...     filters={"statistics.mal.score": {"gte": 7.0}}
@@ -83,16 +83,12 @@ class MultimodalSearchTool(BaseTool[MultimodalSearchInputSchema, SearchOutputSch
             if params.filters:
                 qdrant_filter = self.client._build_filter(params.filters)
 
-            # Run async search in sync context
-            loop = asyncio.get_event_loop()
-            results = loop.run_until_complete(
-                self.client.search_complete(
-                    query=params.query,
-                    image_data=params.image_data,
-                    limit=params.limit,
-                    fusion_method=params.fusion_method,
-                    filters=qdrant_filter,
-                )
+            results = await self.client.search_complete(
+                query=params.query,
+                image_data=params.image_data,
+                limit=params.limit,
+                fusion_method=params.fusion_method,
+                filters=qdrant_filter,
             )
 
             return SearchOutputSchema(

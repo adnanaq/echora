@@ -13,7 +13,9 @@ from typing import Any, AsyncGenerator, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, search, similarity
+from src.poc.atomic_agents_poc import AnimeQueryAgent
+
+from .api import admin, search
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
 
@@ -28,18 +30,28 @@ logger = logging.getLogger(__name__)
 
 # Global instances
 qdrant_client: QdrantClient | None = None
+anime_agent: AnimeQueryAgent | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize services on startup"""
     global qdrant_client
+    global anime_agent
 
     # Initialize Qdrant client
     logger.info("Initializing Qdrant client...")
+    logger.info(f"Qdrant URL: {settings.qdrant_url}")
+    logger.info(f"Qdrant Collection Name: {settings.qdrant_collection_name}")
     qdrant_client = QdrantClient(
         url=settings.qdrant_url,
         collection_name=settings.qdrant_collection_name,
+        settings=settings,
+    )
+
+    # Initialize AnimeQueryAgent with Ollama model
+    anime_agent = AnimeQueryAgent(
+        qdrant_client=qdrant_client,
         settings=settings,
     )
 
@@ -82,6 +94,9 @@ async def health_check() -> Dict[str, Any]:
         if qdrant_client is None:
             raise HTTPException(status_code=503, detail="Qdrant client not initialized")
 
+        if anime_agent is None:
+            raise HTTPException(status_code=503, detail="Agent not initialized")
+
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
@@ -97,7 +112,6 @@ async def health_check() -> Dict[str, Any]:
 
 # Include API routers
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(similarity.router, prefix="/api/v1", tags=["similarity"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 

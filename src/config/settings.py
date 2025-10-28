@@ -313,6 +313,10 @@ class Settings(BaseSettings):
         description="API description",
     )
 
+    # Ollama LLM Configuration
+    ollama_model: str = Field(default="qwen3:30b", description="Ollama model name for agent")
+    ollama_base_url: str = Field(default="http://localhost:11434/v1", description="Ollama API base URL")
+
     # Batch Processing Configuration
     default_batch_size: int = Field(
         default=100, ge=1, le=1000, description="Default batch size for operations"

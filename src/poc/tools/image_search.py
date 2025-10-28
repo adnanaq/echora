@@ -49,7 +49,7 @@ class ImageSearchTool(BaseTool[ImageSearchInputSchema, SearchOutputSchema]):  # 
         super().__init__(config)
         self.client: QdrantClient = config.qdrant_client
 
-    def run(self, params: ImageSearchInputSchema) -> SearchOutputSchema:
+    async def run(self, params: ImageSearchInputSchema) -> SearchOutputSchema:
         """Execute image search with filters.
 
         Args:
@@ -67,7 +67,7 @@ class ImageSearchTool(BaseTool[ImageSearchInputSchema, SearchOutputSchema]):  # 
 
         Example:
             >>> tool = ImageSearchTool(config)
-            >>> result = tool.run(ImageSearchInputSchema(
+            >>> result = await tool.run(ImageSearchInputSchema(
             ...     image_data="base64_encoded_image...",
             ...     limit=5
             ... ))
@@ -79,15 +79,11 @@ class ImageSearchTool(BaseTool[ImageSearchInputSchema, SearchOutputSchema]):  # 
             if params.filters:
                 qdrant_filter = self.client._build_filter(params.filters)
 
-            # Run async search in sync context
-            loop = asyncio.get_event_loop()
-            results = loop.run_until_complete(
-                self.client.search_visual_comprehensive(
-                    image_data=params.image_data,
-                    limit=params.limit,
-                    fusion_method=params.fusion_method,
-                    filters=qdrant_filter,
-                )
+            results = await self.client.search_visual_comprehensive(
+                image_data=params.image_data,
+                limit=params.limit,
+                fusion_method=params.fusion_method,
+                filters=qdrant_filter,
             )
 
             return SearchOutputSchema(

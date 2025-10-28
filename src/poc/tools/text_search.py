@@ -6,7 +6,6 @@ text-based vectors including titles, characters, genres, and more.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
 
 from atomic_agents import BaseTool  # type: ignore[import-untyped]
 
@@ -60,7 +59,7 @@ class TextSearchTool(BaseTool[TextSearchInputSchema, SearchOutputSchema]):  # ty
         super().__init__(config)
         self.client: QdrantClient = config.qdrant_client
 
-    def run(self, params: TextSearchInputSchema) -> SearchOutputSchema:
+    async def run(self, params: TextSearchInputSchema) -> SearchOutputSchema:
         """Execute text search with filters.
 
         Args:
@@ -78,7 +77,7 @@ class TextSearchTool(BaseTool[TextSearchInputSchema, SearchOutputSchema]):  # ty
 
         Example:
             >>> tool = TextSearchTool(config)
-            >>> result = tool.run(TextSearchInputSchema(
+            >>> result = await tool.run(TextSearchInputSchema(
             ...     query="action anime",
             ...     filters={"statistics.mal.score": {"gte": 7.5}}
             ... ))
@@ -90,15 +89,11 @@ class TextSearchTool(BaseTool[TextSearchInputSchema, SearchOutputSchema]):  # ty
             if params.filters:
                 qdrant_filter = self.client._build_filter(params.filters)
 
-            # Run async search in sync context
-            loop = asyncio.get_event_loop()
-            results = loop.run_until_complete(
-                self.client.search_text_comprehensive(
-                    query=params.query,
-                    limit=params.limit,
-                    fusion_method=params.fusion_method,
-                    filters=qdrant_filter,
-                )
+            results = await self.client.search_text_comprehensive(
+                query=params.query,
+                limit=params.limit,
+                fusion_method=params.fusion_method,
+                filters=qdrant_filter,
             )
 
             return SearchOutputSchema(
