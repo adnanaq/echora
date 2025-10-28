@@ -19,48 +19,48 @@ The anime vector database supports **38+ indexed payload fields** for filtering 
 
 ## 1. Basic Metadata Filters
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `id` | keyword | Unique anime identifier | `{"match": {"value": "21"}}` |
-| `title` | keyword | Exact title matching | `{"match": {"value": "Cowboy Bebop"}}` |
-| `title_text` | text | Full-text title search | Uses text search operators |
-| `type` | keyword | Anime type (TV, MOVIE, OVA, etc.) | `{"match": {"value": "TV"}}` |
-| `status` | keyword | Airing status (FINISHED, RELEASING, etc.) | `{"match": {"value": "FINISHED"}}` |
-| `rating` | keyword | Content rating (G, PG-13, R, etc.) | `{"match": {"value": "PG-13"}}` |
-| `source_material` | keyword | Original source (MANGA, LIGHT_NOVEL, etc.) | `{"match": {"value": "MANGA"}}` |
-| `nsfw` | bool | Adult content flag | `{"match": {"value": false}}` |
-| `sources` | keyword | Data source platforms | `{"match": {"any": ["myanimelist", "anilist"]}}` |
+| Field             | Type    | Description                                | Example Query                                    |
+| ----------------- | ------- | ------------------------------------------ | ------------------------------------------------ |
+| `id`              | keyword | Unique anime identifier                    | `{"match": {"value": "21"}}`                     |
+| `title`           | keyword | Exact title matching                       | `{"match": {"value": "Cowboy Bebop"}}`           |
+| `title_text`      | text    | Full-text title search                     | Uses text search operators                       |
+| `type`            | keyword | Anime type (TV, MOVIE, OVA, etc.)          | `{"match": {"value": "TV"}}`                     |
+| `status`          | keyword | Airing status (FINISHED, RELEASING, etc.)  | `{"match": {"value": "FINISHED"}}`               |
+| `rating`          | keyword | Content rating (G, PG-13, R, etc.)         | `{"match": {"value": "PG-13"}}`                  |
+| `source_material` | keyword | Original source (MANGA, LIGHT_NOVEL, etc.) | `{"match": {"value": "MANGA"}}`                  |
+| `nsfw`            | bool    | Adult content flag                         | `{"match": {"value": false}}`                    |
+| `sources`         | keyword | Data source platforms                      | `{"match": {"any": ["myanimelist", "anilist"]}}` |
 
 ---
 
 ## 2. Temporal Filters
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `year` | integer | Release year | `{"gte": 2020, "lte": 2024}` |
-| `season` | keyword | Release season (WINTER, SPRING, SUMMER, FALL) | `{"match": {"value": "FALL"}}` |
-| `episodes` | integer | Number of episodes | `{"gte": 12, "lte": 24}` |
-| `duration` | integer | Episode duration in seconds | `{"gte": 1200}` (20+ minutes) |
+| Field      | Type    | Description                                   | Example Query                  |
+| ---------- | ------- | --------------------------------------------- | ------------------------------ |
+| `year`     | integer | Release year                                  | `{"gte": 2020, "lte": 2024}`   |
+| `season`   | keyword | Release season (WINTER, SPRING, SUMMER, FALL) | `{"match": {"value": "FALL"}}` |
+| `episodes` | integer | Number of episodes                            | `{"gte": 12, "lte": 24}`       |
+| `duration` | integer | Episode duration in seconds                   | `{"gte": 1200}` (20+ minutes)  |
 
 ---
 
 ## 3. Content Filters
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `genres` | keyword | Anime genres | `{"match": {"any": ["Action", "Adventure"]}}` |
-| `tags` | keyword | Descriptive tags | `{"match": {"any": ["Time Travel", "Mecha"]}}` |
-| `demographics` | text | Target demographic description | Text search |
-| `content_warnings` | text | Content warning descriptions | Text search |
+| Field              | Type    | Description                    | Example Query                                  |
+| ------------------ | ------- | ------------------------------ | ---------------------------------------------- |
+| `genres`           | keyword | Anime genres                   | `{"match": {"any": ["Action", "Adventure"]}}`  |
+| `tags`             | keyword | Descriptive tags               | `{"match": {"any": ["Time Travel", "Mecha"]}}` |
+| `demographics`     | text    | Target demographic description | Text search                                    |
+| `content_warnings` | text    | Content warning descriptions   | Text search                                    |
 
 ---
 
 ## 4. Character Filters
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `characters.hair_color` | keyword | Character hair colors present | `{"match": {"any": ["pink", "blue"]}}` |
-| `characters.eye_color` | keyword | Character eye colors present | `{"match": {"any": ["red", "gold"]}}` |
+| Field                         | Type    | Description                       | Example Query                                     |
+| ----------------------------- | ------- | --------------------------------- | ------------------------------------------------- |
+| `characters.hair_color`       | keyword | Character hair colors present     | `{"match": {"any": ["pink", "blue"]}}`            |
+| `characters.eye_color`        | keyword | Character eye colors present      | `{"match": {"any": ["red", "gold"]}}`             |
 | `characters.character_traits` | keyword | Character personality/role traits | `{"match": {"any": ["tsundere", "protagonist"]}}` |
 
 ---
@@ -81,56 +81,56 @@ The anime vector database supports **38+ indexed payload fields** for filtering 
 
 ### MyAnimeList (MAL) - 6 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.mal.score` | float | User rating (0-10 scale) | `{"gte": 7.0}` |
-| `statistics.mal.scored_by` | integer | Number of users who rated | `{"gte": 10000}` |
-| `statistics.mal.members` | integer | Total members tracking | `{"gte": 50000}` |
-| `statistics.mal.favorites` | integer | Users who favorited | `{"gte": 100}` |
-| `statistics.mal.rank` | integer | Overall rank position | `{"lte": 5000}` |
-| `statistics.mal.popularity_rank` | integer | Popularity rank position | `{"lte": 10000}` |
+| Field                            | Type    | Description               | Example Query    |
+| -------------------------------- | ------- | ------------------------- | ---------------- |
+| `statistics.mal.score`           | float   | User rating (0-10 scale)  | `{"gte": 7.0}`   |
+| `statistics.mal.scored_by`       | integer | Number of users who rated | `{"gte": 10000}` |
+| `statistics.mal.members`         | integer | Total members tracking    | `{"gte": 50000}` |
+| `statistics.mal.favorites`       | integer | Users who favorited       | `{"gte": 100}`   |
+| `statistics.mal.rank`            | integer | Overall rank position     | `{"lte": 5000}`  |
+| `statistics.mal.popularity_rank` | integer | Popularity rank position  | `{"lte": 10000}` |
 
 ### AniList - 3 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.anilist.score` | float | User rating (0-10 scale) | `{"gte": 7.0}` |
-| `statistics.anilist.favorites` | integer | Users who favorited | `{"gte": 10}` |
+| Field                                | Type    | Description              | Example Query   |
+| ------------------------------------ | ------- | ------------------------ | --------------- |
+| `statistics.anilist.score`           | float   | User rating (0-10 scale) | `{"gte": 7.0}`  |
+| `statistics.anilist.favorites`       | integer | Users who favorited      | `{"gte": 10}`   |
 | `statistics.anilist.popularity_rank` | integer | Popularity rank position | `{"lte": 5000}` |
 
 ### AniDB - 2 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.anidb.score` | float | User rating (0-10 scale) | `{"gte": 7.0}` |
+| Field                        | Type    | Description               | Example Query   |
+| ---------------------------- | ------- | ------------------------- | --------------- |
+| `statistics.anidb.score`     | float   | User rating (0-10 scale)  | `{"gte": 7.0}`  |
 | `statistics.anidb.scored_by` | integer | Number of users who rated | `{"gte": 1000}` |
 
 ### Anime-Planet - 3 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.animeplanet.score` | float | User rating (0-10 scale) | `{"gte": 7.0}` |
+| Field                              | Type    | Description               | Example Query   |
+| ---------------------------------- | ------- | ------------------------- | --------------- |
+| `statistics.animeplanet.score`     | float   | User rating (0-10 scale)  | `{"gte": 7.0}`  |
 | `statistics.animeplanet.scored_by` | integer | Number of users who rated | `{"gte": 1000}` |
-| `statistics.animeplanet.rank` | integer | Overall rank position | `{"lte": 1000}` |
+| `statistics.animeplanet.rank`      | integer | Overall rank position     | `{"lte": 1000}` |
 
 ### Kitsu - 5 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.kitsu.score` | float | User rating (0-10 scale) | `{"gte": 7.0}` |
-| `statistics.kitsu.members` | integer | Total members tracking | `{"gte": 1000}` |
-| `statistics.kitsu.favorites` | integer | Users who favorited | `{"gte": 10}` |
-| `statistics.kitsu.rank` | integer | Overall rank position | `{"lte": 10000}` |
+| Field                              | Type    | Description              | Example Query    |
+| ---------------------------------- | ------- | ------------------------ | ---------------- |
+| `statistics.kitsu.score`           | float   | User rating (0-10 scale) | `{"gte": 7.0}`   |
+| `statistics.kitsu.members`         | integer | Total members tracking   | `{"gte": 1000}`  |
+| `statistics.kitsu.favorites`       | integer | Users who favorited      | `{"gte": 10}`    |
+| `statistics.kitsu.rank`            | integer | Overall rank position    | `{"lte": 10000}` |
 | `statistics.kitsu.popularity_rank` | integer | Popularity rank position | `{"lte": 10000}` |
 
 ### AnimeSchedule - 4 fields
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `statistics.animeschedule.score` | float | User rating (0-10 scale) | `{"gte": 6.0}` |
-| `statistics.animeschedule.scored_by` | integer | Number of users who rated | `{"gte": 5}` |
-| `statistics.animeschedule.members` | integer | Total members tracking | `{"gte": 10}` |
-| `statistics.animeschedule.rank` | integer | Overall rank position | `{"lte": 10000}` |
+| Field                                | Type    | Description               | Example Query    |
+| ------------------------------------ | ------- | ------------------------- | ---------------- |
+| `statistics.animeschedule.score`     | float   | User rating (0-10 scale)  | `{"gte": 6.0}`   |
+| `statistics.animeschedule.scored_by` | integer | Number of users who rated | `{"gte": 5}`     |
+| `statistics.animeschedule.members`   | integer | Total members tracking    | `{"gte": 10}`    |
+| `statistics.animeschedule.rank`      | integer | Overall rank position     | `{"lte": 10000}` |
 
 ---
 
@@ -138,44 +138,15 @@ The anime vector database supports **38+ indexed payload fields** for filtering 
 
 Aggregated scores computed from multiple platform ratings, all normalized to 0-10 scale.
 
-| Field | Type | Description | Example Query |
-|-------|------|-------------|---------------|
-| `score.arithmetic_mean` | float | Simple average of all platform scores | `{"gte": 7.0}` |
+| Field                             | Type  | Description                             | Example Query  |
+| --------------------------------- | ----- | --------------------------------------- | -------------- |
+| `score.arithmetic_mean`           | float | Simple average of all platform scores   | `{"gte": 7.0}` |
 | `score.arithmetic_geometric_mean` | float | Geometric mean (reduces outlier impact) | `{"gte": 7.0}` |
-| `score.median` | float | Median score across platforms | `{"gte": 7.0}` |
+| `score.median`                    | float | Median score across platforms           | `{"gte": 7.0}` |
 
 ---
 
 ## Usage Examples
-
-### Using QdrantClient Infrastructure
-
-The recommended way to use filters is through the `QdrantClient._build_filter()` method:
-
-```python
-from src.config.settings import get_settings
-from src.vector.client.qdrant_client import QdrantClient
-
-settings = get_settings()
-client = QdrantClient(
-    url=settings.qdrant_url,
-    collection_name=settings.qdrant_collection_name,
-    settings=settings,
-)
-
-# Example: Find highly-rated anime on MAL
-filter_dict = {"statistics.mal.score": {"gte": 8.0}}
-qdrant_filter = client._build_filter(filter_dict)
-
-# Use with Qdrant SDK scroll
-results, _ = client.client.scroll(
-    collection_name=client.collection_name,
-    scroll_filter=qdrant_filter,
-    limit=10,
-    with_payload=True,
-    with_vectors=False
-)
-```
 
 ### Common Filter Patterns
 
@@ -312,12 +283,12 @@ filter_dict = {"statistics.mal.scored_by": {"gte": 10000}}
 
 ## Filter Query Operators
 
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| `gte` | Greater than or equal to | `{"gte": 7.0}` |
-| `lte` | Less than or equal to | `{"lte": 5000}` |
-| `gt` | Greater than | `{"gt": 6.9}` |
-| `lt` | Less than | `{"lt": 5001}` |
+| Operator | Meaning                  | Example         |
+| -------- | ------------------------ | --------------- |
+| `gte`    | Greater than or equal to | `{"gte": 7.0}`  |
+| `lte`    | Less than or equal to    | `{"lte": 5000}` |
+| `gt`     | Greater than             | `{"gt": 6.9}`   |
+| `lt`     | Less than                | `{"lt": 5001}`  |
 
 ## Implementation Notes
 
@@ -371,7 +342,7 @@ qdrant_indexed_payload_fields: Dict[str, str] = Field(
 )
 ```
 
-### _build_filter() Method (src/vector/client/qdrant_client.py:694)
+### \_build_filter() Method (src/vector/client/qdrant_client.py:694)
 
 The QdrantClient provides a `_build_filter()` method that converts Python dictionaries to Qdrant Filter objects:
 
@@ -394,19 +365,6 @@ Comprehensive tests are available in `/tmp/test_statistics_filters_refactored.py
 - Aggregate score filtering
 - Multi-platform combination queries
 - Range query variations
-
-Run tests with:
-```bash
-uv run python /tmp/test_statistics_filters_refactored.py
-```
-
-## Related Work
-
-- **Branch**: AVS-13 (statistics indexing fix)
-- **Issue**: AVS-13 - Fix per-platform statistics filtering
-- **Related Docs**:
-  - `docs/review_vector_design.md` - Analysis of statistics semantic value
-  - `src/enrichment/prompts/stages/04_statistics_media.txt` - Statistics extraction prompt
 
 ## Future Enhancements
 
