@@ -818,8 +818,10 @@ class QdrantClient:
                 }
 
             # Check for duplicates and apply deduplication policy
-            seen_keys: dict[tuple, int] = {}  # (anime_id, vector_name) -> first index
-            duplicates: list[tuple] = []
+            seen_keys: dict[
+                tuple[int, str], int
+            ] = {}  # (anime_id, vector_name) -> first index
+            duplicates: list[tuple[int, str]] = []
             deduplicated_updates: list[dict[str, Any]] = []
 
             for idx, update in enumerate(updates):

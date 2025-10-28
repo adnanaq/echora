@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
@@ -40,7 +40,7 @@ class KitsuEnrichmentHelper:
             ) as session:
                 async with session.get(url, headers=headers, params=params) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(dict[str, Any], await response.json())
                     else:
                         logger.warning(f"Kitsu API error: HTTP {response.status}")
                         return {}

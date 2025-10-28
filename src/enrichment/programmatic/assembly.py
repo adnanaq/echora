@@ -581,9 +581,9 @@ class EnrichmentAssembler:
 
                 # Re-validate after fixes
                 final_validation = validator.validate_entry(entry, 0)
-                return final_validation.is_valid
+                return bool(final_validation.is_valid)
 
-            return validation_result.is_valid
+            return bool(validation_result.is_valid)
 
         except Exception as e:
             self.errors.append(f"Final validation exception: {str(e)}")

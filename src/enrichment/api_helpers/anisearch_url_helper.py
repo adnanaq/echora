@@ -156,7 +156,7 @@ def _extract_title_from_page(soup: BeautifulSoup) -> str | None:
             if isinstance(data, dict) and "name" in data:
                 name = data["name"].strip()
                 if name and not name.lower().startswith("anisearch"):
-                    return name
+                    return str(name)
         except (json.JSONDecodeError, KeyError, AttributeError):
             # json.JSONDecodeError: Malformed JSON in script tag
             # KeyError: Expected key not in data

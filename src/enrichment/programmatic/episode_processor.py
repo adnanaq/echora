@@ -30,7 +30,9 @@ class EpisodeProcessor:
         "synopsis",
     ]
 
-    def process_episodes(self, episodes_data: list[dict]) -> list[dict]:
+    def process_episodes(
+        self, episodes_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Process raw episode data from APIs.
 
@@ -59,7 +61,7 @@ class EpisodeProcessor:
         logger.debug(f"Processed {len(processed)}/{len(episodes_data)} episodes")
         return processed
 
-    def _extract_episode_fields(self, episode: dict) -> dict[str, Any] | None:
+    def _extract_episode_fields(self, episode: dict[str, Any]) -> dict[str, Any] | None:
         """
         Extract specific fields from episode data.
 
@@ -86,7 +88,9 @@ class EpisodeProcessor:
 
         return processed if processed else None
 
-    def merge_episode_sources(self, *episode_sources: list[dict]) -> list[dict]:
+    def merge_episode_sources(
+        self, *episode_sources: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Merge episode data from multiple API sources.
 
@@ -123,7 +127,9 @@ class EpisodeProcessor:
 
         return sorted_episodes
 
-    def _merge_episode_data(self, existing: dict, new: dict) -> dict:
+    def _merge_episode_data(
+        self, existing: dict[str, Any], new: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Merge two episode data dictionaries.
 
@@ -149,7 +155,9 @@ class EpisodeProcessor:
 
         return merged
 
-    def validate_episode_data(self, episodes: list[dict]) -> list[dict]:
+    def validate_episode_data(
+        self, episodes: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Validate and clean episode data.
 
@@ -175,8 +183,8 @@ class EpisodeProcessor:
         return validated
 
     def batch_process_episodes(
-        self, episodes: list[dict], batch_size: int = 50
-    ) -> list[list[dict]]:
+        self, episodes: list[dict[str, Any]], batch_size: int = 50
+    ) -> list[list[dict[str, Any]]]:
         """
         Process episodes in batches for memory efficiency.
 
@@ -198,7 +206,9 @@ class EpisodeProcessor:
 
         return batches
 
-    def extract_episode_statistics(self, episodes: list[dict]) -> dict:
+    def extract_episode_statistics(
+        self, episodes: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """
         Extract statistics from episode data.
 

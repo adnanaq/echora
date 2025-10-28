@@ -139,13 +139,13 @@ def _extract_best_title(anime_data: dict[str, Any]) -> str | None:
 
     # Priority order: main → english → japanese → first synonym
     if titles.get("main"):
-        return titles["main"]
+        return str(titles["main"])
     elif titles.get("english"):
-        return titles["english"]
+        return str(titles["english"])
     elif titles.get("japanese"):
-        return titles["japanese"]
+        return str(titles["japanese"])
     elif titles.get("synonyms") and len(titles["synonyms"]) > 0:
-        return titles["synonyms"][0]
+        return str(titles["synonyms"][0])
 
     return None
 

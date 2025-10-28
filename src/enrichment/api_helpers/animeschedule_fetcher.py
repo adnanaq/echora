@@ -7,7 +7,7 @@ Follows gemini_instructions.md Step 2.4
 
 import json
 import sys
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -26,14 +26,14 @@ def fetch_animeschedule_data(
 
         response = requests.get(search_url)
         response.raise_for_status()
-        search_results = response.json()
+        search_results = cast(dict[str, Any], response.json())
 
         if not search_results or not search_results.get("anime"):
             print("❌ No results found on AnimSchedule")
             return None
 
         # Take the first result (most relevant)
-        anime_data = search_results["anime"][0]
+        anime_data = cast(dict[str, Any], search_results["anime"][0])
 
         # Save to temp file only if requested (for standalone usage)
         if save_file:

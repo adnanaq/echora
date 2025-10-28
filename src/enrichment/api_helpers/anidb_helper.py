@@ -74,8 +74,8 @@ class AniDBEnrichmentHelper:
         self.client_version = client_version or os.getenv("ANIDB_CLIENTVER", "1.0")
 
         # Session management
-        self.session = None
-        self._session_created_at = 0
+        self.session: aiohttp.ClientSession | None = None
+        self._session_created_at: float = 0.0
         self._session_max_age = 300  # Recreate session every 5 minutes
 
         # Enhanced rate limiting configuration
@@ -450,7 +450,7 @@ class AniDBEnrichmentHelper:
 
         # Extract titles
         titles_element = root.find("titles")
-        titles: dict[str, str | list[str] | None] = {}
+        titles: dict[str, str | list[str] | list[dict[str, str]] | None] = {}
         if titles_element is not None:
             for title in titles_element.findall("title"):
                 title_type = title.get("type", "unknown")

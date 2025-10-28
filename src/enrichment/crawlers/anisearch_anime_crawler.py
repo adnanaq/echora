@@ -479,7 +479,7 @@ async def fetch_anisearch_anime(
 
                 # Return data for programmatic usage
                 if return_data:
-                    return anime_data
+                    return cast(dict[str, Any], anime_data)
 
                 return None
             else:

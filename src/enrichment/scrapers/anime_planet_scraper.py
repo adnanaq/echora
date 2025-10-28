@@ -2,7 +2,7 @@
 
 import re
 from datetime import UTC
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, urljoin
 
 from .base_scraper import BaseScraper
@@ -24,7 +24,7 @@ class AnimePlanetScraper(BaseScraper):
             try:
                 cached_result = await self.cache_manager.get(cache_key)
                 if cached_result:
-                    return cached_result
+                    return cast(dict[str, Any], cached_result)
             except Exception:
                 # Cache lookup failure is non-critical, continue with fresh fetch
                 pass

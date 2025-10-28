@@ -50,7 +50,7 @@ class ProgrammaticEnrichmentPipeline:
 
     async def enrich_anime(
         self,
-        offline_data: dict,
+        offline_data: dict[str, Any],
         agent_dir: str | None = None,
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,
@@ -158,7 +158,9 @@ class ProgrammaticEnrichmentPipeline:
                 }
             raise
 
-    async def enrich_batch(self, anime_list: list[dict]) -> list[dict]:
+    async def enrich_batch(
+        self, anime_list: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Enrich multiple anime in parallel.
 
@@ -291,7 +293,7 @@ class ProgrammaticEnrichmentPipeline:
 
         return temp_dir
 
-    def _process_episodes(self, api_data: dict) -> list[dict]:
+    def _process_episodes(self, api_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Process and merge episode data from all APIs."""
         episode_sources = []
 
@@ -311,7 +313,7 @@ class ProgrammaticEnrichmentPipeline:
 
         return []
 
-    async def load_and_enrich_from_file(self, file_path: str) -> dict:
+    async def load_and_enrich_from_file(self, file_path: str) -> dict[str, Any]:
         """
         Load anime from file and enrich it.
 
@@ -327,7 +329,7 @@ class ProgrammaticEnrichmentPipeline:
         return await self.enrich_anime(offline_data)
 
     async def enrich_anime_with_assembly(
-        self, offline_data: dict, stage_outputs_dir: Path | None = None
+        self, offline_data: dict[str, Any], stage_outputs_dir: Path | None = None
     ) -> dict[str, Any]:
         """
         Complete enrichment pipeline including Step 5 assembly.

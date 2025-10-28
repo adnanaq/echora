@@ -32,9 +32,9 @@ class AniDBUDPHelper:
         self.client_name = os.getenv("ANIDB_CLIENT")
         self.client_version = os.getenv("ANIDB_CLIENTVER")
         self.protocol_version = os.getenv("ANIDB_PROTOVER", "1")
-        self.socket = None
+        self.socket: socket.socket | None = None
         self.session_key = None
-        self.last_request_time = 0
+        self.last_request_time: float = 0.0
         self.min_request_interval = 2.0  # 2 seconds between requests (0.5 req/sec)
 
     def _wait_for_rate_limit(self) -> None:

@@ -83,19 +83,19 @@ class EnrichmentConfig(BaseSettings):
     verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 
     @field_validator("api_timeout")
-    def validate_timeout(cls, v):
+    def validate_timeout(cls, v: int) -> int:
         if v < 1 or v > 120:
             raise ValueError("API timeout must be between 1 and 120 seconds")
         return v
 
     @field_validator("batch_size")
-    def validate_batch_size(cls, v):
+    def validate_batch_size(cls, v: int) -> int:
         if v < 1 or v > 100:
             raise ValueError("Batch size must be between 1 and 100")
         return v
 
     @field_validator("cache_ttl")
-    def validate_cache_ttl(cls, v):
+    def validate_cache_ttl(cls, v: int) -> int:
         if v < 0:
             raise ValueError("Cache TTL must be non-negative")
         return v

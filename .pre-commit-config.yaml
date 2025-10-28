@@ -35,6 +35,8 @@ repos:
           - types-setuptools
           - scikit-learn-stubs
           - scipy-stubs
+          - pydantic
+          - pydantic-settings
 
         # Only check src/ and tests/ (matches CI)
         files: ^(src|tests)/.*\.py$

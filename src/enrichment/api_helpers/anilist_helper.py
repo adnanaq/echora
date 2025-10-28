@@ -9,7 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
@@ -22,7 +22,7 @@ class AniListEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize AniList enrichment helper."""
         self.base_url = "https://graphql.anilist.co"
-        self.session = None
+        self.session: aiohttp.ClientSession | None = None
         self.rate_limit_remaining = 90
         self.rate_limit_reset = None
 
@@ -67,11 +67,11 @@ class AniListEnrichmentHelper:
                     return await self._make_request(query, variables)
 
                 response.raise_for_status()
-                data = await response.json()
+                data = cast(dict[str, Any], await response.json())
                 if "errors" in data:
                     logger.error(f"AniList GraphQL errors: {data['errors']}")
                     return {}
-                return data.get("data", {})
+                return cast(dict[str, Any], data.get("data", {}))
         except Exception as e:
             logger.error(f"AniList API request failed: {e}")
             return {}
