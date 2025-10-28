@@ -455,7 +455,9 @@ class AniDBEnrichmentHelper:
         if titles_element is not None:
             for title in titles_element.findall("title"):
                 title_type = title.get("type", "unknown")
-                lang = title.get("xml:lang", "unknown")
+                lang = title.get(
+                    "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
+                )  # Correctly extract lang
 
                 if title_type == "main":
                     titles["main"] = title.text
@@ -464,12 +466,29 @@ class AniDBEnrichmentHelper:
                         titles["english"] = title.text
                     elif lang == "ja":
                         titles["japanese"] = title.text
+                    else:
+                        if "official_other" not in titles:
+                            titles["official_other"] = []
+                        if title.text:
+                            official_other = cast(
+                                list[dict[str, str]], titles["official_other"]
+                            )
+                            official_other.append(
+                                {"lang": lang, "title": title.text}
+                            )  # Use extracted lang
                 elif title_type == "synonym":
                     if "synonyms" not in titles:
                         titles["synonyms"] = []
                     if title.text:
                         synonyms = cast(List[str], titles["synonyms"])
                         synonyms.append(title.text)
+                else:
+                    # Catch-all for other title types
+                    if title_type not in titles:
+                        titles[title_type] = []
+                    if title.text:
+                        other_titles = cast(list[str], titles[title_type])
+                        other_titles.append(title.text)
         anime_data["titles"] = titles
 
         # Extract tags
@@ -601,6 +620,90 @@ class AniDBEnrichmentHelper:
                 characters.append(char_data)
 
         anime_data["characters"] = characters
+
+        # Extract episodes
+        episodes_element = root.find("episodes")
+        episodes = []
+        if episodes_element is not None:
+            for episode in episodes_element.findall("episode"):
+                ep_data: dict[str, Any] = {
+                    "id": episode.get("id"),
+                    "update": episode.get("update"),
+                }
+
+                epno_elem = episode.find("epno")
+                if epno_elem is not None:
+                    ep_data["episode_number"] = epno_elem.text
+                    ep_data["episode_type"] = epno_elem.get("type")
+
+                length_elem = episode.find("length")
+                if length_elem is not None and length_elem.text:
+                    ep_data["length"] = int(length_elem.text)
+
+                airdate_elem = episode.find("airdate")
+                if airdate_elem is not None:
+                    ep_data["airdate"] = airdate_elem.text
+
+                rating_elem = episode.find("rating")
+                if rating_elem is not None and rating_elem.text:
+                    ep_data["rating"] = float(rating_elem.text)
+                    ep_data["rating_votes"] = int(rating_elem.get("votes", 0))
+
+                summary_elem = episode.find("summary")
+                if summary_elem is not None:
+                    ep_data["summary"] = summary_elem.text
+
+                # Extract episode titles
+                ep_titles: dict[str, str | list[dict[str, str]] | None] = {}
+                for ep_title in episode.findall("title"):
+                    ep_lang = ep_title.get("xml:lang") or ep_title.get(
+                        "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
+                    )
+                    if ep_title.text:
+                        ep_titles[ep_lang] = ep_title.text
+                ep_data["titles"] = ep_titles
+
+                # Extract episode resources
+                ep_resources_list = []
+                ep_resources_element = episode.find("resources")
+                if ep_resources_element is not None:
+                    for ep_resource_elem in ep_resources_element.findall("resource"):
+                        external_entity_elem = ep_resource_elem.find("externalentity")
+                        if external_entity_elem is not None:
+                            identifier_elem = external_entity_elem.find("identifier")
+                            url_elem = external_entity_elem.find("url")
+                            resource_value = None
+                            if identifier_elem is not None:
+                                resource_value = identifier_elem.text
+                            elif url_elem is not None:
+                                resource_value = url_elem.text
+
+                            if resource_value:
+                                ep_resources_list.append(
+                                    {
+                                        "type": ep_resource_elem.get("type"),
+                                        "value": resource_value,
+                                    }
+                                )
+                ep_data["resources"] = ep_resources_list
+                episodes.append(ep_data)
+        anime_data["episodes"] = episodes
+
+        # Extract related anime
+        related_anime_list = []
+        related_anime_element = root.find("relatedanime")
+        if related_anime_element is not None:
+            for related_elem in related_anime_element.findall(
+                "anime"
+            ):  # Iterate through 'anime' tags
+                related_anime_list.append(
+                    {
+                        "id": related_elem.get("id"),
+                        "type": related_elem.get("type"),
+                        "title": related_elem.text,  # Get text content as title
+                    }
+                )
+        anime_data["related_anime"] = related_anime_list
 
         return anime_data
 
