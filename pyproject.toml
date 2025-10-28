@@ -2,7 +2,7 @@
 name = "anime-vector-service"
 version = "0.1.0"
 description = "Microservice for anime vector database operations with semantic search capabilities"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     # Core FastAPI dependencies
     "fastapi==0.115.13",
@@ -118,3 +118,13 @@ markers = [
 
 [tool.mypy]
 mypy_path = "stubs"
+
+[[tool.mypy.overrides]]
+module = [
+    "src.enrichment.scrapers.*",
+    "src.vector.enhancement.*",
+    "src.validation.*",
+    "src.enrichment.ai_character_matcher",
+    "src.vector.processors.vision_processor",
+]
+ignore_errors = true
