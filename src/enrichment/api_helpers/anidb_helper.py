@@ -462,12 +462,14 @@ class AniDBEnrichmentHelper:
                 if title_type == "main":
                     titles["main"] = title.text
                 elif title_type == "official":
+                    if "official" not in titles:
+                        titles["official"] = {}
                     if lang == "en":
-                        titles["english"] = title.text
+                        titles["official"]["english"] = title.text
                     elif lang == "ja":
-                        titles["japanese"] = title.text
+                        titles["official"]["japanese"] = title.text
                     else:
-                        titles[lang] = title.text
+                        titles["official"][lang] = title.text
                 elif title_type == "synonym":
                     if "synonyms" not in titles:
                         titles["synonyms"] = []
@@ -617,68 +619,8 @@ class AniDBEnrichmentHelper:
         episodes_element = root.find("episodes")
         episodes = []
         if episodes_element is not None:
-            for episode in episodes_element.findall("episode"):
-                ep_data: dict[str, Any] = {
-                    "id": episode.get("id"),
-                    "update": episode.get("update"),
-                }
-
-                epno_elem = episode.find("epno")
-                if epno_elem is not None:
-                    ep_data["episode_number"] = epno_elem.text
-                    ep_data["episode_type"] = epno_elem.get("type")
-
-                length_elem = episode.find("length")
-                if length_elem is not None and length_elem.text:
-                    ep_data["length"] = int(length_elem.text)
-
-                airdate_elem = episode.find("airdate")
-                if airdate_elem is not None:
-                    ep_data["air_date"] = airdate_elem.text
-
-                rating_elem = episode.find("rating")
-                if rating_elem is not None and rating_elem.text:
-                    ep_data["rating"] = float(rating_elem.text)
-                    ep_data["rating_votes"] = int(rating_elem.get("votes", 0))
-
-                summary_elem = episode.find("summary")
-                if summary_elem is not None:
-                    ep_data["summary"] = summary_elem.text
-
-                # Extract episode titles
-                ep_titles: dict[str, str | list[dict[str, str]] | None] = {}
-                for ep_title in episode.findall("title"):
-                    ep_lang = ep_title.get("xml:lang") or ep_title.get(
-                        "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
-                    )
-                    if ep_title.text:
-                        ep_titles[ep_lang] = ep_title.text
-                ep_data["titles"] = ep_titles
-
-                # Extract episode resources
-                ep_resources_list = []
-                ep_resources_element = episode.find("resources")
-                if ep_resources_element is not None:
-                    for ep_resource_elem in ep_resources_element.findall("resource"):
-                        external_entity_elem = ep_resource_elem.find("externalentity")
-                        if external_entity_elem is not None:
-                            identifier_elem = external_entity_elem.find("identifier")
-                            url_elem = external_entity_elem.find("url")
-                            resource_value = None
-                            if identifier_elem is not None:
-                                resource_value = identifier_elem.text
-                            elif url_elem is not None:
-                                resource_value = url_elem.text
-
-                            if resource_value:
-                                ep_resources_list.append(
-                                    {
-                                        "type": ep_resource_elem.get("type"),
-                                        "value": resource_value,
-                                    }
-                                )
-                ep_data["resources"] = ep_resources_list
-                episodes.append(ep_data)
+            for episode_elem in episodes_element.findall("episode"):
+                episodes.append(self._parse_episode_xml(episode_elem))
         anime_data["episodes"] = episodes
 
         # Extract related anime
@@ -699,25 +641,19 @@ class AniDBEnrichmentHelper:
 
         return anime_data
 
-    def _parse_episode_xml(self, xml_content: str) -> Dict[str, Any]:
-        """Parse episode XML response into structured data."""
-        try:
-            root = ET.fromstring(xml_content)
-        except ET.ParseError as e:
-            logger.error(f"XML parsing error: {str(e)}")
-            return {}
-
-        epno_elem = root.find("epno")
-        length_elem = root.find("length")
-        airdate_elem = root.find("airdate")
-        rating_elem = root.find("rating")
-        votes_elem = root.find("votes")
-        summary_elem = root.find("summary")
+    def _parse_episode_xml(self, episode_element: ET.Element) -> Dict[str, Any]:
+        """Parse episode XML element into structured data."""
+        epno_elem = episode_element.find("epno")
+        length_elem = episode_element.find("length")
+        airdate_elem = episode_element.find("airdate")
+        rating_elem = episode_element.find("rating")
+        summary_elem = episode_element.find("summary")
 
         episode_data: Dict[str, Any] = {
-            "anidb_id": root.get("id"),
-            "anime_id": root.get("aid"),
+            "id": episode_element.get("id"),
+            "update": episode_element.get("update"),
             "episode_number": epno_elem.text if epno_elem is not None else None,
+            "episode_type": epno_elem.get("type") if epno_elem is not None else None,
             "length": (
                 int(length_elem.text)
                 if length_elem is not None and length_elem.text
@@ -729,35 +665,47 @@ class AniDBEnrichmentHelper:
                 if rating_elem is not None and rating_elem.text
                 else None
             ),
-            "votes_count": (
-                int(votes_elem.text)
-                if votes_elem is not None and votes_elem.text
-                else None
+            "rating_votes": (
+                int(rating_elem.get("votes", 0))
+                if rating_elem is not None
+                else 0
             ),
             "summary": summary_elem.text if summary_elem is not None else None,
         }
 
         # Extract episode titles
-        titles: Dict[str, Union[str, List[Dict[str, str]], None]] = {}
-        for title in root.findall("title"):
-            lang = title.get("xml:lang") or title.get(
+        ep_titles: Dict[str, str | None] = {}
+        for ep_title in episode_element.findall("title"):
+            ep_lang = ep_title.get("xml:lang") or ep_title.get(
                 "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
             )
-            if lang == "en":
-                titles["english"] = title.text
-            elif lang == "ja":
-                titles["japanese"] = title.text
-            elif lang == "x-jat":
-                titles["romaji"] = title.text
-            else:
-                if "other" not in titles:
-                    titles["other"] = []
-                if title.text:
-                    other_titles = cast(List[Dict[str, str]], titles["other"])
-                    other_titles.append(
-                        {"lang": lang or "unknown", "title": title.text}
-                    )
-        episode_data["titles"] = titles
+            if ep_title.text:
+                ep_titles[ep_lang] = ep_title.text
+        episode_data["titles"] = ep_titles
+
+        # Extract episode resources (if available in this context)
+        ep_resources_list = []
+        ep_resources_element = episode_element.find("resources")
+        if ep_resources_element is not None:
+            for ep_resource_elem in ep_resources_element.findall("resource"):
+                external_entity_elem = ep_resource_elem.find("externalentity")
+                if external_entity_elem is not None:
+                    identifier_elem = external_entity_elem.find("identifier")
+                    url_elem = external_entity_elem.find("url")
+                    resource_value = None
+                    if identifier_elem is not None:
+                        resource_value = identifier_elem.text
+                    elif url_elem is not None:
+                        resource_value = url_elem.text
+
+                    if resource_value:
+                        ep_resources_list.append(
+                            {
+                                "type": ep_resource_elem.get("type"),
+                                "value": resource_value,
+                            }
+                        )
+        episode_data["resources"] = ep_resources_list
 
         return episode_data
 
@@ -785,20 +733,7 @@ class AniDBEnrichmentHelper:
             logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
             return None
 
-    async def get_episode_by_id(self, episode_id: int) -> Optional[Dict[str, Any]]:
-        """Get episode information by AniDB episode ID."""
-        try:
-            params = {"request": "episode", "eid": episode_id}
-            xml_response = await self._make_request(params)
 
-            if not xml_response or "<error" in xml_response:
-                logger.warning(f"No data or error for AniDB episode ID: {episode_id}")
-                return None
-
-            return self._parse_episode_xml(xml_response)
-        except Exception as e:
-            logger.error(f"Failed to fetch episode by AniDB ID {episode_id}: {e}")
-            return None
 
     async def search_anime_by_name(
         self, anime_name: str

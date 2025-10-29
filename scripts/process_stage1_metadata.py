@@ -761,6 +761,17 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
     # Convert to uppercase for enum compliance
     output["source_material"] = source_material.upper() if source_material else None
 
+    # Sources from offline database
+    output["sources"] = offline_data.get("sources", [])
+
+    # Add AnimSchedule source if available
+    animeschedule_data = sources.get("animeschedule", {})
+    if animeschedule_data.get("route"):
+        animeschedule_url = f"https://animeschedule.net/anime/{animeschedule_data["route"]}"
+        # Ensure the URL is not already present before appending
+        if animeschedule_url not in output["sources"]:
+            output["sources"].append(animeschedule_url)
+
     # Status (cross-validated)
     output["status"] = cross_validate_with_offline(offline_data, sources, "status")
 
@@ -769,6 +780,12 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
 
     # Title from offline database
     output["title"] = offline_data.get("title")
+
+    # Fallback to AniDB main title if offline database does not provide one
+    if not output["title"]:
+        anidb_titles = sources.get("anidb", {}).get("titles", {})
+        if anidb_titles.get("main"):
+            output["title"] = anidb_titles["main"]
 
     # English and Japanese titles from Jikan
     titles = jikan_data.get("titles", [])
@@ -787,8 +804,22 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
         if anime_planet.get("title_japanese"):
             output["title_japanese"] = anime_planet["title_japanese"]
 
+    # Fallback to AniDB official titles if still not found
+    anidb_titles = sources.get("anidb", {}).get("titles", {})
+    if anidb_titles and anidb_titles.get("official"):
+        if not output["title_english"]:
+            output["title_english"] = anidb_titles["official"].get("english")
+        if not output["title_japanese"]:
+            output["title_japanese"] = anidb_titles["official"].get("japanese")
+
     # Type from offline database
     output["type"] = offline_data.get("type")
+
+    # Fallback to AniDB type if offline database does not provide one
+    if not output["type"]:
+        anidb_data = sources.get("anidb", {})
+        if anidb_data.get("type"):
+            output["type"] = anidb_data["type"]
 
     # Year (cross-validated)
     output["year"] = cross_validate_with_offline(offline_data, sources, "year")
