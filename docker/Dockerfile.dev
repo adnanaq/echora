@@ -1,0 +1,45 @@
+# Dockerfile.dev — Development environment
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for development
+RUN apt-get update && apt-get install -y \
+  gcc \
+  g++ \
+  curl \
+  git \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install uv (modern fast package manager)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Copy dependency files first for caching
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies including dev dependencies
+RUN uv sync --frozen
+
+# Copy source code
+COPY src/ ./src/
+COPY README.md .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Expose port for dev server
+EXPOSE 8002
+
+# Optional: mount local source code for live reload in docker run
+# docker run -v $(pwd)/src:/app/src ...
+
+# Health check (optional for dev)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8002/health || exit 1
+
+# Run application
+CMD ["python", "-m", "src.main"]
+
