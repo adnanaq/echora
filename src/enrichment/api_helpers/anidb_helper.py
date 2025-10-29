@@ -437,11 +437,11 @@ class AniDBEnrichmentHelper:
         anime_data: Dict[str, Any] = {
             "anidb_id": root.get("id"),
             "type": type_elem.text if type_elem is not None else None,
-            "episodecount": (
+            "episode_count": (
                 episodecount_elem.text if episodecount_elem is not None else None
             ),
-            "startdate": startdate_elem.text if startdate_elem is not None else None,
-            "enddate": enddate_elem.text if enddate_elem is not None else None,
+            "start_date": startdate_elem.text if startdate_elem is not None else None,
+            "end_date": enddate_elem.text if enddate_elem is not None else None,
             "description": (
                 description_elem.text if description_elem is not None else None
             ),
@@ -467,15 +467,7 @@ class AniDBEnrichmentHelper:
                     elif lang == "ja":
                         titles["japanese"] = title.text
                     else:
-                        if "official_other" not in titles:
-                            titles["official_other"] = []
-                        if title.text:
-                            official_other = cast(
-                                list[dict[str, str]], titles["official_other"]
-                            )
-                            official_other.append(
-                                {"lang": lang, "title": title.text}
-                            )  # Use extracted lang
+                        titles[lang] = title.text
                 elif title_type == "synonym":
                     if "synonyms" not in titles:
                         titles["synonyms"] = []
@@ -642,7 +634,7 @@ class AniDBEnrichmentHelper:
 
                 airdate_elem = episode.find("airdate")
                 if airdate_elem is not None:
-                    ep_data["airdate"] = airdate_elem.text
+                    ep_data["air_date"] = airdate_elem.text
 
                 rating_elem = episode.find("rating")
                 if rating_elem is not None and rating_elem.text:
@@ -731,13 +723,13 @@ class AniDBEnrichmentHelper:
                 if length_elem is not None and length_elem.text
                 else None
             ),
-            "airdate": airdate_elem.text if airdate_elem is not None else None,
+            "air_date": airdate_elem.text if airdate_elem is not None else None,
             "rating": (
                 float(rating_elem.text)
                 if rating_elem is not None and rating_elem.text
                 else None
             ),
-            "votes": (
+            "votes_count": (
                 int(votes_elem.text)
                 if votes_elem is not None and votes_elem.text
                 else None
