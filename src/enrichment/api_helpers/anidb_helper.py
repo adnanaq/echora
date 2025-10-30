@@ -152,7 +152,13 @@ class AniDBEnrichmentHelper:
         else:
             self.metrics.consecutive_failures += 1
 
-            if (
+            if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
+                self.circuit_breaker_state = CircuitBreakerState.OPEN
+                self.circuit_breaker_opened_at = int(time.time())
+                logger.warning(
+                    "Circuit breaker moved back to OPEN state from HALF_OPEN"
+                )
+            elif (
                 self.circuit_breaker_state == CircuitBreakerState.CLOSED
                 and self.metrics.consecutive_failures >= self.circuit_breaker_threshold
             ):

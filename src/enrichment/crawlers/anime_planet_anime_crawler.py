@@ -25,7 +25,7 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
-from .utils import sanitize_output_path
+from src.enrichment.crawlers.utils import sanitize_output_path
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 
@@ -42,7 +42,7 @@ def _normalize_anime_url(anime_identifier: str) -> str:
     Returns:
         Full URL: "https://www.anime-planet.com/anime/dandadan"
     """
-    if not anime_identifier.startswith("http"):
+    if not anime_identifier.startswith(("http://", "https://")):
         # Remove leading slashes and "anime/" prefix if present
         clean_id = anime_identifier.lstrip("/")
         if clean_id.startswith("anime/"):
@@ -289,21 +289,30 @@ async def fetch_animeplanet_anime(
                     if start_date and end_date:
                         anime_data["status"] = "COMPLETED"
                     elif start_date and not end_date:
-                        from datetime import datetime, timezone
+                        from datetime import date, datetime
 
                         try:
+                            # Handle both full datetime strings and date-only strings
                             start_dt = datetime.fromisoformat(
                                 start_date.replace("Z", "+00:00")
                             )
-                            now = datetime.now(timezone.utc)
-                            if start_dt > now:
-                                anime_data["status"] = "UPCOMING"
-                            else:
-                                anime_data["status"] = "AIRING"
-                        except (ValueError, TypeError):
+                            is_future = start_dt.date() > date.today()
+                        except ValueError:
+                            # Fallback for date-only strings like YYYY-MM-DD
+                            try:
+                                start_d = date.fromisoformat(start_date)
+                                is_future = start_d > date.today()
+                            except (ValueError, TypeError):
+                                is_future = (
+                                    False  # Default to not upcoming if parse fails
+                                )
+
+                        if is_future:
+                            anime_data["status"] = "UPCOMING"
+                        else:
                             anime_data["status"] = "AIRING"
-                    else:
-                        anime_data["status"] = "UNKNOWN"
+                else:
+                    anime_data["status"] = "UNKNOWN"
 
                 # Conditionally write to file
                 if output_path:
@@ -481,7 +490,8 @@ def _process_related_anime(
     return related_anime
 
 
-if __name__ == "__main__":
+def main():
+    """Command-line entry point for the crawler."""
     parser = argparse.ArgumentParser(
         description="Crawl anime data from anime-planet.com"
     )
@@ -505,3 +515,7 @@ if __name__ == "__main__":
             output_path=args.output,
         )
     )
+
+
+if __name__ == "__main__":
+    main()
