@@ -537,11 +537,10 @@ def extract_synonyms_from_sources(sources: Dict[str, Dict]) -> List[str]:
 
     # AniDB synonyms
     anidb = sources.get("anidb", {})
-    anidb_titles = anidb.get("titles", {})
-    if isinstance(anidb_titles, dict):
-        for synonym in anidb_titles.get("synonyms", []):
-            if synonym:
-                all_synonyms.append(synonym)
+    anidb_synonyms = anidb.get("synonyms", [])
+    for synonym in anidb_synonyms:
+        if synonym:
+            all_synonyms.append(synonym)
 
     return all_synonyms
 
@@ -783,9 +782,9 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
 
     # Fallback to AniDB main title if offline database does not provide one
     if not output["title"]:
-        anidb_titles = sources.get("anidb", {}).get("titles", {})
-        if anidb_titles.get("main"):
-            output["title"] = anidb_titles["main"]
+        anidb_data = sources.get("anidb", {})
+        if anidb_data.get("title"):
+            output["title"] = anidb_data["title"]
 
     # English and Japanese titles from Jikan
     titles = jikan_data.get("titles", [])
@@ -805,12 +804,12 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
             output["title_japanese"] = anime_planet["title_japanese"]
 
     # Fallback to AniDB official titles if still not found
-    anidb_titles = sources.get("anidb", {}).get("titles", {})
-    if anidb_titles and anidb_titles.get("official"):
+    anidb_data = sources.get("anidb", {})
+    if anidb_data:
         if not output["title_english"]:
-            output["title_english"] = anidb_titles["official"].get("english")
+            output["title_english"] = anidb_data.get("title_english")
         if not output["title_japanese"]:
-            output["title_japanese"] = anidb_titles["official"].get("japanese")
+            output["title_japanese"] = anidb_data.get("title_japanese")
 
     # Type from offline database
     output["type"] = offline_data.get("type")

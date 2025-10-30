@@ -447,43 +447,31 @@ class AniDBEnrichmentHelper:
             ),
             "url": url_elem.text if url_elem is not None else None,
             "picture": picture_elem.text if picture_elem is not None else None,
+            "title": None,
+            "title_english": None,
+            "title_japanese": None,
+            "synonyms": [],
         }
 
         # Extract titles
         titles_element = root.find("titles")
-        titles: Dict[str, Union[str, List[str], None]] = {}
         if titles_element is not None:
-            for title in titles_element.findall("title"):
-                title_type = title.get("type", "unknown")
-                lang = title.get(
+            for title_elem in titles_element.findall("title"):
+                title_type = title_elem.get("type", "unknown")
+                lang = title_elem.get(
                     "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
-                )  # Correctly extract lang
+                )
 
                 if title_type == "main":
-                    titles["main"] = title.text
+                    anime_data["title"] = title_elem.text
                 elif title_type == "official":
-                    if "official" not in titles:
-                        titles["official"] = {}
                     if lang == "en":
-                        titles["official"]["english"] = title.text
+                        anime_data["title_english"] = title_elem.text
                     elif lang == "ja":
-                        titles["official"]["japanese"] = title.text
-                    else:
-                        titles["official"][lang] = title.text
-                elif title_type == "synonym":
-                    if "synonyms" not in titles:
-                        titles["synonyms"] = []
-                    if title.text:
-                        synonyms = cast(List[str], titles["synonyms"])
-                        synonyms.append(title.text)
-                else:
-                    # Catch-all for other title types
-                    if title_type not in titles:
-                        titles[title_type] = []
-                    if title.text:
-                        other_titles = cast(list[str], titles[title_type])
-                        other_titles.append(title.text)
-        anime_data["titles"] = titles
+                        anime_data["title_japanese"] = title_elem.text
+                elif title_type in ["synonym", "short"]:
+                    if title_elem.text:
+                        anime_data["synonyms"].append(title_elem.text)
 
         # Extract tags
         tags_element = root.find("tags")
