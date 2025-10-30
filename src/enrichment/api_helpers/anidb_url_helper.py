@@ -198,7 +198,7 @@ def _extract_context_data(anime_data: Dict[str, Any]) -> Dict[str, Any]:
             context["creators"] = creator_names[:5]  # Limit to 5 most relevant
 
     # Character information for relationship context
-    characters = anime_data.get("characters", [])
+    characters = anime_data.get("character_details", [])
     if characters:
         # Extract main character names for franchise/character-based relationships
         main_chars = [char["name"] for char in characters[:5] if char.get("name")]

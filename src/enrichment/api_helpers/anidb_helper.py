@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional, Set, Union, cast
 import aiohttp
 from dotenv import load_dotenv
 
+from src.enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+
 # Load environment variables
 load_dotenv()
 
@@ -74,8 +76,8 @@ class AniDBEnrichmentHelper:
         self.client_version = client_version or os.getenv("ANIDB_CLIENTVER", "1.0")
 
         # Session management
-        self.session = None
-        self._session_created_at = 0
+        self.session: Optional[aiohttp.ClientSession] = None
+        self._session_created_at: float = 0
         self._session_max_age = 300  # Recreate session every 5 minutes
 
         # Enhanced rate limiting configuration
@@ -417,13 +419,66 @@ class AniDBEnrichmentHelper:
         async with self._request_lock:
             return await self._make_request_with_retry(params)
 
-    def _parse_anime_xml(self, xml_content: str) -> Dict[str, Any]:
+    def _validate_anime_xml(self, root: ET.Element) -> bool:
+        """
+        Validate anime XML structure for critical fields.
+
+        Returns:
+            True if structure is valid, False otherwise
+        """
+        # Check root element
+        if root.tag != "anime":
+            logger.error(f"Invalid root element: expected 'anime', got '{root.tag}'")
+            return False
+
+        # Check required attribute
+        if root.get("id") is None:
+            logger.error("Missing required 'id' attribute on <anime> element")
+            return False
+
+        # Check critical elements exist
+        critical_elements = ["type", "episodecount", "titles"]
+        for elem_name in critical_elements:
+            if root.find(elem_name) is None:
+                logger.warning(f"Missing critical element: <{elem_name}>")
+
+        # Validate titles structure
+        titles_elem = root.find("titles")
+        if titles_elem is not None:
+            title_elements = titles_elem.findall("title")
+            if not title_elements:
+                logger.warning("No <title> elements found in <titles>")
+
+            # Check for at least one main title
+            main_titles = [t for t in title_elements if t.get("type") == "main"]
+            if not main_titles:
+                logger.warning("No main title found in <titles>")
+
+        # Validate episodes structure if present
+        episodes_elem = root.find("episodes")
+        if episodes_elem is not None:
+            for episode in episodes_elem.findall("episode"):
+                if episode.get("id") is None:
+                    logger.warning(f"Episode missing 'id' attribute")
+                if episode.find("epno") is None:
+                    logger.warning(
+                        f"Episode {episode.get('id', 'unknown')} missing <epno>"
+                    )
+
+        return True
+
+    async def _parse_anime_xml(self, xml_content: str) -> Dict[str, Any]:
         """Parse anime XML response into structured data."""
         try:
             root = ET.fromstring(xml_content)
         except ET.ParseError as e:
             logger.error(f"XML parsing error: {str(e)}")
             return {}
+
+        # Validate XML structure
+        if not self._validate_anime_xml(root):
+            logger.error("XML validation failed - structure may have changed")
+            # Continue parsing but log the issue
 
         # Extract basic anime information
         type_elem = root.find("type")
@@ -553,55 +608,10 @@ class AniDBEnrichmentHelper:
         characters = []
         if characters_element is not None:
             for character in characters_element.findall("character"):
-                char_data: Dict[str, Any] = {
-                    "id": character.get("id"),
-                    "type": character.get("type"),
-                    "update": character.get("update"),
-                }
-
-                # Get character details
-                name_element = character.find("name")
-                if name_element is not None:
-                    char_data["name"] = name_element.text
-
-                gender_element = character.find("gender")
-                if gender_element is not None:
-                    char_data["gender"] = gender_element.text
-
-                char_type_element = character.find("charactertype")
-                if char_type_element is not None:
-                    char_data["character_type"] = char_type_element.text
-                    char_data["character_type_id"] = char_type_element.get("id")
-
-                description_element = character.find("description")
-                if description_element is not None:
-                    char_data["description"] = description_element.text
-
-                    # Character rating
-                rating_element = character.find("rating")
-                if rating_element is not None:
-                    char_data["rating"] = (
-                        float(rating_element.text) if rating_element.text else None
-                    )
-                    char_data["rating_votes"] = int(rating_element.get("votes", 0))
-
-                # Character picture
-                picture_element = character.find("picture")
-                if picture_element is not None:
-                    char_data["picture"] = picture_element.text
-
-                # Voice actor (seiyuu)
-                seiyuu_element = character.find("seiyuu")
-                if seiyuu_element is not None:
-                    char_data["seiyuu"] = {
-                        "name": seiyuu_element.text,
-                        "id": seiyuu_element.get("id"),
-                        "picture": seiyuu_element.get("picture"),
-                    }
-
+                char_data = await self._parse_character_xml(character)
                 characters.append(char_data)
 
-        anime_data["characters"] = characters
+        anime_data["character_details"] = characters
 
         # Extract episodes
         episodes_element = root.find("episodes")
@@ -609,7 +619,7 @@ class AniDBEnrichmentHelper:
         if episodes_element is not None:
             for episode_elem in episodes_element.findall("episode"):
                 episodes.append(self._parse_episode_xml(episode_elem))
-        anime_data["episodes"] = episodes
+        anime_data["episode_details"] = episodes
 
         # Extract related anime
         related_anime_list = []
@@ -637,11 +647,37 @@ class AniDBEnrichmentHelper:
         rating_elem = episode_element.find("rating")
         summary_elem = episode_element.find("summary")
 
+        # Parse episode type first to determine episode_number parsing
+        episode_type: Optional[int] = None
+        if epno_elem is not None:
+            type_str = epno_elem.get("type")
+            if type_str is not None:
+                episode_type = int(type_str)
+
+        # Parse episode_number: convert to int if episode_type is 1 (regular episodes)
+        episode_number: Union[int, str, None] = None
+        if epno_elem is not None and epno_elem.text:
+            if episode_type == 1:
+                # Regular episode - parse as int
+                try:
+                    episode_number = int(epno_elem.text)
+                except ValueError:
+                    episode_number = (
+                        epno_elem.text
+                    )  # Keep as string if conversion fails
+            else:
+                # Special, OP, ED, etc. - keep as string
+                episode_number = epno_elem.text
+
+        # Parse episode ID safely
+        ep_id_str = episode_element.get("id")
+        ep_id: Optional[int] = int(ep_id_str) if ep_id_str else None
+
         episode_data: Dict[str, Any] = {
-            "id": episode_element.get("id"),
+            "id": ep_id,
             "update": episode_element.get("update"),
-            "episode_number": epno_elem.text if epno_elem is not None else None,
-            "episode_type": epno_elem.get("type") if epno_elem is not None else None,
+            "episode_number": episode_number,
+            "episode_type": episode_type,
             "length": (
                 int(length_elem.text)
                 if length_elem is not None and length_elem.text
@@ -654,9 +690,7 @@ class AniDBEnrichmentHelper:
                 else None
             ),
             "rating_votes": (
-                int(rating_elem.get("votes", 0))
-                if rating_elem is not None
-                else 0
+                int(rating_elem.get("votes", 0)) if rating_elem is not None else 0
             ),
             "summary": summary_elem.text if summary_elem is not None else None,
         }
@@ -664,38 +698,120 @@ class AniDBEnrichmentHelper:
         # Extract episode titles
         ep_titles: Dict[str, str | None] = {}
         for ep_title in episode_element.findall("title"):
-            ep_lang = ep_title.get("xml:lang") or ep_title.get(
-                "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
+            ep_lang = (
+                ep_title.get("xml:lang")
+                or ep_title.get("{http://www.w3.org/XML/1998/namespace}lang")
+                or "unknown"
             )
             if ep_title.text:
-                ep_titles[ep_lang] = ep_title.text
+                # Normalize x-jat (romanized Japanese) to romaji for consistency
+                normalized_lang = "romaji" if ep_lang == "x-jat" else ep_lang
+                ep_titles[normalized_lang] = ep_title.text
         episode_data["titles"] = ep_titles
 
-        # Extract episode resources (if available in this context)
-        ep_resources_list = []
+        # Extract episode streaming links from resources
+        streaming: Dict[str, str] = {}
         ep_resources_element = episode_element.find("resources")
         if ep_resources_element is not None:
             for ep_resource_elem in ep_resources_element.findall("resource"):
-                external_entity_elem = ep_resource_elem.find("externalentity")
-                if external_entity_elem is not None:
-                    identifier_elem = external_entity_elem.find("identifier")
-                    url_elem = external_entity_elem.find("url")
-                    resource_value = None
-                    if identifier_elem is not None:
-                        resource_value = identifier_elem.text
-                    elif url_elem is not None:
-                        resource_value = url_elem.text
+                resource_type = ep_resource_elem.get("type")
 
-                    if resource_value:
-                        ep_resources_list.append(
-                            {
-                                "type": ep_resource_elem.get("type"),
-                                "value": resource_value,
-                            }
-                        )
-        episode_data["resources"] = ep_resources_list
+                # Type 28 = Crunchyroll
+                if resource_type == "28":
+                    external_entity_elem = ep_resource_elem.find("externalentity")
+                    if external_entity_elem is not None:
+                        identifier_elem = external_entity_elem.find("identifier")
+                        if identifier_elem is not None and identifier_elem.text:
+                            streaming["crunchyroll"] = (
+                                f"https://www.crunchyroll.com/watch/{identifier_elem.text}"
+                            )
+
+        episode_data["streaming"] = streaming
 
         return episode_data
+
+    async def _parse_character_xml(
+        self, character: ET.Element
+    ) -> Dict[str, Any]:
+        """Parse character XML element into structured data with web-scraped details."""
+        # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
+        raw_type = character.get("type")
+        char_type = None
+        if raw_type:
+            if "main character" in raw_type.lower():
+                char_type = "Main"
+            elif "secondary character" in raw_type.lower():
+                char_type = "Secondary"
+            elif "appears in" in raw_type.lower():
+                char_type = "Minor"
+            else:
+                char_type = raw_type  # Keep original if unknown pattern
+
+        char_data: Dict[str, Any] = {
+            "id": character.get("id"),
+            "type": char_type,
+            "update": character.get("update"),
+        }
+
+        # Get character details from XML
+        name_element = character.find("name")
+        if name_element is not None:
+            char_data["name"] = name_element.text
+
+        gender_element = character.find("gender")
+        if gender_element is not None:
+            char_data["gender"] = gender_element.text
+
+        char_type_element = character.find("charactertype")
+        if char_type_element is not None:
+            char_data["character_type"] = char_type_element.text
+            char_data["character_type_id"] = char_type_element.get("id")
+
+        description_element = character.find("description")
+        if description_element is not None:
+            char_data["description"] = description_element.text
+
+        # Character rating
+        rating_element = character.find("rating")
+        if rating_element is not None:
+            char_data["rating"] = (
+                float(rating_element.text) if rating_element.text else None
+            )
+            char_data["rating_votes"] = int(rating_element.get("votes", 0))
+
+        # Character picture
+        picture_element = character.find("picture")
+        if picture_element is not None:
+            char_data["picture"] = picture_element.text
+
+        # Voice actor
+        seiyuu_element = character.find("seiyuu")
+        if seiyuu_element is not None:
+            char_data["voice_actor"] = {
+                "name": seiyuu_element.text,
+                "id": seiyuu_element.get("id"),
+                "picture": seiyuu_element.get("picture"),
+            }
+
+        # Fetch detailed character information from AniDB website
+        character_id = character.get("id")
+        if character_id:
+            try:
+                detailed_char_data = await fetch_anidb_character(
+                    int(character_id), return_data=True
+                )
+                if detailed_char_data:
+                    # Merge detailed data into char_data
+                    char_data.update(detailed_char_data)
+                    logger.info(
+                        f"Enriched character {character_id} with detailed data"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to fetch detailed data for character {character_id}: {e}"
+                )
+
+        return char_data
 
     async def get_anime_by_id(self, anidb_id: int) -> Optional[Dict[str, Any]]:
         """Get anime information by AniDB ID."""
@@ -716,12 +832,10 @@ class AniDBEnrichmentHelper:
             # Log first 200 chars of response for debugging
             logger.info(f"AniDB response preview: {xml_response[:200]}")
 
-            return self._parse_anime_xml(xml_response)
+            return await self._parse_anime_xml(xml_response)
         except Exception as e:
             logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
             return None
-
-
 
     async def search_anime_by_name(
         self, anime_name: str
@@ -736,7 +850,7 @@ class AniDBEnrichmentHelper:
                 return None
 
             # AniDB search returns single anime, not a list
-            anime_data = self._parse_anime_xml(xml_response)
+            anime_data = await self._parse_anime_xml(xml_response)
             return [anime_data] if anime_data else None
         except Exception as e:
             logger.error(f"Failed to search anime by name '{anime_name}': {e}")
