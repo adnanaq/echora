@@ -20,6 +20,13 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
+
 
 class JikanDetailedFetcher:
     """
@@ -37,6 +44,9 @@ class JikanDetailedFetcher:
         # Jikan API rate limits: 3 requests per second, 60 per minute
         self.max_requests_per_second = 3
         self.max_requests_per_minute = 60
+
+        # Get cached session
+        self.session = _cache_manager.get_requests_session("jikan")
 
     def respect_rate_limits(self) -> None:
         """Ensure we don't exceed Jikan API rate limits."""
@@ -73,7 +83,7 @@ class JikanDetailedFetcher:
             url = (
                 f"https://api.jikan.moe/v4/anime/{self.anime_id}/episodes/{episode_id}"
             )
-            response = requests.get(url, timeout=10)
+            response = self.session.get(url, timeout=10)
             self.request_count += 1
 
             if response.status_code == 200:
@@ -119,7 +129,7 @@ class JikanDetailedFetcher:
 
         try:
             url = f"https://api.jikan.moe/v4/characters/{character_id}"
-            response = requests.get(url, timeout=10)
+            response = self.session.get(url, timeout=10)
             self.request_count += 1
 
             if response.status_code == 200:

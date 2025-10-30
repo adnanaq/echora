@@ -13,7 +13,14 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
 logger = logging.getLogger(__name__)
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
 
 
 class KitsuEnrichmentHelper:
@@ -35,8 +42,8 @@ class KitsuEnrichmentHelper:
         url = f"{self.base_url}{endpoint}"
 
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=30)
+            async with _cache_manager.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
             ) as session:
                 async with session.get(url, headers=headers, params=params) as response:
                     if response.status == 200:

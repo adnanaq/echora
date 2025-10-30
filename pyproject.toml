@@ -29,6 +29,8 @@ dependencies = [
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
     # HTTP dependencies
     "requests>=2.32.4",
+    "hishel>=1.0.0",
+    "redis>=7.0.1",
     "rapidfuzz>=3.14.1",
     "jellyfish>=1.2.0",
     "jaconv>=0.4.0",
@@ -106,6 +108,7 @@ dev = [
     "types-beautifulsoup4>=4.12.0.20250516",
     "types-pillow>=10.2.0.20240822",
     "types-python-dateutil>=2.9.0.20250822",
+    "types-redis>=4.6.0.20241004",
     "types-requests>=2.32.4.20250913",
     "types-setuptools>=80.9.0.20250822",
 ]

@@ -13,7 +13,14 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
 logger = logging.getLogger(__name__)
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
 
 
 class AniListEnrichmentHelper:
@@ -22,9 +29,9 @@ class AniListEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize AniList enrichment helper."""
         self.base_url = "https://graphql.anilist.co"
-        self.session = None
+        self.session: Optional[aiohttp.ClientSession] = None
         self.rate_limit_remaining = 90
-        self.rate_limit_reset = None
+        self.rate_limit_reset: Optional[int] = None
 
     async def _make_request(
         self, query: str, variables: Optional[Dict[str, Any]] = None
@@ -38,8 +45,9 @@ class AniListEnrichmentHelper:
 
         if not self.session:
             # No timeout - we want ALL data, even if it takes minutes
-            self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=None)
+            # Use cached session from cache manager
+            self.session = _cache_manager.get_aiohttp_session(
+                "anilist", timeout=aiohttp.ClientTimeout(total=None)
             )
 
         try:
@@ -67,11 +75,12 @@ class AniListEnrichmentHelper:
                     return await self._make_request(query, variables)
 
                 response.raise_for_status()
-                data = await response.json()
+                data: Any = await response.json()
                 if "errors" in data:
                     logger.error(f"AniList GraphQL errors: {data['errors']}")
                     return {}
-                return data.get("data", {})
+                result: Dict[str, Any] = data.get("data", {})
+                return result
         except Exception as e:
             logger.error(f"AniList API request failed: {e}")
             return {}

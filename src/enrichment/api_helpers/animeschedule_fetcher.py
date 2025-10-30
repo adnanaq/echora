@@ -11,6 +11,13 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
+
 
 def fetch_animeschedule_data(
     search_term: str, save_file: bool = False
@@ -20,11 +27,14 @@ def fetch_animeschedule_data(
     print(f"🔄 Fetching AnimSchedule data for: {search_term}")
 
     try:
+        # Get cached session
+        session = _cache_manager.get_requests_session("animeschedule")
+
         # Search for anime on AnimSchedule
         search_url = f"https://animeschedule.net/api/v3/anime?q={search_term}"
         print(f"  📡 Searching: {search_url}")
 
-        response = requests.get(search_url)
+        response = session.get(search_url)
         response.raise_for_status()
         search_results = response.json()
 

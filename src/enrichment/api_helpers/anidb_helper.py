@@ -21,10 +21,17 @@ from typing import Any, Dict, List, Optional, Set, Union, cast
 import aiohttp
 from dotenv import load_dotenv
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
 
 
 class CircuitBreakerState(Enum):
@@ -221,7 +228,8 @@ class AniDBEnrichmentHelper:
                 enable_cleanup_closed=True,
             )
 
-            self.session = aiohttp.ClientSession(
+            self.session = _cache_manager.get_aiohttp_session(
+                "anidb",
                 timeout=aiohttp.ClientTimeout(total=60, connect=30),
                 headers=headers,
                 connector=connector,

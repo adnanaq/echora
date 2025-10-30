@@ -27,7 +27,14 @@ from typing import Any, Dict, Optional
 import requests
 from bs4 import BeautifulSoup, Tag
 
+from ..cache.config import get_cache_config
+from ..cache.manager import HTTPCacheManager
+
 logger = logging.getLogger(__name__)
+
+# Initialize cache manager (singleton)
+_cache_config = get_cache_config()
+_cache_manager = HTTPCacheManager(_cache_config)
 
 
 def fetch_anisearch_url_data(url: str) -> Optional[Dict[str, Any]]:
@@ -48,8 +55,8 @@ def fetch_anisearch_url_data(url: str) -> Optional[Dict[str, Any]]:
         anime_id_match = re.search(r"/anime/(\d+)", url)
         anime_id = anime_id_match.group(1) if anime_id_match else "unknown"
 
-        # Create session with MODB's exact header strategy
-        session = requests.Session()
+        # Get cached session with MODB's exact header strategy
+        session = _cache_manager.get_requests_session("anisearch")
         session.headers.update(
             {
                 "host": "www.anisearch.com",  # MODB's key strategy
