@@ -34,6 +34,7 @@ dependencies = [
     "jaconv>=0.4.0",
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
+    "langdetect>=1.0.9",
     "crawl4ai>=0.7.4",
     # "dghs-imgutils>=0.4.6",  # Temporarily commented - conflicts with crawl4ai chardet dependency
 ]

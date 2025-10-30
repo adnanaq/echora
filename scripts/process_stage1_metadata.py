@@ -25,6 +25,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from src.vector.utils import (
+    deduplicate_simple_array_field,
+    deduplicate_synonyms_language_aware,
+    normalize_string_for_comparison,
+)
+
 # Project root for resolving paths (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -63,48 +69,6 @@ def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
             sources[source_name] = {}
 
     return sources
-
-
-def normalize_string_for_comparison(text: str) -> str:
-    """Normalize string for case-insensitive comparison."""
-    if not text:
-        return ""
-    return text.lower().strip()
-
-
-def deduplicate_array_field(
-    offline_values: List[str], external_values: List[str]
-) -> List[str]:
-    """
-    Deduplicate array field values with offline database as foundation.
-
-    Args:
-        offline_values: Values from offline database
-        external_values: Values from external sources
-
-    Returns:
-        Deduplicated list with offline values first, then unique external values
-    """
-    result = []
-    seen = set()
-
-    # Add offline values first
-    for value in offline_values:
-        if value and value.strip():
-            normalized = normalize_string_for_comparison(value)
-            if normalized not in seen:
-                result.append(value.strip())
-                seen.add(normalized)
-
-    # Add unique external values
-    for value in external_values:
-        if value and value.strip():
-            normalized = normalize_string_for_comparison(value)
-            if normalized not in seen:
-                result.append(value.strip())
-                seen.add(normalized)
-
-    return result
 
 
 def merge_themes_intelligently(
@@ -766,7 +730,9 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
     # Add AnimSchedule source if available
     animeschedule_data = sources.get("animeschedule", {})
     if animeschedule_data.get("route"):
-        animeschedule_url = f"https://animeschedule.net/anime/{animeschedule_data["route"]}"
+        animeschedule_url = (
+            f"https://animeschedule.net/anime/{animeschedule_data["route"]}"
+        )
         # Ensure the URL is not already present before appending
         if animeschedule_url not in output["sources"]:
             output["sources"].append(animeschedule_url)
@@ -852,7 +818,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
     # Genres with multi-source integration and deduplication
     offline_genres = []  # No genres in offline database typically
     external_genres = extract_genres_from_sources(sources)
-    output["genres"] = deduplicate_array_field(offline_genres, external_genres)
+    output["genres"] = deduplicate_simple_array_field(offline_genres, external_genres)
 
     # Opening themes from Jikan
     output["opening_themes"] = extract_opening_themes(sources)
@@ -876,14 +842,15 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str,
         if normalize_string_for_comparison(synonym) not in main_titles_normalized:
             filtered_external_synonyms.append(synonym)
 
-    output["synonyms"] = deduplicate_array_field(
-        offline_synonyms, filtered_external_synonyms
+    all_synonyms_for_deduplication = offline_synonyms + filtered_external_synonyms
+    output["synonyms"] = deduplicate_synonyms_language_aware(
+        all_synonyms_for_deduplication
     )
 
     # Tags from offline database and all sources
     offline_tags = offline_data.get("tags", [])
     external_tags = extract_tags_from_sources(sources)
-    output["tags"] = deduplicate_array_field(offline_tags, external_tags)
+    output["tags"] = deduplicate_simple_array_field(offline_tags, external_tags)
 
     # Themes with intelligent multi-source merging
     offline_themes = []  # No themes in offline database typically

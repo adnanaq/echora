@@ -619,7 +619,7 @@ class ParallelAPIFetcher:
                     results[name] = None
                     self.api_errors[name] = str(e)
         else:
-            # Normal mode with timeouts
+            # Normal mode with generous timeouts for character crawling
             for name, task in named_tasks:
                 try:
                     # Each API gets its own timeout
