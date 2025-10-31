@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from ..cache.config import get_cache_config
-from ..cache.manager import HTTPCacheManager
+from src.cache_manager.config import get_cache_config
+from src.cache_manager.manager import HTTPCacheManager
 
 logger = logging.getLogger(__name__)
 

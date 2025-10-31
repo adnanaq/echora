@@ -27,14 +27,19 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.result_cache import cached_result
+
 from .utils import sanitize_output_path
 
 
+@cached_result(ttl=86400, key_prefix="anisearch_characters")  # 24 hours cache
 async def fetch_anisearch_characters(
     url: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Crawls, processes, and saves character data from a given anisearch.com URL.
+
+    Results are cached in Redis for 24 hours to avoid repeated crawling.
 
     This function defines a schema for extracting character information,
     including their name, role, URL, favorites count, and image. It then

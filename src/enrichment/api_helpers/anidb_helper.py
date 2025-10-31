@@ -21,8 +21,8 @@ from typing import Any, Dict, List, Optional, Set, Union, cast
 import aiohttp
 from dotenv import load_dotenv
 
-from ..cache.config import get_cache_config
-from ..cache.manager import HTTPCacheManager
+from src.cache_manager.config import get_cache_config
+from src.cache_manager.manager import HTTPCacheManager
 
 # Load environment variables
 load_dotenv()

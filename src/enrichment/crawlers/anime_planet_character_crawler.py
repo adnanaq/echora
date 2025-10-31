@@ -24,6 +24,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.result_cache import cached_result
+
 from .utils import sanitize_output_path
 
 BASE_URL = "https://www.anime-planet.com"
@@ -75,6 +77,7 @@ def _extract_slug_from_characters_url(url: str) -> str:
     return match.group(1)
 
 
+@cached_result(ttl=86400, key_prefix="animeplanet_characters")  # 24 hours cache
 async def fetch_animeplanet_characters(
     slug: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
@@ -268,7 +271,9 @@ async def fetch_animeplanet_characters(
                     return None
 
                 if not isinstance(list_results, list):
-                    print(f"Unexpected return type from arun_many: {type(list_results)}")
+                    print(
+                        f"Unexpected return type from arun_many: {type(list_results)}"
+                    )
                     return None
 
                 # Unwrap CrawlResultContainer objects to get CrawlResult objects
@@ -320,7 +325,12 @@ async def fetch_animeplanet_characters(
                                     print(
                                         f"Warning: Could not match character: {detail_name}"
                                     )
-                        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+                        except (
+                            json.JSONDecodeError,
+                            KeyError,
+                            IndexError,
+                            TypeError,
+                        ) as e:
                             print(f"Failed to process enrichment: {e}")
                     else:
                         print(

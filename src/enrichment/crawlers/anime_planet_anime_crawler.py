@@ -25,6 +25,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.result_cache import cached_result
+
 from .utils import sanitize_output_path
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
@@ -69,12 +71,15 @@ def _extract_slug_from_url(url: str) -> str:
     return match.group(1)
 
 
+@cached_result(ttl=86400, key_prefix="animeplanet_anime")  # 24 hours cache
 async def fetch_animeplanet_anime(
     slug: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Crawls and processes anime data from anime-planet.com.
     All data is available on the main anime page - no navigation needed.
+
+    Results are cached in Redis for 24 hours to avoid repeated crawling.
 
     Args:
         slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),

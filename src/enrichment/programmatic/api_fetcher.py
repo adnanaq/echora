@@ -551,8 +551,7 @@ class ParallelAPIFetcher:
 
     async def _fetch_animeschedule(self, offline_data: Dict) -> Optional[Dict]:
         """
-        Fetch AnimSchedule data using sync helper.
-        Note: AnimSchedule helper is sync, so we run in executor.
+        Fetch AnimSchedule data using async helper.
         """
         try:
             start = time.time()
@@ -562,11 +561,8 @@ class ParallelAPIFetcher:
             if not search_term:
                 return None
 
-            # Run sync function in executor
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, fetch_animeschedule_data, search_term
-            )
+            # Call async function directly
+            result = await fetch_animeschedule_data(search_term)
 
             self.api_timings["animeschedule"] = time.time() - start
             return result

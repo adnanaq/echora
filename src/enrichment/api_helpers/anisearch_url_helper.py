@@ -24,11 +24,10 @@ import re
 import time
 from typing import Any, Dict, Optional
 
-import requests
 from bs4 import BeautifulSoup, Tag
 
-from ..cache.config import get_cache_config
-from ..cache.manager import HTTPCacheManager
+from src.cache_manager.config import get_cache_config
+from src.cache_manager.manager import HTTPCacheManager
 
 logger = logging.getLogger(__name__)
 

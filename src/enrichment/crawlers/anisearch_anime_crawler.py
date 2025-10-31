@@ -27,6 +27,8 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.result_cache import cached_result
+
 from .utils import sanitize_output_path
 
 
@@ -96,12 +98,15 @@ async def _fetch_and_process_sub_page(
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
+@cached_result(ttl=86400, key_prefix="anisearch_anime")  # 24 hours cache
 async def fetch_anisearch_anime(
     url: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Crawls, processes, and saves anime data from a given anisearch.com URL.
     Uses JS-based navigation for screenshots and relations pages.
+
+    Results are cached in Redis for 24 hours to avoid repeated crawling.
 
     Args:
         url: Can be either:
