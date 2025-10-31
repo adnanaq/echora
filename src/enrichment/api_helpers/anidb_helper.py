@@ -18,20 +18,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
+logger = logging.getLogger(__name__)
+
 import aiohttp
 from dotenv import load_dotenv
 
-from src.cache_manager.config import get_cache_config
-from src.cache_manager.manager import HTTPCacheManager
-
-# Load environment variables
-load_dotenv()
-
-logger = logging.getLogger(__name__)
-
-# Initialize cache manager (singleton)
-_cache_config = get_cache_config()
-_cache_manager = HTTPCacheManager(_cache_config)
+from src.cache_manager.instance import http_cache_manager as _cache_manager
 
 
 class CircuitBreakerState(Enum):

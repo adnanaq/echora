@@ -1,7 +1,7 @@
 """
 HTTP Cache Manager for enrichment pipeline.
 
-Provides cached HTTP sessions for both aiohttp (async) and requests (sync) clients.
+Provides cached HTTP sessions for aiohttp (async) clients.
 Supports Redis (multi-agent) and SQLite (single-agent) storage backends.
 """
 
@@ -11,9 +11,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 import hishel
-import requests
-from redis import Redis
-from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
 
@@ -32,7 +30,7 @@ class HTTPCacheManager:
         """
         self.config = config
         self._storage: Optional[Any] = None
-        self._redis_client: Optional[Redis[bytes]] = None
+        self._async_redis_client: Optional[AsyncRedis[bytes]] = None
 
         if self.config.enabled:
             self._init_storage()
@@ -47,39 +45,24 @@ class HTTPCacheManager:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 
     def _init_redis_storage(self) -> None:
-        """Initialize Redis storage with custom SyncRedisStorage backend."""
+        """Initialize async Redis client for aiohttp sessions."""
         try:
             if not self.config.redis_url:
                 raise ValueError("redis_url required for Redis storage")
 
-            # Test Redis connection
-            self._redis_client = Redis.from_url(
+            # Initialize async client for aiohttp sessions
+            self._async_redis_client = AsyncRedis.from_url(
                 self.config.redis_url, decode_responses=False
             )
-            self._redis_client.ping()
-
-            # Import custom Redis storage implementation
-            from src.cache_manager.redis_storage import SyncRedisStorage
-
-            # Initialize custom Redis storage with default TTL
-            # Note: Service-specific TTLs will be passed via request metadata
-            self._storage = SyncRedisStorage(
-                client=self._redis_client,
-                redis_url=self.config.redis_url,
-                default_ttl=86400,  # 24 hours default
-                refresh_ttl_on_access=True,
-                key_prefix="hishel_cache",
-            )
-
             logger.info(
-                f"Redis cache storage initialized: {self.config.redis_url} (custom backend)"
+                f"Async Redis client initialized for aiohttp sessions: {self.config.redis_url}"
             )
 
-        except (RedisConnectionError, ValueError, Exception) as e:
+        except (ValueError, Exception) as e:
             logger.warning(
-                f"Redis connection failed: {e}. Falling back to SQLite storage."
+                f"Async Redis client initialization failed: {e}. "
+                "Async (aiohttp) requests will not be cached on Redis."
             )
-            self._init_sqlite_storage()
 
     def _init_sqlite_storage(self) -> None:
         """Initialize SQLite file-based storage."""
@@ -109,29 +92,24 @@ class HTTPCacheManager:
         Returns:
             Cached aiohttp.ClientSession (wrapped with Redis caching)
         """
-        if not self.config.enabled:
+        if (
+            not self.config.enabled
+            or self.config.storage_type != "redis"
+            or not self._async_redis_client
+        ):
             return aiohttp.ClientSession(**session_kwargs)
 
         # Create async Redis storage for aiohttp caching
         try:
-            from redis.asyncio import Redis as AsyncRedis
-
             from src.cache_manager.aiohttp_adapter import CachedAiohttpSession
             from src.cache_manager.async_redis_storage import AsyncRedisStorage
-
-            # Create async Redis client
-            async_redis_client = AsyncRedis.from_url(
-                self.config.redis_url or "redis://localhost:6379/0",
-                decode_responses=False,
-            )
 
             # Get service-specific TTL
             ttl = self._get_service_ttl(service)
 
-            # Create async storage
+            # Create async storage from shared client
             async_storage = AsyncRedisStorage(
-                client=async_redis_client,
-                redis_url=self.config.redis_url or "redis://localhost:6379/0",
+                client=self._async_redis_client,
                 default_ttl=float(ttl),
                 refresh_ttl_on_access=True,
                 key_prefix="hishel_cache",
@@ -156,41 +134,6 @@ class HTTPCacheManager:
             logger.warning(f"Failed to initialize async cache: {e}")
             return aiohttp.ClientSession(**session_kwargs)
 
-    def get_requests_session(
-        self, service: str, **session_kwargs: Any
-    ) -> requests.Session:
-        """
-        Get cached requests session for a service.
-
-        Args:
-            service: Service name (e.g., "jikan", "animeschedule", "anisearch")
-            **session_kwargs: Additional requests.Session arguments
-
-        Returns:
-            Cached or uncached requests.Session
-        """
-        if not self.config.enabled or not self._storage:
-            return requests.Session(**session_kwargs)
-
-        # Get service-specific TTL
-        ttl = self._get_service_ttl(service)
-
-        # Create cached session using Hishel 1.0 CacheAdapter pattern
-        try:
-            from hishel.requests import CacheAdapter
-
-            session = requests.Session(**session_kwargs)
-            # Mount cache adapter for both HTTP and HTTPS
-            adapter = CacheAdapter(storage=self._storage)
-            session.mount("https://", adapter)
-            session.mount("http://", adapter)
-            return session
-        except ImportError:
-            logger.error(
-                "hishel[requests] not installed. Install with: pip install hishel[requests]"
-            )
-            return requests.Session(**session_kwargs)
-
     def _get_service_ttl(self, service: str) -> int:
         """
         Get TTL for a specific service.
@@ -205,12 +148,15 @@ class HTTPCacheManager:
         return getattr(self.config, ttl_attr, 86400)  # Default 24 hours
 
     def close(self) -> None:
-        """Close cache connections."""
-        if self._redis_client:
+        """Close sync cache connections."""
+
+    async def close_async(self) -> None:
+        """Close async cache connections."""
+        if self._async_redis_client:
             try:
-                self._redis_client.close()
+                await self._async_redis_client.close()
             except Exception as e:
-                logger.warning(f"Error closing Redis client: {e}")
+                logger.warning(f"Error closing async Redis client: {e}")
 
     def get_stats(self) -> Dict[str, Any]:
         """

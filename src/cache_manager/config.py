@@ -13,7 +13,8 @@ class CacheConfig(BaseModel):
     """HTTP cache configuration for enrichment pipeline."""
 
     enabled: bool = Field(
-        default=True, description="Enable HTTP caching (enabled by default on feature branch)"
+        default=True,
+        description="Enable HTTP caching (enabled by default on feature branch)",
     )
 
     storage_type: Literal["redis", "sqlite"] = Field(
@@ -35,9 +36,7 @@ class CacheConfig(BaseModel):
     ttl_jikan: int = Field(
         default=86400, description="Jikan (MyAnimeList) cache TTL - 24 hours"
     )
-    ttl_anilist: int = Field(
-        default=86400, description="AniList cache TTL - 24 hours"
-    )
+    ttl_anilist: int = Field(default=86400, description="AniList cache TTL - 24 hours")
     ttl_anidb: int = Field(default=86400, description="AniDB cache TTL - 24 hours")
     ttl_kitsu: int = Field(default=86400, description="Kitsu cache TTL - 24 hours")
     ttl_anime_planet: int = Field(
@@ -51,9 +50,7 @@ class CacheConfig(BaseModel):
     )
 
     # Performance settings
-    max_cache_size: int = Field(
-        default=1_000_000, description="Maximum cache entries"
-    )
+    max_cache_size: int = Field(default=1_000_000, description="Maximum cache entries")
 
     class Config:
         """Pydantic configuration."""

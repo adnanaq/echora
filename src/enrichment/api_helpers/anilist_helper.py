@@ -13,14 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from src.cache_manager.config import get_cache_config
-from src.cache_manager.manager import HTTPCacheManager
-
-logger = logging.getLogger(__name__)
-
-# Initialize cache manager (singleton)
-_cache_config = get_cache_config()
-_cache_manager = HTTPCacheManager(_cache_config)
+from src.cache_manager.instance import http_cache_manager as _cache_manager
 
 
 class AniListEnrichmentHelper:

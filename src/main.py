@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import admin, search, similarity
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
+from src.cache_manager.instance import http_cache_manager
+from src.cache_manager.result_cache import close_result_cache_redis_client
 
 # Get application settings
 settings = get_settings()
@@ -32,7 +34,7 @@ qdrant_client: QdrantClient | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize services on startup"""
+    """Initialize services on startup and cleanup on shutdown."""
     global qdrant_client
 
     # Initialize Qdrant client
@@ -53,7 +55,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Cleanup on shutdown
-    logger.info("Shutting down vector service...")
+    logger.info("Shutting down vector service and closing cache clients...")
+    await http_cache_manager.close_async()
+    await close_result_cache_redis_client()
 
 
 # Create FastAPI app

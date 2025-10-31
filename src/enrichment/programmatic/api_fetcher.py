@@ -50,6 +50,7 @@ class ParallelAPIFetcher:
         self.anidb_helper = None
         self.anime_planet_helper = None
         self.anisearch_helper = None
+        self.jikan_session = None
 
         # Track API performance
         self.api_timings: Dict[str, float] = {}
@@ -67,6 +68,10 @@ class ParallelAPIFetcher:
             self.anime_planet_helper = AnimePlanetEnrichmentHelper()
         if not self.anisearch_helper:
             self.anisearch_helper = AniSearchEnrichmentHelper()
+        if not self.jikan_session:
+            from src.cache_manager.instance import http_cache_manager as cache_manager
+
+            self.jikan_session = cache_manager.get_aiohttp_session("jikan")
 
     async def fetch_all_data(
         self,
@@ -177,9 +182,7 @@ class ParallelAPIFetcher:
             # First, fetch anime full data
             logger.info(f"🔍 [JIKAN DEBUG] Fetching anime full data...")
             anime_url = f"https://api.jikan.moe/v4/anime/{mal_id}/full"
-            anime_data = await loop.run_in_executor(
-                None, self._fetch_jikan_sync, anime_url
-            )
+            anime_data = await self._fetch_jikan_async(anime_url)
 
             if not anime_data or not anime_data.get("data"):
                 logger.warning(f"Failed to fetch Jikan anime data for MAL ID {mal_id}")
@@ -207,9 +210,7 @@ class ParallelAPIFetcher:
             # Fetch character list first (before starting detailed fetches)
             logger.info(f"🔍 [JIKAN DEBUG] Fetching character list...")
             characters_url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
-            characters_basic = await loop.run_in_executor(
-                None, self._fetch_jikan_sync, characters_url
-            )
+            characters_basic = await self._fetch_jikan_async(characters_url)
             char_count = (
                 len(characters_basic.get("data", [])) if characters_basic else 0
             )
@@ -325,7 +326,7 @@ class ParallelAPIFetcher:
 
         while True:
             url = f"https://api.jikan.moe/v4/anime/{mal_id}/episodes?page={page}"
-            data = await loop.run_in_executor(None, self._fetch_jikan_sync, url)
+            data = await self._fetch_jikan_async(url)
 
             if not data or not data.get("data"):
                 break
@@ -351,7 +352,7 @@ class ParallelAPIFetcher:
 
         # First, get initial page to see how many there are
         url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
-        data = await loop.run_in_executor(None, self._fetch_jikan_sync, url)
+        data = await self._fetch_jikan_async(url)
 
         if data and data.get("data"):
             all_characters.extend(data["data"])
@@ -363,24 +364,30 @@ class ParallelAPIFetcher:
 
         return all_characters
 
-    def _fetch_jikan_sync(self, url: str) -> Optional[Dict]:
-        """Synchronous Jikan API fetch with rate limiting."""
-        import time
-
-        import requests
+    async def _fetch_jikan_async(self, url: str) -> Optional[Dict]:
+        """Async Jikan API fetch with rate limiting and HTTP caching."""
+        import asyncio
 
         # Respect Jikan rate limits (3 req/sec)
-        time.sleep(0.35)  # ~3 requests per second
+        await asyncio.sleep(0.35)  # ~3 requests per second
 
         try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(
-                    f"Jikan API returned status {response.status_code} for {url}"
+            # Use the reusable cached session (initialized in initialize_helpers)
+            if not self.jikan_session:
+                from src.cache_manager.instance import (
+                    http_cache_manager as cache_manager,
                 )
-                return None
+
+                self.jikan_session = cache_manager.get_aiohttp_session("jikan")
+
+            async with self.jikan_session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    logger.warning(
+                        f"Jikan API returned status {response.status} for {url}"
+                    )
+                    return None
         except Exception as e:
             logger.error(f"Jikan API request failed: {e}")
             return None
@@ -679,4 +686,6 @@ class ParallelAPIFetcher:
             await self.anilist_helper.close()
         if self.anisearch_helper:
             await self.anisearch_helper.close()
+        if self.jikan_session:
+            await self.jikan_session.close()
         # Add cleanup for other helpers as needed

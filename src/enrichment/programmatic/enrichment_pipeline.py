@@ -229,7 +229,11 @@ class ProgrammaticEnrichmentPipeline:
                         # Split on "_agent" and get the part after it
                         after_agent = item.split("_agent")[1]
                         # Get first segment (number part before any additional "_")
-                        num_str = after_agent.split("_")[0] if "_" in after_agent else after_agent
+                        num_str = (
+                            after_agent.split("_")[0]
+                            if "_" in after_agent
+                            else after_agent
+                        )
                         if num_str.isdigit():
                             existing_ids.append(int(num_str))
                     except (IndexError, ValueError):
@@ -248,12 +252,16 @@ class ProgrammaticEnrichmentPipeline:
         # Find first missing ID (gap filling)
         for i in range(1, existing_ids[-1] + 1):
             if i not in existing_ids:
-                logger.info(f"Gap-filling agent ID: Using {i} (existing: {existing_ids})")
+                logger.info(
+                    f"Gap-filling agent ID: Using {i} (existing: {existing_ids})"
+                )
                 return i
 
         # No gaps found, return next sequential
         next_id = existing_ids[-1] + 1
-        logger.info(f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})")
+        logger.info(
+            f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})"
+        )
         return next_id
 
     def _create_temp_dir(self, anime_title: str) -> str:

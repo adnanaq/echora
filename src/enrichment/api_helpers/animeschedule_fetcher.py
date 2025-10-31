@@ -12,12 +12,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 
-from src.cache_manager.config import get_cache_config
-from src.cache_manager.manager import HTTPCacheManager
-
-# Initialize cache manager (singleton)
-_cache_config = get_cache_config()
-_cache_manager = HTTPCacheManager(_cache_config)
+from src.cache_manager.instance import http_cache_manager as _cache_manager
 
 
 async def fetch_animeschedule_data(

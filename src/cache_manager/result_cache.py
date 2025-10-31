@@ -13,16 +13,47 @@ import functools
 import hashlib
 import inspect
 import json
-from typing import (
-    Any,
-    Callable,
-    Optional,
-    TypeVar,
-)
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from redis.asyncio import Redis
 
 from .config import get_cache_config
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisType
+else:
+    RedisType = Redis  # type: ignore[misc,assignment]
+
+# --- Singleton Redis Client for @cached_result ---
+
+_redis_client: Optional["RedisType[str]"] = None
+
+
+async def get_result_cache_redis_client() -> "RedisType[str]":
+    """Initializes and returns a singleton async Redis client for result caching."""
+    global _redis_client
+    if _redis_client is None:
+        config = get_cache_config()
+        redis_url = config.redis_url or "redis://localhost:6379/0"
+        logging.info(
+            f"Initializing singleton Redis client for result cache: {redis_url}"
+        )
+        _redis_client = Redis.from_url(redis_url, decode_responses=True)
+    return _redis_client
+
+
+async def close_result_cache_redis_client() -> None:
+    """Closes the singleton Redis client for result caching."""
+    global _redis_client
+    if _redis_client:
+        logging.info("Closing singleton Redis client for result cache.")
+        await _redis_client.close()
+        _redis_client = None
+
+
+# --- End Singleton ---
+
 
 # Type variable for generic function return type
 T = TypeVar("T")
@@ -117,12 +148,6 @@ def cached_result(
 
     Returns:
         Decorated function with caching
-
-    Example Cache Key:
-        result_cache:animeplanet_anime:a1b2c3d4:dandadan
-        - prefix: animeplanet_anime
-        - schema_hash: a1b2c3d4 (changes when code changes)
-        - args: dandadan (slug)
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -135,7 +160,7 @@ def cached_result(
             config = get_cache_config()
 
             # Skip caching if disabled
-            if not config.enabled:
+            if not config.enabled or config.storage_type != "redis":
                 return await func(*args, **kwargs)
 
             # Generate cache key with schema hash
@@ -143,18 +168,15 @@ def cached_result(
             cache_key = _generate_cache_key(prefix, schema_hash, *args, **kwargs)
 
             try:
-                # Initialize Redis client
-                redis_url = config.redis_url or "redis://localhost:6379/0"
-                redis_client = Redis.from_url(redis_url, decode_responses=True)
+                # Get singleton Redis client
+                redis_client = await get_result_cache_redis_client()
 
                 # Try to get from cache
                 cached_data = await redis_client.get(cache_key)
 
                 if cached_data:
                     # Cache hit - deserialize and return
-                    result = json.loads(cached_data)
-                    await redis_client.close()
-                    return result
+                    return json.loads(cached_data)
 
                 # Cache miss - execute function
                 result = await func(*args, **kwargs)
@@ -165,13 +187,10 @@ def cached_result(
                     cache_ttl = ttl if ttl is not None else 86400  # Default 24h
                     await redis_client.setex(cache_key, cache_ttl, serialized)
 
-                await redis_client.close()
                 return result
 
             except Exception as e:
                 # On any error, just execute the function without caching
-                import logging
-
                 logging.warning(f"Cache error in {func.__name__}: {e}")
                 return await func(*args, **kwargs)
 

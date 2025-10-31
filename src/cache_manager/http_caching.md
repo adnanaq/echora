@@ -20,38 +20,31 @@ The anime enrichment pipeline implements intelligent caching with **Redis** back
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Enrichment Pipeline                               │
-│                                                                       │
-│  ┌───────────────┐     ┌────────────────────────────────────────┐  │
-│  │ API Helpers   │────▶│  HTTPCacheManager                      │  │
-│  │               │     │                                        │  │
-│  │ - Jikan       │     │  ┌──────────────────────────────┐    │  │
-│  │ - AniList     │     │  │  Hishel 1.0 CacheAdapter     │    │  │
-│  │ - AniDB       │     │  │  (RFC 9111 Policy Engine)    │    │  │
-│  │ - Kitsu       │     │  └──────────────┬───────────────┘    │  │
-│  │ - Others      │     │                 │                     │  │
-│  └───────────────┘     │                 ▼                     │  │
-│                        │  ┌──────────────────────────────┐    │  │
-│                        │  │  SyncRedisStorage (Custom)   │    │  │
-│                        │  │  - Multi-agent safe          │    │  │
-│                        │  │  - Service-specific TTLs     │    │  │
-│                        │  │  - Stream chunking support   │    │  │
-│                        │  └──────────────┬───────────────┘    │  │
-│                        │                 │                     │  │
-│                        │                 ▼                     │  │
-│                        │  ┌──────────────────────────────┐    │  │
-│                        │  │  Redis 7 (Primary)           │    │  │
-│                        │  │  or SQLite (Fallback)        │    │  │
-│                        │  └──────────────────────────────┘    │  │
-│                        └────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                             Enrichment Pipeline                              │
+│                                                                              │
+│  ┌──────────────────┐      ┌──────────────────────────┐      ┌─────────────┐ │
+│  │   API Helpers    │      │  Singleton               │      │             │ │
+│  │ (Jikan, AniList) │─────▶│  HTTPCacheManager        ├─────▶│ Redis Server│ │
+│  └──────────────────┘      │ (for HTTP Responses)     │      │ (Client 1)  │ │
+│                            │                          │      │             │ │
+│                            │ Uses `AsyncRedisStorage` │      └─────────────┘ │
+│                            └──────────────────────────┘                        │
+│                                                                              │
+│  ┌──────────────────┐      ┌──────────────────────────┐      ┌─────────────┐ │
+│  │     Crawlers     │      │  @cached_result          │      │             │ │
+│  │  (AniSearch)     │─────▶│  Decorator               ├─────▶│ Redis Server│ │
+│  └──────────────────┘      │ (for Function Results)   │      │ (Client 2)  │ │
+│                            │                          │      │             │ │
+│                            │ Uses simple JSON caching │      └─────────────┘ │
+│                            └──────────────────────────┘                        │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 Redis Key Structure:
-  hishel_cache:entry:{uuid}      → Hash with serialized Entry metadata
-  hishel_cache:stream:{uuid}     → List of response stream chunks
-  hishel_cache:key_index:{hash}  → Set of entry UUIDs per cache key
-```
+  hishel_cache:*      → Keys for HTTP-level response caching (managed by Hishel)
+  result_cache:*      → Keys for result-level function caching (managed by @cached_result)
 
 ## Configuration
 
@@ -318,21 +311,21 @@ docker compose -f docker/docker-compose.dev.yml up -d redis
 export HTTP_CACHE_STORAGE=sqlite
 ```
 
-### aiohttp Caching Not Working
+### All API Helpers Now Async with Full Caching
 
-**Expected behavior**: Async helpers (AniList, Kitsu, AniDB) log warning:
+**Status**: All API helpers (Jikan, AniList, Kitsu, AniDB, AnimSchedule) now use async aiohttp with full HTTP-level caching via Redis.
 
-```
-WARNING: aiohttp caching not yet implemented with Hishel 1.0 - returning uncached session
-```
-
-**Status**: Hishel 1.0 async support pending. Sync helpers (Jikan, AnimSchedule, AniSearch) fully cached.
+**Benefits**:
+- Consistent async/await pattern across all API helpers
+- HTTP-level caching for all API requests
+- Body-based caching for GraphQL APIs (AniList)
+- Automatic cache invalidation when API queries change
 
 ## Key Files
 
 - `src/cache_manager/result_cache.py` - Result-level caching decorator for crawlers
 - `src/cache_manager/manager.py` - HTTP cache manager for API sources
-- `src/cache_manager/redis_storage.py` - Custom Redis storage backend for Hishel
+- `src/cache_manager/instance.py` - Singleton instance of the cache manager
 - `src/cache_manager/async_redis_storage.py` - Async Redis storage for aiohttp
 - `src/cache_manager/config.py` - Cache configuration and environment variables
 

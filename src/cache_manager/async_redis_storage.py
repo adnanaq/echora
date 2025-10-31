@@ -59,6 +59,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             refresh_ttl_on_access: Whether to refresh TTL on cache hits
             key_prefix: Prefix for all Redis keys (default: "hishel_cache")
         """
+        self._owns_client = client is None
         self.client = client or Redis.from_url(redis_url, decode_responses=False)
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
@@ -309,7 +310,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
         )
 
     async def close(self) -> None:
-        """Close Redis connection."""
+        """Close Redis connection if it was created by this instance."""
+        if not self._owns_client:
+            return
         try:
             await self.client.close()
         except Exception:
