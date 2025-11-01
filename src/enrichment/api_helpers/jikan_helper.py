@@ -29,7 +29,7 @@ class JikanDetailedFetcher:
     Uses async/await with aiohttp for improved performance.
     """
 
-    def __init__(self, anime_id: str, data_type: str):
+    def __init__(self, anime_id: str, data_type: str, session=None):
         self.anime_id = anime_id
         self.data_type = data_type  # 'episodes' or 'characters'
         self.request_count = 0
@@ -40,11 +40,17 @@ class JikanDetailedFetcher:
         self.max_requests_per_second = 3
         self.max_requests_per_minute = 60
 
-        # Get async cached session
-        self.session = _cache_manager.get_aiohttp_session("jikan")
+        # Reuse provided session or create new one
+        self.session = (
+            session if session else _cache_manager.get_aiohttp_session("jikan")
+        )
 
     async def respect_rate_limits(self) -> None:
-        """Ensure we don't exceed Jikan API rate limits (async version)."""
+        """Ensure we don't exceed Jikan API rate limits (async version).
+
+        Jikan limits: 3 requests/second, 60 requests/minute
+        Strategy: Wait 0.5s between each request (ensures 2 req/sec << 3/sec limit)
+        """
         current_time = time.time()
         elapsed = current_time - self.start_time
 
@@ -54,36 +60,47 @@ class JikanDetailedFetcher:
             self.start_time = current_time
             elapsed = 0
 
-        # If we've made 60 requests in current minute, wait
+        # If we've made 60 requests in current minute, wait until minute resets
         if self.request_count >= self.max_requests_per_minute:
             wait_time = 60 - elapsed
             if wait_time > 0:
-                print(f"Rate limit reached. Waiting {wait_time:.1f} seconds...")
                 await asyncio.sleep(wait_time)
                 self.request_count = 0
                 self.start_time = time.time()
 
-        # Ensure we don't exceed 3 requests per second
-        if (
-            self.request_count % self.max_requests_per_second == 0
-            and self.request_count > 0
-        ):
-            await asyncio.sleep(1)
+        # Always wait 0.5s between requests (ensures 2 requests/second << 3/sec limit)
+        # Being more conservative to avoid 429 errors
+        if self.request_count > 0:  # Don't wait before first request
+            await asyncio.sleep(0.5)
 
-    async def fetch_episode_detail(self, episode_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch detailed episode data from Jikan API (async)."""
-        await self.respect_rate_limits()
+    async def fetch_episode_detail(
+        self, episode_id: int, retry_count: int = 0
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch detailed episode data from Jikan API (async).
 
+        Args:
+            episode_id: Episode number to fetch
+            retry_count: Internal retry counter (max 3 retries)
+
+        Returns:
+            Episode detail dict or None if failed
+        """
         try:
             url = (
                 f"https://api.jikan.moe/v4/anime/{self.anime_id}/episodes/{episode_id}"
             )
             async with self.session.get(url) as response:
-                self.request_count += 1
+                # Check if response was served from cache
+                from_cache = getattr(response, 'from_cache', False)
 
                 if response.status == 200:
                     data = await response.json()
                     episode_detail = data["data"]
+
+                    # Only rate limit for network requests, not cache hits
+                    if not from_cache:
+                        self.request_count += 1
+                        await self.respect_rate_limits()
 
                     return {
                         "episode_number": episode_id,
@@ -100,11 +117,17 @@ class JikanDetailedFetcher:
                     }
 
                 elif response.status == 429:
+                    if retry_count >= 3:
+                        print(
+                            f"Max retries reached for episode {episode_id}, giving up"
+                        )
+                        return None
+
                     print(
-                        f"Rate limit hit for episode {episode_id}. Waiting and retrying..."
+                        f"Rate limit hit for episode {episode_id}. Waiting and retrying (attempt {retry_count + 1}/3)..."
                     )
                     await asyncio.sleep(5)
-                    return await self.fetch_episode_detail(episode_id)  # Retry once
+                    return await self.fetch_episode_detail(episode_id, retry_count + 1)
 
                 else:
                     print(
@@ -117,20 +140,33 @@ class JikanDetailedFetcher:
             return None
 
     async def fetch_character_detail(
-        self, character_data: Dict[str, Any]
+        self, character_data: Dict[str, Any], retry_count: int = 0
     ) -> Optional[Dict[str, Any]]:
-        """Fetch detailed character data from Jikan API (async)."""
+        """Fetch detailed character data from Jikan API (async).
+
+        Args:
+            character_data: Character data containing MAL ID
+            retry_count: Internal retry counter (max 3 retries)
+
+        Returns:
+            Character detail dict or None if failed
+        """
         character_id = character_data["character"]["mal_id"]
-        await self.respect_rate_limits()
 
         try:
             url = f"https://api.jikan.moe/v4/characters/{character_id}"
             async with self.session.get(url) as response:
-                self.request_count += 1
+                # Check if response was served from cache
+                from_cache = getattr(response, 'from_cache', False)
 
                 if response.status == 200:
                     data = await response.json()
                     character_detail = data["data"]
+
+                    # Only rate limit for network requests, not cache hits
+                    if not from_cache:
+                        self.request_count += 1
+                        await self.respect_rate_limits()
 
                     return {
                         "character_id": character_id,
@@ -146,13 +182,19 @@ class JikanDetailedFetcher:
                     }
 
                 elif response.status == 429:
+                    if retry_count >= 3:
+                        print(
+                            f"Max retries reached for character {character_id}, giving up"
+                        )
+                        return None
+
                     print(
-                        f"Rate limit hit for character {character_id}. Waiting and retrying..."
+                        f"Rate limit hit for character {character_id}. Waiting and retrying (attempt {retry_count + 1}/3)..."
                     )
                     await asyncio.sleep(5)
                     return await self.fetch_character_detail(
-                        character_data
-                    )  # Retry once
+                        character_data, retry_count + 1
+                    )
 
                 else:
                     print(
@@ -303,9 +345,6 @@ class JikanDetailedFetcher:
         if os.path.exists(progress_file):
             os.remove(progress_file)
             print(f"Cleaned up progress file: {progress_file}")
-
-        # Close session
-        await self.session.close()
 
 
 async def main() -> None:

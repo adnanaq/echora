@@ -34,6 +34,7 @@ class _CachedResponse:
         headers: Dict[str, str],
         body: bytes,
         url: str,
+        from_cache: bool = False,
     ) -> None:
         """
         Initialize cached response.
@@ -43,6 +44,7 @@ class _CachedResponse:
             headers: Response headers
             body: Response body bytes
             url: Request URL
+            from_cache: Whether this response was served from cache
         """
         self.status = status
         # Create CIMultiDict for case-insensitive header access
@@ -51,6 +53,7 @@ class _CachedResponse:
         self._body = body
         self.url = URL(url)
         self._released = False
+        self.from_cache = from_cache
 
     async def read(self) -> bytes:
         """Read response body."""
@@ -251,6 +254,7 @@ class CachedAiohttpSession:
                     headers=headers_dict,
                     body=body,
                     url=url,
+                    from_cache=True,
                 )
 
         # Cache miss - make actual HTTP request
@@ -259,10 +263,12 @@ class CachedAiohttpSession:
         # Read response body to cache it
         body = await response.read()
 
-        # Store in cache
-        await self._store_response_with_body(
-            method, url, response, cache_key, kwargs, body
-        )
+        # Only cache successful responses (2xx and 3xx)
+        # NEVER cache error responses (4xx, 5xx) as they are temporary
+        if response.status < 400:
+            await self._store_response_with_body(
+                method, url, response, cache_key, kwargs, body
+            )
 
         # Return cached response wrapper (allows multiple reads)
         return _CachedResponse(
@@ -270,6 +276,7 @@ class CachedAiohttpSession:
             headers=dict(response.headers),
             body=body,
             url=str(response.url),
+            from_cache=False,
         )
 
     def _generate_cache_key(self, method: str, url: str, kwargs: Dict[str, Any]) -> str:

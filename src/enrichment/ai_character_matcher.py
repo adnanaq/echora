@@ -390,7 +390,9 @@ class EnsembleFuzzyMatcher:
             enable_visual: Enable visual similarity matching (requires VisionProcessor)
         """
         try:
-            self.embedding_model = SentenceTransformer(model_name)
+            self.embedding_model = SentenceTransformer(
+                model_name,
+            )
             logger.info(f"Loaded embedding model: {model_name}")
         except Exception as e:
             logger.warning(

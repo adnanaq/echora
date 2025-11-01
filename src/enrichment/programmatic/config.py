@@ -19,8 +19,8 @@ class EnrichmentConfig(BaseSettings):
 
     # API Configuration
     api_timeout: int = Field(
-        default=30,
-        description="Timeout for each API call in seconds (increased for large datasets)",
+        default=200,
+        description="Timeout for each API call in seconds (200s allows ~400 detailed Jikan requests at 0.5s each)",
     )
     max_concurrent_apis: int = Field(
         default=6, description="Maximum concurrent API calls"
@@ -84,8 +84,8 @@ class EnrichmentConfig(BaseSettings):
 
     @field_validator("api_timeout")
     def validate_timeout(cls, v):
-        if v < 1 or v > 120:
-            raise ValueError("API timeout must be between 1 and 120 seconds")
+        if v < 1 or v > 300:
+            raise ValueError("API timeout must be between 1 and 300 seconds")
         return v
 
     @field_validator("batch_size")

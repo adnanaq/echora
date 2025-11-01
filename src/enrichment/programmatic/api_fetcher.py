@@ -235,13 +235,14 @@ class ParallelAPIFetcher:
                 with open(episodes_input, "w") as f:
                     json.dump({"episodes": episode_count}, f)
 
-                episode_fetcher = JikanDetailedFetcher(mal_id, "episodes")
+                # Reuse the shared jikan session for caching and connection pooling
+                episode_fetcher = JikanDetailedFetcher(
+                    mal_id, "episodes", session=self.jikan_session
+                )
                 tasks.append(
                     (
                         "episodes",
-                        loop.run_in_executor(
-                            None,
-                            episode_fetcher.fetch_detailed_data,
+                        episode_fetcher.fetch_detailed_data(
                             episodes_input,
                             episodes_output,
                         ),
@@ -256,25 +257,30 @@ class ParallelAPIFetcher:
                 with open(characters_input, "w") as f:
                     json.dump(characters_basic, f)
 
-                character_fetcher = JikanDetailedFetcher(mal_id, "characters")
+                # Reuse the shared jikan session for caching and connection pooling
+                character_fetcher = JikanDetailedFetcher(
+                    mal_id, "characters", session=self.jikan_session
+                )
                 tasks.append(
                     (
                         "characters",
-                        loop.run_in_executor(
-                            None,
-                            character_fetcher.fetch_detailed_data,
+                        character_fetcher.fetch_detailed_data(
                             characters_input,
                             characters_output,
                         ),
                     )
                 )
 
-            # Run both tasks in parallel
+            # Run tasks SEQUENTIALLY to respect Jikan's 3 req/sec limit
+            # Running in parallel would double the request rate and trigger 429 errors
             if tasks:
                 logger.info(
-                    f"🔍 [JIKAN DEBUG] Running {len(tasks)} detailed fetch tasks in parallel..."
+                    f"🔍 [JIKAN DEBUG] Running {len(tasks)} detailed fetch tasks SEQUENTIALLY (to avoid rate limiting)..."
                 )
-                await asyncio.gather(*[task for _, task in tasks])
+                for task_name, task_coro in tasks:
+                    logger.info(f"🔍 [JIKAN DEBUG] Starting {task_name} fetch...")
+                    await task_coro
+                    logger.info(f"🔍 [JIKAN DEBUG] Completed {task_name} fetch")
                 logger.info(f"🔍 [JIKAN DEBUG] All detailed fetch tasks completed")
 
             # Load results
@@ -365,12 +371,12 @@ class ParallelAPIFetcher:
         return all_characters
 
     async def _fetch_jikan_async(self, url: str) -> Optional[Dict]:
-        """Async Jikan API fetch with rate limiting and HTTP caching."""
-        import asyncio
+        """Async Jikan API fetch with HTTP caching.
 
-        # Respect Jikan rate limits (3 req/sec)
-        await asyncio.sleep(0.35)  # ~3 requests per second
-
+        Note: Rate limiting is handled by JikanDetailedFetcher for bulk operations.
+        For simple requests (anime data, character list), they are infrequent enough
+        to not need rate limiting.
+        """
         try:
             # Use the reusable cached session (initialized in initialize_helpers)
             if not self.jikan_session:
@@ -383,6 +389,22 @@ class ParallelAPIFetcher:
             async with self.jikan_session.get(url, timeout=10) as response:
                 if response.status == 200:
                     return await response.json()
+                elif response.status == 429:
+                    # Rate limited - wait and retry once
+                    import asyncio
+
+                    logger.warning(
+                        f"Jikan rate limited for {url}, waiting 2s and retrying..."
+                    )
+                    await asyncio.sleep(2)
+                    async with self.jikan_session.get(
+                        url, timeout=10
+                    ) as retry_response:
+                        if retry_response.status == 200:
+                            return await retry_response.json()
+                        else:
+                            logger.error(f"Retry failed: HTTP {retry_response.status}")
+                            return None
                 else:
                     logger.warning(
                         f"Jikan API returned status {response.status} for {url}"
@@ -684,8 +706,10 @@ class ParallelAPIFetcher:
         """Clean up resources."""
         if self.anilist_helper:
             await self.anilist_helper.close()
+        if self.anidb_helper:
+            await self.anidb_helper.close()
         if self.anisearch_helper:
             await self.anisearch_helper.close()
         if self.jikan_session:
             await self.jikan_session.close()
-        # Add cleanup for other helpers as needed
+        # Note: kitsu_helper, anime_planet_helper don't have close() methods

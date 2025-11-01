@@ -15,6 +15,8 @@ import aiohttp
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
 
+logger = logging.getLogger(__name__)
+
 
 class AniListEnrichmentHelper:
     """Helper for AniList data fetching in AI enrichment pipeline."""
@@ -25,23 +27,71 @@ class AniListEnrichmentHelper:
         self.session: Optional[aiohttp.ClientSession] = None
         self.rate_limit_remaining = 90
         self.rate_limit_reset: Optional[int] = None
+        self._session_event_loop: Optional[Any] = None
 
     async def _make_request(
         self, query: str, variables: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make GraphQL request to AniList API."""
+        """Make GraphQL request to AniList API.
+
+        Returns dict with 'data' key containing response and '_from_cache' metadata.
+        """
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
         payload = {"query": query, "variables": variables or {}}
 
-        if not self.session:
-            # No timeout - we want ALL data, even if it takes minutes
-            # Use cached session from cache manager
-            self.session = _cache_manager.get_aiohttp_session(
-                "anilist", timeout=aiohttp.ClientTimeout(total=None)
-            )
+        # Check if we need to create/recreate session for current event loop
+        current_loop = asyncio.get_running_loop()
+        if self.session is None or self._session_event_loop != current_loop:
+            # Close old session if it exists
+            if self.session is not None:
+                try:
+                    await self.session.close()
+                except Exception:
+                    pass  # Ignore errors closing old session
+
+            # Create cached session for THIS event loop
+            # Each event loop gets its own Redis client to avoid "different event loop" errors
+            # This enables GraphQL caching while preventing event loop conflicts
+            try:
+                from src.cache_manager.aiohttp_adapter import CachedAiohttpSession
+                from src.cache_manager.async_redis_storage import AsyncRedisStorage
+                from redis.asyncio import Redis
+
+                # Create NEW Redis client bound to current event loop
+                redis_client = Redis.from_url(
+                    "redis://localhost:6379/0",
+                    decode_responses=False,
+                    socket_connect_timeout=5.0,
+                )
+
+                # Create storage with event-loop-specific Redis client
+                storage = AsyncRedisStorage(
+                    client=redis_client,
+                    default_ttl=86400.0,  # 24 hours
+                    refresh_ttl_on_access=True,
+                    key_prefix="hishel_cache",
+                )
+
+                # Create cached session with body-based caching for GraphQL
+                # X-Hishel-Body-Key ensures different queries/variables get different cache entries
+                headers = {"X-Hishel-Body-Key": "true"}
+                self.session = CachedAiohttpSession(
+                    storage=storage,
+                    timeout=aiohttp.ClientTimeout(total=None),
+                    headers=headers,
+                )
+                logger.debug("AniList cached session created for current event loop")
+            except Exception as e:
+                logger.warning(f"Failed to create cached session: {e}, using uncached")
+                # Fallback to uncached session
+                self.session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=None)
+                )
+
+            self._session_event_loop = current_loop
 
         try:
             if self.rate_limit_remaining < 5:
@@ -54,6 +104,9 @@ class AniListEnrichmentHelper:
             async with self.session.post(
                 self.base_url, json=payload, headers=headers
             ) as response:
+                # Capture cache status before response is consumed
+                from_cache = getattr(response, 'from_cache', False)
+
                 if "X-RateLimit-Remaining" in response.headers:
                     self.rate_limit_remaining = int(
                         response.headers["X-RateLimit-Remaining"]
@@ -71,12 +124,14 @@ class AniListEnrichmentHelper:
                 data: Any = await response.json()
                 if "errors" in data:
                     logger.error(f"AniList GraphQL errors: {data['errors']}")
-                    return {}
+                    return {"_from_cache": from_cache}
                 result: Dict[str, Any] = data.get("data", {})
+                # Add cache metadata to result
+                result["_from_cache"] = from_cache
                 return result
         except Exception as e:
             logger.error(f"AniList API request failed: {e}")
-            return {}
+            return {"_from_cache": False}
 
     def _get_media_query_fields(self) -> str:
         return """
@@ -234,7 +289,12 @@ class AniListEnrichmentHelper:
             all_items.extend(data.get("edges", []))
             has_next_page = data.get("pageInfo", {}).get("hasNextPage", False)
             page += 1
-            await asyncio.sleep(0.5)
+
+            # Only rate limit for network requests, not cache hits
+            # Cache hits are instant, no need to throttle
+            if not response.get('_from_cache', False):
+                await asyncio.sleep(0.5)
+
         return all_items
 
     async def fetch_all_characters(self, anilist_id: int) -> List[Dict[str, Any]]:
