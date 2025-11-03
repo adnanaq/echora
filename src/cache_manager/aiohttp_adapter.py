@@ -21,6 +21,9 @@ from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 
+from aiohttp import ClientResponseError, RequestInfo
+
+
 class _CachedResponse:
     """
     Mock aiohttp.ClientResponse for cached data.
@@ -34,6 +37,8 @@ class _CachedResponse:
         headers: Dict[str, str],
         body: bytes,
         url: str,
+        method: str,
+        request_headers: Dict[str, str],
         from_cache: bool = False,
     ) -> None:
         """
@@ -44,6 +49,8 @@ class _CachedResponse:
             headers: Response headers
             body: Response body bytes
             url: Request URL
+            method: Request HTTP method
+            request_headers: Request headers
             from_cache: Whether this response was served from cache
         """
         self.status = status
@@ -52,6 +59,8 @@ class _CachedResponse:
         self.headers = CIMultiDictProxy(headers_multidict)
         self._body = body
         self.url = URL(url)
+        self.method = method
+        self.request_headers = CIMultiDictProxy(CIMultiDict(request_headers))
         self._released = False
         self.from_cache = from_cache
 
@@ -76,7 +85,19 @@ class _CachedResponse:
     def raise_for_status(self) -> None:
         """Raise exception for HTTP error status codes."""
         if 400 <= self.status < 600:
-            raise ValueError(f"HTTP {self.status} error")
+            request_info = RequestInfo(
+                url=self.url,
+                method=self.method,
+                headers=self.request_headers,
+                real_url=self.url,
+            )
+            raise ClientResponseError(
+                request_info=request_info,
+                history=(),
+                status=self.status,
+                message=f"HTTP {self.status} error",
+                headers=self.headers,
+            )
 
     async def __aenter__(self) -> "_CachedResponse":
         """Async context manager entry."""
@@ -254,6 +275,8 @@ class CachedAiohttpSession:
                     headers=headers_dict,
                     body=body,
                     url=url,
+                    method=method,
+                    request_headers=kwargs.get("headers", {}),
                     from_cache=True,
                 )
 
@@ -276,6 +299,8 @@ class CachedAiohttpSession:
             headers=dict(response.headers),
             body=body,
             url=str(response.url),
+            method=method,
+            request_headers=dict(response.request_info.headers),
             from_cache=False,
         )
 

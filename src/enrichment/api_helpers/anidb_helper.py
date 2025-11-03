@@ -18,12 +18,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
-logger = logging.getLogger(__name__)
-
 import aiohttp
-from dotenv import load_dotenv
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
+
+logger = logging.getLogger(__name__)
 
 
 class CircuitBreakerState(Enum):
