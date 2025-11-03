@@ -1300,10 +1300,7 @@ class TestAniListEnrichmentHelperCLI:
                 from src.enrichment.api_helpers.anilist_helper import main
 
                 # Should not raise exception (caught in CLI)
-                try:
-                    await main()
-                except Exception:
-                    pass  # Exception should be handled
+                await main()
 
                 # Verify close was called despite exception
                 mock_helper_instance.close.assert_awaited_once()
