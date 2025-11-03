@@ -172,8 +172,8 @@ class TestGetAiohttpSession:
 
                     # Should create cached session
                     mock_cached_session.assert_called_once()
+                    mock_async_storage.assert_called_once()
                     assert session == mock_session_instance
-
     def test_get_aiohttp_session_body_based_caching_header(self) -> None:
         """Test that body-based caching header is added."""
         config = CacheConfig(enabled=True, storage_type="redis")
