@@ -28,8 +28,7 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 from src.cache_manager.result_cache import cached_result
-
-from .utils import sanitize_output_path
+from src.enrichment.crawlers.utils import sanitize_output_path
 
 
 @cached_result(ttl=86400, key_prefix="anisearch_characters")  # 24 hours cache

@@ -28,8 +28,7 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 from src.cache_manager.result_cache import cached_result
-
-from .utils import sanitize_output_path
+from src.enrichment.crawlers.utils import sanitize_output_path
 
 
 def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:

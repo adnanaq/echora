@@ -54,6 +54,12 @@ class JikanDetailedFetcher:
         current_time = time.time()
         elapsed = current_time - self.start_time
 
+        # Handle time going backwards (clock adjustments, NTP sync, etc.)
+        if elapsed < 0:
+            self.request_count = 0
+            self.start_time = current_time
+            elapsed = 0
+
         # Reset counter every minute
         if elapsed >= 60:
             self.request_count = 0
@@ -91,7 +97,8 @@ class JikanDetailedFetcher:
             )
             async with self.session.get(url) as response:
                 # Check if response was served from cache
-                from_cache = getattr(response, 'from_cache', False)
+                # Explicitly check for boolean type to handle mocks properly
+                from_cache = isinstance(getattr(response, 'from_cache', None), bool) and response.from_cache
 
                 if response.status == 200:
                     data = await response.json()
@@ -157,7 +164,8 @@ class JikanDetailedFetcher:
             url = f"https://api.jikan.moe/v4/characters/{character_id}"
             async with self.session.get(url) as response:
                 # Check if response was served from cache
-                from_cache = getattr(response, 'from_cache', False)
+                # Explicitly check for boolean type to handle mocks properly
+                from_cache = isinstance(getattr(response, 'from_cache', None), bool) and response.from_cache
 
                 if response.status == 200:
                     data = await response.json()
@@ -271,6 +279,13 @@ class JikanDetailedFetcher:
             total_items = len(input_data)
             print(f"Fetching detailed data for {total_items} characters...")
 
+        # Handle empty input
+        if total_items == 0:
+            print("No items to process, creating empty output file")
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=2)
+            return
+
         # Progress tracking
         progress_file = f"{output_file}.progress"
         if os.path.exists(progress_file):
@@ -285,16 +300,17 @@ class JikanDetailedFetcher:
 
         batch_data = []
 
+        # Determine item type for logging
+        item_type = "episode" if self.data_type == "episodes" else "character"
+
         # Process items starting from where we left off
         for i in range(start_index, total_items):
             if self.data_type == "episodes":
                 item_id = episode_ids[i]
                 detailed_item = await self.fetch_episode_detail(item_id)
-                item_type = "episode"
             else:  # characters
                 item = input_data[i]
                 detailed_item = await self.fetch_character_detail(item)
-                item_type = "character"
                 item_id = item["character"]["mal_id"]
 
             if detailed_item:
@@ -320,8 +336,12 @@ class JikanDetailedFetcher:
             )
 
         # Load final data and create final file
-        with open(progress_file, "r", encoding="utf-8") as f:
-            all_detailed_data = json.load(f)
+        if os.path.exists(progress_file):
+            with open(progress_file, "r", encoding="utf-8") as f:
+                all_detailed_data = json.load(f)
+        else:
+            # No items were successfully fetched
+            all_detailed_data = []
 
         print(f"\\nCompleted fetching {len(all_detailed_data)} detailed {item_type}s")
 
