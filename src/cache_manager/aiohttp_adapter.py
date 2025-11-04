@@ -10,18 +10,18 @@ the cached session which wraps the original aiohttp.ClientSession.
 """
 
 import hashlib
+import json
+from collections.abc import Mapping, Sequence
 from types import TracebackType
-from typing import Any, AsyncIterator, Dict, Optional, Type
+from typing import Any, AsyncIterator, Dict, Optional, Type, cast
 
 import aiohttp
+from aiohttp import ClientResponseError, RequestInfo
 from hishel._core._headers import Headers
 from hishel._core._storages._async_base import AsyncBaseStorage
 from hishel._core.models import Request, Response
 from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
-
-
-from aiohttp import ClientResponseError, RequestInfo
 
 
 class _CachedResponse:
@@ -74,7 +74,6 @@ class _CachedResponse:
 
     async def json(self, **kwargs: Any) -> Any:
         """Read response as JSON."""
-        import json
 
         return json.loads(self._body.decode("utf-8"))
 
@@ -144,12 +143,12 @@ class _CachedRequestContextManager:
         self._method = method
         self._url = url
         self._kwargs = kwargs
-        self._response: Optional[aiohttp.ClientResponse] = None
+        self._response: _CachedResponse | None = None
 
-    async def __aenter__(self) -> aiohttp.ClientResponse:
+    async def __aenter__(self) -> "_CachedResponse":
         """Enter async context - execute request and return response."""
         self._response = await self._coro
-        return self._response
+        return cast(_CachedResponse, self._response)
 
     async def __aexit__(
         self,
@@ -214,9 +213,7 @@ class CachedAiohttpSession:
         coro = self._request("POST", url, **kwargs)
         return _CachedRequestContextManager(coro, self, "POST", url, kwargs)
 
-    async def _request(
-        self, method: str, url: str, **kwargs: Any
-    ) -> Any:  # Returns aiohttp.ClientResponse or _CachedResponse
+    async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
         """
         Internal cached request handler.
 
@@ -247,9 +244,8 @@ class CachedAiohttpSession:
                         async for chunk in stream:
                             body_chunks.append(chunk)
                     else:
-                        # Iterator - convert to async
-                        for chunk in stream:
-                            body_chunks.append(chunk)
+                        # Iterator
+                        body_chunks.extend(list(stream))
                 body = b"".join(body_chunks)
 
                 # Extract headers - convert to simple dict
@@ -316,20 +312,44 @@ class CachedAiohttpSession:
         Returns:
             Cache key string
         """
-        # Include method, URL, and body (for POST) in cache key
+        import json
+
         key_parts = [method, url]
 
-        # Include request body for POST/PUT requests
-        if "json" in kwargs:
-            import json
+        def serialize_payload(value: Any) -> str:
+            if isinstance(value, (bytes, bytearray)):
+                return value.decode("utf-8", errors="ignore")
+            if isinstance(value, str):
+                return value
+            if isinstance(value, Mapping):
+                items = sorted(
+                    (str(key), serialize_payload(item_value))
+                    for key, item_value in value.items()
+                )
+                return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+            if isinstance(value, (Sequence, set)) and not isinstance(
+                value, (bytes, bytearray, str)
+            ):
+                serialized = [serialize_payload(item) for item in value]
+                return json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
+            return str(value)
 
-            body = json.dumps(kwargs["json"], sort_keys=True)
-            key_parts.append(body)
-        elif "data" in kwargs:
-            # For form data, include in key
-            data = kwargs["data"]
-            if isinstance(data, (str, bytes)):
-                key_parts.append(str(data))
+        if "json" in kwargs:
+            key_parts.append(
+                json.dumps(
+                    kwargs["json"],
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
+
+        if params := kwargs.get("params"):
+            key_parts.append(f"params={serialize_payload(params)}")
+
+        if "data" in kwargs:
+            print("Executing data block in generate_cache_key")
+            key_parts.append(f"data={serialize_payload(kwargs['data'])} ")
 
         # Hash to create stable key
         key_string = ":".join(key_parts)

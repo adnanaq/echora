@@ -355,15 +355,20 @@ async def fetch_animeplanet_anime(
                             start_dt = datetime.fromisoformat(
                                 start_date.replace("Z", "+00:00")
                             )
+                            # If the parsed date is naive, make it aware (assume UTC)
+                            if start_dt.tzinfo is None:
+                                start_dt = start_dt.replace(tzinfo=timezone.utc)
+
                             now = datetime.now(timezone.utc)
+
                             if start_dt > now:
                                 anime_data["status"] = "UPCOMING"
                             else:
                                 anime_data["status"] = "AIRING"
                         except (ValueError, TypeError):
                             anime_data["status"] = "AIRING"
-                    else:
-                        anime_data["status"] = "UNKNOWN"
+                else:
+                    anime_data["status"] = "UNKNOWN"
 
                 # Conditionally write to file
                 if output_path:
@@ -598,11 +603,11 @@ def _process_related_manga(
             # Example: "Vol: 1, Ch: 5"
             vol_match = re.search(r"Vol:\s*([\d?]+)", metadata_text, re.IGNORECASE)
             if vol_match:
-                related_item["volumes"] = vol_match.group(1)
+                related_item["volumes"] = int(vol_match.group(1))
 
             ch_match = re.search(r"Ch:\s*([\d?]+)", metadata_text, re.IGNORECASE)
             if ch_match:
-                related_item["chapters"] = ch_match.group(1)
+                related_item["chapters"] = int(ch_match.group(1))
 
         related_manga.append(related_item)
 

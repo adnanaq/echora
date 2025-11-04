@@ -110,13 +110,14 @@ class AsyncRedisStorage(AsyncBaseStorage):
         """
         entry_id = id_ if id_ is not None else uuid.uuid4()
         entry_meta = EntryMeta(created_at=time.time())
+        ttl = self._get_entry_ttl(request)
 
         # Replace response stream with saving wrapper
         assert isinstance(response.stream, AsyncIterator)
         response_with_stream = Response(
             status_code=response.status_code,
             headers=response.headers,
-            stream=self._save_stream(response.stream, entry_id),
+            stream=self._save_stream(response.stream, entry_id, ttl),
             metadata=response.metadata,
         )
 
@@ -152,11 +153,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
         # Add to cache key index
         pipe.sadd(index_key, str(entry_id).encode("utf-8"))
 
-        # Set TTL if configured
-        ttl = self._get_entry_ttl(request)
+        # Set TTL if configured (stream TTL is handled in _save_stream)
         if ttl is not None:
             pipe.expire(entry_key, int(ttl))
-            pipe.expire(self._stream_key(entry_id), int(ttl))
             pipe.expire(index_key, int(ttl))
 
         await pipe.execute()
@@ -319,7 +318,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             pass
 
     async def _save_stream(
-        self, stream: AsyncIterator[bytes], entry_id: uuid.UUID
+        self, stream: AsyncIterator[bytes], entry_id: uuid.UUID, ttl: Optional[float]
     ) -> AsyncIterator[bytes]:
         """
         Wrapper around async iterator that saves response stream to Redis in chunks.
@@ -327,6 +326,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         Args:
             stream: Original response stream
             entry_id: Entry UUID
+            ttl: Optional TTL in seconds for the stream key
 
         Yields:
             Stream chunks
@@ -340,6 +340,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Mark stream as complete
         await self.client.rpush(stream_key, self._COMPLETE_CHUNK_MARKER)
+
+        # Apply TTL now that the stream key exists
+        if ttl is not None:
+            await self.client.expire(stream_key, int(ttl))
 
     async def _stream_data_from_cache(
         self, entry_id: uuid.UUID

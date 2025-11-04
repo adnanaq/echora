@@ -56,9 +56,10 @@ class AniListEnrichmentHelper:
             # Each event loop gets its own Redis client to avoid "different event loop" errors
             # This enables GraphQL caching while preventing event loop conflicts
             try:
+                from redis.asyncio import Redis
+
                 from src.cache_manager.aiohttp_adapter import CachedAiohttpSession
                 from src.cache_manager.async_redis_storage import AsyncRedisStorage
-                from redis.asyncio import Redis
 
                 # Create NEW Redis client bound to current event loop
                 redis_client = Redis.from_url(
@@ -105,7 +106,7 @@ class AniListEnrichmentHelper:
                 self.base_url, json=payload, headers=headers
             ) as response:
                 # Capture cache status before response is consumed
-                from_cache = getattr(response, 'from_cache', False)
+                from_cache = getattr(response, "from_cache", False)
 
                 if "X-RateLimit-Remaining" in response.headers:
                     self.rate_limit_remaining = int(
@@ -292,7 +293,7 @@ class AniListEnrichmentHelper:
 
             # Only rate limit for network requests, not cache hits
             # Cache hits are instant, no need to throttle
-            if not response.get('_from_cache', False):
+            if not response.get("_from_cache", False):
                 await asyncio.sleep(0.5)
 
         return all_items
@@ -413,7 +414,11 @@ async def main() -> None:
     anime_data = None
     try:
         if args.anilist_id:
-            anime_data = await helper.fetch_all_data_by_anilist_id(args.anilist_id)
+            try:
+                anime_data = await helper.fetch_all_data_by_anilist_id(args.anilist_id)
+            except Exception as e:
+                logger.error(f"Error fetching AniList data for ID {args.anilist_id}: {e}")
+                anime_data = None
         # elif args.mal_id:
         #     anime_data = await helper.fetch_all_data_by_mal_id(args.mal_id)
 

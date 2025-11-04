@@ -1,0 +1,540 @@
+import json
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from crawl4ai import CrawlResult
+
+from src.enrichment.crawlers.anime_planet_anime_crawler import (
+    _determine_season_from_date,
+    _extract_json_ld,
+    _extract_rank,
+    _extract_slug_from_url,
+    _extract_studios,
+    _normalize_anime_url,
+    _process_related_anime,
+    _process_related_manga,
+    fetch_animeplanet_anime,
+)
+
+# Use pytest-asyncio mode
+pytestmark = pytest.mark.asyncio
+
+
+async def clear_cache_for_call(func, *args, **kwargs):
+    """Helper to clear Redis cache for a specific function call."""
+    with patch("redis.asyncio.Redis.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = None
+        # The actual function call is not needed anymore, as we are mocking the cache get
+
+
+# --- Unit Tests for Helper Functions ---
+
+
+@pytest.mark.parametrize(
+    "identifier, expected",
+    [
+        ("dandadan", "https://www.anime-planet.com/anime/dandadan"),
+        ("/anime/dandadan", "https://www.anime-planet.com/anime/dandadan"),
+        (
+            "https://www.anime-planet.com/anime/dandadan",
+            "https://www.anime-planet.com/anime/dandadan",
+        ),
+        ("anime/one-piece", "https://www.anime-planet.com/anime/one-piece"),
+    ],
+)
+def test_normalize_anime_url_valid(identifier, expected):
+    assert _normalize_anime_url(identifier) == expected
+
+
+def test_normalize_anime_url_invalid():
+    with pytest.raises(ValueError, match="Invalid URL"):
+        _normalize_anime_url("https://www.google.com/anime/dandadan")
+
+
+@pytest.mark.parametrize(
+    "url, expected_slug",
+    [
+        ("https://www.anime-planet.com/anime/dandadan", "dandadan"),
+        ("https://www.anime-planet.com/anime/one-piece?foo=bar", "one-piece"),
+    ],
+)
+def test_extract_slug_from_url_valid(url, expected_slug):
+    assert _extract_slug_from_url(url) == expected_slug
+
+
+def test_extract_slug_from_url_invalid():
+    with pytest.raises(ValueError, match="Could not extract slug"):
+        _extract_slug_from_url("https://www.anime-planet.com/manga/dandadan")
+
+
+def test_extract_json_ld_valid():
+    html = """
+    <html><script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TVEpisode",
+        "name": "Dandadan",
+        "description": "This is a &lt;b&gt;great&lt;/b&gt; show.",
+        "image": "https://www.anime-planet.comhttps://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx158822-DbJ2c82s35jA.jpg"
+    }
+    </script></html>
+    """
+    json_ld = _extract_json_ld(html)
+    assert json_ld is not None
+    assert json_ld["name"] == "Dandadan"
+    assert json_ld["description"] == "This is a <b>great</b> show."
+    assert "anime-planet.comhttps" not in json_ld["image"]
+
+    # Test with a malformed image URL that needs fixing
+    html_malformed_image = """
+    <html><script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "image": "https://www.anime-planet.comhttps://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx158822-DbJ2c82s35jA.jpg"
+    }
+    </script></html>
+    """
+    json_ld_malformed = _extract_json_ld(html_malformed_image)
+    assert json_ld_malformed is not None
+    assert "anime-planet.comhttps" not in json_ld_malformed["image"]
+
+
+def test_extract_json_ld_malformed_image_url():
+    html = """
+    <html><script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "image": "https://www.anime-planet.comhttps://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx158822-DbJ2c82s35jA.jpg"
+    }
+    </script></html>
+    """
+    json_ld = _extract_json_ld(html)
+    assert json_ld is not None
+    assert "anime-planet.comhttps" not in json_ld["image"]
+
+
+def test_extract_json_ld_no_description():
+    html = """
+    <html><script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "name": "Dandadan"
+    }
+    </script></html>
+    """
+    json_ld = _extract_json_ld(html)
+    assert json_ld is not None
+    assert "description" not in json_ld
+
+
+@pytest.mark.parametrize(
+    "html_input",
+    [
+        "<html></html>",  # No script tag
+        '<html><script type="application/ld+json">{invalid json}</script></html>',  # Malformed JSON
+    ],
+)
+def test_extract_json_ld_invalid(html_input):
+    assert _extract_json_ld(html_input) is None
+
+
+@pytest.mark.parametrize(
+    "rank_texts, expected",
+    [
+        ([{"text": "Rank #123"}], 123),
+        ([{"text": "Overall rank #456"}], 456),
+        ([{"text": "No rank here"}], None),
+        ([], None),
+        ([{"text": "Rank #abc"}], None),
+    ],
+)
+def test_extract_rank(rank_texts, expected):
+    assert _extract_rank(rank_texts) == expected
+
+
+def test_extract_studios():
+    studios_raw = [
+        {"studio": "Science SARU"},
+        {"studio": "MAPPA"},
+        {"studio": "Science SARU"},
+    ]
+    assert _extract_studios(studios_raw) == ["Science SARU", "MAPPA"]
+    # Test limit
+    studios_raw_long = [{"studio": f"Studio {i}"} for i in range(10)]
+    assert len(_extract_studios(studios_raw_long)) == 5
+
+
+@pytest.mark.parametrize(
+    "date_str, expected_season",
+    [
+        ("2024-01-15", "WINTER"),
+        ("2024-04-20", "SPRING"),
+        ("2024-08-01", "SUMMER"),
+        ("2024-11-30", "FALL"),
+        ("2024-12-01", "WINTER"),
+        ("invalid-date", None),
+        ("", None),
+    ],
+)
+def test_determine_season_from_date(date_str, expected_season):
+    assert _determine_season_from_date(date_str) == expected_season
+
+
+def test_process_related_anime():
+    related_anime_raw = [
+        {
+            "title": "Sequel",
+            "url": "/anime/sequel-slug",
+            "relation_subtype": "Sequel",
+            "start_date_attr": "2025-01-01",
+            "metadata_text": "TV: 12 ep",
+        },
+        {
+            "title": "Anime with end date only",
+            "url": "/anime/end-date-slug",
+            "end_date_attr": "2023-12-31",
+        },
+        {"title": "Prequel", "url": ""},  # Invalid, should be skipped
+        {"title": "", "url": "/anime/no-title"},  # No title
+        {"title": "No URL", "url": ""},  # No URL
+        {"title": "Invalid URL", "url": "/manga/invalid-slug"},  # No anime slug
+        {
+            "title": "No Episodes",
+            "url": "/anime/no-episodes",
+            "metadata_text": "TV",
+        },
+        {
+            "title": "No Type Match",
+            "url": "/anime/no-type-match",
+            "metadata_text": "Unknown: 12 ep",
+        },
+    ]
+    processed = _process_related_anime(related_anime_raw)
+    assert (
+        len(processed) == 4
+    )  # Original valid + end date + No Episodes + No Type Match
+    item = processed[0]
+    assert item["title"] == "Sequel"
+    assert item["slug"] == "sequel-slug"
+    assert item["relation_subtype"] == "SEQUEL"
+    assert item["year"] == 2025
+    assert item["type"] == "TV"
+    assert item["episodes"] == 12
+
+    # Assertions for the new edge cases
+    assert processed[1]["slug"] == "end-date-slug"
+    assert processed[1]["year"] == 2023
+    assert processed[2]["slug"] == "no-episodes"
+    assert "episodes" not in processed[2]
+    assert processed[3]["slug"] == "no-type-match"
+    assert "type" not in processed[3]
+
+
+def test_process_related_manga():
+    related_manga_raw = [
+        {
+            "title": "Manga Adaptation",
+            "url": "/manga/manga-slug",
+            "relation_subtype": "Adaptation",
+            "metadata_text": "Vol: 2, Ch: 12",
+        },
+        {
+            "title": "Manga with end date only",
+            "url": "/manga/end-date-slug",
+            "end_date_attr": "2023-12-31",
+        },
+        {"title": "Invalid Manga", "url": "/anime/not-a-manga"},  # Invalid slug
+        {"title": "", "url": "/manga/no-title"},  # No title
+        {"title": "No URL", "url": ""},  # No URL
+        {"title": "Invalid URL", "url": "/anime/invalid-slug"},  # No manga slug
+        {
+            "title": "Only Volumes",
+            "url": "/manga/only-volumes",
+            "metadata_text": "Vol: 1",
+        },
+        {
+            "title": "Only Chapters",
+            "url": "/manga/only-chapters",
+            "metadata_text": "Ch: 5",
+        },
+        {
+            "title": "No Match",
+            "url": "/manga/no-match",
+            "metadata_text": "Unknown",
+        },
+    ]
+    processed = _process_related_manga(related_manga_raw)
+    assert (
+        len(processed) == 5
+    )  # Original valid + end date + Only Volumes + Only Chapters + No Match
+    item = processed[0]
+    assert item["title"] == "Manga Adaptation"
+    assert item["slug"] == "manga-slug"
+    assert item["volumes"] == 2
+    assert item["chapters"] == 12
+
+    # Assertions for the new edge cases
+    assert processed[1]["slug"] == "end-date-slug"
+    assert processed[1]["year"] == 2023
+    assert processed[2]["slug"] == "only-volumes"
+    assert processed[2]["volumes"] == 1
+    assert "chapters" not in processed[2]
+    assert processed[3]["slug"] == "only-chapters"
+    assert processed[3]["chapters"] == 5
+    assert "volumes" not in processed[3]
+    assert processed[4]["slug"] == "no-match"
+    assert "volumes" not in processed[4]
+    assert "chapters" not in processed[4]
+
+    # Test with empty list
+    assert _process_related_manga([]) == []
+
+
+# --- Integration Tests for fetch_animeplanet_anime ---
+
+
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_animeplanet_anime_wrong_result_type(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock(return_value=["not a CrawlResult"])
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    with pytest.raises(TypeError, match="Unexpected result type"):
+        await fetch_animeplanet_anime("any-slug")
+
+
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_animeplanet_anime_full_success(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
+    """Test successful fetching and processing of a rich anime page."""
+    slug = "dandadan"
+    url = f"https://www.anime-planet.com/anime/{slug}"
+
+    # A more complete mock response
+    css_data = {
+        "related_anime_raw": [],
+        "related_manga_raw": [],
+        "rank_text": [{"text": "Overall rank #123"}],
+        "studios_raw": [{"studio": "Science SARU"}],
+        "title_japanese": "Alt title: ダンダダン",
+        "poster": "http://example.com/poster.jpg",
+    }
+    json_ld_data = {
+        "@type": "TVSeries",
+        "name": "Dandadan",
+        "description": "A story of ghosts and aliens.",
+        "url": url,
+        "image": "http://example.com/image.jpg",
+        "startDate": "2024-10-01T00:00:00+00:00",
+        "endDate": "2024-12-25T00:00:00+00:00",
+        "numberOfEpisodes": 12,
+        "genre": ["Action", "Comedy"],
+        "aggregateRating": {"ratingValue": "4.5", "ratingCount": "100"},
+    }
+    html_content = f"""
+    <html>
+        <meta property="og:image" content="http://example.com/poster_og.jpg">
+        <script type="application/ld+json">{json.dumps(json_ld_data)}</script>
+    </html>
+    """
+
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock()
+    mock_arun.return_value = [
+        CrawlResult(
+            url=url,
+            success=True,
+            extracted_content=json.dumps([css_data]),
+            html=html_content,
+        )
+    ]
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    data = await fetch_animeplanet_anime(slug)
+
+    assert data is not None
+    assert data["slug"] == slug
+    assert data["title"] == "Dandadan"
+    assert data["rank"] == 123
+    assert data["studios"] == ["Science SARU"]
+    assert data["title_japanese"] == "ダンダダン"
+    assert data["poster"] == "http://example.com/poster.jpg"  # CSS has priority
+    assert data["year"] == 2024
+    assert data["season"] == "FALL"
+    assert data["status"] == "COMPLETED"
+    assert data["genres"] == ["Action", "Comedy"]
+
+
+@pytest.mark.parametrize(
+    "start_date, end_date, expected_status",
+    [
+        ("2024-01-01", "2024-03-31", "COMPLETED"),
+        ("2023-10-01", None, "AIRING"),
+        (datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), None, "AIRING"),
+        # ("2099-01-01T00:00:00Z", None, "UPCOMING"), # This case is tested separately
+        (None, None, "UNKNOWN"),
+        ("invalid-date", None, "AIRING"),  # Fallback due to ValueError
+    ],
+)
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_anime_status_derivation(
+    MockAsyncWebCrawler, mock_redis_cache_miss, start_date, end_date, expected_status
+):
+    # Use a unique slug for each test case to prevent cache collisions
+    slug = f"status-test-{start_date}-{end_date}"
+
+    json_ld_data = {"startDate": start_date, "endDate": end_date}
+    html_content = f"""<html><script type="application/ld+json">{json.dumps(json_ld_data)}</script></html>"""
+
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock(
+        return_value=[
+            CrawlResult(
+                url="",
+                success=True,
+                extracted_content=json.dumps([{}]),
+                html=html_content,
+            )
+        ]
+    )
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    data = await fetch_animeplanet_anime(slug)
+    assert data["status"] == expected_status
+
+
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_anime_status_upcoming_is_correct(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
+    """Isolated test for the UPCOMING status to ensure it is correctly determined."""
+    slug = "upcoming-anime-test"
+    start_date = "2099-01-01T00:00:00Z"
+    json_ld_data = {"startDate": start_date, "endDate": None}
+    html_content = f"""<html><script type="application/ld+json">{json.dumps(json_ld_data)}</script></html>"""
+
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock(
+        return_value=[
+            CrawlResult(
+                url="",
+                success=True,
+                extracted_content=json.dumps([{}]),
+                html=html_content,
+            )
+        ]
+    )
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    data = await fetch_animeplanet_anime(slug)
+
+    assert data is not None
+    assert data["status"] == "UPCOMING"
+
+
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_animeplanet_anime_no_html(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
+    """Test handling when crawl result has no HTML content."""
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock(
+        return_value=[
+            CrawlResult(
+                url="",
+                success=True,
+                extracted_content=json.dumps([{"slug": "any-slug"}]),
+                html="",
+            )
+        ]
+    )
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    data = await fetch_animeplanet_anime("any-slug")
+    assert data is not None
+    assert "type" not in data  # JSON-LD processing should be skipped
+
+
+@pytest.mark.parametrize(
+    "crawler_return_value",
+    [
+        [],  # No results
+        [
+            CrawlResult(
+                url="",
+                success=False,
+                error_message="Failed",
+                html="",
+                extracted_content="",
+            )
+        ],  # Unsuccessful crawl        [
+        CrawlResult(url="", success=True, extracted_content="[]", html=""),
+    ],
+)
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
+async def test_fetch_animeplanet_anime_failure_scenarios(
+    MockAsyncWebCrawler, mock_redis_cache_miss, crawler_return_value
+):
+    if not isinstance(crawler_return_value, list):
+        crawler_return_value = [crawler_return_value]
+    mock_crawler_instance = MockAsyncWebCrawler.return_value
+    mock_arun = AsyncMock(return_value=crawler_return_value)
+    mock_crawler_instance.__aenter__.return_value.arun = mock_arun
+
+    data = await fetch_animeplanet_anime("any-slug")
+    assert data is None
+
+
+class TestCLI:
+    """Test CLI functionality."""
+
+    @patch(
+        "src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime",
+        new_callable=AsyncMock,
+    )
+    @patch("src.enrichment.crawlers.anime_planet_anime_crawler.argparse.ArgumentParser")
+    async def test_main_block_cli_execution(
+        self, mock_argparse, mock_fetch_animeplanet_anime
+    ):
+        """Test the __main__ block for CLI execution by simulating it."""
+        # To test the main block, we can't easily use runpy because the module is already imported.
+        # Instead, we simulate the actions of the __main__ block directly.
+
+        # 1. Mock argparse
+        mock_args = MagicMock()
+        mock_args.identifier = "dandadan"
+        mock_args.output = "test.json"
+        mock_parser = MagicMock()
+        mock_parser.parse_args.return_value = mock_args
+        mock_argparse.return_value = mock_parser
+
+        # 2. Mock asyncio.run to just await the coroutine
+        async def mock_asyncio_run(coro):
+            await coro
+
+        # 3. The actual code from the __main__ block
+        with patch(
+            "src.enrichment.crawlers.anime_planet_anime_crawler.asyncio.run",
+            mock_asyncio_run,
+        ):
+            # This simulates the call inside if __name__ == "__main__"
+            parser = mock_argparse()
+            args = parser.parse_args()
+            await mock_asyncio_run(
+                mock_fetch_animeplanet_anime(
+                    args.identifier,
+                    return_data=False,
+                    output_path=args.output,
+                )
+            )
+
+        # 4. Assert the mock was called correctly
+        mock_fetch_animeplanet_anime.assert_awaited_once_with(
+            "dandadan",
+            return_data=False,
+            output_path="test.json",
+        )

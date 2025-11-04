@@ -6,8 +6,20 @@ Provides isolated test collection to avoid touching production data.
 
 import pytest
 import pytest_asyncio
+from unittest.mock import AsyncMock, patch
+
 from src.config.settings import Settings, get_settings
 from src.vector.client.qdrant_client import QdrantClient
+
+
+@pytest.fixture
+def mock_redis_cache_miss():
+    """Fixture to ensure cached_result always results in a cache miss."""
+    with patch('src.cache_manager.result_cache.get_result_cache_redis_client') as mock_get_redis_client:
+        mock_redis_client = AsyncMock()
+        mock_redis_client.get.return_value = None  # Always return None for get
+        mock_get_redis_client.return_value = mock_redis_client
+        yield
 
 
 @pytest.fixture(scope="session")

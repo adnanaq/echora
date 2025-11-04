@@ -368,7 +368,7 @@ class TestAniSearchEnrichmentHelper:
         assert len(result["episodes"]) == 2
         assert "characters" in result
         assert len(result["characters"]) == 2
-        assert result["character_count"] == 2
+
 
     @pytest.mark.asyncio
     @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')

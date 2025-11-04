@@ -19,7 +19,7 @@ from typing import AsyncIterator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from hishel._core.models import Entry, EntryMeta, Request, Response
+from hishel._core.models import Entry, EntryMeta, Request, Response, Headers
 
 from src.cache_manager.async_redis_storage import AsyncRedisStorage
 
@@ -65,7 +65,7 @@ def mock_request() -> Request:
     return Request(
         method="GET",
         url="https://api.example.com/anime/1",
-        headers={},
+        headers=Headers({}),
         metadata={},
     )
 
@@ -81,7 +81,7 @@ def mock_response() -> Response:
 
     return Response(
         status_code=200,
-        headers={"Content-Type": "application/json"},
+        headers=Headers({"Content-Type": "application/json"}),
         stream=mock_stream(),
         metadata={},
     )
@@ -315,7 +315,7 @@ class TestCreateEntry:
             )
 
             # Check expire was called with custom TTL (1200 seconds)
-            assert mock_pipeline.expire.call_count == 3  # entry, stream, index
+            assert mock_pipeline.expire.call_count == 2  # entry, index
 
     @pytest.mark.asyncio
     async def test_create_entry_uses_default_ttl(
@@ -346,7 +346,7 @@ class TestCreateEntry:
             )
 
             # Check expire was called (storage has default_ttl=3600.0)
-            assert mock_pipeline.expire.call_count == 3
+            assert mock_pipeline.expire.call_count == 2
 
     @pytest.mark.asyncio
     async def test_create_entry_no_ttl_when_none(
@@ -1019,7 +1019,7 @@ class TestStreamOperations:
         # Consume the wrapped stream
         chunks: List[bytes] = []
         async for chunk in storage_with_mock_client._save_stream(
-            mock_stream(), entry_id
+            mock_stream(), entry_id, ttl=None
         ):
             chunks.append(chunk)
 
@@ -1034,6 +1034,30 @@ class TestStreamOperations:
         mock_redis_client.rpush.assert_any_call(
             stream_key, AsyncRedisStorage._COMPLETE_CHUNK_MARKER
         )
+
+    @pytest.mark.asyncio
+    async def test_save_stream_sets_ttl_on_stream_key(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Test _save_stream sets TTL on the stream key."""
+
+        async def mock_stream() -> AsyncIterator[bytes]:
+            yield b"chunk1"
+
+        entry_id = uuid.uuid4()
+        stream_key = storage_with_mock_client._stream_key(entry_id)
+        test_ttl = 60
+
+        # Consume the wrapped stream
+        async for _ in storage_with_mock_client._save_stream(
+            mock_stream(), entry_id, ttl=test_ttl
+        ):
+            pass
+
+        mock_redis_client.expire.assert_called_once_with(stream_key, test_ttl)
+
 
     @pytest.mark.asyncio
     async def test_stream_data_from_cache_yields_chunks(
