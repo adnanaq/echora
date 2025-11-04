@@ -32,13 +32,13 @@ This document breaks down the work required to implement the automated architect
             _ Store original `source_url` and `content_type` as S3 object metadata.
             c. **On persistent download/upload failure (after all retries):**
             _ Send a structured message to the SQS DLQ containing `anime_id`, `image_url`, `error_message`, `timestamp`, `retry_count`, and `context`. \* Store `source_url_hash -> "DOWNLOAD_FAILED"` in `image-deduplication-map` along with a `last_attempt` timestamp and `TTL`.
-      - For `AnimeEntry` objects with partially failed images, store the **new CloudFront URL** (e.g., `https://<cloudfront-domain>/images/<content_hash>.<extension>`) for successful images. For failed images, include the `image_url` and `error_message` within the `AnimeEntry` in DynamoDB as a placeholder.
+      - For `AnimeEntry` objects with partially failed images, store the **new CloudFront URL** (e.g., `https://<cloudfront-domain>/images/<content_hash>.<extension>`) for successful images. For failed images, include the `image_url` and `error_message` within the `AnimeEntry` in MongoDB Atlas as a placeholder.
       - This ensures we own and control all image assets from the start, with robust deduplication, retry logic, and comprehensive error handling. The CloudFront URLs stored in `AnimeEntry` will always be HTTPS-only.
   3.  **Data Source Clarity (`anime-offline-database.json` vs `enriched_anime_database.json`):**
       - **`anime-offline-database.json`:** This external file is the **raw, external source of truth** for basic anime metadata. It is never directly ingested into our production DynamoDB or Qdrant.
       - **`enriched_anime_database.json` (Initial Local Version):** This is a **derived artifact** created locally during initial data preparation. It contains `AnimeEntry` objects after programmatic enrichment and image re-hosting (with CloudFront URLs). This local file is manually uploaded to S3 during initial system bootstrap.
       - **`enriched_anime_database.json` (S3 Version):** Once uploaded to S3 (`s3://<bucket-name>/processed/enriched_anime_database.json`), this becomes the **initial snapshot of our system\'s enriched data**. It serves as the baseline for our weekly sync process and as a full, portable backup.
-      - **DynamoDB (`anime-enriched-data` table):** This table is the **live, operational source of truth** for our enriched `AnimeEntry` objects after the initial bootstrap and subsequent weekly updates.
+      - **MongoDB Atlas (`animes` collection):** This collection is the **live, operational source of truth** for our enriched `AnimeEntry` objects after the initial bootstrap and subsequent weekly updates.
   4.  **Upload Enriched Database:** Manually upload the locally-generated `enriched_anime_database.json` (now with our S3 image URLs) to `s3://<bucket-name>/processed/enriched_anime_database.json`.
   5.  **Attach Metadata (Critical):** During the upload, attach a custom metadata tag `x-amz-meta-source-commit-sha` containing the commit hash of the `anime-offline-database` version that was used to generate the file. This provides the initial state for the system.
   6.  **Run Bulk Indexing Job:** Trigger a one-time, manual process to populate the Qdrant database. This will be a "scatter-gather" Lambda pattern to process ~40,000 entries in parallel without hitting timeouts.
@@ -72,21 +72,21 @@ This document breaks down the work required to implement the automated architect
 - **Logic (Intelligent Sync):**
   1.  Uses the commit SHA in the S3 object metadata to check if the `anime-offline-database` has been updated.
   2.  If so, it downloads the new offline DB.
-  3.  It iterates through each anime in the new offline DB and checks for its existence in the main `anime-enriched-data` table.
-  4.  **For New Anime (not found in the main table):**
-      - **Acquire Lock:** It attempts to acquire a lock by writing an item to the `anime-processing-locks` table using a conditional expression (`attribute_not_exists(anime_id)`).
+  3.  It iterates through each anime in the new offline DB and checks for its existence in the main `animes` collection in MongoDB Atlas.
+  4.  **For New Anime (not found in the main collection):**
+      - **Acquire Lock:** It attempts to acquire a lock by inserting an item into the `anime-processing-locks` collection in MongoDB Atlas using a unique index and write concern to ensure atomicity.
       - **On Success:** If the lock is acquired successfully, it triggers the full `Enrichment-Step-Function` to add the new anime. The Step Function will be responsible for deleting the lock upon completion.
       - **On Failure:** If the lock acquisition fails (meaning another process has already claimed this anime), it does nothing and moves to the next anime.
-  5.  **For Existing Anime (found in DynamoDB):**
+  5.  **For Existing Anime (found in MongoDB Atlas):**
       - If the entry is currently marked with `system_status == "ORPHANED"`, it will be "resurrected" by setting its status back to `ACTIVE` and clearing the `orphaned_at` timestamp.
-      - Performs a selective "diff-and-merge" against the record fetched from DynamoDB to avoid data regression:
+      - Performs a selective "diff-and-merge" against the record fetched from MongoDB Atlas to avoid data regression:
       - **Check `status`:** If the `status` in the offline file differs from our record, flag the anime for human review in the validation queue.
-      - **Check `episodes` (count):** Compare the integer `episodes` count from the offline file with the actual number of episodes stored in our database.
+      - **Check `episodes` (count):** Compare the integer `episodes` count from the offline file with the actual number of episodes stored in our `episodes` collection (linked by `anime_id`).
         - If `offline_count > our_count`, flag the anime for human review, as we may be missing episodes.
         - If `offline_count <= our_count`, **do nothing**, as our live data is considered more accurate.
       - All other fields from the offline DB for existing entries are ignored to protect our enriched data.
   6.  **For Removed Anime (Orphaning):**
-      - After processing the source file, the sync process will identify all anime present in our DynamoDB table that were not present in the source file.
+      - After processing the source file, the sync process will identify all anime present in our `animes` collection that were not present in the source file.
       - In line with our goal of creating a comprehensive database, these entries will **never be deleted**.
       - Instead, they will be marked as "orphaned" by updating the entry to include a `system_status: "ORPHANED"` field and an `orphaned_at` timestamp.
       - The API layer will be responsible for filtering these orphaned records from default user-facing queries, but they can be made accessible via a specific query parameter (e.g., `?include_orphaned=true`).
@@ -105,32 +105,32 @@ This document breaks down the work required to implement the automated architect
 
 - **Note on Modularity and Future Alternatives:** The application's vector database client will be implemented via a dedicated adapter module. While Qdrant Cloud is the initial choice, this modular design allows for switching to other managed vector databases in the future with minimal changes to the core application logic. Alternatives like Zilliz Cloud (for Milvus) should be periodically re-evaluated to ensure the chosen provider continues to meet the project's cost and performance needs.
 
-### Task 1.2.1: Provision Enriched Data Store (DynamoDB)
+### Task 1.2.1: Provision Enriched Data Store (MongoDB Atlas)
 
 - **Status:** `To-Do`
-- **Goal:** Deploy a managed NoSQL database to store enriched `AnimeEntry` objects for fast retrieval and serving user-facing applications. This database will complement the vector database by providing full payload details for anime IDs returned by vector searches.
-- **Rationale:** The existing JSON file approach for enriched data lacks the scalability, query flexibility, and operational features required for a production-grade, user-facing data store. DynamoDB offers schema flexibility, high performance, and seamless integration with the existing AWS ecosystem.
+- **Goal:** To deploy a managed NoSQL document database (MongoDB Atlas) to store enriched `AnimeEntry` objects for fast retrieval and serving user-facing applications. This database will complement the vector database by providing full payload details for anime IDs returned by vector searches.
+- **Rationale:** The existing JSON file approach for enriched data lacks the scalability, query flexibility, and operational features required for a production-grade, user-facing data store. MongoDB Atlas offers a flexible document model, rich querying capabilities, and seamless integration with various cloud ecosystems, making it ideal for our complex `AnimeEntry` objects.
 - **Steps:**
-  1.  **Provision DynamoDB Table:** Create a new DynamoDB table (e.g., `anime-enriched-data`) in the appropriate AWS region.
-      - **Primary Key:** Configure `anime_id` (string) as the Partition Key. **CRITICAL: This `anime_id` will be the common unique identifier used as the Point ID in Qdrant and the Primary Key in DynamoDB, ensuring a direct link between vector search results and detailed data.**
-      - **Indexing:** A Global Secondary Index (GSI) must be provisioned to allow for efficient querying on the `system_status` field. This is critical for filtering out `ORPHANED` records from user-facing queries by default.
-      - **Capacity Mode:** Start with On-Demand capacity for flexibility, or provisioned capacity if usage patterns are well-understood.
-  2.  **Define Data Model:** The `AnimeEntry` Pydantic model (`src/models/anime.py`) will serve as the direct schema for documents stored in this table. Each `AnimeEntry` object will be stored as a single JSON document.
-      - **Projection Expressions:** When retrieving data, utilize DynamoDB's Projection Expressions to fetch only the necessary attributes, avoiding overfetching for initial frontend renders (e.g., fetching only core metadata without full episode/character details).
-  3.  **Configure IAM Roles/Policies:** Ensure that the FastAPI service (running on Fargate), Lambda functions (for ingestion/consolidation), and any other relevant services have appropriate IAM permissions (`dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:BatchGetItem`, etc.) to interact with the new DynamoDB table.
-  4.  **Local Development Setup:** Integrate `amazon/dynamodb-local` into `docker-compose.yml` to provide a local, API-compatible DynamoDB instance for development and testing. Update `vector-service` environment variables (`DYNAMODB_ENDPOINT_URL`, `DYNAMODB_REGION`, `DYNAMODB_TABLE_NAME`) to point to the local instance during development.
-  5.  **Initial Data Load Script:** Develop a one-time script to read the existing `enriched_anime_database.json` from S3 and batch-write all `AnimeEntry` objects into the new DynamoDB table. This will be part of the initial system bootstrap.
+  1.  **Create MongoDB Atlas Account & Project:** Sign up for a MongoDB Atlas account and create a new project.
+  2.  **Provision Cluster:** Create a new MongoDB Atlas cluster (e.g., an M0 Free Tier for initial development, scaling up to M10+ for production). Choose the appropriate cloud provider (AWS) and region.
+  3.  **Configure Network Access:** Set up IP Access List entries or VPC Peering to allow connections from your application's environment (e.g., AWS Fargate, Lambda functions).
+  4.  **Create Database and Collections:** Within the cluster, create a database (e.g., `anime_service`) and collections for `animes`, `episodes`, and `characters`.
+      - **Primary Key:** The `_id` field in MongoDB will store our ULID-based identifiers (`ani_ULID`, `ep_ULID`, `char_ULID`).
+      - **Indexing:** Create appropriate indexes on fields like `anime_id` (for episodes/characters), `system_status`, and other frequently queried fields to ensure efficient retrieval.
+  5.  **Define Data Model:** The `AnimeEntry`, `EpisodeDetailEntry`, and `CharacterEntry` Pydantic models (`src/models/anime.py`) will serve as the direct schema for documents stored in these collections. We will use a Python ODM (e.g., Beanie) to map Pydantic models to MongoDB documents.
+  6.  **Configure IAM Roles/Policies:** Ensure that the FastAPI service (running on Fargate), Lambda functions (for ingestion/consolidation), and any other relevant services have appropriate network access and credentials to connect to MongoDB Atlas. Store connection strings securely (e.g., using AWS Secrets Manager).
+  7.  **Initial Data Load Script:** Develop a one-time script to read the existing `enriched_anime_database.json` from S3 and batch-write all `AnimeEntry` objects (and extract/write `EpisodeDetailEntry` and `CharacterEntry` into their respective collections) into the new MongoDB Atlas collections. This will be part of the initial system bootstrap.
 
-### Task 1.2.2: Provision Idempotency Lock Table
+### Task 1.2.2: Provision Idempotency Lock Collection (MongoDB Atlas)
 
 - **Status:** `To-Do`
-- **Goal:** To create a dedicated DynamoDB table to act as a distributed lock, ensuring that enrichment workflows are only triggered once per new anime.
-- **Rationale:** This prevents race conditions and duplicate workflow executions caused by Lambda retries, without polluting the primary `anime-enriched-data` table with placeholder records.
+- **Goal:** To create a dedicated MongoDB Atlas collection to act as a distributed lock, ensuring that enrichment workflows are only triggered once per new anime.
+- **Rationale:** This prevents race conditions and duplicate workflow executions caused by Lambda retries, without polluting the primary `animes` collection with placeholder records.
 - **Steps:**
-  1.  **Provision DynamoDB Table:** Create a new, simple DynamoDB table (e.g., `anime-processing-locks`).
-      - **Primary Key:** Configure `anime_id` (string) as the Partition Key.
-      - **TTL (Time-to-Live):** Enable TTL on a `ttl` attribute. This will automatically clean up stale locks from failed workflows after a set period (e.g., 24 hours).
-  2.  **Configure IAM Roles/Policies:** Update the IAM role for the `Weekly-Sync-Starter-Lambda` to allow it to read, write, and delete items in this new table.
+  1.  **Create MongoDB Collection:** Create a new, simple MongoDB collection (e.g., `anime-processing-locks`) within your MongoDB Atlas database.
+      - **Primary Key:** The `_id` field will store the `anime_id` (string) as the unique identifier for the lock.
+      - **TTL (Time-to-Live) Index:** Create a TTL index on a `ttl` attribute (timestamp) to automatically clean up stale locks from failed workflows after a set period (e.g., 24 hours).
+  2.  **Configure Access:** Ensure that the Lambda functions (for the weekly sync) have appropriate access to read, write, and delete items in this new collection.
 
 ### Task 1.3: Design the Enrichment Step Function
 
@@ -158,9 +158,9 @@ This document breaks down the work required to implement the automated architect
 - **Goal:** To create a periodic, full, cloud-agnostic snapshot of the entire enriched database. This file serves as a crucial artifact for disaster recovery and simplifies potential future migrations to other cloud providers.
 - **Logic:**
   1.  The Lambda is triggered by a weekly schedule.
-  2.  It performs a full scan of the `anime-enriched-data` DynamoDB table to fetch every record.
-  3.  It assembles all the records into a single list.
-  4.  It writes the complete list to the `enriched_anime_database.json` file in S3, overwriting the previous week's snapshot. This file now represents a complete, portable backup of the database state.
+  2.  It connects to MongoDB Atlas and performs an export of all records from the `animes`, `episodes`, and `characters` collections.
+  3.  It assembles all the records into a single `enriched_anime_database.json` file (or a set of files, one per collection).
+  4.  It writes the complete file(s) to S3, overwriting the previous week's snapshot. This file now represents a complete, portable backup of the database state.
 
 ### Task 1.5: Provision Observability Platform (SigNoz)
 
@@ -299,15 +299,16 @@ In `src/main.py`, the application would be configured to export telemetry.
       - Create a `docker-compose.local.yml` file to define and orchestrate local versions of all key dependencies:
         - `vector-service`: The FastAPI application.
         - `qdrant`: The official Qdrant image.
-        - `dynamodb-local`: The `amazon/dynamodb-local` image.
+        - `mongodb`: The official `mongo` Docker image. **This provides a local, API-compatible instance of MongoDB, ensuring consistency with our production MongoDB Atlas data store.**
+        - `mongo-express`: (Optional) A web-based administration interface for MongoDB.
         - `minio`: To act as an S3-compatible object store.
         - `signoz`: The full SigNoz observability stack.
   2.  **Configuration Management:**
-      - Create a `.env.local.example` file containing all necessary environment variables for the `vector-service` to connect to the other local containers (e.g., `DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000`).
+      - Create a `.env.local.example` file containing all necessary environment variables for the `vector-service` to connect to the other local containers (e.g., `MONGO_URI=mongodb://mongodb:27017/anime_service`).
       - This file will be git-ignored and developers can copy it to `.env.local` for their specific setup.
   3.  **Data Seeding:**
       - Create a `scripts/seed_local_env.py` script.
-      - This script will populate the local Qdrant and DynamoDB instances with a small, consistent set of sample data, allowing developers to have a working environment immediately after setup.
+      - This script will populate the local Qdrant and MongoDB instances with a small, consistent set of sample data, allowing developers to have a working environment immediately after setup. The `AnimeEntry`, `EpisodeDetailEntry`, and `CharacterEntry` Pydantic models (`src/models/anime.py`) will serve as the schema for data stored in the local MongoDB.
   4.  **Documentation:**
       - Create a detailed `README.local.md` explaining how to:
         - Install prerequisites (Docker).
@@ -350,10 +351,10 @@ In `src/main.py`, the application would be configured to export telemetry.
 - **Trigger:** EventBridge (runs daily at 00:05 UTC).
 - **Goal:** To find all anime airing in the next 24 hours (for ongoing shows) and all anime premiering in the next 24 hours (for upcoming shows), and create precise triggers for them.
 - **Logic:**
-  1.  **Handle Ongoing Shows:** Queries the `anime-enriched-data` DynamoDB table for all entries with `status == "ONGOING"`. For each, it finds the next episode scheduled to air in the next 24 hours and creates a one-time EventBridge schedule to trigger the `run-single-episode-update-lambda` at the target time.
+  1.  **Handle Ongoing Shows:** Queries the `animes` collection in MongoDB Atlas for all entries with `status == "ONGOING"`. For each, it finds the next episode scheduled to air in the next 24 hours and creates a one-time EventBridge schedule to trigger the `run-single-episode-update-lambda` at the target time.
       - **Idempotency:** To prevent duplicate schedules upon retry, a deterministic, unique name will be used for each schedule (e.g., `animeId-{anime_id}-episode-{episode_number}`). An attempt to create a schedule with a name that already exists will be caught and treated as a success.
-  2.  **Handle Upcoming Shows:** Queries the DynamoDB table for all entries with `status == "UPCOMING"` and a premiere date within the next 24 hours. For each of these anime, it proactively triggers the full `Enrichment-Step-Function`.
-      - **Idempotency:** This process will use the same locking mechanism described in Task 1.1 (using the `anime-processing-locks` table) to prevent duplicate workflow triggers for the same premiere.
+  2.  **Handle Upcoming Shows:** Queries the `animes` collection in MongoDB Atlas for all entries with `status == "UPCOMING"` and a premiere date within the next 24 hours. For each of these anime, it proactively triggers the full `Enrichment-Step-Function`.
+      - **Idempotency:** This process will use the same locking mechanism described in Task 1.1 (using the `anime-processing-locks` collection) to prevent duplicate workflow triggers for the same premiere.
 
 ### Task 3.2: Implement Single Episode Update Trigger
 
@@ -392,19 +393,19 @@ In `src/main.py`, the application would be configured to export telemetry.
   3.  **On a cache hit,** it will return the cached data immediately.
   4.  **On a cache miss,** it will perform the real API request, save the result to the Redis cache with an appropriate TTL (Time-To-Live), and then return the data.
 
-### Task 4.2.1: Integrate Caching for Enriched Data (DynamoDB)
+### Task 4.2.1: Integrate Caching for Enriched Data (MongoDB Atlas)
 
 - **Status:** `To-Do`
 - **Component:** FastAPI Service, Lambda functions (Enrichment Step Function)
-- **Goal:** To significantly reduce latency and DynamoDB read costs for retrieving `AnimeEntry` objects.
+- **Goal:** To significantly reduce latency and MongoDB Atlas read costs for retrieving `AnimeEntry` objects.
 - **Logic:**
   1.  **Caching Mechanism:** Utilize Amazon ElastiCache for Redis (provisioned in Task 4.1) as a distributed, in-memory cache.
   2.  **Caching Strategy (Cache-Aside):**
-      - **Read Path:** When the FastAPI service needs to retrieve an `AnimeEntry` from DynamoDB (e.g., after a vector search), it will first check the Redis cache using a standardized key (`anime:<anime_id>`).
+      - **Read Path:** When the FastAPI service needs to retrieve an `AnimeEntry` from MongoDB Atlas (e.g., after a vector search), it will first check the Redis cache using a standardized key (`anime:<anime_id>`).
       - **Cache Hit:** If the `AnimeEntry` is found in Redis, it will be returned immediately.
-      - **Cache Miss:** If not found, the `AnimeEntry` will be fetched from DynamoDB (using Projection Expressions to optimize retrieval), stored in Redis with a TTL, and then returned.
+      - **Cache Miss:** If not found, the `AnimeEntry` will be fetched from MongoDB Atlas (using appropriate projection to optimize retrieval), stored in Redis with a TTL, and then returned.
   3.  **Cache Invalidation:**
-      - When an `AnimeEntry` is **created or updated** in DynamoDB by the `Enrichment Step Function` (Task 1.3), the corresponding cache entry in Redis will be explicitly **deleted**. This ensures data consistency by forcing subsequent reads to fetch the fresh data from DynamoDB.
+      - When an `AnimeEntry` is **created or updated** in MongoDB Atlas by the `Enrichment Step Function` (Task 1.3), the corresponding cache entry in Redis will be explicitly **deleted**. This ensures data consistency by forcing subsequent reads to fetch the fresh data from MongoDB Atlas.
   4.  **Cache Key:** `anime:<anime_id>`
   5.  **Cache Value:** JSON representation of the `AnimeEntry` object.
   6.  **Cache Validity (TTL):** `24 hours (86400 seconds)`. The explicit invalidation mechanism ensures consistency, while the TTL acts as a safety net.
@@ -453,10 +454,10 @@ The API will leverage two independent layers of caching:
 
 ### Endpoint Type 4: Direct Database Queries
 
-- **Description:** Endpoints that query DynamoDB directly for specific data sets, without involving Qdrant.
+- **Description:** Endpoints that query MongoDB Atlas directly for specific data sets, without involving Qdrant.
 - **Use Cases & Caching Strategy:**
   - **Get Single Entry (`/anime/{id}`):**
-    - **API Gateway & Redis Caches:** Both are extremely effective. A request must miss both caches to hit DynamoDB.
-  - **Get Curated Lists (`/popular`, `/top-rated`):**
+    - **API Gateway & Redis Caches:** Both are extremely effective. A request must miss both caches to hit MongoDB Atlas.
+  - **Get Curated Lists (`/popular`, `/top-rated`):
     - **API Gateway Cache:** Extremely effective for caching the final generated list for a set TTL.
     - **Redis Cache:** Can be used to store a pre-computed list. A background job can run periodically (e.g., once every 12 hours) to query the database and refresh this list in Redis, making the API endpoint a simple and fast read operation.

@@ -179,6 +179,26 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 #### ✅ Implementation Phase: 14-Vector Collection (✅ COMPLETE)
 
+**Sub-Phase 2.5.0: Unique ID Strategy & Core Data Model Enhancements** (Rollback-Safe: data model definition) - [ ] COMPLETED
+
+- [ ] **2.5.0a: Define Global Unique ID Strategy** (Est: 2 hours)
+  - [ ] Adopt ULID with prefixes for all primary identifiers:
+    - `anime_id`: `ani_<ULID>` (e.g., `ani_01H8X3Z2Y4QWERTY1234567890`)
+    - `episode_id`: `ep_<ULID>` (e.g., `ep_01H8X5F9TJVW0YQZJ6X9R7C8A0`)
+    - `character_id`: `char_<ULID>` (e.g., `char_01H8X5E7SJVW0YQZJ6X9R7C8A0`)
+  - [ ] Document rationale: global uniqueness, time-sortability, human-readability (with prefix).
+  - [ ] Ensure `AnimeEntry.id` is consistently generated as `ani_ULID`.
+
+- [ ] **2.5.0b: Enhance `EpisodeDetailEntry` for Relationships** (Est: 1 hour)
+  - [ ] Add `anime_id: str` field to `EpisodeDetailEntry` Pydantic model.
+  - [ ] Document purpose: foreign key for linking episode to parent anime, enabling future separate episode collection and efficient queries/filtering.
+  - [ ] Plan for `anime_id` to be included in Qdrant payload for episode points (when `Sub-Phase 3.9` is implemented).
+
+- [ ] **2.5.0c: Enhance `CharacterEntry` for Relationships** (Est: 1 hour)
+  - [ ] Add `anime_ids: List[str]` field to `CharacterEntry` Pydantic model.
+  - [ ] Document purpose: model many-to-many relationship (character appearing in multiple anime), enabling future separate character collection and efficient queries/filtering.
+  - [ ] Plan for `anime_ids` to be included in Qdrant payload for character points (when separate character collection is implemented).
+
 **Sub-Phase 2.5.1: Collection Configuration Foundation** (Rollback-Safe: settings only) - ✅ COMPLETED
 
 - [x] **2.5.1a: Basic Vector Configuration** (Est: 2 hours) - COMPLETED
