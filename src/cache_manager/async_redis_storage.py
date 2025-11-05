@@ -140,6 +140,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
         # Use pipeline for atomic operations
         pipe = self.client.pipeline()
 
+        current_index_ttle: int | None = None
+        if ttl is not None:
+            current_index_ttle = await self.client.ttl(index_key)
+
         # Store entry data
         pipe.hset(
             entry_key,
@@ -155,8 +159,12 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Set TTL if configured (stream TTL is handled in _save_stream)
         if ttl is not None:
-            pipe.expire(entry_key, int(ttl))
-            pipe.expire(index_key, int(ttl))
+            ttl_seconds = int(ttl)
+            pipe.expire(entry_key, ttl_seconds)
+            if current_index_ttle in (-2, -1) or (
+                current_index_ttle is not None and current_index_ttle < ttl_seconds
+            ):
+                pipe.expire(index_key, ttl_seconds)
 
         await pipe.execute()
 

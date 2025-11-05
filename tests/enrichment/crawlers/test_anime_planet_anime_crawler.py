@@ -291,6 +291,59 @@ def test_process_related_manga():
     assert _process_related_manga([]) == []
 
 
+def test_process_related_manga_with_unknown_placeholders():
+    """Test handling of '?' placeholders in volume/chapter metadata.
+
+    Some anime-planet pages contain "Vol: ?" or "Ch: ?" when the count is unknown.
+    The parser should skip these instead of crashing with ValueError.
+    """
+    related_manga_raw = [
+        {
+            "title": "Unknown Volume",
+            "url": "/manga/unknown-vol",
+            "metadata_text": "Vol: ?",
+        },
+        {
+            "title": "Unknown Chapter",
+            "url": "/manga/unknown-ch",
+            "metadata_text": "Ch: ?",
+        },
+        {
+            "title": "Both Unknown",
+            "url": "/manga/both-unknown",
+            "metadata_text": "Vol: ?, Ch: ?",
+        },
+        {
+            "title": "Mixed Known Unknown",
+            "url": "/manga/mixed",
+            "metadata_text": "Vol: 5, Ch: ?",
+        },
+    ]
+
+    # This should not raise ValueError
+    processed = _process_related_manga(related_manga_raw)
+
+    assert len(processed) == 4
+
+    # Unknown Volume - should not have 'volumes' key
+    assert "volumes" not in processed[0]
+    assert processed[0]["slug"] == "unknown-vol"
+
+    # Unknown Chapter - should not have 'chapters' key
+    assert "chapters" not in processed[1]
+    assert processed[1]["slug"] == "unknown-ch"
+
+    # Both Unknown - neither key should exist
+    assert "volumes" not in processed[2]
+    assert "chapters" not in processed[2]
+    assert processed[2]["slug"] == "both-unknown"
+
+    # Mixed - only known value should be set
+    assert processed[3]["volumes"] == 5
+    assert "chapters" not in processed[3]
+    assert processed[3]["slug"] == "mixed"
+
+
 # --- Integration Tests for fetch_animeplanet_anime ---
 
 

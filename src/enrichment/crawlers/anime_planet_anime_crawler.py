@@ -603,12 +603,15 @@ def _process_related_manga(
             # Example: "Vol: 1, Ch: 5"
             vol_match = re.search(r"Vol:\s*([\d?]+)", metadata_text, re.IGNORECASE)
             if vol_match:
-                related_item["volumes"] = int(vol_match.group(1))
+                vol_raw = vol_match.group(1)
+                if vol_raw.isdigit():
+                    related_item["volumes"] = int(vol_raw)
 
             ch_match = re.search(r"Ch:\s*([\d?]+)", metadata_text, re.IGNORECASE)
             if ch_match:
-                related_item["chapters"] = int(ch_match.group(1))
-
+                ch_raw = ch_match.group(1)
+                if ch_raw.isdigit():
+                    related_item["chapters"] = int(ch_raw)
         related_manga.append(related_item)
 
     return related_manga

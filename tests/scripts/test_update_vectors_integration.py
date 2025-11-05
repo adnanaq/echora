@@ -435,7 +435,7 @@ async def test_mixed_batch_all_combinations(client: QdrantClient):
         AnimeEntry(
             id=f"mixed-{i}",
             title=f"Mixed Test {i}",
-            genre=["Action"],
+            genres=["Action"],
             year=2020,
             type="TV",
             status="FINISHED",
@@ -598,7 +598,7 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient):
     test_anime = AnimeEntry(
         id="all-vectors-test",
         title="All Vectors Test",
-        genre=["Action", "Drama"],
+        genres=["Action", "Drama"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -661,7 +661,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient):
     test_anime = AnimeEntry(
         id="duplicate-test",
         title="Duplicate Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -703,7 +703,7 @@ async def test_dimension_edge_cases(client: QdrantClient):
     test_anime = AnimeEntry(
         id="dimension-test",
         title="Dimension Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -773,7 +773,7 @@ async def test_special_float_values(client: QdrantClient):
     test_anime = AnimeEntry(
         id="float-test",
         title="Float Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -862,7 +862,7 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
     test_anime = AnimeEntry(
         id="invalid-names-test",
         title="Invalid Names Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -912,7 +912,7 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient):
     existing_anime = AnimeEntry(
         id="existing-anime",
         title="Existing Anime",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -955,7 +955,7 @@ async def test_results_ordering_matches_input(client: QdrantClient):
         AnimeEntry(
             id=f"order-{i}",
             title=f"Order Test {i}",
-            genre=["Action"],
+            genres=["Action"],
             year=2020,
             type="TV",
             status="FINISHED",
@@ -1000,7 +1000,7 @@ async def test_large_batch_realistic_failures(client: QdrantClient):
         AnimeEntry(
             id=f"large-{i}",
             title=f"Large Test {i}",
-            genre=["Action"],
+            genres=["Action"],
             year=2020,
             type="TV",
             status="FINISHED",
@@ -1047,7 +1047,7 @@ async def test_sequential_updates_same_vector(client: QdrantClient):
     test_anime = AnimeEntry(
         id="sequential-test",
         title="Sequential Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -1087,7 +1087,7 @@ async def test_image_and_text_vectors_mixed(client: QdrantClient):
     test_anime = AnimeEntry(
         id="mixed-dim-test",
         title="Mixed Dimension Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
