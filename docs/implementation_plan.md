@@ -47,21 +47,82 @@ This document breaks down the work required to implement the automated architect
 
 - **Status:** `To-Do`
 - **Goal:** Define and implement a robust Infrastructure as Code (IaC) framework for provisioning and managing all cloud resources.
-- **Rationale:** IaC ensures that our cloud infrastructure (S3, DynamoDB, EC2, Qdrant, Lambda, Step Functions, SQS, EventBridge, ElastiCache, API Gateway, CloudFront, Fargate) is provisioned, configured, and managed in a repeatable, auditable, and version-controlled manner. This minimizes manual errors, facilitates environment consistency, and supports efficient disaster recovery.
+- **Rationale:** IaC ensures that our cloud infrastructure is provisioned, configured, and managed in a repeatable, auditable, and version-controlled manner. This minimizes manual errors, facilitates environment consistency, and supports efficient disaster recovery.
 - **Decision:** We will use **Pulumi with Python** as our Infrastructure as Code (IaC) framework.
-- **Rationale:** This choice aligns with our team's existing Python expertise, allowing us to use a single language for both application and infrastructure code. It enables powerful abstractions, simplifies testing, and reduces context-switching, leading to more seamless integration and faster development velocity.
-- **Steps:**
-  1.  **Tool Setup & Configuration:**
-      - Install and configure the Pulumi CLI.
-      - Set up the Pulumi project and stack configurations for our environments (dev, staging, prod).
-      - Configure remote state management using the Pulumi Service backend to ensure state integrity and support collaborative development.
-  2.  **Module Design:**
-      - Design reusable IaC modules for common resource patterns (e.g., VPC, S3 buckets, DynamoDB tables, EC2 instances, Lambda functions).
-      - Ensure modules are parameterized to support different environments (dev, staging, prod).
-  3.  **Initial Resource Definition:**
-      - Define all resources outlined in Phase 1 (S3 bucket, DynamoDB table, EC2 for Qdrant, etc.) using the chosen IaC framework.
-      - Integrate the `docker-compose.yml` deployment for Qdrant on EC2 within the IaC (e.g., using `cloud-init` or a custom script for EC2 setup).
-  4.  **CI/CD Integration:** Integrate IaC deployments into a CI/CD pipeline (e.g., GitHub Actions) to automate `plan` and `apply` operations, ensuring changes are reviewed and applied consistently.
+- **Rationale:** This choice aligns with our team's existing Python expertise, allowing us to use a single language for both application and infrastructure code. It enables powerful abstractions, simplifies testing, and reduces context-switching.
+
+- **Repository Structure:**
+  - The Pulumi code for our infrastructure will live in its own dedicated Git repository (e.g., `anime-infra`). This separates infrastructure concerns from application code.
+
+- **Initial Setup Requirements:**
+  1.  **Git Repository:** A new, dedicated repository for all Pulumi code.
+  2.  **Pulumi Account & CLI:** A Pulumi account for state management and the Pulumi CLI installed in local and CI/CD environments.
+  3.  **Cloud Credentials:** Securely configured API keys for AWS, MongoDB Atlas, and Qdrant Cloud, managed via environment variables or CI/CD secrets.
+
+- **Pulumi Providers:**
+  - **AWS:** The official `pulumi_aws` provider will be used for all AWS resources.
+  - **MongoDB Atlas:** The official `pulumi_mongodbatlas` provider will be used. ([Link](https://www.pulumi.com/registry/packages/mongodbatlas/))
+  - **Qdrant Cloud:** The official `pulumi_qdrant_cloud` provider will be used. ([Link](https://www.pulumi.com/registry/packages/qdrant-cloud/))
+
+- **Comprehensive List of Resources to Provision (Repository Structure):**
+
+  To ensure maximum modularity, readability, and separation of concerns, the `anime-infra` repository will be structured as follows. Each file will be responsible for a specific set of resources.
+
+  ```
+  anime-infra/
+  ├── .github/
+  │   └── workflows/
+  │       └── cicd.yml         # GitHub Actions workflow for infrastructure
+  ├── __main__.py              # Main entry point for the Pulumi program
+  ├── Pulumi.yaml              # Project definition file
+  ├── Pulumi.dev.yaml          # Configuration for the 'dev' environment/stack
+  ├── Pulumi.prod.yaml         # Configuration for the 'production' environment/stack
+  ├── requirements.txt         # Python dependencies (pulumi, pulumi_aws, etc.)
+  └── components/
+      ├── __init__.py
+      ├── aws/                     # AWS-specific components
+      │   ├── __init__.py
+      │   ├── networking.py        # VPC, subnets, security groups, NAT/IGW
+      │   ├── s3_buckets.py        # S3 buckets (e.g., for images, pipeline data)
+      │   ├── dynamodb_tables.py   # DynamoDB tables (e.g., image deduplication)
+      │   ├── ecs_cluster.py       # ECS Cluster definition
+      │   ├── ecs_services.py      # Fargate Task Definitions and Services (BFF, Agent)
+      │   ├── lambda_functions.py  # All Lambda functions for the enrichment pipeline
+      │   ├── step_functions.py    # Step Function state machine definition
+      │   ├── secrets_manager.py   # Secrets Manager setup
+      │   ├── elasticache.py       # ElastiCache for Redis cluster
+      │   └── cloudfront.py        # CloudFront distribution for images
+      ├── qdrant/                  # Qdrant Cloud-specific components
+      │   ├── __init__.py
+      │   └── cluster.py           # Qdrant Cloud cluster and API keys
+      ├── mongo/                   # MongoDB Atlas-specific components
+      │   ├── __init__.py
+      │   ├── cluster.py           # MongoDB Atlas cluster
+      │   ├── users.py             # Database users for BFF and Agent
+      │   ├── network_access.py    # IP Access List / VPC Peering for Atlas
+      │   └── collections_indexes.py # MongoDB collections and their indexes
+      └── application/             # Application-level wiring of components
+          ├── __init__.py
+          ├── bff.py               # Wires up AWS ECS service for BFF, connects to Mongo
+          └── agent.py             # Wires up AWS ECS service for Agent, connects to Qdrant/Mongo
+  ```
+
+  - **How it Works:**
+    - **`components/aws/`, `components/qdrant/`, `components/mongo/`:** Each of these subdirectories groups all resources related to a specific cloud provider. Within these, individual files define specific resource types (e.g., `s3_buckets.py` for all S3 buckets).
+    - **`components/application/`:** This directory acts as an abstraction layer. For example, `bff.py` will define the *entire BFF application stack* by importing and configuring the necessary AWS ECS services from `aws/ecs_services.py` and connecting them to the MongoDB cluster defined in `mongo/cluster.py`.
+    - **`__main__.py`:** This top-level file remains simple. It will primarily import and instantiate the high-level application components from `components/application/`.
+
+- **CI/CD Integration:**
+  - Integrate IaC deployments into a CI/CD pipeline using **GitHub Actions** in the new infrastructure repository.
+  - **CI Workflow (on Pull Requests):**
+    - Runs `pulumi preview` to show planned infrastructure changes. This output can be posted as a comment on the PR for peer review.
+  - **CD Workflow (on Merge to `main`):**
+    - Executes `pulumi up` to apply infrastructure changes.
+    - This job will target protected GitHub Environments (e.g., `staging`, `production`) that require manual approval before deployment.
+  - **Authentication:**
+    - **AWS:** Utilize OpenID Connect (OIDC) for secure, credential-less authentication from GitHub Actions to AWS IAM.
+    - **MongoDB Atlas & Qdrant Cloud:** API keys will be stored as GitHub Secrets and accessed by the Pulumi workflow.
+  - **Pulumi State:** The Pulumi Service backend will be used for secure and collaborative state management.
 
 ### Task 1.1: Automated Weekly Database Sync
 
@@ -143,11 +204,37 @@ This document breaks down the work required to implement the automated architect
       - Download these images.
       - Upload them to our S3 bucket (e.g., `s3://<bucket-name>/images/anime/<anime-id>/<image-hash>.jpg`).
       - Update the `AnimeEntry` object to replace external CDN URLs with our internal S3 URLs.
-  2.  **Assemble Entry:** A state that combines the outputs of all previous steps into a single, final `AnimeEntry` object.
+  2.  **Assemble Entry:** A state (implemented as a Lambda function, e.g., `AssembleEntryLambda`) that combines the outputs of all previous steps into a single, final `AnimeEntry` object. **Crucially, this step performs a strict schema validation by parsing the assembled data against the `AnimeEntry` Pydantic model. If validation fails, the workflow will halt, preventing malformed data from proceeding to human review or database commit.**
   3.  **Pause for Validation:** A single **pause state** that sends the complete `AnimeEntry` object to the validation queue and waits for a human to approve, edit, or reject it.
-  4.  **Commit Data:** Upon approval, this state runs. It performs a partial update to Qdrant and then commits the data to our primary stores:
-      - It **writes the approved `AnimeEntry` object to the DynamoDB table**, making it live in the system.
+  4.  **Commit Data:** Upon approval, this state runs. It executes the critical dual write to Qdrant and MongoDB Atlas, governed by a multi-layered reliability strategy to ensure data consistency.
+      - It **writes the approved `AnimeEntry` object to the MongoDB Atlas collection**, making it live in the system.
       - It saves a copy of the single, approved `AnimeEntry` object to a dedicated S3 prefix (e.g., `processed/updated-entries/<anime-id>.json`) as a permanent audit log.
+
+      - **Commit Strategy: Ensuring Atomicity with a Saga Pattern**
+        To guarantee that the dual write to Qdrant and MongoDB is an "all or nothing" operation, the Step Function will implement a Saga pattern with the following layers of resilience:
+
+        **Implementation: The `CommitDataLambda`**
+
+        This entire commit process will be encapsulated within a single, dedicated AWS Lambda function, triggered by the Step Function.
+
+        - **Name:** `CommitDataLambda`
+        - **Trigger:** AWS Step Function, upon successful completion of the "Pause for Validation" step.
+        - **Input:** The final, human-approved `AnimeEntry` JSON object.
+        - **Core Responsibilities:**
+          1.  **Instantiate Clients:** The function will contain the Python code to initialize clients for both Qdrant and MongoDB Atlas using the appropriate credentials from AWS Secrets Manager.
+          2.  **Execute Qdrant Upsert:** It will call the `qdrant_client.upsert()` method to create or update the vector embeddings in the Qdrant collection.
+          3.  **Execute MongoDB Upsert:** It will use a MongoDB client (e.g., PyMongo) to perform an `update_one` operation with `upsert=True` on the `animes` collection, using the `anime_id` as the filter. This writes the full `AnimeEntry` document.
+        - **Reliability:** This Lambda is the component that executes the Saga pattern's logic (retries, compensating actions) to ensure the atomicity of the dual write.
+
+        1.  **Layer 1: Automated Retries:** Each database write operation will be wrapped in a retry policy with exponential backoff (e.g., 5 attempts over 2 minutes). This is a native feature of AWS Step Functions and handles the majority of transient network or service errors.
+
+        2.  **Layer 2: Saga Orchestration:** The commit logic follows a precise sequence to prevent data inconsistency.
+            - **Step A: Write to Qdrant.** The vector data is written to Qdrant first. If this write fails after all retries, the entire workflow fails, leaving the primary data store untouched.
+            - **Step B: Write to MongoDB Atlas.** If the Qdrant write succeeds, the full `AnimeEntry` object is written to the `animes` collection in MongoDB Atlas.
+            - **Step C: Compensating Action (Rollback).** If the MongoDB write fails permanently, the Saga triggers a compensating action to **delete the record that was just created in Qdrant.** This ensures no "orphaned" vectors exist in the search index.
+
+        3.  **Layer 3: Dead-Letter Queue (DLQ) for Human Intervention:** In the exceptional case that the Saga itself fails (e.g., the compensating action fails), the entire Step Function execution, along with the `AnimeEntry` payload, is sent to an SQS Dead-Letter Queue. A CloudWatch Alarm monitoring the DLQ will notify the engineering team, allowing a human to manually investigate the rare failure and ensure data consistency.
+
   5.  **Cleanup:** A final state to clean up any temporary resources from EFS.
 
 ### Task 1.4: Implement Portability & Backup Job
@@ -373,20 +460,22 @@ In `src/main.py`, the application would be configured to export telemetry.
 - **Goal:** To implement the critical timezone conversions identified in `docs/timezone_analysis.md`.
 - **Logic:** The scripts will be updated to ensure that any date/time information from external APIs (especially JST) is correctly converted to UTC before being included in the final `AnimeEntry` object.
 
-## Phase 4: Caching & Performance Optimization
+## Phase 4: Caching & Performance Optimization (GraphQL Focused)
+
+This phase is updated to reflect the shift to a GraphQL API, which moves the primary caching burden from the edge (API Gateway) to the application layer (the BFF Service).
 
 ### Task 4.1: Provision Caching Infrastructure
 
 - **Status:** `To-Do`
 - **Component:** Amazon ElastiCache for Redis
-- **Goal:** To deploy a managed Redis cluster within the VPC to serve as a high-speed cache.
-- **Configuration:** A small cache instance (e.g., `cache.t3.small`) will be provisioned in a private subnet, with a security group that only allows access from the Lambda functions and the Fargate service.
+- **Goal:** To deploy a managed Redis cluster within the VPC to serve as a high-speed cache for the BFF and other backend services.
+- **Configuration:** A cache instance (e.g., `cache.t3.small`) will be provisioned in a private subnet, with a security group that only allows access from the Fargate services (BFF and Agent Service) and relevant Lambda functions.
 
 ### Task 4.2: Integrate Caching for External API Calls
 
 - **Status:** `To-Do`
-- **Component:** API helper classes (e.g., `AnilistHelper`, `JikanHelper`)
-- **Goal:** To reduce redundant API calls, avoid rate-limiting, and speed up the enrichment process.
+- **Component:** Python data processing scripts and Lambdas.
+- **Goal:** To reduce redundant API calls, avoid rate-limiting, and speed up the backend enrichment process.
 - **Logic:**
   1.  The core data fetching method in each helper will be modified.
   2.  Before making a live HTTP request, it will first check the Redis cache for the requested data using a standardized key (e.g., `jikan:anime:123`).
@@ -396,68 +485,187 @@ In `src/main.py`, the application would be configured to export telemetry.
 ### Task 4.2.1: Integrate Caching for Enriched Data (MongoDB Atlas)
 
 - **Status:** `To-Do`
-- **Component:** FastAPI Service, Lambda functions (Enrichment Step Function)
+- **Component:** **BFF Service (Bun/ElysiaJS)**
 - **Goal:** To significantly reduce latency and MongoDB Atlas read costs for retrieving `AnimeEntry` objects.
 - **Logic:**
-  1.  **Caching Mechanism:** Utilize Amazon ElastiCache for Redis (provisioned in Task 4.1) as a distributed, in-memory cache.
+  1.  **Caching Mechanism:** Utilize Amazon ElastiCache for Redis as a distributed, in-memory cache.
   2.  **Caching Strategy (Cache-Aside):**
-      - **Read Path:** When the FastAPI service needs to retrieve an `AnimeEntry` from MongoDB Atlas (e.g., after a vector search), it will first check the Redis cache using a standardized key (`anime:<anime_id>`).
-      - **Cache Hit:** If the `AnimeEntry` is found in Redis, it will be returned immediately.
-      - **Cache Miss:** If not found, the `AnimeEntry` will be fetched from MongoDB Atlas (using appropriate projection to optimize retrieval), stored in Redis with a TTL, and then returned.
+      - **Read Path:** When the BFF service needs to retrieve an `AnimeEntry` from MongoDB Atlas, it will first check the Redis cache using a standardized key (`anime:<anime_id>`).
+      - **Cache Hit:** If the `AnimeEntry` is found in Redis, it will be deserialized and returned immediately.
+      - **Cache Miss:** If not found, the `AnimeEntry` will be fetched from MongoDB Atlas, stored in Redis with a TTL, and then returned.
   3.  **Cache Invalidation:**
-      - When an `AnimeEntry` is **created or updated** in MongoDB Atlas by the `Enrichment Step Function` (Task 1.3), the corresponding cache entry in Redis will be explicitly **deleted**. This ensures data consistency by forcing subsequent reads to fetch the fresh data from MongoDB Atlas.
-  4.  **Cache Key:** `anime:<anime_id>`
-  5.  **Cache Value:** JSON representation of the `AnimeEntry` object.
-  6.  **Cache Validity (TTL):** `24 hours (86400 seconds)`. The explicit invalidation mechanism ensures consistency, while the TTL acts as a safety net.
+      - When an `AnimeEntry` is **created or updated** by the `Enrichment Step Function`, the corresponding cache entry in Redis will be explicitly **deleted**. This ensures data consistency.
+  4.  **Data Loader Pattern:** To prevent the N+1 problem in GraphQL resolvers, the BFF will use a **Data Loader**. This pattern batches multiple requests for individual anime (e.g., when resolving a list) into a single, efficient `find({ _id: { $in: [...] } })` query to both the Redis cache and MongoDB.
 
-### Task 4.3: Enable API Gateway Caching
+### Task 4.3: Re-evaluate API Gateway Caching
 
 - **Status:** `To-Do`
 - **Component:** Amazon API Gateway
-- **Goal:** To reduce latency and cost for frequent, identical user-facing search queries.
+- **Goal:** To acknowledge the reduced effectiveness of edge caching with GraphQL.
 - **Logic:**
-  1.  Enable the built-in caching feature on the API Gateway stage.
-  2.  Configure the cache to use the request path and query parameters as the cache key.
-  3.  Set a reasonable TTL (e.g., 5-15 minutes) to serve repeated public queries directly from the cache, bypassing our Fargate service entirely.
+  1.  Due to GraphQL sending most requests to a single `/graphql` endpoint, caching based on URL paths is no longer effective for dynamic queries.
+  2.  API Gateway caching will be **disabled** for the `/graphql` endpoint.
+  3.  It may still be considered for other static assets or potential future REST endpoints served by the BFF, but it is no longer a primary component of the main API caching strategy.
 
-## Phase 5: API Strategy
+### Task 4.4: Implement Application-Layer Caching for Curated Lists
 
-This phase outlines the design of the user-facing API, which is composed of four distinct endpoint types, each with a tailored caching strategy to ensure performance and efficiency. The API will be a FastAPI application running on AWS Fargate, fronted by Amazon API Gateway.
+- **Status:** `To-Do`
+- **Component:** BFF Service & a new scheduled Lambda function.
+- **Goal:** To provide fast responses for frequently accessed, non-personalized lists like "Top Rated Anime" or "Trending This Season".
+- **Logic:**
+  1.  A new, scheduled **AWS Lambda function** will run periodically (e.g., every hour).
+  2.  This Lambda will perform the expensive aggregation query on MongoDB Atlas to determine the list of "top" or "trending" anime.
+  3.  It will write the resulting ordered list of anime IDs to a specific key in **Redis** (e.g., `curated_list:top_rated`).
+  4.  When the BFF receives a GraphQL query for this list, it will fetch the list of IDs directly from Redis, and then use the Data Loader (from Task 4.2.1) to efficiently retrieve the full `AnimeEntry` objects. This makes the API response extremely fast.
 
-### Caching Layers Overview
+## Phase 5: API Strategy (BFF & Agent Service Model)
 
-The API will leverage two independent layers of caching:
+This phase outlines the modern, two-service architecture for the user-facing API. It consists of a public-facing GraphQL BFF (Backend-for-Frontend) and an internal, AI-powered Agent Service. This polyglot (TypeScript + Python) model uses the best technology for each specific job.
 
-1.  **API Gateway Cache:** An "edge" cache that stores full HTTP responses for specific requests. It is keyed by the request path and query parameters. When a hit occurs, the request does not reach our backend service.
-2.  **Redis (ElastiCache) Cache:** An application-level cache that stores processed data, primarily `AnimeEntry` objects fetched from DynamoDB. It is keyed by `anime_id`.
+### Component 1: The BFF Service (Bun/ElysiaJS + GraphQL)
 
-### Endpoint Type 1: Agentic Search
+- **Technology:** Bun/ElysiaJS (TypeScript) and GraphQL.
+- **Deployment:** A serverless AWS Fargate container, exposed publicly via Amazon API Gateway.
+- **Responsibilities:**
+  - Acts as the single gateway for the frontend application.
+  - Exposes a comprehensive GraphQL schema for all frontend data requirements.
+  - Receives natural language search queries and passes them to the internal Agent Service.
+  - Receives search results (anime IDs) from the Agent Service.
+  - Fetches full `AnimeEntry` documents from MongoDB Atlas using the IDs.
+  - Implements the application-layer caching strategy (see Phase 4) to ensure performance.
+  - Handles all data shaping and serves the final GraphQL response to the frontend.
 
-- **Description:** A natural language search endpoint (e.g., `/search/agentic`). The user's raw query is first processed by an "Agentic AI" layer. This layer will be implemented by calling a Qwen3 model hosted on **Amazon Bedrock**. The model's role is to parse the user's intent and generate a refined query and a structured filter object, which is then used to query Qdrant.
-- **Caching Strategy:**
-  - **API Gateway Cache:** Less effective due to the high variability of natural language queries. May be disabled for this endpoint.
-  - **Redis Cache:** Very effective. Caches the `AnimeEntry` objects for the results returned by Qdrant. This saves DynamoDB reads when different searches return overlapping results.
+### Component 2: The Agent Service (Python)
 
-### Endpoint Type 2: Structured Search
+- **Technology:** Python, using frameworks like `atomic-agents` to orchestrate LLM interactions.
+- **Deployment:** A serverless AWS Fargate container. This service is **internal-only** and is not exposed to the public internet. It will be placed behind an internal Application Load Balancer, allowing the BFF to communicate with it securely and with low latency.
+- **Responsibilities:**
+  - Exposes a simple, internal REST or gRPC endpoint to receive natural language queries from the BFF.
+  - Uses an LLM (e.g., from Amazon Bedrock) to parse the natural language query into a structured search request. This includes generating the appropriate `embedding_text` and structured `filters`.
+  - Uses the `QdrantClient` to execute a complex, multi-vector search against the Qdrant database using the parameters provided by the LLM.
+  - Returns a ranked list of anime IDs to the BFF.
 
-- **Description:** A filtered search endpoint (e.g., `/search/structured`) that accepts specific query parameters from the frontend UI (`?genre=Action&year=2023`). It queries Qdrant directly.
-- **Caching Strategy:**
-  - **API Gateway Cache:** Extremely effective. Caches full responses for common filter combinations, providing instant results and reducing backend load significantly.
-  - **Redis Cache:** Acts as a second layer, caching individual `AnimeEntry` objects if the API Gateway has a cache miss.
+### High-Level Request Flow (Natural Language Search)
 
-### Endpoint Type 3: Third-Party Proxy
+1.  **Frontend -> BFF:** Sends a GraphQL query containing the user's search string.
+2.  **BFF -> Agent Service:** Makes an internal API call, passing the raw search string.
+3.  **Agent Service -> LLM (Bedrock):** Asks the LLM to convert the string into structured search parameters.
+4.  **Agent Service -> Qdrant:** Executes the search and gets a list of anime IDs.
+5.  **Agent Service -> BFF:** Returns the list of IDs.
+6.  **BFF -> MongoDB:** Fetches the full anime documents for the given IDs.
+7.  **BFF -> Frontend:** Returns the final data in the requested GraphQL format.
 
-- **Description:** Endpoints that act as a facade for external APIs (e.g., MAL, AniList). This centralizes all external communication through our backend.
-- **Caching Strategy:**
-  - **API Gateway Cache:** Primary and highly effective. Caches the responses from the third-party APIs for a configured TTL (e.g., 1-24 hours). This is critical for avoiding rate-limiting by external services.
-  - **Redis Cache:** Generally not used for this endpoint type.
+### Architectural Clarification: Application Services vs. Managed Services
 
-### Endpoint Type 4: Direct Database Queries
+It's important to distinguish between the **application services we build and deploy** and the **managed/third-party services we consume**.
 
-- **Description:** Endpoints that query MongoDB Atlas directly for specific data sets, without involving Qdrant.
-- **Use Cases & Caching Strategy:**
-  - **Get Single Entry (`/anime/{id}`):**
-    - **API Gateway & Redis Caches:** Both are extremely effective. A request must miss both caches to hit MongoDB Atlas.
-  - **Get Curated Lists (`/popular`, `/top-rated`):
-    - **API Gateway Cache:** Extremely effective for caching the final generated list for a set TTL.
-    - **Redis Cache:** Can be used to store a pre-computed list. A background job can run periodically (e.g., once every 12 hours) to query the database and refresh this list in Redis, making the API endpoint a simple and fast read operation.
+In this architecture, we are building **two** primary application services:
+
+1.  **BFF (Backend-for-Frontend) Service:** Written in TypeScript (Bun/ElysiaJS). Its job is to serve the frontend client, manage user data, and act as a simple gateway. It talks to a **MongoDB Atlas** database.
+2.  **Agent Service:** Written in Python. This is the "brains" of the operation. It handles the complex vector search, AI-powered enrichment, and data processing pipelines. It talks to **Qdrant Cloud** for vector storage and an external **LLM API** for AI tasks.
+
+Therefore, while we interact with three major data/AI components (MongoDB, Qdrant, LLM), these are consumed by our two distinct application services. This model provides a clean separation of concerns and leverages the strengths of each technology.
+
+### Detailed Infrastructure Diagram (Top-Down View)
+
+```
+                                         +--------------------------------------------------+
+                                         |                   USER'S DEVICE                  |
+                                         |                  (Web Browser)                   |
+                                         +-------------------------+------------------------+
+                                                                   |
+                                                                   | (HTTPS Requests)
+                                                                   |
++------------------------------------------------------------------V---------------------------------------------------------------------+
+|                                                                                                                                       |
+|                                                      AWS CLOUD ENVIRONMENT                                                              |
+|                                                                                                                                       |
+|  +-----------------------------------------------------------------------------------------------------------------------------------+  |
+|  |                                                                                                                                   |  |
+|  |  +---------------------------------+      (Internal API Call)      +----------------------------------+       (API Call)       +------------------+
+|  |  |      BFF SERVICE (Fargate)      +-----------------------------> |    AGENT SERVICE (Fargate)       +----------------------> |  LLM API         |
+|  |  | (Bun/ElysiaJS - GraphQL API)    |                               | (Python - Internal REST/gRPC API)|                        | (OpenAI/Anthropic) |
+|  |  +-----------------+---------------+                               +----------------+-----------------+                        +------------------+
+|  |                    |                                                                |
+|  | (DB Query)         |                                                                | (Vector Search/Upsert)
+|  |                    |                                                                |
+|  |  +-----------------V---------------+                               +----------------V-----------------+
+|  |  |      MongoDB Atlas              |                               |        Qdrant Cloud              |
+|  |  | (Managed Document Database)     |                               | (Managed Vector Database)        |
+|  |  +---------------------------------+                               +----------------------------------+
+|  |                                                                                      ^
+|  |                                                                                      | (Write Enriched Data)
+|  |                                                                                      |
+|  |  +----------------------------------------------------------------------------------+--------------------------------------------+
+|  |  |                                    OFFLINE DATA ENRICHMENT PIPELINE (Serverless)                                             |
+|  |  |                                                                                                                               |
+|  |  |  +------------------------+      +------------------+      +---------------------+      +---------------------+      +--------------------+
+|  |  |  | Enrichment Trigger     |----->| Step Function    |----->|  Lambda: Fetch APIs |----->|  Lambda: Process    |----->| Lambda: Assemble   |
+|  |  |  | (e.g., Cron, Manual)   |      | (Orchestrator)   |      | (api_fetcher.py)    |      | (process_stage*.py) |      | & Write to Qdrant  |
+|  |  |  +------------------------+      +--------+---------+      +----------+----------+      +----------+----------+      +----------+---------+
+|  |  |                                           |                           |                           |                           |
+|  |  |                                           +---------------------------+---------------------------+---------------------------+
+|  |  |                                                                       |
+|  |  |                                                                       | (Read/Write Intermediate Files)
+|  |  |                                                                       |
+|  |  |                                                         +-------------V-------------+
+|  |  |                                                         |      S3 Bucket              |
+|  |  |                                                         | (Temp Storage for JSONs)    |
+|  |  |                                                         +-----------------------------+
+|  |  |                                                                                                                               |
+|  |  +-------------------------------------------------------------------------------------------------------------------------------+
+|  |                                                                                                                                   |
+|  +-----------------------------------------------------------------------------------------------------------------------------------+
+|                                                                                                                                       |
++---------------------------------------------------------------------------------------------------------------------------------------+
+```
+
+### Mermaid Diagram
+
+```mermaid
+graph TD
+    subgraph User
+        Client[Web Browser]
+    end
+
+    subgraph "External Managed Services"
+        MongoDB["MongoDB Atlas (Document DB)"]
+        QdrantDB["Qdrant Cloud (Vector DB)"]
+        LLM_API["LLM API (OpenAI/Anthropic)"]
+    end
+
+    subgraph "AWS Cloud"
+        subgraph "Real-time Services (AWS Fargate)"
+            BFF["BFF Service (Bun/ElysiaJS)"]
+            Agent["Agent Service (Python)"]
+        end
+
+        subgraph "Offline Enrichment Pipeline (Serverless)"
+            Trigger[Enrichment Trigger]
+            StepFunction["Step Function Orchestrator"]
+            S3["S3 Bucket (Temp JSON Storage)"]
+            LambdaFetch["Lambda: Fetch APIs"]
+            LambdaProcess["Lambda: Process Stages"]
+            LambdaWrite["Lambda: Assemble & Write"]
+        end
+
+        %% Real-time Request Flow
+        Client -- HTTPS Request --> BFF
+        BFF -- "GraphQL Query" --> MongoDB
+        BFF -- "Internal API Call (Search/AI)" --> Agent
+        Agent -- "Vector Search/Upsert" --> QdrantDB
+        Agent -- "AI Task (e.g., Summarization)" --> LLM_API
+
+        %% Offline Data Pipeline Flow
+        Trigger --> StepFunction
+        StepFunction -- "Start Fetch" --> LambdaFetch
+        LambdaFetch -- "Read/Write Raw JSON" --> S3
+        StepFunction -- "Start Processing" --> LambdaProcess
+        LambdaProcess -- "Read Raw, Write Staged JSON" --> S3
+        StepFunction -- "Start Final Assembly" --> LambdaWrite
+        LambdaWrite -- "Read Staged JSON" --> S3
+        LambdaWrite -- "Write Enriched Vectors" --> QdrantDB
+    end
+
+    style BFF fill:#f9f,stroke:#333,stroke-width:2px
+    style Agent fill:#ccf,stroke:#333,stroke-width:2px
