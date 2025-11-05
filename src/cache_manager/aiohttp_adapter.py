@@ -72,7 +72,9 @@ class _CachedResponse:
         """Read response as text."""
         return self._body.decode(encoding)
 
-    async def json(self, **kwargs: Any) -> Any:
+    async def json(
+        self,
+    ) -> Any:
         """Read response as JSON."""
 
         return json.loads(self._body.decode("utf-8"))
@@ -312,7 +314,6 @@ class CachedAiohttpSession:
         Returns:
             Cache key string
         """
-        import json
 
         key_parts = [method, url]
 
@@ -348,7 +349,6 @@ class CachedAiohttpSession:
             key_parts.append(f"params={serialize_payload(params)}")
 
         if "data" in kwargs:
-            print("Executing data block in generate_cache_key")
             key_parts.append(f"data={serialize_payload(kwargs['data'])} ")
 
         # Hash to create stable key
