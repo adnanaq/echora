@@ -356,20 +356,6 @@ class TestCachedAiohttpSession:
         assert key2.startswith("POST:")
         assert key1 != key2  # Different bodies = different keys
 
-    def test_generate_cache_key_post_with_list_data(self, mock_storage):
-        """Test cache key generation for POST with form data."""
-        # Pass a mock session to avoid event loop requirement
-        mock_session = MagicMock()
-        cached_session = CachedAiohttpSession(
-            storage=mock_storage, session=mock_session
-        )
-
-        key = cached_session._generate_cache_key(
-            "POST", "https://example.com/api", {"data": "form=data"}
-        )
-
-        assert key.startswith("POST:")
-
     def test_generate_cache_key_post_with_form_data_different_bodies(
         self, mock_storage
     ):

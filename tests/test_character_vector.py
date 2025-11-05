@@ -82,6 +82,7 @@ def test_character_vector_realistic():
                 "Content-Type": "application/json",
             },
             json=search_payload,
+            timeout=10,
         )
 
         if response.status_code == 200:
@@ -253,6 +254,7 @@ def test_character_image_vector():
                         "Content-Type": "application/json",
                     },
                     json=search_payload,
+                    timeout=10,
                 )
 
                 if response.status_code == 200:
@@ -689,4 +691,3 @@ if __name__ == "__main__":
 
     # Run multimodal character search tests
     test_multimodal_character_search()
-

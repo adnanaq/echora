@@ -856,7 +856,7 @@ class TestMainExecution:
         test_args = ["script_name", "test_agent", "--temp-dir", str(tmp_path)]
 
         with patch("sys.argv", test_args):
-            with patch("process_stage2_episodes.PROJECT_ROOT", tmp_path):
+            with patch("scripts.process_stage2_episodes.PROJECT_ROOT", tmp_path):
                 # Import and run main block
                 import subprocess
 
