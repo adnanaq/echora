@@ -234,7 +234,14 @@ class CachedAiohttpSession:
         entries = await self.storage.get_entries(cache_key)
         if entries:
             # Cache hit - return cached response WITHOUT making HTTP request
-            entry = entries[0]  # Get most recent entry
+            # Select entry with latest created_at timestamp (not entries[0])
+            # Redis SMEMBERS returns unordered results, so entries[0] may be stale
+            entry = max(
+                entries,
+                key=lambda cached_entry: getattr(
+                    cached_entry.meta, "created_at", 0.0
+                ) if cached_entry.meta else 0.0,
+            )
             if entry.response:
                 # Read all chunks from cached stream
                 body_chunks: list[bytes] = []

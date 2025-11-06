@@ -21,13 +21,6 @@ from src.enrichment.crawlers.anime_planet_anime_crawler import (
 pytestmark = pytest.mark.asyncio
 
 
-async def clear_cache_for_call(func, *args, **kwargs):
-    """Helper to clear Redis cache for a specific function call."""
-    with patch("redis.asyncio.Redis.get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = None
-        # The actual function call is not needed anymore, as we are mocking the cache get
-
-
 # --- Unit Tests for Helper Functions ---
 
 

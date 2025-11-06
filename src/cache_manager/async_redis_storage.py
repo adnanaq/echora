@@ -158,11 +158,21 @@ class AsyncRedisStorage(AsyncBaseStorage):
         pipe.sadd(index_key, str(entry_id).encode("utf-8"))
 
         # Set TTL if configured (stream TTL is handled in _save_stream)
+        # Redis TTL return values:
+        # -2: Key doesn't exist (should create with TTL)
+        # -1: Key is persistent (should NOT apply TTL to preserve persistence)
+        # >= 0: Key has finite TTL (should extend if shorter than new TTL)
         if ttl is not None:
             ttl_seconds = int(ttl)
             pipe.expire(entry_key, ttl_seconds)
-            if current_index_ttle in (-2, -1) or (
-                current_index_ttle is not None and current_index_ttle < ttl_seconds
+            # Only apply expire to index if:
+            # 1. Key doesn't exist (current_index_ttle == -2), OR
+            # 2. Key has finite TTL shorter than new TTL (0 <= current_index_ttle < ttl_seconds)
+            # Never apply if key is persistent (current_index_ttle == -1)
+            if current_index_ttle == -2 or (
+                current_index_ttle is not None
+                and current_index_ttle >= 0
+                and current_index_ttle < ttl_seconds
             ):
                 pipe.expire(index_key, ttl_seconds)
 
