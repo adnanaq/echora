@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from src.cache_manager.instance import http_cache_manager as _cache_manager
+from src.cache_manager.instance import http_cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,27 @@ class AniListEnrichmentHelper:
     async def _make_request(
         self, query: str, variables: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make GraphQL request to AniList API.
+        """Make GraphQL request to AniList API with HTTP caching.
 
-        Returns dict with 'data' key containing response and '_from_cache' metadata.
+        Uses centralized cache manager which respects REDIS_CACHE_URL environment
+        variable for both local and Docker deployments. The session is created
+        per-event-loop to avoid event loop conflicts in concurrent processing.
+
+        GraphQL caching is enabled via X-Hishel-Body-Key header, ensuring different
+        queries/variables get separate cache entries despite same URL.
+
+        Args:
+            query: GraphQL query string
+            variables: Optional variables for GraphQL query
+
+        Returns:
+            Dict containing response data and '_from_cache' metadata indicating
+            whether the response was served from cache.
+
+        Note:
+            - Automatically handles rate limiting (90 requests per minute)
+            - Retries on 429 responses with exponential backoff
+            - Creates new session for each event loop to maintain isolation
         """
         headers = {
             "Content-Type": "application/json",
@@ -52,46 +70,15 @@ class AniListEnrichmentHelper:
                 except Exception:
                     pass  # Ignore errors closing old session
 
-            # Create cached session for THIS event loop
-            # Each event loop gets its own Redis client to avoid "different event loop" errors
+            # Get cached session from centralized cache manager
+            # Each event loop gets its own session via the cache manager
             # This enables GraphQL caching while preventing event loop conflicts
-            try:
-                from redis.asyncio import Redis
-
-                from src.cache_manager.aiohttp_adapter import CachedAiohttpSession
-                from src.cache_manager.async_redis_storage import AsyncRedisStorage
-
-                # Create NEW Redis client bound to current event loop
-                redis_client = Redis.from_url(
-                    "redis://localhost:6379/0",
-                    decode_responses=False,
-                    socket_connect_timeout=5.0,
-                )
-
-                # Create storage with event-loop-specific Redis client
-                storage = AsyncRedisStorage(
-                    client=redis_client,
-                    default_ttl=86400.0,  # 24 hours
-                    refresh_ttl_on_access=True,
-                    key_prefix="hishel_cache",
-                )
-
-                # Create cached session with body-based caching for GraphQL
-                # X-Hishel-Body-Key ensures different queries/variables get different cache entries
-                headers = {"X-Hishel-Body-Key": "true"}
-                self.session = CachedAiohttpSession(
-                    storage=storage,
-                    timeout=aiohttp.ClientTimeout(total=None),
-                    headers=headers,
-                )
-                logger.debug("AniList cached session created for current event loop")
-            except Exception as e:
-                logger.warning(f"Failed to create cached session: {e}, using uncached")
-                # Fallback to uncached session
-                self.session = aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=None)
-                )
-
+            self.session = http_cache_manager.get_aiohttp_session(
+                "anilist",
+                timeout=aiohttp.ClientTimeout(total=None),
+                headers={"X-Hishel-Body-Key": "true"}  # Enable body-based caching for GraphQL
+            )
+            logger.debug("AniList cached session created via cache manager for current event loop")
             self._session_event_loop = current_loop
 
         try:
