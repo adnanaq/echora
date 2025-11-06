@@ -1216,6 +1216,92 @@ class TestAniListEnrichmentHelperEdgeCases:
             mock_sleep.assert_awaited_once_with(3600)
 
 
+class TestAniListEnrichmentHelperCacheIntegration:
+    """Test cache manager integration."""
+
+    @pytest.mark.asyncio
+    async def test_anilist_helper_uses_cache_manager(self, mocker):
+        """Test that AniListEnrichmentHelper uses centralized cache manager."""
+        from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from src.cache_manager.instance import http_cache_manager
+
+        # Create proper mock response
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"data": {"Media": {"id": 1, "title": {"romaji": "Test"}}}}
+        )
+        mock_response.from_cache = False
+        mock_response.headers = {}
+
+        # Create mock session with proper context manager for post
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_response),
+            __aexit__=AsyncMock()
+        ))
+        mock_session.close = AsyncMock()
+
+        # Mock the cache manager's get_aiohttp_session method
+        mock_get_session = mocker.patch.object(
+            http_cache_manager,
+            'get_aiohttp_session',
+            return_value=mock_session
+        )
+
+        helper = AniListEnrichmentHelper()
+
+        # Trigger session creation by making a request
+        result = await helper.fetch_anime_by_anilist_id(1)
+
+        # Verify cache manager was called with correct parameters
+        mock_get_session.assert_called_once()
+        call_args = mock_get_session.call_args
+        assert call_args[0][0] == "anilist"  # service name
+        assert "timeout" in call_args[1]
+        assert "headers" in call_args[1]
+        assert call_args[1]["headers"]["X-Hishel-Body-Key"] == "true"
+
+        # Verify the session was used for the request
+        assert result is not None
+
+        await helper.close()
+
+
+    @pytest.mark.asyncio
+    async def test_anilist_helper_does_not_create_manual_redis_client(self, mocker):
+        """Test that AniListEnrichmentHelper does NOT manually create Redis clients."""
+        from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+
+        # Mock Redis.from_url to detect if it's called
+        mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+
+        # Mock cache manager to provide a working session
+        mock_session = mocker.AsyncMock()
+        mock_session.post = mocker.AsyncMock()
+        mock_session.post.return_value.__aenter__.return_value.status = 200
+        mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(
+            return_value={"data": {"Media": {"id": 1, "title": {"romaji": "Test"}}}}
+        )
+        mock_session.post.return_value.__aenter__.return_value.from_cache = False
+        mock_session.post.return_value.__aenter__.return_value.headers = {}
+
+        mocker.patch(
+            'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
+            return_value=mock_session
+        )
+
+        helper = AniListEnrichmentHelper()
+
+        # Make a request to trigger session creation
+        await helper.fetch_anime_by_anilist_id(1)
+
+        # Verify Redis.from_url was NOT called (no manual Redis client creation)
+        mock_redis_from_url.assert_not_called()
+
+        await helper.close()
+
+
 class TestAniListEnrichmentHelperCLI:
     """Test CLI main function."""
 

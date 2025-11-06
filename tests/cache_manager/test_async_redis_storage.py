@@ -229,6 +229,9 @@ class TestCreateEntry:
         mock_pipeline.expire = MagicMock()
         mock_pipeline.execute = AsyncMock()
 
+        # Mock index key doesn't exist (will be created with TTL)
+        mock_redis_client.ttl.return_value = -2
+
         with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
@@ -268,6 +271,9 @@ class TestCreateEntry:
         mock_pipeline.sadd = MagicMock()
         mock_pipeline.execute = AsyncMock()
 
+        # Mock index key doesn't exist (will be created with TTL)
+        mock_redis_client.ttl.return_value = -2
+
         with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
@@ -305,6 +311,9 @@ class TestCreateEntry:
         mock_pipeline.expire = MagicMock()
         mock_pipeline.execute = AsyncMock()
 
+        # Mock index key doesn't exist (will be created with TTL)
+        mock_redis_client.ttl.return_value = -2
+
         with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
@@ -335,6 +344,9 @@ class TestCreateEntry:
         mock_pipeline.sadd = MagicMock()
         mock_pipeline.expire = MagicMock()
         mock_pipeline.execute = AsyncMock()
+
+        # Mock index key doesn't exist (will be created with TTL)
+        mock_redis_client.ttl.return_value = -2
 
         with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
@@ -381,6 +393,212 @@ class TestCreateEntry:
 
             # Check expire was NOT called
             mock_pipeline.expire.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_entry_preserves_persistent_index_ttl_minus_1(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Test that persistent index keys (TTL=-1) are not given finite TTL.
+
+        Bug fix test: When index key has TTL=-1 (persistent), we should NOT
+        apply expire() to avoid converting persistent keys to temporary ones.
+
+        Scenario:
+        - Index key exists with TTL=-1 (no expiry)
+        - New entry added with TTL=3600
+        - Expected: expire() called ONLY for entry_key, NOT for index_key
+        - Current (buggy): expire() called for BOTH (incorrect)
+        """
+        cache_key = "test_key"
+
+        # Mock pipeline
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        # CRITICAL: Index key has TTL=-1 (persistent, no expiry)
+        mock_redis_client.ttl.return_value = -1
+
+        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key=cache_key,
+            )
+
+            # Should call expire ONLY for entry_key (not index_key)
+            expire_calls = mock_pipeline.expire.call_args_list
+            assert len(expire_calls) == 1, (
+                f"Expected 1 expire call (entry only), got {len(expire_calls)}. "
+                "Persistent index key (TTL=-1) should NOT be given finite TTL."
+            )
+
+            # Verify it was the entry_key, not the index_key
+            called_key = expire_calls[0][0][0]
+            assert "entry:" in called_key, "Should only expire entry_key"
+            assert "key_index:" not in called_key, "Should NOT expire persistent index_key"
+
+    @pytest.mark.asyncio
+    async def test_create_entry_extends_shorter_index_ttl(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Test that index keys with shorter TTL are extended to match new entry TTL.
+
+        Scenario:
+        - Index key exists with TTL=1800 (30 min)
+        - New entry added with TTL=3600 (60 min)
+        - Expected: expire() called for BOTH entry_key AND index_key (extend)
+        """
+        cache_key = "test_key"
+
+        # Mock pipeline
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        # Index key has shorter TTL (1800 < 3600)
+        mock_redis_client.ttl.return_value = 1800
+
+        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key=cache_key,
+            )
+
+            # Should call expire for BOTH entry_key and index_key
+            expire_calls = mock_pipeline.expire.call_args_list
+            assert len(expire_calls) == 2, (
+                f"Expected 2 expire calls (entry + index), got {len(expire_calls)}. "
+                "Index with shorter TTL should be extended."
+            )
+
+            # Verify both keys got expire called
+            called_keys = [call[0][0] for call in expire_calls]
+            assert any("entry:" in key for key in called_keys), "Should expire entry_key"
+            assert any(
+                "key_index:" in key for key in called_keys
+            ), "Should extend index_key TTL"
+
+    @pytest.mark.asyncio
+    async def test_create_entry_preserves_longer_index_ttl(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Test that index keys with longer TTL are not shrunk.
+
+        Scenario:
+        - Index key exists with TTL=7200 (2 hours)
+        - New entry added with TTL=3600 (1 hour)
+        - Expected: expire() called ONLY for entry_key, NOT for index_key (don't shrink)
+        """
+        cache_key = "test_key"
+
+        # Mock pipeline
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        # Index key has longer TTL (7200 > 3600)
+        mock_redis_client.ttl.return_value = 7200
+
+        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key=cache_key,
+            )
+
+            # Should call expire ONLY for entry_key (not index_key)
+            expire_calls = mock_pipeline.expire.call_args_list
+            assert len(expire_calls) == 1, (
+                f"Expected 1 expire call (entry only), got {len(expire_calls)}. "
+                "Index with longer TTL should NOT be shrunk."
+            )
+
+            # Verify it was the entry_key, not the index_key
+            called_key = expire_calls[0][0][0]
+            assert "entry:" in called_key, "Should only expire entry_key"
+            assert (
+                "key_index:" not in called_key
+            ), "Should NOT shrink index_key with longer TTL"
+
+    @pytest.mark.asyncio
+    async def test_create_entry_creates_missing_index_with_ttl(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Test that missing index keys (TTL=-2) get created with TTL.
+
+        Scenario:
+        - Index key doesn't exist (TTL=-2)
+        - New entry added with TTL=3600
+        - Expected: expire() called for BOTH entry_key AND index_key (create new)
+        """
+        cache_key = "test_key"
+
+        # Mock pipeline
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        # Index key doesn't exist (TTL=-2)
+        mock_redis_client.ttl.return_value = -2
+
+        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key=cache_key,
+            )
+
+            # Should call expire for BOTH entry_key and index_key
+            expire_calls = mock_pipeline.expire.call_args_list
+            assert len(expire_calls) == 2, (
+                f"Expected 2 expire calls (entry + index), got {len(expire_calls)}. "
+                "Missing index should be created with TTL."
+            )
+
+            # Verify both keys got expire called
+            called_keys = [call[0][0] for call in expire_calls]
+            assert any("entry:" in key for key in called_keys), "Should expire entry_key"
+            assert any(
+                "key_index:" in key for key in called_keys
+            ), "Should create index_key with TTL"
 
 
 # ============================================================================
