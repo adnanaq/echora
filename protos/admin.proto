@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+package admin;
+
+service AdminService {
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse) {}
+}
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  string collection_name = 1;
+  int64 total_documents = 2;
+  int32 vector_size = 3;
+  string distance_metric = 4;
+  string status = 5;
+  google.protobuf.Struct additional_stats = 6;
+}

@@ -1,23 +1,20 @@
 """
-Anime Vector Service - FastAPI application for vector database operations.
+Anime Vector Service - gRPC Agent Service entrypoint.
 
-This microservice provides semantic search capabilities using Qdrant vector database
-with multi-modal embeddings (text + image) for anime content.
+This service initializes the required clients and agents and starts the gRPC server
+to handle internal search and AI tasks.
 """
 
 import logging
+import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any, AsyncGenerator, Dict
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from typing import AsyncGenerator
 
 from src.poc.atomic_agents_poc import AnimeQueryAgent
-
-from .api import admin, search
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
+from .server import serve_async
+from . import globals as app_globals
 
 # Get application settings
 settings = get_settings()
@@ -28,121 +25,44 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global instances
-qdrant_client: QdrantClient | None = None
-anime_agent: AnimeQueryAgent | None = None
-
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize services on startup"""
-    global qdrant_client
-    global anime_agent
+async def lifespan() -> AsyncGenerator[None, None]:
+    """
+    Initialize services on startup and handles graceful shutdown.
+    """
+    logger.info("Initializing services...")
 
     # Initialize Qdrant client
-    logger.info("Initializing Qdrant client...")
-    logger.info(f"Qdrant URL: {settings.qdrant_url}")
-    logger.info(f"Qdrant Collection Name: {settings.qdrant_collection_name}")
-    qdrant_client = QdrantClient(
+    app_globals.qdrant_client = QdrantClient(
         url=settings.qdrant_url,
         collection_name=settings.qdrant_collection_name,
         settings=settings,
     )
 
-    # Initialize AnimeQueryAgent with Ollama model
-    anime_agent = AnimeQueryAgent(
-        qdrant_client=qdrant_client,
+    # Initialize AnimeQueryAgent
+    app_globals.query_parser_agent = AnimeQueryAgent(
+        qdrant_client=app_globals.qdrant_client,
         settings=settings,
     )
 
     # Health check
-    healthy = await qdrant_client.health_check()
-    if not healthy:
-        logger.error("Qdrant health check failed!")
+    if not await app_globals.qdrant_client.health_check():
         raise RuntimeError("Vector database is not available")
 
-    logger.info("Vector service initialized successfully")
+    logger.info("Services initialized successfully.")
     yield
-
-    # Cleanup on shutdown
-    logger.info("Shutting down vector service...")
+    logger.info("Shutting down services...")
 
 
-# Create FastAPI app
-app = FastAPI(
-    title=settings.api_title,
-    description=settings.api_description,
-    version=settings.api_version,
-    lifespan=lifespan,
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=settings.allowed_methods,
-    allow_headers=settings.allowed_headers,
-)
-
-
-# Health check endpoint
-@app.get("/health")
-async def health_check() -> Dict[str, Any]:
-    """Health check endpoint."""
-    try:
-        if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-
-        if anime_agent is None:
-            raise HTTPException(status_code=503, detail="Agent not initialized")
-
-        qdrant_status = await qdrant_client.health_check()
-        return {
-            "status": "healthy" if qdrant_status else "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "service": "anime-vector-service",
-            "version": settings.api_version,
-            "qdrant_status": qdrant_status,
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Service unhealthy")
-
-
-# Include API routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-
-
-# Root endpoint
-@app.get("/")
-async def root() -> Dict[str, Any]:
-    """Root endpoint with service information."""
-    return {
-        "service": "Anime Vector Service",
-        "version": settings.api_version,
-        "description": "Microservice for anime vector database operations",
-        "endpoints": {
-            "health": "/health",
-            "search": "/api/v1/search",
-            "image_search": "/api/v1/search/image",
-            "multimodal_search": "/api/v1/search/multimodal",
-            "similar": "/api/v1/similarity/anime/{anime_id}",
-            "visual_similar": "/api/v1/similarity/visual/{anime_id}",
-            "stats": "/api/v1/admin/stats",
-            "docs": "/docs",
-        },
-    }
+async def main():
+    """
+    Runs the service initializers and then starts the async gRPC server.
+    """
+    async with lifespan():
+        logger.info("Initialization complete. Starting gRPC server.")
+        await serve_async()
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "src.main:app",
-        host=settings.vector_service_host,
-        port=settings.vector_service_port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower(),
-    )
+    asyncio.run(main())

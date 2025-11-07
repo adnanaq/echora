@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package agent;
+
+// The Agent service definition.
+// This service is responsible for handling complex search and AI-powered tasks.
+service AgentService {
+  // Parses a natural language query (and optional image) and returns a ranked list of anime IDs.
+  rpc Search(SearchRequest) returns (SearchResponse) {}
+}
+
+// The request message containing the user's query.
+message SearchRequest {
+  // The natural language search query.
+  string query = 1;
+  // Optional base64 encoded image data for multimodal search.
+  optional string image_data = 2;
+}
+
+// The response message containing the ranked list of anime IDs from the vector database.
+message SearchResponse {
+  // A list of anime_ids, ordered by relevance.
+  repeated string anime_ids = 1;
+  // For future use: an explanation/summary of the search results.
+  optional string reasoning = 2;
+}
