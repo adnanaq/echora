@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -473,7 +474,6 @@ async def main() -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import logging
 
     logging.basicConfig(level=logging.INFO)
     sys.exit(asyncio.run(main()))

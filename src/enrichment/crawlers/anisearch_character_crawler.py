@@ -83,8 +83,6 @@ async def fetch_anisearch_characters(
         ],
     }
 
-    print(f"Using Schema: {json.dumps(css_schema, indent=2)}")
-
     extraction_strategy = JsonCssExtractionStrategy(css_schema)
     config = CrawlerRunConfig(
         extraction_strategy=extraction_strategy,
@@ -189,10 +187,12 @@ async def main() -> int:
         return 0
     except Exception as e:
         import sys
+
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":  # pragma: no cover
     import sys
+
     sys.exit(asyncio.run(main()))
