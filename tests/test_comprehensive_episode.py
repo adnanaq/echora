@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from itertools import combinations
+import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -155,6 +156,7 @@ def print_episode_info(episode: Dict[str, Any]) -> str:
 
     return " ".join(info_parts)
 
+@pytest.mark.asyncio
 async def test_comprehensive_episode_vector():
     """
     Comprehensive episode vector validation with random selection and field combinations.

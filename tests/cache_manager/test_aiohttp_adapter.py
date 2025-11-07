@@ -283,7 +283,7 @@ class TestCachedAiohttpSession:
         )
 
         assert cached_session.storage is mock_storage
-        assert cached_session._session is mock_session
+        assert cached_session.session is mock_session
 
     @pytest.mark.asyncio
     async def test_init_creates_session(self, mock_storage):
@@ -299,10 +299,10 @@ class TestCachedAiohttpSession:
                 timeout=MagicMock(),
             )
 
-            # Session should NOT be created during __init__
+            # Session IS created during __init__ (not lazy)
             assert cached_session.storage is mock_storage
-            assert cached_session._session is None
-            mock_client_session.assert_not_called()
+            assert cached_session.session is mock_session_instance
+            mock_client_session.assert_called_once()
 
             # Session should be created lazily on first request
             # Setup mock for cache miss scenario
@@ -316,12 +316,12 @@ class TestCachedAiohttpSession:
             mock_response.request_info.headers = {}
             mock_session_instance.request = AsyncMock(return_value=mock_response)
 
-            # Trigger lazy session creation
+            # Make a request to verify session works
             await cached_session._request("GET", "https://example.com")
 
-            # Now session should be created
-            mock_client_session.assert_called_once()
-            assert cached_session._session is not None
+            # Session should still be the same instance (not recreated)
+            assert cached_session.session is mock_session_instance
+            mock_client_session.assert_called_once()  # Still only called once during __init__
 
     @pytest.mark.asyncio
     async def test_get_returns_context_manager(self, mock_storage):

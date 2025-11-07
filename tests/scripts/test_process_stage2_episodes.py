@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.process_stage2_episodes import (
+from process_stage2_episodes import (
     auto_detect_temp_dir,
     convert_jst_to_utc,
     load_anisearch_episode_data,
@@ -856,7 +856,7 @@ class TestMainExecution:
         test_args = ["script_name", "test_agent", "--temp-dir", str(tmp_path)]
 
         with patch("sys.argv", test_args):
-            with patch("scripts.process_stage2_episodes.PROJECT_ROOT", tmp_path):
+            with patch("process_stage2_episodes.PROJECT_ROOT", tmp_path):
                 # Import and run main block
                 import subprocess
 
