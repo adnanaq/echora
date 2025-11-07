@@ -43,15 +43,15 @@ async def search(
     and execution, and returns the search results.
     """
     try:
-        from ..main import anime_agent, qdrant_client
+        from ..main import query_parser_agent, qdrant_client
 
         if not qdrant_client:
             raise HTTPException(status_code=503, detail="Vector database not available")
 
-        if not anime_agent:
+        if not query_parser_agent:
             raise HTTPException(status_code=503, detail="Agent not initialized")
 
-        results = await anime_agent.parse_and_search(
+        results = await query_parser_agent.parse_and_search(
             user_query=query,
             image_data=image_data,
             format_results=True,
