@@ -1422,7 +1422,7 @@ class TestAniListEnrichmentHelperCLI:
 
 @pytest.mark.asyncio
 @patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper")
-async def test_main_function_success(mock_helper_class):
+async def test_main_function_success(mock_helper_class, tmp_path):
     """Test main() function handles successful execution."""
     from src.enrichment.api_helpers.anilist_helper import main
 
@@ -1431,7 +1431,9 @@ async def test_main_function_success(mock_helper_class):
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "--anilist-id", "21", "--output", "/tmp/output.json"]):
+    # Use pytest's tmp_path for portability
+    output_file = str(tmp_path / "output.json")
+    with patch("sys.argv", ["script.py", "--anilist-id", "21", "--output", output_file]):
         with patch("builtins.open", MagicMock()):
             exit_code = await main()
 

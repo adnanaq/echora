@@ -313,7 +313,7 @@ class TestFetchAnisearchAnimeURLNormalization:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[])
@@ -336,7 +336,7 @@ class TestFetchAnisearchAnimeURLNormalization:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[])
@@ -360,7 +360,7 @@ class TestFetchAnisearchAnimeURLNormalization:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[])
@@ -382,7 +382,7 @@ class TestFetchAnisearchAnimeURLNormalization:
         ):
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with pytest.raises(ValueError, match="Invalid URL"):
                     await fetch_anisearch_anime("https://example.com/anime/123")
@@ -395,7 +395,7 @@ class TestFetchAnisearchAnimeURLNormalization:
         ):
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with pytest.raises(ValueError, match="Invalid URL"):
                     await fetch_anisearch_anime("https://www.anisearch.com/manga/123")
@@ -412,7 +412,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[])
@@ -442,7 +442,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = False
@@ -470,7 +470,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -497,7 +497,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -548,7 +548,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -581,7 +581,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -617,7 +617,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -664,7 +664,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -696,7 +696,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -750,7 +750,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -789,7 +789,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -829,7 +829,7 @@ class TestFetchAnisearchAnimeMainFunction:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -860,7 +860,7 @@ class TestFetchAnisearchAnimeEdgeCases:
         """Test with Unicode characters in URL (should fail validation)."""
         with patch(
             "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-            lambda **kwargs: lambda f: f,
+            lambda **_: lambda f: f,
         ):
             # Unicode in URL should still be processed, even if it might fail later
             with patch(
@@ -887,7 +887,7 @@ class TestFetchAnisearchAnimeEdgeCases:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -923,7 +923,7 @@ class TestFetchAnisearchAnimeEdgeCases:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -965,7 +965,7 @@ class TestCLI:
         ) as MockCrawler:
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
-                lambda **kwargs: lambda f: f,
+                lambda **_: lambda f: f,
             ):
                 with patch(
                     "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
@@ -1014,7 +1014,7 @@ class TestEdgeCaseCoverage:
     async def test_single_date_in_published(self):
         """Test parsing single date (not date range) in published field - line 288-289."""
         with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **kwargs: lambda f: f):
+            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
                 with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
                     mock_sub.return_value = None
                     
@@ -1040,7 +1040,7 @@ class TestEdgeCaseCoverage:
     async def test_genres_tags_with_missing_keys(self):
         """Test genre/tag list where some items don't have expected keys - line 304."""
         with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **kwargs: lambda f: f):
+            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
                 with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
                     mock_sub.return_value = None
                     
@@ -1076,7 +1076,7 @@ class TestEdgeCaseCoverage:
     async def test_loop_completes_all_failed(self):
         """Test when loop completes with all failed results - line 493."""
         with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **kwargs: lambda f: f):
+            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
                 # Multiple results but all failed
                 mock_result1 = MagicMock(spec=CrawlResult)
                 mock_result1.success = False
@@ -1105,7 +1105,7 @@ class TestCLIExecution:
         output_file = tmp_path / "cli_anime.json"
         
         with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **kwargs: lambda f: f):
+            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
                 with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
                     mock_sub.return_value = None
                     

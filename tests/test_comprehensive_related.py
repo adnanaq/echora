@@ -17,6 +17,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 
+import pytest
+
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))

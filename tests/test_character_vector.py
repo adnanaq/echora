@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import pytest
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -19,6 +21,9 @@ import requests
 from src.config import get_settings
 from src.vector.processors.text_processor import TextProcessor
 from src.vector.processors.vision_processor import VisionProcessor
+
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
 
 
 def test_character_vector_realistic():

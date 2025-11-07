@@ -32,20 +32,14 @@ class TestHTTPCacheManagerInit:
         assert manager._async_redis_client is None
 
     def test_init_with_config_enabled_redis(self) -> None:
-        """Test initialization with Redis storage enabled."""
+        """Test initialization with Redis storage enabled (lazy initialization)."""
         config = CacheConfig(enabled=True, storage_type="redis")
+        manager = HTTPCacheManager(config)
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = MagicMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            manager = HTTPCacheManager(config)
-
-            assert manager.config == config
-            assert manager._async_redis_client is not None
-            mock_async_redis_class.from_url.assert_called_once_with(
-                config.redis_url, decode_responses=False
-            )
+        assert manager.config == config
+        # Redis client is lazily initialized, not created during __init__
+        assert manager._async_redis_client is None
+        assert manager._redis_event_loop is None
 
     def test_init_with_config_enabled_sqlite(self) -> None:
         """Test initialization with SQLite storage."""
@@ -150,8 +144,9 @@ class TestGetAiohttpSession:
                 assert session == mock_session
                 mock_session_class.assert_called_once()
 
-    def test_get_aiohttp_session_with_redis_success(self) -> None:
-        """Test aiohttp session creation with Redis caching."""
+    @pytest.mark.asyncio
+    async def test_get_aiohttp_session_with_redis_success(self) -> None:
+        """Test aiohttp session creation with Redis caching (lazy initialization)."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
         with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
@@ -174,7 +169,10 @@ class TestGetAiohttpSession:
                     mock_cached_session.assert_called_once()
                     mock_async_storage.assert_called_once()
                     assert session == mock_session_instance
-    def test_get_aiohttp_session_body_based_caching_header(self) -> None:
+                    # Verify lazy initialization happened
+                    mock_async_redis_class.from_url.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_get_aiohttp_session_body_based_caching_header(self) -> None:
         """Test that body-based caching header is added."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
@@ -194,7 +192,8 @@ class TestGetAiohttpSession:
                     assert "headers" in call_kwargs
                     assert call_kwargs["headers"]["X-Hishel-Body-Key"] == "true"
 
-    def test_get_aiohttp_session_service_specific_ttl(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_aiohttp_session_service_specific_ttl(self) -> None:
         """Test that service-specific TTL is used."""
         config = CacheConfig(enabled=True, storage_type="redis", ttl_jikan=7200)
 
@@ -325,18 +324,22 @@ class TestCacheManagerClose:
 
     @pytest.mark.asyncio
     async def test_close_async_with_redis_client(self) -> None:
-        """Test async closing manager with Redis client."""
+        """Test async closing manager with Redis client (lazy initialization)."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
         with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = AsyncMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            manager = HTTPCacheManager(config)
-            await manager.close_async()
+            with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
+                with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession"):
+                    manager = HTTPCacheManager(config)
+                    # Trigger lazy initialization by calling get_aiohttp_session
+                    manager.get_aiohttp_session("jikan")
+                    await manager.close_async()
 
-            # Redis client should be closed
-            mock_async_redis.close.assert_called_once()
+                    # Redis client should be closed
+                    mock_async_redis.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_async_without_redis_client(self) -> None:
@@ -418,8 +421,9 @@ class TestGetStats:
 class TestIntegrationScenarios:
     """Integration tests for realistic usage scenarios."""
 
-    def test_production_redis_setup(self) -> None:
-        """Test production-like Redis setup."""
+    @pytest.mark.asyncio
+    async def test_production_redis_setup(self) -> None:
+        """Test production-like Redis setup (lazy initialization)."""
         config = CacheConfig(
             enabled=True,
             storage_type="redis",
@@ -432,10 +436,19 @@ class TestIntegrationScenarios:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            manager = HTTPCacheManager(config)
+            with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
+                with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession"):
+                    manager = HTTPCacheManager(config)
 
-            assert manager._async_redis_client is not None
-            assert manager._get_service_ttl("jikan") == 86400
+                    # Redis client is lazily initialized
+                    assert manager._async_redis_client is None
+
+                    # Trigger lazy initialization
+                    manager.get_aiohttp_session("jikan")
+
+                    # Now Redis client should be initialized
+                    assert manager._async_redis_client is not None
+                    assert manager._get_service_ttl("jikan") == 86400
 
     def test_development_sqlite_setup(self) -> None:
         """Test development-like SQLite setup."""

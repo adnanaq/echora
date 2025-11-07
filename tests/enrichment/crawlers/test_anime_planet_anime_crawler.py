@@ -341,9 +341,6 @@ def test_process_related_manga_with_unknown_placeholders():
     assert processed[3]["slug"] == "mixed"
 
 
-# --- Integration Tests for fetch_animeplanet_anime ---
-
-
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_fetch_animeplanet_anime_wrong_result_type(
     MockAsyncWebCrawler, mock_redis_cache_miss
@@ -610,9 +607,7 @@ class TestCLI:
 
 
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_cache_reuse_with_different_output_paths(
-    MockAsyncWebCrawler, tmp_path
-):
+async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_path):
     """
     TDD Test: Cache should be reused when fetching same anime with different output paths.
 
@@ -639,12 +634,16 @@ async def test_cache_reuse_with_different_output_paths(
     mock_result = CrawlResult(
         url="https://www.anime-planet.com/anime/cache-test",
         success=True,
-        extracted_content=json.dumps([{
-            "title": "Cache Test Anime",
-            "slug": "cache-test",
-            "rank_text": [{"text": "Rank #100"}],
-            "studios_raw": [{"studio": "Test Studio"}],
-        }]),
+        extracted_content=json.dumps(
+            [
+                {
+                    "title": "Cache Test Anime",
+                    "slug": "cache-test",
+                    "rank_text": [{"text": "Rank #100"}],
+                    "studios_raw": [{"studio": "Test Studio"}],
+                }
+            ]
+        ),
         html="""
         <html>
             <script type="application/ld+json">
@@ -668,7 +667,9 @@ async def test_cache_reuse_with_different_output_paths(
     mock_crawler_instance.__aenter__.return_value.arun = mock_arun
 
     # Mock Redis to actually cache data
-    with patch("src.cache_manager.result_cache.get_result_cache_redis_client") as mock_get_redis:
+    with patch(
+        "src.cache_manager.result_cache.get_result_cache_redis_client"
+    ) as mock_get_redis:
         mock_redis = AsyncMock()
 
         async def mock_get(key):
@@ -683,9 +684,7 @@ async def test_cache_reuse_with_different_output_paths(
 
         # Call 1: First fetch with output_path
         result1 = await fetch_animeplanet_anime(
-            "cache-test",
-            return_data=True,
-            output_path=str(file1)
+            "cache-test", return_data=True, output_path=str(file1)
         )
 
         assert result1 is not None
@@ -696,9 +695,7 @@ async def test_cache_reuse_with_different_output_paths(
         # Call 2: Same slug, different output_path
         # After refactoring: Should hit cache, NOT crawl again
         result2 = await fetch_animeplanet_anime(
-            "cache-test",
-            return_data=True,
-            output_path=str(file2)
+            "cache-test", return_data=True, output_path=str(file2)
         )
 
         assert result2 is not None
@@ -716,7 +713,9 @@ async def test_cache_reuse_with_different_output_paths(
 
 
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler, mock_redis_cache_miss):
+async def test_fetch_anime_poster_regex_fallback(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
     """Test poster extraction via regex when CSS selector fails (line 309)."""
     css_data = {
         "poster": "",  # Empty poster from CSS
@@ -726,11 +725,20 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler, mock_redis
         "related_manga_raw": [],
     }
     json_ld_data = {"@type": "TVSeries", "name": "Test"}
-    html_content = '<html><meta property="og:image" content="http://example.com/poster.jpg"><script type="application/ld+json">{}</script></html>'.format(json.dumps(json_ld_data))
+    html_content = '<html><meta property="og:image" content="http://example.com/poster.jpg"><script type="application/ld+json">{}</script></html>'.format(
+        json.dumps(json_ld_data)
+    )
 
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_crawler_instance.__aenter__.return_value.arun = AsyncMock(
-        return_value=[CrawlResult(url="", success=True, extracted_content=json.dumps([css_data]), html=html_content)]
+        return_value=[
+            CrawlResult(
+                url="",
+                success=True,
+                extracted_content=json.dumps([css_data]),
+                html=html_content,
+            )
+        ]
     )
 
     data = await fetch_animeplanet_anime("test")
@@ -739,7 +747,9 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler, mock_redis
 
 async def test_wrapper_return_none_when_return_data_false():
     """Test wrapper returns None when return_data=False (line 412)."""
-    with patch("src.enrichment.crawlers.anime_planet_anime_crawler._fetch_animeplanet_anime_data") as mock_fetch:
+    with patch(
+        "src.enrichment.crawlers.anime_planet_anime_crawler._fetch_animeplanet_anime_data"
+    ) as mock_fetch:
         mock_fetch.return_value = {"title": "Test", "slug": "test"}
         result = await fetch_animeplanet_anime("test", return_data=False)
         assert result is None
@@ -767,7 +777,9 @@ def test_determine_season_with_value_error():
 
 
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_anime_empty_results_list(MockAsyncWebCrawler, mock_redis_cache_miss):
+async def test_fetch_anime_empty_results_list(
+    MockAsyncWebCrawler, mock_redis_cache_miss
+):
     """Test handling when AsyncWebCrawler returns empty list (line 375)."""
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_crawler_instance.__aenter__.return_value.arun = AsyncMock(return_value=[])
@@ -783,14 +795,12 @@ async def test_main_function_success(mock_fetch):
 
     mock_fetch.return_value = {"title": "Test Anime", "slug": "test"}
 
-    with patch('sys.argv', ['script.py', 'test-anime', '--output', 'output.json']):
+    with patch("sys.argv", ["script.py", "test-anime", "--output", "output.json"]):
         exit_code = await main()
 
     assert exit_code == 0
     mock_fetch.assert_awaited_once_with(
-        'test-anime',
-        return_data=False,
-        output_path='output.json'
+        "test-anime", return_data=False, output_path="output.json"
     )
 
 
@@ -801,7 +811,7 @@ async def test_main_function_error_handling(mock_fetch):
 
     mock_fetch.side_effect = Exception("Crawl failed")
 
-    with patch('sys.argv', ['script.py', 'test-anime']):
+    with patch("sys.argv", ["script.py", "test-anime"]):
         exit_code = await main()
 
     assert exit_code == 1
@@ -811,12 +821,14 @@ async def test_main_function_with_default_output():
     """Test main() function uses default output path when not specified."""
     from src.enrichment.crawlers.anime_planet_anime_crawler import main
 
-    with patch('sys.argv', ['script.py', 'dandadan']):
-        with patch('src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime') as mock_fetch:
+    with patch("sys.argv", ["script.py", "dandadan"]):
+        with patch(
+            "src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
+        ) as mock_fetch:
             mock_fetch.return_value = {"title": "Dandadan"}
             exit_code = await main()
 
     assert exit_code == 0
     # Should use default output path
     call_args = mock_fetch.call_args
-    assert call_args[1]['output_path'] == 'animeplanet_anime.json'
+    assert call_args[1]["output_path"] == "animeplanet_anime.json"

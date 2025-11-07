@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Set
 from itertools import combinations
 
+import pytest
+
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "tests"))

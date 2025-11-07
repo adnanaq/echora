@@ -48,7 +48,7 @@ async def clean_helper():
 
     yield helper
 
-    logger.info(f"[clean_helper] TEARDOWN - Closing helper")
+    logger.info("[clean_helper] TEARDOWN - Closing helper")
     # Close helper session
     await helper.close()
 
@@ -99,13 +99,16 @@ async def test_anilist_pagination_caching(redis_client, clean_helper):
     helper = clean_helper
 
     # Fetch characters (paginated)
-    characters_1 = await helper.fetch_all_characters(21)  # One Piece has many characters
+    characters_1 = await helper.fetch_all_characters(
+        21
+    )  # One Piece has many characters
 
     assert len(characters_1) > 0
     print(f"First fetch: {len(characters_1)} characters")
 
     # Fetch again (should hit cache for all pages)
     import time
+
     start_time = time.monotonic()
     characters_2 = await helper.fetch_all_characters(21)
     end_time = time.monotonic()
@@ -126,7 +129,9 @@ async def test_anilist_full_data_fetch(redis_client, clean_helper):
     helper = clean_helper
 
     # Fetch complete data
-    anime_data = await helper.fetch_all_data_by_anilist_id(1535)  # Death Note (smaller dataset)
+    anime_data = await helper.fetch_all_data_by_anilist_id(
+        1535
+    )  # Death Note (smaller dataset)
 
     assert anime_data is not None
     assert anime_data["id"] == 1535
@@ -163,8 +168,8 @@ async def test_anilist_multiple_anime(redis_client, clean_helper):
     helper = clean_helper
 
     # Fetch different anime
-    anime1 = await helper.fetch_anime_by_anilist_id(1)    # Cowboy Bebop
-    anime2 = await helper.fetch_anime_by_anilist_id(20)   # Naruto
+    anime1 = await helper.fetch_anime_by_anilist_id(1)  # Cowboy Bebop
+    anime2 = await helper.fetch_anime_by_anilist_id(20)  # Naruto
 
     assert anime1 is not None
     assert anime2 is not None
@@ -231,7 +236,9 @@ async def test_anilist_empty_results(redis_client, clean_helper):
     # Some anime might have minimal data
     # Test graceful handling
     try:
-        result = await helper.fetch_all_data_by_anilist_id(100000)  # Unlikely to have full data
+        result = await helper.fetch_all_data_by_anilist_id(
+            100000
+        )  # Unlikely to have full data
 
         # Should handle gracefully (either None or partial data)
         if result:

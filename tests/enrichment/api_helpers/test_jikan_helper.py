@@ -1175,7 +1175,7 @@ class TestEdgeCasesAndBoundaries:
 @patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
 @patch("os.makedirs")
 @patch("os.path.exists")
-async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_fetcher_class):
+async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_fetcher_class, tmp_path):
     """Test main() function handles successful episodes execution."""
     from src.enrichment.api_helpers.jikan_helper import main
 
@@ -1184,19 +1184,21 @@ async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_f
     mock_fetcher.fetch_detailed_data = AsyncMock()
     mock_fetcher_class.return_value = mock_fetcher
 
-    with patch("sys.argv", ["script.py", "episodes", "123", "input.json", "/tmp/output.json"]):
+    # Use pytest's tmp_path for portability
+    output_file = str(tmp_path / "output.json")
+    with patch("sys.argv", ["script.py", "episodes", "123", "input.json", output_file]):
         exit_code = await main()
 
     assert exit_code == 0
     mock_fetcher_class.assert_called_once_with("123", "episodes")
-    mock_fetcher.fetch_detailed_data.assert_awaited_once_with("input.json", "/tmp/output.json")
+    mock_fetcher.fetch_detailed_data.assert_awaited_once_with("input.json", output_file)
 
 
 @pytest.mark.asyncio
 @patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
 @patch("os.makedirs")
 @patch("os.path.exists")
-async def test_main_function_success_characters(mock_exists, mock_makedirs, mock_fetcher_class):
+async def test_main_function_success_characters(mock_exists, mock_makedirs, mock_fetcher_class, tmp_path):
     """Test main() function handles successful characters execution."""
     from src.enrichment.api_helpers.jikan_helper import main
 
@@ -1205,7 +1207,9 @@ async def test_main_function_success_characters(mock_exists, mock_makedirs, mock
     mock_fetcher.fetch_detailed_data = AsyncMock()
     mock_fetcher_class.return_value = mock_fetcher
 
-    with patch("sys.argv", ["script.py", "characters", "456", "input.json", "/tmp/output.json"]):
+    # Use pytest's tmp_path for portability
+    output_file = str(tmp_path / "output.json")
+    with patch("sys.argv", ["script.py", "characters", "456", "input.json", output_file]):
         exit_code = await main()
 
     assert exit_code == 0
