@@ -1,0 +1,91 @@
+"""
+Tests for anidb_helper.py main() function.
+"""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+# --- Tests for main() function ---
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper")
+async def test_main_function_success_with_anidb_id(mock_helper_class):
+    """Test main() function handles successful execution with AniDB ID."""
+    from src.enrichment.api_helpers.anidb_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data = AsyncMock(return_value={"id": 123, "title": "Test Anime"})
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anidb-id", "123", "--output", "/tmp/output.json"]):
+        with patch("builtins.open", MagicMock()):
+            exit_code = await main()
+
+    assert exit_code == 0
+    mock_helper.fetch_all_data.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper")
+async def test_main_function_success_with_search_name(mock_helper_class):
+    """Test main() function handles successful execution with search name."""
+    from src.enrichment.api_helpers.anidb_helper import main
+    import tempfile
+    import os
+
+    mock_helper = AsyncMock()
+    # search_anime_by_name returns list, main() takes first result
+    mock_helper.search_anime_by_name = AsyncMock(return_value=[{"id": 456, "title": "Test Anime"}])
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    # Use a real temp file to avoid JSON serialization issues
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        temp_path = f.name
+
+    try:
+        with patch("sys.argv", ["script.py", "--search-name", "Test Anime", "--output", temp_path]):
+            exit_code = await main()
+
+        assert exit_code == 0
+        mock_helper.search_anime_by_name.assert_awaited_once_with("Test Anime")
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper")
+async def test_main_function_no_data_found(mock_helper_class):
+    """Test main() function handles no data found."""
+    from src.enrichment.api_helpers.anidb_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data = AsyncMock(return_value=None)
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anidb-id", "99999"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper")
+async def test_main_function_error_handling(mock_helper_class):
+    """Test main() function handles errors and returns non-zero exit code."""
+    from src.enrichment.api_helpers.anidb_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data = AsyncMock(side_effect=Exception("API error"))
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anidb-id", "123"]):
+        exit_code = await main()
+
+    assert exit_code == 1

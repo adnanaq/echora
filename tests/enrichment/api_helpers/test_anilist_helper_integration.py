@@ -16,6 +16,9 @@ import redis
 
 from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def redis_client():

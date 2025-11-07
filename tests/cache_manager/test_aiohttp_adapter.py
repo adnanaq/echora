@@ -283,11 +283,11 @@ class TestCachedAiohttpSession:
         )
 
         assert cached_session.storage is mock_storage
-        assert cached_session.session is mock_session
+        assert cached_session._session is mock_session
 
     @pytest.mark.asyncio
     async def test_init_creates_session(self, mock_storage):
-        """Test initialization creates session if not provided."""
+        """Test lazy session creation on first request."""
         with patch(
             "src.cache_manager.aiohttp_adapter.aiohttp.ClientSession"
         ) as mock_client_session:
@@ -299,8 +299,29 @@ class TestCachedAiohttpSession:
                 timeout=MagicMock(),
             )
 
+            # Session should NOT be created during __init__
             assert cached_session.storage is mock_storage
+            assert cached_session._session is None
+            mock_client_session.assert_not_called()
+
+            # Session should be created lazily on first request
+            # Setup mock for cache miss scenario
+            mock_storage.get_entries = AsyncMock(return_value=[])
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.headers = {}
+            mock_response.url = "https://example.com"
+            mock_response.read = AsyncMock(return_value=b"test")
+            mock_response.request_info = MagicMock()
+            mock_response.request_info.headers = {}
+            mock_session_instance.request = AsyncMock(return_value=mock_response)
+
+            # Trigger lazy session creation
+            await cached_session._request("GET", "https://example.com")
+
+            # Now session should be created
             mock_client_session.assert_called_once()
+            assert cached_session._session is not None
 
     @pytest.mark.asyncio
     async def test_get_returns_context_manager(self, mock_storage):
@@ -386,9 +407,6 @@ class TestCachedAiohttpSession:
         assert key.startswith("POST:")
         assert len(key) > 4
 
-        assert key.startswith("POST:")
-        assert len(key) > 4
-
     def test_generate_cache_key_post_with_tuple_data(self, mock_storage):
         """Test cache key generation for POST with tuple data."""
         mock_session = MagicMock()
@@ -407,6 +425,7 @@ class TestCachedAiohttpSession:
     async def test_close(self, mock_storage):
         """Test close() closes session and storage."""
         mock_session = AsyncMock()
+        mock_session.closed = False  # Add closed property
         cached_session = CachedAiohttpSession(
             storage=mock_storage,
             session=mock_session,
@@ -415,11 +434,13 @@ class TestCachedAiohttpSession:
         await cached_session.close()
 
         mock_session.close.assert_awaited_once()
+        mock_storage.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_async_context_manager(self, mock_storage):
         """Test CachedAiohttpSession as async context manager."""
         mock_session = AsyncMock()
+        mock_session.closed = False  # Add closed property
 
         async with CachedAiohttpSession(
             storage=mock_storage, session=mock_session
@@ -451,6 +472,9 @@ class TestCachedAiohttpSession:
         cached_session = CachedAiohttpSession(
             storage=mock_storage, session=mock_session
         )
+
+        # Mock _get_or_create_session to return our mock session
+        cached_session._get_or_create_session = MagicMock(return_value=mock_session)
 
         # Execute request
         result = await cached_session._request("GET", "https://example.com/api")
@@ -834,6 +858,9 @@ class TestCachedAiohttpSession:
             storage=mock_storage, session=mock_session
         )
 
+        # Mock _get_or_create_session to return our mock session
+        cached_session._get_or_create_session = MagicMock(return_value=mock_session)
+
         # --- First Request ---
         url = "http://test.com/api"
         params1 = {"id": 1}
@@ -888,6 +915,9 @@ class TestCachedAiohttpSession:
         cached_session = CachedAiohttpSession(
             storage=mock_storage, session=mock_session
         )
+
+        # Mock _get_or_create_session to return our mock session
+        cached_session._get_or_create_session = MagicMock(return_value=mock_session)
 
         # --- First Request ---
         url = "http://test.com/submit"

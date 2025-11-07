@@ -707,15 +707,11 @@ class TestMainFunction:
             with patch(
                 "sys.argv", ["script", "episodes", "21", nonexistent, output_file]
             ):
-                # Patch sys.exit to raise an exception instead of exiting
-                with patch("sys.exit", side_effect=SystemExit(1)):
-                    from src.enrichment.api_helpers.jikan_helper import main
+                from src.enrichment.api_helpers.jikan_helper import main
 
-                    # Should raise SystemExit for missing file
-                    with pytest.raises(SystemExit) as exc_info:
-                        await main()
-
-                    assert exc_info.value.code == 1
+                # Should return exit code 1 for missing file
+                exit_code = await main()
+                assert exit_code == 1
 
     @pytest.mark.asyncio
     async def test_main_creates_output_directory(self):
@@ -1175,3 +1171,79 @@ class TestEdgeCasesAndBoundaries:
 
         # Should handle KeyError gracefully
         assert result is None
+
+
+# --- Tests for main() function ---
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
+@patch("os.makedirs")
+@patch("os.path.exists")
+async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_fetcher_class):
+    """Test main() function handles successful episodes execution."""
+    from src.enrichment.api_helpers.jikan_helper import main
+
+    mock_exists.return_value = True
+    mock_fetcher = AsyncMock()
+    mock_fetcher.fetch_detailed_data = AsyncMock()
+    mock_fetcher_class.return_value = mock_fetcher
+
+    with patch("sys.argv", ["script.py", "episodes", "123", "input.json", "/tmp/output.json"]):
+        exit_code = await main()
+
+    assert exit_code == 0
+    mock_fetcher_class.assert_called_once_with("123", "episodes")
+    mock_fetcher.fetch_detailed_data.assert_awaited_once_with("input.json", "/tmp/output.json")
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
+@patch("os.makedirs")
+@patch("os.path.exists")
+async def test_main_function_success_characters(mock_exists, mock_makedirs, mock_fetcher_class):
+    """Test main() function handles successful characters execution."""
+    from src.enrichment.api_helpers.jikan_helper import main
+
+    mock_exists.return_value = True
+    mock_fetcher = AsyncMock()
+    mock_fetcher.fetch_detailed_data = AsyncMock()
+    mock_fetcher_class.return_value = mock_fetcher
+
+    with patch("sys.argv", ["script.py", "characters", "456", "input.json", "/tmp/output.json"]):
+        exit_code = await main()
+
+    assert exit_code == 0
+    mock_fetcher_class.assert_called_once_with("456", "characters")
+
+
+@pytest.mark.asyncio
+@patch("os.path.exists")
+async def test_main_function_input_file_not_exists(mock_exists):
+    """Test main() function returns error when input file doesn't exist."""
+    from src.enrichment.api_helpers.jikan_helper import main
+
+    mock_exists.return_value = False
+
+    with patch("sys.argv", ["script.py", "episodes", "123", "nonexistent.json", "output.json"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
+@patch("os.path.exists")
+async def test_main_function_error_handling(mock_exists, mock_fetcher_class):
+    """Test main() function handles errors and returns non-zero exit code."""
+    from src.enrichment.api_helpers.jikan_helper import main
+
+    mock_exists.return_value = True
+    mock_fetcher = AsyncMock()
+    mock_fetcher.fetch_detailed_data = AsyncMock(side_effect=Exception("API error"))
+    mock_fetcher_class.return_value = mock_fetcher
+
+    with patch("sys.argv", ["script.py", "episodes", "123", "input.json", "output.json"]):
+        exit_code = await main()
+
+    assert exit_code == 1

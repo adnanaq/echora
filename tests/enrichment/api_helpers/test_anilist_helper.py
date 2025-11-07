@@ -1415,3 +1415,63 @@ class TestAniListEnrichmentHelperCLI:
                     mock_open.assert_called()
                     call_args = mock_open.call_args[0]
                     assert "test_anilist_output.json" in call_args[0]
+
+
+# --- Tests for main() function following jikan_helper pattern ---
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper")
+async def test_main_function_success(mock_helper_class):
+    """Test main() function handles successful execution."""
+    from src.enrichment.api_helpers.anilist_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(return_value={"id": 21, "title": "Test"})
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anilist-id", "21", "--output", "/tmp/output.json"]):
+        with patch("builtins.open", MagicMock()):
+            exit_code = await main()
+
+    assert exit_code == 0
+    mock_helper_class.assert_called_once()
+    mock_helper.fetch_all_data_by_anilist_id.assert_awaited_once_with(21)
+    mock_helper.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper")
+async def test_main_function_no_data_found(mock_helper_class):
+    """Test main() function handles no data found."""
+    from src.enrichment.api_helpers.anilist_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(return_value=None)
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anilist-id", "99999"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+    mock_helper.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper")
+async def test_main_function_error_handling(mock_helper_class):
+    """Test main() function handles errors and returns non-zero exit code."""
+    from src.enrichment.api_helpers.anilist_helper import main
+
+    mock_helper = AsyncMock()
+    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(side_effect=Exception("API error"))
+    mock_helper.close = AsyncMock()
+    mock_helper_class.return_value = mock_helper
+
+    with patch("sys.argv", ["script.py", "--anilist-id", "21"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+    mock_helper.close.assert_awaited_once()

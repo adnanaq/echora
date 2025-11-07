@@ -705,3 +705,74 @@ class TestTypeErrorCoverage:
             
             with pytest.raises(TypeError, match="Unexpected result type.*expected CrawlResult"):
                 await fetch_anisearch_characters("https://www.anisearch.com/anime/test/characters")
+
+
+# --- Tests for main() function ---
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_character_crawler.fetch_anisearch_characters")
+async def test_main_function_success(mock_fetch):
+    """Test main() function handles successful execution."""
+    from src.enrichment.crawlers.anisearch_character_crawler import main
+
+    mock_fetch.return_value = {"characters": [{"name": "Test Character"}], "total_count": 1}
+
+    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters", "--output", "/tmp/output.json"]):
+        exit_code = await main()
+
+    assert exit_code == 0
+    # Verify the function was called (args vs kwargs may vary by implementation)
+    mock_fetch.assert_awaited_once()
+    call_args = mock_fetch.call_args
+    # Check the URL was passed correctly (could be positional or keyword)
+    if call_args[0]:
+        assert call_args[0][0] == "https://www.anisearch.com/anime/18878/characters"
+    else:
+        assert call_args[1]["url"] == "https://www.anisearch.com/anime/18878/characters"
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_character_crawler.fetch_anisearch_characters")
+async def test_main_function_with_default_output(mock_fetch):
+    """Test main() function with default output path."""
+    from src.enrichment.crawlers.anisearch_character_crawler import main
+
+    mock_fetch.return_value = {"characters": [], "total_count": 0}
+
+    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/12345/characters"]):
+        exit_code = await main()
+
+    assert exit_code == 0
+    # Verify default output path used
+    call_args = mock_fetch.call_args
+    assert call_args[1]["output_path"] == "anisearch_characters.json"
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_character_crawler.fetch_anisearch_characters")
+async def test_main_function_error_handling(mock_fetch):
+    """Test main() function handles errors and returns non-zero exit code."""
+    from src.enrichment.crawlers.anisearch_character_crawler import main
+
+    mock_fetch.side_effect = Exception("Crawler error")
+
+    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_character_crawler.fetch_anisearch_characters")
+async def test_main_function_no_data_found(mock_fetch):
+    """Test main() function when no data found."""
+    from src.enrichment.crawlers.anisearch_character_crawler import main
+
+    mock_fetch.return_value = None
+
+    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/99999/characters"]):
+        exit_code = await main()
+
+    # Crawler may return None, should still complete
+    assert exit_code == 0  # CLI returns 0 even when no data per current implementation
