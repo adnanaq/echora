@@ -1,10 +1,9 @@
-# Dockerfile for Anime Vector Service
-FROM python:3.12-slim
+# Build stage
+FROM python:3.12-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
   gcc \
   g++ \
@@ -22,11 +21,24 @@ COPY pyproject.toml uv.lock ./
 
 # Install dependencies using uv
 RUN uv sync --no-dev --frozen
+
 # Copy source code
 COPY src/ ./src/
 COPY README.md .
 
-# Set environment variables
+# ---- Production stage ----
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy installed dependencies from builder
+COPY --from=builder /root/.local /root/.local
+# Copy source code and README
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/README.md ./README.md
+
+# Set PATH and environment variables
+ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
@@ -37,5 +49,6 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8002/health || exit 1
 
-# Command to run the application
+# Run the application
 CMD ["python", "-m", "src.main"]
+
