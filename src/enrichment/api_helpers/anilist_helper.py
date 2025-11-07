@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import sys
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -76,9 +77,13 @@ class AniListEnrichmentHelper:
             self.session = http_cache_manager.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
-                headers={"X-Hishel-Body-Key": "true"}  # Enable body-based caching for GraphQL
+                headers={
+                    "X-Hishel-Body-Key": "true"
+                },  # Enable body-based caching for GraphQL
             )
-            logger.debug("AniList cached session created via cache manager for current event loop")
+            logger.debug(
+                "AniList cached session created via cache manager for current event loop"
+            )
             self._session_event_loop = current_loop
 
         try:
@@ -405,7 +410,9 @@ async def main() -> int:
             try:
                 anime_data = await helper.fetch_all_data_by_anilist_id(args.anilist_id)
             except Exception as e:
-                logger.error(f"Error fetching AniList data for ID {args.anilist_id}: {e}")
+                logger.error(
+                    f"Error fetching AniList data for ID {args.anilist_id}: {e}"
+                )
                 anime_data = None
         # elif args.mal_id:
         #     anime_data = await helper.fetch_all_data_by_mal_id(args.mal_id)

@@ -14,6 +14,9 @@ import redis
 
 from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def redis_client():
