@@ -690,7 +690,8 @@ def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
     return enriched
 
 
-if __name__ == "__main__":
+async def main() -> int:
+    """CLI entry point for anime-planet.com character crawler."""
     parser = argparse.ArgumentParser(
         description="Crawl character data from an anime-planet.com anime characters page."
     )
@@ -707,10 +708,19 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    asyncio.run(
-        fetch_animeplanet_characters(
+    try:
+        await fetch_animeplanet_characters(
             args.identifier,
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    )
+        return 0
+    except Exception as e:
+        import sys
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import sys
+    sys.exit(asyncio.run(main()))

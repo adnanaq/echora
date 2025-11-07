@@ -60,15 +60,20 @@ async def fetch_animeschedule_data(
         await session.close()
 
 
-async def main() -> None:
+async def main() -> int:
     """Main function for command-line usage"""
     if len(sys.argv) != 2:
-        print("Usage: python animeschedule_fetcher.py <search_term>")
-        sys.exit(1)
+        print("Usage: python animeschedule_fetcher.py <search_term>", file=sys.stderr)
+        return 1
 
-    search_term = sys.argv[1]
-    await fetch_animeschedule_data(search_term, save_file=True)
+    try:
+        search_term = sys.argv[1]
+        result = await fetch_animeschedule_data(search_term, save_file=True)
+        return 0 if result else 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))

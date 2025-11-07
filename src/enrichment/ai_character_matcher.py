@@ -1515,18 +1515,26 @@ async def process_characters_with_ai_matching(
     return {"characters": output_characters}
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Example usage
-    async def main() -> None:
-        # Mock data for testing
-        jikan_chars = [{"name": "Spike Spiegel", "role": "Main", "mal_id": 1}]
-        anilist_chars = [{"name": {"full": "Spike Spiegel"}, "id": 1}]
-        anidb_chars = [{"name": "Spike Spiegel", "id": 118}]
+    async def main() -> int:
+        """CLI entry point for AI character matcher."""
+        try:
+            # Mock data for testing
+            jikan_chars = [{"name": "Spike Spiegel", "role": "Main", "mal_id": 1}]
+            anilist_chars = [{"name": {"full": "Spike Spiegel"}, "id": 1}]
+            anidb_chars = [{"name": "Spike Spiegel", "id": 118}]
 
-        result = await process_characters_with_ai_matching(
-            jikan_chars, anilist_chars, anidb_chars
-        )
+            result = await process_characters_with_ai_matching(
+                jikan_chars, anilist_chars, anidb_chars
+            )
 
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
+        except Exception as e:
+            import sys
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
-    asyncio.run(main())
+    import sys
+    sys.exit(asyncio.run(main()))

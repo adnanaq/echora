@@ -367,7 +367,8 @@ class JikanDetailedFetcher:
             print(f"Cleaned up progress file: {progress_file}")
 
 
-async def main() -> None:
+async def main() -> int:
+    """CLI entry point for Jikan helper."""
     parser = argparse.ArgumentParser(description="Fetch detailed data from Jikan API")
     parser.add_argument(
         "data_type", choices=["episodes", "characters"], help="Type of data to fetch"
@@ -378,18 +379,23 @@ async def main() -> None:
 
     args = parser.parse_args()
 
-    # Validate input file exists
-    if not os.path.exists(args.input_file):
-        print(f"Error: Input file {args.input_file} does not exist")
-        sys.exit(1)
+    try:
+        # Validate input file exists
+        if not os.path.exists(args.input_file):
+            print(f"Error: Input file {args.input_file} does not exist", file=sys.stderr)
+            return 1
 
-    # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
 
-    # Create fetcher and run
-    fetcher = JikanDetailedFetcher(args.anime_id, args.data_type)
-    await fetcher.fetch_detailed_data(args.input_file, args.output_file)
+        # Create fetcher and run
+        fetcher = JikanDetailedFetcher(args.anime_id, args.data_type)
+        await fetcher.fetch_detailed_data(args.input_file, args.output_file)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))

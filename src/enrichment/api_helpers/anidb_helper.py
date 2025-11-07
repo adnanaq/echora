@@ -827,7 +827,7 @@ class AniDBEnrichmentHelper:
                 self._session_created_at = 0
 
 
-async def main() -> None:
+async def main() -> int:
     """Main function for testing AniDB data fetching."""
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
     parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
@@ -853,22 +853,26 @@ async def main() -> None:
             anime_data = search_results[0] if search_results else None
         else:
             logger.error("Must provide either --anidb-id or --search-name")
-            return
+            return 1
 
         if anime_data:
             # Save to file
             with open(args.output, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
+            return 0
         else:
             logger.error(f"No data found")
+            return 1
 
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
+        return 1
     except Exception as e:
         logger.error(f"Main execution failed: {e}")
+        return 1
     finally:
         await helper.close()
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))

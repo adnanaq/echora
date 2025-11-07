@@ -188,25 +188,32 @@ class AnimePlanetEnrichmentHelper:
             return None
 
 
-async def main() -> None:
+async def main() -> int:
+    """CLI entry point for AnimePlanet helper."""
     if len(sys.argv) != 3:
-        print("Usage: python animeplanet_helper.py <slug> <output_file>")
-        sys.exit(1)
+        print("Usage: python animeplanet_helper.py <slug> <output_file>", file=sys.stderr)
+        return 1
 
-    slug = sys.argv[1]
-    output_file = sys.argv[2]
+    try:
+        slug = sys.argv[1]
+        output_file = sys.argv[2]
 
-    helper = AnimePlanetEnrichmentHelper()
-    data = await helper.fetch_anime_data(slug)
+        helper = AnimePlanetEnrichmentHelper()
+        data = await helper.fetch_anime_data(slug)
 
-    if data:
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        print(f"Data for {slug} saved to {output_file}")
-    else:
-        print(f"Could not fetch data for {slug}")
+        if data:
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            print(f"Data for {slug} saved to {output_file}")
+            return 0
+        else:
+            print(f"Could not fetch data for {slug}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

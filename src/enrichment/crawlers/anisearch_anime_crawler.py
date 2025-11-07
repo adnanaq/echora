@@ -492,7 +492,8 @@ async def fetch_anisearch_anime(
         return None
 
 
-if __name__ == "__main__":
+async def main() -> int:
+    """CLI entry point for anisearch.com anime crawler."""
     parser = argparse.ArgumentParser(
         description="Crawl anime data from an anisearch.com URL."
     )
@@ -506,10 +507,20 @@ if __name__ == "__main__":
         help="Output file path (default: anisearch_anime.json in current directory)",
     )
     args = parser.parse_args()
-    asyncio.run(
-        fetch_anisearch_anime(
+
+    try:
+        await fetch_anisearch_anime(
             args.url,
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    )
+        return 0
+    except Exception as e:
+        import sys
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import sys
+    sys.exit(asyncio.run(main()))

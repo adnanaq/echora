@@ -383,7 +383,8 @@ class AniListEnrichmentHelper:
             await self.session.close()
 
 
-async def main() -> None:
+async def main() -> int:
+    """CLI entry point for AniList helper."""
     parser = argparse.ArgumentParser(description="Test AniList data fetching")
     group = parser.add_mutually_exclusive_group(required=True)
     # group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")
@@ -413,11 +414,16 @@ async def main() -> None:
             with open(args.output, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
             logger.info(f"Data saved to {args.output}")
+            return 0
         else:
             logger.error("No data found for the given ID.")
+            return 1
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return 1
     finally:
         await helper.close()
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))

@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 from typing import Any, Dict, List, Optional, cast
 
 from crawl4ai import (
@@ -71,23 +72,20 @@ def _extract_slug_from_url(url: str) -> str:
 
 
 @cached_result(ttl=86400, key_prefix="animeplanet_anime")  # 24 hours cache
-async def fetch_animeplanet_anime(
-    slug: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
     """
-    Crawls and processes anime data from anime-planet.com.
+    Pure cached function that crawls and processes anime data from anime-planet.com.
     All data is available on the main anime page - no navigation needed.
 
-    Results are cached in Redis for 24 hours to avoid repeated crawling.
+    Results are cached in Redis for 24 hours based ONLY on slug.
+    This function has no side effects - it only fetches and returns data.
 
     Args:
         slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),
               or full URL (e.g., "https://www.anime-planet.com/anime/dandadan")
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
 
     Returns:
-        Complete anime data dictionary (if return_data=True), otherwise None
+        Complete anime data dictionary, or None on failure
     """
     # Normalize URL and extract slug using helper functions
     url = _normalize_anime_url(slug)
@@ -370,22 +368,49 @@ async def fetch_animeplanet_anime(
                 else:
                     anime_data["status"] = "UNKNOWN"
 
-                # Conditionally write to file
-                if output_path:
-                    safe_path = sanitize_output_path(output_path)
-                    with open(safe_path, "w", encoding="utf-8") as f:
-                        json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {safe_path}")
-
-                # Return data for programmatic usage
-                if return_data:
-                    return anime_data
-
-                return None
+                # Return pure data (no side effects)
+                return anime_data
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
         return None
+
+
+async def fetch_animeplanet_anime(
+    slug: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Wrapper function that handles side effects (file writing, return_data logic).
+
+    This function calls the cached _fetch_animeplanet_anime_data() to get the data,
+    then performs side effects that should execute regardless of cache status.
+
+    Args:
+        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),
+              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan")
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Complete anime data dictionary (if return_data=True), otherwise None
+    """
+    # Fetch data from cache or crawl (pure function)
+    data = await _fetch_animeplanet_anime_data(slug)
+
+    if data is None:
+        return None
+
+    # Side effect: Write to file (always executes, even on cache hit)
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Data written to {safe_path}")
+
+    # Return data based on return_data parameter
+    if return_data:
+        return data
+    return None
 
 
 def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
@@ -617,7 +642,8 @@ def _process_related_manga(
     return related_manga
 
 
-if __name__ == "__main__":
+async def main() -> int:
+    """CLI entry point for anime-planet.com crawler."""
     parser = argparse.ArgumentParser(
         description="Crawl anime data from anime-planet.com"
     )
@@ -634,10 +660,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    asyncio.run(
-        fetch_animeplanet_anime(
+    try:
+        await fetch_animeplanet_anime(
             args.identifier,
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    )
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))
