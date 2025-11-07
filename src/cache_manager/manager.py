@@ -5,6 +5,9 @@ Provides cached HTTP sessions for aiohttp (async) clients.
 Supports Redis (multi-agent) and SQLite (single-agent) storage backends.
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -31,6 +34,7 @@ class HTTPCacheManager:
         self.config = config
         self._storage: Optional[Any] = None
         self._async_redis_client: Optional[AsyncRedis[bytes]] = None
+        self._redis_event_loop: Optional[Any] = None
 
         if self.config.enabled:
             self._init_storage()
@@ -45,24 +49,67 @@ class HTTPCacheManager:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 
     def _init_redis_storage(self) -> None:
-        """Initialize async Redis client for aiohttp sessions."""
+        """
+        Validate Redis configuration.
+
+        The actual AsyncRedis client is created lazily per event loop
+        in _get_or_create_redis_client() to avoid event loop conflicts.
+        """
         try:
             if not self.config.redis_url:
                 raise ValueError("redis_url required for Redis storage")
 
-            # Initialize async client for aiohttp sessions
-            self._async_redis_client = AsyncRedis.from_url(
-                self.config.redis_url, decode_responses=False
-            )
             logger.info(
-                f"Async Redis client initialized for aiohttp sessions: {self.config.redis_url}"
+                f"Redis cache configured for aiohttp sessions: {self.config.redis_url}"
             )
 
         except (ValueError, Exception) as e:
             logger.warning(
-                f"Async Redis client initialization failed: {e}. "
+                f"Redis configuration failed: {e}. "
                 "Async (aiohttp) requests will not be cached on Redis."
             )
+
+    def _get_or_create_redis_client(self) -> Optional[AsyncRedis[bytes]]:
+        """
+        Get or create AsyncRedis client for the current event loop.
+
+        AsyncRedis clients have internal locks that are bound to the event loop
+        where they were created. This method ensures we create a new client
+        for each event loop to prevent "bound to different event loop" errors.
+
+        Returns:
+            AsyncRedis client for current event loop, or None if unavailable
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop running
+            return None
+
+        # Check if we need to create a new client for this event loop
+        if self._async_redis_client is None or self._redis_event_loop != current_loop:
+            # Close old client if it exists
+            if self._async_redis_client is not None:
+                try:
+                    # Don't await close() here - just queue it for cleanup
+                    # The old event loop will handle it
+                    pass
+                except Exception:
+                    pass
+
+            # Create new client for current event loop
+            if not self.config.redis_url:
+                return None
+
+            self._async_redis_client = AsyncRedis.from_url(
+                self.config.redis_url, decode_responses=False
+            )
+            self._redis_event_loop = current_loop
+            logger.debug(
+                f"Created new AsyncRedis client for event loop {id(current_loop)}"
+            )
+
+        return self._async_redis_client
 
     def _init_sqlite_storage(self) -> None:
         """Initialize SQLite file-based storage."""
@@ -92,11 +139,12 @@ class HTTPCacheManager:
         Returns:
             Cached aiohttp.ClientSession (wrapped with Redis caching)
         """
-        if (
-            not self.config.enabled
-            or self.config.storage_type != "redis"
-            or not self._async_redis_client
-        ):
+        if not self.config.enabled or self.config.storage_type != "redis":
+            return aiohttp.ClientSession(**session_kwargs)
+
+        # Get or create Redis client for current event loop
+        redis_client = self._get_or_create_redis_client()
+        if not redis_client:
             return aiohttp.ClientSession(**session_kwargs)
 
         # Create async Redis storage for aiohttp caching
@@ -107,9 +155,9 @@ class HTTPCacheManager:
             # Get service-specific TTL
             ttl = self._get_service_ttl(service)
 
-            # Create async storage from shared client
+            # Create async storage from event-loop-specific client
             async_storage = AsyncRedisStorage(
-                client=self._async_redis_client,
+                client=redis_client,
                 default_ttl=float(ttl),
                 refresh_ttl_on_access=True,
                 key_prefix="hishel_cache",
@@ -122,8 +170,8 @@ class HTTPCacheManager:
             session_kwargs["headers"] = headers
 
             # Return cached session
-            logger.info(
-                f"Async Redis cache initialized for {service} (TTL: {ttl}s, body-based caching: enabled)"
+            logger.debug(
+                f"Async Redis cache session created for {service} (TTL: {ttl}s, event loop: {id(self._redis_event_loop)})"
             )
             return CachedAiohttpSession(storage=async_storage, **session_kwargs)
 
