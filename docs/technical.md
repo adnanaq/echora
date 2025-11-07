@@ -6,9 +6,10 @@
 
 #### Core Framework
 
-- **FastAPI 0.115+**: Chosen for high-performance async capabilities, automatic OpenAPI documentation, and excellent type safety with Pydantic
+- **gRPC with Protocol Buffers**: Chosen for high-performance binary protocol, strong typing, cross-language compatibility, and efficient serialization
 - **Python 3.12+**: Latest Python for performance improvements, improved type hints, and modern language features
-- **Uvicorn**: ASGI server for production-grade async request handling
+- **Async gRPC (grpc.aio)**: Async server implementation for high-concurrency handling
+- **Atomic Agents Framework**: AI agent framework for LLM-powered query parsing and tool orchestration
 
 #### Vector Database Architecture
 
@@ -46,10 +47,11 @@
 **Setup Process:**
 
 1. Clone repository from version control
-2. Install Python dependencies via requirements.txt
+2. Install Python dependencies via `uv sync --dev`
 3. Start Qdrant database using Docker Compose
-4. Run service using Python module execution
-5. Access API documentation at localhost:8002/docs
+4. Start Ollama server for LLM inference (required for AI query parsing)
+5. Run gRPC service using `uv run python -m src.main`
+6. Service available on port 50051 (gRPC) - test with grpcurl or client library
 
 #### Docker Development
 
@@ -65,11 +67,10 @@
 
 The service uses Pydantic Settings for type-safe configuration:
 
-**Vector Service Configuration:**
+**gRPC Service Configuration:**
 
-- VECTOR_SERVICE_HOST: Service host address (default: 0.0.0.0)
-- VECTOR_SERVICE_PORT: Service port (default: 8002)
-- DEBUG: Enable debug mode (default: true)
+- GRPC_SERVER_PORT: gRPC server port (default: 50051)
+- LOG_LEVEL: Logging level (default: INFO)
 
 **Qdrant Database Configuration:**
 
@@ -79,7 +80,12 @@ The service uses Pydantic Settings for type-safe configuration:
 **Embedding Models Configuration:**
 
 - TEXT_EMBEDDING_MODEL: Text model (default: BAAI/bge-m3)
-- IMAGE_EMBEDDING_MODEL: Image model (default: jinaai/jina-clip-v2)
+- IMAGE_EMBEDDING_MODEL: Image model (default: ViT-L-14/laion2b_s32b_b82k)
+
+**AI Query Parser Configuration (Ollama):**
+
+- OLLAMA_BASE_URL: Ollama server URL (default: http://localhost:11434/v1)
+- OLLAMA_MODEL: LLM model for query parsing (default: qwen2.5:7b)
 
 **Performance Tuning:**
 

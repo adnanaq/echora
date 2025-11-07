@@ -41,7 +41,15 @@ This document breaks down the work required to implement the automated architect
       - **MongoDB Atlas (`animes` collection):** This collection is the **live, operational source of truth** for our enriched `AnimeEntry` objects after the initial bootstrap and subsequent weekly updates.
   4.  **Upload Enriched Database:** Manually upload the locally-generated `enriched_anime_database.json` (now with our S3 image URLs) to `s3://<bucket-name>/processed/enriched_anime_database.json`.
   5.  **Attach Metadata (Critical):** During the upload, attach a custom metadata tag `x-amz-meta-source-commit-sha` containing the commit hash of the `anime-offline-database` version that was used to generate the file. This provides the initial state for the system.
-  6.  **Run Bulk Indexing Job:** Trigger a one-time, manual process to populate the Qdrant database. This will be a "scatter-gather" Lambda pattern to process ~40,000 entries in parallel without hitting timeouts.
+  6.  **Run Bulk Indexing Job (Step Functions Orchestrated):** Trigger a one-time, manual process to populate both MongoDB Atlas and Qdrant. This will be implemented as a robust "scatter-gather" workflow using AWS Step Functions, designed for parallelism, resumability, and granular error handling.
+    -   **Orchestrator:** AWS Step Functions (using a Map state for parallel processing).
+    -   **Processing Unit:** A dedicated AWS Lambda function (e.g., `bulk_indexer_lambda.py`) will receive batches of `AnimeEntry` data from Step Functions.
+    -   **Lambda Responsibilities:**
+        -   **MongoDB Population:** Utilize a new Python MongoDB client to populate/upsert `AnimeEntry` objects into the `animes`, `EpisodeDetailEntry` into `episodes`, and `CharacterEntry` into `characters` collections in MongoDB Atlas, handling ID connections.
+        -   **Qdrant Indexing:** Leverage the existing `QdrantClient` methods (e.g., `add_documents` or `update_batch_anime_vectors`) to generate vectors and upsert them into Qdrant.
+        -   **Granular Logging:** Log success/failure for each individual entry to CloudWatch Logs.
+        -   **Idempotency:** Designed for safe retries (e.g., using MongoDB upserts and Qdrant upserts).
+    -   **Error Handling:** Step Functions will manage retries for transient failures. Persistent batch failures will be routed to an SQS Dead-Letter Queue for inspection and re-processing.
 
 ### Task 1.0.1: Establish Infrastructure as Code (IaC) Framework
 
@@ -52,7 +60,49 @@ This document breaks down the work required to implement the automated architect
 - **Rationale:** This choice aligns with our team's existing Python expertise, allowing us to use a single language for both application and infrastructure code. It enables powerful abstractions, simplifies testing, and reduces context-switching.
 
 - **Repository Structure:**
-  - The Pulumi code for our infrastructure will live in its own dedicated Git repository (e.g., `anime-infra`). This separates infrastructure concerns from application code.
+  The application code will adopt a **monorepo** strategy, residing in a single Git repository (`anime-vector-service`). This approach simplifies dependency management, promotes code sharing, and streamlines CI/CD processes for the application layer. The Pulumi Infrastructure as Code (IaC) will continue to live in its own dedicated Git repository (`anime-infra`), separate from the application monorepo.
+
+  The application monorepo (`anime-vector-service`) will be structured as follows:
+
+  ```
+  anime-vector-service/
+  ├── .github/
+  ├── docs/
+  ├── pyproject.toml       # Root pyproject.toml for overall tooling/dependencies
+  ├── apps/                # Contains deployable Python applications/services
+  │   ├── agent/           # Python gRPC service
+  │   │   ├── pyproject.toml
+  │   │   └── src/
+  │   └── lambdas/         # Python Lambda functions
+  │       ├── bulk_indexer_lambda/
+  │       │   ├── pyproject.toml
+  │       │   └── src/
+  │       └── weekly_sync_starter_lambda/ # Example for Task 1.1
+  │           ├── pyproject.toml
+  │           └── src/
+├── libs/                # Contains shared Python libraries/clients
+│   ├── common/          # Shared models, config, utilities
+│   │   ├── pyproject.toml
+│   │   └── src/
+│   │       └── models/  # AnimeEntry model would live here
+│   │       └── config/  # Settings would live here
+│   ├── qdrant_client/   # Qdrant client logic
+│   │   ├── pyproject.toml
+│   │   └── src/
+│   │       └── vector/
+│   │           └── client/qdrant_client.py
+│   └── mongo_client/    # MongoDB client logic
+│       ├── pyproject.toml
+│       └── src/
+│           └── data/
+│               └── mongo_client.py
+└── scripts/             # Utility scripts
+  ```
+
+  - **How it Works:**
+    - Each `apps/` and `libs/` subdirectory will be treated as an independent Python package (for Python projects) or Node.js package (for TypeScript projects), with its own `pyproject.toml` or `package.json`.
+    - Internal dependencies (e.g., `apps/lambdas/bulk_indexer_lambda` depending on `libs/qdrant_client` and `libs/mongo_client`) will be managed via relative paths or monorepo-aware tooling.
+    - The Pulumi IaC code will reside in its dedicated `anime-infra` repository, as described in the IaC framework.
 
 - **Initial Setup Requirements:**
   1.  **Git Repository:** A new, dedicated repository for all Pulumi code.
@@ -82,14 +132,17 @@ This document breaks down the work required to implement the automated architect
       ├── __init__.py
       ├── aws/                     # AWS-specific components
       │   ├── __init__.py
-      │   ├── networking.py        # VPC, subnets, security groups, NAT/IGW
+      │   ├── networking.py        # VPC, subnets (across 3 AZs), security groups, NAT/IGW
       │   ├── s3_buckets.py        # S3 buckets (e.g., for images, pipeline data)
       │   ├── dynamodb_tables.py   # DynamoDB tables (e.g., image deduplication)
-      │   ├── ecs_cluster.py       # ECS Cluster definition
-      │   ├── ecs_services.py      # Fargate Task Definitions and Services (BFF, Agent)
+      │   ├── eks_cluster.py       # EKS Cluster definition, including node groups across 3 AZs, hosting both the BFF and Agent services. Initially, a single EKS cluster will be used with Kubernetes namespaces (e.g., 'staging', 'production') for environment separation. The IaC is designed to allow for the creation of separate EKS clusters for different environments (dev, staging, production) if future needs require stricter isolation.
+      │   ├── kubernetes_manifests/  # Directory for K8s YAML files (Deployments, Services, Ingress)
+      │   │   ├── bff-deployment.yaml
+      │   │   └── agent-deployment.yaml
       │   ├── lambda_functions.py  # All Lambda functions for the enrichment pipeline
       │   ├── step_functions.py    # Step Function state machine definition
       │   ├── secrets_manager.py   # Secrets Manager setup
+      │   ├── security.py          # Security Hub, GuardDuty, and other security services
       │   ├── elasticache.py       # ElastiCache for Redis cluster
       │   └── cloudfront.py        # CloudFront distribution for images
       ├── qdrant/                  # Qdrant Cloud-specific components
@@ -113,16 +166,28 @@ This document breaks down the work required to implement the automated architect
     - **`__main__.py`:** This top-level file remains simple. It will primarily import and instantiate the high-level application components from `components/application/`.
 
 - **CI/CD Integration:**
-  - Integrate IaC deployments into a CI/CD pipeline using **GitHub Actions** in the new infrastructure repository.
-  - **CI Workflow (on Pull Requests):**
-    - Runs `pulumi preview` to show planned infrastructure changes. This output can be posted as a comment on the PR for peer review.
-  - **CD Workflow (on Merge to `main`):**
-    - Executes `pulumi up` to apply infrastructure changes.
-    - This job will target protected GitHub Environments (e.g., `staging`, `production`) that require manual approval before deployment.
+  The project will use two distinct CI/CD workflows, both implemented with **GitHub Actions**.
+
+  **1. Infrastructure CI/CD (in `anime-infra` repo):**
+  - This pipeline manages the deployment of our core infrastructure using Pulumi.
+  - **On Pull Request:** Runs `pulumi preview` to show planned infrastructure changes for review.
+  - **On Merge to `main`:** Executes `pulumi up` to apply infrastructure changes (e.g., updating the EKS cluster configuration), targeting protected GitHub Environments that require manual approval.
+
+  **2. Application CI/CD (in `anime-vector-service` repo):**
+  - This pipeline manages the deployment of the BFF and Agent services using a **GitOps** model with **ArgoCD**.
+  - **CI (On every push):**
+    - Builds, tests, and runs security scans (`snyk`, `bandit`).
+    - Builds a Docker image and pushes it to **Amazon ECR** with a Git commit tag.
+  - **CD (On merge to `main`):**
+    - The CI process runs again to create a final versioned image (e.g., `bff-service:1.4.0`).
+    - The pipeline's final step is to automatically open a **Pull Request** against a separate `anime-service-config` Git repository. This PR updates a Kubernetes manifest to use the new image version.
+    - **Manual Approval:** A deployment to production only occurs when a team lead **approves and merges this Pull Request**.
+    - **GitOps Deployment:** **ArgoCD**, running in the EKS cluster, detects the change on the `main` branch of the config repo and automatically syncs the application, performing a rolling update to the new version.
+
   - **Authentication:**
     - **AWS:** Utilize OpenID Connect (OIDC) for secure, credential-less authentication from GitHub Actions to AWS IAM.
     - **MongoDB Atlas & Qdrant Cloud:** API keys will be stored as GitHub Secrets and accessed by the Pulumi workflow.
-  - **Pulumi State:** The Pulumi Service backend will be used for secure and collaborative state management.
+  - **Pulumi State:** The managed **Pulumi Service** will be used as the backend. This is a deliberate DR decision, as the service is highly available and handles state backups, encryption, and locking automatically, removing operational overhead from our team.
 
 ### Task 1.1: Automated Weekly Database Sync
 
@@ -146,11 +211,17 @@ This document breaks down the work required to implement the automated architect
         - If `offline_count > our_count`, flag the anime for human review, as we may be missing episodes.
         - If `offline_count <= our_count`, **do nothing**, as our live data is considered more accurate.
       - All other fields from the offline DB for existing entries are ignored to protect our enriched data.
+  7.  **Human Review Workflow for Flagged Items:** When an anime entry is flagged for human review (e.g., due to status or episode count discrepancies), the `Weekly-Sync-Starter-Lambda` will trigger the **Amazon A2I Human Review Workflow** (as defined in `Phase 2`). The flagged `AnimeEntry` and the reason for flagging will be passed to A2I, where human reviewers will use the custom worker template to review, correct, and approve the entry. The `Enrichment-Step-Function` will then commit the human-verified data.
+      *Note: After sufficient observation and validation of the accuracy of automated flagging for specific discrepancy types (e.g., status changes, episode counts), the human-in-the-loop step for those specific types may be conditionally skipped to optimize efficiency and cost.*
   6.  **For Removed Anime (Orphaning):**
       - After processing the source file, the sync process will identify all anime present in our `animes` collection that were not present in the source file.
       - In line with our goal of creating a comprehensive database, these entries will **never be deleted**.
       - Instead, they will be marked as "orphaned" by updating the entry to include a `system_status: "ORPHANED"` field and an `orphaned_at` timestamp.
       - The API layer will be responsible for filtering these orphaned records from default user-facing queries, but they can be made accessible via a specific query parameter (e.g., `?include_orphaned=true`).
+  8.  **Robust Error Handling & Resumption for Weekly Sync Lambda:**
+      - The `Weekly-Sync-Starter-Lambda` will be configured with appropriate Lambda retry policies. If it fails persistently, its invocation event will be sent to a dedicated **Lambda Dead-Letter Queue (DLQ)** for investigation.
+      - The Lambda's logic (iterating through the offline DB, acquiring locks, triggering Step Functions) is designed to be **idempotent**, ensuring that re-invocations or retries do not cause duplicate processing or side effects.
+      - The existing lock mechanism for triggering the `Enrichment-Step-Function` already provides a form of resumption, as the Lambda will simply skip anime that are already being processed.
 
 ### Task 1.2: Provision Qdrant Vector Database (Qdrant Cloud)
 
@@ -160,7 +231,7 @@ This document breaks down the work required to implement the automated architect
 
 - **Steps:**
   1. **Create Qdrant Cloud Account:** Sign up for a Qdrant Cloud account.
-  2. **Provision Cluster:** Create a new vector database cluster through the Qdrant Cloud dashboard. For initial development, the free tier can be used. This can be scaled up to a larger, paid cluster as needed for production.
+  2. **Provision Cluster:** Create a new vector database cluster through the Qdrant Cloud dashboard. For production, select a plan that supports **replication across multiple Availability Zones** to ensure high availability.
   3. **Obtain Credentials:** From the cluster dashboard, copy the public **Cluster URL** and generate an **API Key**.
   4. **Configure Application:** Store the Cluster URL and API Key securely (e.g., using AWS Secrets Manager). Update the application configuration so that the `QdrantClient` connects to the cloud endpoint using these credentials.
 
@@ -173,7 +244,7 @@ This document breaks down the work required to implement the automated architect
 - **Rationale:** The existing JSON file approach for enriched data lacks the scalability, query flexibility, and operational features required for a production-grade, user-facing data store. MongoDB Atlas offers a flexible document model, rich querying capabilities, and seamless integration with various cloud ecosystems, making it ideal for our complex `AnimeEntry` objects.
 - **Steps:**
   1.  **Create MongoDB Atlas Account & Project:** Sign up for a MongoDB Atlas account and create a new project.
-  2.  **Provision Cluster:** Create a new MongoDB Atlas cluster (e.g., an M0 Free Tier for initial development, scaling up to M10+ for production). Choose the appropriate cloud provider (AWS) and region.
+  2.  **Provision Cluster:** Create a new MongoDB Atlas cluster (e.g., an M0 Free Tier for initial development, scaling up to M10+ for production). For production, this cluster **must be provisioned as a Multi-AZ deployment** to ensure high availability and support the DR strategy.
   3.  **Configure Network Access:** Set up IP Access List entries or VPC Peering to allow connections from your application's environment (e.g., AWS Fargate, Lambda functions).
   4.  **Create Database and Collections:** Within the cluster, create a database (e.g., `anime_service`) and collections for `animes`, `episodes`, and `characters`.
       - **Primary Key:** The `_id` field in MongoDB will store our ULID-based identifiers (`ani_ULID`, `ep_ULID`, `char_ULID`).
@@ -181,6 +252,7 @@ This document breaks down the work required to implement the automated architect
   5.  **Define Data Model:** The `AnimeEntry`, `EpisodeDetailEntry`, and `CharacterEntry` Pydantic models (`src/models/anime.py`) will serve as the direct schema for documents stored in these collections. We will use a Python ODM (e.g., Beanie) to map Pydantic models to MongoDB documents.
   6.  **Configure IAM Roles/Policies:** Ensure that the FastAPI service (running on Fargate), Lambda functions (for ingestion/consolidation), and any other relevant services have appropriate network access and credentials to connect to MongoDB Atlas. Store connection strings securely (e.g., using AWS Secrets Manager).
   7.  **Initial Data Load Script:** Develop a one-time script to read the existing `enriched_anime_database.json` from S3 and batch-write all `AnimeEntry` objects (and extract/write `EpisodeDetailEntry` and `CharacterEntry` into their respective collections) into the new MongoDB Atlas collections. This will be part of the initial system bootstrap.
+  8.  **Leverage Native Atlas Backups:** Configure and enable MongoDB Atlas's native continuous backup and point-in-time recovery features. This provides granular operational recovery capabilities, complementing the portable S3 snapshots.
 
 ### Task 1.2.2: Provision Idempotency Lock Collection (MongoDB Atlas)
 
@@ -226,7 +298,8 @@ This document breaks down the work required to implement the automated architect
           3.  **Execute MongoDB Upsert:** It will use a MongoDB client (e.g., PyMongo) to perform an `update_one` operation with `upsert=True` on the `animes` collection, using the `anime_id` as the filter. This writes the full `AnimeEntry` document.
         - **Reliability:** This Lambda is the component that executes the Saga pattern's logic (retries, compensating actions) to ensure the atomicity of the dual write.
 
-        1.  **Layer 1: Automated Retries:** Each database write operation will be wrapped in a retry policy with exponential backoff (e.g., 5 attempts over 2 minutes). This is a native feature of AWS Step Functions and handles the majority of transient network or service errors.
+        1.  **Layer 1: Automated Retries (Client-Level):** Each database write operation within the Lambda will be wrapped in a retry policy with exponential backoff (e.g., 5 attempts over 2 minutes). This handles the majority of transient network or service errors at the point of interaction with Qdrant or MongoDB.
+        2.  **Layer 2: Automated Retries (Step Functions-Orchestrated):** The Step Function itself will configure retry policies for the Lambda task. This handles cases where the entire Lambda invocation fails (e.g., crashes, timeouts) after its internal client-level retries are exhausted.
 
         2.  **Layer 2: Saga Orchestration:** The commit logic follows a precise sequence to prevent data inconsistency.
             - **Step A: Write to Qdrant.** The vector data is written to Qdrant first. If this write fails after all retries, the entire workflow fails, leaving the primary data store untouched.
@@ -236,6 +309,13 @@ This document breaks down the work required to implement the automated architect
         3.  **Layer 3: Dead-Letter Queue (DLQ) for Human Intervention:** In the exceptional case that the Saga itself fails (e.g., the compensating action fails), the entire Step Function execution, along with the `AnimeEntry` payload, is sent to an SQS Dead-Letter Queue. A CloudWatch Alarm monitoring the DLQ will notify the engineering team, allowing a human to manually investigate the rare failure and ensure data consistency.
 
   5.  **Cleanup:** A final state to clean up any temporary resources from EFS.
+
+### Data Governance Responsibilities
+
+-   **Primary Data Owner:** As the sole owner of this project, you are the primary owner of the enriched `AnimeEntry` data stored in MongoDB Atlas and Qdrant. This includes ultimate responsibility for its accuracy, integrity, and adherence to defined policies.
+-   **Data Quality:** The Engineering Team is responsible for defining and enforcing data quality standards. Mechanisms like the A2I human review workflow and strict schema validation (`Assemble Entry` step) are key technical controls for maintaining quality.
+-   **Data Lifecycle:** The Engineering Team is responsible for implementing data lifecycle policies, including the "orphaning" strategy for removed anime and the future "hard delete" process for compliance.
+-   **Access Controls:** The Engineering Team is responsible for implementing and managing technical access controls (IAM, MongoDB roles) to the data.
 
 ### Task 1.4: Implement Portability & Backup Job
 
@@ -248,6 +328,7 @@ This document breaks down the work required to implement the automated architect
   2.  It connects to MongoDB Atlas and performs an export of all records from the `animes`, `episodes`, and `characters` collections.
   3.  It assembles all the records into a single `enriched_anime_database.json` file (or a set of files, one per collection).
   4.  It writes the complete file(s) to S3, overwriting the previous week's snapshot. This file now represents a complete, portable backup of the database state.
+  5.  **Enable Cross-Region Replication (CRR):** For regional disaster recovery, CRR will be enabled on this S3 bucket to asynchronously copy the snapshots to a secondary AWS region.
 
 ### Task 1.5: Provision Observability Platform (SigNoz)
 
@@ -263,8 +344,8 @@ This document breaks down the work required to implement the automated architect
   2.  **Automated Deployment:** Use a `cloud-init` script to install Docker/Docker-Compose and launch the SigNoz services on the instance.
   3.  **Application Instrumentation:**
       - Add the OpenTelemetry SDK to the Python application dependencies.
-      - Instrument the FastAPI service, Lambda functions, and key scripts.
-      - Configure the services via environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`) to send telemetry data to the SigNoz instance.
+      - Instrument all Lambda functions (including the bulk indexer and enrichment pipeline Lambdas), the BFF service, and the Agent service.
+      - Configure these services via environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`) to send telemetry data (logs, metrics, traces) to the SigNoz instance for comprehensive observability.
 
 #### Detailed Implementation Example
 
@@ -362,7 +443,7 @@ In `src/main.py`, the application would be configured to export telemetry.
 - **Rationale:** The number and scale of AWS services used can lead to unexpected costs if not proactively managed. This task ensures visibility and governance are built-in.
 - **Implementation Steps:**
   1.  **AWS Budgets & Alerts:**
-      - Create AWS Budgets for the overall project and for key services (e.g., Fargate, DynamoDB, A2I).
+      - Create AWS Budgets for the overall project and for key services (e.g., EKS, DynamoDB, A2I).
       - Configure tiered budget alerts at 50% and 90% of the monthly budget.
       - Route alerts via SNS to a dedicated Slack channel (e.g., `#cost-alerts`) for immediate visibility.
   2.  **Programmatic Tag Enforcement:**
@@ -373,37 +454,42 @@ In `src/main.py`, the application would be configured to export telemetry.
       - Establish a bi-weekly review of detected anomalies to understand spending and refine the detector.
   4.  **Proactive Optimization:**
       - Establish a recurring monthly "Cost Optimization & Right-Sizing Review" task in the project backlog.
-      - Use data from the SigNoz observability platform to analyze resource utilization (CPU, memory, etc.) and inform right-sizing decisions for EC2 instances and Fargate tasks.
-      - Periodically evaluate DynamoDB capacity modes, moving from On-Demand to Provisioned with auto-scaling as traffic patterns become clear.
+      - Use data from the SigNoz observability platform to analyze resource utilization (CPU, memory, etc.) and inform right-sizing decisions for EKS worker nodes and pod resource requests.
+      - Implement and configure the Kubernetes Cluster Autoscaler to dynamically adjust the number of worker nodes based on pod resource demands.
+  5.  **Quarterly IAM Review:**
+      - Establish a recurring task to manually review all IAM roles and policies to ensure they strictly adhere to the principle of least privilege.
 
 ### Task 1.7: Establish Local Development Environment
 
 - **Status:** `To-Do`
-- **Goal:** To provide a comprehensive, easy-to-use local development environment that closely mimics the cloud infrastructure, enabling high developer productivity.
-- **Rationale:** A poor or inconsistent local development experience can significantly slow down the team and introduce bugs. This task aims to create a "one-command setup."
+- **Goal:** To provide a comprehensive, easy-to-use local development environment that closely mimics the production EKS infrastructure, enabling high developer productivity.
+- **Rationale:** A poor or inconsistent local development experience can significantly slow down the team and introduce bugs. This task aims to create a "one-command setup" for a Kubernetes-based workflow.
 - **Implementation Steps:**
-  1.  **Docker Compose Orchestration:**
-      - Create a `docker-compose.local.yml` file to define and orchestrate local versions of all key dependencies:
-        - `vector-service`: The FastAPI application.
-        - `qdrant`: The official Qdrant image.
-        - `mongodb`: The official `mongo` Docker image. **This provides a local, API-compatible instance of MongoDB, ensuring consistency with our production MongoDB Atlas data store.**
-        - `mongo-express`: (Optional) A web-based administration interface for MongoDB.
-        - `minio`: To act as an S3-compatible object store.
-        - `signoz`: The full SigNoz observability stack.
-  2.  **Configuration Management:**
-      - Create a `.env.local.example` file containing all necessary environment variables for the `vector-service` to connect to the other local containers (e.g., `MONGO_URI=mongodb://mongodb:27017/anime_service`).
-      - This file will be git-ignored and developers can copy it to `.env.local` for their specific setup.
-  3.  **Data Seeding:**
-      - Create a `scripts/seed_local_env.py` script.
-      - This script will populate the local Qdrant and MongoDB instances with a small, consistent set of sample data, allowing developers to have a working environment immediately after setup. The `AnimeEntry`, `EpisodeDetailEntry`, and `CharacterEntry` Pydantic models (`src/models/anime.py`) will serve as the schema for data stored in the local MongoDB.
-  4.  **Documentation:**
+  1.  **Local Kubernetes Cluster:**
+      - Developers will use a local Kubernetes cluster for running services. Recommended tools include **Minikube**, **k3d**, or the cluster included with Docker Desktop.
+      - This ensures that applications are tested in a Kubernetes environment from the very beginning.
+  2.  **Development Tooling:**
+      - A tool like **Skaffold** will be configured to automate the development loop: it will watch for code changes, automatically rebuild container images, and redeploy them to the local Kubernetes cluster, enabling near-instant hot-reloading.
+  3.  **Local Dependencies:**
+      - A `docker-compose.local.yml` file will still be provided to run dependencies that don't need to be in the Kubernetes cluster, such as local instances of MongoDB, Qdrant, and Minio for quick data seeding and testing.
+  4.  **Data Seeding:**
+      - The `scripts/seed_local_env.py` script will be updated to populate the local Qdrant and MongoDB instances.
+  5.  **Documentation:**
       - Create a detailed `README.local.md` explaining how to:
-        - Install prerequisites (Docker).
-        - Run one command to launch the environment (`docker-compose -f docker-compose.local.yml up`).
-        - Run the data seeding script.
-        - Set up dummy AWS credentials (e.g., `AWS_ACCESS_KEY_ID=dummy`) required by the AWS SDK.
-  5.  **Deferred Tasks:**
-      - Local emulation of the `Enrichment-Step-Function` is explicitly deferred for V1. Developers will rely on a shared `dev` AWS environment for end-to-end workflow testing.
+        - Install prerequisites (Docker, kubectl, Skaffold, and a local K8s cluster tool).
+        - Run one command (`skaffold dev`) to launch the entire development environment.
+
+### Task 1.8: Implement Foundational Security Posture
+
+- **Status:** `To-Do`
+- **Goal:** To establish a multi-layered security posture with continuous monitoring, threat detection, and proactive vulnerability scanning from the start of the project.
+- **Rationale:** Integrating security from day one is critical for protecting our infrastructure, data, and application against common threats and vulnerabilities. This task ensures that security is a foundational component, not an afterthought.
+
+### Task 1.9: Define Disaster Recovery (DR) Plan
+
+- **Status:** `To-Do`
+- **Goal:** To define and document a comprehensive Disaster Recovery (DR) plan that ensures business continuity in the event of an Availability Zone (AZ) or regional failure.
+- **Rationale:** A formal DR plan is essential for a production-grade service to specify recovery objectives (RTO/RPO) and the procedures to meet them, minimizing downtime and data loss.
 
 ## Phase 2: Human-in-the-Loop Validation with Amazon A2I
 
@@ -525,7 +611,7 @@ This phase outlines the modern, two-service architecture for the user-facing API
 ### Component 1: The BFF Service (Bun/ElysiaJS + GraphQL)
 
 - **Technology:** Bun/ElysiaJS (TypeScript) and GraphQL.
-- **Deployment:** A serverless AWS Fargate container, exposed publicly via Amazon API Gateway.
+- **Deployment:** Deployed as a containerized service to the AWS EKS cluster. It will be exposed publicly via an Ingress controller (e.g., AWS Load Balancer Controller) managed by Kubernetes.
 - **Responsibilities:**
   - Acts as the single gateway for the frontend application.
   - Exposes a comprehensive GraphQL schema for all frontend data requirements.
@@ -538,9 +624,9 @@ This phase outlines the modern, two-service architecture for the user-facing API
 ### Component 2: The Agent Service (Python)
 
 - **Technology:** Python, using frameworks like `atomic-agents` to orchestrate LLM interactions.
-- **Deployment:** A serverless AWS Fargate container. This service is **internal-only** and is not exposed to the public internet. It will be placed behind an internal Application Load Balancer, allowing the BFF to communicate with it securely and with low latency.
+- **Deployment:** Deployed as a containerized service to the AWS EKS cluster. This service is **internal-only** and will be exposed within the cluster using a Kubernetes **ClusterIP service**. The BFF will communicate with the Agent service directly via its internal Kubernetes DNS name (e.g., `agent-service.namespace.svc.cluster.local`) and port, leveraging Kubernetes' built-in service discovery and load balancing for secure and low-latency gRPC communication.
 - **Responsibilities:**
-  - Exposes a simple, internal REST or gRPC endpoint to receive natural language queries from the BFF.
+  - Exposes a simple, internal gRPC endpoint to receive natural language queries from the BFF.
   - Uses an LLM (e.g., from Amazon Bedrock) to parse the natural language query into a structured search request. This includes generating the appropriate `embedding_text` and structured `filters`.
   - Uses the `QdrantClient` to execute a complex, multi-vector search against the Qdrant database using the parameters provided by the LLM.
   - Returns a ranked list of anime IDs to the BFF.
@@ -548,7 +634,7 @@ This phase outlines the modern, two-service architecture for the user-facing API
 ### High-Level Request Flow (Natural Language Search)
 
 1.  **Frontend -> BFF:** Sends a GraphQL query containing the user's search string.
-2.  **BFF -> Agent Service:** Makes an internal API call, passing the raw search string.
+2.  **BFF -> Agent Service:** Makes an internal gRPC call, passing the raw search string.
 3.  **Agent Service -> LLM (Bedrock):** Asks the LLM to convert the string into structured search parameters.
 4.  **Agent Service -> Qdrant:** Executes the search and gets a list of anime IDs.
 5.  **Agent Service -> BFF:** Returns the list of IDs.
@@ -582,9 +668,9 @@ Therefore, while we interact with three major data/AI components (MongoDB, Qdran
 |                                                                                                                                       |
 |  +-----------------------------------------------------------------------------------------------------------------------------------+  |
 |  |                                                                                                                                   |  |
-|  |  +---------------------------------+      (Internal API Call)      +----------------------------------+       (API Call)       +------------------+
-|  |  |      BFF SERVICE (Fargate)      +-----------------------------> |    AGENT SERVICE (Fargate)       +----------------------> |  LLM API         |
-|  |  | (Bun/ElysiaJS - GraphQL API)    |                               | (Python - Internal REST/gRPC API)|                        | (OpenAI/Anthropic) |
+|  |  +---------------------------------+      (Internal gRPC Call)     +----------------------------------+       (API Call)       +------------------+
+|  |  |      BFF SERVICE (EKS)          +-----------------------------> |    AGENT SERVICE (EKS)           +----------------------> |  LLM API         |
+|  |  | (Bun/ElysiaJS - GraphQL API)    |                               | (Python - Internal gRPC API)     |                        | (OpenAI/Anthropic) |
 |  |  +-----------------+---------------+                               +----------------+-----------------+                        +------------------+
 |  |                    |                                                                |
 |  | (DB Query)         |                                                                | (Vector Search/Upsert)
@@ -635,7 +721,7 @@ graph TD
     end
 
     subgraph "AWS Cloud"
-        subgraph "Real-time Services (AWS Fargate)"
+        subgraph "Real-time Services (AWS EKS)"
             BFF["BFF Service (Bun/ElysiaJS)"]
             Agent["Agent Service (Python)"]
         end
@@ -652,7 +738,7 @@ graph TD
         %% Real-time Request Flow
         Client -- HTTPS Request --> BFF
         BFF -- "GraphQL Query" --> MongoDB
-        BFF -- "Internal API Call (Search/AI)" --> Agent
+        BFF -- "Internal gRPC Call (Search/AI)" --> Agent
         Agent -- "Vector Search/Upsert" --> QdrantDB
         Agent -- "AI Task (e.g., Summarization)" --> LLM_API
 
@@ -669,3 +755,15 @@ graph TD
 
     style BFF fill:#f9f,stroke:#333,stroke-width:2px
     style Agent fill:#ccf,stroke:#333,stroke-width:2px
+
+## Phase 6: Future Considerations - User Data & Compliance
+
+The V1 implementation of this service only processes public, non-personal anime metadata. This section outlines the technical requirements that must be addressed if future features introduce Personally Identifiable Information (PII), such as user accounts (e.g., via MAL/AniDB logins) or personal watch lists.
+
+- **Data Lifecycle & Erasure:** When features involving user data are added, a mechanism to permanently delete all data associated with a specific user upon their request (the "Right to Erasure") must be implemented. This process is distinct from the "orphaning" of general anime metadata.
+
+- **Data Access & Portability:** The GraphQL API must be extended to allow an authenticated user to access and export all of their personal data in a machine-readable format.
+
+- **Data Residency:** When user data is stored, the geographic region for all relevant data stores (e.g., MongoDB Atlas) must be explicitly chosen and documented to comply with data residency laws.
+
+- **Consent Management:** A system for obtaining, recording, and managing user consent for data processing will be a prerequisite for any feature that collects PII.
