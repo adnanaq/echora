@@ -1168,7 +1168,7 @@ class TestTypeErrorCoverage:
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
             MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)  # Critical: return None!
             
-            with pytest.raises(TypeError, match="Unexpected result type.*expected CrawlResult"):
+            with pytest.raises(TypeError, match=r"Unexpected result type.*expected CrawlResult"):
                 await fetch_anisearch_anime("https://www.anisearch.com/anime/test_type_error")
 
 

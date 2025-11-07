@@ -74,12 +74,9 @@ class TestRateLimiting:
         fetcher = JikanDetailedFetcher("123", "episodes", session=MagicMock())
         fetcher.request_count = 1
 
-        start = time.time()
-        await fetcher.respect_rate_limits()
-        elapsed = time.time() - start
-
-        # Should wait ~0.5s
-        assert 0.4 < elapsed < 0.6
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await fetcher.respect_rate_limits()
+            mock_sleep.assert_awaited_once_with(0.5)
 
     @pytest.mark.asyncio
     async def test_respect_rate_limits_minute_reset(self):
@@ -101,13 +98,14 @@ class TestRateLimiting:
         fetcher.request_count = 60
         fetcher.start_time = time.time() - 30  # 30 seconds ago
 
-        start = time.time()
-        await fetcher.respect_rate_limits()
-        elapsed = time.time() - start
-
-        # Should wait remaining time in minute (~30s)
-        assert elapsed > 29
-        assert fetcher.request_count == 0  # Reset after waiting
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await fetcher.respect_rate_limits()
+            # Should wait remaining time in minute (~30s)
+            mock_sleep.assert_awaited_once()
+            # Get the actual wait time argument
+            wait_time = mock_sleep.await_args[0][0]
+            assert 29 < wait_time <= 31  # Allow small timing variance
+            assert fetcher.request_count == 0  # Reset after waiting
 
 
 class TestFetchEpisodeDetail:
@@ -862,28 +860,25 @@ class TestEdgeCasesAndBoundaries:
         fetcher.request_count = 59
         fetcher.start_time = time.time()
 
-        # Should not wait yet
-        start = time.time()
-        await fetcher.respect_rate_limits()
-        elapsed = time.time() - start
-
-        assert elapsed < 1  # Should be fast, only 0.5s wait
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await fetcher.respect_rate_limits()
+            # Should wait 0.5s (not hitting 60 limit yet)
+            mock_sleep.assert_awaited_once_with(0.5)
 
     @pytest.mark.asyncio
     async def test_rate_limit_concurrent_requests(self):
         """Test rate limiting with rapid concurrent requests."""
         fetcher = JikanDetailedFetcher("21", "episodes", session=MagicMock())
 
-        # Simulate rapid requests
-        start = time.time()
-        for i in range(5):
-            fetcher.request_count = i
-            await fetcher.respect_rate_limits()
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            # Simulate rapid requests
+            for i in range(5):
+                fetcher.request_count = i
+                await fetcher.respect_rate_limits()
 
-        elapsed = time.time() - start
-
-        # Should take at least 2 seconds (4 * 0.5s waits, first doesn't wait)
-        assert elapsed >= 2.0
+            # First call doesn't sleep (request_count=0), next 4 do
+            assert mock_sleep.await_count == 4
+            mock_sleep.assert_awaited_with(0.5)
 
     @pytest.mark.asyncio
     async def test_fetch_episode_json_decode_error(self):

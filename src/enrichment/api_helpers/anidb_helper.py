@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -861,14 +862,14 @@ async def main() -> int:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
             return 0
         else:
-            logger.error(f"No data found")
+            logger.error("No data found")
             return 1
 
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
         return 1
-    except Exception as e:
-        logger.error(f"Main execution failed: {e}")
+    except Exception:
+        logger.exception("Main execution failed")
         return 1
     finally:
         await helper.close()

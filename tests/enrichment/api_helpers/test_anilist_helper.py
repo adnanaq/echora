@@ -334,7 +334,7 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await helper._make_request("query { test }")
 
             # Should wait 60 seconds
@@ -374,7 +374,7 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await helper._make_request("query { test }")
 
             # Should wait for Retry-After value
@@ -413,7 +413,7 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await helper._make_request("query { test }")
 
             # Should use default 60 seconds
@@ -654,7 +654,7 @@ class TestAniListEnrichmentHelperPagination:
 
         helper._make_request = AsyncMock(side_effect=[response_page1, response_page2])
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await helper._fetch_paginated_data(21, "query", "characters")
 
             assert len(result) == 2
@@ -951,7 +951,7 @@ class TestAniListEnrichmentHelperEdgeCases:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await helper._make_request("query { test }")
 
             # Should NOT wait at exactly 5 (threshold is < 5)
@@ -978,7 +978,7 @@ class TestAniListEnrichmentHelperEdgeCases:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await helper._make_request("query { test }")
 
             # Should wait at 4
@@ -1209,7 +1209,7 @@ class TestAniListEnrichmentHelperEdgeCases:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with patch("asyncio.sleep") as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             await helper._make_request("query { test }")
 
             # Should wait exactly the Retry-After value
