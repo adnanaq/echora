@@ -130,18 +130,21 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### ✅ IMPLEMENTATION COMPLETE - Key Achievements
 
 **🚀 Vector Quantization (2.5.3) - FULLY IMPLEMENTED**
+
 - **All 3 quantization types**: Binary (40x speedup), Scalar (memory optimization), Product (16x compression)
 - **Priority-based optimization**: High/Medium/Low vector classifications with adaptive settings
 - **Production configuration**: Complete environment variable support and validation
 - **Evidence**: `src/config/settings.py:193-230`, `src/vector/client/qdrant_client.py:276-357`
 
 **⚡ HNSW Parameter Optimization (2.5.4) - FULLY IMPLEMENTED**
+
 - **Anime-specific tuning**: Optimized ef_construct (128-256), m (32-64) values for anime similarity patterns
 - **Priority-based HNSW**: Different parameters per vector importance (high/medium/low)
 - **13-vector support**: Individual optimization for all text and image vectors
 - **Evidence**: `src/config/settings.py:213-230`, `src/vector/client/qdrant_client.py:293-305`
 
 **💡 Advanced Architecture Features**
+
 - **Vector Priority System**: Semantic importance classification (title, character, genre = high priority)
 - **Adaptive Configuration**: Each vector gets optimized parameters based on search patterns
 - **Performance Targets**: 75% memory reduction (15GB → 4GB), 40x speedup potential achieved
@@ -175,6 +178,26 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Projected 75% memory reduction with optimization
 
 #### ✅ Implementation Phase: 14-Vector Collection (✅ COMPLETE)
+
+**Sub-Phase 2.5.0: Unique ID Strategy & Core Data Model Enhancements** (Rollback-Safe: data model definition) - [ ] COMPLETED
+
+- [ ] **2.5.0a: Define Global Unique ID Strategy** (Est: 2 hours)
+  - [ ] Adopt ULID with prefixes for all primary identifiers:
+    - `anime_id`: `ani_<ULID>` (e.g., `ani_01H8X3Z2Y4QWERTY1234567890`)
+    - `episode_id`: `ep_<ULID>` (e.g., `ep_01H8X5F9TJVW0YQZJ6X9R7C8A0`)
+    - `character_id`: `char_<ULID>` (e.g., `char_01H8X5E7SJVW0YQZJ6X9R7C8A0`)
+  - [ ] Document rationale: global uniqueness, time-sortability, human-readability (with prefix).
+  - [ ] Ensure `AnimeEntry.id` is consistently generated as `ani_ULID`.
+
+- [ ] **2.5.0b: Enhance `EpisodeDetailEntry` for Relationships** (Est: 1 hour)
+  - [ ] Add `anime_id: str` field to `EpisodeDetailEntry` Pydantic model.
+  - [ ] Document purpose: foreign key for linking episode to parent anime, enabling future separate episode collection and efficient queries/filtering.
+  - [ ] Plan for `anime_id` to be included in Qdrant payload for episode points (when `Sub-Phase 3.9` is implemented).
+
+- [ ] **2.5.0c: Enhance `CharacterEntry` for Relationships** (Est: 1 hour)
+  - [ ] Add `anime_ids: List[str]` field to `CharacterEntry` Pydantic model.
+  - [ ] Document purpose: model many-to-many relationship (character appearing in multiple anime), enabling future separate character collection and efficient queries/filtering.
+  - [ ] Plan for `anime_ids` to be included in Qdrant payload for character points (when separate character collection is implemented).
 
 **Sub-Phase 2.5.1: Collection Configuration Foundation** (Rollback-Safe: settings only) - ✅ COMPLETED
 
@@ -236,7 +259,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 8. `related_vector` - **related_anime, relations** (franchise connections with URLs)
 9. `franchise_vector` - **trailers, opening_themes, ending_themes** (multimedia content)
 10. `episode_vector` - **episode_details** (detailed episode information, filler/recap status)
-**Visual Vectors (JinaCLIP v2, 1024-dim each):** 12. `image_vector` - **General anime visual content** from **images** dict (covers, posters, banners, trailer thumbnails)
+    **Visual Vectors (JinaCLIP v2, 1024-dim each):** 12. `image_vector` - **General anime visual content** from **images** dict (covers, posters, banners, trailer thumbnails)
 
 - **Process**: Download general image URLs → embed visual content → average duplicates → store embeddings
 - **Use Cases**: Art style matching, cover aesthetics, promotional material similarity
@@ -387,81 +410,81 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 **Priority**: Validate that default BGE-M3 vector system is working correctly across all 14 vectors before further optimization.
 
-- [ ] **3.1.1a: Per-Vector Search Quality Testing** (Est: 2 hours) - CURRENT TASK
+- [ ] **3.1.1: Per-Vector Search Quality Testing** (Est: 2 hours) - CURRENT TASK
   - [ ] Test each of 14 vectors individually with domain-specific queries
   - [ ] Validate title_vector: "Studio Ghibli" → Ghibli films in top results
   - [ ] Validate character_vector: "ninja characters" → anime with ninja characters
   - [ ] Validate genre_vector: "shounen action" → shounen action anime (standard BGE-M3)
   - [ ] Test all 12 text vectors + 2 image vectors with representative queries
 
-- [ ] **3.1.1b: Multi-Vector Fusion Validation** (Est: 2 hours)
+- [ ] **3.1.2: Multi-Vector Fusion Validation** (Est: 2 hours)
   - [ ] Test search_complete() with complex multi-vector queries
   - [ ] Validate RRF fusion improves results vs single vectors
   - [ ] Test search_text_comprehensive() (12 text vectors)
   - [ ] Test search_visual_comprehensive() (2 image vectors)
   - [ ] Verify vector selection logic and weighting effectiveness
 
-### ✅ Phase 3.0: Genre Enhancement Implementation - COMPLETED BUT POSTPONED (100% Infrastructure)
+#### ✅ **Sub-Phase 3.2: Genre Enhancement Implementation** - COMPLETED BUT POSTPONED (100% Infrastructure)
 
 **Problem Context**: Genre vector search shows 60% precision vs 90%+ industry standard. BGE-M3 creates false positives from theme descriptions ("Drama is more serious than humorous" triggers comedy) and semantic drift (entertainment clustering with comedy).
 
 **Solution**: Domain-specific fine-tuning using LoRA and advanced training strategies with enriched JSON database as ground truth.
 
-#### ✅ **Sub-Phase 3.0.1: Training Infrastructure Setup** - COMPLETED (6 hours)
+**Sub-Phase 3.2.1: Training Infrastructure Setup** - COMPLETED (6 hours)
 
-- [x] **3.0.1a: CLI Training Script Entry Point** - COMPLETED
+- [x] **3.2.1a: CLI Training Script Entry Point** - COMPLETED
   - [x] ✅ Created `train_genre_enhancement.py` main entry point (367 lines)
   - [x] ✅ Integrated with existing `src/vector/enhancement/anime_fine_tuning.py`
   - [x] ✅ Added comprehensive command-line argument parsing for advanced training
   - [x] ✅ Tested CLI script integration with UV environment successfully
 
-- [x] **3.0.1b: Data Pipeline Validation** - COMPLETED
+- [x] **3.2.1b: Data Pipeline Validation** - COMPLETED
   - [x] ✅ Verified `data/qdrant_storage/enriched_anime_database.json` compatibility with `AnimeDataset`
   - [x] ✅ Validated data structure parsing (28 anime with genres, tags, themes as dictionaries)
   - [x] ✅ Implemented ground truth extraction for genre classification
   - [x] ✅ Tested data preprocessing pipeline integration successfully
 
-- [x] **3.0.1c: Training Configuration Setup** - COMPLETED
+- [x] **3.2.1c: Training Configuration Setup** - COMPLETED
   - [x] ✅ Configured LoRA fine-tuning parameters (r=8, alpha=32, dropout=0.1)
   - [x] ✅ Set up multi-task learning targets (genres focused, other tasks disabled)
   - [x] ✅ Tested training loop initialization and GPU/CPU detection
   - [x] ✅ Validated model loading and enhancement architecture integration
 
-#### ✅ **Sub-Phase 3.0.2: Advanced Training Strategies Implementation** - COMPLETED (12 hours)
+**Sub-Phase 3.2.2: Advanced Training Strategies Implementation** - COMPLETED (12 hours)
 
-- [x] **3.0.2a: Contrastive Learning Implementation** - COMPLETED
+- [x] **3.2.2a: Contrastive Learning Implementation** - COMPLETED
   - [x] ✅ Implemented InfoNCE loss for genre embedding separation (303 LOC)
   - [x] ✅ Added triplet loss and supervised contrastive learning
   - [x] ✅ Created genre-specific positive/negative sampling strategies
   - [x] ✅ Integrated contrastive learning into training pipeline
 
-- [x] **3.0.2b: Data Augmentation Framework** - COMPLETED
+- [x] **3.2.2b: Data Augmentation Framework** - COMPLETED
   - [x] ✅ Implemented comprehensive data augmentation (341 LOC)
   - [x] ✅ Added genre-specific synonyms and semantic transformations
   - [x] ✅ Created hard negative mining to reduce false positives
   - [x] ✅ Added negative sampling patterns to prevent semantic drift
 
-- [x] **3.0.2c: Advanced Training Configuration** - COMPLETED
+- [x] **3.2.2c: Advanced Training Configuration** - COMPLETED
   - [x] ✅ Increased training epochs to 15 for 90%+ accuracy target
   - [x] ✅ Optimized learning rate to 5e-5 for stable convergence
   - [x] ✅ Added early stopping and learning rate scheduling
   - [x] ✅ Implemented comprehensive training metrics and validation
 
-#### ✅ **Sub-Phase 3.0.3: Training Execution and Validation** - COMPLETED (8 hours)
+**Sub-Phase 3.2.3: Training Execution and Validation** - COMPLETED (8 hours)
 
-- [x] **3.0.3a: Model Training Execution** - COMPLETED
+- [x] **3.2.3a: Model Training Execution** - COMPLETED
   - [x] ✅ Executed LoRA fine-tuning with advanced training strategies
   - [x] ✅ Achieved loss reduction from 1.7586 → 0.9943
   - [x] ✅ Generated working trained model (37MB) in `models/genre_enhanced/`
   - [x] ✅ Validated training stability and convergence
 
-- [x] **3.0.3b: Performance Validation** - COMPLETED
+- [x] **3.2.3b: Performance Validation** - COMPLETED
   - [x] ✅ Validated against semantic genre validation framework
   - [x] ✅ Achieved 50.7% F1-score with 77.8% comedy precision improvement
   - [x] ✅ Compared enhanced vs baseline BGE-M3 performance
   - [x] ✅ Documented model size (+37MB) and inference integration
 
-- [x] **3.0.3c: Integration Implementation** - COMPLETED
+- [x] **3.2.3c: Integration Implementation** - COMPLETED
   - [x] ✅ Integrated fine-tuned model with `TextProcessor`
   - [x] ✅ Updated genre vector generation in embedding pipeline
   - [x] ✅ Tested enhanced embeddings with existing 13-vector architecture
@@ -470,6 +493,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### 🔍 **CRITICAL DISCOVERY: Data Scarcity Issue**
 
 **⚠️ POSTPONEMENT REASON**: Training data insufficient by 2-3 orders of magnitude:
+
 - **Current Data**: 28 anime entries total for 11+ genre classes
 - **Required for 90%**: 500-1,000 anime entries per genre class (5,500-11,000 total)
 - **Achievement**: 50.7% F1-score vs 90%+ target due to fundamental data limitation
@@ -477,12 +501,14 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 #### 📊 **Final Implementation Status**
 
 **✅ Infrastructure Completed (4,200+ Lines of Code):**
+
 - **Training Infrastructure**: Complete CLI, contrastive learning, data augmentation
 - **Advanced Strategies**: InfoNCE, triplet loss, hard negative mining, early stopping
 - **Integration**: TextProcessor integration, A/B testing framework ready
 - **Validation**: Comprehensive performance measurement and comparison tools
 
 **📋 Performance Results:**
+
 - **F1-Score Achieved**: 50.7% (vs 90%+ target)
 - **Comedy Precision**: 77.8% improvement in specific genre accuracy
 - **Training Time**: ~2 hours for 15 epochs on CPU
@@ -491,280 +517,268 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 **🎯 Status**: **POSTPONED** - Infrastructure complete, awaiting sufficient training data (1000+ anime entries)
 
-#### 🔄 **Sub-Phase 3.2: Advanced Validation Framework** - PLANNED (Post-14-Vector Validation)
+#### 🔄 **Sub-Phase 3.3: Advanced Validation Framework** - PLANNED (Post-14-Vector Validation)
 
 **Rationale**: Expand validation framework after completing basic 13-vector system validation.
 
-**Sub-Phase 3.0.2: Generic ML Validation Framework** (Est: 4 hours) - FOUNDATION
+**Sub-Phase 3.3.1: Generic ML Validation Framework** (Est: 4 hours) - FOUNDATION
 
-- [ ] **3.0.2a: SearchQualityValidator Implementation** (Est: 2 hours)
+- [ ] **3.3.1a: SearchQualityValidator Implementation** (Est: 2 hours)
   - [ ] Implement Precision@K, Recall@K, NDCG, MRR metrics
   - [ ] Create anime domain gold standard dataset (500 expert-curated queries)
   - [ ] Add hard negative sampling for genre confusion detection
   - [ ] Integration with existing search methods for automated testing
 
-- [ ] **3.0.2b: ABTestingFramework Implementation** (Est: 2 hours)
+- [ ] **3.3.1b: ABTestingFramework Implementation** (Est: 2 hours)
   - [ ] Implement statistical significance testing for algorithm comparisons
   - [ ] Create user simulation models (cascade/dependent click)
   - [ ] Add performance vs quality trade-off analysis
   - [ ] Build framework for continuous A/B testing of search improvements
 
-#### **Sub-Phase 3.1: Production Quality Monitoring** (Rollback-Safe: monitoring only)
+#### **Sub-Phase 3.4: Production Quality Monitoring** (Rollback-Safe: monitoring only)
 
-**Sub-Phase 3.0.1: Data Quality Assurance Framework** (Est: 6 hours)
+**Sub-Phase 3.4.1: Data Quality Assurance Framework** (Est: 6 hours)
 
-- [ ] **3.0.1a: AnimeEntry Schema Validation** (Est: 2 hours)
+- [ ] **3.4.1a: AnimeEntry Schema Validation** (Est: 2 hours)
   - [ ] Implement comprehensive validation for all 65+ AnimeEntry fields
   - [ ] Add data completeness scoring (required vs optional fields)
   - [ ] Create data quality metrics dashboard (missing fields, invalid formats)
   - [ ] Set up automated data quality regression testing
 
-- [ ] **3.0.1b: Data Consistency Validation** (Est: 2 hours)
+- [ ] **3.4.1b: Data Consistency Validation** (Est: 2 hours)
   - [ ] Validate cross-field consistency (episode count vs status, year vs release date)
   - [ ] Check data relationship integrity (character images exist for character entries)
   - [ ] Implement duplicate detection across different data sources
   - [ ] Create data lineage tracking for enrichment pipeline sources
 
-- [ ] **3.0.1c: ETL Pipeline Health Monitoring** (Est: 2 hours)
+- [ ] **3.4.1c: ETL Pipeline Health Monitoring** (Est: 2 hours)
   - [ ] Add monitoring for enrichment pipeline data flow (6 APIs + AI stages)
   - [ ] Implement data freshness tracking and stale data alerts
   - [ ] Create ETL failure recovery and retry mechanisms
   - [ ] Set up data volume and processing rate monitoring
 
-#### **Sub-Phase 3.1: Embedding Quality Validation** (Rollback-Safe: monitoring only)
+#### **Sub-Phase 3.5: Embedding Quality Validation** (Rollback-Safe: monitoring only)
 
-**Sub-Phase 3.1.1: Model Drift Detection Framework** (Est: 6 hours)
+**Sub-Phase 3.5.1: Model Drift Detection Framework** (Est: 6 hours)
 
-- [ ] **3.1.1a: Historical Metrics Storage** (Est: 2 hours)
+- [ ] **3.5.1a: Historical Metrics Storage** (Est: 2 hours)
   - [ ] Implement rolling window storage for embedding quality metrics
   - [ ] Create alert band configuration (excellent/good/warning/critical)
   - [ ] Add trend analysis for 7-day and 30-day windows
   - [ ] Test with synthetic data drift scenarios
 
-- [ ] **3.1.1b: Distribution Shift Detection** (Est: 2 hours)
+- [ ] **3.5.1b: Distribution Shift Detection** (Est: 2 hours)
   - [ ] Implement Wasserstein distance calculation for embedding drift
   - [ ] Add dimension-wise drift analysis for BGE-M3 (1024-dim)
   - [ ] Configure drift thresholds (>10% dimensions = alert)
   - [ ] Create drift visualization dashboard
 
-- [ ] **3.1.1c: Semantic Coherence Monitoring** (Est: 2 hours)
+- [ ] **3.5.1c: Semantic Coherence Monitoring** (Est: 2 hours)
   - [ ] Implement genre clustering purity measurement
   - [ ] Add studio visual consistency validation
   - [ ] Create temporal consistency checks for sequels/franchises
   - [ ] Add character archetype clustering validation
 
-- [ ] **3.1.1d: Anime-Specific Validation Patterns** (Est: 2 hours)
+- [ ] **3.5.1d: Anime-Specific Validation Patterns** (Est: 2 hours)
   - [ ] Validate sequel/prequel semantic similarity (Attack on Titan → Attack on Titan: Final Season)
   - [ ] Check franchise consistency (One Piece episodes should cluster together)
   - [ ] Implement character consistency across series (Naruto → Naruto Shippuden)
   - [ ] Add studio style consistency validation (Studio Ghibli films should show visual similarity)
 
-**Sub-Phase 3.1.2: Embedding Space Analysis** (Est: 4 hours)
+**Sub-Phase 3.5.2: Embedding Space Analysis** (Est: 4 hours)
 
-- [ ] **3.1.2a: Vector Space Visualization** (Est: 2 hours)
+- [ ] **3.5.2a: Vector Space Visualization** (Est: 2 hours)
   - [ ] Implement t-SNE/UMAP dimensionality reduction
   - [ ] Create interactive embedding space plots with metadata
   - [ ] Add cluster analysis for semantic categories
   - [ ] Generate embedding quality reports
 
-- [ ] **3.1.2b: Cross-Modal Consistency Testing** (Est: 2 hours)
+- [ ] **3.5.2b: Cross-Modal Consistency Testing** (Est: 2 hours)
   - [ ] Implement contrastive validation (same anime text vs image)
   - [ ] Add statistical significance testing (Mann-Whitney U)
   - [ ] Create positive/negative similarity distribution analysis
   - [ ] Set up automated consistency monitoring
 
-- [ ] **3.1.2c: Character vs General Image Vector Validation** (Est: 2 hours)
+- [ ] **3.5.2c: Character vs General Image Vector Validation** (Est: 2 hours)
   - [ ] Validate character_image_vector vs image_vector separation logic
   - [ ] Test character image clustering vs general image clustering
   - [ ] Implement cross-validation for character identification accuracy
   - [ ] Add character-specific visual consistency checks
 
-#### **Sub-Phase 3.2: Search Quality Validation** (Rollback-Safe: validation only)
+#### **Sub-Phase 3.6: Search Quality Validation** (Rollback-Safe: validation only)
 
-**Sub-Phase 3.2.1: Gold Standard Dataset Creation** (Est: 8 hours)
+**Sub-Phase 3.6.1: Gold Standard Dataset Creation** (Est: 8 hours)
 
-- [ ] **3.2.1a: Expert-Curated Test Cases** (Est: 4 hours)
+- [ ] **3.6.1a: Expert-Curated Test Cases** (Est: 4 hours)
   - [ ] Create 500 human-validated query-result pairs
   - [ ] Design test cases for shounen, shoujo, seinen, josei categories
   - [ ] Add studio style, character archetype, and temporal queries
   - [ ] Include edge cases and ambiguous queries
 
-- [ ] **3.2.1b: Hard Negative Sampling** (Est: 2 hours)
+- [ ] **3.6.1b: Hard Negative Sampling** (Est: 2 hours)
   - [ ] Create genre confusion test cases (romance vs action)
   - [ ] Add temporal confusion negatives (modern vs classic)
   - [ ] Design demographic confusion tests (shounen vs shoujo)
   - [ ] Implement negative validation pipeline
 
-- [ ] **3.2.1c: Automated Metrics Pipeline** (Est: 2 hours)
+- [ ] **3.6.1c: Automated Metrics Pipeline** (Est: 2 hours)
   - [ ] Implement Precision@K, Recall@K, NDCG calculations
   - [ ] Add Mean Reciprocal Rank (MRR) for specific anime queries
   - [ ] Create semantic consistency measurement
   - [ ] Set up automated quality regression testing
 
-**Sub-Phase 3.2.2: Hybrid A/B Testing Framework** (Est: 8 hours)
+**Sub-Phase 3.6.2: Hybrid A/B Testing Framework** (Est: 8 hours)
 
-- [ ] **3.2.2a: API-Level Real Data Collection** (Est: 3 hours)
+- [ ] **3.6.2a: API-Level Real Data Collection** (Est: 3 hours)
   - [ ] Implement search query logging with anonymized request patterns
   - [ ] Add API endpoint usage analytics (which endpoints, response times)
   - [ ] Create query result position analysis (which results in top-K get requested)
   - [ ] Set up optional feedback endpoints for future frontend integration
 
-- [ ] **3.2.2b: Simulation Models Calibrated from API Data** (Est: 3 hours)
+- [ ] **3.6.2b: Simulation Models Calibrated from API Data** (Est: 3 hours)
   - [ ] Implement Cascade Click Model using query→result request patterns
   - [ ] Add Dependent Click Model calibrated from API response patterns
   - [ ] Create hybrid validation: API patterns (real) + click simulation (synthetic)
   - [ ] Build relevance inference from query repetition and result selection
 
-- [ ] **3.2.2c: Backend A/B Testing Infrastructure** (Est: 2 hours)
+- [ ] **3.6.2c: Backend A/B Testing Infrastructure** (Est: 2 hours)
   - [ ] Create search algorithm comparison using query logs
   - [ ] Implement statistical significance testing on API performance metrics
   - [ ] Add experiment framework for different fusion weights/algorithms
   - [ ] Create analysis dashboard comparing algorithm effectiveness
 
-- [ ] **3.2.2b: Search Algorithm Comparison** (Est: 3 hours)
+- [ ] **3.6.2d: Search Algorithm Comparison** (Est: 3 hours)
   - [ ] Create A/B testing infrastructure for search configs
   - [ ] Implement statistical significance testing
   - [ ] Add user engagement metrics tracking (CTR, satisfaction)
   - [ ] Create experiment result analysis dashboard
 
-#### **Sub-Phase 3.3: Scalable Validation Strategy** (Rollback-Safe: sampling framework)
+#### **Sub-Phase 3.7: Scalable Validation Strategy** (Rollback-Safe: sampling framework)
 
-**Sub-Phase 3.3.1: Intelligent Sampling Framework** (Est: 4 hours)
+**Sub-Phase 3.7.1: Intelligent Sampling Framework** (Est: 4 hours)
 
-- [ ] **3.3.1a: Stratified Sampling Implementation** (Est: 2 hours)
+- [ ] **3.7.1a: Stratified Sampling Implementation** (Est: 2 hours)
   - [ ] Create sampling strategy for 50K+ anime collections
   - [ ] Implement stratification by genre, year, popularity, studio
   - [ ] Add proportional sampling within each stratum
   - [ ] Test sampling representativeness
 
-- [ ] **3.3.1b: Temporal Validation Framework** (Est: 2 hours)
+- [ ] **3.7.1b: Temporal Validation Framework** (Est: 2 hours)
   - [ ] Implement time-period specific validation
   - [ ] Add temporal bias detection (recency bias)
   - [ ] Create historical consistency validation
   - [ ] Set up longitudinal quality tracking
 
-#### **Sub-Phase 3.4: Comprehensive Testing Framework** (Rollback-Safe: testing infrastructure)
+#### **Sub-Phase 3.8: Comprehensive Testing Framework** (Rollback-Safe: testing infrastructure)
 
-**Sub-Phase 3.4.1: Test Suite Enhancement** (Est: 10 hours)
+**Sub-Phase 3.8.1: Test Suite Enhancement** (Est: 10 hours)
 
-- [ ] **3.4.1a: Unit and Integration Testing** (Est: 4 hours)
+- [ ] **3.8.1a: Unit and Integration Testing** (Est: 4 hours)
   - [ ] Expand test coverage for all vector processing modules (target: >95%)
   - [ ] Add integration tests for multi-vector search combinations
   - [ ] Create property-based testing for embedding consistency
   - [ ] Implement regression tests for API contract maintenance
 
-- [ ] **3.4.1b: Performance and Load Testing** (Est: 3 hours)
+- [ ] **3.8.1b: Performance and Load Testing** (Est: 3 hours)
   - [ ] Create automated performance benchmarking suite
   - [ ] Implement load testing for concurrent search requests (50+ RPS)
   - [ ] Add memory usage and leak detection testing
   - [ ] Create stress testing for large batch operations
 
-- [ ] **3.4.1d: Quantization Performance Validation** (Est: 2 hours)
+- [ ] **3.8.1c: Quantization Performance Validation** (Est: 2 hours)
   - [ ] Benchmark 40x speedup potential with product quantization
   - [ ] Validate 75% memory reduction target (15GB → 4GB for 30K anime)
   - [ ] Test scalar vs binary vs product quantization trade-offs
   - [ ] Measure query latency impact of different quantization strategies
 
-- [ ] **3.4.1c: End-to-End and Production Testing** (Est: 3 hours)
+- [ ] **3.8.1d: End-to-End and Production Testing** (Est: 3 hours)
   - [ ] Implement full pipeline testing (enrichment → vectorization → search)
   - [ ] Add chaos engineering tests for service resilience
   - [ ] Create data corruption and recovery testing
   - [ ] Set up production smoke tests and health validation
 
-### 📋 Phase 3.5: Episode Collection Architecture - PLANNED (Dual-Collection Strategy)
+#### **Sub-Phase 3.9: Episode Collection Architecture - PLANNED (Dual-Collection Strategy)**
 
 **Architecture Decision**: Implement separate episode collection alongside existing anime collection for granular episode search.
 **Design Pattern**: Option 2 - Separate episode collection with slug-based ID linking and hierarchical chunking.
 
-#### **Sub-Phase 3.5.1: Episode Collection Design and Implementation** (Rollback-Safe: independent collection)
+**Sub-Phase 3.9.1: Episode Collection Design and Implementation** (Rollback-Safe: independent collection)
 
-**Sub-Phase 3.5.1a: Episode Collection Schema Design** (Est: 4 hours)
+- **3.9.1.1: Episode Collection Schema Design** (Est: 4 hours)
+  - [ ] **3.9.1.1a: Collection Architecture Planning** (Est: 2 hours)
+    - [ ] Design episode collection schema with slug-based ID system
+    - [ ] Create episode-specific vector configuration (BGE-M3 1024-dim content vector)
+    - [ ] Plan anime-episode linking strategy using anime_id references
+    - [ ] Validate collection independence and zero-risk to existing anime data
+  - [ ] **3.9.1.1b: Episode Content Processing Strategy** (Est: 2 hours)
+    - [ ] Design episode semantic content extraction (number + title + synopsis)
+    - [ ] Implement hierarchical chunking with equal averaging for anime collection
+    - [ ] Create individual episode embedding generation for episode collection
+    - [ ] Plan episode-specific metadata payload optimization
 
-- [ ] **3.5.1a.1: Collection Architecture Planning** (Est: 2 hours)
-  - [ ] Design episode collection schema with slug-based ID system
-  - [ ] Create episode-specific vector configuration (BGE-M3 1024-dim content vector)
-  - [ ] Plan anime-episode linking strategy using anime_id references
-  - [ ] Validate collection independence and zero-risk to existing anime data
+- **3.9.1.2: Episode Processing Pipeline** (Est: 6 hours)
+  - [ ] **3.9.1.2a: Episode Content Enhancement** (Est: 3 hours)
+    - [ ] Enhance \_extract_episode_content() with improved semantic meaning
+    - [ ] Implement comprehensive episode text generation (number + title + synopsis)
+    - [ ] Add episode type flags (filler, recap) for semantic context
+    - [ ] Skip generic title patterns while preserving meaningful titles
+  - [ ] **3.9.1.2b: Dual-Level Episode Processing** (Est: 3 hours)
+    - [ ] Create anime-level episode chunking with 512-token groups
+    - [ ] Implement equal averaging (not weighted) for anime collection episode_vector
+    - [ ] Create individual episode embedding generation for episode collection
+    - [ ] Add episode collection validation and testing framework
 
-- [ ] **3.5.1a.2: Episode Content Processing Strategy** (Est: 2 hours)
-  - [ ] Design episode semantic content extraction (number + title + synopsis)
-  - [ ] Implement hierarchical chunking with equal averaging for anime collection
-  - [ ] Create individual episode embedding generation for episode collection
-  - [ ] Plan episode-specific metadata payload optimization
+- **3.9.1.3: Episode Collection Infrastructure** (Est: 8 hours)
+  - [ ] **3.9.1.3a: Collection Creation and Management** (Est: 4 hours)
+    - [ ] Create episodes collection with content vector and episode-specific payload
+    - [ ] Implement slug-based ID generation (anime*slug + "\_ep*" + episode_number)
+    - [ ] Add episode collection health checks and monitoring
+    - [ ] Create episode collection migration utilities
+  - [ ] **3.9.1.3b: Cross-Collection Linking** (Est: 4 hours)
+    - [ ] Implement bidirectional anime-episode linking via anime_id
+    - [ ] Create get_anime_with_episodes() and get_episode_with_anime_context() methods
+    - [ ] Add episode-to-anime navigation and cross-collection search coordination
+    - [ ] Validate linking integrity and relationship consistency
 
-**Sub-Phase 3.5.1b: Episode Processing Pipeline** (Est: 6 hours)
+**Sub-Phase 3.9.2: Smart Search Integration** (Rollback-Safe: query routing)
 
-- [ ] **3.5.1b.1: Episode Content Enhancement** (Est: 3 hours)
-  - [ ] Enhance \_extract_episode_content() with improved semantic meaning
-  - [ ] Implement comprehensive episode text generation (number + title + synopsis)
-  - [ ] Add episode type flags (filler, recap) for semantic context
-  - [ ] Skip generic title patterns while preserving meaningful titles
+- **3.9.2.1: Intelligent Query Routing** (Est: 6 hours)
+  - [ ] **3.9.2.1a: Query Type Detection** (Est: 3 hours)
+    - [ ] Implement episode-specific query detection patterns
+    - [ ] Create anime-level vs episode-level query classification
+    - [ ] Add query routing logic for optimal collection selection
+    - [ ] Test query detection accuracy with domain-specific patterns
+  - [ ] **3.9.2.1b: Dual-Collection Search Strategy** (Est: 3 hours)
+    - [ ] Create smart_search() method with intelligent collection routing
+    - [ ] Implement episode-first vs anime-first search strategies
+    - [ ] Add result combination and ranking from both collections
+    - [ ] Create unified response format with collection metadata
 
-- [ ] **3.5.1b.2: Dual-Level Episode Processing** (Est: 3 hours)
-  - [ ] Create anime-level episode chunking with 512-token groups
-  - [ ] Implement equal averaging (not weighted) for anime collection episode_vector
-  - [ ] Create individual episode embedding generation for episode collection
-  - [ ] Add episode collection validation and testing framework
+- **3.9.2.2: API Integration** (Est: 4 hours)
+  - [ ] **3.9.2.2a: Episode-Specific Endpoints** (Est: 2 hours)
+    - [ ] Create GET /api/v1/anime/{anime_id}/episodes endpoint
+    - [ ] Create GET /api/v1/episodes/{episode_id} endpoint
+    - [ ] Add episode search endpoint with collection-specific filtering
+    - [ ] Update OpenAPI documentation with episode collection endpoints
+  - [ ] **3.9.2.2b: Enhanced Search Endpoints** (Est: 2 hours)
+    - [ ] Enhance existing search endpoints with dual-collection support
+    - [ ] Add collection preference parameters to search requests
+    - [ ] Implement cross-collection result merging and ranking
+    - [ ] Create episode-anime context enrichment in responses
 
-**Sub-Phase 3.5.1c: Episode Collection Infrastructure** (Est: 8 hours)
+**Sub-Phase 3.9.3: Testing and Validation** (Rollback-Safe: validation only)
 
-- [ ] **3.5.1c.1: Collection Creation and Management** (Est: 4 hours)
-  - [ ] Create episodes collection with content vector and episode-specific payload
-  - [ ] Implement slug-based ID generation (anime*slug + "\_ep*" + episode_number)
-  - [ ] Add episode collection health checks and monitoring
-  - [ ] Create episode collection migration utilities
-
-- [ ] **3.5.1c.2: Cross-Collection Linking** (Est: 4 hours)
-  - [ ] Implement bidirectional anime-episode linking via anime_id
-  - [ ] Create get_anime_with_episodes() and get_episode_with_anime_context() methods
-  - [ ] Add episode-to-anime navigation and cross-collection search coordination
-  - [ ] Validate linking integrity and relationship consistency
-
-#### **Sub-Phase 3.5.2: Smart Search Integration** (Rollback-Safe: query routing)
-
-**Sub-Phase 3.5.2a: Intelligent Query Routing** (Est: 6 hours)
-
-- [ ] **3.5.2a.1: Query Type Detection** (Est: 3 hours)
-  - [ ] Implement episode-specific query detection patterns
-  - [ ] Create anime-level vs episode-level query classification
-  - [ ] Add query routing logic for optimal collection selection
-  - [ ] Test query detection accuracy with domain-specific patterns
-
-- [ ] **3.5.2a.2: Dual-Collection Search Strategy** (Est: 3 hours)
-  - [ ] Create smart_search() method with intelligent collection routing
-  - [ ] Implement episode-first vs anime-first search strategies
-  - [ ] Add result combination and ranking from both collections
-  - [ ] Create unified response format with collection metadata
-
-**Sub-Phase 3.5.2b: API Integration** (Est: 4 hours)
-
-- [ ] **3.5.2b.1: Episode-Specific Endpoints** (Est: 2 hours)
-  - [ ] Create GET /api/v1/anime/{anime_id}/episodes endpoint
-  - [ ] Create GET /api/v1/episodes/{episode_id} endpoint
-  - [ ] Add episode search endpoint with collection-specific filtering
-  - [ ] Update OpenAPI documentation with episode collection endpoints
-
-- [ ] **3.5.2b.2: Enhanced Search Endpoints** (Est: 2 hours)
-  - [ ] Enhance existing search endpoints with dual-collection support
-  - [ ] Add collection preference parameters to search requests
-  - [ ] Implement cross-collection result merging and ranking
-  - [ ] Create episode-anime context enrichment in responses
-
-#### **Sub-Phase 3.5.3: Testing and Validation** (Rollback-Safe: validation only)
-
-**Sub-Phase 3.5.3a: Episode Collection Validation** (Est: 4 hours)
-
-- [ ] **3.5.3a.1: Collection Independence Testing** (Est: 2 hours)
-  - [ ] Validate zero impact on existing anime collection
-  - [ ] Test episode collection creation and data integrity
-  - [ ] Verify anime-episode linking accuracy and consistency
-  - [ ] Test collection rollback and recovery procedures
-
-- [ ] **3.5.3a.2: Search Quality Validation** (Est: 2 hours)
-  - [ ] Test episode-specific query accuracy and relevance
-  - [ ] Validate anime-level episode search (chunked content) vs episode-level search
-  - [ ] Compare search quality: single collection vs dual collection approach
-  - [ ] Test cross-collection search coordination and result ranking
+- **3.9.3.1: Episode Collection Validation** (Est: 4 hours)
+  - [ ] **3.9.3.1a: Collection Independence Testing** (Est: 2 hours)
+    - [ ] Validate zero impact on existing anime collection
+    - [ ] Test episode collection creation and data integrity
+    - [ ] Verify anime-episode linking accuracy and consistency
+    - [ ] Test collection rollback and recovery procedures
+  - [ ] **3.9.3.1b: Search Quality Validation** (Est: 2 hours)
+    - [ ] Test episode-specific query accuracy and relevance
+    - [ ] Validate anime-level episode search (chunked content) vs episode-level search
+    - [ ] Compare search quality: single collection vs dual collection approach
+    - [ ] Test cross-collection search coordination and result ranking
 
 ### 📋 Phase 4: Sparse Vector Integration - PLANNED (Extend Existing Collection + Static→Learnable Evolution)
 
@@ -985,335 +999,384 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 ### 📋 Phase 6: Security and Production Infrastructure - PLANNED
 
-#### **Sub-Phase 6.0: Security Hardening and Authentication** (Rollback-Safe: additive security)
+#### **Sub-Phase 6.1: Security Hardening and Authentication** (Rollback-Safe: additive security)
 
-**Sub-Phase 6.0.1: API Security Implementation** (Est: 8 hours)
+**Sub-Phase 6.1.1: API Security Implementation** (Est: 8 hours)
 
-- [ ] **6.0.1a: Authentication and Authorization** (Est: 3 hours)
+- [ ] **6.1.1a: Authentication and Authorization** (Est: 3 hours)
   - [ ] Implement JWT-based API authentication with configurable providers
   - [ ] Add role-based access control (admin, user, read-only)
   - [ ] Create API key management system for client applications
   - [ ] Set up rate limiting and request throttling per user/API key
 
-- [ ] **6.0.1b: Input Validation and Security** (Est: 3 hours)
+- [ ] **6.1.1b: Input Validation and Security** (Est: 3 hours)
   - [ ] Implement comprehensive input sanitization and validation
   - [ ] Add SQL injection and NoSQL injection protection
   - [ ] Create request size limiting and upload validation
   - [ ] Implement CORS policy enforcement and origin validation
 
-- [ ] **6.0.1c: Security Monitoring and Auditing** (Est: 2 hours)
+- [ ] **6.1.1c: Security Monitoring and Auditing** (Est: 2 hours)
   - [ ] Add security event logging and audit trails
   - [ ] Implement suspicious activity detection and alerting
   - [ ] Create security metrics dashboard and reporting
   - [ ] Set up automated security scanning and vulnerability assessment
 
-#### **Sub-Phase 6.1: Disaster Recovery and Business Continuity** (Rollback-Safe: backup systems)
+#### **Sub-Phase 6.2: Disaster Recovery and Business Continuity** (Rollback-Safe: backup systems)
 
-**Sub-Phase 6.1.1: Data Backup and Recovery** (Est: 6 hours)
+**Sub-Phase 6.2.1: Data Backup and Recovery** (Est: 6 hours)
 
-- [ ] **6.1.1a: Automated Backup Strategy** (Est: 3 hours)
+- [ ] **6.2.1a: Automated Backup Strategy** (Est: 3 hours)
   - [ ] Implement automated Qdrant database backups with versioning
   - [ ] Create incremental backup system for vector data and metadata
   - [ ] Set up cross-region backup replication for disaster recovery
   - [ ] Add backup integrity validation and corruption detection
 
-- [ ] **6.1.1b: Recovery Testing and Procedures** (Est: 3 hours)
+- [ ] **6.2.1b: Recovery Testing and Procedures** (Est: 3 hours)
   - [ ] Create disaster recovery runbooks and automated procedures
   - [ ] Implement point-in-time recovery for database operations
   - [ ] Add service failover and automatic recovery mechanisms
   - [ ] Set up recovery time objective (RTO) and recovery point objective (RPO) monitoring
 
-#### **Sub-Phase 6.2: Infrastructure Performance** (Rollback-Safe: parallel deployment)
+#### **Sub-Phase 6.3: Infrastructure Performance** (Rollback-Safe: parallel deployment)
 
-**Sub-Phase 3.1.2: Caching Architecture** (Est: 6 hours)
+**Sub-Phase 6.3.1: Caching Architecture** (Est: 6 hours)
 
-- [ ] **3.1.2a: Redis Integration** (Est: 2 hours)
+- [ ] **6.3.1a: Redis Integration** (Est: 2 hours)
   - [ ] Add Redis service to docker-compose
   - [ ] Configure Redis connection and clustering
   - [ ] Implement Redis health checks
   - [ ] Test Redis failover scenarios
 
-- [ ] **3.1.2b: Query Result Caching** (Est: 2 hours)
+- [ ] **6.3.1b: Query Result Caching** (Est: 2 hours)
   - [ ] Implement search result caching with TTL
   - [ ] Add cache key generation for complex queries
   - [ ] Configure cache invalidation strategies
   - [ ] Test cache hit rate optimization
 
-- [ ] **3.1.2c: Multi-Level Caching** (Est: 2 hours)
+- [ ] **6.3.1c: Multi-Level Caching** (Est: 2 hours)
   - [ ] Implement L1 (in-memory) + L2 (Redis) caching
   - [ ] Add cache performance monitoring
   - [ ] Configure cache warming strategies
   - [ ] Test cache performance under load
 
-#### **Sub-Phase 3.2: API Performance Optimization** (Rollback-Safe: feature flags)
+#### **Sub-Phase 6.4: API Performance Optimization** (Rollback-Safe: feature flags)
 
-**Sub-Phase 3.2.1: Request Processing** (Est: 6 hours)
+**Sub-Phase 6.4.1: Request Processing** (Est: 6 hours)
 
-- [ ] **3.2.1a: Async Optimization** (Est: 2 hours)
+- [ ] **6.4.1a: Async Optimization** (Est: 2 hours)
   - [ ] Optimize async request handling
   - [ ] Implement request queuing and prioritization
   - [ ] Add concurrent request limiting
   - [ ] Test async performance improvements
 
-- [ ] **3.2.1b: Batch Processing** (Est: 2 hours)
+- [ ] **6.4.1b: Batch Processing** (Est: 2 hours)
   - [ ] Enhance batch operation efficiency
   - [ ] Implement streaming responses for large results
   - [ ] Add batch size optimization
   - [ ] Test batch processing throughput
 
-- [ ] **3.2.1c: Response Optimization** (Est: 2 hours)
+- [ ] **6.4.1c: Response Optimization** (Est: 2 hours)
   - [ ] Implement response compression
   - [ ] Optimize JSON serialization
   - [ ] Add response streaming for large payloads
   - [ ] Test response time improvements
 
-#### **Sub-Phase 3.3: Monitoring and Observability** (Rollback-Safe: additive only)
+#### **Sub-Phase 6.5: Monitoring and Observability** (Rollback-Safe: additive only)
 
-**Sub-Phase 3.3.1: Metrics Collection** (Est: 8 hours)
+**Sub-Phase 6.5.1: Metrics Collection** (Est: 8 hours)
 
-- [ ] **3.3.1a: Application Metrics** (Est: 3 hours)
+- [ ] **6.5.1a: Application Metrics** (Est: 3 hours)
   - [ ] Add Prometheus metrics integration
   - [ ] Implement custom metrics for vector operations
   - [ ] Add performance counters and timers
   - [ ] Configure metric collection intervals
 
-- [ ] **3.3.1b: Database Metrics** (Est: 2 hours)
+- [ ] **6.5.1b: Database Metrics** (Est: 2 hours)
   - [ ] Add Qdrant performance monitoring
   - [ ] Implement vector-specific metrics
   - [ ] Monitor quantization effectiveness
   - [ ] Track memory usage per vector type
 
-- [ ] **3.3.1c: System Metrics** (Est: 3 hours)
+- [ ] **6.5.1c: System Metrics** (Est: 3 hours)
   - [ ] Add system resource monitoring
   - [ ] Implement health check endpoints
   - [ ] Configure alerting thresholds
   - [ ] Test monitoring system reliability
 
-**Sub-Phase 3.3.2: Visualization and Alerting** (Est: 6 hours)
+**Sub-Phase 6.5.2: Visualization and Alerting** (Est: 6 hours)
 
-- [ ] **3.3.2a: Grafana Dashboards** (Est: 3 hours)
+- [ ] **6.5.2a: Grafana Dashboards** (Est: 3 hours)
   - [ ] Create performance monitoring dashboards
   - [ ] Add vector-specific visualization
   - [ ] Implement real-time query monitoring
   - [ ] Configure dashboard refresh and sharing
 
-- [ ] **3.3.2b: Alerting Rules** (Est: 3 hours)
+- [ ] **6.5.2b: Alerting Rules** (Est: 3 hours)
   - [ ] Define SLA-based alerting rules
   - [ ] Configure escalation policies
   - [ ] Add anomaly detection alerts
   - [ ] Test alert notification systems
 
-#### **Sub-Phase 3.4: Security Implementation** (Rollback-Safe: feature flags)
+#### **Sub-Phase 6.6: Security Implementation** (Rollback-Safe: feature flags)
 
-**Sub-Phase 3.4.1: Authentication and Authorization** (Est: 8 hours)
+**Sub-Phase 6.6.1: Authentication and Authorization** (Est: 8 hours)
 
-- [ ] **3.4.1a: API Authentication** (Est: 3 hours)
+- [ ] **6.6.1a: API Authentication** (Est: 3 hours)
   - [ ] Implement JWT-based authentication
   - [ ] Add API key management system
   - [ ] Configure authentication middleware
   - [ ] Test authentication performance impact
 
-- [ ] **3.4.1b: Rate Limiting** (Est: 3 hours)
+- [ ] **6.6.1b: Rate Limiting** (Est: 3 hours)
   - [ ] Implement per-client rate limiting
   - [ ] Add endpoint-specific rate limits
   - [ ] Configure rate limit storage (Redis)
   - [ ] Test rate limiting effectiveness
 
-- [ ] **3.4.1c: Admin Security** (Est: 2 hours)
+- [ ] **6.6.1c: Admin Security** (Est: 2 hours)
   - [ ] Implement RBAC for admin endpoints
   - [ ] Add audit logging for admin operations
   - [ ] Configure secure admin access
   - [ ] Test security controls
 
-#### **Sub-Phase 3.5: Production Deployment** (Rollback-Safe: blue-green deployment)
+#### **Sub-Phase 6.7: Production Deployment** (Rollback-Safe: blue-green deployment)
 
-**Sub-Phase 3.5.1: Containerization Optimization** (Est: 6 hours)
+**Sub-Phase 6.7.1: Containerization Optimization** (Est: 6 hours)
 
-- [ ] **3.5.1a: Docker Optimization** (Est: 3 hours)
+- [ ] **6.7.1a: Docker Optimization** (Est: 3 hours)
   - [ ] Optimize Docker images for production
   - [ ] Implement multi-stage builds
   - [ ] Add security scanning
   - [ ] Test container performance
 
-- [ ] **3.5.1b: Orchestration Setup** (Est: 3 hours)
+- [ ] **6.7.1b: Orchestration Setup** (Est: 3 hours)
   - [ ] Create Kubernetes manifests
   - [ ] Configure service mesh (if needed)
   - [ ] Add load balancing configuration
   - [ ] Test orchestration deployment
 
-**Sub-Phase 3.5.2: Load Testing and Validation** (Est: 8 hours)
+**Sub-Phase 6.7.2: Load Testing and Validation** (Est: 8 hours)
 
-- [ ] **3.5.2a: Performance Testing** (Est: 4 hours)
+- [ ] **6.7.2a: Performance Testing** (Est: 4 hours)
   - [ ] Create comprehensive load testing suite
   - [ ] Test million-query scenarios
   - [ ] Validate latency requirements (<100ms avg)
   - [ ] Test concurrent user handling (100K+ users)
 
-- [ ] **3.5.2b: Stress Testing** (Est: 4 hours)
+- [ ] **6.7.2b: Stress Testing** (Est: 4 hours)
   - [ ] Test system breaking points
   - [ ] Validate graceful degradation
   - [ ] Test recovery procedures
   - [ ] Document performance characteristics
 
-### 📋 Phase 4: Enterprise-Scale Data Enrichment - PLANNED
+### 🚀 Phase 7: Performance and Accuracy Benchmarking - PLANNED
 
-#### **Sub-Phase 4.1: API Pipeline Optimization** (Rollback-Safe: parallel implementation)
+**Goal**: Systematically evaluate the performance and accuracy of the Qdrant-based vector search system to establish baselines
+and identify areas for optimization.
 
-**Sub-Phase 4.1.1: Concurrent API Processing** (Est: 12 hours)
+#### **Sub-Phase 7.1: Tool Selection and Setup** (Est: 2 hours)
 
-- [ ] **4.1.1a: Async API Coordination** (Est: 4 hours)
+- [ ] **7.1.1: Evaluate Benchmarking Tools**:
+  - [ ] Review documentation for `VectorDBBench` (from Zilliz).
+  - [ ] Review documentation for Qdrant's native benchmark tool.
+  - [ ] Decision: Select the most suitable tool based on ease of use, configurability, and relevance to our specific vector
+        setup.
+- [ ] **7.1.2: Install and Configure Chosen Tool**:
+  - [ ] Install the selected benchmarking tool and its dependencies.
+  - [ ] Configure the tool to connect to our local Qdrant instance.
+
+#### **Sub-Phase 7.2: Ground Truth Dataset Creation** (Est: 4 hours)
+
+- [ ] **7.2.1: Define a Representative Query Set**:
+  - [ ] Create a set of 50-100 diverse search queries that represent typical user intent (e.g., searching by plot, character,
+        genre, theme).
+- [ ] **7.2.2: Generate Ground Truth**:
+  - [ ] For each query, perform an exhaustive (brute-force) search on a significant subset of the anime data (e.g., 10,000
+        entries) to identify the "true" top-k most similar items.
+  - [ ] Store these query-result pairs as our ground truth for accuracy measurements.
+
+#### **Sub-Phase 7.3: Benchmark Execution** (Est: 6 hours)
+
+- [ ] **7.3.1: Performance Benchmarking**:
+  - [ ] Measure query latency (average, p95, p99) for different query types.
+  - [ ] Measure throughput (Queries Per Second - QPS) under varying concurrent loads.
+  - [ ] Measure indexing time for adding new data to the collection.
+  - [ ] Monitor CPU and RAM usage during indexing and querying.
+- [ ] **7.3.2: Accuracy Benchmarking**:
+  - [ ] Run the predefined query set against the Qdrant-powered search.
+  - [ ] Calculate `Recall@k` and `Precision@k` (for k=1, 5, 10) by comparing the results against the ground truth dataset.
+- [ ] **7.3.3: Configuration Analysis**:
+  - [ ] Run benchmarks with different HNSW `m` and `ef_construct` parameters.
+  - [ ] Run benchmarks with and without scalar/binary quantization to measure its impact on performance and accuracy.
+
+#### **Sub-Phase 7.4: Analysis and Reporting** (Est: 3 hours)
+
+- [ ] **7.4.1: Consolidate and Visualize Results**:
+  - [ ] Create plots for `Recall vs. QPS` to visualize the trade-off.
+  - [ ] Generate tables summarizing latency, throughput, and memory usage for each configuration.
+- [ ] **7.4.2: Document Findings**:
+  - [ ] Create a new Markdown document in the `/docs` directory to summarize the methodology, results, and conclusions.
+  - [ ] Provide a clear recommendation for the optimal Qdrant configuration for our production environment based on the data.
+
+### 📋 Phase 8: Enterprise-Scale Data Enrichment - PLANNED
+
+#### **Sub-Phase 8.1: API Pipeline Optimization** (Rollback-Safe: parallel implementation)
+
+**Sub-Phase 8.1.1: Concurrent API Processing** (Est: 12 hours)
+
+- [ ] **8.1.1a: Async API Coordination** (Est: 4 hours)
   - [ ] Enhance ParallelAPIFetcher with advanced coordination
   - [ ] Implement intelligent API prioritization and scheduling
   - [ ] Add API health monitoring and circuit breakers
   - [ ] Test API coordination with 100+ concurrent requests
 
-- [ ] **4.1.1b: Connection Pool Optimization** (Est: 4 hours)
+- [ ] **8.1.1b: Connection Pool Optimization** (Est: 4 hours)
   - [ ] Implement per-API connection pooling
   - [ ] Add connection reuse and keepalive optimization
   - [ ] Configure SSL session resumption
   - [ ] Test connection efficiency under high load
 
-- [ ] **4.1.1c: Request Batching and Optimization** (Est: 4 hours)
+- [ ] **8.1.1c: Request Batching and Optimization** (Est: 4 hours)
   - [ ] Implement intelligent request batching
   - [ ] Add request deduplication and caching
   - [ ] Optimize API payload sizes
   - [ ] Test API throughput improvements (target: 5-10s total)
 
-**Sub-Phase 4.1.2: Error Resilience System** (Est: 8 hours)
+**Sub-Phase 8.1.2: Error Resilience System** (Est: 8 hours)
 
-- [ ] **4.1.2a: Circuit Breaker Implementation** (Est: 3 hours)
+- [ ] **8.1.2a: Circuit Breaker Implementation** (Est: 3 hours)
   - [ ] Add per-API circuit breakers
   - [ ] Configure failure thresholds and recovery times
   - [ ] Implement graceful degradation strategies
   - [ ] Test system behavior under API failures
 
-- [ ] **4.1.2b: Intelligent Retry Mechanisms** (Est: 3 hours)
+- [ ] **8.1.2b: Intelligent Retry Mechanisms** (Est: 3 hours)
   - [ ] Implement exponential backoff with jitter
   - [ ] Add retry policy per API type and error
   - [ ] Configure maximum retry limits
   - [ ] Test retry effectiveness and performance impact
 
-- [ ] **4.1.2c: Checkpoint and Resume System** (Est: 2 hours)
+- [ ] **8.1.2c: Checkpoint and Resume System** (Est: 2 hours)
   - [ ] Add progress checkpointing for long-running operations
   - [ ] Implement resume functionality after failures
   - [ ] Add state persistence and recovery
   - [ ] Test checkpoint reliability
 
-#### **Sub-Phase 4.2: Intelligent Caching System** (Rollback-Safe: layered caching)
+#### **Sub-Phase 8.2: Intelligent Caching System** (Rollback-Safe: layered caching)
 
-**Sub-Phase 4.2.1: Multi-Level Caching Architecture** (Est: 10 hours)
+**Sub-Phase 8.2.1: Multi-Level Caching Architecture** (Est: 10 hours)
 
-- [ ] **4.2.1a: Content-Aware Caching** (Est: 4 hours)
+- [ ] **8.2.1a: Content-Aware Caching** (Est: 4 hours)
   - [ ] Implement content fingerprinting for cache keys
   - [ ] Add semantic similarity detection for cache hits
   - [ ] Configure content-based TTL strategies
   - [ ] Test cache efficiency with anime data patterns
 
-- [ ] **4.2.1b: Distributed Cache Coordination** (Est: 3 hours)
+- [ ] **8.2.1b: Distributed Cache Coordination** (Est: 3 hours)
   - [ ] Add distributed caching with Redis Cluster
   - [ ] Implement cache warming strategies
   - [ ] Add cache invalidation coordination
   - [ ] Test cache consistency across nodes
 
-- [ ] **4.2.1c: Predictive Cache Warming** (Est: 3 hours)
+- [ ] **8.2.1c: Predictive Cache Warming** (Est: 3 hours)
   - [ ] Implement pattern-based cache prediction
   - [ ] Add proactive data fetching for trending anime
   - [ ] Configure cache warming schedules
   - [ ] Test predictive caching effectiveness
 
-**Sub-Phase 4.2.2: Performance Optimization** (Est: 6 hours)
+**Sub-Phase 8.2.2: Performance Optimization** (Est: 6 hours)
 
-- [ ] **4.2.2a: Cache Performance Tuning** (Est: 3 hours)
+- [ ] **8.2.2a: Cache Performance Tuning** (Est: 3 hours)
   - [ ] Optimize cache serialization and compression
   - [ ] Add cache performance monitoring
   - [ ] Tune cache eviction policies
   - [ ] Test cache hit rate optimization (target: >80%)
 
-- [ ] **4.2.2b: Memory Management** (Est: 3 hours)
+- [ ] **8.2.2b: Memory Management** (Est: 3 hours)
   - [ ] Implement intelligent memory allocation for caches
   - [ ] Add cache size monitoring and auto-scaling
   - [ ] Configure garbage collection optimization
   - [ ] Test memory usage patterns under load
 
-#### **Sub-Phase 4.3: AI Pipeline Enhancement** (Rollback-Safe: parallel AI processing)
+#### **Sub-Phase 8.3: AI Pipeline Enhancement** (Rollback-Safe: parallel AI processing)
 
-**Sub-Phase 4.3.1: AI Processing Optimization** (Est: 14 hours)
+**Sub-Phase 8.3.1: AI Processing Optimization** (Est: 14 hours)
 
-- [ ] **4.3.1a: Confidence Scoring System** (Est: 5 hours)
+- [ ] **8.3.1a: Confidence Scoring System** (Est: 5 hours)
   - [ ] Implement confidence scoring for 6-stage AI pipeline
   - [ ] Add quality assessment metrics for each stage
   - [ ] Configure confidence thresholds and fallbacks
   - [ ] Test AI output reliability and accuracy
 
-- [ ] **4.3.1b: Cross-Source Validation** (Est: 5 hours)
+- [ ] **8.3.1b: Cross-Source Validation** (Est: 5 hours)
   - [ ] Implement intelligent conflict resolution
   - [ ] Add data consistency checking across sources
   - [ ] Configure validation rules and exceptions
   - [ ] Test data quality improvements
 
-- [ ] **4.3.1c: Adaptive Processing** (Est: 4 hours)
+- [ ] **8.3.1c: Adaptive Processing** (Est: 4 hours)
   - [ ] Implement dynamic prompt adjustment based on results
   - [ ] Add learning from successful processing patterns
   - [ ] Configure adaptive thresholds and parameters
   - [ ] Test processing adaptation effectiveness
 
-**Sub-Phase 4.3.2: Quality Assurance System** (Est: 10 hours)
+**Sub-Phase 8.3.2: Quality Assurance System** (Est: 10 hours)
 
-- [ ] **4.3.2a: Automated Quality Monitoring** (Est: 4 hours)
+- [ ] **8.3.2a: Automated Quality Monitoring** (Est: 4 hours)
   - [ ] Add comprehensive quality metrics collection
   - [ ] Implement automated quality scoring (target: 98%+)
   - [ ] Configure quality alerting and reporting
   - [ ] Test quality monitoring accuracy
 
-- [ ] **4.3.2b: Manual Review Integration** (Est: 3 hours)
+- [ ] **8.3.2b: Manual Review Integration** (Est: 3 hours)
   - [ ] Add review queue for low-confidence results
   - [ ] Implement reviewer assignment and tracking
   - [ ] Configure review workflow and feedback loops
   - [ ] Test review system efficiency
 
-- [ ] **4.3.2c: Continuous Improvement Pipeline** (Est: 3 hours)
+- [ ] **8.3.2c: Continuous Improvement Pipeline** (Est: 3 hours)
   - [ ] Implement feedback loops for prompt optimization
   - [ ] Add A/B testing framework for AI improvements
   - [ ] Configure automated optimization cycles
   - [ ] Test continuous improvement effectiveness
 
-#### **Sub-Phase 4.4: Production Scaling Infrastructure** (Rollback-Safe: horizontal scaling)
+#### **Sub-Phase 8.4: Production Scaling Infrastructure** (Rollback-Safe: horizontal scaling)
 
-**Sub-Phase 4.4.1: Horizontal Scaling System** (Est: 12 hours)
+**Sub-Phase 8.4.1: Horizontal Scaling System** (Est: 12 hours)
 
-- [ ] **4.4.1a: Multi-Agent Coordination** (Est: 5 hours)
+- [ ] **8.4.1a: Multi-Agent Coordination** (Est: 5 hours)
   - [ ] Implement distributed processing coordination
   - [ ] Add agent health monitoring and recovery
   - [ ] Configure load balancing across processing nodes
   - [ ] Test multi-agent coordination efficiency
 
-- [ ] **4.4.1b: Resource Management** (Est: 4 hours)
+- [ ] **8.4.1b: Resource Management** (Est: 4 hours)
   - [ ] Add intelligent resource allocation
   - [ ] Implement dynamic scaling based on workload
   - [ ] Configure resource usage optimization (target: 90%+ CPU)
   - [ ] Test resource efficiency under varying loads
 
-- [ ] **4.4.1c: High-Throughput Processing** (Est: 3 hours)
+- [ ] **8.4.1c: High-Throughput Processing** (Est: 3 hours)
   - [ ] Optimize for concurrent anime processing (10-50 simultaneous)
   - [ ] Add throughput monitoring and optimization
   - [ ] Configure batch processing for efficiency
   - [ ] Test high-throughput scenarios (target: 1,000-10,000/day)
 
-**Sub-Phase 4.4.2: Enterprise Monitoring and Analytics** (Est: 10 hours)
+**Sub-Phase 8.4.2: Enterprise Monitoring and Analytics** (Est: 10 hours)
 
-- [ ] **4.4.2a: Comprehensive Monitoring** (Est: 4 hours)
+- [ ] **8.4.2a: Comprehensive Monitoring** (Est: 4 hours)
   - [ ] Add end-to-end pipeline monitoring
   - [ ] Implement SLA tracking (99.9% uptime target)
   - [ ] Configure error rate monitoring (<1% programmatic, <5% AI)
   - [ ] Test monitoring system reliability
 
-- [ ] **4.4.2b: Advanced Analytics** (Est: 3 hours)
+- [ ] **8.4.2b: Advanced Analytics** (Est: 3 hours)
   - [ ] Add processing time analysis and optimization
   - [ ] Implement cost per anime processing metrics
   - [ ] Configure predictive scaling analytics
   - [ ] Test analytics accuracy and usefulness
 
-- [ ] **4.4.2c: Performance Dashboards** (Est: 3 hours)
+- [ ] **8.4.2c: Performance Dashboards** (Est: 3 hours)
   - [ ] Create real-time pipeline monitoring dashboards
   - [ ] Add quality vs efficiency visualization
   - [ ] Configure automated reporting
@@ -1397,123 +1460,123 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [ ] Quality vs efficiency trade-off analysis
   - [ ] Predictive scaling based on workload
 
-### 📋 Phase 5: Advanced AI and Enterprise Features - PLANNED
+### 📋 Phase 9: Advanced AI and Enterprise Features - PLANNED
 
-#### **Sub-Phase 5.1: Domain-Specific AI Enhancement** (Rollback-Safe: optional features)
+#### **Sub-Phase 9.1: Domain-Specific AI Enhancement** (Rollback-Safe: optional features)
 
-**Sub-Phase 5.1.1: Fine-Tuning Infrastructure** (Est: 16 hours)
+**Sub-Phase 9.1.1: Fine-Tuning Infrastructure** (Est: 16 hours)
 
-- [ ] **5.1.1a: LoRA Adaptation Framework** (Est: 6 hours)
+- [ ] **9.1.1a: LoRA Adaptation Framework** (Est: 6 hours)
   - [ ] Implement parameter-efficient fine-tuning with LoRA
   - [ ] Add anime-specific fine-tuning datasets
   - [ ] Configure multi-task learning (character, genre, style)
   - [ ] Test fine-tuning effectiveness on anime similarity
 
-- [ ] **5.1.1b: Character Recognition Enhancement** (Est: 5 hours)
+- [ ] **9.1.1b: Character Recognition Enhancement** (Est: 5 hours)
   - [ ] Develop character-specific embedding fine-tuning
   - [ ] Add character relationship understanding
   - [ ] Configure character-based search optimization
   - [ ] Test character recognition accuracy improvements
 
-- [ ] **5.1.1c: Visual Style Classification** (Est: 5 hours)
+- [ ] **9.1.1c: Visual Style Classification** (Est: 5 hours)
   - [ ] Implement art style classification fine-tuning
   - [ ] Add studio-specific visual style learning
   - [ ] Configure visual similarity enhancement
   - [ ] Test visual style matching accuracy
 
-**Sub-Phase 5.1.2: Advanced Embedding Models** (Est: 12 hours)
+**Sub-Phase 9.1.2: Advanced Embedding Models** (Est: 12 hours)
 
-- [ ] **5.1.2a: Custom Embedding Support** (Est: 4 hours)
+- [ ] **9.1.2a: Custom Embedding Support** (Est: 4 hours)
   - [ ] Add support for anime-specific custom embeddings
   - [ ] Implement model switching and A/B testing
   - [ ] Configure embedding model evaluation
   - [ ] Test custom embedding performance
 
-- [ ] **5.1.2b: Multi-Language Enhancement** (Est: 4 hours)
+- [ ] **9.1.2b: Multi-Language Enhancement** (Est: 4 hours)
   - [ ] Enhance BGE-M3 multilingual support
   - [ ] Add language-specific search optimization
   - [ ] Configure cross-language similarity matching
   - [ ] Test multilingual search accuracy
 
-- [ ] **5.1.2c: Embedding Fusion Techniques** (Est: 4 hours)
+- [ ] **9.1.2c: Embedding Fusion Techniques** (Est: 4 hours)
   - [ ] Implement advanced embedding fusion methods
   - [ ] Add contextual embedding combination
   - [ ] Configure adaptive weighting strategies
   - [ ] Test embedding fusion effectiveness
 
-#### **Sub-Phase 5.2: Enterprise Infrastructure** (Rollback-Safe: infrastructure add-ons)
+#### **Sub-Phase 9.2: Enterprise Infrastructure** (Rollback-Safe: infrastructure add-ons)
 
-**Sub-Phase 5.2.1: Global Distribution System** (Est: 14 hours)
+**Sub-Phase 9.2.1: Global Distribution System** (Est: 14 hours)
 
-- [ ] **5.2.1a: Edge Caching Implementation** (Est: 5 hours)
+- [ ] **9.2.1a: Edge Caching Implementation** (Est: 5 hours)
   - [ ] Add CDN integration for global distribution
   - [ ] Implement edge-side caching strategies
   - [ ] Configure geo-based routing optimization
   - [ ] Test global access performance
 
-- [ ] **5.2.1b: Multi-Region Deployment** (Est: 5 hours)
+- [ ] **9.2.1b: Multi-Region Deployment** (Est: 5 hours)
   - [ ] Add multi-region database replication
   - [ ] Implement region-aware load balancing
   - [ ] Configure cross-region failover
   - [ ] Test global availability and consistency
 
-- [ ] **5.2.1c: Performance Optimization** (Est: 4 hours)
+- [ ] **9.2.1c: Performance Optimization** (Est: 4 hours)
   - [ ] Add edge computing for search preprocessing
   - [ ] Implement request routing optimization
   - [ ] Configure bandwidth optimization
   - [ ] Test global performance improvements
 
-**Sub-Phase 5.2.2: Advanced Analytics and Insights** (Est: 12 hours)
+**Sub-Phase 9.2.2: Advanced Analytics and Insights** (Est: 12 hours)
 
-- [ ] **5.2.2a: Search Analytics Platform** (Est: 4 hours)
+- [ ] **9.2.2a: Search Analytics Platform** (Est: 4 hours)
   - [ ] Implement comprehensive search analytics
   - [ ] Add user behavior tracking and analysis
   - [ ] Configure search pattern insights
   - [ ] Test analytics accuracy and performance
 
-- [ ] **5.2.2b: Predictive Analytics** (Est: 4 hours)
+- [ ] **9.2.2b: Predictive Analytics** (Est: 4 hours)
   - [ ] Add trending prediction algorithms
   - [ ] Implement recommendation system optimization
   - [ ] Configure predictive caching strategies
   - [ ] Test predictive accuracy and effectiveness
 
-- [ ] **5.2.2c: Business Intelligence Integration** (Est: 4 hours)
+- [ ] **9.2.2c: Business Intelligence Integration** (Est: 4 hours)
   - [ ] Add BI dashboard integration
   - [ ] Implement custom reporting capabilities
   - [ ] Configure automated insights generation
   - [ ] Test business intelligence accuracy
 
-#### **Sub-Phase 5.3: Advanced Search Features** (Rollback-Safe: feature additions)
+#### **Sub-Phase 9.3: Advanced Search Features** (Rollback-Safe: feature additions)
 
-**Sub-Phase 5.3.1: Intelligent Search Enhancement** (Est: 10 hours)
+**Sub-Phase 9.3.1: Intelligent Search Enhancement** (Est: 10 hours)
 
-- [ ] **5.3.1a: Context-Aware Search** (Est: 4 hours)
+- [ ] **9.3.1a: Context-Aware Search** (Est: 4 hours)
   - [ ] Implement search context understanding
   - [ ] Add session-based search optimization
   - [ ] Configure personalized search ranking
   - [ ] Test context-aware search improvements
 
-- [ ] **5.3.1b: Advanced Query Understanding** (Est: 3 hours)
+- [ ] **9.3.1b: Advanced Query Understanding** (Est: 3 hours)
   - [ ] Add natural language query processing
   - [ ] Implement query intent classification
   - [ ] Configure query expansion and refinement
   - [ ] Test query understanding accuracy
 
-- [ ] **5.3.1c: Real-time Search Suggestions** (Est: 3 hours)
+- [ ] **9.3.1c: Real-time Search Suggestions** (Est: 3 hours)
   - [ ] Add intelligent autocomplete system
   - [ ] Implement search suggestion optimization
   - [ ] Configure suggestion ranking algorithms
   - [ ] Test suggestion relevance and performance
 
-**Sub-Phase 5.3.2: Advanced Filtering and Faceting** (Est: 8 hours)
+**Sub-Phase 9.3.2: Advanced Filtering and Faceting** (Est: 8 hours)
 
-- [ ] **5.3.2a: Dynamic Faceting System** (Est: 4 hours)
+- [ ] **9.3.2a: Dynamic Faceting System** (Est: 4 hours)
   - [ ] Implement dynamic facet generation
   - [ ] Add facet relevance scoring
   - [ ] Configure facet performance optimization
   - [ ] Test dynamic faceting effectiveness
 
-- [ ] **5.3.2b: Advanced Filter Combinations** (Est: 4 hours)
+- [ ] **9.3.2b: Advanced Filter Combinations** (Est: 4 hours)
   - [ ] Add complex filter logic support
   - [ ] Implement filter suggestion system
   - [ ] Configure filter performance optimization
@@ -1943,25 +2006,3 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [ ] Create LLM usage and performance dashboards
   - [ ] Add alerting for LLM failures and performance issues
   - [ ] Test monitoring integration and alert triggers
-
-### **Expected Performance Impact**
-
-- **Query Processing**: +1-3 seconds for LLM analysis (one-time per query)
-- **Search Accuracy**: 15-25% improvement for complex queries
-- **System Resources**: +100-200MB RAM for LLM client
-- **API Compatibility**: 100% backwards compatible with existing endpoints
-
-### **Success Criteria**
-
-- [ ] Smart query endpoint operational with <3 second total response time
-- [ ] LLM intent detection >85% accuracy on test query set
-- [ ] Vector selection relevance >80% for domain-specific queries
-- [ ] No degradation to existing search endpoint performance
-- [ ] Successful A/B testing framework for quality comparison
-
-### **Rollback Plan**
-
-- **Immediate**: Disable feature flag to revert to existing search methods
-- **Emergency**: Remove smart query endpoint, preserve all existing functionality
-- **Data Safety**: No changes to existing 13-vector architecture or data
-
