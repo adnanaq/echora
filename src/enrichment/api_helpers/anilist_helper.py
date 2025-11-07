@@ -28,7 +28,7 @@ class AniListEnrichmentHelper:
         self.session: Optional[aiohttp.ClientSession] = None
         self.rate_limit_remaining = 90
         self.rate_limit_reset: Optional[int] = None
-        self._session_event_loop: Optional[Any] = None
+        self._session_event_loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def _make_request(
         self, query: str, variables: Optional[Dict[str, Any]] = None
@@ -62,7 +62,7 @@ class AniListEnrichmentHelper:
         payload = {"query": query, "variables": variables or {}}
 
         # Check if we need to create/recreate session for current event loop
-        current_loop = asyncio.get_running_loop()
+        current_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         if self.session is None or self._session_event_loop != current_loop:
             # Close old session if it exists
             if self.session is not None:
@@ -86,9 +86,12 @@ class AniListEnrichmentHelper:
             )
             self._session_event_loop = current_loop
 
+        # Ensure mypy knows session is initialized before use
+        assert self.session is not None
+
         try:
             if self.rate_limit_remaining < 5:
-                logging.info(
+                logger.info(
                     f"Rate limit low ({self.rate_limit_remaining}), waiting 60 seconds..."
                 )
                 await asyncio.sleep(60)
@@ -122,8 +125,8 @@ class AniListEnrichmentHelper:
                 # Add cache metadata to result
                 result["_from_cache"] = from_cache
                 return result
-        except Exception as e:
-            logger.error(f"AniList API request failed: {e}")
+        except Exception:
+            logger.exception("AniList API request failed")
             return {"_from_cache": False}
 
     def _get_media_query_fields(self) -> str:
@@ -409,9 +412,9 @@ async def main() -> int:
         if args.anilist_id:
             try:
                 anime_data = await helper.fetch_all_data_by_anilist_id(args.anilist_id)
-            except Exception as e:
-                logger.error(
-                    f"Error fetching AniList data for ID {args.anilist_id}: {e}"
+            except Exception:
+                logger.exception(
+                    f"Error fetching AniList data for ID {args.anilist_id}"
                 )
                 anime_data = None
         # elif args.mal_id:
@@ -425,8 +428,8 @@ async def main() -> int:
         else:
             logger.error("No data found for the given ID.")
             return 1
-    except Exception as e:
-        logger.error(f"Error: {e}")
+    except Exception:
+        logger.exception("Error")
         return 1
     finally:
         await helper.close()

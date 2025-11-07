@@ -3,10 +3,28 @@
 AnimSchedule Data Fetcher
 Fetches anime data from AnimSchedule API (async version)
 Follows gemini_instructions.md Step 2.4
+
+Usage:
+    # Programmatic usage (no file output)
+    from src.enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
+    data = await fetch_animeschedule_data("One Piece")
+
+    # Programmatic usage (with file output)
+    data = await fetch_animeschedule_data("One Piece", output_path="temp/as.json")
+
+    # CLI usage (default output to CWD)
+    python -m src.enrichment.api_helpers.animeschedule_fetcher "One Piece"
+    # Output: animeschedule.json
+
+    # CLI usage (custom output path)
+    python -m src.enrichment.api_helpers.animeschedule_fetcher "One Piece" --output temp/as.json
+    # Output: temp/as.json
 """
 
+import argparse
 import asyncio
 import json
+import logging
 import sys
 from typing import Any, Dict, Optional
 
@@ -14,11 +32,23 @@ import aiohttp
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
 
+logger = logging.getLogger(__name__)
+
 
 async def fetch_animeschedule_data(
-    search_term: str, save_file: bool = False
+    search_term: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Fetch AnimSchedule data for an anime (async version)"""
+    """
+    Fetch AnimSchedule data for an anime (async version).
+
+    Args:
+        search_term: Anime title to search for
+        output_path: Optional file path to save JSON output.
+                    If None, data is returned without saving to file.
+
+    Returns:
+        Dict containing anime data or None if fetch fails
+    """
 
     print(f"🔄 Fetching AnimSchedule data for: {search_term}")
 
@@ -39,12 +69,13 @@ async def fetch_animeschedule_data(
             return None
 
         # Take the first result (most relevant)
-        anime_data = search_results["anime"][0]
+        anime_data: Dict[str, Any] = search_results["anime"][0]
 
-        # Save to temp file only if requested (for standalone usage)
-        if save_file:
-            with open("temp/as.json", "w", encoding="utf-8") as f:
+        # Conditionally write to file (matches crawler pattern)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, ensure_ascii=False, indent=2)
+            print(f"Data written to {output_path}")
 
         print("✅ AnimSchedule data fetched successfully")
         return anime_data
@@ -61,17 +92,31 @@ async def fetch_animeschedule_data(
 
 
 async def main() -> int:
-    """Main function for command-line usage"""
-    if len(sys.argv) != 2:
-        print("Usage: python animeschedule_fetcher.py <search_term>", file=sys.stderr)
-        return 1
+    """CLI entry point for AnimSchedule fetcher."""
+    parser = argparse.ArgumentParser(
+        description="Fetch anime data from AnimSchedule API."
+    )
+    parser.add_argument(
+        "search_term",
+        type=str,
+        help="Anime title to search for"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="animeschedule.json",
+        help="Output file path (default: animeschedule.json in current directory)",
+    )
+    args = parser.parse_args()
 
     try:
-        search_term = sys.argv[1]
-        result = await fetch_animeschedule_data(search_term, save_file=True)
+        result = await fetch_animeschedule_data(
+            args.search_term,
+            output_path=args.output,
+        )
         return 0 if result else 1
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except Exception:
+        logger.exception("Error fetching AnimSchedule data")
         return 1
 
 

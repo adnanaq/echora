@@ -29,7 +29,7 @@ class JikanDetailedFetcher:
     Uses async/await with aiohttp for improved performance.
     """
 
-    def __init__(self, anime_id: str, data_type: str, session=None):
+    def __init__(self, anime_id: str, data_type: str, session: Optional[Any] = None):
         self.anime_id = anime_id
         self.data_type = data_type  # 'episodes' or 'characters'
         self.request_count = 0
