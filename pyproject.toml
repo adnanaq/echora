@@ -100,6 +100,14 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 [dependency-groups]
 dev = [
     "autoflake>=2.3.1",
