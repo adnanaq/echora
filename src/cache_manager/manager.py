@@ -90,12 +90,15 @@ class HTTPCacheManager:
         if self._async_redis_client is None or self._redis_event_loop != current_loop:
             # Close old client if it exists
             if self._async_redis_client is not None:
+                old_client = self._async_redis_client
+                old_loop = self._redis_event_loop
                 try:
-                    # Don't await close() here - just queue it for cleanup
-                    # The old event loop will handle it
-                    pass
-                except Exception:
-                    pass
+                    if old_loop and old_loop.is_running():
+                        asyncio.run_coroutine_threadsafe(old_client.close(), old_loop)
+                    else:
+                        current_loop.create_task(old_client.close())
+                except Exception as close_error:
+                    logger.debug("Failed to close previous Redis client: %s", close_error)
 
             # Create new client for current event loop
             if not self.config.redis_url:
