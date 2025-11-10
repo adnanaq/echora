@@ -972,3 +972,15 @@ This phase outlines the architectural evolution required to support user account
 
 - **Data Linking:** The explicit reference linking a user to an anime is stored in this MongoDB collection. There is no direct pointer between the user and anime collections in Qdrant; that link is made dynamically at query time via semantic similarity.
 ```
+
+### Task 6.5: User Data & Compliance
+
+The V1 implementation of this service only processes public, non-personal anime metadata. This section outlines the technical requirements that must be addressed if future features introduce Personally Identifiable Information (PII), such as user accounts (e.g., via MAL/AniDB logins) or personal watch lists.
+
+- **Data Lifecycle & Erasure:** When features involving user data are added, a mechanism to permanently delete all data associated with a specific user upon their request (the "Right to Erasure") must be implemented. This process is distinct from the "orphaning" of general anime metadata.
+
+- **Data Access & Portability:** The GraphQL API must be extended to allow an authenticated user to access and export all of their personal data in a machine-readable format.
+
+- **Data Residency:** When user data is stored, the geographic region for all relevant data stores (e.g., MongoDB Atlas) must be explicitly chosen and documented to comply with data residency laws.
+
+- **Consent Management:** A system for obtaining, recording, and managing user consent for data processing will be a prerequisite for any feature that collects PII.
