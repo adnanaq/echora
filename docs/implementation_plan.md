@@ -669,3 +669,66 @@ graph TD
 
     style BFF fill:#f9f,stroke:#333,stroke-width:2px
     style Agent fill:#ccf,stroke:#333,stroke-width:2px
+
+## Phase 6: Future Architecture - User Personalization & Recommendations
+
+This phase outlines the architectural evolution required to support user accounts, watch history, and personalized recommendations. It builds upon the foundational BFF/Agent model established in Phase 5.
+
+### Task 6.1: User Data Storage Strategy
+
+- **Status:** `Future`
+- **Goal:** Establish a scalable and efficient storage solution for user-generated data.
+- **Decision:** We will extend our use of **MongoDB Atlas** to store all user-related data. While a relational database like PostgreSQL is the classic choice for user accounts due to its strong transactional integrity, using MongoDB offers a significant advantage by maintaining a single, unified database technology stack. This simplifies development, operations, and data access patterns for the BFF.
+- **New Data Collections:**
+  - **MongoDB `users` collection:** Will store user profile documents, including account information, credentials, and user settings.
+  - **MongoDB `watch_history` collection:** Will store a granular log of user viewing activity. Each document will represent a single user's interaction with a single episode.
+  - **Qdrant `users` collection:** A new vector collection will be created. Each point will represent a user, and its vector will be a mathematical summary of that user's tastes, derived from their watch history.
+- **Scalability:** The `watch_history` collection is expected to grow to billions of entries. This scale will be managed efficiently through:
+  - **Indexing:** A compound index on `(userId, updatedAt)` will ensure that queries for a specific user's history are instantaneous.
+  - **Sharding:** As the collection grows, it will be sharded by `userId`, distributing the load across multiple servers and ensuring high performance.
+
+### Task 6.2: Expanded Role of the BFF Service
+
+- **Status:** `Future`
+- **Goal:** Evolve the BFF from a data hydration layer into a full-fledged backend service that manages the lifecycle of user content.
+- **New Responsibilities:**
+  - **Authentication & Authorization:** The BFF will be responsible for handling user login and validating session tokens (e.g., JWTs) on all user-specific requests.
+  - **CRUD Operations:** The BFF will expose new GraphQL mutations to handle Create, Read, Update, and Delete (CRUD) operations for user data. This will be the primary mechanism for the frontend to report user activity.
+- **Example Write Workflow (Updating Watch History):**
+  1. Frontend sends a GraphQL mutation: `updateWatchProgress(episodeId: "...", progress: 95)`.
+  2. The BFF authenticates the user from the request.
+  3. The mutation's resolver in the BFF directly calls the MongoDB client to `updateOne` document in the `watch_history` collection where the `userId` matches the authenticated user.
+
+### Task 6.3: Recommendation Engine Architecture
+
+- **Status:** `Future`
+- **Goal:** Implement a personalized recommendation system by applying our existing vector search architecture to the user domain.
+- **Core Concept: The "User Taste Vector"**
+  - A new offline process will be created to generate a "taste vector" for each active user.
+  - This process will read a user's `watch_history` from MongoDB, fetch the corresponding anime vectors from the `animes` collection in Qdrant, and compute a single, averaged vector representing the user's preferences.
+  - This taste vector will be stored in the new `users` collection in Qdrant.
+- **Recommendation Query Flow:**
+  1. The BFF requests recommendations for an authenticated user.
+  2. The BFF/Agent Service retrieves the user's "taste vector" from the **Qdrant `users` collection**.
+  3. The Agent Service uses this vector to perform a similarity search against the **Qdrant `animes` collection**.
+  4. The Agent Service returns a ranked list of `anime_id`s to the BFF.
+  5. The BFF hydrates these IDs from the **MongoDB `animes` collection** and serves the results.
+
+### Task 6.4: Data Model - User Watch History
+
+- **Status:** `Future`
+- **Goal:** Define the granular data model for storing user viewing events.
+- **Example `watch_history` Document in MongoDB:**
+  ```json
+  {
+    "_id": "unique_watch_event_id",
+    "userId": "user_abc_uuid",
+    "animeId": "one_piece_anime_uuid",
+    "episodeId": "one_piece_ep1_uuid",
+    "progress": 100,
+    "status": "watched",
+    "watchedAt": "2025-11-10T10:00:00Z",
+    "updatedAt": "2025-11-10T10:00:00Z"
+  }
+  ```
+- **Data Linking:** The explicit reference linking a user to an anime is stored in this MongoDB collection. There is no direct pointer between the user and anime collections in Qdrant; that link is made dynamically at query time via semantic similarity.
