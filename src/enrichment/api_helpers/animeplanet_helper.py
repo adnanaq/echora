@@ -54,7 +54,6 @@ class AnimePlanetEnrichmentHelper:
             logger.error(f"Error finding Anime-Planet URL: {e}")
             return None
 
-
     async def fetch_character_data(self, slug: str) -> Optional[Dict[str, Any]]:
         """
         Fetch character data by slug using the new character crawler.
@@ -71,7 +70,7 @@ class AnimePlanetEnrichmentHelper:
             character_data = await fetch_animeplanet_characters(
                 slug=slug,
                 return_data=True,
-                output_path=None  # No file output - return data only
+                output_path=None,  # No file output - return data only
             )
 
             if not character_data:
@@ -109,7 +108,7 @@ class AnimePlanetEnrichmentHelper:
             anime_data = await fetch_animeplanet_anime(
                 slug=slug,
                 return_data=True,
-                output_path=None  # No file output - return data only
+                output_path=None,  # No file output - return data only
             )
 
             if not anime_data:
@@ -182,8 +181,7 @@ class AnimePlanetEnrichmentHelper:
         except Exception as e:
             title = offline_anime_data.get("title", "Unknown")
             logger.error(
-                f"Error in fetch_all_data for anime '{title}': {e}",
-                exc_info=True
+                f"Error in fetch_all_data for anime '{title}': {e}", exc_info=True
             )
             return None
 
@@ -191,7 +189,9 @@ class AnimePlanetEnrichmentHelper:
 async def main() -> int:
     """CLI entry point for AnimePlanet helper."""
     if len(sys.argv) != 3:
-        print("Usage: python animeplanet_helper.py <slug> <output_file>", file=sys.stderr)
+        print(
+            "Usage: python animeplanet_helper.py <slug> <output_file>", file=sys.stderr
+        )
         return 1
 
     try:

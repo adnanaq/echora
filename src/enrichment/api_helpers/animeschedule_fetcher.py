@@ -96,11 +96,7 @@ async def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fetch anime data from AnimSchedule API."
     )
-    parser.add_argument(
-        "search_term",
-        type=str,
-        help="Anime title to search for"
-    )
+    parser.add_argument("search_term", type=str, help="Anime title to search for")
     parser.add_argument(
         "--output",
         type=str,

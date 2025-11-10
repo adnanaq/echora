@@ -41,9 +41,8 @@ class JikanDetailedFetcher:
         self.max_requests_per_minute = 60
 
         # Reuse provided session or create new one
-        self.session = (
-            session if session else _cache_manager.get_aiohttp_session("jikan")
-        )
+        self._owns_session = session is None
+        self.session = session or _cache_manager.get_aiohttp_session("jikan")
 
     async def respect_rate_limits(self) -> None:
         """Ensure we don't exceed Jikan API rate limits (async version).
@@ -98,7 +97,10 @@ class JikanDetailedFetcher:
             async with self.session.get(url) as response:
                 # Check if response was served from cache
                 # Explicitly check for boolean type to handle mocks properly
-                from_cache = isinstance(getattr(response, 'from_cache', None), bool) and response.from_cache
+                from_cache = (
+                    isinstance(getattr(response, "from_cache", None), bool)
+                    and response.from_cache
+                )
 
                 if response.status == 200:
                     data = await response.json()
@@ -165,7 +167,10 @@ class JikanDetailedFetcher:
             async with self.session.get(url) as response:
                 # Check if response was served from cache
                 # Explicitly check for boolean type to handle mocks properly
-                from_cache = isinstance(getattr(response, 'from_cache', None), bool) and response.from_cache
+                from_cache = (
+                    isinstance(getattr(response, "from_cache", None), bool)
+                    and response.from_cache
+                )
 
                 if response.status == 200:
                     data = await response.json()
@@ -233,6 +238,11 @@ class JikanDetailedFetcher:
             json.dump(all_data, f, ensure_ascii=False, indent=2)
 
         return len(all_data)
+
+    async def close(self) -> None:
+        """Close the underlying HTTP session if we created it."""
+        if self._owns_session and self.session:
+            await self.session.close()
 
     async def fetch_detailed_data(self, input_file: str, output_file: str) -> None:
         """Main async method to fetch detailed data with batch processing. When processing each object should
@@ -379,22 +389,32 @@ async def main() -> int:
 
     args = parser.parse_args()
 
+    # Extract output directory to guard against empty dirname edge case
+    output_dir = os.path.dirname(args.output_file)
+
+    fetcher = JikanDetailedFetcher(args.anime_id, args.data_type)
+
     try:
         # Validate input file exists
         if not os.path.exists(args.input_file):
-            print(f"Error: Input file {args.input_file} does not exist", file=sys.stderr)
+            print(
+                f"Error: Input file {args.input_file} does not exist", file=sys.stderr
+            )
             return 1
 
         # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
+        # Guard: only call makedirs if output_dir is non-empty
+        # (dirname('episodes.json') returns '', makedirs('') raises FileNotFoundError)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
-        # Create fetcher and run
-        fetcher = JikanDetailedFetcher(args.anime_id, args.data_type)
         await fetcher.fetch_detailed_data(args.input_file, args.output_file)
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    finally:
+        await fetcher.close()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 from typing import Any, Dict, Optional
 
 from crawl4ai import (
@@ -186,13 +187,9 @@ async def main() -> int:
         )
         return 0
     except Exception as e:
-        import sys
-
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
-
     sys.exit(asyncio.run(main()))
