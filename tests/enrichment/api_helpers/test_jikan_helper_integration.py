@@ -314,3 +314,48 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
         # The script should execute (may succeed or fail, but line 375 will be covered)
         # Success (0) or error exit (1) both mean the line was executed
         assert result.returncode in [0, 1]
+
+
+    @pytest.mark.asyncio
+    async def test_failed_request_increments_rate_limit_counter(redis_client, clean_cache_manager):
+        """
+        Integration test to verify that failed Jikan API requests (e.g., 404 for characters,
+        or 200 OK with empty data for episodes) correctly increment the rate limit counter.
+        """
+        # Test for episodes (returns 200 OK with empty data for non-existent)
+        anime_id = "21"  # A real anime ID
+        non_existent_episode_id = 999999  # Guaranteed to not exist
+
+        fetcher_episode = JikanDetailedFetcher(anime_id=anime_id, data_type="episodes")
+        initial_request_count_episode = fetcher_episode.request_count
+
+        result_episode = await fetcher_episode.fetch_episode_detail(non_existent_episode_id)
+
+        # For non-existent episodes, Jikan API returns 200 OK with empty data, not None
+        assert result_episode is not None
+        assert isinstance(result_episode, dict)
+        assert result_episode.get("episode_number") == non_existent_episode_id
+        assert result_episode.get("title") == ""
+        assert result_episode.get("aired") is None
+
+        # Verify that the request count was incremented for the episode fetch
+        assert fetcher_episode.request_count == initial_request_count_episode + 1
+
+        await fetcher_episode.session.close()
+
+        # Test for characters (returns 404 Not Found for non-existent)
+        non_existent_character_id = 999999  # Guaranteed to not exist
+        character_data = {"character": {"mal_id": non_existent_character_id}}
+
+        fetcher_character = JikanDetailedFetcher(anime_id=anime_id, data_type="characters")
+        initial_request_count_character = fetcher_character.request_count
+
+        result_character = await fetcher_character.fetch_character_detail(character_data)
+
+        # For non-existent characters, Jikan API returns None (due to 404 handling)
+        assert result_character is None
+
+        # Verify that the request count was incremented for the character fetch
+        assert fetcher_character.request_count == initial_request_count_character + 1
+
+        await fetcher_character.session.close()

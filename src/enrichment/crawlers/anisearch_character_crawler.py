@@ -186,7 +186,7 @@ async def main() -> int:
             output_path=args.output,
         )
         return 0
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 

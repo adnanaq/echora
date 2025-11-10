@@ -98,7 +98,9 @@ class HTTPCacheManager:
                     else:
                         current_loop.create_task(old_client.close())
                 except Exception as close_error:
-                    logger.debug("Failed to close previous Redis client: %s", close_error)
+                    logger.debug(
+                        "Failed to close previous Redis client: %s", close_error
+                    )
 
             # Create new client for current event loop
             if not self.config.redis_url:
@@ -200,6 +202,11 @@ class HTTPCacheManager:
 
     def close(self) -> None:
         """Close sync cache connections."""
+        try:
+            if self._storage and isinstance(self._storage, hishel.SyncSqliteStorage):
+                self._storage.close()
+        except Exception as e:
+            logger.warning(f"Error closing SQLite cache storage: {e}")
 
     async def close_async(self) -> None:
         """Close async cache connections."""

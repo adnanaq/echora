@@ -265,6 +265,28 @@ class TestFetchEpisodeDetail:
 
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_fetch_episode_failing_triggers_rate_limit(self):
+        """Test that failed episode fetches (e.g. 404) DO trigger rate limiting."""
+        mock_response = AsyncMock()
+        mock_response.status = 404
+        mock_response.from_cache = False
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_session.get.return_value.__aexit__ = AsyncMock()
+
+        fetcher = JikanDetailedFetcher("21", "episodes", session=mock_session)
+        fetcher.respect_rate_limits = AsyncMock()
+
+        # Simulate a failed request
+        await fetcher.fetch_episode_detail(1)
+
+        # Assert that rate limiting WAS called and request count WAS incremented
+        fetcher.respect_rate_limits.assert_awaited_once()
+        assert fetcher.request_count == 1
+
 
 class TestFetchCharacterDetail:
     """Test character fetching with cache detection."""

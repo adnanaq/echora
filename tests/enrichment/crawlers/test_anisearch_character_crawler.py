@@ -775,8 +775,7 @@ async def test_main_function_error_handling(mock_fetch):
     """Test main() function handles errors and returns non-zero exit code."""
     from src.enrichment.crawlers.anisearch_character_crawler import main
 
-    mock_fetch.side_effect = Exception("Crawler error")
-
+    mock_fetch.side_effect = ValueError("Crawler error")
     with patch(
         "sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters"]
     ):

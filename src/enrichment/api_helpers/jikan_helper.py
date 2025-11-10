@@ -78,6 +78,12 @@ class JikanDetailedFetcher:
         if self.request_count > 0:  # Don't wait before first request
             await asyncio.sleep(0.5)
 
+    async def _record_network_request(self, from_cache: bool) -> None:
+        """Increment counters for real network hits and apply pacing."""
+        if not from_cache:
+            self.request_count += 1
+            await self.respect_rate_limits()
+
     async def fetch_episode_detail(
         self, episode_id: int, retry_count: int = 0
     ) -> Optional[Dict[str, Any]]:
@@ -107,9 +113,7 @@ class JikanDetailedFetcher:
                     episode_detail = data["data"]
 
                     # Only rate limit for network requests, not cache hits
-                    if not from_cache:
-                        self.request_count += 1
-                        await self.respect_rate_limits()
+                    await self._record_network_request(from_cache)
 
                     return {
                         "episode_number": episode_id,
@@ -136,12 +140,14 @@ class JikanDetailedFetcher:
                         f"Rate limit hit for episode {episode_id}. Waiting and retrying (attempt {retry_count + 1}/3)..."
                     )
                     await asyncio.sleep(5)
+                    await self._record_network_request(from_cache)
                     return await self.fetch_episode_detail(episode_id, retry_count + 1)
 
                 else:
                     print(
                         f"Error fetching episode {episode_id}: HTTP {response.status}"
                     )
+                    await self._record_network_request(from_cache)
                     return None
 
         except Exception as e:
@@ -177,9 +183,7 @@ class JikanDetailedFetcher:
                     character_detail = data["data"]
 
                     # Only rate limit for network requests, not cache hits
-                    if not from_cache:
-                        self.request_count += 1
-                        await self.respect_rate_limits()
+                    await self._record_network_request(from_cache)
 
                     return {
                         "character_id": character_id,
@@ -205,6 +209,7 @@ class JikanDetailedFetcher:
                         f"Rate limit hit for character {character_id}. Waiting and retrying (attempt {retry_count + 1}/3)..."
                     )
                     await asyncio.sleep(5)
+                    await self._record_network_request(from_cache)
                     return await self.fetch_character_detail(
                         character_data, retry_count + 1
                     )
@@ -213,6 +218,7 @@ class JikanDetailedFetcher:
                     print(
                         f"Error fetching character {character_id}: HTTP {response.status}"
                     )
+                    await self._record_network_request(from_cache)
                     return None
 
         except Exception as e:

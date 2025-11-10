@@ -852,25 +852,19 @@ class TestMainExecution:
                 f,
             )
 
-        # Simulate command line arguments
-        test_args = ["script_name", "test_agent", "--temp-dir", str(tmp_path)]
+        import subprocess
 
-        with patch("sys.argv", test_args):
-            with patch("process_stage2_episodes.PROJECT_ROOT", tmp_path):
-                # Import and run main block
-                import subprocess
-
-                result = subprocess.run(
-                    [
-                        "python",
-                        str(SCRIPTS_DIR / "process_stage2_episodes.py"),
-                        "test_agent",
-                        "--temp-dir",
-                        str(tmp_path),
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
+        result = subprocess.run(
+            [
+                "python",
+                str(SCRIPTS_DIR / "process_stage2_episodes.py"),
+                "test_agent",
+                "--temp-dir",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         assert result.returncode == 0
         assert (anime_dir / "stage2_episodes.json").exists()
