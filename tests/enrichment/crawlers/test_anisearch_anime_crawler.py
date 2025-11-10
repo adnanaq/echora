@@ -11,14 +11,9 @@ Tests cover:
 - CLI functionality
 """
 
-import asyncio
 import json
-import re
 import sys
-import tempfile
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
@@ -39,7 +34,7 @@ class TestProcessRelationTooltips:
         relations = [
             {
                 "title": "Test Anime",
-                "image": '&lt;img src=&quot;https://example.com/image.jpg&quot; /&gt;',
+                "image": "&lt;img src=&quot;https://example.com/image.jpg&quot; /&gt;",
             }
         ]
 
@@ -52,11 +47,11 @@ class TestProcessRelationTooltips:
         relations = [
             {
                 "title": "Anime 1",
-                "image": '&lt;img src=&quot;https://example.com/1.jpg&quot; /&gt;',
+                "image": "&lt;img src=&quot;https://example.com/1.jpg&quot; /&gt;",
             },
             {
                 "title": "Anime 2",
-                "image": '&lt;img src=&quot;https://example.com/2.jpg&quot; alt=&quot;test&quot; /&gt;',
+                "image": "&lt;img src=&quot;https://example.com/2.jpg&quot; alt=&quot;test&quot; /&gt;",
             },
             {"title": "Anime 3", "image": "No image here"},
         ]
@@ -97,7 +92,7 @@ class TestProcessRelationTooltips:
         relations = [
             {
                 "title": "Test",
-                "image": '&lt;img src=&quot;https://example.com/test.jpg&quot; width=&quot;100&quot; height=&quot;150&quot; alt=&quot;Test Image&quot; /&gt;',
+                "image": "&lt;img src=&quot;https://example.com/test.jpg&quot; width=&quot;100&quot; height=&quot;150&quot; alt=&quot;Test Image&quot; /&gt;",
             }
         ]
 
@@ -377,9 +372,7 @@ class TestFetchAnisearchAnimeURLNormalization:
     @pytest.mark.asyncio
     async def test_fetch_anisearch_anime_invalid_url(self):
         """Test with invalid URL raises ValueError."""
-        with patch(
-            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
-        ):
+        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"):
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
                 lambda **_: lambda f: f,
@@ -390,9 +383,7 @@ class TestFetchAnisearchAnimeURLNormalization:
     @pytest.mark.asyncio
     async def test_fetch_anisearch_anime_invalid_domain(self):
         """Test with different anisearch path raises ValueError."""
-        with patch(
-            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
-        ):
+        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"):
             with patch(
                 "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
                 lambda **_: lambda f: f,
@@ -432,7 +423,6 @@ class TestFetchAnisearchAnimeMainFunction:
         """Test handling when result is not CrawlResult type (tested via sub-function)."""
         # This case is already tested in TestFetchAndProcessSubPage::test_fetch_and_process_sub_page_wrong_type
         # Testing it here would require complex mock setup, so we skip to avoid duplication
-        pass
 
     @pytest.mark.asyncio
     async def test_fetch_anisearch_anime_extraction_failed(self):
@@ -710,7 +700,7 @@ class TestFetchAnisearchAnimeMainFunction:
                             "anime_relations": [
                                 {
                                     "title": "Related Anime",
-                                    "image": '&lt;img src=&quot;https://example.com/related.jpg&quot; /&gt;',
+                                    "image": "&lt;img src=&quot;https://example.com/related.jpg&quot; /&gt;",
                                 }
                             ],
                             "manga_relations": [{"title": "Related Manga"}],
@@ -1013,25 +1003,41 @@ class TestEdgeCaseCoverage:
     @pytest.mark.asyncio
     async def test_single_date_in_published(self):
         """Test parsing single date (not date range) in published field - line 288-289."""
-        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
-                with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
+        with patch(
+            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            with patch(
+                "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
+                lambda **_: lambda f: f,
+            ):
+                with patch(
+                    "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page",
+                    new_callable=AsyncMock,
+                ) as mock_sub:
                     mock_sub.return_value = None
-                    
+
                     mock_result = MagicMock(spec=CrawlResult)
                     mock_result.success = True
-                    mock_result.extracted_content = json.dumps([{
-                        "japanese_title": "Test",
-                        "published": "01.04.2024"  # Single date, not a range
-                    }])
-                    
+                    mock_result.extracted_content = json.dumps(
+                        [
+                            {
+                                "japanese_title": "Test",
+                                "published": "01.04.2024",  # Single date, not a range
+                            }
+                        ]
+                    )
+
                     mock_crawler = AsyncMock()
                     mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                    MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                    MockCrawler.return_value.__aenter__ = AsyncMock(
+                        return_value=mock_crawler
+                    )
                     MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-                    
-                    result = await fetch_anisearch_anime("https://www.anisearch.com/anime/edge_single_date")
-                    
+
+                    result = await fetch_anisearch_anime(
+                        "https://www.anisearch.com/anime/edge_single_date"
+                    )
+
                     assert result is not None
                     assert result["start_date"] == "01.04.2024"
                     assert result["end_date"] is None
@@ -1039,34 +1045,50 @@ class TestEdgeCaseCoverage:
     @pytest.mark.asyncio
     async def test_genres_tags_with_missing_keys(self):
         """Test genre/tag list where some items don't have expected keys - line 304."""
-        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
-                with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
+        with patch(
+            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            with patch(
+                "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
+                lambda **_: lambda f: f,
+            ):
+                with patch(
+                    "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page",
+                    new_callable=AsyncMock,
+                ) as mock_sub:
                     mock_sub.return_value = None
-                    
+
                     mock_result = MagicMock(spec=CrawlResult)
                     mock_result.success = True
-                    mock_result.extracted_content = json.dumps([{
-                        "japanese_title": "Test",
-                        "genres": [
-                            {"genre": "Action"},
-                            {"wrong_key": "Comedy"},  # Missing "genre" key
-                            {"genre": "Drama"}
-                        ],
-                        "tags": [
-                            {"tag": "Magic"},
-                            {},  # Empty dict, no "tag" key
-                            {"tag": "Adventure"}
+                    mock_result.extracted_content = json.dumps(
+                        [
+                            {
+                                "japanese_title": "Test",
+                                "genres": [
+                                    {"genre": "Action"},
+                                    {"wrong_key": "Comedy"},  # Missing "genre" key
+                                    {"genre": "Drama"},
+                                ],
+                                "tags": [
+                                    {"tag": "Magic"},
+                                    {},  # Empty dict, no "tag" key
+                                    {"tag": "Adventure"},
+                                ],
+                            }
                         ]
-                    }])
-                    
+                    )
+
                     mock_crawler = AsyncMock()
                     mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                    MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                    MockCrawler.return_value.__aenter__ = AsyncMock(
+                        return_value=mock_crawler
+                    )
                     MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-                    
-                    result = await fetch_anisearch_anime("https://www.anisearch.com/anime/edge_genres_tags")
-                    
+
+                    result = await fetch_anisearch_anime(
+                        "https://www.anisearch.com/anime/edge_genres_tags"
+                    )
+
                     assert result is not None
                     # Should only include items with correct keys
                     assert result["genres"] == ["Action", "Drama"]
@@ -1075,24 +1097,33 @@ class TestEdgeCaseCoverage:
     @pytest.mark.asyncio
     async def test_loop_completes_all_failed(self):
         """Test when loop completes with all failed results - line 493."""
-        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
+        with patch(
+            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            with patch(
+                "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
+                lambda **_: lambda f: f,
+            ):
                 # Multiple results but all failed
                 mock_result1 = MagicMock(spec=CrawlResult)
                 mock_result1.success = False
                 mock_result1.error_message = "Failed 1"
-                
+
                 mock_result2 = MagicMock(spec=CrawlResult)
                 mock_result2.success = False
                 mock_result2.error_message = "Failed 2"
-                
+
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[mock_result1, mock_result2])
-                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_crawler
+                )
                 MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-                
-                result = await fetch_anisearch_anime("https://www.anisearch.com/anime/edge_all_failed")
-                
+
+                result = await fetch_anisearch_anime(
+                    "https://www.anisearch.com/anime/edge_all_failed"
+                )
+
                 assert result is None
 
 
@@ -1103,46 +1134,57 @@ class TestCLIExecution:
     async def test_cli_main_block(self, tmp_path):
         """Test CLI execution with argparse."""
         output_file = tmp_path / "cli_anime.json"
-        
-        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
-            with patch("src.enrichment.crawlers.anisearch_anime_crawler.cached_result", lambda **_: lambda f: f):
-                with patch("src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page", new_callable=AsyncMock) as mock_sub:
+
+        with patch(
+            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            with patch(
+                "src.enrichment.crawlers.anisearch_anime_crawler.cached_result",
+                lambda **_: lambda f: f,
+            ):
+                with patch(
+                    "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page",
+                    new_callable=AsyncMock,
+                ) as mock_sub:
                     mock_sub.return_value = None
-                    
+
                     mock_result = MagicMock(spec=CrawlResult)
                     mock_result.success = True
-                    mock_result.extracted_content = json.dumps([{
-                        "japanese_title": "CLI Test Anime"
-                    }])
-                    
+                    mock_result.extracted_content = json.dumps(
+                        [{"japanese_title": "CLI Test Anime"}]
+                    )
+
                     mock_crawler = AsyncMock()
                     mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                    MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                    MockCrawler.return_value.__aenter__ = AsyncMock(
+                        return_value=mock_crawler
+                    )
                     MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-                    
+
                     # Simulate CLI call
                     import sys
+
                     test_args = [
                         "script_name",
                         "https://www.anisearch.com/anime/cli_test",
                         "--output",
-                        str(output_file)
+                        str(output_file),
                     ]
-                    
+
                     with patch.object(sys, "argv", test_args):
                         import src.enrichment.crawlers.anisearch_anime_crawler as crawler_module
-                        
+
                         parser = crawler_module.argparse.ArgumentParser()
                         parser.add_argument("url", type=str)
-                        parser.add_argument("--output", type=str, default="anisearch_anime.json")
-                        args = parser.parse_args(test_args[1:])
-                        
-                        await fetch_anisearch_anime(
-                            args.url,
-                            return_data=False,
-                            output_path=args.output
+                        parser.add_argument(
+                            "--output", type=str, default="anisearch_anime.json"
                         )
-                    
+                        args = parser.parse_args(test_args[1:])
+
+                        await fetch_anisearch_anime(
+                            args.url, return_data=False, output_path=args.output
+                        )
+
                     assert output_file.exists()
                     with open(output_file) as f:
                         data = json.load(f)
@@ -1152,24 +1194,33 @@ class TestCLIExecution:
 
 class TestTypeErrorCoverage:
     """Tests specifically for TypeError exception path coverage (line 251-252)."""
-    
+
     @pytest.mark.asyncio
     async def test_type_error_when_result_not_crawl_result(self):
         """Test line 251-252: TypeError when arun returns non-CrawlResult in container."""
-        with patch("src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler") as MockCrawler:
+        with patch(
+            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
             mock_crawler = AsyncMock()
-            
+
             # Return a CrawlResultContainer with a string instead of CrawlResult
             # This will trigger the isinstance check on line 250
             from crawl4ai.models import CrawlResultContainer
+
             bad_container = CrawlResultContainer(["not a CrawlResult object"])
-            
+
             mock_crawler.arun = AsyncMock(return_value=bad_container)
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
-            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)  # Critical: return None!
-            
-            with pytest.raises(TypeError, match=r"Unexpected result type.*expected CrawlResult"):
-                await fetch_anisearch_anime("https://www.anisearch.com/anime/test_type_error")
+            MockCrawler.return_value.__aexit__ = AsyncMock(
+                return_value=None
+            )  # Critical: return None!
+
+            with pytest.raises(
+                TypeError, match=r"Unexpected result type.*expected CrawlResult"
+            ):
+                await fetch_anisearch_anime(
+                    "https://www.anisearch.com/anime/test_type_error"
+                )
 
 
 # --- Tests for main() function ---
@@ -1177,13 +1228,22 @@ class TestTypeErrorCoverage:
 
 @pytest.mark.asyncio
 @patch("src.enrichment.crawlers.anisearch_anime_crawler.fetch_anisearch_anime")
-async def test_main_function_success(mock_fetch):
+async def test_main_function_success(mock_fetch, tmp_path):
     """Test main() function handles successful execution."""
     from src.enrichment.crawlers.anisearch_anime_crawler import main
 
     mock_fetch.return_value = {"japanese_title": "Test Anime", "type": "TV-Series"}
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878", "--output", "/tmp/output.json"]):
+    output_file = tmp_path / "output.json"
+    with patch(
+        "sys.argv",
+        [
+            "script.py",
+            "https://www.anisearch.com/anime/18878",
+            "--output",
+            str(output_file),
+        ],
+    ):
         exit_code = await main()
 
     assert exit_code == 0

@@ -12,6 +12,11 @@ from unittest.mock import patch
 
 import pytest
 
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
 from process_stage2_episodes import (
     auto_detect_temp_dir,
     convert_jst_to_utc,
@@ -19,11 +24,6 @@ from process_stage2_episodes import (
     load_kitsu_episode_data,
     process_all_episodes,
 )
-
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 class TestTimezoneConversion:
@@ -156,8 +156,8 @@ class TestKitsuDataLoading:
             descriptions,
             synopses,
             titles,
-            titles_jp,
-            titles_romaji,
+            _titles_jp,
+            _titles_romaji,
             season_nums,
             episode_urls,
         ) = result

@@ -19,7 +19,7 @@ from typing import AsyncIterator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from hishel._core.models import Entry, EntryMeta, Request, Response, Headers
+from hishel._core.models import Entry, EntryMeta, Headers, Request, Response
 
 from src.cache_manager.async_redis_storage import AsyncRedisStorage
 
@@ -445,7 +445,9 @@ class TestCreateEntry:
             # Verify it was the entry_key, not the index_key
             called_key = expire_calls[0][0][0]
             assert "entry:" in called_key, "Should only expire entry_key"
-            assert "key_index:" not in called_key, "Should NOT expire persistent index_key"
+            assert (
+                "key_index:" not in called_key
+            ), "Should NOT expire persistent index_key"
 
     @pytest.mark.asyncio
     async def test_create_entry_extends_shorter_index_ttl(
@@ -493,7 +495,9 @@ class TestCreateEntry:
 
             # Verify both keys got expire called
             called_keys = [call[0][0] for call in expire_calls]
-            assert any("entry:" in key for key in called_keys), "Should expire entry_key"
+            assert any(
+                "entry:" in key for key in called_keys
+            ), "Should expire entry_key"
             assert any(
                 "key_index:" in key for key in called_keys
             ), "Should extend index_key TTL"
@@ -595,7 +599,9 @@ class TestCreateEntry:
 
             # Verify both keys got expire called
             called_keys = [call[0][0] for call in expire_calls]
-            assert any("entry:" in key for key in called_keys), "Should expire entry_key"
+            assert any(
+                "entry:" in key for key in called_keys
+            ), "Should expire entry_key"
             assert any(
                 "key_index:" in key for key in called_keys
             ), "Should create index_key with TTL"
@@ -1275,7 +1281,6 @@ class TestStreamOperations:
             pass
 
         mock_redis_client.expire.assert_called_once_with(stream_key, test_ttl)
-
 
     @pytest.mark.asyncio
     async def test_stream_data_from_cache_yields_chunks(

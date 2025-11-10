@@ -2,15 +2,17 @@
 Tests for anime_planet_character_crawler.py main() function.
 """
 
-import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
+import pytest
 
 # --- Tests for main() function ---
 
 
 @pytest.mark.asyncio
-@patch("src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters")
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
 async def test_main_function_success(mock_fetch):
     """Test main() function handles successful execution."""
     from src.enrichment.crawlers.anime_planet_character_crawler import main
@@ -32,7 +34,9 @@ async def test_main_function_success(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch("src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters")
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
 async def test_main_function_with_default_output(mock_fetch):
     """Test main() function with default output path."""
     from src.enrichment.crawlers.anime_planet_character_crawler import main
@@ -49,7 +53,9 @@ async def test_main_function_with_default_output(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch("src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters")
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
 async def test_main_function_error_handling(mock_fetch):
     """Test main() function handles errors and returns non-zero exit code."""
     from src.enrichment.crawlers.anime_planet_character_crawler import main
@@ -63,14 +69,19 @@ async def test_main_function_error_handling(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch("src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters")
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
 async def test_main_function_with_full_url(mock_fetch):
     """Test main() function with full URL as identifier."""
     from src.enrichment.crawlers.anime_planet_character_crawler import main
 
     mock_fetch.return_value = {"characters": [], "total": 0}
 
-    with patch("sys.argv", ["script.py", "https://www.anime-planet.com/anime/dandadan/characters"]):
+    with patch(
+        "sys.argv",
+        ["script.py", "https://www.anime-planet.com/anime/dandadan/characters"],
+    ):
         exit_code = await main()
 
     assert exit_code == 0

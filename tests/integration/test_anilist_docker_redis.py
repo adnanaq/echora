@@ -1,4 +1,5 @@
 """Integration test for AniList helper Redis connectivity in Docker environment."""
+
 import os
 
 import pytest
@@ -34,7 +35,7 @@ async def test_anilist_helper_respects_redis_cache_url_env():
 @pytest.mark.integration
 @pytest.mark.skipif(
     not os.path.exists("/.dockerenv"),
-    reason="Docker-specific test - only runs in container"
+    reason="Docker-specific test - only runs in container",
 )
 @pytest.mark.asyncio
 async def test_anilist_helper_connects_in_docker():

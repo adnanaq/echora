@@ -4,6 +4,7 @@ Test that all API helpers use centralized cache manager correctly.
 This test verifies that no helper has hard-coded Redis URLs that would
 fail in Docker environments.
 """
+
 import pytest
 
 
@@ -23,18 +24,24 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     mock_session.get = mocker.AsyncMock()
     mock_session.post = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
-    mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(return_value={})
-    mock_session.get.return_value.__aenter__.return_value.text = mocker.AsyncMock(return_value="")
+    mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
+        return_value={}
+    )
+    mock_session.get.return_value.__aenter__.return_value.text = mocker.AsyncMock(
+        return_value=""
+    )
     mock_session.get.return_value.__aenter__.return_value.from_cache = False
     mock_session.post.return_value.__aenter__.return_value.status = 200
-    mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(return_value={})
+    mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(
+        return_value={}
+    )
     mock_session.post.return_value.__aenter__.return_value.from_cache = False
     mock_session.post.return_value.__aenter__.return_value.headers = {}
     mock_session.close = mocker.AsyncMock()
 
     mocker.patch(
-        'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-        return_value=mock_session
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_session,
     )
 
     # Track what Redis URLs were used (if any)
@@ -45,14 +52,14 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
         redis_calls.append(url)
         return original_redis_from_url
 
-    mocker.patch('redis.asyncio.Redis.from_url', side_effect=track_redis_call)
+    mocker.patch("redis.asyncio.Redis.from_url", side_effect=track_redis_call)
 
     # List of all helpers to test
     helpers_to_test = [
-        ('src.enrichment.api_helpers.anilist_helper', 'AniListEnrichmentHelper'),
-        ('src.enrichment.api_helpers.jikan_helper', 'JikanDetailedFetcher'),
-        ('src.enrichment.api_helpers.kitsu_helper', 'KitsuEnrichmentHelper'),
-        ('src.enrichment.api_helpers.anidb_helper', 'AniDBEnrichmentHelper'),
+        ("src.enrichment.api_helpers.anilist_helper", "AniListEnrichmentHelper"),
+        ("src.enrichment.api_helpers.jikan_helper", "JikanDetailedFetcher"),
+        ("src.enrichment.api_helpers.kitsu_helper", "KitsuEnrichmentHelper"),
+        ("src.enrichment.api_helpers.anidb_helper", "AniDBEnrichmentHelper"),
     ]
 
     failed_helpers = []
@@ -67,20 +74,20 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             redis_calls_before = len(redis_calls)
 
             # Create instance (JikanDetailedFetcher needs special args)
-            if class_name == 'JikanDetailedFetcher':
+            if class_name == "JikanDetailedFetcher":
                 helper = helper_class(anime_id="1", data_type="episodes")
             else:
                 helper = helper_class()
 
             # Trigger session creation (different helpers have different methods)
             try:
-                if class_name == 'AniListEnrichmentHelper':
+                if class_name == "AniListEnrichmentHelper":
                     await helper.fetch_anime_by_anilist_id(1)
-                elif class_name == 'JikanDetailedFetcher':
+                elif class_name == "JikanDetailedFetcher":
                     await helper.fetch_episode_detail(1)
-                elif class_name == 'KitsuEnrichmentHelper':
+                elif class_name == "KitsuEnrichmentHelper":
                     await helper.get_anime_by_id(1)
-                elif class_name == 'AniDBEnrichmentHelper':
+                elif class_name == "AniDBEnrichmentHelper":
                     await helper.get_anime_by_id(1)
             except Exception:
                 # API errors are OK, we're testing cache setup not API calls
@@ -90,10 +97,12 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             redis_calls_after = len(redis_calls)
             if redis_calls_after > redis_calls_before:
                 new_calls = redis_calls[redis_calls_before:redis_calls_after]
-                failed_helpers.append((class_name, f"Created Redis client directly: {new_calls}"))
+                failed_helpers.append(
+                    (class_name, f"Created Redis client directly: {new_calls}")
+                )
 
             # Close helper
-            if hasattr(helper, 'close'):
+            if hasattr(helper, "close"):
                 await helper.close()
 
         except Exception as e:
@@ -105,7 +114,8 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
         pytest.fail(
             f"Some helpers are creating their own Redis clients!\n"
             f"Helpers should use http_cache_manager.get_aiohttp_session() instead.\n"
-            f"Failed helpers:\n" + "\n".join([f"  - {name}: {err}" for name, err in failed_helpers])
+            f"Failed helpers:\n"
+            + "\n".join([f"  - {name}: {err}" for name, err in failed_helpers])
         )
 
 
@@ -115,7 +125,7 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
     from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
     # Mock Redis.from_url to detect calls
-    mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+    mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
     # Mock cache manager
     mock_session = mocker.AsyncMock()
@@ -128,8 +138,8 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
     mock_session.post.return_value.__aenter__.return_value.headers = {}
 
     mocker.patch(
-        'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-        return_value=mock_session
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_session,
     )
 
     helper = AniListEnrichmentHelper()
@@ -149,7 +159,7 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
     # Mock Redis.from_url
-    mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+    mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
     # Mock cache manager
     mock_session = mocker.AsyncMock()
@@ -160,8 +170,8 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     )
 
     mocker.patch(
-        'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-        return_value=mock_session
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_session,
     )
 
     helper = JikanDetailedFetcher(anime_id="1", data_type="episodes")
@@ -182,7 +192,7 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
     from src.enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     # Mock Redis.from_url
-    mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+    mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
     # Mock cache manager
     mock_session = mocker.AsyncMock()
@@ -193,8 +203,8 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
     )
 
     mocker.patch(
-        'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-        return_value=mock_session
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_session,
     )
 
     helper = KitsuEnrichmentHelper()
@@ -215,7 +225,7 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 
     # Mock Redis.from_url
-    mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+    mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
     # Mock cache manager
     mock_session = mocker.AsyncMock()
@@ -226,8 +236,8 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     )
 
     mocker.patch(
-        'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-        return_value=mock_session
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_session,
     )
 
     helper = AniDBEnrichmentHelper()

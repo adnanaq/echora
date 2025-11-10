@@ -4,10 +4,10 @@ Comprehensive tests for AniSearchEnrichmentHelper with 100% coverage.
 Tests all methods, edge cases, and error scenarios using mocks.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List
+from unittest.mock import patch
 
+import pytest
 
 # Import the class to test
 from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
@@ -42,10 +42,10 @@ class TestAniSearchEnrichmentHelper:
                 {
                     "type": "Sequel",
                     "title": "Dan Da Dan: Season 2",
-                    "url": "https://www.anisearch.com/anime/19952"
+                    "url": "https://www.anisearch.com/anime/19952",
                 }
             ],
-            "manga_relations": []
+            "manga_relations": [],
         }
 
     @pytest.fixture
@@ -56,14 +56,14 @@ class TestAniSearchEnrichmentHelper:
                 "episodeNumber": 1,
                 "runtime": "24 min",
                 "releaseDate": "04.10.2024",
-                "title": "That's How Love Starts, Ya Know!"
+                "title": "That's How Love Starts, Ya Know!",
             },
             {
                 "episodeNumber": 2,
                 "runtime": "24 min",
                 "releaseDate": "11.10.2024",
-                "title": "That's a Space Alien, Ain't It?!"
-            }
+                "title": "That's a Space Alien, Ain't It?!",
+            },
         ]
 
     @pytest.fixture
@@ -76,17 +76,17 @@ class TestAniSearchEnrichmentHelper:
                     "role": "Main",
                     "url": "https://www.anisearch.com/character/123",
                     "image": "https://cdn.anisearch.com/images/character/123.webp",
-                    "favorites": 150
+                    "favorites": 150,
                 },
                 {
                     "name": "Ken Takakura",
                     "role": "Main",
                     "url": "https://www.anisearch.com/character/124",
                     "image": "https://cdn.anisearch.com/images/character/124.webp",
-                    "favorites": 120
-                }
+                    "favorites": 120,
+                },
             ],
-            "total_count": 2
+            "total_count": 2,
         }
 
     @pytest.fixture
@@ -97,8 +97,8 @@ class TestAniSearchEnrichmentHelper:
             "sources": [
                 "https://myanimelist.net/anime/55102",
                 "https://www.anisearch.com/anime/18878,dan-da-dan",
-                "https://anilist.co/anime/171018"
-            ]
+                "https://anilist.co/anime/171018",
+            ],
         }
 
     # ========================================
@@ -166,8 +166,8 @@ class TestAniSearchEnrichmentHelper:
             "title": "Test Anime",
             "sources": [
                 "https://myanimelist.net/anime/123",
-                "https://anilist.co/anime/456"
-            ]
+                "https://anilist.co/anime/456",
+            ],
         }
         result = await helper.find_anisearch_url(offline_data)
         assert result is None
@@ -188,8 +188,8 @@ class TestAniSearchEnrichmentHelper:
                 "https://myanimelist.net/anime/123",
                 123,  # Non-string source
                 None,  # None source
-                "https://www.anisearch.com/anime/456"
-            ]
+                "https://www.anisearch.com/anime/456",
+            ],
         }
         result = await helper.find_anisearch_url(offline_data)
         assert result == "https://www.anisearch.com/anime/456"
@@ -206,8 +206,10 @@ class TestAniSearchEnrichmentHelper:
     # ========================================
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    async def test_fetch_anime_data_success(self, mock_fetch, helper, sample_anime_data):
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    async def test_fetch_anime_data_success(
+        self, mock_fetch, helper, sample_anime_data
+    ):
         """Test successful anime data fetching."""
         mock_fetch.return_value = sample_anime_data
 
@@ -217,11 +219,11 @@ class TestAniSearchEnrichmentHelper:
         mock_fetch.assert_called_once_with(
             url="https://www.anisearch.com/anime/18878",
             return_data=True,
-            output_path=None
+            output_path=None,
         )
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     async def test_fetch_anime_data_no_data(self, mock_fetch, helper):
         """Test anime data fetching when crawler returns None."""
         mock_fetch.return_value = None
@@ -231,7 +233,7 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     async def test_fetch_anime_data_exception(self, mock_fetch, helper):
         """Test exception handling in fetch_anime_data."""
         mock_fetch.side_effect = Exception("Crawler error")
@@ -245,8 +247,10 @@ class TestAniSearchEnrichmentHelper:
     # ========================================
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
-    async def test_fetch_episode_data_success(self, mock_fetch, helper, sample_episode_data):
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
+    async def test_fetch_episode_data_success(
+        self, mock_fetch, helper, sample_episode_data
+    ):
         """Test successful episode data fetching."""
         mock_fetch.return_value = sample_episode_data
 
@@ -257,11 +261,11 @@ class TestAniSearchEnrichmentHelper:
         mock_fetch.assert_called_once_with(
             url="https://www.anisearch.com/anime/18878/episodes",
             return_data=True,
-            output_path=None
+            output_path=None,
         )
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_episode_data_no_data(self, mock_fetch, helper):
         """Test episode data fetching when crawler returns None."""
         mock_fetch.return_value = None
@@ -271,7 +275,7 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_episode_data_empty_list(self, mock_fetch, helper):
         """Test episode data fetching when crawler returns empty list (treated as no data)."""
         mock_fetch.return_value = []
@@ -282,7 +286,7 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_episode_data_exception(self, mock_fetch, helper):
         """Test exception handling in fetch_episode_data."""
         mock_fetch.side_effect = Exception("Episode crawler error")
@@ -296,8 +300,10 @@ class TestAniSearchEnrichmentHelper:
     # ========================================
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
-    async def test_fetch_character_data_success(self, mock_fetch, helper, sample_character_data):
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
+    async def test_fetch_character_data_success(
+        self, mock_fetch, helper, sample_character_data
+    ):
         """Test successful character data fetching."""
         mock_fetch.return_value = sample_character_data
 
@@ -309,11 +315,11 @@ class TestAniSearchEnrichmentHelper:
         mock_fetch.assert_called_once_with(
             url="https://www.anisearch.com/anime/18878/characters",
             return_data=True,
-            output_path=None
+            output_path=None,
         )
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_character_data_no_data(self, mock_fetch, helper):
         """Test character data fetching when crawler returns None."""
         mock_fetch.return_value = None
@@ -323,7 +329,7 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_character_data_zero_count(self, mock_fetch, helper):
         """Test character data fetching with zero characters."""
         mock_fetch.return_value = {"characters": [], "total_count": 0}
@@ -334,7 +340,7 @@ class TestAniSearchEnrichmentHelper:
         assert result["characters"] == []
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_character_data_exception(self, mock_fetch, helper):
         """Test exception handling in fetch_character_data."""
         mock_fetch.side_effect = Exception("Character crawler error")
@@ -348,12 +354,18 @@ class TestAniSearchEnrichmentHelper:
     # ========================================
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_all_data_complete(
-        self, mock_char, mock_ep, mock_anime, helper,
-        sample_anime_data, sample_episode_data, sample_character_data
+        self,
+        mock_char,
+        mock_ep,
+        mock_anime,
+        helper,
+        sample_anime_data,
+        sample_episode_data,
+        sample_character_data,
     ):
         """Test fetching all data successfully (anime + episodes + characters)."""
         mock_anime.return_value = sample_anime_data
@@ -369,17 +381,16 @@ class TestAniSearchEnrichmentHelper:
         assert "characters" in result
         assert len(result["characters"]) == 2
 
-
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    async def test_fetch_all_data_anime_only(self, mock_anime, helper, sample_anime_data):
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    async def test_fetch_all_data_anime_only(
+        self, mock_anime, helper, sample_anime_data
+    ):
         """Test fetching all data with episodes and characters disabled."""
         mock_anime.return_value = sample_anime_data
 
         result = await helper.fetch_all_data(
-            18878,
-            include_episodes=False,
-            include_characters=False
+            18878, include_episodes=False, include_characters=False
         )
 
         assert result is not None
@@ -388,8 +399,8 @@ class TestAniSearchEnrichmentHelper:
         assert "characters" not in result
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_all_data_with_episodes_only(
         self, mock_ep, mock_anime, helper, sample_anime_data, sample_episode_data
     ):
@@ -398,9 +409,7 @@ class TestAniSearchEnrichmentHelper:
         mock_ep.return_value = sample_episode_data
 
         result = await helper.fetch_all_data(
-            18878,
-            include_episodes=True,
-            include_characters=False
+            18878, include_episodes=True, include_characters=False
         )
 
         assert result is not None
@@ -409,7 +418,7 @@ class TestAniSearchEnrichmentHelper:
         assert "characters" not in result
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     async def test_fetch_all_data_anime_failure(self, mock_anime, helper):
         """Test fetch_all_data when anime data fetch fails."""
         mock_anime.return_value = None
@@ -419,8 +428,8 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_all_data_episode_failure_graceful(
         self, mock_ep, mock_anime, helper, sample_anime_data
     ):
@@ -436,8 +445,8 @@ class TestAniSearchEnrichmentHelper:
         assert "episodes" not in result  # Episodes not added due to failure
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_all_data_character_failure_graceful(
         self, mock_char, mock_anime, helper, sample_anime_data
     ):
@@ -453,8 +462,8 @@ class TestAniSearchEnrichmentHelper:
         assert "characters" not in result  # Characters not added due to failure
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     async def test_fetch_all_data_episode_returns_none(
         self, mock_ep, mock_anime, helper, sample_anime_data
     ):
@@ -468,8 +477,8 @@ class TestAniSearchEnrichmentHelper:
         assert "episodes" not in result  # Episodes not added when None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
     async def test_fetch_all_data_character_returns_none(
         self, mock_char, mock_anime, helper, sample_anime_data
     ):
@@ -483,7 +492,7 @@ class TestAniSearchEnrichmentHelper:
         assert "characters" not in result  # Characters not added when None
 
     @pytest.mark.asyncio
-    @patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime')
+    @patch("src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     async def test_fetch_all_data_exception(self, mock_anime, helper):
         """Test exception handling in fetch_all_data outer try-except (lines 219-221)."""
         mock_anime.side_effect = Exception("General error")
@@ -493,13 +502,21 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_episode_method_raises_exception(self, helper, sample_anime_data):
+    async def test_fetch_all_data_episode_method_raises_exception(
+        self, helper, sample_anime_data
+    ):
         """Test exception handling when fetch_episode_data itself raises (lines 198-199)."""
-        with patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime') as mock_anime:
+        with patch(
+            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
+        ) as mock_anime:
             mock_anime.return_value = sample_anime_data
 
             # Make the helper's fetch_episode_data method raise an exception
-            with patch.object(helper, 'fetch_episode_data', side_effect=Exception("Episode method error")):
+            with patch.object(
+                helper,
+                "fetch_episode_data",
+                side_effect=Exception("Episode method error"),
+            ):
                 result = await helper.fetch_all_data(18878, include_episodes=True)
 
                 # Should still return anime data despite episode method exception
@@ -508,13 +525,21 @@ class TestAniSearchEnrichmentHelper:
                 assert "episodes" not in result
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_character_method_raises_exception(self, helper, sample_anime_data):
+    async def test_fetch_all_data_character_method_raises_exception(
+        self, helper, sample_anime_data
+    ):
         """Test exception handling when fetch_character_data itself raises (lines 212-213)."""
-        with patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime') as mock_anime:
+        with patch(
+            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
+        ) as mock_anime:
             mock_anime.return_value = sample_anime_data
 
             # Make the helper's fetch_character_data method raise an exception
-            with patch.object(helper, 'fetch_character_data', side_effect=Exception("Character method error")):
+            with patch.object(
+                helper,
+                "fetch_character_data",
+                side_effect=Exception("Character method error"),
+            ):
                 result = await helper.fetch_all_data(18878, include_characters=True)
 
                 # Should still return anime data despite character method exception
@@ -523,18 +548,27 @@ class TestAniSearchEnrichmentHelper:
                 assert "characters" not in result
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_outer_exception_handler(self, helper, sample_anime_data):
+    async def test_fetch_all_data_outer_exception_handler(
+        self, helper, sample_anime_data
+    ):
         """Test outer exception handler when exception occurs outside inner try-except blocks (lines 219-221)."""
-        with patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime') as mock_anime:
+        with patch(
+            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
+        ) as mock_anime:
             mock_anime.return_value = sample_anime_data
 
-            with patch('src.enrichment.api_helpers.anisearch_helper.logger') as mock_logger:
-                mock_logger.info.side_effect = [None, None, None, RuntimeError("Logger error")]
+            with patch(
+                "src.enrichment.api_helpers.anisearch_helper.logger"
+            ) as mock_logger:
+                mock_logger.info.side_effect = [
+                    None,
+                    None,
+                    None,
+                    RuntimeError("Logger error"),
+                ]
 
                 result = await helper.fetch_all_data(
-                    18878,
-                    include_episodes=False,
-                    include_characters=False
+                    18878, include_episodes=False, include_characters=False
                 )
 
                 assert result is None
@@ -557,7 +591,9 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     async def test_multiple_sequential_fetches(self, helper):
         """Test multiple sequential fetch operations."""
-        with patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime') as mock:
+        with patch(
+            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
+        ) as mock:
             mock.return_value = {"japanese_title": "Test 1"}
             result1 = await helper.fetch_anime_data(1)
 
@@ -570,7 +606,9 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     async def test_large_anime_id(self, helper):
         """Test with very large anime ID."""
-        with patch('src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime') as mock:
+        with patch(
+            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
+        ) as mock:
             mock.return_value = {"japanese_title": "Test"}
             result = await helper.fetch_anime_data(999999999)
 
@@ -578,7 +616,7 @@ class TestAniSearchEnrichmentHelper:
             mock.assert_called_with(
                 url="https://www.anisearch.com/anime/999999999",
                 return_data=True,
-                output_path=None
+                output_path=None,
             )
 
     @pytest.mark.asyncio

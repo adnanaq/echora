@@ -2,9 +2,9 @@
 Tests for anidb_helper.py main() function.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # --- Tests for main() function ---
 
@@ -16,11 +16,15 @@ async def test_main_function_success_with_anidb_id(mock_helper_class):
     from src.enrichment.api_helpers.anidb_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data = AsyncMock(return_value={"id": 123, "title": "Test Anime"})
+    mock_helper.fetch_all_data = AsyncMock(
+        return_value={"id": 123, "title": "Test Anime"}
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "--anidb-id", "123", "--output", "/tmp/output.json"]):
+    with patch(
+        "sys.argv", ["script.py", "--anidb-id", "123", "--output", "/tmp/output.json"]
+    ):
         with patch("builtins.open", MagicMock()):
             exit_code = await main()
 
@@ -32,22 +36,28 @@ async def test_main_function_success_with_anidb_id(mock_helper_class):
 @patch("src.enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper")
 async def test_main_function_success_with_search_name(mock_helper_class):
     """Test main() function handles successful execution with search name."""
-    from src.enrichment.api_helpers.anidb_helper import main
-    import tempfile
     import os
+    import tempfile
+
+    from src.enrichment.api_helpers.anidb_helper import main
 
     mock_helper = AsyncMock()
     # search_anime_by_name returns list, main() takes first result
-    mock_helper.search_anime_by_name = AsyncMock(return_value=[{"id": 456, "title": "Test Anime"}])
+    mock_helper.search_anime_by_name = AsyncMock(
+        return_value=[{"id": 456, "title": "Test Anime"}]
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
     # Use a real temp file to avoid JSON serialization issues
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
         temp_path = f.name
 
     try:
-        with patch("sys.argv", ["script.py", "--search-name", "Test Anime", "--output", temp_path]):
+        with patch(
+            "sys.argv",
+            ["script.py", "--search-name", "Test Anime", "--output", temp_path],
+        ):
             exit_code = await main()
 
         assert exit_code == 0

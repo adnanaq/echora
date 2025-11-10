@@ -11,7 +11,6 @@ Tests cover:
 """
 
 import asyncio
-from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -55,13 +54,17 @@ class TestAniListEnrichmentHelperSessionManagement:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         # Patch at the module where it's imported
-        with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession", side_effect=Exception("Cache setup failed")):
+        with patch(
+            "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+            side_effect=Exception("Cache setup failed"),
+        ):
             with patch("aiohttp.ClientSession", return_value=mock_session):
                 await helper._make_request("query { test }")
 
@@ -80,13 +83,17 @@ class TestAniListEnrichmentHelperSessionManagement:
         mock_response.headers = {}
 
         mock_cached_session = MagicMock()
-        mock_cached_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_cached_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         # Patch at the source modules
-        with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession", return_value=mock_cached_session):
+        with patch(
+            "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+            return_value=mock_cached_session,
+        ):
             with patch("redis.asyncio.Redis.from_url"):
                 with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
                     await helper._make_request("query { test }")
@@ -112,12 +119,16 @@ class TestAniListEnrichmentHelperSessionManagement:
         mock_response.headers = {}
 
         mock_session_2 = MagicMock()
-        mock_session_2.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session_2.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
-        with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession", side_effect=Exception("Cache failed")):
+        with patch(
+            "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+            side_effect=Exception("Cache failed"),
+        ):
             with patch("aiohttp.ClientSession", return_value=mock_session_2):
                 await helper._make_request("query { test }")
 
@@ -145,12 +156,16 @@ class TestAniListEnrichmentHelperSessionManagement:
         mock_response.headers = {}
 
         mock_session_2 = MagicMock()
-        mock_session_2.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session_2.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
-        with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession", side_effect=Exception("Cache failed")):
+        with patch(
+            "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+            side_effect=Exception("Cache failed"),
+        ):
             with patch("aiohttp.ClientSession", return_value=mock_session_2):
                 # Should not raise exception
                 await helper._make_request("query { test }")
@@ -170,12 +185,16 @@ class TestAniListEnrichmentHelperSessionManagement:
         mock_response.headers = {}
 
         mock_uncached_session = MagicMock()
-        mock_uncached_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_uncached_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
-        with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession", side_effect=Exception("Redis unavailable")):
+        with patch(
+            "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+            side_effect=Exception("Redis unavailable"),
+        ):
             with patch("aiohttp.ClientSession", return_value=mock_uncached_session):
                 await helper._make_request("query { test }")
 
@@ -193,15 +212,18 @@ class TestAniListEnrichmentHelperMakeRequest:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"data": {"Media": {"id": 1, "title": "Test"}}})
+        mock_response.json = AsyncMock(
+            return_value={"data": {"Media": {"id": 1, "title": "Test"}}}
+        )
         mock_response.from_cache = False
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -223,10 +245,11 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -250,10 +273,11 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -271,15 +295,16 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"data": {"Media": {"id": 1}}})
         # Remove from_cache attribute entirely
-        if hasattr(mock_response, 'from_cache'):
-            delattr(mock_response, 'from_cache')
+        if hasattr(mock_response, "from_cache"):
+            delattr(mock_response, "from_cache")
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -301,10 +326,11 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_response.headers = {"X-RateLimit-Remaining": "45"}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -326,10 +352,11 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -426,18 +453,18 @@ class TestAniListEnrichmentHelperMakeRequest:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "errors": [{"message": "Field not found"}],
-            "data": None
-        })
+        mock_response.json = AsyncMock(
+            return_value={"errors": [{"message": "Field not found"}], "data": None}
+        )
         mock_response.from_cache = False
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -454,9 +481,7 @@ class TestAniListEnrichmentHelperMakeRequest:
 
         # Create exception for raise_for_status to raise
         error = aiohttp.ClientResponseError(
-            request_info=MagicMock(),
-            history=(),
-            status=500
+            request_info=MagicMock(), history=(), status=500
         )
 
         mock_response = AsyncMock()
@@ -534,10 +559,12 @@ class TestAniListEnrichmentHelperFetchMethods:
     async def test_fetch_anime_by_anilist_id_success(self):
         """Test successful anime fetch by AniList ID."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {"id": 21, "title": {"romaji": "One Piece"}},
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {"id": 21, "title": {"romaji": "One Piece"}},
+                "_from_cache": False,
+            }
+        )
 
         result = await helper.fetch_anime_by_anilist_id(21)
 
@@ -572,15 +599,17 @@ class TestAniListEnrichmentHelperPagination:
     async def test_fetch_paginated_data_single_page(self):
         """Test fetching single page of data."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {
-                "characters": {
-                    "edges": [{"node": {"id": 1}}, {"node": {"id": 2}}],
-                    "pageInfo": {"hasNextPage": False}
-                }
-            },
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {
+                    "characters": {
+                        "edges": [{"node": {"id": 1}}, {"node": {"id": 2}}],
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                },
+                "_from_cache": False,
+            }
+        )
 
         result = await helper._fetch_paginated_data(21, "query", "characters")
 
@@ -598,10 +627,10 @@ class TestAniListEnrichmentHelperPagination:
             "Media": {
                 "characters": {
                     "edges": [{"node": {"id": 1}}, {"node": {"id": 2}}],
-                    "pageInfo": {"hasNextPage": True}
+                    "pageInfo": {"hasNextPage": True},
                 }
             },
-            "_from_cache": False
+            "_from_cache": False,
         }
 
         # Page 2: no next page
@@ -609,10 +638,10 @@ class TestAniListEnrichmentHelperPagination:
             "Media": {
                 "characters": {
                     "edges": [{"node": {"id": 3}}, {"node": {"id": 4}}],
-                    "pageInfo": {"hasNextPage": False}
+                    "pageInfo": {"hasNextPage": False},
                 }
             },
-            "_from_cache": False
+            "_from_cache": False,
         }
 
         helper._make_request = AsyncMock(side_effect=[response_page1, response_page2])
@@ -636,20 +665,20 @@ class TestAniListEnrichmentHelperPagination:
             "Media": {
                 "characters": {
                     "edges": [{"node": {"id": 1}}],
-                    "pageInfo": {"hasNextPage": True}
+                    "pageInfo": {"hasNextPage": True},
                 }
             },
-            "_from_cache": True  # Cache hit
+            "_from_cache": True,  # Cache hit
         }
 
         response_page2 = {
             "Media": {
                 "characters": {
                     "edges": [{"node": {"id": 2}}],
-                    "pageInfo": {"hasNextPage": False}
+                    "pageInfo": {"hasNextPage": False},
                 }
             },
-            "_from_cache": True  # Cache hit
+            "_from_cache": True,  # Cache hit
         }
 
         helper._make_request = AsyncMock(side_effect=[response_page1, response_page2])
@@ -685,10 +714,9 @@ class TestAniListEnrichmentHelperPagination:
     async def test_fetch_paginated_data_missing_data_key(self):
         """Test pagination when data key is missing."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {},
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={"Media": {}, "_from_cache": False}
+        )
 
         result = await helper._fetch_paginated_data(21, "query", "characters")
 
@@ -698,15 +726,14 @@ class TestAniListEnrichmentHelperPagination:
     async def test_fetch_paginated_data_empty_edges(self):
         """Test pagination with empty edges array."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {
-                "characters": {
-                    "edges": [],
-                    "pageInfo": {"hasNextPage": False}
-                }
-            },
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {
+                    "characters": {"edges": [], "pageInfo": {"hasNextPage": False}}
+                },
+                "_from_cache": False,
+            }
+        )
 
         result = await helper._fetch_paginated_data(21, "query", "characters")
 
@@ -716,15 +743,17 @@ class TestAniListEnrichmentHelperPagination:
     async def test_fetch_paginated_data_missing_page_info(self):
         """Test pagination when pageInfo is missing."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {
-                "characters": {
-                    "edges": [{"node": {"id": 1}}]
-                    # No pageInfo
-                }
-            },
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {
+                    "characters": {
+                        "edges": [{"node": {"id": 1}}]
+                        # No pageInfo
+                    }
+                },
+                "_from_cache": False,
+            }
+        )
 
         result = await helper._fetch_paginated_data(21, "query", "characters")
 
@@ -740,9 +769,11 @@ class TestAniListEnrichmentHelperSpecificFetchers:
     async def test_fetch_all_characters(self):
         """Test fetching all characters."""
         helper = AniListEnrichmentHelper()
-        helper._fetch_paginated_data = AsyncMock(return_value=[
-            {"node": {"id": 1, "name": {"full": "Monkey D. Luffy"}}, "role": "MAIN"}
-        ])
+        helper._fetch_paginated_data = AsyncMock(
+            return_value=[
+                {"node": {"id": 1, "name": {"full": "Monkey D. Luffy"}}, "role": "MAIN"}
+            ]
+        )
 
         result = await helper.fetch_all_characters(21)
 
@@ -757,9 +788,14 @@ class TestAniListEnrichmentHelperSpecificFetchers:
     async def test_fetch_all_staff(self):
         """Test fetching all staff."""
         helper = AniListEnrichmentHelper()
-        helper._fetch_paginated_data = AsyncMock(return_value=[
-            {"node": {"id": 1, "name": {"full": "Eiichiro Oda"}}, "role": "Story & Art"}
-        ])
+        helper._fetch_paginated_data = AsyncMock(
+            return_value=[
+                {
+                    "node": {"id": 1, "name": {"full": "Eiichiro Oda"}},
+                    "role": "Story & Art",
+                }
+            ]
+        )
 
         result = await helper.fetch_all_staff(21)
 
@@ -773,9 +809,9 @@ class TestAniListEnrichmentHelperSpecificFetchers:
     async def test_fetch_all_episodes(self):
         """Test fetching all episodes."""
         helper = AniListEnrichmentHelper()
-        helper._fetch_paginated_data = AsyncMock(return_value=[
-            {"node": {"id": 1, "episode": 1, "airingAt": 1234567890}}
-        ])
+        helper._fetch_paginated_data = AsyncMock(
+            return_value=[{"node": {"id": 1, "episode": 1, "airingAt": 1234567890}}]
+        )
 
         result = await helper.fetch_all_episodes(21)
 
@@ -796,15 +832,15 @@ class TestAniListEnrichmentHelperPopulateDetails:
 
         anime_data = {"id": 21, "title": {"romaji": "One Piece"}}
 
-        helper.fetch_all_characters = AsyncMock(return_value=[
-            {"node": {"id": 1}, "role": "MAIN"}
-        ])
-        helper.fetch_all_staff = AsyncMock(return_value=[
-            {"node": {"id": 1}, "role": "Director"}
-        ])
-        helper.fetch_all_episodes = AsyncMock(return_value=[
-            {"node": {"id": 1, "episode": 1}}
-        ])
+        helper.fetch_all_characters = AsyncMock(
+            return_value=[{"node": {"id": 1}, "role": "MAIN"}]
+        )
+        helper.fetch_all_staff = AsyncMock(
+            return_value=[{"node": {"id": 1}, "role": "Director"}]
+        )
+        helper.fetch_all_episodes = AsyncMock(
+            return_value=[{"node": {"id": 1, "episode": 1}}]
+        )
 
         result = await helper._fetch_and_populate_details(anime_data)
 
@@ -850,15 +886,16 @@ class TestAniListEnrichmentHelperPopulateDetails:
         """Test successful full data fetch."""
         helper = AniListEnrichmentHelper()
 
-        helper.fetch_anime_by_anilist_id = AsyncMock(return_value={
-            "id": 21,
-            "title": {"romaji": "One Piece"}
-        })
-        helper._fetch_and_populate_details = AsyncMock(return_value={
-            "id": 21,
-            "title": {"romaji": "One Piece"},
-            "characters": {"edges": []}
-        })
+        helper.fetch_anime_by_anilist_id = AsyncMock(
+            return_value={"id": 21, "title": {"romaji": "One Piece"}}
+        )
+        helper._fetch_and_populate_details = AsyncMock(
+            return_value={
+                "id": 21,
+                "title": {"romaji": "One Piece"},
+                "characters": {"edges": []},
+            }
+        )
 
         result = await helper.fetch_all_data_by_anilist_id(21)
 
@@ -917,10 +954,10 @@ class TestAniListEnrichmentHelperEdgeCases:
                 "title": {
                     "romaji": "進撃の巨人",
                     "native": "進撃の巨人",
-                    "english": "Attack on Titan"
-                }
+                    "english": "Attack on Titan",
+                },
             },
-            "_from_cache": False
+            "_from_cache": False,
         }
 
         helper._make_request = AsyncMock(return_value=unicode_data)
@@ -943,10 +980,11 @@ class TestAniListEnrichmentHelperEdgeCases:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -970,10 +1008,11 @@ class TestAniListEnrichmentHelperEdgeCases:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -996,10 +1035,11 @@ class TestAniListEnrichmentHelperEdgeCases:
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -1047,15 +1087,20 @@ class TestAniListEnrichmentHelperEdgeCases:
         responses = []
         for page in range(10):
             has_next = page < 9
-            responses.append({
-                "Media": {
-                    "characters": {
-                        "edges": [{"node": {"id": i}} for i in range(page * 25, (page + 1) * 25)],
-                        "pageInfo": {"hasNextPage": has_next}
-                    }
-                },
-                "_from_cache": False
-            })
+            responses.append(
+                {
+                    "Media": {
+                        "characters": {
+                            "edges": [
+                                {"node": {"id": i}}
+                                for i in range(page * 25, (page + 1) * 25)
+                            ],
+                            "pageInfo": {"hasNextPage": has_next},
+                        }
+                    },
+                    "_from_cache": False,
+                }
+            )
 
         helper._make_request = AsyncMock(side_effect=responses)
 
@@ -1092,15 +1137,17 @@ class TestAniListEnrichmentHelperEdgeCases:
     async def test_pagination_with_missing_edges_key(self):
         """Test pagination when edges key is missing from response."""
         helper = AniListEnrichmentHelper()
-        helper._make_request = AsyncMock(return_value={
-            "Media": {
-                "characters": {
-                    # No edges key
-                    "pageInfo": {"hasNextPage": False}
-                }
-            },
-            "_from_cache": False
-        })
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {
+                    "characters": {
+                        # No edges key
+                        "pageInfo": {"hasNextPage": False}
+                    }
+                },
+                "_from_cache": False,
+            }
+        )
 
         result = await helper._fetch_paginated_data(21, "query", "characters")
 
@@ -1139,10 +1186,11 @@ class TestAniListEnrichmentHelperEdgeCases:
         mock_response.headers = {}  # No rate limit header
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -1159,18 +1207,21 @@ class TestAniListEnrichmentHelperEdgeCases:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "errors": [{"message": "Some field failed"}],
-            "data": {"Media": {"id": 1}}  # Partial data
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "errors": [{"message": "Some field failed"}],
+                "data": {"Media": {"id": 1}},  # Partial data
+            }
+        )
         mock_response.from_cache = False
         mock_response.headers = {}
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -1222,8 +1273,8 @@ class TestAniListEnrichmentHelperCacheIntegration:
     @pytest.mark.asyncio
     async def test_anilist_helper_uses_cache_manager(self, mocker):
         """Test that AniListEnrichmentHelper uses centralized cache manager."""
-        from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
         from src.cache_manager.instance import http_cache_manager
+        from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
         # Create proper mock response
         mock_response = AsyncMock()
@@ -1236,17 +1287,16 @@ class TestAniListEnrichmentHelperCacheIntegration:
 
         # Create mock session with proper context manager for post
         mock_session = MagicMock()
-        mock_session.post = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=mock_response),
-            __aexit__=AsyncMock()
-        ))
+        mock_session.post = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
         mock_session.close = AsyncMock()
 
         # Mock the cache manager's get_aiohttp_session method
         mock_get_session = mocker.patch.object(
-            http_cache_manager,
-            'get_aiohttp_session',
-            return_value=mock_session
+            http_cache_manager, "get_aiohttp_session", return_value=mock_session
         )
 
         helper = AniListEnrichmentHelper()
@@ -1267,14 +1317,13 @@ class TestAniListEnrichmentHelperCacheIntegration:
 
         await helper.close()
 
-
     @pytest.mark.asyncio
     async def test_anilist_helper_does_not_create_manual_redis_client(self, mocker):
         """Test that AniListEnrichmentHelper does NOT manually create Redis clients."""
         from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
         # Mock Redis.from_url to detect if it's called
-        mock_redis_from_url = mocker.patch('redis.asyncio.Redis.from_url')
+        mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
         # Mock cache manager to provide a working session
         mock_session = mocker.AsyncMock()
@@ -1287,8 +1336,8 @@ class TestAniListEnrichmentHelperCacheIntegration:
         mock_session.post.return_value.__aenter__.return_value.headers = {}
 
         mocker.patch(
-            'src.cache_manager.instance.http_cache_manager.get_aiohttp_session',
-            return_value=mock_session
+            "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+            return_value=mock_session,
         )
 
         helper = AniListEnrichmentHelper()
@@ -1308,30 +1357,34 @@ class TestAniListEnrichmentHelperCLI:
     @pytest.mark.asyncio
     async def test_main_with_anilist_id_success(self, tmp_path):
         """Test CLI with successful AniList ID fetch."""
+        import json
         import sys
         from unittest.mock import patch
-        import json
 
         output_file = tmp_path / "test_output.json"
 
         # Mock command line arguments
         test_args = ["script_name", "--anilist-id", "21", "--output", str(output_file)]
 
-        with patch.object(sys, 'argv', test_args):
-            with patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper") as MockHelper:
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(return_value={
-                    "id": 21,
-                    "title": {"romaji": "One Piece"}
-                })
+                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                    return_value={"id": 21, "title": {"romaji": "One Piece"}}
+                )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
                 from src.enrichment.api_helpers.anilist_helper import main
+
                 await main()
 
                 # Verify helper methods were called
-                mock_helper_instance.fetch_all_data_by_anilist_id.assert_awaited_once_with(21)
+                mock_helper_instance.fetch_all_data_by_anilist_id.assert_awaited_once_with(
+                    21
+                )
                 mock_helper_instance.close.assert_awaited_once()
 
                 # Verify output file was created
@@ -1348,16 +1401,27 @@ class TestAniListEnrichmentHelperCLI:
 
         output_file = tmp_path / "test_output.json"
 
-        test_args = ["script_name", "--anilist-id", "99999", "--output", str(output_file)]
+        test_args = [
+            "script_name",
+            "--anilist-id",
+            "99999",
+            "--output",
+            str(output_file),
+        ]
 
-        with patch.object(sys, 'argv', test_args):
-            with patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper") as MockHelper:
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(return_value=None)
+                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                    return_value=None
+                )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
                 from src.enrichment.api_helpers.anilist_helper import main
+
                 await main()
 
                 # Verify close was called even when no data found
@@ -1376,10 +1440,14 @@ class TestAniListEnrichmentHelperCLI:
 
         test_args = ["script_name", "--anilist-id", "21", "--output", str(output_file)]
 
-        with patch.object(sys, 'argv', test_args):
-            with patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper") as MockHelper:
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(side_effect=Exception("API Error"))
+                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                    side_effect=Exception("API Error")
+                )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
@@ -1396,19 +1464,23 @@ class TestAniListEnrichmentHelperCLI:
         """Test CLI with default output path."""
         import sys
         from unittest.mock import patch
-        import os
 
         test_args = ["script_name", "--anilist-id", "21"]
 
-        with patch.object(sys, 'argv', test_args):
-            with patch("src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper") as MockHelper:
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
                 with patch("builtins.open", MagicMock()) as mock_open:
                     mock_helper_instance = MagicMock()
-                    mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(return_value={"id": 21})
+                    mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                        return_value={"id": 21}
+                    )
                     mock_helper_instance.close = AsyncMock()
                     MockHelper.return_value = mock_helper_instance
 
                     from src.enrichment.api_helpers.anilist_helper import main
+
                     await main()
 
                     # Verify default output path was used
@@ -1427,13 +1499,17 @@ async def test_main_function_success(mock_helper_class, tmp_path):
     from src.enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(return_value={"id": 21, "title": "Test"})
+    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(
+        return_value={"id": 21, "title": "Test"}
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
     # Use pytest's tmp_path for portability
     output_file = str(tmp_path / "output.json")
-    with patch("sys.argv", ["script.py", "--anilist-id", "21", "--output", output_file]):
+    with patch(
+        "sys.argv", ["script.py", "--anilist-id", "21", "--output", output_file]
+    ):
         with patch("builtins.open", MagicMock()):
             exit_code = await main()
 
@@ -1468,7 +1544,9 @@ async def test_main_function_error_handling(mock_helper_class):
     from src.enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(side_effect=Exception("API error"))
+    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(
+        side_effect=Exception("API error")
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 

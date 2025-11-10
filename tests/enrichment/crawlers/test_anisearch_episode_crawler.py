@@ -2,9 +2,9 @@
 Tests for anisearch_episode_crawler.py main() function.
 """
 
-import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
+import pytest
 
 # --- Tests for main() function ---
 
@@ -17,10 +17,18 @@ async def test_main_function_success(mock_fetch):
 
     mock_fetch.return_value = [
         {"episodeNumber": 1, "title": "Episode 1"},
-        {"episodeNumber": 2, "title": "Episode 2"}
+        {"episodeNumber": 2, "title": "Episode 2"},
     ]
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes", "--output", "/tmp/output.json"]):
+    with patch(
+        "sys.argv",
+        [
+            "script.py",
+            "https://www.anisearch.com/anime/18878/episodes",
+            "--output",
+            "/tmp/output.json",
+        ],
+    ):
         exit_code = await main()
 
     assert exit_code == 0
@@ -42,7 +50,9 @@ async def test_main_function_with_default_output(mock_fetch):
 
     mock_fetch.return_value = []
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/12345/episodes"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/12345/episodes"]
+    ):
         exit_code = await main()
 
     assert exit_code == 0
@@ -59,7 +69,9 @@ async def test_main_function_error_handling(mock_fetch):
 
     mock_fetch.side_effect = Exception("Crawler error")
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes"]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -73,7 +85,9 @@ async def test_main_function_no_episodes_found(mock_fetch):
 
     mock_fetch.return_value = []
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/99999/episodes"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/99999/episodes"]
+    ):
         exit_code = await main()
 
     # Should still return 0 even with empty list

@@ -9,6 +9,9 @@ Tests concurrent execution of multiple enrichment agents to verify:
 4. Shared cache behavior with multiple agents
 
 These are integration tests that simulate real-world concurrent enrichment scenarios.
+
+NOTE: Tests that require live AniList API and Redis are skipped by default.
+Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run live tests with real API/Redis.
 """
 
 import asyncio
@@ -16,14 +19,18 @@ import os
 import shutil
 import tempfile
 import time
-from pathlib import Path
-from typing import List
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
+
+# Skip live API/Redis tests unless explicitly enabled
+ENABLE_LIVE_TESTS = os.getenv("ENABLE_LIVE_CONCURRENCY_TESTS")
+skip_live_tests = pytest.mark.skipif(
+    not ENABLE_LIVE_TESTS,
+    reason="Live API/Redis tests disabled. Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to enable."
+)
 
 
 @pytest.fixture
@@ -41,9 +48,7 @@ def mock_config(temp_test_dir):
     """Create mock EnrichmentConfig for testing."""
     from src.enrichment.programmatic.config import EnrichmentConfig
 
-    config = EnrichmentConfig(
-        temp_dir=temp_test_dir
-    )
+    config = EnrichmentConfig(temp_dir=temp_test_dir)
     return config
 
 
@@ -61,7 +66,9 @@ class TestConcurrentAgentDirectoryCreation:
         - No ID collisions (each agent gets unique ID)
         - All directories exist after concurrent creation
         """
-        from src.enrichment.programmatic.enrichment_pipeline import ProgrammaticEnrichmentPipeline
+        from src.enrichment.programmatic.enrichment_pipeline import (
+            ProgrammaticEnrichmentPipeline,
+        )
 
         anime_title = "TestAnime"
         num_agents = 5
@@ -69,9 +76,7 @@ class TestConcurrentAgentDirectoryCreation:
 
         async def create_agent_dir(agent_num: int) -> str:
             """Simulate concurrent agent directory creation."""
-            pipeline = ProgrammaticEnrichmentPipeline(
-                config=mock_config
-            )
+            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
             # Create temp directory (triggers agent ID assignment)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
@@ -81,7 +86,9 @@ class TestConcurrentAgentDirectoryCreation:
         created_dirs = await asyncio.gather(*tasks)
 
         # Verify all directories created
-        assert len(created_dirs) == num_agents, f"Expected {num_agents} dirs, got {len(created_dirs)}"
+        assert (
+            len(created_dirs) == num_agents
+        ), f"Expected {num_agents} dirs, got {len(created_dirs)}"
 
         # Verify all directories are unique (no collisions)
         unique_dirs = set(created_dirs)
@@ -103,14 +110,15 @@ class TestConcurrentAgentDirectoryCreation:
             agent_ids.append(int(agent_id_str))
 
         agent_ids.sort()
-        assert agent_ids == list(range(1, num_agents + 1)), (
-            f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
-        )
+        assert agent_ids == list(
+            range(1, num_agents + 1)
+        ), f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
 
 
 class TestConcurrentRedisAccess:
     """Test concurrent Redis cache access from multiple agents."""
 
+    @skip_live_tests
     @pytest.mark.asyncio
     async def test_concurrent_agents_share_redis_cache(self, mock_config):
         """
@@ -127,6 +135,8 @@ class TestConcurrentRedisAccess:
         - Redis server running
         - Internet connection for API calls
         - AniList API access
+
+        Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
         from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
@@ -195,12 +205,16 @@ class TestAgentIDRaceConditions:
 
         Expected: No duplicate IDs, gap filled correctly
         """
-        from src.enrichment.programmatic.enrichment_pipeline import ProgrammaticEnrichmentPipeline
+        from src.enrichment.programmatic.enrichment_pipeline import (
+            ProgrammaticEnrichmentPipeline,
+        )
 
         # Pre-create directories with gap
         anime_title = "GapTest"
         for agent_id in [1, 2, 4]:
-            dir_path = os.path.join(mock_config.temp_dir, f"{anime_title}_agent{agent_id}")
+            dir_path = os.path.join(
+                mock_config.temp_dir, f"{anime_title}_agent{agent_id}"
+            )
             os.makedirs(dir_path, exist_ok=True)
 
         # Now launch 3 concurrent agents
@@ -209,9 +223,7 @@ class TestAgentIDRaceConditions:
 
         async def create_agent_with_gap() -> str:
             """Create agent that should fill gap or get next ID."""
-            pipeline = ProgrammaticEnrichmentPipeline(
-                config=mock_config
-            )
+            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
 
@@ -237,14 +249,15 @@ class TestAgentIDRaceConditions:
 
         # Verify no duplicate IDs across all agents
         all_agent_ids = [1, 2, 4] + new_agent_ids
-        assert len(all_agent_ids) == len(set(all_agent_ids)), (
-            f"Duplicate agent IDs detected: {all_agent_ids}"
-        )
+        assert len(all_agent_ids) == len(
+            set(all_agent_ids)
+        ), f"Duplicate agent IDs detected: {all_agent_ids}"
 
 
 class TestConcurrentPipelineExecution:
     """Test full enrichment pipeline with concurrent agents."""
 
+    @skip_live_tests
     @pytest.mark.asyncio
     async def test_concurrent_pipeline_execution_stress(self, mock_config):
         """
@@ -258,14 +271,17 @@ class TestConcurrentPipelineExecution:
         - No race conditions in cache
         - Agent directories properly isolated
         - Cache hits occur for shared data
+
+        NOTE: Requires live AniList API and Redis.
+        Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
         from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
         # Use small anime for stress test (avoid huge episode/character lists)
         anime_configs = [
-            {"id": 1535, "title": "DeathNote"},      # 37 episodes
+            {"id": 1535, "title": "DeathNote"},  # 37 episodes
             {"id": 5114, "title": "FullmetalAlchemistBrotherhood"},  # 64 episodes
-            {"id": 16498, "title": "AttackOnTitan"}  # 25 episodes (S1)
+            {"id": 16498, "title": "AttackOnTitan"},  # 25 episodes (S1)
         ]
 
         results = []
@@ -287,7 +303,9 @@ class TestConcurrentPipelineExecution:
                 "title": anime_config["title"],
                 "success": anilist_data is not None,
                 "elapsed": elapsed,
-                "from_cache": anilist_data.get("_from_cache", False) if anilist_data else False
+                "from_cache": (
+                    anilist_data.get("_from_cache", False) if anilist_data else False
+                ),
             }
 
         # Run 3 pipelines concurrently
@@ -305,7 +323,7 @@ class TestConcurrentPipelineExecution:
         )
 
         # Verify cache was used (at least one cache hit expected)
-        cache_hit_count = sum(1 for r in results if r["from_cache"])
+        sum(1 for r in results if r["from_cache"])
 
         # Performance check: concurrent execution should be faster than sequential
         # (This is optional - just validating concurrency works)
@@ -314,4 +332,6 @@ class TestConcurrentPipelineExecution:
 
         # If truly concurrent, max_elapsed << total_elapsed
         # We don't assert this strictly as it depends on network/cache state
-        print(f"\nConcurrency efficiency: {max_elapsed:.2f}s concurrent vs {total_elapsed:.2f}s sequential potential")
+        print(
+            f"\nConcurrency efficiency: {max_elapsed:.2f}s concurrent vs {total_elapsed:.2f}s sequential potential"
+        )

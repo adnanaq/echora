@@ -1,4 +1,3 @@
-import logging
 import time
 from typing import AsyncGenerator
 from unittest.mock import patch
@@ -9,7 +8,6 @@ from redis import exceptions
 from redis.asyncio import Redis
 
 from src.cache_manager import result_cache  # Import module to access _redis_client
-from src.cache_manager.result_cache import close_result_cache_redis_client
 from src.enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from src.enrichment.crawlers.anisearch_character_crawler import (
     fetch_anisearch_characters,
@@ -84,14 +82,16 @@ async def test_crawler_cache_and_singleton_client(redis_client):
     assert anime_data_2 is not None
 
     # Sort screenshots to ensure consistent comparison
-    if 'screenshots' in anime_data_1 and isinstance(anime_data_1['screenshots'], list):
-        anime_data_1['screenshots'].sort()
-    if 'screenshots' in anime_data_2 and isinstance(anime_data_2['screenshots'], list):
-        anime_data_2['screenshots'].sort()
+    if "screenshots" in anime_data_1 and isinstance(anime_data_1["screenshots"], list):
+        anime_data_1["screenshots"].sort()
+    if "screenshots" in anime_data_2 and isinstance(anime_data_2["screenshots"], list):
+        anime_data_2["screenshots"].sort()
 
     assert anime_data_2 == anime_data_1
 
-    if duration_1 > 0.1: # Only assert if the first call took a meaningful amount of time
+    if (
+        duration_1 > 0.1
+    ):  # Only assert if the first call took a meaningful amount of time
         assert duration_2 < duration_1 / 5
 
         # --- Test fetch_anisearch_episodes caching ---

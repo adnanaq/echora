@@ -5,9 +5,9 @@ Tests for animeschedule_fetcher.py - comprehensive coverage including edge cases
 import json
 import os
 import tempfile
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # --- Helper function for mocking ---
 
@@ -39,7 +39,7 @@ async def test_fetch_animeschedule_data_success_no_output(mock_cache_manager):
     # Mock response
     mock_response = AsyncMock()
     mock_response.status = 200
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(
         return_value={"anime": [{"id": 1, "title": "Test Anime"}]}
     )
@@ -66,7 +66,7 @@ async def test_fetch_animeschedule_data_with_output_path(mock_cache_manager):
     # Mock response
     mock_response = AsyncMock()
     mock_response.status = 200
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(
         return_value={"anime": [{"id": 1, "title": "Test Anime"}]}
     )
@@ -108,7 +108,7 @@ async def test_fetch_animeschedule_data_no_results(mock_cache_manager):
     # Mock response with empty results
     mock_response = AsyncMock()
     mock_response.status = 200
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(return_value={"anime": []})
 
     # Create mocked session
@@ -125,10 +125,11 @@ async def test_fetch_animeschedule_data_no_results(mock_cache_manager):
 @patch("src.enrichment.api_helpers.animeschedule_fetcher._cache_manager")
 async def test_fetch_animeschedule_data_client_error(mock_cache_manager):
     """Test fetch_animeschedule_data handles aiohttp.ClientError."""
+    import aiohttp
+
     from src.enrichment.api_helpers.animeschedule_fetcher import (
         fetch_animeschedule_data,
     )
-    import aiohttp
 
     # Mock async context manager that raises on __aenter__
     mock_cm = MagicMock()
@@ -157,7 +158,7 @@ async def test_fetch_animeschedule_data_json_decode_error(mock_cache_manager):
     # Mock response with invalid JSON
     mock_response = AsyncMock()
     mock_response.status = 200
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(side_effect=json.JSONDecodeError("Invalid", "", 0))
 
     # Create mocked session
@@ -174,10 +175,11 @@ async def test_fetch_animeschedule_data_json_decode_error(mock_cache_manager):
 @patch("src.enrichment.api_helpers.animeschedule_fetcher._cache_manager")
 async def test_fetch_animeschedule_data_raise_for_status(mock_cache_manager):
     """Test fetch_animeschedule_data handles HTTP errors via raise_for_status."""
+    import aiohttp
+
     from src.enrichment.api_helpers.animeschedule_fetcher import (
         fetch_animeschedule_data,
     )
-    import aiohttp
 
     # Mock response with HTTP error - raise_for_status is sync method
     mock_response = AsyncMock()

@@ -2,9 +2,9 @@
 Tests for animeplanet_helper.py main() function.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # --- Tests for main() function ---
 
@@ -16,7 +16,9 @@ async def test_main_function_success(mock_helper_class):
     from src.enrichment.api_helpers.animeplanet_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_anime_data = AsyncMock(return_value={"title": "Test", "slug": "test"})
+    mock_helper.fetch_anime_data = AsyncMock(
+        return_value={"title": "Test", "slug": "test"}
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 

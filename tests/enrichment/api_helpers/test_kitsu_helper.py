@@ -2,9 +2,9 @@
 Tests for kitsu_helper.py main() function.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # --- Tests for main() function ---
 

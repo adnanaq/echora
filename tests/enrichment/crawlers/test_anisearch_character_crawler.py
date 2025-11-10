@@ -12,19 +12,16 @@ Tests cover:
 - CLI functionality
 """
 
-import asyncio
 import json
-import re
 import sys
-import tempfile
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
 
-from src.enrichment.crawlers.anisearch_character_crawler import fetch_anisearch_characters
+from src.enrichment.crawlers.anisearch_character_crawler import (
+    fetch_anisearch_characters,
+)
 
 
 class TestFetchAnisearchCharacters:
@@ -61,7 +58,6 @@ class TestFetchAnisearchCharacters:
         TestAniSearchCharacterCrawler.test_fetch_anisearch_characters_wrong_result_type
         where the cache decorator can be properly bypassed.
         """
-        pass
 
     @pytest.mark.asyncio
     async def test_fetch_anisearch_characters_extraction_failed(self):
@@ -644,7 +640,9 @@ class TestCLI:
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
-                mock_result.url = "https://www.anisearch.com/anime/test_cli_execution/characters"
+                mock_result.url = (
+                    "https://www.anisearch.com/anime/test_cli_execution/characters"
+                )
                 mock_result.extracted_content = json.dumps(
                     [
                         {
@@ -688,23 +686,32 @@ class TestCLI:
 
 class TestTypeErrorCoverage:
     """Tests specifically for TypeError exception path coverage (line 108)."""
-    
+
     @pytest.mark.asyncio
     async def test_type_error_when_result_not_crawl_result(self):
         """Test line 108: TypeError when arun returns non-CrawlResult in container."""
-        with patch("src.enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler") as MockCrawler:
+        with patch(
+            "src.enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
             mock_crawler = AsyncMock()
-            
+
             # Return a CrawlResultContainer with a string instead of CrawlResult
             from crawl4ai.models import CrawlResultContainer
+
             bad_container = CrawlResultContainer(["not a CrawlResult object"])
-            
+
             mock_crawler.arun = AsyncMock(return_value=bad_container)
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
-            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)  # Critical: return None!
-            
-            with pytest.raises(TypeError, match="Unexpected result type.*expected CrawlResult"):
-                await fetch_anisearch_characters("https://www.anisearch.com/anime/test/characters")
+            MockCrawler.return_value.__aexit__ = AsyncMock(
+                return_value=None
+            )  # Critical: return None!
+
+            with pytest.raises(
+                TypeError, match="Unexpected result type.*expected CrawlResult"
+            ):
+                await fetch_anisearch_characters(
+                    "https://www.anisearch.com/anime/test/characters"
+                )
 
 
 # --- Tests for main() function ---
@@ -716,9 +723,20 @@ async def test_main_function_success(mock_fetch):
     """Test main() function handles successful execution."""
     from src.enrichment.crawlers.anisearch_character_crawler import main
 
-    mock_fetch.return_value = {"characters": [{"name": "Test Character"}], "total_count": 1}
+    mock_fetch.return_value = {
+        "characters": [{"name": "Test Character"}],
+        "total_count": 1,
+    }
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters", "--output", "/tmp/output.json"]):
+    with patch(
+        "sys.argv",
+        [
+            "script.py",
+            "https://www.anisearch.com/anime/18878/characters",
+            "--output",
+            "/tmp/output.json",
+        ],
+    ):
         exit_code = await main()
 
     assert exit_code == 0
@@ -740,7 +758,9 @@ async def test_main_function_with_default_output(mock_fetch):
 
     mock_fetch.return_value = {"characters": [], "total_count": 0}
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/12345/characters"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/12345/characters"]
+    ):
         exit_code = await main()
 
     assert exit_code == 0
@@ -757,7 +777,9 @@ async def test_main_function_error_handling(mock_fetch):
 
     mock_fetch.side_effect = Exception("Crawler error")
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters"]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -771,7 +793,9 @@ async def test_main_function_no_data_found(mock_fetch):
 
     mock_fetch.return_value = None
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/99999/characters"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/99999/characters"]
+    ):
         exit_code = await main()
 
     # Crawler may return None, should still complete

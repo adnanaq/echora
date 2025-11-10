@@ -133,7 +133,7 @@ class TestCachedResponse:
 
     def test_raise_for_status_raises_client_response_error(self):
         """Test raise_for_status() raises ClientResponseError for 4xx/5xx."""
-        from aiohttp import ClientResponseError, RequestInfo
+        from aiohttp import ClientResponseError
 
         response_404 = _CachedResponse(
             status=404,
@@ -492,7 +492,7 @@ class TestCachedAiohttpSession:
     async def test_request_cache_hit(self, mock_storage):
         """Test _request with cache hit - returns cached response."""
         # Setup: Mock cache entry (cache hit)
-        from hishel import Headers, Response
+        from hishel import Headers
 
         async def mock_stream():
             yield b'{"cached": "data"}'

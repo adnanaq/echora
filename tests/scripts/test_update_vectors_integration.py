@@ -6,6 +6,8 @@ Integration tests for update_vectors.py focusing on the critical fixes:
 
 These tests validate the script-level logic that uses the detailed results
 from QdrantClient.update_batch_vectors().
+
+NOTE: These tests require a live Qdrant instance and make real database operations.
 """
 
 import json
@@ -16,6 +18,9 @@ import pytest
 
 from src.models.anime import AnimeEntry
 from src.vector.client.qdrant_client import QdrantClient
+
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

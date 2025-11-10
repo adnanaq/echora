@@ -11,7 +11,6 @@ from src.enrichment.crawlers.anime_planet_anime_crawler import (
     _extract_rank,
     _extract_slug_from_url,
     _extract_studios,
-    _fetch_animeplanet_anime_data,
     _normalize_anime_url,
     _process_related_anime,
     _process_related_manga,
@@ -341,10 +340,9 @@ def test_process_related_manga_with_unknown_placeholders():
     assert processed[3]["slug"] == "mixed"
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_animeplanet_anime_wrong_result_type(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_animeplanet_anime_wrong_result_type(MockAsyncWebCrawler):
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_arun = AsyncMock(return_value=["not a CrawlResult"])
     mock_crawler_instance.__aenter__.return_value.arun = mock_arun
@@ -353,10 +351,9 @@ async def test_fetch_animeplanet_anime_wrong_result_type(
         await fetch_animeplanet_anime("any-slug")
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_animeplanet_anime_full_success(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_animeplanet_anime_full_success(MockAsyncWebCrawler):
     """Test successful fetching and processing of a rich anime page."""
     slug = "dandadan"
     url = f"https://www.anime-planet.com/anime/{slug}"
@@ -443,9 +440,10 @@ async def test_fetch_animeplanet_anime_full_success(
         ("invalid-date", None, "AIRING"),  # Fallback due to ValueError
     ],
 )
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_fetch_anime_status_derivation(
-    MockAsyncWebCrawler, mock_redis_cache_miss, start_date, end_date, expected_status
+    MockAsyncWebCrawler, start_date, end_date, expected_status
 ):
     # Use a unique slug for each test case to prevent cache collisions
     slug = f"status-test-{start_date}-{end_date}"
@@ -470,10 +468,9 @@ async def test_fetch_anime_status_derivation(
     assert data["status"] == expected_status
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_anime_status_upcoming_is_correct(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_anime_status_upcoming_is_correct(MockAsyncWebCrawler):
     """Isolated test for the UPCOMING status to ensure it is correctly determined."""
     slug = "upcoming-anime-test"
     start_date = "2099-01-01T00:00:00Z"
@@ -499,10 +496,9 @@ async def test_fetch_anime_status_upcoming_is_correct(
     assert data["status"] == "UPCOMING"
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_animeplanet_anime_no_html(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_animeplanet_anime_no_html(MockAsyncWebCrawler):
     """Test handling when crawl result has no HTML content."""
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_arun = AsyncMock(
@@ -538,9 +534,10 @@ async def test_fetch_animeplanet_anime_no_html(
         CrawlResult(url="", success=True, extracted_content="[]", html=""),
     ],
 )
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_fetch_animeplanet_anime_failure_scenarios(
-    MockAsyncWebCrawler, mock_redis_cache_miss, crawler_return_value
+    MockAsyncWebCrawler, crawler_return_value
 ):
     if not isinstance(crawler_return_value, list):
         crawler_return_value = [crawler_return_value]
@@ -675,7 +672,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
         async def mock_get(key):
             return cache_storage.get(key)
 
-        async def mock_setex(key, ttl, value):
+        async def mock_setex(key, _ttl, value):
             cache_storage[key] = value
 
         mock_redis.get = mock_get
@@ -712,10 +709,9 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
 # --- 100% Coverage Tests ---
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_anime_poster_regex_fallback(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
     """Test poster extraction via regex when CSS selector fails (line 309)."""
     css_data = {
         "poster": "",  # Empty poster from CSS
@@ -776,10 +772,9 @@ def test_determine_season_with_value_error():
     assert result is None
 
 
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
-async def test_fetch_anime_empty_results_list(
-    MockAsyncWebCrawler, mock_redis_cache_miss
-):
+async def test_fetch_anime_empty_results_list(MockAsyncWebCrawler):
     """Test handling when AsyncWebCrawler returns empty list (line 375)."""
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_crawler_instance.__aenter__.return_value.arun = AsyncMock(return_value=[])

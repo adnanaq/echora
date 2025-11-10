@@ -41,10 +41,11 @@ class TestHTTPCacheManagerInit:
         assert manager._async_redis_client is None
         assert manager._redis_event_loop is None
 
-    def test_init_with_config_enabled_sqlite(self) -> None:
+    def test_init_with_config_enabled_sqlite(self, tmp_path) -> None:
         """Test initialization with SQLite storage."""
+        cache_dir = str(tmp_path / "test_cache")
         config = CacheConfig(
-            enabled=True, storage_type="sqlite", cache_dir="/tmp/test_cache"
+            enabled=True, storage_type="sqlite", cache_dir=cache_dir
         )
 
         with patch(
@@ -171,6 +172,7 @@ class TestGetAiohttpSession:
                     assert session == mock_session_instance
                     # Verify lazy initialization happened
                     mock_async_redis_class.from_url.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_get_aiohttp_session_body_based_caching_header(self) -> None:
         """Test that body-based caching header is added."""
@@ -399,12 +401,13 @@ class TestGetStats:
             assert stats["redis_url"] == "redis://test:6379/0"
             assert stats["cache_dir"] is None
 
-    def test_get_stats_sqlite(self) -> None:
+    def test_get_stats_sqlite(self, tmp_path) -> None:
         """Test stats with SQLite storage."""
+        cache_dir = str(tmp_path / "custom_cache")
         config = CacheConfig(
             enabled=True,
             storage_type="sqlite",
-            cache_dir="/custom/cache",
+            cache_dir=cache_dir,
         )
 
         with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
@@ -414,7 +417,7 @@ class TestGetStats:
 
                 assert stats["enabled"] is True
                 assert stats["storage_type"] == "sqlite"
-                assert stats["cache_dir"] == "/custom/cache"
+                assert stats["cache_dir"] == cache_dir
                 assert stats["redis_url"] is None
 
 
@@ -450,12 +453,13 @@ class TestIntegrationScenarios:
                     assert manager._async_redis_client is not None
                     assert manager._get_service_ttl("jikan") == 86400
 
-    def test_development_sqlite_setup(self) -> None:
+    def test_development_sqlite_setup(self, tmp_path) -> None:
         """Test development-like SQLite setup."""
+        cache_dir = str(tmp_path / "dev_cache")
         config = CacheConfig(
             enabled=True,
             storage_type="sqlite",
-            cache_dir="./dev_cache",
+            cache_dir=cache_dir,
         )
 
         with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
@@ -490,3 +494,100 @@ class TestIntegrationScenarios:
                 assert session1 is not None
                 assert session2 is not None
                 assert session3 is not None
+
+
+class TestRedisClientEventLoopSwitching:
+    """Test Redis client cleanup when event loops switch."""
+
+    def test_old_redis_client_closed_on_event_loop_switch(self) -> None:
+        """
+        Test that old Redis clients are properly closed when switching event loops.
+
+        This test verifies the fix for the resource leak where old Redis clients
+        were not being closed when a new event loop requested a cached session.
+
+        Expected behavior:
+        - When event loop switches, old Redis client should be closed
+        - New Redis client should be created for new event loop
+        - Only one active Redis client per manager at a time
+        """
+        import asyncio
+        import threading
+
+        # Track Redis client close() calls
+        close_calls = []
+
+        # Mock Redis client that tracks close() calls
+        class MockAsyncRedis:
+            def __init__(self, *args, **kwargs):
+                self.closed = False
+
+            async def close(self):
+                if not self.closed:
+                    self.closed = True
+                    close_calls.append(self)
+
+        config = CacheConfig(
+            enabled=True,
+            storage_type="redis",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        # Create new instances each time from_url is called
+        def mock_from_url(*args, **kwargs):
+            return MockAsyncRedis()
+
+        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+            manager = HTTPCacheManager(config)
+
+            clients = {}
+
+            # Run in thread 1 with its own event loop
+            def run_in_thread1():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                async def task():
+                    session = manager.get_aiohttp_session("test_service")
+                    await asyncio.sleep(0.01)
+                    if hasattr(session, 'close'):
+                        await session.close()
+                    clients['client1'] = manager._async_redis_client
+
+                loop.run_until_complete(task())
+                loop.close()
+
+            # Run in thread 2 with a different event loop
+            def run_in_thread2():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                async def task():
+                    session = manager.get_aiohttp_session("test_service")
+                    await asyncio.sleep(0.01)
+                    if hasattr(session, 'close'):
+                        await session.close()
+                    clients['client2'] = manager._async_redis_client
+
+                loop.run_until_complete(task())
+                loop.close()
+
+            # Execute in separate threads
+            thread1 = threading.Thread(target=run_in_thread1)
+            thread2 = threading.Thread(target=run_in_thread2)
+
+            thread1.start()
+            thread1.join()
+
+            thread2.start()
+            thread2.join()
+
+            client1 = clients.get('client1')
+            client2 = clients.get('client2')
+
+            # Verify old client was closed
+            assert client1 is not None, "First client should have been created"
+            assert client2 is not None, "Second client should have been created"
+            assert client1 is not client2, "Should create new client for new loop"
+            assert client1.closed, "Old Redis client should be closed when loop switches"
+            assert len(close_calls) >= 1, "At least one client should have been closed"

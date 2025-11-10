@@ -17,7 +17,8 @@ import redis
 from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
 # Mark all tests in this module as integration tests
-pytestmark = pytest.mark.integration
+# Use redis_client fixture for setup/teardown side effects
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("redis_client")]
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +55,7 @@ async def clean_helper():
 
 
 @pytest.mark.asyncio
-async def test_anilist_fetch_anime_caching(redis_client, clean_helper):
+async def test_anilist_fetch_anime_caching(clean_helper):
     """
     Integration test to verify that AniList API calls are cached.
     Tests fetching anime data with cache hit detection.
@@ -91,7 +92,7 @@ async def test_anilist_fetch_anime_caching(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_pagination_caching(redis_client, clean_helper):
+async def test_anilist_pagination_caching(clean_helper):
     """
     Test that paginated requests are cached properly.
     Verifies cache hit detection optimizes rate limiting.
@@ -122,7 +123,7 @@ async def test_anilist_pagination_caching(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_full_data_fetch(redis_client, clean_helper):
+async def test_anilist_full_data_fetch(clean_helper):
     """
     Test fetching full anime data including characters, staff, and episodes.
     """
@@ -148,7 +149,7 @@ async def test_anilist_full_data_fetch(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_not_found(redis_client, clean_helper):
+async def test_anilist_not_found(clean_helper):
     """
     Test handling of non-existent anime ID.
     """
@@ -161,7 +162,7 @@ async def test_anilist_not_found(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_multiple_anime(redis_client, clean_helper):
+async def test_anilist_multiple_anime(clean_helper):
     """
     Test fetching multiple different anime to verify caching per ID.
     """
@@ -186,7 +187,7 @@ async def test_anilist_multiple_anime(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_event_loop_safety(redis_client):
+async def test_anilist_event_loop_safety():
     """
     Test that helper works correctly across multiple test functions with different event loops.
     This test creates its own helper to verify event loop recreation.
@@ -208,7 +209,7 @@ async def test_anilist_event_loop_safety(redis_client):
 
 
 @pytest.mark.asyncio
-async def test_anilist_unicode_handling(redis_client, clean_helper):
+async def test_anilist_unicode_handling(clean_helper):
     """
     Test handling of Unicode in anime titles (Japanese characters).
     """
@@ -227,7 +228,7 @@ async def test_anilist_unicode_handling(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_empty_results(redis_client, clean_helper):
+async def test_anilist_empty_results(clean_helper):
     """
     Test handling of anime with no characters/staff/episodes data.
     """
@@ -249,7 +250,7 @@ async def test_anilist_empty_results(redis_client, clean_helper):
 
 
 @pytest.mark.asyncio
-async def test_anilist_rate_limit_headers(redis_client, clean_helper):
+async def test_anilist_rate_limit_headers(clean_helper):
     """
     Test that rate limit headers are tracked correctly.
     """

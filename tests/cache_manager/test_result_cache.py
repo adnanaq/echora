@@ -691,18 +691,22 @@ class TestGetResultCacheRedisClient:
     def setup_method(self) -> None:
         """Reset the _redis_client before each test to ensure a clean state."""
         import src.cache_manager.result_cache
+
         src.cache_manager.result_cache._redis_client = None
 
     @pytest.mark.asyncio
     async def test_initialization_and_singleton(self) -> None:
         """Test that the Redis client is initialized and is a singleton."""
-        from src.cache_manager.result_cache import get_result_cache_redis_client
-        from src.cache_manager.config import CacheConfig
         from redis.asyncio import Redis
+
+        from src.cache_manager.config import CacheConfig
+        from src.cache_manager.result_cache import get_result_cache_redis_client
 
         with (
             patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
-            patch("src.cache_manager.result_cache.Redis.from_url") as mock_redis_from_url,
+            patch(
+                "src.cache_manager.result_cache.Redis.from_url"
+            ) as mock_redis_from_url,
             patch("src.cache_manager.result_cache.logging") as mock_logging,
         ):
 
@@ -717,10 +721,15 @@ class TestGetResultCacheRedisClient:
             client1 = await get_result_cache_redis_client()
 
             mock_get_config.assert_called_once()
-            mock_redis_from_url.assert_called_once_with("redis://test-host:6379/1", decode_responses=True)
-            mock_logging.info.assert_called_once_with("Initializing singleton Redis client for result cache: redis://test-host:6379/1")
+            mock_redis_from_url.assert_called_once_with(
+                "redis://test-host:6379/1", decode_responses=True
+            )
+            mock_logging.info.assert_called_once_with(
+                "Initializing singleton Redis client for result cache: redis://test-host:6379/1"
+            )
             assert client1 is mock_redis_client_instance
             from src.cache_manager.result_cache import _redis_client
+
             assert _redis_client is client1
 
             # Second call - should return existing client (singleton)

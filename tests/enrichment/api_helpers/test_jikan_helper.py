@@ -17,7 +17,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -731,6 +731,7 @@ class TestMainFunction:
                 ) as mock_fetcher_class:
                     mock_fetcher = MagicMock()
                     mock_fetcher.fetch_detailed_data = AsyncMock()
+                    mock_fetcher.close = AsyncMock()
                     mock_fetcher_class.return_value = mock_fetcher
 
                     from src.enrichment.api_helpers.jikan_helper import main
@@ -740,39 +741,6 @@ class TestMainFunction:
                     # Output directory should be created
                     assert output_file.parent.exists()
                     mock_fetcher.fetch_detailed_data.assert_awaited_once()
-
-    def test_main_entrypoint(self):
-        """Test __main__ entrypoint execution (line 375)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            input_file = Path(tmpdir) / "input.json"
-            output_file = Path(tmpdir) / "output.json"
-
-            # Create minimal input file
-            with open(input_file, "w") as f:
-                json.dump([{"mal_id": 1}], f)
-
-            # Test the actual __main__ execution path
-            import subprocess
-            import sys
-
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "src.enrichment.api_helpers.jikan_helper",
-                    "episodes",
-                    "21",
-                    str(input_file),
-                    str(output_file),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            # The script should execute (may succeed or fail, but line 375 will be covered)
-            # Success (0) or error exit (1) both mean the line was executed
-            assert result.returncode in [0, 1]
 
 
 class TestEdgeCasesAndBoundaries:
@@ -1175,7 +1143,9 @@ class TestEdgeCasesAndBoundaries:
 @patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
 @patch("os.makedirs")
 @patch("os.path.exists")
-async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_fetcher_class, tmp_path):
+async def test_main_function_success_episodes(
+    mock_exists, mock_makedirs, mock_fetcher_class, tmp_path
+):
     """Test main() function handles successful episodes execution."""
     from src.enrichment.api_helpers.jikan_helper import main
 
@@ -1192,13 +1162,17 @@ async def test_main_function_success_episodes(mock_exists, mock_makedirs, mock_f
     assert exit_code == 0
     mock_fetcher_class.assert_called_once_with("123", "episodes")
     mock_fetcher.fetch_detailed_data.assert_awaited_once_with("input.json", output_file)
+    expected_dir = os.path.dirname(output_file)
+    mock_makedirs.assert_called_once_with(expected_dir, exist_ok=True)
 
 
 @pytest.mark.asyncio
 @patch("src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher")
 @patch("os.makedirs")
 @patch("os.path.exists")
-async def test_main_function_success_characters(mock_exists, mock_makedirs, mock_fetcher_class, tmp_path):
+async def test_main_function_success_characters(
+    mock_exists, mock_makedirs, mock_fetcher_class, tmp_path
+):
     """Test main() function handles successful characters execution."""
     from src.enrichment.api_helpers.jikan_helper import main
 
@@ -1209,11 +1183,15 @@ async def test_main_function_success_characters(mock_exists, mock_makedirs, mock
 
     # Use pytest's tmp_path for portability
     output_file = str(tmp_path / "output.json")
-    with patch("sys.argv", ["script.py", "characters", "456", "input.json", output_file]):
+    with patch(
+        "sys.argv", ["script.py", "characters", "456", "input.json", output_file]
+    ):
         exit_code = await main()
 
     assert exit_code == 0
     mock_fetcher_class.assert_called_once_with("456", "characters")
+    expected_dir = os.path.dirname(output_file)
+    mock_makedirs.assert_called_once_with(expected_dir, exist_ok=True)
 
 
 @pytest.mark.asyncio
@@ -1224,7 +1202,9 @@ async def test_main_function_input_file_not_exists(mock_exists):
 
     mock_exists.return_value = False
 
-    with patch("sys.argv", ["script.py", "episodes", "123", "nonexistent.json", "output.json"]):
+    with patch(
+        "sys.argv", ["script.py", "episodes", "123", "nonexistent.json", "output.json"]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -1242,7 +1222,185 @@ async def test_main_function_error_handling(mock_exists, mock_fetcher_class):
     mock_fetcher.fetch_detailed_data = AsyncMock(side_effect=Exception("API error"))
     mock_fetcher_class.return_value = mock_fetcher
 
-    with patch("sys.argv", ["script.py", "episodes", "123", "input.json", "output.json"]):
+    with patch(
+        "sys.argv", ["script.py", "episodes", "123", "input.json", "output.json"]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
+
+
+class TestSessionOwnershipAndCleanup:
+    """Test session ownership tracking and cleanup to prevent resource leaks."""
+
+    def test_fetcher_tracks_session_ownership_when_creating_own(self):
+        """Test that fetcher tracks ownership when it creates its own session."""
+        with patch('src.cache_manager.instance.http_cache_manager.get_aiohttp_session') as mock_get_session:
+            mock_session = MagicMock()
+            mock_get_session.return_value = mock_session
+
+            fetcher = JikanDetailedFetcher("21", "episodes")
+
+            # Should have ownership tracking
+            assert hasattr(fetcher, '_owns_session'), "Fetcher should track session ownership"
+            assert fetcher._owns_session is True, "Fetcher should own session it creates"
+
+    def test_fetcher_tracks_session_ownership_with_external_session(self):
+        """Test that fetcher tracks non-ownership when using external session."""
+        external_session = MagicMock()
+        fetcher = JikanDetailedFetcher("21", "episodes", session=external_session)
+
+        # Should have ownership tracking
+        assert hasattr(fetcher, '_owns_session'), "Fetcher should track session ownership"
+        assert fetcher._owns_session is False, "Fetcher should NOT own external session"
+
+    @pytest.mark.asyncio
+    async def test_close_method_closes_owned_session(self):
+        """Test that close() closes the session if fetcher owns it."""
+        with patch('src.cache_manager.instance.http_cache_manager.get_aiohttp_session') as mock_get_session:
+            mock_session = AsyncMock()
+            mock_get_session.return_value = mock_session
+
+            fetcher = JikanDetailedFetcher("21", "episodes")
+
+            # Should have close method
+            assert hasattr(fetcher, 'close'), "Fetcher should have close() method"
+            assert callable(fetcher.close), "close() should be callable"
+
+            # Close the fetcher
+            await fetcher.close()
+
+            # Should close the session since fetcher owns it
+            mock_session.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_method_does_not_close_external_session(self):
+        """Test that close() does NOT close external session."""
+        external_session = AsyncMock()
+        fetcher = JikanDetailedFetcher("21", "episodes", session=external_session)
+
+        # Close the fetcher
+        await fetcher.close()
+
+        # Should NOT close the external session
+        external_session.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_main_calls_close_in_finally_block(self):
+        """Test that main() calls close() in finally block to prevent leaks."""
+        from src.enrichment.api_helpers.jikan_helper import main
+
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
+                with patch('src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+                    mock_fetcher = AsyncMock()
+                    mock_fetcher.fetch_detailed_data = AsyncMock()
+                    mock_fetcher.close = AsyncMock()
+                    mock_fetcher_class.return_value = mock_fetcher
+
+                    with patch('sys.argv', ['script.py', 'episodes', '21', 'input.json', 'output.json']):
+                        exit_code = await main()
+
+                    # close() should be called even on success
+                    mock_fetcher.close.assert_called_once()
+                    assert exit_code == 0
+
+    @pytest.mark.asyncio
+    async def test_main_calls_close_even_on_error(self):
+        """Test that main() calls close() even when error occurs."""
+        from src.enrichment.api_helpers.jikan_helper import main
+
+        with patch('os.path.exists', return_value=True):
+            with patch('os.makedirs'):
+                with patch('src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+                    mock_fetcher = AsyncMock()
+                    mock_fetcher.fetch_detailed_data = AsyncMock(side_effect=Exception("API error"))
+                    mock_fetcher.close = AsyncMock()
+                    mock_fetcher_class.return_value = mock_fetcher
+
+                    with patch('sys.argv', ['script.py', 'episodes', '21', 'input.json', 'output.json']):
+                        exit_code = await main()
+
+                    # close() should be called even on error (finally block)
+                    mock_fetcher.close.assert_called_once()
+                    assert exit_code == 1
+
+
+class TestMainDirectoryCreation:
+    """Test main() handles output directory creation edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_main_succeeds_with_current_directory_output_file(self, tmp_path):
+        """Test that main() succeeds when output_file is in current directory (dirname='')."""
+        from src.enrichment.api_helpers.jikan_helper import main
+
+        # Create input file
+        input_file = tmp_path / "episodes.json"
+        input_file.write_text('{"data": [{"mal_id": 1}]}')
+
+        # Output file in current directory (no subdirectory)
+        output_file = tmp_path / "episodes_detailed.json"
+
+        # Change to tmp_path so output_file is in current directory
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            with patch('sys.argv', [
+                'script.py',
+                'episodes',
+                '21',
+                str(input_file),
+                'episodes_detailed.json'  # Current directory file
+            ]):
+                with patch('src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+                    mock_fetcher = AsyncMock()
+                    mock_fetcher.fetch_detailed_data = AsyncMock()
+                    mock_fetcher.close = AsyncMock()
+                    mock_fetcher_class.return_value = mock_fetcher
+
+                    exit_code = await main()
+
+                # Should succeed without FileNotFoundError
+                assert exit_code == 0
+                mock_fetcher.fetch_detailed_data.assert_called_once()
+        finally:
+            os.chdir(original_cwd)
+
+    @pytest.mark.asyncio
+    async def test_main_succeeds_with_subdirectory_output_file(self, tmp_path):
+        """Test that main() succeeds when output_file is in a subdirectory."""
+        from src.enrichment.api_helpers.jikan_helper import main
+
+        # Create input file
+        input_file = tmp_path / "episodes.json"
+        input_file.write_text('{"data": [{"mal_id": 1}]}')
+
+        # Output file in subdirectory
+        output_file = tmp_path / "output" / "episodes_detailed.json"
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            with patch('sys.argv', [
+                'script.py',
+                'episodes',
+                '21',
+                str(input_file),
+                'output/episodes_detailed.json'  # Subdirectory file
+            ]):
+                with patch('src.enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+                    mock_fetcher = AsyncMock()
+                    mock_fetcher.fetch_detailed_data = AsyncMock()
+                    mock_fetcher.close = AsyncMock()
+                    mock_fetcher_class.return_value = mock_fetcher
+
+                    exit_code = await main()
+
+                # Should succeed and create directory
+                assert exit_code == 0
+                assert (tmp_path / "output").exists()
+                mock_fetcher.fetch_detailed_data.assert_called_once()
+        finally:
+            os.chdir(original_cwd)
