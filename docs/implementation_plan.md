@@ -27,11 +27,11 @@ This document breaks down the work required to implement the automated architect
             b. **On successful download:**
             _ Calculate `content_hash` (SHA256 of the image binary content).
             _ Define S3 object key as `images/<content_hash>.<extension>` (extension derived from content type).
-            * Upload the image to S3 *only if an object with that content hash doesn\'t already exist*. Ensure AWS SDK\'s retry logic is configured appropriately.
-            * Store `source_url_hash -> our_s3_bucket_path` (using `content_hash`) in `image-deduplication-map`.
-            _ Store original `source_url` and `content_type` as S3 object metadata.
-            c. **On persistent download/upload failure (after all retries):**
-            _ Send a structured message to the SQS DLQ containing `anime_id`, `image_url`, `error_message`, `timestamp`, `retry_count`, and `context`. \* Store `source_url_hash -> "DOWNLOAD_FAILED"` in `image-deduplication-map` along with a `last_attempt` timestamp and `TTL`.
+            - Upload the image to S3 _only if an object with that content hash doesn\'t already exist_. Ensure AWS SDK\'s retry logic is configured appropriately.
+            - Store `source_url_hash -> our_s3_bucket_path` (using `content_hash`) in `image-deduplication-map`.
+              _ Store original `source_url` and `content_type` as S3 object metadata.
+              c. **On persistent download/upload failure (after all retries):**
+              _ Send a structured message to the SQS DLQ containing `anime_id`, `image_url`, `error_message`, `timestamp`, `retry_count`, and `context`. \* Store `source_url_hash -> "DOWNLOAD_FAILED"` in `image-deduplication-map` along with a `last_attempt` timestamp and `TTL`.
       - For `AnimeEntry` objects with partially failed images, store the **new CloudFront URL** (e.g., `https://<cloudfront-domain>/images/<content_hash>.<extension>`) for successful images. For failed images, include the `image_url` and `error_message` within the `AnimeEntry` in MongoDB Atlas as a placeholder.
       - This ensures we own and control all image assets from the start, with robust deduplication, retry logic, and comprehensive error handling. The CloudFront URLs stored in `AnimeEntry` will always be HTTPS-only.
   3.  **Data Source Clarity (`anime-offline-database.json` vs `enriched_anime_database.json`):**
@@ -109,7 +109,7 @@ This document breaks down the work required to implement the automated architect
 
   - **How it Works:**
     - **`components/aws/`, `components/qdrant/`, `components/mongo/`:** Each of these subdirectories groups all resources related to a specific cloud provider. Within these, individual files define specific resource types (e.g., `s3_buckets.py` for all S3 buckets).
-    - **`components/application/`:** This directory acts as an abstraction layer. For example, `bff.py` will define the *entire BFF application stack* by importing and configuring the necessary AWS ECS services from `aws/ecs_services.py` and connecting them to the MongoDB cluster defined in `mongo/cluster.py`.
+    - **`components/application/`:** This directory acts as an abstraction layer. For example, `bff.py` will define the _entire BFF application stack_ by importing and configuring the necessary AWS ECS services from `aws/ecs_services.py` and connecting them to the MongoDB cluster defined in `mongo/cluster.py`.
     - **`__main__.py`:** This top-level file remains simple. It will primarily import and instantiate the high-level application components from `components/application/`.
 
 - **CI/CD Integration:**
@@ -155,14 +155,109 @@ This document breaks down the work required to implement the automated architect
 ### Task 1.2: Provision Qdrant Vector Database (Qdrant Cloud)
 
 - **Status:** `To-Do`
-- **Goal:** To provision a managed, production-ready vector database using Qdrant Cloud.
+- **Goal:** To provision and configure a managed, production-ready vector database using Qdrant Cloud.
 - **Rationale:** Using a managed service like Qdrant Cloud eliminates the operational burden of self-hosting, including setup, scaling, high availability, and maintenance. This allows the team to focus on application development.
 
 - **Steps:**
-  1. **Create Qdrant Cloud Account:** Sign up for a Qdrant Cloud account.
-  2. **Provision Cluster:** Create a new vector database cluster through the Qdrant Cloud dashboard. For initial development, the free tier can be used. This can be scaled up to a larger, paid cluster as needed for production.
-  3. **Obtain Credentials:** From the cluster dashboard, copy the public **Cluster URL** and generate an **API Key**.
-  4. **Configure Application:** Store the Cluster URL and API Key securely (e.g., using AWS Secrets Manager). Update the application configuration so that the `QdrantClient` connects to the cloud endpoint using these credentials.
+  1.  **Create Qdrant Cloud Account & Provision Cluster:** Sign up for a Qdrant Cloud account and provision clusters according to the sizing details below.
+  2.  **Obtain Credentials:** From the cluster dashboard, generate role-specific API Keys.
+  3.  **Configure Application & Security:** Store credentials securely in AWS Secrets Manager and configure network access (VPC Peering/IP Whitelisting).
+
+#### Configuration Details
+
+- **Vector Parameters:**
+  - **Character Vector:** `384` dimensions (e.g., for `all-MiniLM-L6-v2`).
+  - **Synopsis Vector:** `768` dimensions (e.g., for `all-mpnet-base-v2`).
+  - **Image Vector:** `512` dimensions (e.g., for `CLIP-ViT-B/32`).
+  - **Distance Metric:** `Cosine` similarity for all vectors.
+- **Indexing and Storage:**
+  - **Storage:** `memmap` storage will be enabled for all vector collections to reduce RAM usage.
+  - **Precision:** `int8` quantization will be used to reduce memory and storage footprint by 4x.
+  - **Payload:** All payloads will be stored on-disk.
+
+#### Sizing and Tiers
+
+- **Development/Staging Environment:**
+  - **Cluster Tier:** `DEV-0` (Free Tier) with 1 vCPU and 1.5 GiB RAM.
+  - **Replication:** Disabled.
+- **Production Environment:**
+  - **Initial Cluster Tier:** `PRD-S-1` (Small Production) with 1 vCPU and 6 GiB RAM per node.
+  - **Replication Factor:** `2`, for high availability across multiple AZs.
+  - **Sharding:** Start with `1` shard.
+
+#### Security and Access Control
+
+To ensure our Qdrant Cloud cluster is robustly secured, we will implement a multi-layered approach:
+
+1.  **Network Security (Priority Order):**
+    - **VPC Peering (Production):** For our production environment, we will establish a VPC Peering connection between our AWS VPC and the Qdrant Cloud VPC. This is the most secure method as it ensures traffic between our application services (EKS, Lambdas) and the database never traverses the public internet. This will be configured via our IaC (Pulumi).
+    - **IP Whitelisting (Dev/Staging/Fallback):** For non-production environments and as a necessary tool for local development and CI/CD, we will use IP Whitelisting. We will maintain a list of allowed IP addresses in the Qdrant Cloud console for our office/VPN and any static IPs used by our build agents.
+
+2.  **Authentication & Authorization:**
+    - **API Key Management:** All API keys will be stored and managed exclusively in **AWS Secrets Manager**. Application code will not contain any hardcoded keys.
+    - **Least-Privilege Keys:** We will create separate, role-specific API keys for different purposes:
+      - `agent-service-key` (Read/Write): For the main agent service that needs to upsert and search vectors.
+      - `bff-service-key` (Read-Only): If the BFF ever needs to query Qdrant directly (unlikely in the current architecture, but good practice), it would use a read-only key.
+      - `dev-key` (Read/Write): A separate key for developers to use against the dev cluster.
+    - **Key Rotation:** We will establish a policy to rotate these API keys annually.
+
+3.  **AWS IAM Integration (Indirect Control):**
+    - While Qdrant Cloud does not use AWS IAM directly for its control plane, we will leverage IAM to enforce strict access control _to the API keys_.
+    - The IAM Role associated with each AWS service (e.g., the EKS pod for the Agent Service, a Lambda function) will be granted a narrow policy that allows it to read **only the specific secret** it needs from AWS Secrets Manager.
+    - For example, the Agent Service's IAM role will have permission to `secretsmanager:GetSecretValue` on the ARN for the `agent-service-key` secret, and nothing else. This prevents a compromised service from accessing credentials for other parts of our infrastructure.
+
+#### Monitoring and Alerting (Production)
+
+- The following alerts will be configured in Qdrant Cloud to signal when scaling is required:
+  - CPU Utilization > 80%
+  - RAM Usage > 85%
+  - Query Latency (p95) > 500ms
+
+#### Backup and Restore Strategy
+
+A robust backup and restore strategy is essential for disaster recovery, combining Qdrant's native features with our own application-level backups.
+
+1.  **Leveraging Qdrant Cloud's Native Backups:**
+    - **Automated Snapshots:** Qdrant Cloud's production tiers (`PRD-*`) include automated daily snapshots of the cluster data. We will rely on this as our primary mechanism for point-in-time recovery of the entire cluster state.
+    - **Retention Policy:** These automated snapshots are typically retained for a set period (e.g., 7 days). This is sufficient for recovering from recent operational errors.
+    - **Restore Process:** Restoration from a native snapshot is a manual process initiated through the Qdrant Cloud UI or API. In a disaster scenario, we would provision a new cluster and restore the latest snapshot to it. This process should be documented and tested quarterly.
+
+#### 2. Application-Level Backup (Re-indexing from Source of Truth)
+
+While native snapshots are great for full cluster recovery, they don't protect us from data corruption that is replicated in the snapshot or allow for migrating to a different vector DB provider easily.
+
+- **The "Golden Source":** Our primary, application-level "backup" is the data stored in **MongoDB Atlas**. The vector embeddings in Qdrant are a derivative of this data.
+- **Restore Strategy:** In a scenario where Qdrant data is unrecoverable or corrupted, or if we need to migrate, our DR strategy will be to **re-index from the source of truth**.
+- **Process:** We will develop a script (or leverage the `bulk_indexer_lambda` from Task 1.0) that can be triggered manually. This script will:
+  1.  Read all `AnimeEntry` documents from the MongoDB Atlas `animes` collection.
+  2.  For each entry, regenerate the vector embeddings using the same models.
+  3.  Upsert the new vectors into a new, clean Qdrant collection or cluster.
+
+#### Summary of Strategy
+
+- **For Rapid Recovery (Operational Errors):** Use Qdrant Cloud's native daily snapshots. RTO (Recovery Time Objective) is low (hours), RPO (Recovery Point Objective) is up to 24 hours.
+- **For Major Disasters or Migrations:** Use our application-level re-indexing process from MongoDB. RTO is higher (could be a day, depending on dataset size), but RPO is very low (minutes, as MongoDB is our live DB).
+
+#### Backup and Restore Strategy
+
+A robust backup and restore strategy is essential for disaster recovery, combining Qdrant's native features with our own application-level backups.
+
+1.  **Leveraging Qdrant Cloud's Native Backups:**
+    - **Automated Snapshots:** Qdrant Cloud's production tiers (`PRD-*`) include automated daily snapshots of the cluster data. This will be our primary mechanism for point-in-time recovery of the entire cluster state.
+    - **Retention Policy:** Rely on Qdrant Cloud's default retention policy (e.g., 7 days) for operational recovery.
+    - **Restore Process:** Restoration from a native snapshot is a manual process initiated through the Qdrant Cloud UI or API. This process should be documented and tested quarterly.
+
+2.  **Application-Level Backup (Re-indexing from Source of Truth):**
+    - **The "Golden Source":** Our primary, application-level "backup" is the data stored in **MongoDB Atlas**. The vector embeddings in Qdrant are a derivative of this data.
+    - **Restore Strategy:** In a scenario where Qdrant data is unrecoverable or corrupted, or if we need to migrate, our DR strategy will be to **re-index from the source of truth**.
+    - **Process:** We will develop a script (or leverage the `bulk_indexer_lambda` from Task 1.0) that can be triggered manually. This script will:
+      1.  Read all `AnimeEntry` documents from the MongoDB Atlas `animes` collection.
+      2.  For each entry, regenerate the vector embeddings using the same models.
+      3.  Upsert the new vectors into a new, clean Qdrant collection or cluster.
+
+3.  **Summary of Strategy:**
+    - **For Rapid Recovery (Operational Errors):** Use Qdrant Cloud's native daily snapshots. RTO (Recovery Time Objective) is low (hours), RPO (Recovery Point Objective) is up to 24 hours.
+    - **For Major Disasters or Migrations:** Use our application-level re-indexing process from MongoDB. RTO is higher (could be a day, depending on dataset size), but RPO is very low (minutes, as MongoDB is our live DB).
 
 - **Note on Modularity and Future Alternatives:** The application's vector database client will be implemented via a dedicated adapter module. While Qdrant Cloud is the initial choice, this modular design allows for switching to other managed vector databases in the future with minimal changes to the core application logic. Alternatives like Zilliz Cloud (for Milvus) should be periodically re-evaluated to ensure the chosen provider continues to meet the project's cost and performance needs.
 
@@ -182,7 +277,7 @@ This document breaks down the work required to implement the automated architect
   6.  **Configure IAM Roles/Policies:** Ensure that the FastAPI service (running on Fargate), Lambda functions (for ingestion/consolidation), and any other relevant services have appropriate network access and credentials to connect to MongoDB Atlas. Store connection strings securely (e.g., using AWS Secrets Manager).
   7.  **Initial Data Load Script:** Develop a one-time script to read the existing `enriched_anime_database.json` from S3 and batch-write all `AnimeEntry` objects (and extract/write `EpisodeDetailEntry` and `CharacterEntry` into their respective collections) into the new MongoDB Atlas collections. This will be part of the initial system bootstrap.
 
-### Task 1.2.2: Provision Idempotency Lock Collection (MongoDB Atlas)
+### Task 1.2.2: Provision Idempotency Lock Table
 
 - **Status:** `To-Do`
 - **Goal:** To create a dedicated MongoDB Atlas collection to act as a distributed lock, ensuring that enrichment workflows are only triggered once per new anime.
@@ -192,6 +287,11 @@ This document breaks down the work required to implement the automated architect
       - **Primary Key:** The `_id` field will store the `anime_id` (string) as the unique identifier for the lock.
       - **TTL (Time-to-Live) Index:** Create a TTL index on a `ttl` attribute (timestamp) to automatically clean up stale locks from failed workflows after a set period (e.g., 24 hours).
   2.  **Configure Access:** Ensure that the Lambda functions (for the weekly sync) have appropriate access to read, write, and delete items in this new collection.
+
+#### Lock Granularity and TTL Justification
+
+- **Lock Granularity:** For the current scope of full anime enrichment workflows, using `anime_id` as the sole lock key is sufficient. This prevents duplicate full enrichment processes for the same anime. Finer-grained locking (e.g., `anime_id:episode_update`) can be introduced if future requirements for partial, concurrent updates emerge.
+- **TTL Value Justification:** A **24-hour TTL** will be applied to the `anime-processing-locks` collection. This duration provides a generous buffer for the maximum possible workflow duration (including retries and human-in-the-loop delays), minimizes the risk of premature lock expiry, and allows for human intervention in case of stuck workflows. The impact of a stale lock for a few extra hours is considered less critical than duplicate processing or a workflow failing due to premature lock expiry. This value can be adjusted based on operational experience.
 
 ### Task 1.3: Design the Enrichment Step Function
 
@@ -216,7 +316,6 @@ This document breaks down the work required to implement the automated architect
         **Implementation: The `CommitDataLambda`**
 
         This entire commit process will be encapsulated within a single, dedicated AWS Lambda function, triggered by the Step Function.
-
         - **Name:** `CommitDataLambda`
         - **Trigger:** AWS Step Function, upon successful completion of the "Pause for Validation" step.
         - **Input:** The final, human-approved `AnimeEntry` JSON object.
@@ -225,7 +324,6 @@ This document breaks down the work required to implement the automated architect
           2.  **Execute Qdrant Upsert:** It will call the `qdrant_client.upsert()` method to create or update the vector embeddings in the Qdrant collection.
           3.  **Execute MongoDB Upsert:** It will use a MongoDB client (e.g., PyMongo) to perform an `update_one` operation with `upsert=True` on the `animes` collection, using the `anime_id` as the filter. This writes the full `AnimeEntry` document.
         - **Reliability:** This Lambda is the component that executes the Saga pattern's logic (retries, compensating actions) to ensure the atomicity of the dual write.
-
         1.  **Layer 1: Automated Retries:** Each database write operation will be wrapped in a retry policy with exponential backoff (e.g., 5 attempts over 2 minutes). This is a native feature of AWS Step Functions and handles the majority of transient network or service errors.
 
         2.  **Layer 2: Saga Orchestration:** The commit logic follows a precise sequence to prevent data inconsistency.
@@ -236,6 +334,142 @@ This document breaks down the work required to implement the automated architect
         3.  **Layer 3: Dead-Letter Queue (DLQ) for Human Intervention:** In the exceptional case that the Saga itself fails (e.g., the compensating action fails), the entire Step Function execution, along with the `AnimeEntry` payload, is sent to an SQS Dead-Letter Queue. A CloudWatch Alarm monitoring the DLQ will notify the engineering team, allowing a human to manually investigate the rare failure and ensure data consistency.
 
   5.  **Cleanup:** A final state to clean up any temporary resources from EFS.
+
+#### Detailed State Machine Definition
+
+The Enrichment Step Function will orchestrate the following sequence of operations:
+
+1.  **Initialize Enrichment:**
+    - **Purpose:** Prepare the input for the enrichment process, including `anime_id` and any flags (e.g., `is_full_enrichment`, `is_episode_update`).
+    - **State Type:** `Task` (Lambda function: `InitializeEnrichmentLambda`)
+    - **Output:** Enriched input for subsequent states.
+
+2.  **Fetch External Data:**
+    - **Purpose:** Call external APIs (e.g., Jikan, AniDB) to gather raw data for the anime.
+    - **State Type:** `Task` (Lambda function: `FetchExternalDataLambda`)
+    - **Parallelism:** Can be a `Map` state to fetch data from multiple sources concurrently.
+    - **Error Handling:** Implement retries for transient API failures.
+
+3.  **Process Staging Scripts:**
+    - **Purpose:** Execute the series of staging scripts (`process_stage1_metadata.py` to `process_stage5_characters.py`) to transform raw data into our `AnimeEntry` model.
+    - **State Type:** `Task` (Lambda function: `ProcessStagingScriptsLambda` - potentially a single Lambda orchestrating multiple scripts or a `Map` state for parallel script execution if independent).
+    - **Output:** Partially enriched `AnimeEntry` object.
+
+4.  **Image Ingestion & Re-hosting:**
+    - **Purpose:** Download external images, upload to S3, and update `AnimeEntry` with CloudFront URLs.
+    - **State Type:** `Task` (Lambda function: `ImageIngestionLambda`)
+    - **Error Handling:** Robust retries and DLQ for persistent failures (as defined in Task 1.0).
+
+5.  **Assemble & Validate Entry:**
+    - **Purpose:** Combine all processed data into a final `AnimeEntry` object and perform strict Pydantic schema validation.
+    - **State Type:** `Task` (Lambda function: `AssembleValidateEntryLambda`)
+    - **Error Handling:** If validation fails, transition to a `Fail` state or a human review for data correction.
+
+6.  **Human Review (A2I Integration):**
+    - **Purpose:** Pause the workflow and send the `AnimeEntry` to Amazon A2I for human validation.
+    - **State Type:** `Task` (A2I `StartHumanLoop` integration)
+    - **Output:** Human-approved or rejected `AnimeEntry`.
+
+7.  **Commit Data (Dual Write to Qdrant & MongoDB):**
+    - **Purpose:** Persist the validated `AnimeEntry` to MongoDB Atlas and its vectors to Qdrant, ensuring atomicity via a Saga pattern.
+    - **State Type:** `Task` (Lambda function: `CommitDataLambda`)
+    - **Error Handling:** Implement client-level retries, Step Function retries, and a compensating action (rollback) for Qdrant if MongoDB write fails. DLQ for unrecoverable Saga failures.
+
+8.  **Cleanup:**
+    - **Purpose:** Remove any temporary resources (e.g., from EFS if used).
+    - **State Type:** `Task` (Lambda function: `CleanupLambda`)
+
+#### Visual Diagram (Conceptual):
+
+```mermaid
+graph TD
+    A[Start] --> B{Initialize Enrichment};
+    B --> C{Fetch External Data};
+    C --> D{Process Staging Scripts};
+    D --> E{Image Ingestion & Re-hosting};
+    E --> F{Assemble & Validate Entry};
+    F -- Validation Success --> G{Human Review (A2I)};
+    F -- Validation Fail --> H[Fail: Data Validation Error];
+    G -- Approved --> I{Commit Data (Dual Write)};
+    G -- Rejected --> J[Fail: Human Rejection];
+    I --> K{Cleanup};
+    K --> L[End];
+```
+
+#### Comprehensive Error Handling
+
+To ensure the robustness and resilience of the Enrichment Step Function, a comprehensive error handling strategy will be implemented, building upon the high-level state machine definition.
+
+**General Principles:**
+
+1.  **Idempotency:** All Lambda functions within the Step Function will be designed to be idempotent, meaning they can be safely re-executed multiple times without causing unintended side effects. This is fundamental for effective retry mechanisms.
+2.  **Granular Error Handling:** Error handling will be implemented at multiple levels:
+    - **Within Lambda Functions:** Use `try-except` blocks to catch and handle expected errors, logging details to CloudWatch. For unrecoverable errors, re-raise exceptions to allow Step Functions to handle them.
+    - **Step Functions State Level:** Configure `Retry` and `Catch` rules for each `Task` state to handle transient and permanent failures.
+
+**Proposed Error Handling Mechanisms per State:**
+
+1.  **Initialize Enrichment (`InitializeEnrichmentLambda`):**
+    - **Expected Errors:** Invalid input format, missing required parameters.
+    - **Handling:**
+      - **Catch:** On `States.DataMismatch` or custom application errors, transition to a `Fail` state or a dedicated error notification path (e.g., send to an SQS DLQ for manual review).
+      - **Retry:** Not typically needed for initialization unless external dependencies are involved (which should be minimal here).
+
+2.  **Fetch External Data (`FetchExternalDataLambda`):**
+    - **Expected Errors:** Network issues, API rate limits, external API downtime, invalid API responses, HTTP 4xx/5xx errors.
+    - **Handling:**
+      - **Retry:** Implement aggressive retry policies with exponential backoff for transient errors (e.g., `States.Timeout`, `States.TaskFailed`, HTTP 5xx). Use `Jitter` to prevent thundering herd.
+      - **Catch:** On persistent failures (after retries are exhausted) or specific non-retryable errors (e.g., HTTP 404 for a non-existent anime), transition to a `HumanReviewForFetchErrors` state (A2I) or send to a `FetchErrorDLQ` for investigation.
+
+3.  **Process Staging Scripts (`ProcessStagingScriptsLambda`):**
+    - **Expected Errors:** Data parsing errors, schema mismatches, unexpected data formats from external APIs.
+    - **Handling:**
+      - **Retry:** Limited retries for transient issues (e.g., resource contention).
+      - **Catch:** On data processing errors, transition to a `HumanReviewForProcessingErrors` state (A2I) to allow manual correction of the raw data or the script logic, or send to a `ProcessingErrorDLQ`.
+
+4.  **Image Ingestion & Re-hosting (`ImageIngestionLambda`):**
+    - **Expected Errors:** Image download failures, S3 upload failures, invalid image formats.
+    - **Handling:**
+      - **Retry:** Implement retries for network issues and S3 transient errors.
+      - **Catch:** On persistent failures (after retries), mark the specific image as failed within the `AnimeEntry` object (as already planned in Task 1.0) and continue the workflow. Send details of the failed image to an `ImageIngestionDLQ` for asynchronous re-processing or manual intervention. The overall workflow should not fail due to a single image failure.
+
+5.  **Assemble & Validate Entry (`AssembleValidateEntryLambda`):**
+    - **Expected Errors:** Pydantic validation failures, logical inconsistencies in assembled data.
+    - **Handling:**
+      - **Catch:** On validation failure, transition to a `HumanReviewForValidationErrors` state (A2I) to allow a human to correct the `AnimeEntry` data, or send to a `ValidationFailureDLQ`. The workflow should not proceed with invalid data.
+
+6.  **Human Review (A2I Integration):**
+    - **Expected Errors:** Human review timeout, human rejection, A2I service errors.
+    - **Handling:**
+      - **Catch:**
+        - On `States.Timeout` (human doesn't respond in time), transition to a `HumanReviewTimeoutDLQ` for re-submission or manual handling.
+        - On human rejection, transition to a `Fail` state or a `HumanRejectionDLQ` for analysis.
+        - On A2I service errors, implement retries for the A2I task itself.
+
+7.  **Commit Data (`CommitDataLambda`):**
+    - **Expected Errors:** Database connection issues, Qdrant/MongoDB write failures, network partitions.
+    - **Handling:**
+      - **Retry:** Implement robust retries with exponential backoff for both Qdrant and MongoDB write operations within the Lambda.
+      - **Catch (Saga Pattern):** As previously defined, implement a Saga pattern with compensating actions (rollback Qdrant write if MongoDB fails).
+      - **DLQ:** If the Saga itself fails (e.g., compensating action fails), send the entire Step Function execution details and `AnimeEntry` payload to a `CommitFailureDLQ` for immediate human intervention. This is a critical failure point.
+
+8.  **Cleanup (`CleanupLambda`):**
+    - **Expected Errors:** Resource deletion failures.
+    - **Handling:**
+      - **Retry:** Implement retries for transient resource deletion errors.
+      - **Catch:** On persistent failures, log the error and potentially send to a `CleanupErrorDLQ` for manual cleanup, but allow the overall workflow to succeed if the core data commit was successful.
+
+**Centralized Monitoring and Alerting:**
+
+- All DLQs will be monitored by CloudWatch Alarms, triggering notifications (e.g., SNS to Slack/PagerDuty) for critical failures requiring immediate attention.
+- CloudWatch Logs will capture detailed execution logs for all Lambda functions, aiding in debugging.
+
+### Data Governance Responsibilities
+
+- **Primary Data Owner:** As the sole owner of this project, you are the primary owner of the enriched `AnimeEntry` data stored in MongoDB Atlas and Qdrant. This includes ultimate responsibility for its accuracy, integrity, and adherence to defined policies.
+- **Data Quality:** The Engineering Team is responsible for defining and enforcing data quality standards. Mechanisms like the A2I human review workflow and strict schema validation (`Assemble Entry` step) are key technical controls for maintaining quality.
+- **Data Lifecycle:** The Engineering Team is responsible for implementing data lifecycle policies, including the "orphaning" strategy for removed anime and the future "hard delete" process for compliance.
+- **Access Controls:** The Engineering Team is responsible for implementing and managing technical access controls (IAM, MongoDB roles) to the data.
 
 ### Task 1.4: Implement Portability & Backup Job
 
@@ -601,7 +835,7 @@ Therefore, while we interact with three major data/AI components (MongoDB, Qdran
 |  |  |                                                                                                                               |
 |  |  |  +------------------------+      +------------------+      +---------------------+      +---------------------+      +--------------------+
 |  |  |  | Enrichment Trigger     |----->| Step Function    |----->|  Lambda: Fetch APIs |----->|  Lambda: Process    |----->| Lambda: Assemble   |
-|  |  |  | (e.g., Cron, Manual)   |      | (Orchestrator)   |      | (api_fetcher.py)    |      | (process_stage*.py) |      | & Write to Qdrant  |
+|  |  |  | (e.g., Cron, Manual)   |      | (Orchestrator)   |      | (api_fetcher.py)    |      | (process_stage*.py) |      | & Write to DBs     |
 |  |  |  +------------------------+      +--------+---------+      +----------+----------+      +----------+----------+      +----------+---------+
 |  |  |                                           |                           |                           |                           |
 |  |  |                                           +---------------------------+---------------------------+---------------------------+
@@ -664,11 +898,13 @@ graph TD
         LambdaProcess -- "Read Raw, Write Staged JSON" --> S3
         StepFunction -- "Start Final Assembly" --> LambdaWrite
         LambdaWrite -- "Read Staged JSON" --> S3
+        LambdaWrite -- "Write Enriched Document" --> MongoDB
         LambdaWrite -- "Write Enriched Vectors" --> QdrantDB
     end
 
     style BFF fill:#f9f,stroke:#333,stroke-width:2px
     style Agent fill:#ccf,stroke:#333,stroke-width:2px
+```
 
 ## Phase 6: Future Architecture - User Personalization & Recommendations
 
@@ -731,4 +967,8 @@ This phase outlines the architectural evolution required to support user account
     "updatedAt": "2025-11-10T10:00:00Z"
   }
   ```
+
+```
+
 - **Data Linking:** The explicit reference linking a user to an anime is stored in this MongoDB collection. There is no direct pointer between the user and anime collections in Qdrant; that link is made dynamically at query time via semantic similarity.
+```
