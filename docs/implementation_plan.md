@@ -669,7 +669,7 @@ graph TD
 
     style BFF fill:#f9f,stroke:#333,stroke-width:2px
     style Agent fill:#ccf,stroke:#333,stroke-width:2px
-
+```
 ## Phase 6: Future Architecture - User Personalization & Recommendations
 
 This phase outlines the architectural evolution required to support user accounts, watch history, and personalized recommendations. It builds upon the foundational BFF/Agent model established in Phase 5.
