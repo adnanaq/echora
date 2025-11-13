@@ -689,14 +689,24 @@ class ParallelAPIFetcher:
         )
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
-    async def cleanup(self) -> None:
-        """Clean up resources."""
+    async def __aenter__(self):
+        """Enter async context - initialize helpers."""
+        await self.initialize_helpers()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - cleanup all helper resources."""
+        # Close all helpers (now ALL have close() methods)
         if self.anilist_helper:
             await self.anilist_helper.close()
         if self.anidb_helper:
             await self.anidb_helper.close()
         if self.anisearch_helper:
             await self.anisearch_helper.close()
+        if self.kitsu_helper:
+            await self.kitsu_helper.close()
+        if self.anime_planet_helper:
+            await self.anime_planet_helper.close()
         if self.jikan_session:
             await self.jikan_session.close()
-        # Note: kitsu_helper, anime_planet_helper don't have close() methods
+        return False

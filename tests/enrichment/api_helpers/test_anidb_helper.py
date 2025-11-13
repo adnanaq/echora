@@ -99,3 +99,53 @@ async def test_main_function_error_handling(mock_helper_class):
         exit_code = await main()
 
     assert exit_code == 1
+
+
+# --- Tests for context manager protocol ---
+
+
+@pytest.mark.asyncio
+async def test_context_manager_protocol():
+    """Test AniDBEnrichmentHelper implements async context manager protocol."""
+    from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    async with AniDBEnrichmentHelper() as helper:
+        assert helper is not None
+        assert isinstance(helper, AniDBEnrichmentHelper)
+        assert helper.session is None  # Lazy init - not created yet
+    # Should exit cleanly, closing session if it was created
+
+
+@pytest.mark.asyncio
+async def test_context_manager_closes_session():
+    """Test that context manager closes session on exit."""
+    from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    helper = AniDBEnrichmentHelper()
+
+    # Create a mock session
+    mock_session = AsyncMock()
+    helper.session = mock_session
+
+    async with helper:
+        assert helper.session is mock_session
+
+    # Session should be closed after context exit
+    mock_session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_cleanup_on_exception():
+    """Test that context manager cleans up even when exception occurs."""
+    from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    helper = AniDBEnrichmentHelper()
+    mock_session = AsyncMock()
+    helper.session = mock_session
+
+    with pytest.raises(ValueError, match="Test error"):
+        async with helper:
+            raise ValueError("Test error")
+
+    # Session should still be closed despite exception
+    mock_session.close.assert_awaited_once()

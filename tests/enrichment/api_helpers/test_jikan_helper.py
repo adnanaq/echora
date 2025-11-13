@@ -1426,3 +1426,59 @@ class TestMainDirectoryCreation:
                 mock_fetcher.fetch_detailed_data.assert_called_once()
         finally:
             os.chdir(original_cwd)
+
+
+# --- Tests for context manager protocol ---
+
+
+@pytest.mark.asyncio
+async def test_context_manager_protocol():
+    """Test JikanDetailedFetcher implements async context manager protocol."""
+    from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+
+    mock_session = AsyncMock()
+    async with JikanDetailedFetcher("21", "episodes", mock_session) as fetcher:
+        assert fetcher is not None
+        assert isinstance(fetcher, JikanDetailedFetcher)
+        assert fetcher.session is mock_session
+    # Should exit cleanly, but NOT close session (doesn't own it)
+    mock_session.close.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_closes_owned_session():
+    """Test that context manager closes session only if it owns it."""
+    from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+
+    # Create fetcher without session (will create its own via cache manager)
+    with patch('src.enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session') as mock_get_session:
+        mock_session = AsyncMock()
+        mock_get_session.return_value = mock_session
+
+        fetcher = JikanDetailedFetcher("21", "episodes")
+
+        async with fetcher:
+            assert fetcher.session is mock_session
+            assert fetcher._owns_session is True
+
+        # Session should be closed because we own it
+        mock_session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_cleanup_on_exception():
+    """Test that context manager cleans up even when exception occurs."""
+    from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+
+    with patch('src.enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session') as mock_get_session:
+        mock_session = AsyncMock()
+        mock_get_session.return_value = mock_session
+
+        fetcher = JikanDetailedFetcher("21", "episodes")
+
+        with pytest.raises(ValueError, match="Test error"):
+            async with fetcher:
+                raise ValueError("Test error")
+
+        # Session should still be closed despite exception
+        mock_session.close.assert_awaited_once()

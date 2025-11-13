@@ -250,6 +250,15 @@ class JikanDetailedFetcher:
         if self._owns_session and self.session:
             await self.session.close()
 
+    async def __aenter__(self):
+        """Enter async context - session may be provided or created lazily."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - cleanup if we own the session."""
+        await self.close()
+        return False
+
     async def fetch_detailed_data(self, input_file: str, output_file: str) -> None:
         """Main async method to fetch detailed data with batch processing. When processing each object should
         have these properties, example for characters:

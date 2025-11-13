@@ -625,3 +625,41 @@ class TestAniSearchEnrichmentHelper:
         url = "https://www.anisearch.com/anime/18878,dan-da-dan-%E3%83%80%E3%83%B3%E3%83%80%E3%83%80%E3%83%B3"
         result = await helper.extract_anisearch_id_from_url(url)
         assert result == 18878
+
+
+# --- Tests for context manager protocol ---
+
+
+@pytest.mark.asyncio
+async def test_context_manager_protocol():
+    """Test AniSearchEnrichmentHelper implements async context manager protocol."""
+    from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
+
+    async with AniSearchEnrichmentHelper() as helper:
+        assert helper is not None
+        assert isinstance(helper, AniSearchEnrichmentHelper)
+    # Should exit cleanly
+
+
+@pytest.mark.asyncio
+async def test_context_manager_close_method_exists():
+    """Test that close() method exists (no-op for AniSearch crawlers)."""
+    from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
+
+    helper = AniSearchEnrichmentHelper()
+    # Should have close() method
+    assert hasattr(helper, "close")
+    assert callable(helper.close)
+    # Should be safe to call
+    await helper.close()
+
+
+@pytest.mark.asyncio
+async def test_context_manager_cleanup_on_exception():
+    """Test that context manager cleans up even when exception occurs."""
+    from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
+
+    with pytest.raises(ValueError, match="Test error"):
+        async with AniSearchEnrichmentHelper() as helper:
+            raise ValueError("Test error")
+    # If we get here, cleanup happened correctly

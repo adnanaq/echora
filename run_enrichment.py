@@ -165,29 +165,24 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
     print(f"Status: {anime_entry.get('status', 'Unknown')}")
     print(f"{'='*60}\n")
 
-    # Initialize pipeline
-    pipeline = ProgrammaticEnrichmentPipeline()
+    async with ProgrammaticEnrichmentPipeline() as pipeline:
+        # Run enrichment with optional service filtering and agent directory
+        result = await pipeline.enrich_anime(
+            anime_entry,
+            agent_dir=args.agent,
+            skip_services=args.skip,
+            only_services=args.only
+        )
 
-    # Run enrichment with optional service filtering and agent directory
-    result = await pipeline.enrich_anime(
-        anime_entry,
-        agent_dir=args.agent,
-        skip_services=args.skip,
-        only_services=args.only
-    )
+        # Show results
+        print(f"\n{'='*60}")
+        print("API Results:")
+        for api_name, data in result["api_data"].items():
+            status = "✓" if data else "✗"
+            print(f"  {api_name}: {status}")
 
-    # Show results
-    print(f"\n{'='*60}")
-    print("API Results:")
-    for api_name, data in result["api_data"].items():
-        status = "✓" if data else "✗"
-        print(f"  {api_name}: {status}")
-
-    print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
-    print(f"{'='*60}")
-
-    # Cleanup
-    await pipeline.cleanup()
+        print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
+        print(f"{'='*60}")
 
 
 if __name__ == "__main__":

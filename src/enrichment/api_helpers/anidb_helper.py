@@ -827,6 +827,15 @@ class AniDBEnrichmentHelper:
                 self.session = None
                 self._session_created_at = 0
 
+    async def __aenter__(self):
+        """Enter async context - session created lazily on first request."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - ensure session cleanup."""
+        await self.close()
+        return False
+
 
 async def main() -> int:
     """Main function for testing AniDB data fetching."""

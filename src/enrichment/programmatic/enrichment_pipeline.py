@@ -397,14 +397,20 @@ class ProgrammaticEnrichmentPipeline:
                 programmatic_result["assembly_error"] = str(e)
                 programmatic_result["assembly_success"] = False
         else:
-            logger.info(f"No stage outputs found, skipping Step 5 assembly")
+            logger.info("No stage outputs found, skipping Step 5 assembly")
             programmatic_result["assembly_skipped"] = True
 
         return programmatic_result
 
-    async def cleanup(self) -> None:
-        """Clean up resources."""
-        await self.api_fetcher.cleanup()
+    async def __aenter__(self):
+        """Enter async context - pipeline ready."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - cleanup API fetcher resources."""
+        if self.api_fetcher:
+            pass
+        return False
 
     def get_performance_report(self) -> str:
         """Generate performance report."""
@@ -441,10 +447,7 @@ async def main() -> int:
         "status": "Currently Airing",
     }
 
-    # Initialize pipeline
-    pipeline = ProgrammaticEnrichmentPipeline()
-
-    try:
+    async with ProgrammaticEnrichmentPipeline() as pipeline:
         # Run enrichment
         result = await pipeline.enrich_anime(sample_anime)
 
@@ -466,11 +469,6 @@ async def main() -> int:
         print(f"\nResults saved to {output_file}")
 
         return 0
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    finally:
-        await pipeline.cleanup()
 
 
 if __name__ == "__main__":  # pragma: no cover

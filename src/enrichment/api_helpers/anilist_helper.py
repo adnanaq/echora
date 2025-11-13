@@ -390,6 +390,15 @@ class AniListEnrichmentHelper:
         if self.session:
             await self.session.close()
 
+    async def __aenter__(self):
+        """Enter async context - session created lazily on first request."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - ensure session cleanup."""
+        await self.close()
+        return False
+
 
 async def main() -> int:
     """CLI entry point for AniList helper."""

@@ -185,6 +185,19 @@ class AnimePlanetEnrichmentHelper:
             )
             return None
 
+    async def close(self) -> None:
+        """No persistent session to close (creates per-request sessions)."""
+        pass
+
+    async def __aenter__(self):
+        """Enter async context."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context."""
+        await self.close()
+        return False
+
 
 async def main() -> int:
     """CLI entry point for AnimePlanet helper."""

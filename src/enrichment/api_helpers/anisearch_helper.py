@@ -234,3 +234,12 @@ class AniSearchEnrichmentHelper:
 
     async def close(self) -> None:
         """Cleanup (crawlers are stateless, no cleanup needed)."""
+
+    async def __aenter__(self):
+        """Enter async context."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - ensure cleanup."""
+        await self.close()
+        return False
