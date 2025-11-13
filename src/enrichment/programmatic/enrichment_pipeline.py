@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, cast
 from .api_fetcher import ParallelAPIFetcher
 from .assembly import assemble_anime_entry, validate_and_fix_entry
 from .config import EnrichmentConfig
-from .episode_processor import EpisodeProcessor
 from .id_extractor import PlatformIDExtractor
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,6 @@ class ProgrammaticEnrichmentPipeline:
         # Initialize components
         self.id_extractor = PlatformIDExtractor()
         self.api_fetcher = ParallelAPIFetcher(config)
-        self.episode_processor = EpisodeProcessor()
 
         # Performance tracking
         self.timing_breakdown: Dict[str, float] = {}
@@ -131,9 +129,6 @@ class ProgrammaticEnrichmentPipeline:
                 "extracted_ids": valid_ids,
                 "api_data": api_data,
                 "processed_episodes": processed_episodes,
-                "episode_statistics": self.episode_processor.extract_episode_statistics(
-                    processed_episodes
-                ),
                 "enrichment_metadata": {
                     "method": "programmatic",
                     "total_time": time.time() - start_time,
@@ -293,22 +288,13 @@ class ProgrammaticEnrichmentPipeline:
         return temp_dir
 
     def _process_episodes(self, api_data: Dict) -> List[Dict]:
-        """Process and merge episode data from all APIs."""
-        episode_sources = []
-
-        # Extract episodes from each API response
+        """Extract episode data from Jikan API."""
+        # Only use Jikan episodes - they have full details (title, synopsis, aired, etc.)
+        # AniList episodes only have episode number and air time, not useful
         if jikan_data := api_data.get("jikan"):
-            if episodes := jikan_data.get("episodes"):
-                episode_sources.append(episodes)
-
-        if anilist_data := api_data.get("anilist"):
-            if episodes := anilist_data.get("airingSchedule", {}).get("edges"):
-                episode_sources.append(episodes)
-
-        # Process and merge all episode sources
-        if episode_sources:
-            merged = self.episode_processor.merge_episode_sources(*episode_sources)
-            return self.episode_processor.validate_episode_data(merged)
+            episodes = jikan_data.get("episodes", [])
+            logger.debug(f"Extracted {len(episodes)} episodes from Jikan")
+            return episodes
 
         return []
 
