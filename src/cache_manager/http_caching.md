@@ -78,6 +78,93 @@ Cache expiration times are optimized per service (all set to **24 hours** for co
 | **Anime-Planet** | Crawler     | 24 hours | Result-level (JSON caching)   |
 | **AniSearch**    | Crawler     | 24 hours | Result-level (JSON caching)   |
 
+## Context Manager Protocol
+
+All caching classes implement async context manager protocol for automatic resource cleanup.
+
+### CachedAiohttpSession (Context Manager)
+
+The `CachedAiohttpSession` returned by `http_cache_manager.get_aiohttp_session()` is an async context manager:
+
+```python
+from src.cache_manager.instance import http_cache_manager
+
+# Recommended: Use as context manager (automatic cleanup)
+async with http_cache_manager.get_aiohttp_session("jikan") as session:
+    async with session.get("https://api.example.com/data") as response:
+        data = await response.json()
+# Session and storage automatically closed
+
+# Alternative: Manual cleanup (if context manager not feasible)
+session = http_cache_manager.get_aiohttp_session("jikan")
+try:
+    async with session.get("https://api.example.com/data") as response:
+        data = await response.json()
+finally:
+    await session.close()  # Must call close() manually
+```
+
+**Important**: The `CachedAiohttpSession.__aexit__` method:
+- Closes the underlying `aiohttp.ClientSession`
+- Closes the `AsyncRedisStorage` (if owned by the session)
+- Ensures no resource leaks
+
+### Helper Usage Pattern
+
+API helpers use the cache manager correctly with lazy initialization and proper cleanup:
+
+```python
+class AniListEnrichmentHelper:
+    def __init__(self) -> None:
+        self.session: Optional[aiohttp.ClientSession] = None
+
+    async def _make_request(self, query: str, variables: Optional[Dict[str, Any]] = None):
+        # Lazy initialization - create session on first use
+        if self.session is None:
+            self.session = http_cache_manager.get_aiohttp_session("anilist")
+
+        # Use session with context manager for individual requests
+        async with self.session.post(self.base_url, json=payload) as response:
+            return await response.json()
+
+    async def close(self) -> None:
+        """Close session (cleanup)."""
+        if self.session:
+            await self.session.close()
+
+    async def __aenter__(self):
+        """Async context manager - helper is ready."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager - cleanup resources."""
+        await self.close()
+        return False
+```
+
+**Pattern**: Helpers are themselves context managers that manage their cached sessions.
+
+### Cleanup Methods
+
+**CachedAiohttpSession.close()**:
+```python
+await session.close()  # Closes session + storage
+```
+
+**HTTPCacheManager.close_async()**:
+```python
+from src.cache_manager.instance import http_cache_manager
+await http_cache_manager.close_async()  # Close async Redis client
+```
+
+**Result Cache Cleanup**:
+```python
+from src.cache_manager.result_cache import close_result_cache_redis_client
+await close_result_cache_redis_client()  # Close singleton Redis client
+```
+
+**Note**: Cleanup methods are rarely needed due to context manager patterns, but available for manual resource management.
+
 ## Usage
 
 ### Important Scripts
@@ -171,8 +258,9 @@ ENABLE_HTTP_CACHE=true python run_enrichment.py --title "Dandadan" &
 - Used for: Jikan, AniList, AniDB, Kitsu, AnimSchedule (all async)
 - Technology: Hishel (RFC 9111 compliant) with custom Redis storage
 - Caches: Raw HTTP responses at the network layer
-- Implementation: aiohttp sessions with proper cleanup
-- Transparent: Automatic caching via cache manager
+- Implementation: `CachedAiohttpSession` (async context manager) wrapping aiohttp
+- Resource Management: Automatic cleanup via `__aexit__` or manual via `close()`
+- Transparent: Automatic caching via cache manager singleton
 
 **2. Result-Level Caching (Crawler Sources)**
 
@@ -324,10 +412,31 @@ export HTTP_CACHE_STORAGE=sqlite
 ## Key Files
 
 - `src/cache_manager/result_cache.py` - Result-level caching decorator for crawlers
+  - Provides `@cached_result` decorator with automatic schema invalidation
+  - Singleton Redis client with `close_result_cache_redis_client()` cleanup
+
 - `src/cache_manager/manager.py` - HTTP cache manager for API sources
+  - Provides `get_aiohttp_session()` factory method
+  - Has `close_async()` for closing async Redis connections
+  - NOT a context manager itself (returns context managers)
+
+- `src/cache_manager/aiohttp_adapter.py` - Cached aiohttp session wrapper
+  - **CachedAiohttpSession**: Async context manager implementing `__aenter__` and `__aexit__`
+  - `close()` method for manual cleanup (closes session + storage)
+  - Wraps `aiohttp.ClientSession` with Redis caching via Hishel
+
+- `src/cache_manager/async_redis_storage.py` - Async Redis storage backend
+  - Implements Hishel's `AsyncBaseStorage` interface
+  - Has `close()` method (closes Redis client if owned)
+  - Manages ownership via `_owns_client` flag
+
 - `src/cache_manager/instance.py` - Singleton instance of the cache manager
-- `src/cache_manager/async_redis_storage.py` - Async Redis storage for aiohttp
+  - Global `http_cache_manager` instance
+  - Used by all API helpers for consistent caching
+
 - `src/cache_manager/config.py` - Cache configuration and environment variables
+  - Pydantic-based config with env var support
+  - Service-specific TTLs and storage backend configuration
 
 ## Test Scripts
 
