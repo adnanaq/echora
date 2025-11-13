@@ -10,11 +10,9 @@ import logging
 import os
 import sys
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 from .api_fetcher import ParallelAPIFetcher
-from .assembly import assemble_anime_entry, validate_and_fix_entry
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
@@ -297,96 +295,6 @@ class ProgrammaticEnrichmentPipeline:
             return episodes
 
         return []
-
-    async def load_and_enrich_from_file(self, file_path: str) -> Dict:
-        """
-        Load anime from file and enrich it.
-
-        Args:
-            file_path: Path to JSON file with offline anime data
-
-        Returns:
-            Enriched anime data
-        """
-        with open(file_path, "r", encoding="utf-8") as f:
-            offline_data = json.load(f)
-
-        return await self.enrich_anime(offline_data)
-
-    async def enrich_anime_with_assembly(
-        self, offline_data: Dict, stage_outputs_dir: Optional[Path] = None
-    ) -> Dict[str, Any]:
-        """
-        Complete enrichment pipeline including Step 5 assembly.
-
-        Args:
-            offline_data: Raw anime data from offline database
-            stage_outputs_dir: Directory containing AI stage outputs (stage1-6 JSON files)
-
-        Returns:
-            Complete assembled and validated AnimeEntry
-        """
-        anime_title = offline_data.get("title", "Unknown")
-        logger.info(f"Starting complete enrichment pipeline for {anime_title}")
-
-        # Step 1-3: Programmatic enrichment
-        programmatic_result = await self.enrich_anime(offline_data)
-
-        if "error" in programmatic_result:
-            logger.error(
-                f"Programmatic enrichment failed: {programmatic_result['error']}"
-            )
-            return programmatic_result
-
-        # Step 5: Assembly (if stage outputs available)
-        if stage_outputs_dir and stage_outputs_dir.exists():
-            logger.info(f"Running Step 5 assembly...")
-
-            try:
-                # Extract anime sources
-                anime_sources = offline_data.get("sources", [])
-
-                # Run assembly
-                assembly_result = assemble_anime_entry(
-                    stage_dir=stage_outputs_dir,
-                    programmatic_data=programmatic_result,
-                    anime_sources=anime_sources,
-                )
-
-                if assembly_result.success and assembly_result.anime_entry:
-                    logger.info(
-                        f"Assembly successful with {len(assembly_result.warnings)} warnings"
-                    )
-
-                    # Apply final validation and auto-fix
-                    final_entry, is_valid, validation_messages = validate_and_fix_entry(
-                        assembly_result.anime_entry
-                    )
-
-                    # Add assembly metadata to result
-                    programmatic_result["assembled_entry"] = final_entry
-                    programmatic_result["assembly_success"] = assembly_result.success
-                    programmatic_result["validation_passed"] = is_valid
-                    programmatic_result["assembly_errors"] = assembly_result.errors
-                    programmatic_result["assembly_warnings"] = assembly_result.warnings
-                    programmatic_result["validation_messages"] = validation_messages
-
-                    logger.info(f"Complete pipeline finished - Validation: {is_valid}")
-
-                else:
-                    logger.error(f"Assembly failed: {assembly_result.errors}")
-                    programmatic_result["assembly_errors"] = assembly_result.errors
-                    programmatic_result["assembly_success"] = False
-
-            except Exception as e:
-                logger.error(f"Step 5 assembly failed: {e}")
-                programmatic_result["assembly_error"] = str(e)
-                programmatic_result["assembly_success"] = False
-        else:
-            logger.info("No stage outputs found, skipping Step 5 assembly")
-            programmatic_result["assembly_skipped"] = True
-
-        return programmatic_result
 
     async def __aenter__(self):
         """Enter async context - pipeline ready."""
