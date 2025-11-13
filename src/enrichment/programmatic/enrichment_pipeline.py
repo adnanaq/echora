@@ -303,7 +303,7 @@ class ProgrammaticEnrichmentPipeline:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Exit async context - cleanup API fetcher resources."""
         if self.api_fetcher:
-            pass
+            await self.api_fetcher.__aexit__(exc_type, exc_val, exc_tb)
         return False
 
     def get_performance_report(self) -> str:
