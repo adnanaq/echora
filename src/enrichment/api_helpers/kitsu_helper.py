@@ -15,6 +15,8 @@ import aiohttp
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
 
+logger = logging.getLogger(__name__)
+
 
 class KitsuEnrichmentHelper:
     """Simple helper for Kitsu data fetching in AI enrichment pipeline."""

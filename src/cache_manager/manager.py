@@ -2,18 +2,16 @@
 HTTP Cache Manager for enrichment pipeline.
 
 Provides cached HTTP sessions for aiohttp (async) clients.
-Supports Redis (multi-agent) and SQLite (single-agent) storage backends.
+Supports Redis storage backend for multi-agent caching.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import aiohttp
-import hishel
 from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
@@ -22,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class HTTPCacheManager:
-    """Manages HTTP cache for enrichment pipeline with Redis/SQLite backends."""
+    """Manages HTTP cache for enrichment pipeline with Redis backend."""
 
     def __init__(self, config: CacheConfig):
         """
@@ -32,7 +30,6 @@ class HTTPCacheManager:
             config: Cache configuration
         """
         self.config = config
-        self._storage: Optional[Any] = None
         self._async_redis_client: Optional[AsyncRedis[bytes]] = None
         self._redis_event_loop: Optional[Any] = None
 
@@ -43,8 +40,6 @@ class HTTPCacheManager:
         """Initialize cache storage backend."""
         if self.config.storage_type == "redis":
             self._init_redis_storage()
-        elif self.config.storage_type == "sqlite":
-            self._init_sqlite_storage()
         else:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 
@@ -115,16 +110,6 @@ class HTTPCacheManager:
             )
 
         return self._async_redis_client
-
-    def _init_sqlite_storage(self) -> None:
-        """Initialize SQLite file-based storage."""
-        cache_dir = Path(self.config.cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use Hishel 1.0 SQLite storage with absolute path
-        database_path = (cache_dir / "http_cache.db").absolute()
-        self._storage = hishel.SyncSqliteStorage(database_path=str(database_path))
-        logger.info(f"SQLite cache initialized: {database_path}")
 
     def get_aiohttp_session(
         self, service: str, **session_kwargs: Any
@@ -200,14 +185,6 @@ class HTTPCacheManager:
         ttl_attr = f"ttl_{service}"
         return getattr(self.config, ttl_attr, 86400)  # Default 24 hours
 
-    def close(self) -> None:
-        """Close sync cache connections."""
-        try:
-            if self._storage and isinstance(self._storage, hishel.SyncSqliteStorage):
-                self._storage.close()
-        except Exception as e:
-            logger.warning(f"Error closing SQLite cache storage: {e}")
-
     async def close_async(self) -> None:
         """Close async cache connections."""
         if self._async_redis_client:
@@ -229,10 +206,5 @@ class HTTPCacheManager:
         return {
             "enabled": True,
             "storage_type": self.config.storage_type,
-            "cache_dir": (
-                self.config.cache_dir if self.config.storage_type == "sqlite" else None
-            ),
-            "redis_url": (
-                self.config.redis_url if self.config.storage_type == "redis" else None
-            ),
+            "redis_url": self.config.redis_url,
         }

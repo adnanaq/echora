@@ -7,6 +7,9 @@ fail in Docker environments.
 
 import pytest
 
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):

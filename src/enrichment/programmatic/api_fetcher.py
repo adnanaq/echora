@@ -177,10 +177,9 @@ class ParallelAPIFetcher:
                 f"🔍 [JIKAN DEBUG] Starting _fetch_jikan_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
             )
             start = time.time()
-            loop = asyncio.get_event_loop()
 
             # First, fetch anime full data
-            logger.info(f"🔍 [JIKAN DEBUG] Fetching anime full data...")
+            logger.info("🔍 [JIKAN DEBUG] Fetching anime full data...")
             anime_url = f"https://api.jikan.moe/v4/anime/{mal_id}/full"
             anime_data = await self._fetch_jikan_async(anime_url)
 
@@ -188,7 +187,7 @@ class ParallelAPIFetcher:
                 logger.warning(f"Failed to fetch Jikan anime data for MAL ID {mal_id}")
                 return None
 
-            logger.info(f"🔍 [JIKAN DEBUG] Anime full data fetched successfully")
+            logger.info("🔍 [JIKAN DEBUG] Anime full data fetched successfully")
             anime_info = anime_data["data"]
 
             # Save jikan.json immediately with the anime full data
@@ -208,7 +207,7 @@ class ParallelAPIFetcher:
             logger.info(f"🔍 [JIKAN DEBUG] Episode count: {episode_count}")
 
             # Fetch character list first (before starting detailed fetches)
-            logger.info(f"🔍 [JIKAN DEBUG] Fetching character list...")
+            logger.info("🔍 [JIKAN DEBUG] Fetching character list...")
             characters_url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
             characters_basic = await self._fetch_jikan_async(characters_url)
             char_count = (
@@ -281,7 +280,7 @@ class ParallelAPIFetcher:
                     logger.info(f"🔍 [JIKAN DEBUG] Starting {task_name} fetch...")
                     await task_coro
                     logger.info(f"🔍 [JIKAN DEBUG] Completed {task_name} fetch")
-                logger.info(f"🔍 [JIKAN DEBUG] All detailed fetch tasks completed")
+                logger.info("🔍 [JIKAN DEBUG] All detailed fetch tasks completed")
 
             # Load results
             episodes_data = []
@@ -605,7 +604,7 @@ class ParallelAPIFetcher:
         self, tasks: List[Tuple[str, Any]], timeout: int
     ) -> Dict[str, Any]:
         """
-        Execute tasks in parallel. In no-timeout mode, wait for ALL data.
+        Execute tasks in parallel using asyncio.gather for improved performance.
         Implements graceful degradation - doesn't fail if one API is down.
 
         Args:
@@ -616,55 +615,43 @@ class ParallelAPIFetcher:
             Dictionary of results
         """
         results = {}
+        task_names = [name for name, _ in tasks]
+        coroutines = [coro for _, coro in tasks]
 
-        # Create tasks with names
-        named_tasks = []
-        for name, coro in tasks:
-            task = asyncio.create_task(coro)
-            named_tasks.append((name, task))
-
-        # Check if we're in no-timeout mode
         if self.config.no_timeout_mode:
             logger.info(
                 "Running in NO TIMEOUT mode - will fetch ALL data from all APIs"
             )
-            # Just gather all results without timeout
-            for name, task in named_tasks:
-                try:
-                    result = await task
-                    results[name] = result
+            # Gather all results without timeout, returning exceptions for failed tasks
+            task_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
-                    if result:
-                        logger.debug(f"API {name} completed successfully")
-                    else:
-                        logger.warning(f"API {name} returned empty result")
-
-                except Exception as e:
-                    logger.error(f"API {name} failed with error: {e}")
-                    results[name] = None
-                    self.api_errors[name] = str(e)
         else:
-            # Normal mode with timeouts
-            for name, task in named_tasks:
-                try:
-                    # Each API gets its own timeout
-                    result = await asyncio.wait_for(task, timeout=timeout)
-                    results[name] = result
+            # Normal mode with individual timeouts for each task
+            # Wrap each coroutine in wait_for to apply the timeout
+            timed_coroutines = [
+                asyncio.wait_for(coro, timeout=timeout) for coro in coroutines
+            ]
+            task_results = await asyncio.gather(
+                *timed_coroutines, return_exceptions=True
+            )
 
-                    if result:
-                        logger.debug(f"API {name} completed successfully")
-                    else:
-                        logger.warning(f"API {name} returned empty result")
-
-                except asyncio.TimeoutError:
-                    logger.warning(f"API {name} timed out after {timeout}s")
-                    results[name] = None
-                    task.cancel()
-
-                except Exception as e:
-                    logger.error(f"API {name} failed with error: {e}")
-                    results[name] = None
-                    self.api_errors[name] = str(e)
+        # Process the results from gather
+        for i, result in enumerate(task_results):
+            name = task_names[i]
+            if isinstance(result, asyncio.TimeoutError):
+                logger.warning(f"API {name} timed out after {timeout}s")
+                results[name] = None
+                # The task is already cancelled by wait_for, so no need to call cancel()
+            elif isinstance(result, Exception):
+                logger.error(f"API {name} failed with error: {result}")
+                results[name] = None
+                self.api_errors[name] = str(result)
+            else:
+                results[name] = result
+                if result:
+                    logger.debug(f"API {name} completed successfully")
+                else:
+                    logger.warning(f"API {name} returned empty result")
 
         return results
 

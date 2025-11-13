@@ -3,12 +3,11 @@ Comprehensive tests for src/cache_manager/manager.py
 
 Tests cover:
 - HTTPCacheManager initialization with Redis (async client)
-- HTTPCacheManager initialization with SQLite
 - get_aiohttp_session() with body-based caching
 - Service-specific TTL configuration
 - Redis connection failure behavior
 - Cache statistics retrieval
-- Session cleanup and closing (sync and async)
+- Session cleanup and closing (async)
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,7 +27,6 @@ class TestHTTPCacheManagerInit:
         manager = HTTPCacheManager(config)
 
         assert manager.config == config
-        assert manager._storage is None
         assert manager._async_redis_client is None
 
     def test_init_with_config_enabled_redis(self) -> None:
@@ -40,24 +38,6 @@ class TestHTTPCacheManagerInit:
         # Redis client is lazily initialized, not created during __init__
         assert manager._async_redis_client is None
         assert manager._redis_event_loop is None
-
-    def test_init_with_config_enabled_sqlite(self, tmp_path) -> None:
-        """Test initialization with SQLite storage."""
-        cache_dir = str(tmp_path / "test_cache")
-        config = CacheConfig(
-            enabled=True, storage_type="sqlite", cache_dir=cache_dir
-        )
-
-        with patch(
-            "src.cache_manager.manager.hishel.SyncSqliteStorage"
-        ) as mock_storage:
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                manager = HTTPCacheManager(config)
-
-                assert manager.config == config
-                assert manager._storage is not None
-                assert manager._async_redis_client is None
-                mock_storage.assert_called_once()
 
     def test_init_redis_url_missing_raises_error(self) -> None:
         """Test that missing redis_url raises ValueError."""
@@ -107,24 +87,6 @@ class TestGetAiohttpSession:
 
             assert session == mock_session
             mock_session_class.assert_called_once()
-
-    def test_get_aiohttp_session_storage_not_redis(self) -> None:
-        """Test that regular session returned when storage is not Redis."""
-        config = CacheConfig(enabled=True, storage_type="sqlite")
-
-        with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                with patch(
-                    "src.cache_manager.manager.aiohttp.ClientSession"
-                ) as mock_session_class:
-                    mock_session = MagicMock()
-                    mock_session_class.return_value = mock_session
-
-                    manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("jikan")
-
-                    assert session == mock_session
-                    mock_session_class.assert_called_once()
 
     def test_get_aiohttp_session_no_async_redis_client(self) -> None:
         """Test regular session returned when async Redis client is None."""
@@ -312,17 +274,7 @@ class TestServiceTTL:
 
 
 class TestCacheManagerClose:
-    """Test close() and close_async() methods."""
-
-    def test_close_sync_does_nothing(self) -> None:
-        """Test that sync close() does nothing (deprecated)."""
-        config = CacheConfig(enabled=True, storage_type="sqlite")
-
-        with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                manager = HTTPCacheManager(config)
-                # Should not raise error
-                manager.close()
+    """Test close_async() method."""
 
     @pytest.mark.asyncio
     async def test_close_async_with_redis_client(self) -> None:
@@ -342,17 +294,6 @@ class TestCacheManagerClose:
 
                     # Redis client should be closed
                     mock_async_redis.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_close_async_without_redis_client(self) -> None:
-        """Test async closing manager without Redis client."""
-        config = CacheConfig(enabled=True, storage_type="sqlite")
-
-        with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                manager = HTTPCacheManager(config)
-                # Should not raise error
-                await manager.close_async()
 
     @pytest.mark.asyncio
     async def test_close_async_with_redis_error(self) -> None:
@@ -399,26 +340,6 @@ class TestGetStats:
             assert stats["enabled"] is True
             assert stats["storage_type"] == "redis"
             assert stats["redis_url"] == "redis://test:6379/0"
-            assert stats["cache_dir"] is None
-
-    def test_get_stats_sqlite(self, tmp_path) -> None:
-        """Test stats with SQLite storage."""
-        cache_dir = str(tmp_path / "custom_cache")
-        config = CacheConfig(
-            enabled=True,
-            storage_type="sqlite",
-            cache_dir=cache_dir,
-        )
-
-        with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                manager = HTTPCacheManager(config)
-                stats = manager.get_stats()
-
-                assert stats["enabled"] is True
-                assert stats["storage_type"] == "sqlite"
-                assert stats["cache_dir"] == cache_dir
-                assert stats["redis_url"] is None
 
 
 class TestIntegrationScenarios:
@@ -452,22 +373,6 @@ class TestIntegrationScenarios:
                     # Now Redis client should be initialized
                     assert manager._async_redis_client is not None
                     assert manager._get_service_ttl("jikan") == 86400
-
-    def test_development_sqlite_setup(self, tmp_path) -> None:
-        """Test development-like SQLite setup."""
-        cache_dir = str(tmp_path / "dev_cache")
-        config = CacheConfig(
-            enabled=True,
-            storage_type="sqlite",
-            cache_dir=cache_dir,
-        )
-
-        with patch("src.cache_manager.manager.hishel.SyncSqliteStorage"):
-            with patch("src.cache_manager.manager.Path.mkdir"):
-                manager = HTTPCacheManager(config)
-
-                assert manager._storage is not None
-                assert manager._async_redis_client is None
 
     def test_multiple_services_session_creation(self) -> None:
         """Test creating sessions for multiple services."""
@@ -591,3 +496,224 @@ class TestRedisClientEventLoopSwitching:
             assert client1 is not client2, "Should create new client for new loop"
             assert client1.closed, "Old Redis client should be closed when loop switches"
             assert len(close_calls) >= 1, "At least one client should have been closed"
+
+    @pytest.mark.asyncio
+    async def test_old_loop_still_running_uses_run_coroutine_threadsafe(self) -> None:
+        """
+        Test that when old event loop is still running, asyncio.run_coroutine_threadsafe is used.
+
+        This covers line 97 where old_loop.is_running() returns True.
+        """
+        config = CacheConfig(
+            enabled=True,
+            storage_type="redis",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        # Track how close was called
+        close_method_used = []
+
+        class MockAsyncRedis:
+            async def close(self):
+                close_method_used.append("close_called")
+
+        # First call creates client in loop1
+        mock_client1 = MockAsyncRedis()
+        # Second call creates client in loop2
+        mock_client2 = MockAsyncRedis()
+
+        call_count = [0]
+        def mock_from_url(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_client1
+            else:
+                return mock_client2
+
+        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+            with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+                manager = HTTPCacheManager(config)
+
+                # First call - creates client in current loop
+                session1 = manager.get_aiohttp_session("test")
+                assert manager._async_redis_client is mock_client1
+
+                # Mock the old loop as still running
+                old_loop = manager._redis_event_loop
+                with patch.object(old_loop, 'is_running', return_value=True):
+                    # Second call in same event loop should trigger cleanup
+                    # Force a new event loop scenario by patching get_running_loop
+                    import asyncio
+                    new_loop = asyncio.new_event_loop()
+
+                    async def get_new_loop():
+                        return new_loop
+
+                    with patch('asyncio.get_running_loop', return_value=new_loop):
+                        session2 = manager.get_aiohttp_session("test")
+
+                        # Should have called run_coroutine_threadsafe for old client
+                        assert mock_run_threadsafe.called
+                        # Verify it was called with close() coroutine and old loop
+                        args = mock_run_threadsafe.call_args[0]
+                        assert old_loop in mock_run_threadsafe.call_args[0] or old_loop == mock_run_threadsafe.call_args[1].get('loop')
+
+    @pytest.mark.asyncio
+    async def test_exception_during_old_client_close_is_handled(self) -> None:
+        """
+        Test that exceptions during old Redis client close are handled gracefully.
+
+        This covers lines 95-97 where close errors are caught and logged.
+        """
+        config = CacheConfig(
+            enabled=True,
+            storage_type="redis",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        # Track close attempts
+        close_exception_caught = []
+
+        class MockAsyncRedis:
+            async def close(self):
+                error = Exception("Close failed unexpectedly")
+                close_exception_caught.append(error)
+                raise error
+
+        mock_client1 = MockAsyncRedis()
+        mock_client2 = MockAsyncRedis()
+
+        call_count = [0]
+        def mock_from_url(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_client1
+            else:
+                return mock_client2
+
+        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+            manager = HTTPCacheManager(config)
+
+            # First call creates client in current loop
+            session1 = manager.get_aiohttp_session("test")
+            assert manager._async_redis_client is mock_client1
+
+            # Get the old loop reference
+            import asyncio
+            old_loop = manager._redis_event_loop
+            new_loop = asyncio.new_event_loop()
+
+            # Mock old loop as not running (to trigger create_task path)
+            with patch.object(old_loop, 'is_running', return_value=False):
+                with patch('asyncio.get_running_loop', return_value=new_loop):
+                    with patch.object(new_loop, 'create_task', side_effect=Exception("Task creation failed")):
+                        # This should trigger exception in close handling (lines 95-97)
+                        session2 = manager.get_aiohttp_session("test")
+
+                        # Should have created new client anyway
+                        assert manager._async_redis_client is mock_client2
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_redis_client_returns_none_when_redis_url_none(self) -> None:
+        """
+        Test that _get_or_create_redis_client returns None when redis_url is None.
+
+        This covers line 107 where redis_url check returns None.
+        """
+        config = CacheConfig(
+            enabled=True,
+            storage_type="redis",
+            redis_url="redis://localhost:6379/0"  # Start with valid URL
+        )
+
+        manager = HTTPCacheManager(config)
+
+        # First call with valid redis_url creates client
+        session1 = manager.get_aiohttp_session("test")
+        assert manager._async_redis_client is not None
+
+        # Now simulate redis_url becoming None (configuration change)
+        manager.config.redis_url = None
+
+        # Force event loop switch to trigger _get_or_create_redis_client logic
+        import asyncio
+        new_loop = asyncio.new_event_loop()
+
+        with patch('asyncio.get_running_loop', return_value=new_loop):
+            # This should return None because redis_url is None (line 107)
+            client = manager._get_or_create_redis_client()
+            assert client is None
+
+
+class TestGetAiohttpSessionErrorHandling:
+    """Test error handling in get_aiohttp_session for lines 183-188."""
+
+    @pytest.mark.asyncio
+    async def test_import_error_from_cached_aiohttp_session_import(self) -> None:
+        """
+        Test ImportError when importing CachedAiohttpSession (line 184).
+        """
+        config = CacheConfig(enabled=True, storage_type="redis")
+
+        with patch('redis.asyncio.Redis.from_url') as mock_redis:
+            mock_redis.return_value = MagicMock()
+
+            # Mock ImportError when importing CachedAiohttpSession (within get_aiohttp_session)
+            with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession', side_effect=ImportError("Module not found")):
+                with patch('src.cache_manager.manager.aiohttp.ClientSession') as mock_session:
+                    manager = HTTPCacheManager(config)
+                    session = manager.get_aiohttp_session("test")
+
+                    # Should fall back to regular session (line 185)
+                    mock_session.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_general_exception_in_async_storage_creation(self) -> None:
+        """
+        Test general Exception during async storage creation (lines 186-188).
+        """
+        config = CacheConfig(enabled=True, storage_type="redis")
+
+        with patch('redis.asyncio.Redis.from_url') as mock_redis:
+            mock_redis.return_value = MagicMock()
+
+            # Mock exception during AsyncRedisStorage creation
+            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage', side_effect=RuntimeError("Storage init failed")):
+                with patch('src.cache_manager.manager.aiohttp.ClientSession') as mock_session:
+                    manager = HTTPCacheManager(config)
+                    session = manager.get_aiohttp_session("test")
+
+                    # Should fall back to regular session (line 188)
+                    mock_session.assert_called_once()
+
+
+class TestCloseErrorHandling:
+    """Test error handling in close_async() method."""
+
+    @pytest.mark.asyncio
+    async def test_close_async_redis_with_exception(self) -> None:
+        """
+        Test that close_async() handles Redis close errors gracefully (lines 216-217).
+        """
+        config = CacheConfig(enabled=True, storage_type="redis")
+
+        # Create mock Redis client that raises on close
+        mock_redis = AsyncMock()
+        mock_redis.close.side_effect = Exception("Redis close error")
+
+        with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
+            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage'):
+                with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession'):
+                    manager = HTTPCacheManager(config)
+
+                    # Trigger lazy initialization
+                    manager.get_aiohttp_session("test")
+
+                    # Verify Redis client was created
+                    assert manager._async_redis_client is mock_redis
+
+                    # close_async should not raise, should handle exception (line 217)
+                    await manager.close_async()
+
+                    # Verify close was attempted
+                    mock_redis.close.assert_called_once()

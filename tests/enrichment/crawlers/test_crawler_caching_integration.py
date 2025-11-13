@@ -7,6 +7,9 @@ import pytest_asyncio
 from redis import exceptions
 from redis.asyncio import Redis
 
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
+
 from src.cache_manager import result_cache  # Import module to access _redis_client
 from src.enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from src.enrichment.crawlers.anisearch_character_crawler import (
