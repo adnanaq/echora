@@ -149,11 +149,11 @@ class KitsuEnrichmentHelper:
         """No persistent session to close (creates per-request sessions)."""
         pass
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "KitsuEnrichmentHelper":
         """Enter async context."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
         """Exit async context."""
         await self.close()
         return False

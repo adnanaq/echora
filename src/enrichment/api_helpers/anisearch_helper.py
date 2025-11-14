@@ -2,7 +2,8 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type
 
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
@@ -235,11 +236,16 @@ class AniSearchEnrichmentHelper:
     async def close(self) -> None:
         """Cleanup (crawlers are stateless, no cleanup needed)."""
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AniSearchEnrichmentHelper":
         """Enter async context."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context - ensure cleanup."""
         await self.close()
         return False

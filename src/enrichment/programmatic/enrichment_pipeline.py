@@ -10,7 +10,8 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, cast
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type, cast
 
 from .api_fetcher import ParallelAPIFetcher
 from .config import EnrichmentConfig
@@ -285,7 +286,7 @@ class ProgrammaticEnrichmentPipeline:
 
         return temp_dir
 
-    def _process_episodes(self, api_data: Dict) -> List[Dict]:
+    def _process_episodes(self, api_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract episode data from Jikan API."""
         # Only use Jikan episodes - they have full details (title, synopsis, aired, etc.)
         # AniList episodes only have episode number and air time, not useful
@@ -296,14 +297,18 @@ class ProgrammaticEnrichmentPipeline:
 
         return []
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
         """Enter async context - pipeline ready."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context - cleanup API fetcher resources."""
-        if self.api_fetcher:
-            await self.api_fetcher.__aexit__(exc_type, exc_val, exc_tb)
+        await self.api_fetcher.__aexit__(exc_type, exc_val, exc_tb)
         return False
 
     def get_performance_report(self) -> str:
@@ -362,7 +367,7 @@ async def main() -> int:
             json.dump(result, f, ensure_ascii=False, indent=2, default=str)
         print(f"\nResults saved to {output_file}")
 
-        return 0
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

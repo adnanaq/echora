@@ -17,7 +17,8 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
 
@@ -250,11 +251,16 @@ class JikanDetailedFetcher:
         if self._owns_session and self.session:
             await self.session.close()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "JikanDetailedFetcher":
         """Enter async context - session may be provided or created lazily."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context - cleanup if we own the session."""
         await self.close()
         return False

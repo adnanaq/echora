@@ -184,7 +184,9 @@ class AniSearchScraper(BaseScraper):
                 anime_data["characters"] = characters
 
             # 10. Extract all images (screenshots only, excluding cover to avoid duplication)
-            screenshots = await self._extract_all_images(soup, anime_id, anime_data.get("cover"))
+            screenshots = await self._extract_all_images(
+                soup, anime_id, anime_data.get("cover")
+            )
             if screenshots:
                 anime_data["screenshots"] = screenshots
 
@@ -222,7 +224,9 @@ class AniSearchScraper(BaseScraper):
                 if len(parts) >= 2:
                     japanese_part = parts[-1].strip()
                     # Verify it contains Japanese characters
-                    if re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', japanese_part):
+                    if re.search(
+                        r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", japanese_part
+                    ):
                         return japanese_part
 
         return None
@@ -253,7 +257,9 @@ class AniSearchScraper(BaseScraper):
             is_german = any(word in text.lower() for word in german_words)
 
             # Japanese indicators
-            is_japanese = bool(re.search(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", text))
+            is_japanese = bool(
+                re.search(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]", text)
+            )
 
             # If not German or Japanese, assume English
             if not is_german and not is_japanese:
@@ -282,14 +288,14 @@ class AniSearchScraper(BaseScraper):
             if value_elem:
                 if isinstance(value_elem, str):
                     value = value_elem.strip()
-                elif hasattr(value_elem, 'get_text'):
+                elif hasattr(value_elem, "get_text"):
                     value = value_elem.get_text().strip()
-                elif hasattr(value_elem, 'strip'):
+                elif hasattr(value_elem, "strip"):
                     value = str(value_elem).strip()
 
             if not value:
                 # Try parent element
-                parent = header.find_parent(['div', 'li'])
+                parent = header.find_parent(["div", "li"])
                 if parent:
                     value = parent.get_text().replace(label + ":", "").strip()
 
@@ -324,7 +330,9 @@ class AniSearchScraper(BaseScraper):
             header = elem.find("span", class_="header")
             if header and "Studio" in header.get_text():
                 # Extract all studio links (href contains "company" without leading slash)
-                studio_links = elem.find_all("a", href=lambda x: x and "company" in str(x))
+                studio_links = elem.find_all(
+                    "a", href=lambda x: x and "company" in str(x)
+                )
                 for link in studio_links:
                     studio_name = link.get_text().strip()
                     if studio_name and studio_name not in studios:
@@ -332,7 +340,9 @@ class AniSearchScraper(BaseScraper):
 
         return studios
 
-    def _extract_detailed_ratings(self, soup: BeautifulSoup) -> Optional[Dict[str, Any]]:
+    def _extract_detailed_ratings(
+        self, soup: BeautifulSoup
+    ) -> Optional[Dict[str, Any]]:
         """Extract detailed rating information from ratings section.
 
         Returns:
@@ -348,15 +358,15 @@ class AniSearchScraper(BaseScraper):
         ratings_data = {}
 
         # Extract calculated value (e.g., "4.17")
-        calc_match = re.search(r'Calculated Value([\d.]+)', text)
+        calc_match = re.search(r"Calculated Value([\d.]+)", text)
         if calc_match:
             ratings_data["calculated_value"] = calc_match.group(1)
 
         # Calculate total count from star distribution
-        stars = ratings_section.find_all('li')
+        stars = ratings_section.find_all("li")
         total_count = 0
         for star in stars:
-            value_div = star.find('div', class_='value')
+            value_div = star.find("div", class_="value")
             if value_div:
                 try:
                     total_count += int(value_div.get_text().strip())
@@ -367,15 +377,15 @@ class AniSearchScraper(BaseScraper):
             ratings_data["total_count"] = total_count
 
         # Extract rankings
-        toplist_match = re.search(r'Toplist#(\d+)', text)
+        toplist_match = re.search(r"Toplist#(\d+)", text)
         if toplist_match:
             ratings_data["toplist_rank"] = int(toplist_match.group(1))
 
-        popular_match = re.search(r'Popular#(\d+)', text)
+        popular_match = re.search(r"Popular#(\d+)", text)
         if popular_match:
             ratings_data["popular_rank"] = int(popular_match.group(1))
 
-        trending_match = re.search(r'Trending#(\d+)', text)
+        trending_match = re.search(r"Trending#(\d+)", text)
         if trending_match:
             ratings_data["trending_rank"] = int(trending_match.group(1))
 
@@ -419,7 +429,9 @@ class AniSearchScraper(BaseScraper):
             header = elem.find("span", class_="header")
             if header and "Publisher" in header.get_text():
                 # Extract all publisher links (href contains "company" without leading slash)
-                publisher_links = elem.find_all("a", href=lambda x: x and "company" in str(x))
+                publisher_links = elem.find_all(
+                    "a", href=lambda x: x and "company" in str(x)
+                )
                 publishers = [link.get_text().strip() for link in publisher_links]
 
                 if publishers:
@@ -466,14 +478,18 @@ class AniSearchScraper(BaseScraper):
                 relation_data = {
                     "relation_type": relation_type,
                     "title": title,
-                    "media_type": "anime"
+                    "media_type": "anime",
                 }
 
                 # Get URL
                 href = anime_link.get("href", "")
                 if href:
                     if not href.startswith("http"):
-                        href = f"{self.base_url}/{href}" if not href.startswith("/") else f"{self.base_url}{href}"
+                        href = (
+                            f"{self.base_url}/{href}"
+                            if not href.startswith("/")
+                            else f"{self.base_url}{href}"
+                        )
                     relation_data["url"] = href
 
                 # Get date/type info
@@ -502,24 +518,34 @@ class AniSearchScraper(BaseScraper):
                     import re
 
                     # Extract title - it's between the date and company
-                    title_match = re.search(r'\)\s*(.+?)\s*(?:[A-Z][a-z]+\s+Inc\.|$)', link_text)
-                    title = title_match.group(1) if title_match else link_text.split(')')[-1].strip()
+                    title_match = re.search(
+                        r"\)\s*(.+?)\s*(?:[A-Z][a-z]+\s+Inc\.|$)", link_text
+                    )
+                    title = (
+                        title_match.group(1)
+                        if title_match
+                        else link_text.split(")")[-1].strip()
+                    )
 
                     relation_data = {
                         "relation_type": relation_type,
                         "title": title,
-                        "media_type": "manga"
+                        "media_type": "manga",
                     }
 
                     # Get URL
                     href = manga_link.get("href", "")
                     if href:
                         if not href.startswith("http"):
-                            href = f"{self.base_url}/{href}" if not href.startswith("/") else f"{self.base_url}{href}"
+                            href = (
+                                f"{self.base_url}/{href}"
+                                if not href.startswith("/")
+                                else f"{self.base_url}{href}"
+                            )
                         relation_data["url"] = href
 
                     # Extract info (everything before title)
-                    info_match = re.search(r'^(.+?)\)', link_text)
+                    info_match = re.search(r"^(.+?)\)", link_text)
                     if info_match:
                         relation_data["info"] = info_match.group(0)
 
@@ -540,7 +566,7 @@ class AniSearchScraper(BaseScraper):
         for header in headers:
             if "synonym" in header.get_text().lower():
                 # Get the parent div and extract value
-                parent = header.find_parent(['div', 'li'])
+                parent = header.find_parent(["div", "li"])
                 if parent:
                     value = parent.get_text().replace("Synonyms:", "").strip()
                     if value:
@@ -557,7 +583,9 @@ class AniSearchScraper(BaseScraper):
         links = {}
 
         # Find external links (non-anisearch URLs)
-        external = soup.find_all("a", href=lambda x: x and x.startswith("http") and "anisearch" not in x)
+        external = soup.find_all(
+            "a", href=lambda x: x and x.startswith("http") and "anisearch" not in x
+        )
 
         for link in external:
             href = link.get("href", "")
@@ -606,12 +634,12 @@ class AniSearchScraper(BaseScraper):
 
             # Try to find role nearby
             role = "Unknown"
-            parent = link.find_parent(['div', 'li'])
+            parent = link.find_parent(["div", "li"])
             if parent:
                 parent_text = parent.get_text().strip()
                 if "(" in parent_text and ")" in parent_text:
                     # Extract role from parentheses
-                    role_match = re.search(r'\(([^)]+)\)', parent_text)
+                    role_match = re.search(r"\(([^)]+)\)", parent_text)
                     if role_match:
                         role = role_match.group(1)
 
@@ -645,7 +673,9 @@ class AniSearchScraper(BaseScraper):
                 soup = self._parse_html(response["content"])
 
                 # Find character links
-                char_links = soup.find_all("a", href=lambda x: x and "character/" in str(x))
+                char_links = soup.find_all(
+                    "a", href=lambda x: x and "character/" in str(x)
+                )
 
                 for link in char_links:
                     # Extract character name from title span
@@ -665,7 +695,9 @@ class AniSearchScraper(BaseScraper):
                     role = None
                     for _ in range(5):  # Check up to 5 levels up
                         if parent:
-                            prev_sibling = parent.find_previous_sibling(['h2', 'h3', 'h4'])
+                            prev_sibling = parent.find_previous_sibling(
+                                ["h2", "h3", "h4"]
+                            )
                             if prev_sibling:
                                 role = prev_sibling.get_text().strip()
                                 # Remove "Character" text from role (e.g., "Main Character" -> "Main")
@@ -680,7 +712,11 @@ class AniSearchScraper(BaseScraper):
                     href = link.get("href", "")
                     if href:
                         if not href.startswith("http"):
-                            href = f"{self.base_url}/{href}" if not href.startswith("/") else f"{self.base_url}{href}"
+                            href = (
+                                f"{self.base_url}/{href}"
+                                if not href.startswith("/")
+                                else f"{self.base_url}{href}"
+                            )
                         char_data["url"] = href
 
                     # Get character image from data-bg
@@ -696,7 +732,7 @@ class AniSearchScraper(BaseScraper):
                     if favorites_span:
                         fav_text = favorites_span.get_text().strip()
                         # Extract number from "55 ❤" format
-                        fav_match = re.search(r'(\d+)', fav_text)
+                        fav_match = re.search(r"(\d+)", fav_text)
                         if fav_match:
                             char_data["favorites"] = int(fav_match.group(1))
 
@@ -709,7 +745,9 @@ class AniSearchScraper(BaseScraper):
 
         return characters
 
-    async def _extract_all_images(self, soup: BeautifulSoup, anime_id: int, cover_url: Optional[str] = None) -> list[str]:
+    async def _extract_all_images(
+        self, soup: BeautifulSoup, anime_id: int, cover_url: Optional[str] = None
+    ) -> list[str]:
         """Extract all anime-related images (screenshots only, excluding cover).
 
         Fetches the screenshots page to get all screenshot URLs.
@@ -738,7 +776,8 @@ class AniSearchScraper(BaseScraper):
                 # Find all links to full-size screenshot images
                 screenshot_links = screenshots_soup.find_all(
                     "a",
-                    href=lambda x: x and "cdn.anisearch.com/images/anime/screen" in str(x)
+                    href=lambda x: x
+                    and "cdn.anisearch.com/images/anime/screen" in str(x),
                 )
 
                 for link in screenshot_links:
@@ -766,7 +805,9 @@ class AniSearchScraper(BaseScraper):
         trailers = []
 
         # Find YouTube embeds or links
-        youtube_links = soup.find_all("a", href=lambda x: x and ("youtube.com" in str(x) or "youtu.be" in str(x)))
+        youtube_links = soup.find_all(
+            "a", href=lambda x: x and ("youtube.com" in str(x) or "youtu.be" in str(x))
+        )
 
         for link in youtube_links:
             href = link.get("href", "")
@@ -798,8 +839,8 @@ class AniSearchScraper(BaseScraper):
             None (search not available via scraping)
         """
         logger.warning(
-            f"AniSearch search is not available - AJAX endpoint blocks external access. "
-            f"Use direct anime ID access instead."
+            "AniSearch search is not available - AJAX endpoint blocks external access. "
+            "Use direct anime ID access instead."
         )
         return None
 
@@ -846,7 +887,9 @@ class AniSearchScraper(BaseScraper):
             result = {
                 "anisearch_id": anime_id,
                 "title": title,
-                "url": f"{self.base_url}{href}" if not href.startswith("http") else href,
+                "url": (
+                    f"{self.base_url}{href}" if not href.startswith("http") else href
+                ),
             }
 
             # Try to find image nearby

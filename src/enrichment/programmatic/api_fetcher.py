@@ -94,8 +94,6 @@ class ParallelAPIFetcher:
         Returns:
             Dictionary with API responses
 
-        Performance: 5-10 seconds (vs 30-60 seconds sequential)
-
         Note: skip_services and only_services are mutually exclusive.
               If both provided, only_services takes precedence.
 
@@ -218,10 +216,11 @@ class ParallelAPIFetcher:
             )
 
             # Prepare file paths
-            episodes_input = os.path.join(temp_dir, "episodes.json")
-            episodes_output = os.path.join(temp_dir, "episodes_detailed.json")
-            characters_input = os.path.join(temp_dir, "characters.json")
-            characters_output = os.path.join(temp_dir, "characters_detailed.json")
+            if temp_dir:
+                episodes_input = os.path.join(temp_dir, "episodes.json")
+                episodes_output = os.path.join(temp_dir, "episodes_detailed.json")
+                characters_input = os.path.join(temp_dir, "characters.json")
+                characters_output = os.path.join(temp_dir, "characters_detailed.json")
 
             # Create tasks for parallel execution
             tasks = []
@@ -689,12 +688,12 @@ class ParallelAPIFetcher:
         )
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "ParallelAPIFetcher":
         """Enter async context - initialize helpers."""
         await self.initialize_helpers()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
         """Exit async context - cleanup all helper resources."""
         # Close all helpers (now ALL have close() methods)
         if self.anilist_helper:
