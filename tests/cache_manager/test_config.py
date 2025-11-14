@@ -29,7 +29,6 @@ class TestCacheConfigModel:
         assert config.enabled is True
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
-        assert config.cache_dir == "data/http_cache"
 
         # Service-specific TTLs (all should be 24 hours = 86400 seconds)
         assert config.ttl_jikan == 86400
@@ -40,44 +39,21 @@ class TestCacheConfigModel:
         assert config.ttl_anisearch == 86400
         assert config.ttl_animeschedule == 86400
 
-        # Performance settings
-        assert config.max_cache_size == 1_000_000
-
     def test_custom_values_redis(self) -> None:
         """Test CacheConfig with custom Redis configuration."""
         config = CacheConfig(
             enabled=True,
             storage_type="redis",
             redis_url="redis://custom-host:6380/1",
-            cache_dir="/custom/cache/dir",
             ttl_jikan=3600,
             ttl_anilist=7200,
-            max_cache_size=500_000,
         )
 
         assert config.enabled is True
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://custom-host:6380/1"
-        assert config.cache_dir == "/custom/cache/dir"
         assert config.ttl_jikan == 3600
         assert config.ttl_anilist == 7200
-        assert config.max_cache_size == 500_000
-
-    def test_custom_values_sqlite(self) -> None:
-        """Test CacheConfig with SQLite backend configuration."""
-        config = CacheConfig(
-            enabled=True,
-            storage_type="sqlite",
-            redis_url=None,
-            cache_dir="custom_cache",
-            ttl_anidb=43200,
-        )
-
-        assert config.enabled is True
-        assert config.storage_type == "sqlite"
-        assert config.redis_url is None
-        assert config.cache_dir == "custom_cache"
-        assert config.ttl_anidb == 43200
 
     def test_disabled_cache(self) -> None:
         """Test CacheConfig with caching disabled."""
@@ -145,11 +121,6 @@ class TestCacheConfigModel:
         config = CacheConfig(ttl_anidb=31_536_000)  # 1 year
         assert config.ttl_anidb == 31_536_000
 
-    def test_max_cache_size_custom(self) -> None:
-        """Test custom max_cache_size values."""
-        config = CacheConfig(max_cache_size=5_000_000)
-        assert config.max_cache_size == 5_000_000
-
     def test_redis_url_formats(self) -> None:
         """Test various Redis URL formats."""
         # Standard format
@@ -168,17 +139,6 @@ class TestCacheConfigModel:
         config4 = CacheConfig(redis_url="redis+sentinel://localhost:26379/mymaster/0")
         assert config4.redis_url == "redis+sentinel://localhost:26379/mymaster/0"
 
-    def test_cache_dir_absolute_path(self) -> None:
-        """Test cache_dir with absolute path."""
-        config = CacheConfig(cache_dir="/var/cache/anime-vector")
-        assert config.cache_dir == "/var/cache/anime-vector"
-
-    def test_cache_dir_relative_path(self) -> None:
-        """Test cache_dir with relative path."""
-        config = CacheConfig(cache_dir="./cache")
-        assert config.cache_dir == "./cache"
-
-
 class TestGetCacheConfig:
     """Test get_cache_config() function with environment variables."""
 
@@ -186,16 +146,13 @@ class TestGetCacheConfig:
         """Test get_cache_config() with no environment variables (defaults)."""
         # Clear all cache-related env vars
         monkeypatch.delenv("ENABLE_HTTP_CACHE", raising=False)
-        monkeypatch.delenv("HTTP_CACHE_STORAGE", raising=False)
         monkeypatch.delenv("REDIS_CACHE_URL", raising=False)
-        monkeypatch.delenv("HTTP_CACHE_DIR", raising=False)
 
         config = get_cache_config()
 
         assert config.enabled is True  # Default from getenv is "true"
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
-        assert config.cache_dir == "data/http_cache"
 
     def test_get_cache_config_enabled_true(
         self, monkeypatch: pytest.MonkeyPatch
@@ -253,15 +210,6 @@ class TestGetCacheConfig:
         config = get_cache_config()
         assert config.storage_type == "redis"
 
-    def test_get_cache_config_storage_sqlite(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test get_cache_config() with HTTP_CACHE_STORAGE=sqlite."""
-        monkeypatch.setenv("HTTP_CACHE_STORAGE", "sqlite")
-
-        config = get_cache_config()
-        assert config.storage_type == "sqlite"
-
     def test_get_cache_config_custom_redis_url(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -271,30 +219,18 @@ class TestGetCacheConfig:
         config = get_cache_config()
         assert config.redis_url == "redis://prod-redis:6379/2"
 
-    def test_get_cache_config_custom_cache_dir(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test get_cache_config() with custom HTTP_CACHE_DIR."""
-        monkeypatch.setenv("HTTP_CACHE_DIR", "/tmp/my_cache")
-
-        config = get_cache_config()
-        assert config.cache_dir == "/tmp/my_cache"
-
     def test_get_cache_config_all_env_vars(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test get_cache_config() with all environment variables set."""
         monkeypatch.setenv("ENABLE_HTTP_CACHE", "false")
-        monkeypatch.setenv("HTTP_CACHE_STORAGE", "sqlite")
         monkeypatch.setenv("REDIS_CACHE_URL", "redis://custom:6380/1")
-        monkeypatch.setenv("HTTP_CACHE_DIR", "/custom/cache")
 
         config = get_cache_config()
 
         assert config.enabled is False
-        assert config.storage_type == "sqlite"
+        assert config.storage_type == "redis"
         assert config.redis_url == "redis://custom:6380/1"
-        assert config.cache_dir == "/custom/cache"
 
     def test_get_cache_config_empty_strings(
         self, monkeypatch: pytest.MonkeyPatch
@@ -302,13 +238,11 @@ class TestGetCacheConfig:
         """Test get_cache_config() with empty string environment variables."""
         # Empty string should use defaults
         monkeypatch.setenv("REDIS_CACHE_URL", "")
-        monkeypatch.setenv("HTTP_CACHE_DIR", "")
 
         config = get_cache_config()
 
         # Empty strings should be used as-is (not replaced with defaults)
         assert config.redis_url == ""
-        assert config.cache_dir == ""
 
     def test_get_cache_config_redis_with_auth(
         self, monkeypatch: pytest.MonkeyPatch
@@ -332,11 +266,9 @@ class TestGetCacheConfig:
         # These should be defaults
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
-        assert config.cache_dir == "data/http_cache"
         # Service TTLs should be defaults
         assert config.ttl_jikan == 86400
         assert config.ttl_anilist == 86400
-        assert config.max_cache_size == 1_000_000
 
 
 class TestCacheConfigIntegration:
@@ -350,27 +282,11 @@ class TestCacheConfigIntegration:
             redis_url="redis://prod-redis.example.com:6379/0",
             ttl_jikan=86400,
             ttl_anilist=86400,
-            max_cache_size=10_000_000,
         )
 
         assert config.enabled is True
         assert config.storage_type == "redis"
         assert "prod-redis.example.com" in config.redis_url
-        assert config.max_cache_size == 10_000_000
-
-    def test_development_sqlite_setup(self) -> None:
-        """Test development-like SQLite configuration."""
-        config = CacheConfig(
-            enabled=True,
-            storage_type="sqlite",
-            cache_dir="./dev_cache",
-            ttl_jikan=3600,  # Shorter TTL for development
-        )
-
-        assert config.enabled is True
-        assert config.storage_type == "sqlite"
-        assert config.cache_dir == "./dev_cache"
-        assert config.ttl_jikan == 3600
 
     def test_disabled_cache_scenario(self) -> None:
         """Test scenario where caching is completely disabled."""
