@@ -30,7 +30,7 @@ class HTTPCacheManager:
             config: Cache configuration
         """
         self.config = config
-        self._async_redis_client: Optional[AsyncRedis[bytes]] = None
+        self._async_redis_client: Optional[AsyncRedis] = None  # type: ignore[type-arg]
         self._redis_event_loop: Optional[Any] = None
 
         if self.config.enabled:
@@ -64,7 +64,7 @@ class HTTPCacheManager:
                 "Async (aiohttp) requests will not be cached on Redis."
             )
 
-    def _get_or_create_redis_client(self) -> Optional[AsyncRedis[bytes]]:
+    def _get_or_create_redis_client(self) -> Optional[AsyncRedis]:  # type: ignore[type-arg]
         """
         Get or create AsyncRedis client for the current event loop.
 
@@ -89,9 +89,9 @@ class HTTPCacheManager:
                 old_loop = self._redis_event_loop
                 try:
                     if old_loop and old_loop.is_running():
-                        asyncio.run_coroutine_threadsafe(old_client.close(), old_loop)
+                        asyncio.run_coroutine_threadsafe(old_client.aclose(), old_loop)
                     else:
-                        current_loop.create_task(old_client.close())
+                        current_loop.create_task(old_client.aclose())
                 except Exception as close_error:
                     logger.debug(
                         "Failed to close previous Redis client: %s", close_error
@@ -189,7 +189,7 @@ class HTTPCacheManager:
         """Close async cache connections."""
         if self._async_redis_client:
             try:
-                await self._async_redis_client.close()
+                await self._async_redis_client.aclose()
             except Exception as e:
                 logger.warning(f"Error closing async Redis client: {e}")
             finally:

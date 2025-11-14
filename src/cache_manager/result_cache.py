@@ -9,29 +9,26 @@ When code changes (CSS selectors, extraction logic, etc.), the hash changes,
 automatically invalidating old cache entries.
 """
 
+from __future__ import annotations
+
 import functools
 import hashlib
 import inspect
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 from redis.asyncio import Redis
 
 from .config import get_cache_config
 
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as RedisType
-else:
-    RedisType = Redis  # type: ignore[misc,assignment]
-
 # --- Singleton Redis Client for @cached_result ---
 
-_redis_client: Optional["RedisType[str]"] = None
+_redis_client: Optional[Redis] = None  # type: ignore[type-arg]
 
 
-async def get_result_cache_redis_client() -> "RedisType[str]":
+async def get_result_cache_redis_client() -> Redis:  # type: ignore[type-arg]
     """Initializes and returns a singleton async Redis client for result caching."""
     global _redis_client
     if _redis_client is None:
@@ -49,7 +46,7 @@ async def close_result_cache_redis_client() -> None:
     global _redis_client
     if _redis_client:
         logging.info("Closing singleton Redis client for result cache.")
-        await _redis_client.close()
+        await _redis_client.aclose()
         _redis_client = None
 
 

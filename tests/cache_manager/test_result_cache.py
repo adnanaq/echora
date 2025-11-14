@@ -340,13 +340,13 @@ class TestCachedResultDecorator:
 
         mock_redis = AsyncMock(spec=Redis)
 
-        mock_redis.close = AsyncMock()
+        mock_redis.aclose = AsyncMock()
 
         with patch("src.cache_manager.result_cache._redis_client", new=mock_redis):
 
             await close_result_cache_redis_client()
 
-            mock_redis.close.assert_awaited_once()
+            mock_redis.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_close_result_cache_redis_client_no_client(self) -> None:

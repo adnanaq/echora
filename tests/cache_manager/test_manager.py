@@ -293,7 +293,7 @@ class TestCacheManagerClose:
                     await manager.close_async()
 
                     # Redis client should be closed
-                    mock_async_redis.close.assert_called_once()
+                    mock_async_redis.aclose.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_async_with_redis_error(self) -> None:
@@ -303,7 +303,7 @@ class TestCacheManagerClose:
         with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = AsyncMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
-            mock_async_redis.close.side_effect = Exception("Close error")
+            mock_async_redis.aclose.side_effect = Exception("Close error")
 
             manager = HTTPCacheManager(config)
             # Should not raise error
@@ -427,7 +427,7 @@ class TestRedisClientEventLoopSwitching:
             def __init__(self, *args, **kwargs):
                 self.closed = False
 
-            async def close(self):
+            async def aclose(self):
                 if not self.closed:
                     self.closed = True
                     close_calls.append(self)
@@ -514,7 +514,7 @@ class TestRedisClientEventLoopSwitching:
         close_method_used = []
 
         class MockAsyncRedis:
-            async def close(self):
+            async def aclose(self):
                 close_method_used.append("close_called")
 
         # First call creates client in loop1
@@ -575,7 +575,7 @@ class TestRedisClientEventLoopSwitching:
         close_exception_caught = []
 
         class MockAsyncRedis:
-            async def close(self):
+            async def aclose(self):
                 error = Exception("Close failed unexpectedly")
                 close_exception_caught.append(error)
                 raise error
@@ -699,7 +699,7 @@ class TestCloseErrorHandling:
 
         # Create mock Redis client that raises on close
         mock_redis = AsyncMock()
-        mock_redis.close.side_effect = Exception("Redis close error")
+        mock_redis.aclose.side_effect = Exception("Redis close error")
 
         with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
             with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage'):
@@ -716,7 +716,7 @@ class TestCloseErrorHandling:
                     await manager.close_async()
 
                     # Verify close was attempted
-                    mock_redis.close.assert_called_once()
+                    mock_redis.aclose.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_async_clears_cached_redis_client_references(self) -> None:
@@ -765,4 +765,4 @@ class TestCloseErrorHandling:
                     )
                     
                     # Step 4: Verify client was actually closed
-                    mock_redis.close.assert_called_once()
+                    mock_redis.aclose.assert_called_once()

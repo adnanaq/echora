@@ -43,7 +43,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        client: Optional[Redis[bytes]] = None,
+        client: Optional[Redis] = None,  # type: ignore[type-arg]
         redis_url: str = "redis://localhost:6379/0",
         default_ttl: Optional[float] = None,
         refresh_ttl_on_access: bool = True,
@@ -331,7 +331,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         if not self._owns_client:
             return
         try:
-            await self.client.close()
+            await self.client.aclose()
         except Exception:
             pass
 

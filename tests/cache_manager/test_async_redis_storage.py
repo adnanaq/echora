@@ -33,7 +33,7 @@ def mock_redis_client() -> AsyncMock:
     """Create a mock async Redis client."""
     mock_client = AsyncMock()
     mock_client.from_url = AsyncMock(return_value=mock_client)
-    mock_client.close = AsyncMock()
+    mock_client.aclose = AsyncMock()
     mock_client.pipeline = MagicMock(return_value=AsyncMock())
     mock_client.hset = AsyncMock()
     mock_client.hgetall = AsyncMock(return_value={})
@@ -1658,7 +1658,7 @@ class TestClose:
 
             await storage.close()
 
-            mock_redis_client.close.assert_called_once()
+            mock_redis_client.aclose.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_does_not_close_external_client(
@@ -1669,13 +1669,13 @@ class TestClose:
 
         await storage.close()
 
-        mock_redis_client.close.assert_not_called()
+        mock_redis_client.aclose.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_close_handles_exception_gracefully(self) -> None:
         """Test close() handles exceptions during close gracefully."""
         mock_client = AsyncMock()
-        mock_client.close.side_effect = Exception("Close failed")
+        mock_client.aclose.side_effect = Exception("Close failed")
 
         with patch("src.cache_manager.async_redis_storage.Redis") as mock_redis_class:
             mock_redis_class.from_url.return_value = mock_client
