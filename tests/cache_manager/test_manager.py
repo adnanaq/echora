@@ -717,3 +717,52 @@ class TestCloseErrorHandling:
 
                     # Verify close was attempted
                     mock_redis.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_async_clears_cached_redis_client_references(self) -> None:
+        """
+        Test that close_async() clears cached Redis client and event loop references.
+        
+        Bug scenario (from code review):
+        - close_async() closes the Redis client but keeps the closed instance cached
+        - Next get_aiohttp_session() on same loop returns the closed client
+        - Redis operations fail with "Connection closed" errors
+        
+        Expected behavior after fix:
+        - close_async() should set self._async_redis_client = None
+        - close_async() should set self._redis_event_loop = None
+        - Next get_aiohttp_session() creates a fresh client
+        """
+        config = CacheConfig(enabled=True, storage_type="redis")
+
+        mock_redis = AsyncMock()
+        
+        with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
+            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage'):
+                with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession'):
+                    manager = HTTPCacheManager(config)
+
+                    # Step 1: Create first session (triggers lazy initialization)
+                    session1 = manager.get_aiohttp_session("test")
+                    
+                    # Verify client and loop are cached
+                    assert manager._async_redis_client is not None
+                    assert manager._redis_event_loop is not None
+                    first_client = manager._async_redis_client
+                    first_loop = manager._redis_event_loop
+
+                    # Step 2: Close the cache manager
+                    await manager.close_async()
+
+                    # Step 3: Verify references are cleared (THIS IS THE FIX)
+                    assert manager._async_redis_client is None, (
+                        "close_async() must clear _async_redis_client to prevent "
+                        "reusing closed client on same event loop"
+                    )
+                    assert manager._redis_event_loop is None, (
+                        "close_async() must clear _redis_event_loop to prevent "
+                        "reusing closed client on same event loop"
+                    )
+                    
+                    # Step 4: Verify client was actually closed
+                    mock_redis.close.assert_called_once()

@@ -192,6 +192,9 @@ class HTTPCacheManager:
                 await self._async_redis_client.close()
             except Exception as e:
                 logger.warning(f"Error closing async Redis client: {e}")
+            finally:
+                self._async_redis_client = None
+                self._redis_event_loop = None
 
     def get_stats(self) -> Dict[str, Any]:
         """
