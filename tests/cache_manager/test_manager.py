@@ -614,6 +614,88 @@ class TestRedisClientEventLoopSwitching:
                         assert manager._async_redis_client is mock_client2
 
     @pytest.mark.asyncio
+    async def test_cleanup_task_has_done_callback_attached(self) -> None:
+        """
+        Test that cleanup task has done_callback attached for exception tracking.
+
+        Bug scenario (from code review):
+        - Line 94: current_loop.create_task(old_client.aclose())
+        - If aclose() raises exception inside task, it's silently lost
+        - Python emits "Task exception was never retrieved" warning
+        - No visibility into cleanup failures
+
+        Expected behavior after fix:
+        - Store cleanup task reference (not fire-and-forget)
+        - Add done_callback to track success/failure
+        - Callback should log exceptions
+        """
+        import asyncio
+
+        config = CacheConfig(
+            enabled=True,
+            storage_type="redis",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        # Track create_task calls
+        created_tasks = []
+        original_create_task = asyncio.BaseEventLoop.create_task
+
+        def track_create_task(self, coro, *args, **kwargs):
+            task = original_create_task(self, coro, *args, **kwargs)
+            created_tasks.append(task)
+            return task
+
+        class MockAsyncRedis:
+            async def aclose(self):
+                pass  # No-op for this test
+
+        mock_client1 = MockAsyncRedis()
+        mock_client2 = MockAsyncRedis()
+
+        call_count = [0]
+        def mock_from_url(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_client1
+            else:
+                return mock_client2
+
+        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+            with patch.object(asyncio.BaseEventLoop, 'create_task', track_create_task):
+                manager = HTTPCacheManager(config)
+
+                # First call creates client in current loop
+                session1 = manager.get_aiohttp_session("test")
+                assert manager._async_redis_client is mock_client1
+
+                # Get current loop reference
+                old_loop = manager._redis_event_loop
+
+                # Create new event loop and switch to it
+                new_loop = asyncio.new_event_loop()
+
+                # Mock old loop as not running (triggers create_task path on line 94)
+                with patch.object(old_loop, 'is_running', return_value=False):
+                    with patch('asyncio.get_running_loop', return_value=new_loop):
+                        # Second call should trigger cleanup of old client via create_task
+                        session2 = manager.get_aiohttp_session("test")
+
+                        # Verify new client was created
+                        assert manager._async_redis_client is mock_client2
+
+                        # Verify a cleanup task was created
+                        assert len(created_tasks) > 0, "Should create cleanup task for old Redis client"
+
+                        # Verify the cleanup task has a done_callback attached
+                        cleanup_task = created_tasks[-1]  # Most recent task
+                        assert hasattr(cleanup_task, '_callbacks'), "Task should support callbacks"
+                        assert cleanup_task._callbacks is not None and len(cleanup_task._callbacks) > 0, (
+                            "Cleanup task MUST have done_callback attached to track exceptions. "
+                            "Fire-and-forget tasks (without callbacks) silently lose exceptions."
+                        )
+
+    @pytest.mark.asyncio
     async def test_get_or_create_redis_client_returns_none_when_redis_url_none(self) -> None:
         """
         Test that _get_or_create_redis_client returns None when redis_url is None.
