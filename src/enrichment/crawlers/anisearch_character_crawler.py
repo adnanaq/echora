@@ -33,27 +33,18 @@ from src.enrichment.crawlers.utils import sanitize_output_path
 
 
 @cached_result(ttl=86400, key_prefix="anisearch_characters")  # 24 hours cache
-async def fetch_anisearch_characters(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+async def _fetch_anisearch_characters_data(url: str) -> Optional[Dict[str, Any]]:
     """
-    Crawls, processes, and saves character data from a given anisearch.com URL.
+    Pure cached function that crawls and processes character data from anisearch.com.
 
-    Results are cached in Redis for 24 hours to avoid repeated crawling.
-
-    This function defines a schema for extracting character information,
-    including their name, role, URL, favorites count, and image. It then
-    initializes a crawler, runs it on the provided anime character page URL,
-    processes the returned data to clean and structure it, and optionally
-    writes the output to a JSON file.
+    Results are cached in Redis for 24 hours based ONLY on URL.
+    This function has no side effects - it only fetches and returns data.
 
     Args:
-        url (str): The URL of the anisearch.com character page to crawl.
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
+        url: The URL of the anisearch.com character page to crawl
 
     Returns:
-        Character data dictionary (if return_data=True), otherwise None
+        Complete character data dictionary with enriched details, or None if fetch fails
     """
     # Define a correct schema for character extraction
     css_schema = {
@@ -87,11 +78,12 @@ async def fetch_anisearch_characters(
     extraction_strategy = JsonCssExtractionStrategy(css_schema)
     config = CrawlerRunConfig(
         extraction_strategy=extraction_strategy,
+        page_timeout=60000,  # 60 seconds for image loading
         wait_until="networkidle",
         wait_for_images=True,
         scan_full_page=True,
         adjust_viewport_to_content=True,
-        delay_before_return_html=0.5,
+        delay_before_return_html=2.0,  # 2 second delay for reliable image loading
     )
 
     async with AsyncWebCrawler() as crawler:
@@ -145,22 +137,49 @@ async def fetch_anisearch_characters(
 
                 output_data = {"characters": flattened_characters}
 
-                # Conditionally write to file
-                if output_path:
-                    safe_path = sanitize_output_path(output_path)
-                    with open(safe_path, "w", encoding="utf-8") as f:
-                        json.dump(output_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {safe_path}")
-
-                # Return data for programmatic usage
-                if return_data:
-                    return output_data
-
-                return None
+                # Always return data (no conditional return or file writing)
+                return output_data
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
         return None
+
+
+async def fetch_anisearch_characters(
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Wrapper function that handles side effects (file writing, return_data logic).
+
+    This function calls the cached _fetch_anisearch_characters_data() to get the data,
+    then performs side effects that should execute regardless of cache status.
+
+    Args:
+        url: The URL of the anisearch.com character page to crawl
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Complete character data dictionary (if return_data=True), otherwise None
+    """
+    # Fetch data from cache or crawl (pure function)
+    data = await _fetch_anisearch_characters_data(url)
+
+    if data is None:
+        return None
+
+    # Side effect: Write to file (always executes, even on cache hit)
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Data written to {safe_path}")
+
+    # Return data based on return_data parameter
+    if return_data:
+        return data
+
+    return None
 
 
 async def main() -> int:
