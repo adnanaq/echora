@@ -182,7 +182,6 @@ async def main() -> int:
     try:
         await fetch_anisearch_characters(
             args.url,
-            return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
         return 0
