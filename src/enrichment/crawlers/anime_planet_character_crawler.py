@@ -78,21 +78,20 @@ def _extract_slug_from_characters_url(url: str) -> str:
 
 
 @cached_result(ttl=86400, key_prefix="animeplanet_characters")  # 24 hours cache
-async def fetch_animeplanet_characters(
-    slug: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+async def _fetch_animeplanet_characters_data(slug: str) -> Optional[Dict[str, Any]]:
     """
-    Crawls and processes character data from anime-planet.com.
+    Pure cached function that crawls and processes character data from anime-planet.com.
     Uses concurrent batch processing for character detail enrichment.
+
+    Results are cached in Redis for 24 hours based ONLY on slug.
+    This function has no side effects - it only fetches and returns data.
 
     Args:
         slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan/characters"),
               or full URL (e.g., "https://www.anime-planet.com/anime/dandadan/characters")
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
 
     Returns:
-        Complete character data dictionary with enriched details (if return_data=True), otherwise None
+        Complete character data dictionary with enriched details, or None if fetch fails
     """
     # Normalize URL and extract slug using helper functions
     characters_url = _normalize_characters_url(slug)
@@ -347,22 +346,50 @@ async def fetch_animeplanet_characters(
                     "total_count": len(characters_basic),
                 }
 
-                # Conditionally write to file
-                if output_path:
-                    safe_path = sanitize_output_path(output_path)
-                    with open(safe_path, "w", encoding="utf-8") as f:
-                        json.dump(output_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {safe_path}")
-
-                # Return data for programmatic usage
-                if return_data:
-                    return output_data
-
-                return None
+                # Always return data (no conditional return or file writing)
+                return output_data
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
         return None
+
+
+async def fetch_animeplanet_characters(
+    slug: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Wrapper function that handles side effects (file writing, return_data logic).
+
+    This function calls the cached _fetch_animeplanet_characters_data() to get the data,
+    then performs side effects that should execute regardless of cache status.
+
+    Args:
+        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan/characters"),
+              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan/characters")
+        return_data: Whether to return the data dict (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        Complete character data dictionary (if return_data=True), otherwise None
+    """
+    # Fetch data from cache or crawl (pure function)
+    data = await _fetch_animeplanet_characters_data(slug)
+
+    if data is None:
+        return None
+
+    # Side effect: Write to file (always executes, even on cache hit)
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Data written to {safe_path}")
+
+    # Return data based on return_data parameter
+    if return_data:
+        return data
+
+    return None
 
 
 def _get_character_detail_schema() -> Dict[str, Any]:
