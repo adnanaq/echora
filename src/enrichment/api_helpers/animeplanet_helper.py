@@ -11,7 +11,8 @@ import logging
 import os
 import re
 import sys
-from typing import Any, Dict, Optional
+from types import TracebackType
+from typing import Any, Dict, Optional, Type
 
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -193,7 +194,12 @@ class AnimePlanetEnrichmentHelper:
         """Enter async context."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context."""
         await self.close()
         return False
@@ -222,7 +228,10 @@ async def main() -> int:
         else:
             print(f"Could not fetch data for {slug}", file=sys.stderr)
             return 1
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
+        # OSError: File I/O failures
+        # ValueError: Invalid JSON encoding
+        # KeyError: Missing expected data fields
         print(f"Error: {e}", file=sys.stderr)
         return 1
 

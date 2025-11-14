@@ -17,7 +17,8 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Union, cast
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Set, Type, Union, cast
 
 import aiohttp
 
@@ -74,7 +75,7 @@ class AniDBEnrichmentHelper:
 
         # Session management
         self.session = None
-        self._session_created_at = 0
+        self._session_created_at: float = 0.0
         self._session_max_age = 300  # Recreate session every 5 minutes
 
         # Enhanced rate limiting configuration
@@ -827,11 +828,16 @@ class AniDBEnrichmentHelper:
                 self.session = None
                 self._session_created_at = 0
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AniDBEnrichmentHelper":
         """Enter async context - session created lazily on first request."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context - ensure session cleanup."""
         await self.close()
         return False

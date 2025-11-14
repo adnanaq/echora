@@ -9,7 +9,8 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type, cast
 
 import aiohttp
 
@@ -42,7 +43,7 @@ class KitsuEnrichmentHelper:
             ) as session:
                 async with session.get(url, headers=headers, params=params) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(Dict[str, Any], await response.json())
                     else:
                         logger.warning(f"Kitsu API error: HTTP {response.status}")
                         return {}
@@ -153,7 +154,12 @@ class KitsuEnrichmentHelper:
         """Enter async context."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context."""
         await self.close()
         return False

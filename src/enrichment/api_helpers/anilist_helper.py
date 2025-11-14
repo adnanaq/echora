@@ -10,7 +10,8 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type
 
 import aiohttp
 
@@ -394,7 +395,12 @@ class AniListEnrichmentHelper:
         """Enter async context - session created lazily on first request."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """Exit async context - ensure session cleanup."""
         await self.close()
         return False
