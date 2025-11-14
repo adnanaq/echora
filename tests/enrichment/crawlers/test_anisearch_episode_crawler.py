@@ -2,9 +2,91 @@
 Tests for anisearch_episode_crawler.py main() function.
 """
 
-from unittest.mock import patch
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from crawl4ai import CrawlResult
+
+# --- Tests for fetch_anisearch_episodes() function ---
+
+
+@pytest.mark.asyncio
+async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
+    """Test that cache key only depends on URL, not output_path or return_data."""
+    from src.enrichment.crawlers.anisearch_episode_crawler import (
+        fetch_anisearch_episodes,
+    )
+
+    output1 = tmp_path / "output1.json"
+    output2 = tmp_path / "output2.json"
+
+    # Expected cached data
+    cached_data = [
+        {"episodeNumber": 1, "runtime": "24 min", "releaseDate": "01.01.2024", "title": "Episode 1"},
+        {"episodeNumber": 2, "runtime": "24 min", "releaseDate": "08.01.2024", "title": "Episode 2"},
+    ]
+
+    # Mock Redis client to track cache key generation
+    mock_redis = AsyncMock()
+    # First get() returns None (cache miss), second get() returns cached data (cache hit)
+    mock_redis.get = AsyncMock(side_effect=[None, json.dumps(cached_data)])
+    mock_redis.setex = AsyncMock()
+
+    with patch(
+        "src.cache_manager.result_cache.get_result_cache_redis_client",
+        return_value=mock_redis
+    ):
+        with patch(
+            "src.enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            mock_result = MagicMock(spec=CrawlResult)
+            mock_result.success = True
+            mock_result.url = "https://www.anisearch.com/anime/test/episodes"
+            mock_result.extracted_content = json.dumps([
+                {"episodeNumber": "01", "runtime": "24 min", "releaseDate": "01.01.2024", "title": "Episode 1"},
+                {"episodeNumber": "02", "runtime": "24 min", "releaseDate": "08.01.2024", "title": "Episode 2"},
+            ])
+
+            mock_crawler = AsyncMock()
+            mock_crawler.arun = AsyncMock(return_value=[mock_result])
+            MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            # First call with output_file1, return_data=True
+            result1 = await fetch_anisearch_episodes(
+                "https://www.anisearch.com/anime/test/episodes",
+                return_data=True,
+                output_path=str(output1),
+            )
+
+            # Second call with output_file2, return_data=False
+            result2 = await fetch_anisearch_episodes(
+                "https://www.anisearch.com/anime/test/episodes",
+                return_data=False,
+                output_path=str(output2),
+            )
+
+    # Verify both files were written (even on cache hit, file writing happens in wrapper)
+    assert output1.exists(), "First output file should be written"
+    assert output2.exists(), "Second output file should be written on cache hit"
+
+    # Verify return_data parameter works
+    assert result1 is not None, "First call should return data"
+    assert result2 is None, "Second call with return_data=False should return None"
+
+    # Verify only ONE cache entry was created (same URL = same cache key)
+    assert mock_redis.setex.call_count == 1, (
+        "Should only create one cache entry for same URL, regardless of output_path/return_data"
+    )
+
+    # Verify cache key doesn't contain output_path or return_data
+    cache_key = mock_redis.setex.call_args[0][0]
+    assert "output_path" not in cache_key, "Cache key must not contain output_path"
+    assert "return_data" not in cache_key, "Cache key must not contain return_data"
+
 
 # --- Tests for main() function ---
 

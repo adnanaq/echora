@@ -1,16 +1,15 @@
 """
-This script crawls character information from a given anisearch.com anime URL.
+Crawls character information from anisearch.com anime URLs with Redis caching.
 
-It accepts a URL as a command-line argument. It then uses the crawl4ai
-library to extract character data based on a predefined CSS schema.
-The extracted data is processed to clean up fields like 'favorites' and 'image',
-and the character's role is added.
-
-The final processed data, a list of characters with their details, is saved
-to 'anisearch_characters.json' in the project root.
+Extracts character data using crawl4ai with CSS selectors, processes fields
+like 'favorites' and 'image', and adds character roles. Results are cached
+in Redis for 24 hours to avoid repeated crawling.
 
 Usage:
-    python character_crawler.py <anisearch_url>
+    python -m src.enrichment.crawlers.anisearch_character_crawler <url> [--output PATH]
+
+    <url>           anisearch.com anime character page URL
+    --output PATH   optional output file path (default: anisearch_characters.json)
 """
 
 import argparse
@@ -203,10 +202,10 @@ async def main() -> int:
             args.url,
             output_path=args.output,
         )
-        return 0
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

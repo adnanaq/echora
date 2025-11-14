@@ -1,15 +1,15 @@
 """
-This script crawls episode information from a given anisearch.com anime URL.
+Crawls episode information from anisearch.com anime URLs with Redis caching.
 
-It accepts a URL as a command-line argument. It then uses the crawl4ai
-library to extract episode data based on a predefined CSS schema.
-The extracted data is processed to clean up the episode number.
-
-The final processed data, a list of episodes with their details, is saved
-to 'anisearch_episodes.json' in the project root.
+Extracts episode data using crawl4ai with CSS selectors and converts episode
+numbers to integers. Results are cached in Redis for 24 hours to avoid
+repeated crawling.
 
 Usage:
-    python episode_crawler.py <anisearch_url>
+    python -m src.enrichment.crawlers.anisearch_episode_crawler <url> [--output PATH]
+
+    <url>           anisearch.com anime episode page URL
+    --output PATH   optional output file path (default: anisearch_episodes.json)
 """
 
 import argparse
@@ -32,27 +32,18 @@ from .utils import sanitize_output_path
 
 
 @cached_result(ttl=86400, key_prefix="anisearch_episodes")  # 24 hours cache
-async def fetch_anisearch_episodes(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[list]:
+async def _fetch_anisearch_episodes_data(url: str) -> Optional[list]:
     """
-    Crawls, processes, and saves episode data from a given anisearch.com URL.
+    Pure cached function that fetches episode data from anisearch.com.
 
-    Results are cached in Redis for 24 hours to avoid repeated crawling.
-
-    This function defines a schema for extracting episode information,
-    including episode number, runtime, release date, and title. It then
-    initializes a crawler, runs it on the provided anime episode page URL,
-    processes the returned data to clean it, and optionally writes the output
-    to a JSON file.
+    Cache key depends ONLY on the URL parameter, not on output_path or return_data.
+    This ensures efficient cache usage across different output destinations.
 
     Args:
         url (str): The URL of the anisearch.com episode page to crawl.
-        return_data: Whether to return the data (default: True)
-        output_path: Optional file path to save JSON (default: None)
 
     Returns:
-        List of episode dictionaries (if return_data=True), otherwise None
+        List of episode dictionaries, or None if fetch fails.
     """
     css_schema = {
         "baseSelector": "tr[data-episode='true']",
@@ -105,22 +96,48 @@ async def fetch_anisearch_episodes(
                         if match:
                             item["episodeNumber"] = int(match.group(0))
 
-                # Conditionally write to file
-                if output_path:
-                    safe_path = sanitize_output_path(output_path)
-                    with open(safe_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {safe_path}")
-
-                # Return data for programmatic usage
-                if return_data:
-                    return data
-
-                return None
+                return data
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
         return None
+
+
+async def fetch_anisearch_episodes(
+    url: str, return_data: bool = True, output_path: Optional[str] = None
+) -> Optional[list]:
+    """
+    Wrapper function that handles side effects (file writing, return_data logic).
+
+    This function calls the cached _fetch_anisearch_episodes_data() to get the data,
+    then performs side effects that should execute regardless of cache status.
+
+    Args:
+        url: The URL of the anisearch.com episode page to crawl
+        return_data: Whether to return the data (default: True)
+        output_path: Optional file path to save JSON (default: None)
+
+    Returns:
+        List of episode dictionaries (if return_data=True), otherwise None
+    """
+    # Fetch data from cache or crawl (pure function)
+    data = await _fetch_anisearch_episodes_data(url)
+
+    if data is None:
+        return None
+
+    # Side effect: Write to file (always executes, even on cache hit)
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Data written to {safe_path}")
+
+    # Return based on return_data parameter
+    if return_data:
+        return data
+
+    return None
 
 
 async def main() -> int:
@@ -145,12 +162,12 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-        return 0
     except Exception as e:
         import sys
 
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
