@@ -14,6 +14,7 @@ import hashlib
 import inspect
 import json
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from redis.asyncio import Redis
@@ -58,6 +59,15 @@ async def close_result_cache_redis_client() -> None:
 # Type variable for generic function return type
 T = TypeVar("T")
 
+# Cache key length threshold
+# Redis has a 512MB key limit, but we keep keys under 200 chars for:
+# 1. Readability in Redis CLI/monitoring tools
+# 2. Performance (shorter keys = faster lookups)
+# 3. Memory efficiency (keys are stored in memory)
+# Keys exceeding this threshold are SHA256-hashed (64 hex chars)
+# Can be overridden via MAX_CACHE_KEY_LENGTH environment variable
+MAX_CACHE_KEY_LENGTH = int(os.getenv("MAX_CACHE_KEY_LENGTH", "200"))
+
 
 def _compute_schema_hash(func: Callable[..., Any]) -> str:
     """
@@ -70,16 +80,16 @@ def _compute_schema_hash(func: Callable[..., Any]) -> str:
         func: Function to hash
 
     Returns:
-        8-character hexadecimal hash of the function's source code
+        16-character hexadecimal hash of the function's source code (64 bits)
     """
     try:
         # Get the source code of the function
         source = inspect.getsource(func)
-        # Generate MD5 hash and take first 8 characters
-        return hashlib.md5(source.encode()).hexdigest()[:8]
+        # Generate MD5 hash and take first 16 characters for 64-bit collision resistance
+        return hashlib.md5(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.md5(func.__name__.encode()).hexdigest()[:8]
+        return hashlib.md5(func.__name__.encode()).hexdigest()[:16]
 
 
 def _generate_cache_key(
@@ -116,9 +126,9 @@ def _generate_cache_key(
         else:
             key_parts.append(f"{k}={json.dumps(v, sort_keys=True)}")
 
-    # Hash the combined key if it's too long
+    # Hash the combined key if it exceeds threshold
     key_string = ":".join(key_parts)
-    if len(key_string) > 200:
+    if len(key_string) > MAX_CACHE_KEY_LENGTH:
         key_hash = hashlib.sha256(key_string.encode()).hexdigest()
         return f"result_cache:{prefix}:{schema_hash}:{key_hash}"
 

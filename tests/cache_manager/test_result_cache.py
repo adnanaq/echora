@@ -37,8 +37,8 @@ class TestComputeSchemaHash:
 
         hash1 = _compute_schema_hash(test_func)
 
-        # Should be 8-character hex string
-        assert len(hash1) == 8
+        # Should be 16-character hex string (64 bits for collision resistance)
+        assert len(hash1) == 16
         assert all(c in "0123456789abcdef" for c in hash1)
 
     def test_same_function_same_hash(self) -> None:
@@ -89,8 +89,8 @@ class TestComputeSchemaHash:
 
         hash_result = _compute_schema_hash(lambda_func)
 
-        # Should still be 8-character hex string
-        assert len(hash_result) == 8
+        # Should still be 16-character hex string
+        assert len(hash_result) == 16
         assert all(c in "0123456789abcdef" for c in hash_result)
 
     def test_builtin_function_uses_name_fallback(self) -> None:
@@ -98,8 +98,8 @@ class TestComputeSchemaHash:
         # Built-in functions don't have source code
         hash_result = _compute_schema_hash(len)
 
-        # Should compute hash from function name "len"
-        expected_hash = hashlib.md5("len".encode()).hexdigest()[:8]
+        # Should compute hash from function name "len" (16 characters)
+        expected_hash = hashlib.md5("len".encode()).hexdigest()[:16]
         assert hash_result == expected_hash
 
     def test_function_with_multiline_code(self) -> None:
@@ -114,7 +114,7 @@ class TestComputeSchemaHash:
 
         hash_result = _compute_schema_hash(complex_func)
 
-        assert len(hash_result) == 8
+        assert len(hash_result) == 16
         assert all(c in "0123456789abcdef" for c in hash_result)
 
     def test_function_with_decorators(self) -> None:
@@ -133,7 +133,7 @@ class TestComputeSchemaHash:
         hash_result = _compute_schema_hash(decorated_func)
 
         # Should hash the wrapper function's source
-        assert len(hash_result) == 8
+        assert len(hash_result) == 16
 
 
 class TestGenerateCacheKey:
@@ -594,7 +594,7 @@ class TestCachedResultDecorator:
             parts = cache_key.split(":")
             assert parts[0] == "result_cache"
             assert parts[1] == "test"  # prefix
-            assert len(parts[2]) == 8  # schema hash (8 characters)
+            assert len(parts[2]) == 16  # schema hash (16 characters for collision resistance)
             assert parts[3] == "item1"  # argument
 
     @pytest.mark.asyncio
