@@ -13,11 +13,15 @@ Tests cover:
 """
 
 import hashlib
+import importlib
 import json
+import os
+import sys
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
 from src.cache_manager.result_cache import (
     _compute_schema_hash,
@@ -488,7 +492,7 @@ class TestCachedResultDecorator:
             "src.cache_manager.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             # Simulate Redis connection error
-            mock_get_client.side_effect = Exception("Connection failed")
+            mock_get_client.side_effect = RedisError("Connection failed")
 
             # Should fall back to executing function without caching
             result = await fetch_data("item1")
@@ -512,7 +516,7 @@ class TestCachedResultDecorator:
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
-            mock_redis.get.side_effect = Exception("Redis get failed")
+            mock_redis.get.side_effect = RedisError("Redis get failed")
 
             # Should fall back to executing function
             result = await fetch_data("item1")
@@ -541,7 +545,7 @@ class TestCachedResultDecorator:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
             mock_redis.get.return_value = None
-            mock_redis.setex.side_effect = Exception("Redis setex failed")
+            mock_redis.setex.side_effect = RedisError("Redis setex failed")
 
             # Should still return result even if caching fails
             result = await fetch_data("item1")
@@ -589,6 +593,40 @@ class TestCachedResultDecorator:
             assert call_count == 1, (
                 f"Function called {call_count} times. "
                 f"Expected 1 call even with json.dumps error."
+            )
+
+    @pytest.mark.asyncio
+    async def test_decorator_corrupted_cache_data(self) -> None:
+        """Test decorator behavior when cached data is corrupted (invalid JSON).
+
+        CRITICAL: Corrupted cache should be treated as cache miss, not crash.
+        Function should be called once and return correct result.
+        """
+        call_count = 0
+
+        @cached_result(ttl=60, key_prefix="test")
+        async def fetch_data(item_id: str) -> Dict[str, str]:
+            nonlocal call_count
+            call_count += 1
+            return {"id": item_id, "data": "test"}
+
+        with patch(
+            "src.cache_manager.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+
+            # Return corrupted/invalid JSON from cache
+            mock_redis.get.return_value = "{invalid json data"
+
+            # Should treat as cache miss and execute function
+            result = await fetch_data("item1")
+
+            assert result == {"id": "item1", "data": "test"}
+            # Should call function once (cache miss due to corruption)
+            assert call_count == 1, (
+                f"Function called {call_count} times. "
+                f"Expected 1 call when cache data is corrupted."
             )
 
     @pytest.mark.asyncio
@@ -846,3 +884,72 @@ class TestGetResultCacheRedisClient:
             # All results must be identical instance
             unique_count = len(set(id(r) for r in results))
             assert unique_count == 1, f"Expected 1 unique instance, got {unique_count}"
+
+
+class TestMaxCacheKeyLength:
+    """Test MAX_CACHE_KEY_LENGTH environment variable validation."""
+
+    def test_invalid_max_cache_key_length_env_var(self) -> None:
+        """Test that invalid MAX_CACHE_KEY_LENGTH env var falls back to default.
+
+        CRITICAL: Invalid env var should log warning and use default (200),
+        not crash the module at import time.
+        """
+        # Save original env var and module
+        original_env = os.environ.get("MAX_CACHE_KEY_LENGTH")
+
+        try:
+            # Set invalid env var
+            os.environ["MAX_CACHE_KEY_LENGTH"] = "not_a_number"
+
+            # Remove module from cache to force reimport
+            if "src.cache_manager.result_cache" in sys.modules:
+                del sys.modules["src.cache_manager.result_cache"]
+
+            # Import should succeed with warning, not crash
+            import src.cache_manager.result_cache as result_cache_module
+
+            # Should fall back to default value of 200
+            assert result_cache_module.MAX_CACHE_KEY_LENGTH == 200
+
+        finally:
+            # Restore original env var
+            if original_env is None:
+                os.environ.pop("MAX_CACHE_KEY_LENGTH", None)
+            else:
+                os.environ["MAX_CACHE_KEY_LENGTH"] = original_env
+
+            # Reload module with correct env
+            if "src.cache_manager.result_cache" in sys.modules:
+                del sys.modules["src.cache_manager.result_cache"]
+            importlib.import_module("src.cache_manager.result_cache")
+
+    def test_valid_max_cache_key_length_env_var(self) -> None:
+        """Test that valid MAX_CACHE_KEY_LENGTH env var is used."""
+        # Save original env var
+        original_env = os.environ.get("MAX_CACHE_KEY_LENGTH")
+
+        try:
+            # Set valid custom env var
+            os.environ["MAX_CACHE_KEY_LENGTH"] = "500"
+
+            # Remove module from cache to force reimport
+            if "src.cache_manager.result_cache" in sys.modules:
+                del sys.modules["src.cache_manager.result_cache"]
+
+            # Import should use custom value
+            import src.cache_manager.result_cache as result_cache_module
+
+            assert result_cache_module.MAX_CACHE_KEY_LENGTH == 500
+
+        finally:
+            # Restore original env var
+            if original_env is None:
+                os.environ.pop("MAX_CACHE_KEY_LENGTH", None)
+            else:
+                os.environ["MAX_CACHE_KEY_LENGTH"] = original_env
+
+            # Reload module with correct env
+            if "src.cache_manager.result_cache" in sys.modules:
+                del sys.modules["src.cache_manager.result_cache"]
+            importlib.import_module("src.cache_manager.result_cache")

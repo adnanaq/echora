@@ -14,6 +14,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sys
 from typing import Any, Dict, List, Optional, cast
@@ -26,8 +27,13 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
+
+# Get TTL from config to keep cache control centralized
+_CACHE_CONFIG = get_cache_config()
+TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 
@@ -71,7 +77,7 @@ def _extract_slug_from_url(url: str) -> str:
     return match.group(1)
 
 
-@cached_result(ttl=86400, key_prefix="animeplanet_anime")  # 24 hours cache
+@cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_anime")
 async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes anime data from anime-planet.com.
@@ -222,11 +228,11 @@ async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
         extraction_strategy = JsonCssExtractionStrategy(css_schema)
         config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
 
-        print(f"Fetching anime data: {url}")
+        logging.info(f"Fetching anime data: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            print("No results found.")
+            logging.warning("No results found.")
             return None
 
         for result in results:
@@ -239,7 +245,7 @@ async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
                 data = json.loads(result.extracted_content)
 
                 if not data:
-                    print("Extraction returned empty data.")
+                    logging.warning("Extraction returned empty data.")
                     return None
 
                 anime_data = cast(Dict[str, Any], data[0])
@@ -371,7 +377,7 @@ async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
                 # Return pure data (no side effects)
                 return anime_data
             else:
-                print(f"Extraction failed: {result.error_message}")
+                logging.warning(f"Extraction failed: {result.error_message}")
                 return None
         return None
 
@@ -405,7 +411,7 @@ async def fetch_animeplanet_anime(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"Data written to {safe_path}")
+        logging.info(f"Data written to {safe_path}")
 
     # Return data based on return_data parameter
     if return_data:
@@ -447,7 +453,7 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
 
             return json_ld
     except (json.JSONDecodeError, AttributeError) as e:
-        print(f"Failed to extract JSON-LD: {e}")
+        logging.warning(f"Failed to extract JSON-LD: {e}")
     return None
 
 
@@ -668,7 +674,7 @@ async def main() -> int:
         )
         return 0
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logging.exception(f"Failed to fetch anime-planet anime data")
         return 1
 
 

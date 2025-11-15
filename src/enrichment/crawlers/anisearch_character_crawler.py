@@ -27,11 +27,16 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
 
+# Get TTL from config to keep cache control centralized
+_CACHE_CONFIG = get_cache_config()
+TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
-@cached_result(ttl=86400, key_prefix="anisearch_characters")  # 24 hours cache
+
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_characters")
 async def _fetch_anisearch_characters_data(url: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes character data from anisearch.com.

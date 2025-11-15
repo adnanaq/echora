@@ -30,8 +30,13 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
+
+# Get TTL from config to keep cache control centralized
+_CACHE_CONFIG = get_cache_config()
+TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 
 def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
@@ -100,7 +105,7 @@ async def _fetch_and_process_sub_page(
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
-@cached_result(ttl=86400, key_prefix="anisearch_anime")  # 24 hours cache
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
 async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes anime data from anisearch.com.
@@ -238,11 +243,11 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
             session_id=session_id, extraction_strategy=extraction_strategy
         )
 
-        print(f"Fetching main page: {url}")
+        logging.info(f"Fetching main page: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            print("No results found.")
+            logging.warning("No results found.")
             return None
 
         for result in results:
@@ -255,7 +260,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                 data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
 
                 if not data:
-                    print("Extraction returned empty data.")
+                    logging.warning("Extraction returned empty data.")
                     return None
 
                 anime_data = data[0]
@@ -376,7 +381,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                 }
 
                 # Crawl screenshots using JS navigation
-                print("Navigating to screenshots page...")
+                logging.info("Navigating to screenshots page...")
                 js_navigate_screenshots = """
                 const screenshotsLink = document.querySelector('a[href*="/screenshots"]');
                 if (screenshotsLink) {
@@ -399,12 +404,12 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                         for item in screenshots_raw_data["screenshot_urls"]
                         if "url" in item
                     ]
-                    print(f"Extracted {len(anime_data['screenshots'])} screenshots")
+                    logging.info(f"Extracted {len(anime_data['screenshots'])} screenshots")
                 else:
                     anime_data["screenshots"] = []
 
                 # Crawl relations using JS navigation with dropdown selection (two-step for reliability)
-                print("Navigating to relations page...")
+                logging.info("Navigating to relations page...")
 
                 # Step 1: Navigate to relations page
                 js_navigate_relations = """
@@ -451,7 +456,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                         anime_data["anime_relations"] = relations_raw_data[
                             "anime_relations"
                         ]
-                        print(
+                        logging.info(
                             f"Extracted {len(anime_data['anime_relations'])} anime relations"
                         )
                     else:
@@ -464,7 +469,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                         anime_data["manga_relations"] = relations_raw_data[
                             "manga_relations"
                         ]
-                        print(
+                        logging.info(
                             f"Extracted {len(anime_data['manga_relations'])} manga relations"
                         )
                     else:
@@ -476,7 +481,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                 # Always return data (no conditional return or file writing)
                 return anime_data
             else:
-                print(f"Extraction failed: {result.error_message}")
+                logging.warning(f"Extraction failed: {result.error_message}")
                 return None
         return None
 
@@ -511,7 +516,7 @@ async def fetch_anisearch_anime(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"Data written to {safe_path}")
+        logging.info(f"Data written to {safe_path}")
 
     # Return data based on return_data parameter
     if return_data:

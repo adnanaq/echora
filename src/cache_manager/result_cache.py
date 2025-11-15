@@ -21,6 +21,7 @@ import os
 from typing import Any, Awaitable, Callable, Optional, ParamSpec, TypeVar, cast
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from .config import get_cache_config
 
@@ -73,7 +74,15 @@ T = TypeVar("T")
 # 3. Memory efficiency (keys are stored in memory)
 # Keys exceeding this threshold are SHA256-hashed (64 hex chars)
 # Can be overridden via MAX_CACHE_KEY_LENGTH environment variable
-MAX_CACHE_KEY_LENGTH = int(os.getenv("MAX_CACHE_KEY_LENGTH", "200"))
+_MAX_CACHE_KEY_LENGTH_ENV = os.getenv("MAX_CACHE_KEY_LENGTH", "200")
+try:
+    MAX_CACHE_KEY_LENGTH = int(_MAX_CACHE_KEY_LENGTH_ENV)
+except ValueError:
+    logging.warning(
+        "Invalid MAX_CACHE_KEY_LENGTH=%r, falling back to 200",
+        _MAX_CACHE_KEY_LENGTH_ENV,
+    )
+    MAX_CACHE_KEY_LENGTH = 200
 
 
 def _compute_schema_hash(func: Callable[..., Any]) -> str:
@@ -160,11 +169,15 @@ def cached_result(
             return data
 
     Args:
-        ttl: Time-to-live in seconds (None = use default from config)
+        ttl: Time-to-live in seconds (None = use fixed 24h default, independent of CacheConfig)
         key_prefix: Optional custom key prefix (default: function name)
 
     Returns:
         Decorated function with caching
+
+    Note:
+        The default TTL is a fixed 24 hours (86400 seconds), independent of CacheConfig.
+        This is intentional as result caching serves a different purpose than HTTP caching.
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -188,14 +201,21 @@ def cached_result(
                 # Get singleton Redis client and attempt cache read
                 redis_client = await get_result_cache_redis_client()
                 cached_data = await redis_client.get(cache_key)
-            except Exception as e:
+            except RedisError as e:
                 # On cache-read errors, fall back to direct call
                 logging.warning(f"Cache read error in {func.__name__}: {e}")
                 return await func(*args, **kwargs)
 
             if cached_data:
-                # Cache hit - deserialize and return
-                return cast(R, json.loads(cached_data))
+                try:
+                    # Deserialize cached data
+                    return cast(R, json.loads(cached_data))
+                except json.JSONDecodeError as e:
+                    # Corrupted cache entry - treat as cache miss
+                    logging.warning(
+                        f"Cache decode error in {func.__name__} for key {cache_key}: {e}"
+                    )
+                    # Fall through to execute function (cache miss)
 
             # Cache miss - execute function exactly once
             result = await func(*args, **kwargs)
@@ -206,9 +226,11 @@ def cached_result(
             try:
                 # Best-effort cache write; failures should not re-call func
                 serialized = json.dumps(result, ensure_ascii=False)
-                cache_ttl = ttl if ttl is not None else 86400  # Default 24h
+                # Fixed 24h default TTL (independent of CacheConfig, which is for HTTP caching)
+                cache_ttl = ttl if ttl is not None else 86400
                 await redis_client.setex(cache_key, cache_ttl, serialized)
-            except Exception as e:
+            except (RedisError, TypeError, ValueError) as e:
+                # Catch Redis errors, serialization errors (TypeError), and value errors
                 logging.warning(f"Cache write error in {func.__name__}: {e}")
 
             return result

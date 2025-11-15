@@ -28,12 +28,17 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
+from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 
 from .utils import sanitize_output_path
 
+# Get TTL from config to keep cache control centralized
+_CACHE_CONFIG = get_cache_config()
+TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
-@cached_result(ttl=86400, key_prefix="anisearch_episodes")  # 24 hours cache
+
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_episodes")
 async def _fetch_anisearch_episodes_data(url: str) -> Optional[list[dict[str, Any]]]:
     """
     Pure cached function that fetches episode data from anisearch.com.
@@ -80,7 +85,7 @@ async def _fetch_anisearch_episodes_data(url: str) -> Optional[list[dict[str, An
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            print("No results found.")
+            logging.warning("No results found.")
             return None
 
         for result in results:
@@ -100,7 +105,7 @@ async def _fetch_anisearch_episodes_data(url: str) -> Optional[list[dict[str, An
 
                 return data
             else:
-                print(f"Extraction failed: {result.error_message}")
+                logging.warning(f"Extraction failed: {result.error_message}")
                 return None
         return None
 
@@ -133,7 +138,7 @@ async def fetch_anisearch_episodes(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"Data written to {safe_path}")
+        logging.info(f"Data written to {safe_path}")
 
     # Return based on return_data parameter
     if return_data:
