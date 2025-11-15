@@ -185,31 +185,33 @@ def cached_result(
             cache_key = _generate_cache_key(prefix, schema_hash, *args, **kwargs)
 
             try:
-                # Get singleton Redis client
+                # Get singleton Redis client and attempt cache read
                 redis_client = await get_result_cache_redis_client()
-
-                # Try to get from cache
                 cached_data = await redis_client.get(cache_key)
+            except Exception as e:
+                # On cache-read errors, fall back to direct call
+                logging.warning(f"Cache read error in {func.__name__}: {e}")
+                return await func(*args, **kwargs)
 
-                if cached_data:
-                    # Cache hit - deserialize and return
-                    return cast(R, json.loads(cached_data))
+            if cached_data:
+                # Cache hit - deserialize and return
+                return cast(R, json.loads(cached_data))
 
-                # Cache miss - execute function
-                result = await func(*args, **kwargs)
+            # Cache miss - execute function exactly once
+            result = await func(*args, **kwargs)
 
-                # Store in cache if result is not None
-                if result is not None:
-                    serialized = json.dumps(result, ensure_ascii=False)
-                    cache_ttl = ttl if ttl is not None else 86400  # Default 24h
-                    await redis_client.setex(cache_key, cache_ttl, serialized)
-
+            if result is None:
                 return result
 
+            try:
+                # Best-effort cache write; failures should not re-call func
+                serialized = json.dumps(result, ensure_ascii=False)
+                cache_ttl = ttl if ttl is not None else 86400  # Default 24h
+                await redis_client.setex(cache_key, cache_ttl, serialized)
             except Exception as e:
-                # On any error, just execute the function without caching
-                logging.warning(f"Cache error in {func.__name__}: {e}")
-                return await func(*args, **kwargs)
+                logging.warning(f"Cache write error in {func.__name__}: {e}")
+
+            return result
 
         return wrapper
 

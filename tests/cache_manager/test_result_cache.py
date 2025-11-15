@@ -522,7 +522,11 @@ class TestCachedResultDecorator:
 
     @pytest.mark.asyncio
     async def test_decorator_redis_set_error(self) -> None:
-        """Test decorator behavior when Redis setex() fails."""
+        """Test decorator behavior when Redis setex() fails.
+
+        CRITICAL: Function should be called exactly ONCE even if cache write fails.
+        Cache write errors should NOT trigger re-execution of expensive operations.
+        """
         call_count = 0
 
         @cached_result(ttl=60, key_prefix="test")
@@ -543,7 +547,49 @@ class TestCachedResultDecorator:
             result = await fetch_data("item1")
 
             assert result == {"id": "item1", "data": "test"}
-            assert call_count == 2  # Called in try block, then again in except
+            # FIXED: Should be called only ONCE (in try block)
+            # Cache write failure should NOT cause re-execution
+            assert call_count == 1, (
+                f"Function called {call_count} times. "
+                f"Expected 1 call even with cache write error."
+            )
+
+    @pytest.mark.asyncio
+    async def test_decorator_json_dumps_error(self) -> None:
+        """Test decorator behavior when json.dumps() fails.
+
+        CRITICAL: Function should be called exactly ONCE even if serialization fails.
+        Serialization errors should NOT trigger re-execution of expensive operations.
+        """
+        call_count = 0
+
+        @cached_result(ttl=60, key_prefix="test")
+        async def fetch_data(item_id: str) -> Dict[str, str]:
+            nonlocal call_count
+            call_count += 1
+            return {"id": item_id, "data": "test"}
+
+        with (
+            patch("src.cache_manager.result_cache.get_result_cache_redis_client") as mock_get_client,
+            patch("src.cache_manager.result_cache.json.dumps") as mock_dumps,
+        ):
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.get.return_value = None
+
+            # Simulate json.dumps failure (e.g., non-serializable object)
+            mock_dumps.side_effect = TypeError("Object is not JSON serializable")
+
+            # Should still return result even if serialization fails
+            result = await fetch_data("item1")
+
+            assert result == {"id": "item1", "data": "test"}
+            # FIXED: Should be called only ONCE (in try block)
+            # Serialization failure should NOT cause re-execution
+            assert call_count == 1, (
+                f"Function called {call_count} times. "
+                f"Expected 1 call even with json.dumps error."
+            )
 
     @pytest.mark.asyncio
     async def test_decorator_different_args_different_cache_entries(self) -> None:
