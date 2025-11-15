@@ -15,6 +15,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sys
 from typing import Any, Optional, cast
@@ -163,8 +164,8 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except Exception:
+        logging.exception("Failed to fetch anisearch episode data")
         return 1
     return 0
 

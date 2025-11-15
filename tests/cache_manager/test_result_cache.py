@@ -99,7 +99,7 @@ class TestComputeSchemaHash:
         hash_result = _compute_schema_hash(len)
 
         # Should compute hash from function name "len" (16 characters)
-        expected_hash = hashlib.md5("len".encode()).hexdigest()[:16]
+        expected_hash = hashlib.sha256("len".encode()).hexdigest()[:16]
         assert hash_result == expected_hash
 
     def test_function_with_multiline_code(self) -> None:

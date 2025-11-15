@@ -92,11 +92,11 @@ def _compute_schema_hash(func: Callable[..., Any]) -> str:
     try:
         # Get the source code of the function
         source = inspect.getsource(func)
-        # Generate MD5 hash and take first 16 characters for 64-bit collision resistance
-        return hashlib.md5(source.encode()).hexdigest()[:16]
+        # Generate SHA-256 hash and take first 16 characters for 64-bit collision resistance
+        return hashlib.sha256(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.md5(func.__name__.encode()).hexdigest()[:16]
+        return hashlib.sha256(func.__name__.encode()).hexdigest()[:16]
 
 
 def _generate_cache_key(
