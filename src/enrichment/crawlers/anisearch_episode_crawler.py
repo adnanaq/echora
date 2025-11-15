@@ -16,7 +16,8 @@ import argparse
 import asyncio
 import json
 import re
-from typing import Optional
+import sys
+from typing import Any, Optional, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -32,7 +33,7 @@ from .utils import sanitize_output_path
 
 
 @cached_result(ttl=86400, key_prefix="anisearch_episodes")  # 24 hours cache
-async def _fetch_anisearch_episodes_data(url: str) -> Optional[list]:
+async def _fetch_anisearch_episodes_data(url: str) -> Optional[list[dict[str, Any]]]:
     """
     Pure cached function that fetches episode data from anisearch.com.
 
@@ -88,7 +89,7 @@ async def _fetch_anisearch_episodes_data(url: str) -> Optional[list]:
                 )
 
             if result.success and result.extracted_content:
-                data = json.loads(result.extracted_content)
+                data = cast(list[dict[str, Any]], json.loads(result.extracted_content))
                 # Clean up the data
                 for item in data:
                     if "episodeNumber" in item and item["episodeNumber"]:
@@ -105,7 +106,7 @@ async def _fetch_anisearch_episodes_data(url: str) -> Optional[list]:
 
 async def fetch_anisearch_episodes(
     url: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[list]:
+) -> Optional[list[dict[str, Any]]]:
     """
     Wrapper function that handles side effects (file writing, return_data logic).
 
@@ -163,14 +164,10 @@ async def main() -> int:
             output_path=args.output,
         )
     except Exception as e:
-        import sys
-
         print(f"Error: {e}", file=sys.stderr)
         return 1
     return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
-
     sys.exit(asyncio.run(main()))

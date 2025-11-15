@@ -17,18 +17,22 @@ import inspect
 import json
 import logging
 import os
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Optional, ParamSpec, TypeVar, cast
 
 from redis.asyncio import Redis
 
 from .config import get_cache_config
 
+# Type variables for preserving function signatures
+P = ParamSpec("P")
+R = TypeVar("R")
+
 # --- Singleton Redis Client for @cached_result ---
 
-_redis_client: Optional[Redis] = None  # type: ignore[type-arg]
+_redis_client: Optional[Redis] = None
 
 
-async def get_result_cache_redis_client() -> Redis:  # type: ignore[type-arg]
+async def get_result_cache_redis_client() -> Redis:
     """Initializes and returns a singleton async Redis client for result caching."""
     global _redis_client
     if _redis_client is None:
@@ -135,7 +139,7 @@ def _generate_cache_key(
 def cached_result(
     ttl: Optional[int] = None,
     key_prefix: Optional[str] = None,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """
     Decorator to cache async function results in Redis with automatic schema invalidation.
 
@@ -157,12 +161,12 @@ def cached_result(
         Decorated function with caching
     """
 
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         # Compute schema hash once when decorator is applied
         schema_hash = _compute_schema_hash(func)
 
         @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Get cache config
             config = get_cache_config()
 
@@ -183,7 +187,7 @@ def cached_result(
 
                 if cached_data:
                     # Cache hit - deserialize and return
-                    return json.loads(cached_data)
+                    return cast(R, json.loads(cached_data))
 
                 # Cache miss - execute function
                 result = await func(*args, **kwargs)

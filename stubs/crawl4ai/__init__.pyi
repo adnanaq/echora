@@ -22,6 +22,7 @@ class CrawlerRunConfig:
         js_code: Optional[str] = None,
         wait_for: Optional[str] = None,
         js_only: bool = False,
+        page_timeout: int = 60000,
     ) -> None: ...
 
 class CrawlResult:

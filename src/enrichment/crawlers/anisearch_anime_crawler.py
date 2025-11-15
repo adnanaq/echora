@@ -17,6 +17,7 @@ import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
 import re
+import sys
 from typing import Any, Dict, List, Optional, cast
 
 from crawl4ai import (
@@ -250,7 +251,7 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                 )
 
             if result.success and result.extracted_content:
-                data = json.loads(result.extracted_content)
+                data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
 
                 if not data:
                     print("Extraction returned empty data.")
@@ -541,14 +542,10 @@ async def main() -> int:
             output_path=args.output,
         )
     except Exception as e:
-        import sys
-
         print(f"Error: {e}", file=sys.stderr)
         return 1
     return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
-
     sys.exit(asyncio.run(main()))
