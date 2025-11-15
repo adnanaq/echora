@@ -11,6 +11,7 @@ automatically invalidating old cache entries.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import hashlib
 import inspect
@@ -29,6 +30,7 @@ R = TypeVar("R")
 
 # --- Singleton Redis Client for @cached_result ---
 
+_redis_lock = asyncio.Lock()
 _redis_client: Optional[Redis] = None
 
 
@@ -36,22 +38,26 @@ async def get_result_cache_redis_client() -> Redis:
     """Initializes and returns a singleton async Redis client for result caching."""
     global _redis_client
     if _redis_client is None:
-        config = get_cache_config()
-        redis_url = config.redis_url or "redis://localhost:6379/0"
-        logging.info(
-            f"Initializing singleton Redis client for result cache: {redis_url}"
-        )
-        _redis_client = Redis.from_url(redis_url, decode_responses=True)
+        async with _redis_lock:
+            # Double-check after acquiring lock
+            if _redis_client is None:
+                config = get_cache_config()
+                redis_url = config.redis_url or "redis://localhost:6379/0"
+                logging.info(
+                    f"Initializing singleton Redis client for result cache: {redis_url}"
+                )
+                _redis_client = Redis.from_url(redis_url, decode_responses=True)
     return _redis_client
 
 
 async def close_result_cache_redis_client() -> None:
     """Closes the singleton Redis client for result caching."""
     global _redis_client
-    if _redis_client:
-        logging.info("Closing singleton Redis client for result cache.")
-        await _redis_client.aclose()
-        _redis_client = None
+    async with _redis_lock:
+        if _redis_client:
+            logging.info("Closing singleton Redis client for result cache.")
+            await _redis_client.aclose()
+            _redis_client = None
 
 
 # --- End Singleton ---

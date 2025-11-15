@@ -841,6 +841,92 @@ class TestFetchAnisearchAnimeMainFunction:
 
                     assert result is None
 
+    @pytest.mark.asyncio
+    async def test_cache_key_only_depends_on_url(self, tmp_path):
+        """
+        Test that cache keys depend ONLY on URL, not on output_path or return_data.
+
+        This validates the fix for the reviewer's comment: cache keys should be
+        based purely on the URL being crawled, so different output paths reuse
+        the same cached data instead of creating redundant cache entries.
+
+        Expected behavior (after fix):
+        - Same URL + different output_path = SAME cache key
+        - Same URL + different return_data = SAME cache key
+        - Result: Single cache entry reused for all calls with same URL
+        """
+        output_file1 = tmp_path / "output1.json"
+        output_file2 = tmp_path / "output2.json"
+
+        # Expected cached data - anime crawler expects a list
+        cached_data = [{"type": "TV", "status": "Currently Airing"}]
+
+        # Mock Redis client to track cache key generation
+        mock_redis = AsyncMock()
+        # First get() returns None (cache miss), second get() returns cached data (cache hit)
+        mock_redis.get = AsyncMock(side_effect=[None, json.dumps(cached_data)])
+        mock_redis.setex = AsyncMock()
+
+        with patch(
+            "src.cache_manager.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis
+        ):
+            with patch(
+                "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
+            ) as MockCrawler:
+                mock_result = MagicMock(spec=CrawlResult)
+                mock_result.success = True
+                mock_result.url = "https://www.anisearch.com/anime/test"
+                mock_result.extracted_content = json.dumps(cached_data)
+
+                mock_crawler = AsyncMock()
+                mock_crawler.arun = AsyncMock(return_value=[mock_result])
+                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+                # First call with output_file1, return_data=True
+                result1 = await fetch_anisearch_anime(
+                    "https://www.anisearch.com/anime/test",
+                    return_data=True,
+                    output_path=str(output_file1),
+                )
+
+                # Second call with output_file2, return_data=False
+                result2 = await fetch_anisearch_anime(
+                    "https://www.anisearch.com/anime/test",
+                    return_data=False,
+                    output_path=str(output_file2),
+                )
+
+                # Verify both files were written (side effects work regardless of cache)
+                assert output_file1.exists(), "First output file should be written"
+                assert output_file2.exists(), "Second output file should be written"
+
+                # Verify return_data behavior
+                assert result1 is not None, "First call should return data"
+                assert result2 is None, "Second call should not return data (return_data=False)"
+
+                # Verify cache behavior: should only create ONE cache entry
+                assert mock_redis.get.call_count == 2, "Should query cache twice"
+                assert mock_redis.setex.call_count == 1, "Should create only 1 cache entry"
+
+                # Extract cache key from setex call
+                cache_key = mock_redis.setex.call_args[0][0]
+
+                # Cache key should NOT contain output_path or return_data
+                assert "output_path" not in cache_key, (
+                    "Cache key must not include output_path parameter"
+                )
+                assert "return_data" not in cache_key, (
+                    "Cache key must not include return_data parameter"
+                )
+
+                # Cache key should only contain URL and schema hash
+                assert "anisearch_anime" in cache_key, "Should have key_prefix"
+                assert "test" in cache_key or len(cache_key) > 100, (
+                    "Should include URL (or hash if too long)"
+                )
+
 
 class TestFetchAnisearchAnimeEdgeCases:
     """Test edge cases and complex scenarios."""

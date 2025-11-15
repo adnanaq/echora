@@ -18,6 +18,7 @@ import html  # Import the html module for unescaping HTML entities
 import json
 import re
 import sys
+import uuid
 from typing import Any, Dict, List, Optional, cast
 
 from crawl4ai import (
@@ -131,7 +132,6 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
         )
 
     # Generate unique session ID for maintaining browser state
-    import uuid
 
     session_id = f"anime_session_{uuid.uuid4().hex[:8]}"
 

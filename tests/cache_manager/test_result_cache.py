@@ -743,3 +743,60 @@ class TestGetResultCacheRedisClient:
             mock_redis_from_url.assert_not_called()
             mock_logging.info.assert_not_called()
             assert client2 is client1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_initialization_uses_lock(self) -> None:
+        """Test that singleton initialization uses asyncio.Lock for thread safety.
+        
+        This test verifies the implementation uses proper async synchronization
+        (asyncio.Lock with double-checked locking pattern) to prevent race conditions
+        when multiple coroutines call get_result_cache_redis_client() concurrently.
+        
+        Expected behavior with Lock:
+        - Only ONE coroutine acquires lock and initializes client
+        - Others wait for lock, then see client is already initialized (double-check)
+        - Result: Exactly one Redis.from_url() call, one client instance
+        """
+        import asyncio
+
+        from redis.asyncio import Redis
+
+        from src.cache_manager.config import CacheConfig
+        from src.cache_manager.result_cache import get_result_cache_redis_client
+
+        call_count = 0
+        
+        def counting_from_url(*args, **kwargs):
+            """Count Redis.from_url calls to verify singleton behavior."""
+            nonlocal call_count
+            call_count += 1
+            return AsyncMock(spec=Redis)
+
+        with (
+            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
+            patch(
+                "src.cache_manager.result_cache.Redis.from_url",
+                side_effect=counting_from_url
+            ),
+        ):
+            mock_config_instance = MagicMock(spec=CacheConfig)
+            mock_config_instance.redis_url = "redis://test-host:6379/1"
+            mock_get_config.return_value = mock_config_instance
+
+            # Simulate concurrent access from multiple coroutines
+            # With proper Lock: Only first coroutine initializes, rest wait and reuse
+            results = await asyncio.gather(*[
+                get_result_cache_redis_client()
+                for _ in range(10)
+            ])
+
+            # REQUIREMENT: Exactly ONE initialization regardless of concurrency
+            # This is guaranteed by async.Lock + double-checked locking
+            assert call_count == 1, (
+                f"Singleton initialization failed: Redis.from_url called {call_count} times "
+                f"(expected 1). Implementation must use asyncio.Lock."
+            )
+            
+            # All results must be identical instance
+            unique_count = len(set(id(r) for r in results))
+            assert unique_count == 1, f"Expected 1 unique instance, got {unique_count}"
