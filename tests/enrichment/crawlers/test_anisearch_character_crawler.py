@@ -762,6 +762,53 @@ class TestEdgeCases:
                 assert result["characters"][0]["name"] == "桜木花道"
                 assert result["characters"][1]["name"] == "モンキー・D・ルフィ"
 
+    def test_normalize_character_url_appends_characters_suffix(self):
+        from src.enrichment.crawlers.anisearch_character_crawler import _normalize_character_url
+
+        url = "https://www.anisearch.com/anime/18878,dan-da-dan"
+        result = _normalize_character_url(url)
+
+        assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+
+    def test_extract_anime_id_raises_on_invalid_url(self):
+        from src.enrichment.crawlers.anisearch_character_crawler import _extract_anime_id_from_character_url
+
+        with pytest.raises(ValueError, match="Invalid character URL"):
+            _extract_anime_id_from_character_url("https://example.com/anime/123")
+
+    @pytest.mark.asyncio
+    async def test_fetch_returns_none_when_all_results_fail(self):
+        with patch(
+            "src.enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler"
+        ) as MockCrawler:
+            mock_redis = AsyncMock()
+            mock_redis.get = AsyncMock(return_value=None)
+            mock_redis.setex = AsyncMock()
+
+            with patch(
+                "src.cache_manager.result_cache.get_result_cache_redis_client",
+                return_value=mock_redis
+            ):
+                # Return multiple failed results
+                mock_result1 = MagicMock(spec=CrawlResult)
+                mock_result1.success = False
+                mock_result1.url = "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                mock_result1.error_message = "Error 1"
+
+                mock_result2 = MagicMock(spec=CrawlResult)
+                mock_result2.success = False
+                mock_result2.url = "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                mock_result2.error_message = "Error 2"
+
+                mock_crawler = AsyncMock()
+                mock_crawler.arun = AsyncMock(return_value=[mock_result1, mock_result2])
+                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+                result = await fetch_anisearch_characters("18878,dan-da-dan")
+
+                assert result is None
+
 
 class TestCLI:
     """Test CLI functionality."""
@@ -918,10 +965,10 @@ class TestCLI:
                     "Cache key must not include return_data parameter"
                 )
 
-                # Cache key should only contain URL and schema hash
+                # Cache key should only contain canonical anime ID and schema hash
                 assert "anisearch_characters" in cache_key, "Should have key_prefix"
-                assert "test/characters" in cache_key or len(cache_key) > 100, (
-                    "Should include URL (or hash if too long)"
+                assert "test" in cache_key or len(cache_key) > 100, (
+                    "Should include canonical anime ID (or hash if too long)"
                 )
 
 

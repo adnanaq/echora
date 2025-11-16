@@ -761,6 +761,29 @@ def test_extract_rank_with_value_error():
     assert result is None
 
 
+
+def test_determine_season_from_date_with_invalid_format():
+    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
+
+    result = _determine_season_from_date("invalid-date")
+    assert result is None
+
+
+def test_determine_season_from_date_with_empty_string():
+    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
+
+    result = _determine_season_from_date("")
+    assert result is None
+
+
+
+def test_determine_season_from_date_with_invalid_month():
+    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
+
+    result = _determine_season_from_date("2024-00-15")
+    assert result is None
+
+
 def test_determine_season_with_value_error():
     """Test season determination handles ValueError (lines 497-500)."""
     # Test with month that causes ValueError in int conversion

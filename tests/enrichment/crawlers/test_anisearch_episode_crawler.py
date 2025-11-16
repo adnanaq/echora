@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from crawl4ai import CrawlResult
 
+from src.enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
+
 # --- Tests for fetch_anisearch_episodes() function ---
 
 
@@ -174,3 +176,99 @@ async def test_main_function_no_episodes_found(mock_fetch):
 
     # Should still return 0 even with empty list
     assert exit_code == 0
+
+
+
+def test_normalize_episode_url_appends_suffix():
+    from src.enrichment.crawlers.anisearch_episode_crawler import _normalize_episode_url
+
+    url = "https://www.anisearch.com/anime/18878,dan-da-dan"
+    result = _normalize_episode_url(url)
+    assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
+
+
+def test_normalize_episode_url_from_path():
+    from src.enrichment.crawlers.anisearch_episode_crawler import _normalize_episode_url
+
+    result = _normalize_episode_url("/18878,dan-da-dan")
+    assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
+
+
+def test_normalize_episode_url_from_id():
+    from src.enrichment.crawlers.anisearch_episode_crawler import _normalize_episode_url
+
+    result = _normalize_episode_url("18878,dan-da-dan")
+    assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
+
+
+def test_extract_anime_id_raises_on_invalid_url():
+    from src.enrichment.crawlers.anisearch_episode_crawler import _extract_anime_id_from_episode_url
+
+    with pytest.raises(ValueError, match="Invalid episode URL"):
+        _extract_anime_id_from_episode_url("https://example.com/anime/123")
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_returns_none_when_no_results():
+    with patch("src.enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        with patch("src.cache_manager.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+            mock_crawler = AsyncMock()
+            mock_crawler.arun = AsyncMock(return_value=[])
+            MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            result = await fetch_anisearch_episodes("18878,dan-da-dan")
+            assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_raises_on_wrong_result_type():
+    with patch("src.enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        with patch("src.cache_manager.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+            mock_crawler = AsyncMock()
+            mock_crawler.arun = AsyncMock(return_value=["not a CrawlResult"])
+            MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with pytest.raises(TypeError, match="Unexpected result type"):
+                await fetch_anisearch_episodes("18878,dan-da-dan")
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_returns_none_on_extraction_failure():
+    from crawl4ai import CrawlResult
+    from unittest.mock import MagicMock
+
+    with patch("src.enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        with patch("src.cache_manager.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+            mock_result = MagicMock(spec=CrawlResult)
+            mock_result.success = False
+            mock_result.error_message = "Failed to extract"
+
+            mock_crawler = AsyncMock()
+            mock_crawler.arun = AsyncMock(return_value=[mock_result])
+            MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+            MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            result = await fetch_anisearch_episodes("18878,dan-da-dan")
+            assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_wrapper_returns_none_when_data_is_none():
+    with patch("src.enrichment.crawlers.anisearch_episode_crawler._fetch_anisearch_episodes_data") as mock_fetch:
+        mock_fetch.return_value = None
+        result = await fetch_anisearch_episodes("18878,dan-da-dan")
+        assert result is None

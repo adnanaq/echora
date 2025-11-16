@@ -74,13 +74,13 @@ async def test_crawler_cache_and_singleton_client(redis_client):
 
     # --- Test fetch_anisearch_anime caching ---
     start_time_1 = time.monotonic()
-    anime_data_1 = await fetch_anisearch_anime(url=ANIME_URL)
+    anime_data_1 = await fetch_anisearch_anime(anime_id=ANIME_ID)
     duration_1 = time.monotonic() - start_time_1
     assert anime_data_1 is not None
     assert "japanese_title" in anime_data_1
 
     start_time_2 = time.monotonic()
-    anime_data_2 = await fetch_anisearch_anime(url=ANIME_URL)
+    anime_data_2 = await fetch_anisearch_anime(anime_id=ANIME_ID)
     duration_2 = time.monotonic() - start_time_2
     assert anime_data_2 is not None
 
@@ -99,13 +99,13 @@ async def test_crawler_cache_and_singleton_client(redis_client):
 
         # --- Test fetch_anisearch_episodes caching ---
         start_time_ep_1 = time.monotonic()
-        episodes_data_1 = await fetch_anisearch_episodes(url=EPISODES_URL)
+        episodes_data_1 = await fetch_anisearch_episodes(anime_id=ANIME_ID)
         duration_ep_1 = time.monotonic() - start_time_ep_1
         assert episodes_data_1 is not None
         assert len(episodes_data_1) > 0
 
         start_time_ep_2 = time.monotonic()
-        episodes_data_2 = await fetch_anisearch_episodes(url=EPISODES_URL)
+        episodes_data_2 = await fetch_anisearch_episodes(anime_id=ANIME_ID)
         duration_ep_2 = time.monotonic() - start_time_ep_2
         assert episodes_data_2 is not None
         assert episodes_data_2 == episodes_data_1
@@ -115,14 +115,14 @@ async def test_crawler_cache_and_singleton_client(redis_client):
 
         # --- Test fetch_anisearch_characters caching ---
         start_time_char_1 = time.monotonic()
-        characters_data_1 = await fetch_anisearch_characters(url=CHARACTERS_URL)
+        characters_data_1 = await fetch_anisearch_characters(anime_id=ANIME_ID)
         duration_char_1 = time.monotonic() - start_time_char_1
         assert characters_data_1 is not None
         assert "characters" in characters_data_1
         assert len(characters_data_1["characters"]) > 0
 
         start_time_char_2 = time.monotonic()
-        characters_data_2 = await fetch_anisearch_characters(url=CHARACTERS_URL)
+        characters_data_2 = await fetch_anisearch_characters(anime_id=ANIME_ID)
         duration_char_2 = time.monotonic() - start_time_char_2
         assert characters_data_2 is not None
         assert characters_data_2 == characters_data_1

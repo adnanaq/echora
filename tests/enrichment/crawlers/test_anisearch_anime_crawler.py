@@ -1221,6 +1221,18 @@ class TestFetchAnisearchAnimeEdgeCases:
                     assert result["start_date"] is None
                     assert result["end_date"] is None
 
+    def test_extract_path_raises_on_invalid_url(self):
+        from src.enrichment.crawlers.anisearch_anime_crawler import _extract_path_from_url
+
+        with pytest.raises(ValueError, match="URL must start with"):
+            _extract_path_from_url("https://example.com/anime/123")
+
+    def test_extract_path_raises_on_empty_path(self):
+        from src.enrichment.crawlers.anisearch_anime_crawler import _extract_path_from_url
+
+        with pytest.raises(ValueError, match="URL does not contain anime path"):
+            _extract_path_from_url("https://www.anisearch.com/anime/")
+
 
 class TestCLI:
     """Test CLI functionality."""
@@ -1527,30 +1539,30 @@ class TestTypeErrorCoverage:
 
     @pytest.mark.asyncio
     async def test_type_error_when_result_not_crawl_result(self):
-        """Test line 251-252: TypeError when arun returns non-CrawlResult in container."""
+        """Test line 297-298: TypeError when arun returns non-CrawlResult."""
         with patch(
             "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
         ) as MockCrawler:
-            mock_crawler = AsyncMock()
+            mock_redis = AsyncMock()
+            mock_redis.get = AsyncMock(return_value=None)
+            mock_redis.setex = AsyncMock()
 
-            # Return a CrawlResultContainer with a string instead of CrawlResult
-            # This will trigger the isinstance check on line 250
-            from crawl4ai.models import CrawlResultContainer
+            with patch("src.cache_manager.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+                mock_crawler = AsyncMock()
 
-            bad_container = CrawlResultContainer(["not a CrawlResult object"])
+                # Return a list with a string instead of CrawlResult
+                # This will trigger the isinstance check on line 296 and raise on line 297
+                mock_crawler.arun = AsyncMock(return_value=["not a CrawlResult object"])
+                mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+                mock_crawler.__aexit__ = AsyncMock(return_value=None)
+                MockCrawler.return_value = mock_crawler
 
-            mock_crawler.arun = AsyncMock(return_value=bad_container)
-            MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
-            MockCrawler.return_value.__aexit__ = AsyncMock(
-                return_value=None
-            )  # Critical: return None!
-
-            with pytest.raises(
-                TypeError, match=r"Unexpected result type.*expected CrawlResult"
-            ):
-                await fetch_anisearch_anime(
-                    "https://www.anisearch.com/anime/test_type_error"
-                )
+                with pytest.raises(
+                    TypeError, match=r"Unexpected result type.*expected CrawlResult"
+                ):
+                    await fetch_anisearch_anime(
+                        "https://www.anisearch.com/anime/test_type_error"
+                    )
 
 
 # --- Tests for main() function ---
