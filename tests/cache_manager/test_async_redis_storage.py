@@ -110,10 +110,17 @@ class TestAsyncRedisStorageInit:
             key_prefix="custom_prefix",
         )
 
-        # Should create client and own it
+        # Should create client and own it with connection pool config
         assert storage._owns_client is True
         mock_redis_class.from_url.assert_called_once_with(
-            "redis://localhost:6379/1", decode_responses=False
+            "redis://localhost:6379/1",
+            decode_responses=False,
+            max_connections=100,
+            socket_keepalive=True,
+            socket_connect_timeout=5,
+            socket_timeout=10,
+            retry_on_timeout=True,
+            health_check_interval=30,
         )
         assert storage.client == mock_client
         assert storage.default_ttl == 7200.0
@@ -152,7 +159,14 @@ class TestAsyncRedisStorageInit:
         storage = AsyncRedisStorage()
 
         mock_redis_class.from_url.assert_called_once_with(
-            "redis://localhost:6379/0", decode_responses=False
+            "redis://localhost:6379/0",
+            decode_responses=False,
+            max_connections=100,
+            socket_keepalive=True,
+            socket_connect_timeout=5,
+            socket_timeout=10,
+            retry_on_timeout=True,
+            health_check_interval=30,
         )
         assert storage._owns_client is True
 

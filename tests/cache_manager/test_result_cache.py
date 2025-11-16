@@ -796,6 +796,12 @@ class TestGetResultCacheRedisClient:
 
             mock_config_instance = MagicMock(spec=CacheConfig)
             mock_config_instance.redis_url = "redis://test-host:6379/1"
+            mock_config_instance.redis_max_connections = 100
+            mock_config_instance.redis_socket_keepalive = True
+            mock_config_instance.redis_socket_connect_timeout = 5
+            mock_config_instance.redis_socket_timeout = 10
+            mock_config_instance.redis_retry_on_timeout = True
+            mock_config_instance.redis_health_check_interval = 30
             mock_get_config.return_value = mock_config_instance
 
             mock_redis_client_instance = AsyncMock(spec=Redis)
@@ -806,11 +812,20 @@ class TestGetResultCacheRedisClient:
 
             mock_get_config.assert_called_once()
             mock_redis_from_url.assert_called_once_with(
-                "redis://test-host:6379/1", decode_responses=True
+                "redis://test-host:6379/1",
+                decode_responses=True,
+                max_connections=100,
+                socket_keepalive=True,
+                socket_connect_timeout=5,
+                socket_timeout=10,
+                retry_on_timeout=True,
+                health_check_interval=30,
             )
-            mock_logging.info.assert_called_once_with(
-                "Initializing singleton Redis client for result cache: redis://test-host:6379/1"
-            )
+            # Check log message contains the URL and connection pool info
+            assert mock_logging.info.call_count == 1
+            log_call_args = mock_logging.info.call_args[0][0]
+            assert "redis://test-host:6379/1" in log_call_args
+            assert "max_connections=100" in log_call_args
             assert client1 is mock_redis_client_instance
             from src.cache_manager.result_cache import _redis_client
 
@@ -865,6 +880,12 @@ class TestGetResultCacheRedisClient:
         ):
             mock_config_instance = MagicMock(spec=CacheConfig)
             mock_config_instance.redis_url = "redis://test-host:6379/1"
+            mock_config_instance.redis_max_connections = 100
+            mock_config_instance.redis_socket_keepalive = True
+            mock_config_instance.redis_socket_connect_timeout = 5
+            mock_config_instance.redis_socket_timeout = 10
+            mock_config_instance.redis_retry_on_timeout = True
+            mock_config_instance.redis_health_check_interval = 30
             mock_get_config.return_value = mock_config_instance
 
             # Simulate concurrent access from multiple coroutines

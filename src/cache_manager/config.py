@@ -44,6 +44,32 @@ class CacheConfig(BaseModel):
         default=86400, description="AnimSchedule cache TTL - 24 hours"
     )
 
+    # Redis connection pool configuration
+    redis_max_connections: int = Field(
+        default=100,
+        description="Max Redis connections (tuned for multi-agent concurrency: 20 agents × 10 concurrent ops)",
+    )
+    redis_socket_keepalive: bool = Field(
+        default=True,
+        description="Enable TCP keepalive to detect stale connections and prevent NAT/firewall timeouts",
+    )
+    redis_socket_connect_timeout: int = Field(
+        default=5,
+        description="Connection timeout in seconds (fail-fast on unreachable Redis)",
+    )
+    redis_socket_timeout: int = Field(
+        default=10,
+        description="Socket read/write timeout in seconds (prevents hanging on slow Redis operations)",
+    )
+    redis_retry_on_timeout: bool = Field(
+        default=True,
+        description="Retry operations on timeout (safe for idempotent cache operations)",
+    )
+    redis_health_check_interval: int = Field(
+        default=30,
+        description="Health check interval in seconds (0=disabled, proactively validates connections)",
+    )
+
     class Config:
         """Pydantic configuration."""
 
@@ -57,6 +83,12 @@ def get_cache_config() -> CacheConfig:
     Environment Variables:
         ENABLE_HTTP_CACHE: Enable caching (default: true)
         REDIS_CACHE_URL: Redis connection URL (default: redis://localhost:6379/0)
+        REDIS_MAX_CONNECTIONS: Max connection pool size (default: 100)
+        REDIS_SOCKET_KEEPALIVE: Enable TCP keepalive (default: true)
+        REDIS_SOCKET_CONNECT_TIMEOUT: Connection timeout in seconds (default: 5)
+        REDIS_SOCKET_TIMEOUT: Read/write timeout in seconds (default: 10)
+        REDIS_RETRY_ON_TIMEOUT: Retry on timeout (default: true)
+        REDIS_HEALTH_CHECK_INTERVAL: Health check interval in seconds (default: 30)
 
     Returns:
         CacheConfig instance

@@ -45,9 +45,20 @@ async def get_result_cache_redis_client() -> Redis:
                 config = get_cache_config()
                 redis_url = config.redis_url or "redis://localhost:6379/0"
                 logging.info(
-                    f"Initializing singleton Redis client for result cache: {redis_url}"
+                    f"Initializing singleton Redis client for result cache: {redis_url} "
+                    f"(max_connections={config.redis_max_connections})"
                 )
-                _redis_client = Redis.from_url(redis_url, decode_responses=True)
+                # Configure connection pool for multi-agent concurrency and reliability
+                _redis_client = Redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    max_connections=config.redis_max_connections,
+                    socket_keepalive=config.redis_socket_keepalive,
+                    socket_connect_timeout=config.redis_socket_connect_timeout,
+                    socket_timeout=config.redis_socket_timeout,
+                    retry_on_timeout=config.redis_retry_on_timeout,
+                    health_check_interval=config.redis_health_check_interval,
+                )
     return _redis_client
 
 

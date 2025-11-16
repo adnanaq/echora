@@ -655,7 +655,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
         """,
     )
 
-    async def mock_arun(*args, **kwargs):
+    async def mock_arun(*_args, **_kwargs):
         nonlocal crawl_count
         crawl_count += 1
         return [mock_result]

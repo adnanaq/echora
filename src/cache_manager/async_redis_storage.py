@@ -60,7 +60,24 @@ class AsyncRedisStorage(AsyncBaseStorage):
             key_prefix: Prefix for all Redis keys (default: "hishel_cache")
         """
         self._owns_client = client is None
-        self.client = client or Redis.from_url(redis_url, decode_responses=False)
+        if client:
+            self.client = client
+        else:
+            # Import here to avoid circular dependency
+            from .config import get_cache_config
+
+            config = get_cache_config()
+            # Configure connection pool for multi-agent concurrency and reliability
+            self.client = Redis.from_url(
+                redis_url,
+                decode_responses=False,
+                max_connections=config.redis_max_connections,
+                socket_keepalive=config.redis_socket_keepalive,
+                socket_connect_timeout=config.redis_socket_connect_timeout,
+                socket_timeout=config.redis_socket_timeout,
+                retry_on_timeout=config.redis_retry_on_timeout,
+                health_check_interval=config.redis_health_check_interval,
+            )
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix

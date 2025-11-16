@@ -593,7 +593,6 @@ async def main() -> int:
     try:
         await fetch_anisearch_anime(
             args.anime_id,
-            return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
     except Exception:

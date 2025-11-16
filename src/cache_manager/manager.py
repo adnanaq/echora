@@ -107,12 +107,21 @@ class HTTPCacheManager:
             if not self.config.redis_url:
                 return None
 
+            # Configure connection pool for multi-agent concurrency and reliability
             self._async_redis_client = AsyncRedis.from_url(
-                self.config.redis_url, decode_responses=False
+                self.config.redis_url,
+                decode_responses=False,
+                max_connections=self.config.redis_max_connections,
+                socket_keepalive=self.config.redis_socket_keepalive,
+                socket_connect_timeout=self.config.redis_socket_connect_timeout,
+                socket_timeout=self.config.redis_socket_timeout,
+                retry_on_timeout=self.config.redis_retry_on_timeout,
+                health_check_interval=self.config.redis_health_check_interval,
             )
             self._redis_event_loop = current_loop
             logger.debug(
-                f"Created new AsyncRedis client for event loop {id(current_loop)}"
+                f"Created new AsyncRedis client for event loop {id(current_loop)} "
+                f"(max_connections={self.config.redis_max_connections})"
             )
 
         return self._async_redis_client
