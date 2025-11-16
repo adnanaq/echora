@@ -14,6 +14,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import sys
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -84,24 +85,22 @@ def _extract_slug_from_characters_url(url: str) -> str:
 
 
 @cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_characters")
-async def _fetch_animeplanet_characters_data(slug: str) -> Optional[Dict[str, Any]]:
+async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes character data from anime-planet.com.
     Uses concurrent batch processing for character detail enrichment.
 
-    Results are cached in Redis for 24 hours based ONLY on slug.
+    Results are cached in Redis for 24 hours based ONLY on canonical slug.
     This function has no side effects - it only fetches and returns data.
 
     Args:
-        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan/characters"),
-              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan/characters")
+        canonical_slug: Canonical anime slug (e.g., "dandadan") - already normalized by caller
 
     Returns:
         Complete character data dictionary with enriched details, or None if fetch fails
     """
-    # Normalize URL and extract slug using helper functions
-    characters_url = _normalize_characters_url(slug)
-    slug = _extract_slug_from_characters_url(characters_url)
+    # Build URL from canonical slug (caller already normalized)
+    characters_url = f"{BASE_URL}/anime/{canonical_slug}/characters"
 
     # Helper function to get reusable character field schema
     def _get_character_fields_schema() -> List[Dict[str, Any]]:
@@ -378,8 +377,13 @@ async def fetch_animeplanet_characters(
     Returns:
         Complete character data dictionary (if return_data=True), otherwise None
     """
-    # Fetch data from cache or crawl (pure function)
-    data = await _fetch_animeplanet_characters_data(slug)
+    # Normalize identifier once so cache keys depend on canonical slug
+    # This ensures cache reuse across different identifier formats
+    characters_url = _normalize_characters_url(slug)
+    canonical_slug = _extract_slug_from_characters_url(characters_url)
+
+    # Fetch data from cache or crawl (pure function keyed only on canonical slug)
+    data = await _fetch_animeplanet_characters_data(canonical_slug)
 
     if data is None:
         return None
@@ -747,15 +751,10 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-        return 0
-    except Exception as e:
-        import sys
-
+    except Exception:
         logging.exception("Failed to fetch anime-planet character data")
         return 1
-
+    return 0
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
-
     sys.exit(asyncio.run(main()))

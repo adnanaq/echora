@@ -35,21 +35,74 @@ from src.enrichment.crawlers.utils import sanitize_output_path
 _CACHE_CONFIG = get_cache_config()
 TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
+BASE_CHARACTER_URL = "https://www.anisearch.com/anime/"
+
+
+def _normalize_character_url(anime_identifier: str) -> str:
+    """
+    Normalize various input formats to full anisearch character URL.
+
+    Accepts:
+        - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+        - Path: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
+        - Anime ID: "18878,dan-da-dan" (will append /characters)
+
+    Returns:
+        Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+    """
+    # If already full URL with /characters, return as-is
+    if anime_identifier.startswith("https://www.anisearch.com/anime/") and "/characters" in anime_identifier:
+        return anime_identifier
+
+    # If full URL without /characters, append it
+    if anime_identifier.startswith("https://www.anisearch.com/anime/"):
+        return f"{anime_identifier.rstrip('/')}/characters"
+
+    # Remove leading slash if present
+    clean_id = anime_identifier.lstrip("/")
+
+    # Remove /characters suffix if present (we'll add it back)
+    clean_id = clean_id.replace("/characters", "").rstrip("/")
+
+    # Construct full URL
+    return f"{BASE_CHARACTER_URL}{clean_id}/characters"
+
+
+def _extract_anime_id_from_character_url(url: str) -> str:
+    """
+    Extract anime ID from character URL.
+
+    Args:
+        url: Character URL
+
+    Returns:
+        Anime ID (e.g., "18878,dan-da-dan")
+    """
+    # Remove base URL and /characters suffix
+    if url.startswith(BASE_CHARACTER_URL):
+        path = url[len(BASE_CHARACTER_URL):]
+        # Remove /characters suffix
+        return path.replace("/characters", "").rstrip("/")
+
+    raise ValueError(f"Invalid character URL: {url}")
+
 
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_characters")
-async def _fetch_anisearch_characters_data(url: str) -> Optional[Dict[str, Any]]:
+async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes character data from anisearch.com.
 
-    Results are cached in Redis for 24 hours based ONLY on URL.
+    Results are cached in Redis for 24 hours based ONLY on canonical anime ID.
     This function has no side effects - it only fetches and returns data.
 
     Args:
-        url: The URL of the anisearch.com character page to crawl
+        canonical_anime_id: Canonical anime ID (e.g., "18878,dan-da-dan") - already normalized by caller
 
     Returns:
         Complete character data dictionary with enriched details, or None if fetch fails
     """
+    # Build URL from canonical anime ID (caller already normalized)
+    url = f"{BASE_CHARACTER_URL}{canonical_anime_id}/characters"
     # Define a correct schema for character extraction
     css_schema = {
         "baseSelector": "#chara1, #chara2, #chara3, #chara5, #chara6, #chara7",
@@ -124,10 +177,11 @@ async def _fetch_anisearch_characters_data(url: str) -> Optional[Dict[str, Any]]
                                 del character["favorites"]
 
                         # Extract image URL from style
-                        if "image" in character and character["image"]:
+                        image_style = character.get("image")
+                        if image_style:
                             match = re.search(
                                 r'url\(["\\]?(.*?)["\\]?\)',
-                                character["image"],  # Corrected escaping here
+                                image_style,  # Corrected escaping here
                             )
                             if match:
                                 character["image"] = match.group(1)
@@ -146,11 +200,10 @@ async def _fetch_anisearch_characters_data(url: str) -> Optional[Dict[str, Any]]
             else:
                 print(f"Extraction failed: {result.error_message}")
                 return None
-        return None
 
 
 async def fetch_anisearch_characters(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
+    anime_id: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Wrapper function that handles side effects (file writing, return_data logic).
@@ -159,15 +212,23 @@ async def fetch_anisearch_characters(
     then performs side effects that should execute regardless of cache status.
 
     Args:
-        url: The URL of the anisearch.com character page to crawl
+        anime_id: Anime identifier - can be:
+            - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+            - Path: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
+            - Anime ID: "18878,dan-da-dan" (will auto-append /characters)
         return_data: Whether to return the data dict (default: True)
         output_path: Optional file path to save JSON (default: None)
 
     Returns:
         Complete character data dictionary (if return_data=True), otherwise None
     """
-    # Fetch data from cache or crawl (pure function)
-    data = await _fetch_anisearch_characters_data(url)
+    # Normalize identifier once so cache keys depend on canonical anime ID
+    # This ensures cache reuse across different identifier formats
+    character_url = _normalize_character_url(anime_id)
+    canonical_anime_id = _extract_anime_id_from_character_url(character_url)
+
+    # Fetch data from cache or crawl (pure function keyed only on canonical anime ID)
+    data = await _fetch_anisearch_characters_data(canonical_anime_id)
 
     if data is None:
         return None
@@ -189,10 +250,12 @@ async def fetch_anisearch_characters(
 async def main() -> int:
     """CLI entry point for anisearch.com character crawler."""
     parser = argparse.ArgumentParser(
-        description="Crawl character data from an anisearch.com URL."
+        description="Crawl character data from anisearch.com."
     )
     parser.add_argument(
-        "url", type=str, help="The anisearch.com URL for the anime characters page."
+        "anime_id",
+        type=str,
+        help="Anime identifier: full URL, path (e.g., '/18878,dan-da-dan/characters'), or ID (e.g., '18878,dan-da-dan')",
     )
     parser.add_argument(
         "--output",
@@ -204,7 +267,7 @@ async def main() -> int:
 
     try:
         await fetch_anisearch_characters(
-            args.url,
+            args.anime_id,
             output_path=args.output,
         )
     except (ValueError, RuntimeError) as e:

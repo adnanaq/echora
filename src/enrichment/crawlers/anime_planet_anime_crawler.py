@@ -78,24 +78,22 @@ def _extract_slug_from_url(url: str) -> str:
 
 
 @cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_anime")
-async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
+async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[str, Any]]:
     """
     Pure cached function that crawls and processes anime data from anime-planet.com.
     All data is available on the main anime page - no navigation needed.
 
-    Results are cached in Redis for 24 hours based ONLY on slug.
+    Results are cached in Redis for 24 hours based ONLY on canonical slug.
     This function has no side effects - it only fetches and returns data.
 
     Args:
-        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),
-              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan")
+        canonical_slug: Canonical anime slug (e.g., "dandadan") - already normalized by caller
 
     Returns:
         Complete anime data dictionary, or None on failure
     """
-    # Normalize URL and extract slug using helper functions
-    url = _normalize_anime_url(slug)
-    slug = _extract_slug_from_url(url)
+    # Build URL from canonical slug (caller already normalized)
+    url = f"{BASE_ANIME_URL}{canonical_slug}"
 
     css_schema = {
         "baseSelector": "body",
@@ -281,8 +279,8 @@ async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
                     if json_ld.get("aggregateRating"):
                         anime_data["aggregate_rating"] = json_ld["aggregateRating"]
 
-                # Add slug (extracted from normalized URL)
-                anime_data["slug"] = slug
+                # Add slug (passed as canonical_slug parameter)
+                anime_data["slug"] = canonical_slug
 
                 # Process rank
                 rank = _extract_rank(
@@ -379,7 +377,6 @@ async def _fetch_animeplanet_anime_data(slug: str) -> Optional[Dict[str, Any]]:
             else:
                 logging.warning(f"Extraction failed: {result.error_message}")
                 return None
-        return None
 
 
 async def fetch_animeplanet_anime(
@@ -400,8 +397,13 @@ async def fetch_animeplanet_anime(
     Returns:
         Complete anime data dictionary (if return_data=True), otherwise None
     """
-    # Fetch data from cache or crawl (pure function)
-    data = await _fetch_animeplanet_anime_data(slug)
+    # Normalize identifier once so cache keys depend on canonical slug
+    # This ensures cache reuse across different identifier formats
+    anime_url = _normalize_anime_url(slug)
+    canonical_slug = _extract_slug_from_url(anime_url)
+
+    # Fetch data from cache or crawl (pure function keyed only on canonical slug)
+    data = await _fetch_animeplanet_anime_data(canonical_slug)
 
     if data is None:
         return None
@@ -464,10 +466,7 @@ def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
         # Look for "Rank #N" or "#N"
         rank_match = re.search(r"#(\d+)", text)
         if rank_match:
-            try:
-                return int(rank_match.group(1))
-            except ValueError:
-                continue
+            return int(rank_match.group(1))
     return None
 
 
@@ -491,18 +490,15 @@ def _determine_season_from_date(date_str: str) -> Optional[str]:
     if not month_match:
         return None
 
-    try:
-        month = int(month_match.group(1))
-        if month in [12, 1, 2]:
-            return "WINTER"
-        elif month in [3, 4, 5]:
-            return "SPRING"
-        elif month in [6, 7, 8]:
-            return "SUMMER"
-        elif month in [9, 10, 11]:
-            return "FALL"
-    except ValueError:
-        pass
+    month = int(month_match.group(1))
+    if month in [12, 1, 2]:
+        return "WINTER"
+    elif month in [3, 4, 5]:
+        return "SPRING"
+    elif month in [6, 7, 8]:
+        return "SUMMER"
+    elif month in [9, 10, 11]:
+        return "FALL"
 
     return None
 
@@ -672,10 +668,10 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-        return 0
-    except Exception as e:
-        logging.exception(f"Failed to fetch anime-planet anime data")
+    except Exception:
+        logging.exception("Failed to fetch anime-planet anime data")
         return 1
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

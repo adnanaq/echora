@@ -44,8 +44,9 @@ def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
     Processes a list of relations to extract image URLs from tooltip_html and renames the field.
     """
     for relation in relations_list:
-        if "image" in relation and relation["image"]:
-            unescaped_html = html.unescape(relation["image"])
+        image = relation.get("image")
+        if image:
+            unescaped_html = html.unescape(image)
             img_match = re.search(r'<img src="([^"]+)"', unescaped_html)
             if img_match:
                 relation["image"] = img_match.group(1)  # Set image to processed URL
@@ -105,30 +106,26 @@ async def _fetch_and_process_sub_page(
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
 
-@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
-async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
+def _normalize_anime_url(anime_identifier: str) -> str:
     """
-    Pure cached function that crawls and processes anime data from anisearch.com.
-    Uses JS-based navigation for screenshots and relations pages.
+    Normalize various input formats to full anisearch anime URL.
 
-    Results are cached in Redis for 24 hours based ONLY on URL.
-    This function has no side effects - it only fetches and returns data.
-
-    Args:
-        url: Can be either:
-            - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
-            - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
+    Accepts:
+        - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
+        - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
 
     Returns:
-        Complete anime data dictionary with enriched details, or None if fetch fails
+        Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
 
     Raises:
         ValueError: If URL is not from anisearch.com/anime
     """
     # Normalize the URL
-    if not url.startswith("http"):
+    if not anime_identifier.startswith("http"):
         # Remove leading slash if present, then construct full URL
-        url = f"{BASE_ANIME_URL}{url.lstrip('/')}"
+        url = f"{BASE_ANIME_URL}{anime_identifier.lstrip('/')}"
+    else:
+        url = anime_identifier
 
     # Validate it's an anisearch.com anime URL
     if not url.startswith(BASE_ANIME_URL):
@@ -136,6 +133,51 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
             f"Invalid URL: Must be an anisearch.com anime URL. "
             f"Expected format: '{BASE_ANIME_URL}<anime-id>' or '/<anime-id>' or '<anime-id>'"
         )
+
+    return url
+
+
+def _extract_path_from_url(url: str) -> str:
+    """
+    Extract anime path from anisearch URL.
+
+    Args:
+        url: Full anisearch anime URL
+
+    Returns:
+        Anime path (e.g., "18878,dan-da-dan")
+
+    Raises:
+        ValueError: If URL cannot be parsed
+    """
+    if not url.startswith(BASE_ANIME_URL):
+        raise ValueError(f"URL must start with {BASE_ANIME_URL}")
+
+    # Extract path after BASE_ANIME_URL
+    path = url[len(BASE_ANIME_URL):]
+    if not path:
+        raise ValueError("URL does not contain anime path")
+
+    return path
+
+
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
+async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Pure cached function that crawls and processes anime data from anisearch.com.
+    Uses JS-based navigation for screenshots and relations pages.
+
+    Results are cached in Redis for 24 hours based ONLY on canonical path.
+    This function has no side effects - it only fetches and returns data.
+
+    Args:
+        canonical_path: Canonical anime path (e.g., "18878,dan-da-dan") - already normalized by caller
+
+    Returns:
+        Complete anime data dictionary with enriched details, or None if fetch fails
+    """
+    # Build URL from canonical path (caller already normalized)
+    url = f"{BASE_ANIME_URL}{canonical_path}"
 
     # Generate unique session ID for maintaining browser state
 
@@ -281,8 +323,8 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
                 # Extract start_date and end_date from published field
                 anime_data["start_date"] = None
                 anime_data["end_date"] = None
-                if "published" in anime_data and anime_data["published"]:
-                    published_str = anime_data["published"]
+                published_str = anime_data.get("published")
+                if published_str:
                     match = re.search(
                         r"(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})",
                         published_str,
@@ -483,11 +525,10 @@ async def _fetch_anisearch_anime_data(url: str) -> Optional[Dict[str, Any]]:
             else:
                 logging.warning(f"Extraction failed: {result.error_message}")
                 return None
-        return None
 
 
 async def fetch_anisearch_anime(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
+    anime_id: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Wrapper function that handles side effects (file writing, return_data logic).
@@ -496,17 +537,23 @@ async def fetch_anisearch_anime(
     then performs side effects that should execute regardless of cache status.
 
     Args:
-        url: Can be either:
+        anime_id: Anime identifier - can be:
             - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
-            - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
+            - Relative path: "/18878,dan-da-dan"
+            - Anime ID: "18878,dan-da-dan"
         return_data: Whether to return the data dict (default: True)
         output_path: Optional file path to save JSON (default: None)
 
     Returns:
         Complete anime data dictionary (if return_data=True), otherwise None
     """
-    # Fetch data from cache or crawl (pure function)
-    data = await _fetch_anisearch_anime_data(url)
+    # Normalize identifier once so cache keys depend on canonical path
+    # This ensures cache reuse across different identifier formats
+    anime_url = _normalize_anime_url(anime_id)
+    canonical_path = _extract_path_from_url(anime_url)
+
+    # Fetch data from cache or crawl (pure function keyed only on canonical path)
+    data = await _fetch_anisearch_anime_data(canonical_path)
 
     if data is None:
         return None
@@ -528,10 +575,12 @@ async def fetch_anisearch_anime(
 async def main() -> int:
     """CLI entry point for anisearch.com anime crawler."""
     parser = argparse.ArgumentParser(
-        description="Crawl anime data from an anisearch.com URL."
+        description="Crawl anime data from anisearch.com anime page."
     )
     parser.add_argument(
-        "url", type=str, help="The anisearch.com URL for the anime page."
+        "anime_id",
+        type=str,
+        help="Anime identifier: full URL, path (e.g., '/18878,dan-da-dan'), or ID (e.g., '18878,dan-da-dan')",
     )
     parser.add_argument(
         "--output",
@@ -543,7 +592,7 @@ async def main() -> int:
 
     try:
         await fetch_anisearch_anime(
-            args.url,
+            args.anime_id,
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )

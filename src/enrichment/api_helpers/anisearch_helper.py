@@ -69,14 +69,11 @@ class AniSearchEnrichmentHelper:
             Dict containing anime data or None if fetch fails
         """
         try:
-            # Construct URL from ID
-            url = f"https://www.anisearch.com/anime/{anisearch_id}"
-
             logger.info(f"Fetching AniSearch anime data for ID {anisearch_id}")
 
-            # Call anime crawler
+            # Call anime crawler with anime_id (accepts ID, path, or full URL)
             anime_data = await fetch_anisearch_anime(
-                url=url,
+                anime_id=str(anisearch_id),  # Pass ID directly
                 return_data=True,
                 output_path=None,  # No file output - return data only
             )
@@ -107,14 +104,11 @@ class AniSearchEnrichmentHelper:
             List of episode dicts or None if fetch fails
         """
         try:
-            # Construct episodes URL
-            url = f"https://www.anisearch.com/anime/{anisearch_id}/episodes"
-
             logger.info(f"Fetching AniSearch episode data for ID {anisearch_id}")
 
-            # Call episode crawler
+            # Call episode crawler with anime_id (accepts ID, path, or full URL)
             episode_data = await fetch_anisearch_episodes(
-                url=url,
+                anime_id=str(anisearch_id),  # Pass ID directly
                 return_data=True,
                 output_path=None,  # No file output - return data only
             )
@@ -142,14 +136,11 @@ class AniSearchEnrichmentHelper:
             Dict containing character data or None if fetch fails
         """
         try:
-            # Construct characters URL
-            url = f"https://www.anisearch.com/anime/{anisearch_id}/characters"
-
             logger.info(f"Fetching AniSearch character data for ID {anisearch_id}")
 
-            # Call character crawler
+            # Call character crawler with anime_id (accepts ID, path, or full URL)
             character_data = await fetch_anisearch_characters(
-                url=url,
+                anime_id=str(anisearch_id),  # Pass ID directly
                 return_data=True,
                 output_path=None,  # No file output - return data only
             )
