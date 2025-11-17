@@ -69,7 +69,7 @@ The anime vector database supports **38+ indexed payload fields** for filtering 
 
 **24 per-platform statistics fields** are indexed for filtering anime by ratings, popularity, and rankings across different platforms.
 
-### Statistics Filter Test Results ✅
+### Statistics Filter Test Results
 
 - MAL: 6/6 fields tested
 - AniList: 3/3 fields tested
