@@ -44,10 +44,23 @@ class CacheConfig(BaseModel):
         default=86400, description="AnimSchedule cache TTL - 24 hours"
     )
 
+    # Cache key configuration
+    max_cache_key_length: int = Field(
+        default=200,
+        description=(
+            "Maximum cache key length before hashing. "
+            "Redis has a 512MB key limit, but shorter keys provide: "
+            "1. Better readability in Redis CLI/monitoring tools "
+            "2. Improved lookup performance "
+            "3. Memory efficiency (keys stored in memory). "
+            "Keys exceeding this threshold are SHA256-hashed to 64 hex chars."
+        ),
+    )
+
     # Redis connection pool configuration
     redis_max_connections: int = Field(
         default=100,
-        description="Max Redis connections (tuned for multi-agent concurrency: 20 agents × 10 concurrent ops)",
+        description="Max Redis connections (tuned for multi-agent concurrency: 20 agents x 10 concurrent ops)",
     )
     redis_socket_keepalive: bool = Field(
         default=True,
@@ -95,7 +108,40 @@ def get_cache_config() -> CacheConfig:
     """
     import os
 
+    def parse_bool(value: str, default: bool) -> bool:
+        """Parse boolean from environment variable string."""
+        if value.lower() in ("true", "1", "yes"):
+            return True
+        elif value.lower() in ("false", "0", "no"):
+            return False
+        return default
+
+    def parse_int(value: str, default: int) -> int:
+        """Parse integer from environment variable string."""
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+
     return CacheConfig(
         enabled=os.getenv("ENABLE_HTTP_CACHE", "true").lower() == "true",
         redis_url=os.getenv("REDIS_CACHE_URL", "redis://localhost:6379/0"),
+        redis_max_connections=parse_int(
+            os.getenv("REDIS_MAX_CONNECTIONS", "100"), 100
+        ),
+        redis_socket_keepalive=parse_bool(
+            os.getenv("REDIS_SOCKET_KEEPALIVE", "true"), True
+        ),
+        redis_socket_connect_timeout=parse_int(
+            os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"), 5
+        ),
+        redis_socket_timeout=parse_int(
+            os.getenv("REDIS_SOCKET_TIMEOUT", "10"), 10
+        ),
+        redis_retry_on_timeout=parse_bool(
+            os.getenv("REDIS_RETRY_ON_TIMEOUT", "true"), True
+        ),
+        redis_health_check_interval=parse_int(
+            os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"), 30
+        ),
     )

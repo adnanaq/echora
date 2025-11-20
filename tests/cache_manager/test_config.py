@@ -271,6 +271,90 @@ class TestGetCacheConfig:
         assert config.ttl_anilist == 86400
 
 
+class TestRedisConnectionPoolConfiguration:
+    """Test Redis connection pool configuration via environment variables.
+
+    These tests verify that all documented Redis configuration env vars
+    are properly loaded by get_cache_config().
+    """
+
+    def test_redis_max_connections_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_MAX_CONNECTIONS env var is loaded."""
+        monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "50")
+
+        config = get_cache_config()
+        assert config.redis_max_connections == 50
+
+    def test_redis_socket_keepalive_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_SOCKET_KEEPALIVE env var is loaded."""
+        monkeypatch.setenv("REDIS_SOCKET_KEEPALIVE", "false")
+
+        config = get_cache_config()
+        assert config.redis_socket_keepalive is False
+
+    def test_redis_socket_connect_timeout_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_SOCKET_CONNECT_TIMEOUT env var is loaded."""
+        monkeypatch.setenv("REDIS_SOCKET_CONNECT_TIMEOUT", "10")
+
+        config = get_cache_config()
+        assert config.redis_socket_connect_timeout == 10
+
+    def test_redis_socket_timeout_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_SOCKET_TIMEOUT env var is loaded."""
+        monkeypatch.setenv("REDIS_SOCKET_TIMEOUT", "20")
+
+        config = get_cache_config()
+        assert config.redis_socket_timeout == 20
+
+    def test_redis_retry_on_timeout_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_RETRY_ON_TIMEOUT env var is loaded."""
+        monkeypatch.setenv("REDIS_RETRY_ON_TIMEOUT", "false")
+
+        config = get_cache_config()
+        assert config.redis_retry_on_timeout is False
+
+    def test_redis_health_check_interval_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that REDIS_HEALTH_CHECK_INTERVAL env var is loaded."""
+        monkeypatch.setenv("REDIS_HEALTH_CHECK_INTERVAL", "60")
+
+        config = get_cache_config()
+        assert config.redis_health_check_interval == 60
+
+    def test_all_redis_config_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that all Redis configuration env vars are loaded together."""
+        monkeypatch.setenv("REDIS_CACHE_URL", "redis://prod:6379/0")
+        monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "200")
+        monkeypatch.setenv("REDIS_SOCKET_KEEPALIVE", "true")
+        monkeypatch.setenv("REDIS_SOCKET_CONNECT_TIMEOUT", "3")
+        monkeypatch.setenv("REDIS_SOCKET_TIMEOUT", "15")
+        monkeypatch.setenv("REDIS_RETRY_ON_TIMEOUT", "true")
+        monkeypatch.setenv("REDIS_HEALTH_CHECK_INTERVAL", "45")
+
+        config = get_cache_config()
+
+        assert config.redis_url == "redis://prod:6379/0"
+        assert config.redis_max_connections == 200
+        assert config.redis_socket_keepalive is True
+        assert config.redis_socket_connect_timeout == 3
+        assert config.redis_socket_timeout == 15
+        assert config.redis_retry_on_timeout is True
+        assert config.redis_health_check_interval == 45
+
+
 class TestCacheConfigIntegration:
     """Integration tests for CacheConfig with realistic scenarios."""
 
