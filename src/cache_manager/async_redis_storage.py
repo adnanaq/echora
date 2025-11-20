@@ -13,7 +13,17 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import AsyncIterator, Callable, List, Optional, Union
+from typing import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+    cast,
+)
 
 # Import Hishel core types
 from hishel._core._storages._async_base import AsyncBaseStorage
@@ -43,7 +53,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        client: Optional[Redis] = None,  # type: ignore[type-arg]
+        client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379/0",
         default_ttl: Optional[float] = None,
         refresh_ttl_on_access: bool = True,
@@ -208,7 +218,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             List of Entry objects
         """
         index_key = self._index_key(key)
-        entry_ids_bytes = await self.client.smembers(index_key)
+        entry_ids_bytes = await cast(
+            "Awaitable[Set[bytes]]", self.client.smembers(index_key)
+        )
 
         if not entry_ids_bytes:
             return []
@@ -220,7 +232,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             entry_key = self._entry_key(entry_id)
 
             # Get entry data
-            entry_hash = await self.client.hgetall(entry_key)
+            entry_hash = await cast(
+                "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+            )
             if not entry_hash or b"data" not in entry_hash:
                 continue
 
@@ -274,7 +288,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             Updated Entry or None if not found
         """
         entry_key = self._entry_key(id)
-        entry_hash = await self.client.hgetall(entry_key)
+        entry_hash = await cast(
+            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+        )
 
         if not entry_hash or b"data" not in entry_hash:
             return None
@@ -297,7 +313,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_data = pack(complete_entry, kind="pair")
 
         pipe = self.client.pipeline()
-        pipe.hset(entry_key, b"data", entry_data)
+        pipe.hset(entry_key, "data", cast("Optional[str]", entry_data))
 
         # Update cache key index if changed
         if current_entry.cache_key != complete_entry.cache_key:
@@ -306,7 +322,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             pipe.srem(old_index_key, str(id).encode("utf-8"))
             pipe.sadd(new_index_key, str(id).encode("utf-8"))
-            pipe.hset(entry_key, b"cache_key", complete_entry.cache_key)
+            pipe.hset(entry_key, "cache_key", cast("Optional[str]", complete_entry.cache_key))
 
         await pipe.execute()
 
@@ -320,7 +336,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             id: Entry UUID
         """
         entry_key = self._entry_key(id)
-        entry_hash = await self.client.hgetall(entry_key)
+        entry_hash = await cast(
+            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+        )
 
         if not entry_hash or b"data" not in entry_hash:
             return
@@ -335,12 +353,15 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_data = pack(deleted_entry, kind="pair")
 
         # Update entry with deleted_at timestamp
-        await self.client.hset(
-            entry_key,
-            mapping={
-                b"data": entry_data,
-                b"deleted_at": str(deleted_entry.meta.deleted_at).encode("utf-8"),
-            },
+        await cast(
+            "Awaitable[int]",
+            self.client.hset(
+                entry_key,
+                mapping={
+                    b"data": entry_data,
+                    b"deleted_at": str(deleted_entry.meta.deleted_at).encode("utf-8"),
+                },
+            ),
         )
 
     async def close(self) -> None:
@@ -349,8 +370,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             return
         try:
             await self.client.aclose()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.warning(f"Error closing Redis client: {e}")
 
     async def _save_stream(
         self, stream: AsyncIterator[bytes], entry_id: uuid.UUID, ttl: Optional[float]
@@ -370,11 +392,13 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         async for chunk in stream:
             # Save chunk to Redis list
-            await self.client.rpush(stream_key, chunk)
+            await cast("Awaitable[int]", self.client.rpush(stream_key, chunk))
             yield chunk
 
         # Mark stream as complete
-        await self.client.rpush(stream_key, self._COMPLETE_CHUNK_MARKER)
+        await cast(
+            "Awaitable[int]", self.client.rpush(stream_key, self._COMPLETE_CHUNK_MARKER)
+        )
 
         # Apply TTL now that the stream key exists
         if ttl is not None:
@@ -395,7 +419,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
         stream_key = self._stream_key(entry_id)
 
         # Get all chunks at once (could optimize with cursor for large streams)
-        chunks = await self.client.lrange(stream_key, 0, -1)
+        chunks = await cast(
+            "Awaitable[List[bytes]]", self.client.lrange(stream_key, 0, -1)
+        )
 
         for chunk in chunks:
             # Skip completion marker
@@ -442,7 +468,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
             cursor, keys = await self.client.scan(cursor, match=pattern, count=100)
 
             for key in keys:
-                entry_hash = await self.client.hgetall(key)
+                entry_hash = await cast(
+                    "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(key)
+                )
                 if not entry_hash or b"data" not in entry_hash:
                     continue
 
@@ -471,13 +499,17 @@ class AsyncRedisStorage(AsyncBaseStorage):
         stream_key = self._stream_key(entry_id)
 
         # Get cache key before deleting
-        entry_hash = await self.client.hgetall(entry_key)
+        entry_hash = await cast(
+            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+        )
         if entry_hash and b"cache_key" in entry_hash:
             cache_key = entry_hash[b"cache_key"].decode("utf-8")
             index_key = self._index_key(cache_key)
 
             # Remove from index
-            await self.client.srem(index_key, str(entry_id).encode("utf-8"))
+            await cast(
+                "Awaitable[int]", self.client.srem(index_key, str(entry_id).encode("utf-8"))
+            )
 
         # Delete entry and stream
         pipe = self.client.pipeline()
