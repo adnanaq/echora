@@ -10,22 +10,18 @@ import logging
 from typing import Any, Dict, List, Optional, TypeGuard
 
 # fastembed import moved to _init_encoder method for lazy loading
-from qdrant_client import QdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient as QdrantSDK
 from qdrant_client.models import (  # Qdrant optimization models; Multi-vector search models
     BinaryQuantization,
     BinaryQuantizationConfig,
-    CollectionParams,
     Distance,
     FieldCondition,
     Filter,
     Fusion,
     FusionQuery,
-    HnswConfig,
     HnswConfigDiff,
     MatchAny,
     MatchValue,
-    NamedVector,
-    NearestQuery,
     OptimizersConfig,
     OptimizersConfigDiff,
     PayloadSchemaType,
@@ -34,20 +30,15 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
     Prefetch,
     ProductQuantization,
     QuantizationConfig,
-    Query,
-    QueryRequest,
     Range,
     ScalarQuantization,
     ScalarQuantizationConfig,
     ScalarType,
     VectorParams,
-    WalConfig,
     WalConfigDiff,
 )
 
 from ...config import Settings
-from ...models.anime import AnimeEntry
-from ..processors.embedding_manager import MultiVectorEmbeddingManager
 
 logger = logging.getLogger(__name__)
 
@@ -66,78 +57,51 @@ class QdrantClient:
 
     def __init__(
         self,
+        settings: Settings,
+        qdrant_sdk_client: QdrantSDK,
         url: Optional[str] = None,
         collection_name: Optional[str] = None,
-        settings: Optional[Settings] = None,
     ):
-        """Initialize Qdrant client with FastEmbed and configuration.
+        """Initialize Qdrant client with injected dependencies and configuration.
 
         Args:
+            settings: Configuration settings instance.
+            qdrant_sdk_client: An initialized QdrantSDK client instance.
             url: Qdrant server URL (optional, uses settings if not provided)
             collection_name: Name of the anime collection (optional, uses settings if not provided)
-            settings: Configuration settings instance (optional, will import default if not provided)
         """
-        # Use provided settings or import default settings
-        if settings is None:
-            from ...config.settings import Settings
-
-            settings = Settings()
-
         self.settings = settings
         self.url = url or settings.qdrant_url
         self.collection_name = collection_name or settings.qdrant_collection_name
 
-        # Initialize Qdrant client with API key if provided
-        if settings.qdrant_api_key:
-            self.client = QdrantSDK(url=self.url, api_key=settings.qdrant_api_key)
-        else:
-            self.client = QdrantSDK(url=self.url)
+        self.client = qdrant_sdk_client
 
         self._distance_metric = settings.qdrant_distance_metric
 
-        # Initialize embedding manager
-        self.embedding_manager = MultiVectorEmbeddingManager(settings)
+        # Initialize vector sizes based on settings
+        self._vector_size = settings.vector_names.get("title_vector", 384) # Default to a common text vector size
+        self._image_vector_size = settings.vector_names.get("image_vector", 512) # Default to a common image vector size
 
-        # Initialize processors
-        self._init_processors()
+    @classmethod
+    async def create(
+        cls,
+        settings: Settings,
+        qdrant_sdk_client: QdrantSDK,
+        url: Optional[str] = None,
+        collection_name: Optional[str] = None,
+    ) -> "QdrantClient":
+        """Create and initialize a QdrantClient instance."""
+        client = cls(settings, qdrant_sdk_client, url, collection_name)
+        await client._initialize_collection()
+        return client
 
-        # Create collection if it doesn't exist
-        self._initialize_collection()
 
-    def _init_processors(self) -> None:
-        """Initialize embedding processors."""
-        try:
-            # Import processors
-            from ..processors.text_processor import TextProcessor
-            from ..processors.vision_processor import VisionProcessor
 
-            # Initialize text processor
-            self.text_processor = TextProcessor(self.settings)
-
-            # Initialize vision processor
-            self.vision_processor = VisionProcessor(self.settings)
-
-            # Update vector sizes based on modern models
-            text_info = self.text_processor.get_model_info()
-            vision_info = self.vision_processor.get_model_info()
-
-            self._vector_size = text_info.get("embedding_size", 384)
-            self._image_vector_size = vision_info.get("embedding_size", 512)
-
-            logger.info(
-                f"Initialized processors - Text: {text_info['model_name']} ({self._vector_size}), "
-                f"Vision: {vision_info['model_name']} ({self._image_vector_size})"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to initialize processors: {e}")
-            raise
-
-    def _initialize_collection(self) -> None:
+    async def _initialize_collection(self) -> None:
         """Initialize and validate anime collection with 11-vector architecture and performance optimization."""
         try:
             # Check if collection exists and validate its configuration
-            collections = self.client.get_collections().collections
+            collections = (await self.client.get_collections()).collections
             collection_exists = any(
                 col.name == self.collection_name for col in collections
             )
@@ -156,7 +120,7 @@ class QdrantClient:
                 wal_config = self._create_wal_config()
 
                 # Create collection with optimization
-                self.client.create_collection(
+                await self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=vectors_config,
                     quantization_config=quantization_config,
@@ -166,14 +130,14 @@ class QdrantClient:
 
                 # Configure payload indexing for faster filtering
                 if getattr(self.settings, "qdrant_enable_payload_indexing", True):
-                    self._setup_payload_indexing()
+                    await self._setup_payload_indexing()
 
                 logger.info(
                     f"Successfully created collection with {len(vectors_config)} vectors"
                 )
             else:
                 # Validate existing collection compatibility
-                if not self._validate_collection_compatibility():
+                if not await self._validate_collection_compatibility():
                     logger.warning(
                         f"Collection {self.collection_name} exists but may have compatibility issues"
                     )
@@ -189,10 +153,10 @@ class QdrantClient:
             logger.error(f"Failed to ensure collection exists: {e}")
             raise
 
-    def _validate_collection_compatibility(self) -> bool:
+    async def _validate_collection_compatibility(self) -> bool:
         """Validate existing collection compatibility with current vector architecture."""
         try:
-            collection_info = self.client.get_collection(self.collection_name)
+            collection_info = await self.client.get_collection(self.collection_name)
             existing_vectors = collection_info.config.params.vectors
 
             # Check if collection has expected vector configurations
@@ -281,12 +245,12 @@ class QdrantClient:
         config = self.settings.quantization_config.get(priority, {})
         if config.get("type") == "scalar":
             scalar_config = ScalarQuantizationConfig(
-                type=ScalarType.INT8, always_ram=config.get("always_ram", False)
+                type=ScalarType.INT8, always_ram=bool(config.get("always_ram", False))
             )
             return ScalarQuantization(scalar=scalar_config)
         elif config.get("type") == "binary":
             binary_config = BinaryQuantizationConfig(
-                always_ram=config.get("always_ram", False)
+                always_ram=bool(config.get("always_ram", False))
             )
             return BinaryQuantization(binary=binary_config)
         return None
@@ -396,7 +360,7 @@ class QdrantClient:
                 logger.error(f"Failed to create WAL config: {e}")
         return None
 
-    def _setup_payload_indexing(self) -> None:
+    async def _setup_payload_indexing(self) -> None:
         """Setup payload field indexing for faster filtering.
 
         Creates indexes only for searchable metadata fields while keeping
@@ -447,7 +411,7 @@ class QdrantClient:
                 )
 
                 # Create index for each field with its specific type
-                self.client.create_payload_index(
+                await self.client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field_name,
                     field_schema=schema_type,
@@ -470,12 +434,8 @@ class QdrantClient:
     async def health_check(self) -> bool:
         """Check if Qdrant is healthy and reachable."""
         try:
-            # Run in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
             # Simple health check by getting collections
-            collections = await loop.run_in_executor(
-                None, lambda: self.client.get_collections()
-            )
+            collections = await self.client.get_collections()
             return True
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -484,19 +444,12 @@ class QdrantClient:
     async def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
         try:
-            loop = asyncio.get_event_loop()
-
             # Get collection info
-            collection_info = await loop.run_in_executor(
-                None, lambda: self.client.get_collection(self.collection_name)
-            )
+            collection_info = await self.client.get_collection(self.collection_name)
 
             # Count total points
-            count_result = await loop.run_in_executor(
-                None,
-                lambda: self.client.count(
-                    collection_name=self.collection_name, count_filter=None, exact=True
-                ),
+            count_result = await self.client.count(
+                collection_name=self.collection_name, count_filter=None, exact=True
             )
 
             return {
@@ -519,55 +472,37 @@ class QdrantClient:
         return hashlib.md5(anime_id.encode()).hexdigest()
 
     async def add_documents(
-        self, documents: List[AnimeEntry], batch_size: int = 100
+        self,
+        documents: List[PointStruct],
+        batch_size: int = 100,
     ) -> bool:
-        """Add anime documents to the collection using the 11-vector architecture.
+        """Add documents (with pre-generated vectors) to the collection.
 
         Args:
-            documents: List of AnimeEntry objects
+            documents: List of PointStruct objects (each containing ID, vectors, and payload)
             batch_size: Number of documents to process per batch
+            progress_callback: Optional callback function to report progress.
+                             It receives the index of the processed document, the total number of documents, and the point itself.
 
         Returns:
             True if successful, False otherwise
         """
         try:
             total_docs = len(documents)
-            logger.info(f"Adding {total_docs} documents in batches of {batch_size}")
+            logger.info(f"Adding {total_docs} pre-processed documents in batches of {batch_size}")
 
             for i in range(0, total_docs, batch_size):
-                batch_documents = documents[i : i + batch_size]
+                batch_points = documents[i : i + batch_size]
 
-                # Process batch to get vectors and payloads
-                processed_batch = await self.embedding_manager.process_anime_batch(
-                    batch_documents
-                )
-
-                points = []
-                for doc_data in processed_batch:
-                    if doc_data["metadata"].get("processing_failed"):
-                        logger.warning(
-                            f"Skipping failed document: {doc_data['metadata'].get('anime_title')}"
+                if batch_points:
+                        # Upsert batch to Qdrant
+                        await self.client.upsert(
+                            collection_name=self.collection_name, points=batch_points, wait=True
                         )
-                        continue
-
-                    point_id = self._generate_point_id(doc_data["payload"]["id"])
-
-                    point = PointStruct(
-                        id=point_id,
-                        vector=doc_data["vectors"],
-                        payload=doc_data["payload"],
-                    )
-                    points.append(point)
-
-                if points:
-                    # Upsert batch to Qdrant
-                    self.client.upsert(
-                        collection_name=self.collection_name, points=points, wait=True
-                    )
-                    logger.info(
-                        f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(points)} points)"
-                    )
-
+                        logger.info(
+                            f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(batch_points)} points)"
+                        )
+                        
             logger.info(f"Successfully added {total_docs} documents")
             return True
 
@@ -606,13 +541,13 @@ class QdrantClient:
 
         return True, None
 
-    async def _update_single_vector(
+    async def update_single_vector(
         self,
         anime_id: str,
         vector_name: str,
         vector_data: List[float],
     ) -> bool:
-        """Update a single named vector for an existing anime point (low-level internal method).
+        """Update a single named vector for an existing anime point.
 
         This method updates ONLY the specified vector while keeping all other
         vectors unchanged. Useful for selective updates like weekly statistics
@@ -625,10 +560,6 @@ class QdrantClient:
 
         Returns:
             True if successful, False otherwise
-
-        Note:
-            This is a low-level internal method. For most use cases, prefer the
-            high-level update_single_anime_vector() method that auto-generates vectors.
         """
         try:
             # Validate vector update
@@ -639,16 +570,12 @@ class QdrantClient:
 
             point_id = self._generate_point_id(anime_id)
 
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: self.client.update_vectors(
-                    collection_name=self.collection_name,
-                    points=[
-                        PointVectors(id=point_id, vector={vector_name: vector_data})
-                    ],
-                    wait=True,
-                ),
+            await self.client.update_vectors(
+                collection_name=self.collection_name,
+                points=[
+                    PointVectors(id=point_id, vector={vector_name: vector_data})
+                ],
+                wait=True,
             )
 
             logger.debug(f"Updated {vector_name} for anime {anime_id}")
@@ -660,122 +587,122 @@ class QdrantClient:
             )
             return False
 
-    async def update_single_anime_vector(
-        self,
-        anime_entry: AnimeEntry,
-        vector_name: str,
-    ) -> Dict[str, Any]:
-        """Update a single vector for an anime by auto-generating the embedding.
+    # async def update_single_anime_vector(
+    #     self,
+    #     anime_entry: AnimeEntry,
+    #     vector_name: str,
+    # ) -> Dict[str, Any]:
+    #     """Update a single vector for an anime by auto-generating the embedding.
+    #
+    #     This is a high-level convenience method that:
+    #     1. Takes an AnimeEntry object
+    #     2. Automatically generates the vector embedding
+    #     3. Updates the vector in Qdrant
+    #
+    #     Args:
+    #         anime_entry: AnimeEntry object containing anime data
+    #         vector_name: Name of vector to update (e.g., "title_vector", "genre_vector")
+    #
+    #     Returns:
+    #         Dictionary with update result:
+    #             - success: Boolean indicating success/failure
+    #             - anime_id: Anime ID that was updated
+    #             - vector_name: Vector name that was updated
+    #             - error: Error message (only if success=False)
+    #             - generation_failed: Boolean indicating if vector generation failed
+    #
+    #     Example:
+    #         >>> anime = AnimeEntry(id="anime_123", title="One Piece", ...)
+    #         >>> result = await client.update_single_anime_vector(
+    #         ...     anime_entry=anime,
+    #         ...     vector_name="title_vector"
+    #         ... )
+    #         >>> if result['success']:
+    #         ...     print(f"Updated {result['vector_name']} for {result['anime_id']}")
+    #         >>> else:
+    #         ...     print(f"Failed: {result['error']}")
+    #     """
+    #     try:
+    #         # Validate vector name first
+    #         if vector_name not in self.settings.vector_names:
+    #             return {
+    #                 "success": False,
+    #                 "anime_id": anime_entry.id,
+    #                 "vector_name": vector_name,
+    #                 "error": f"Invalid vector name: {vector_name}",
+    #                 "generation_failed": False,
+    #             }
+    #
+    #         # Generate vector using embedding manager
+    #         gen_results = await self.embedding_manager.process_anime_batch([anime_entry])
+    #
+    #         if not gen_results or len(gen_results) == 0:
+    #             return {
+    #                 "success": False,
+    #                 "anime_id": anime_entry.id,
+    #                 "vector_name": vector_name,
+    #                 "error": "Vector generation returned no results",
+    #                 "generation_failed": True,
+    #             }
+    #
+    #         gen_result = gen_results[0]
+    #         vectors = gen_result.get("vectors", {})
+    #
+    #         # Check if requested vector was generated
+    #         if vector_name not in vectors or not vectors[vector_name]:
+    #             return {
+    #                 "success": False,
+    #                 "anime_id": anime_entry.id,
+    #                 "vector_name": vector_name,
+    #                 "error": f"Vector generation failed for {vector_name}",
+    #                 "generation_failed": True,
+    #             }
+    #
+    #         vector_data = vectors[vector_name]
+    #
+    #         # Update the vector in Qdrant using low-level method
+    #         success = await self._update_single_vector(
+    #             anime_id=anime_entry.id,
+    #             vector_name=vector_name,
+    #             vector_data=vector_data,
+    #         )
+    #
+    #         if success:
+    #             return {
+    #                 "success": True,
+    #                 "anime_id": anime_entry.id,
+    #                 "vector_name": vector_name,
+    #                 "generation_failed": False,
+    #             }
+    #         else:
+    #             return {
+    #                 "success": False,
+    #                 "anime_id": anime_entry.id,
+    #                 "vector_name": vector_name,
+    #                 "error": "Failed to update vector in Qdrant",
+    #                 "generation_failed": False,
+    #             }
+    #
+    #     except Exception as e:
+    #         logger.exception(
+    #             f"Failed to update {vector_name} for anime {anime_entry.id}: {e}"
+    #         )
+    #         return {
+    #             "success": False,
+    #             "anime_id": anime_entry.id,
+    #             "vector_name": vector_name,
+    #             "error": str(e),
+    #             "generation_failed": False,
+    #         }
 
-        This is a high-level convenience method that:
-        1. Takes an AnimeEntry object
-        2. Automatically generates the vector embedding
-        3. Updates the vector in Qdrant
-
-        Args:
-            anime_entry: AnimeEntry object containing anime data
-            vector_name: Name of vector to update (e.g., "title_vector", "genre_vector")
-
-        Returns:
-            Dictionary with update result:
-                - success: Boolean indicating success/failure
-                - anime_id: Anime ID that was updated
-                - vector_name: Vector name that was updated
-                - error: Error message (only if success=False)
-                - generation_failed: Boolean indicating if vector generation failed
-
-        Example:
-            >>> anime = AnimeEntry(id="anime_123", title="One Piece", ...)
-            >>> result = await client.update_single_anime_vector(
-            ...     anime_entry=anime,
-            ...     vector_name="title_vector"
-            ... )
-            >>> if result['success']:
-            ...     print(f"Updated {result['vector_name']} for {result['anime_id']}")
-            >>> else:
-            ...     print(f"Failed: {result['error']}")
-        """
-        try:
-            # Validate vector name first
-            if vector_name not in self.settings.vector_names:
-                return {
-                    "success": False,
-                    "anime_id": anime_entry.id,
-                    "vector_name": vector_name,
-                    "error": f"Invalid vector name: {vector_name}",
-                    "generation_failed": False,
-                }
-
-            # Generate vector using embedding manager
-            gen_results = await self.embedding_manager.process_anime_batch([anime_entry])
-
-            if not gen_results or len(gen_results) == 0:
-                return {
-                    "success": False,
-                    "anime_id": anime_entry.id,
-                    "vector_name": vector_name,
-                    "error": "Vector generation returned no results",
-                    "generation_failed": True,
-                }
-
-            gen_result = gen_results[0]
-            vectors = gen_result.get("vectors", {})
-
-            # Check if requested vector was generated
-            if vector_name not in vectors or not vectors[vector_name]:
-                return {
-                    "success": False,
-                    "anime_id": anime_entry.id,
-                    "vector_name": vector_name,
-                    "error": f"Vector generation failed for {vector_name}",
-                    "generation_failed": True,
-                }
-
-            vector_data = vectors[vector_name]
-
-            # Update the vector in Qdrant using low-level method
-            success = await self._update_single_vector(
-                anime_id=anime_entry.id,
-                vector_name=vector_name,
-                vector_data=vector_data,
-            )
-
-            if success:
-                return {
-                    "success": True,
-                    "anime_id": anime_entry.id,
-                    "vector_name": vector_name,
-                    "generation_failed": False,
-                }
-            else:
-                return {
-                    "success": False,
-                    "anime_id": anime_entry.id,
-                    "vector_name": vector_name,
-                    "error": "Failed to update vector in Qdrant",
-                    "generation_failed": False,
-                }
-
-        except Exception as e:
-            logger.exception(
-                f"Failed to update {vector_name} for anime {anime_entry.id}: {e}"
-            )
-            return {
-                "success": False,
-                "anime_id": anime_entry.id,
-                "vector_name": vector_name,
-                "error": str(e),
-                "generation_failed": False,
-            }
-
-    async def _update_batch_vectors(
+    async def update_batch_vectors(
         self,
         updates: List[Dict[str, Any]],
         dedup_policy: str = "last-wins",
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> Dict[str, Any]:
-        """Update multiple vectors across multiple anime points in a single batch (low-level internal method).
+        """Update multiple vectors across multiple anime points in a single batch.
 
         More efficient than individual updates when updating many points.
         Processes updates in batches for optimal performance.
@@ -806,11 +733,6 @@ class QdrantClient:
 
         Raises:
             ValueError: If dedup_policy is "fail" and duplicates are found
-
-        Note:
-            This is a low-level internal method. For most use cases, prefer the
-            high-level update_batch_anime_vectors() method that auto-generates vectors from
-            AnimeEntry objects
         """
         try:
             if not updates:
@@ -910,16 +832,11 @@ class QdrantClient:
 
                 while retry_count <= max_retries:
                     try:
-                        loop = asyncio.get_running_loop()
-                        await loop.run_in_executor(
-                            None,
-                            lambda: self.client.update_vectors(
-                                collection_name=self.collection_name,
-                                points=point_updates,
-                                wait=True,
-                            ),
+                        await self.client.update_vectors(
+                            collection_name=self.collection_name,
+                            points=point_updates,
+                            wait=True,
                         )
-
                         # Success - mark all grouped updates as successful
                         for anime_id in grouped_updates.keys():
                             for vector_name in grouped_updates[anime_id].keys():
@@ -1016,151 +933,151 @@ class QdrantClient:
                 "duplicates_removed": 0,
             }
 
-    async def update_batch_anime_vectors(
-        self,
-        anime_entries: List[AnimeEntry],
-        vector_names: Optional[List[str]] = None,
-        batch_size: int = 100,
-        progress_callback: Optional[Any] = None,
-    ) -> Dict[str, Any]:
-        """Generate and update vectors for a batch of anime entries with automatic batching.
-
-        This is a high-level method that:
-        1. Generates vectors from AnimeEntry objects using the embedding manager
-        2. Batches processing for memory efficiency
-        3. Updates Qdrant with the generated vectors
-        4. Provides progress callbacks for monitoring
-
-        Args:
-            anime_entries: List of AnimeEntry objects to process
-            vector_names: Optional list of specific vectors to update.
-                         If None, generates and updates all 11 vectors.
-                         Valid names: title_vector, character_vector, genre_vector,
-                         staff_vector, temporal_vector, streaming_vector, related_vector,
-                         franchise_vector, episode_vector, image_vector, character_image_vector
-            batch_size: Number of anime to process per batch (default: 100).
-                       Smaller values use less memory, larger values are faster.
-            progress_callback: Optional callback function(current, total, batch_result)
-                              called after each batch completes. Useful for progress logging.
-
-        Returns:
-            Dictionary with comprehensive statistics:
-                - total_anime: Total number of anime processed
-                - total_requested_updates: Total updates attempted (anime × vectors)
-                - successful_updates: Number of successful vector updates
-                - failed_updates: Number of failed vector updates
-                - generation_failures: Number of vectors that failed to generate
-                - results: List of per-update results with anime_id, vector_name, success, error
-                - generation_failures_detail: List of generation failures with details
-
-        Example:
-            >>> # Update all vectors for a batch of anime
-            >>> result = await client.update_batch_anime_vectors(
-            ...     anime_entries=[anime1, anime2],
-            ...     vector_names=["title_vector", "genre_vector"]
-            ... )
-            >>> print(f"Success: {result['successful_updates']}")
-
-            >>> # With progress callback for CLI
-            >>> def log_progress(current, total, batch_result):
-            ...     print(f"Processed {current}/{total} anime")
-            >>> result = await client.update_batch_anime_vectors(
-            ...     anime_entries=large_list,
-            ...     progress_callback=log_progress
-            ... )
-        """
-        try:
-            if not anime_entries:
-                return {
-                    "total_anime": 0,
-                    "total_requested_updates": 0,
-                    "successful_updates": 0,
-                    "failed_updates": 0,
-                    "generation_failures": 0,
-                    "results": [],
-                    "generation_failures_detail": [],
-                }
-
-            total_anime = len(anime_entries)
-            all_batch_results: List[Dict[str, Any]] = []
-            all_generation_failures: List[Dict[str, Any]] = []
-
-            # Process in batches for memory efficiency
-            for batch_start in range(0, total_anime, batch_size):
-                batch_end = min(batch_start + batch_size, total_anime)
-                batch = anime_entries[batch_start:batch_end]
-
-                logger.debug(
-                    f"Processing batch {batch_start//batch_size + 1}: "
-                    f"anime {batch_start + 1}-{batch_end}/{total_anime}"
-                )
-
-                # Generate vectors for this batch using embedding manager
-                gen_results = await self.embedding_manager.process_anime_batch(batch)
-
-                # Prepare updates and track generation failures
-                batch_updates: List[Dict[str, Any]] = []
-
-                for i, anime_entry in enumerate(batch):
-                    gen_result = gen_results[i]
-                    vectors = gen_result.get("vectors", {})
-
-                    # Filter to requested vectors if specified
-                    if vector_names:
-                        requested_vectors = {
-                            k: v for k, v in vectors.items() if k in vector_names
-                        }
-                        # Track which requested vectors failed to generate
-                        for requested_vec in vector_names:
-                            if (
-                                requested_vec not in vectors
-                                or not vectors[requested_vec]
-                            ):
-                                all_generation_failures.append(
-                                    {
-                                        "anime_id": anime_entry.id,
-                                        "vector_name": requested_vec,
-                                        "error": "Vector generation failed or returned None",
-                                    }
-                                )
-                    else:
-                        requested_vectors = vectors
-
-                    # Add valid vectors to batch updates
-                    for vector_name, vector_data in requested_vectors.items():
-                        if vector_data and len(vector_data) > 0:
-                            batch_updates.append(
-                                {
-                                    "anime_id": anime_entry.id,
-                                    "vector_name": vector_name,
-                                    "vector_data": vector_data,
-                                }
-                            )
-
-                # Update in Qdrant if we have valid updates
-                if batch_updates:
-                    batch_result = await self._update_batch_vectors(batch_updates)
-                else:
-                    batch_result = {"success": 0, "failed": 0, "results": []}
-                    logger.warning(
-                        f"Batch {batch_start//batch_size + 1} had no valid updates"
-                    )
-
-                all_batch_results.append(batch_result)
-
-                # Call progress callback if provided
-                if progress_callback:
-                    progress_callback(batch_end, total_anime, batch_result)
-
-            # Aggregate all batch results
-            num_vectors = len(vector_names) if vector_names else 11
-            return self._aggregate_batch_results(
-                all_batch_results, all_generation_failures, total_anime, num_vectors
-            )
-
-        except Exception as e:
-            logger.exception(f"Failed to update anime vectors: {e}")
-            raise
+    # async def update_batch_anime_vectors(
+    #     self,
+    #     anime_entries: List[AnimeEntry],
+    #     vector_names: Optional[List[str]] = None,
+    #     batch_size: int = 100,
+    #     progress_callback: Optional[Any] = None,
+    # ) -> Dict[str, Any]:
+    #     """Generate and update vectors for a batch of anime entries with automatic batching.
+    #
+    #     This is a high-level method that:
+    #     1. Generates vectors from AnimeEntry objects using the embedding manager
+    #     2. Batches processing for memory efficiency
+    #     3. Updates Qdrant with the generated vectors
+    #     4. Provides progress callbacks for monitoring
+    #
+    #     Args:
+    #         anime_entries: List of AnimeEntry objects to process
+    #         vector_names: Optional list of specific vectors to update.
+    #                      If None, generates and updates all 11 vectors.
+    #                      Valid names: title_vector, character_vector, genre_vector,
+    #                      staff_vector, temporal_vector, streaming_vector, related_vector,
+    #                      franchise_vector, episode_vector, image_vector, character_image_vector
+    #         batch_size: Number of anime to process per batch (default: 100).
+    #                    Smaller values use less memory, larger values are faster.
+    #         progress_callback: Optional callback function(current, total, batch_result)
+    #                           called after each batch completes. Useful for progress logging.
+    #
+    #     Returns:
+    #         Dictionary with comprehensive statistics:
+    #             - total_anime: Total number of anime processed
+    #             - total_requested_updates: Total updates attempted (anime × vectors)
+    #             - successful_updates: Number of successful vector updates
+    #             - failed_updates: Number of failed vector updates
+    #             - generation_failures: Number of vectors that failed to generate
+    #             - results: List of per-update results with anime_id, vector_name, success, error
+    #             - generation_failures_detail: List of generation failures with details
+    #
+    #     Example:
+    #         >>> # Update all vectors for a batch of anime
+    #         >>> result = await client.update_batch_anime_vectors(
+    #         ...     anime_entries=[anime1, anime2],
+    #         ...     vector_names=["title_vector", "genre_vector"]
+    #         ... )
+    #         >>> print(f"Success: {result['successful_updates']}")
+    #
+    #         >>> # With progress callback for CLI
+    #         >>> def log_progress(current, total, batch_result):
+    #         ...     print(f"Processed {current}/{total} anime")
+    #         >>> result = await client.update_batch_anime_vectors(
+    #         ...     anime_entries=large_list,
+    #         ...     progress_callback=log_progress
+    #         ... )
+    #     """
+    #     try:
+    #         if not anime_entries:
+    #             return {
+    #                 "total_anime": 0,
+    #                 "total_requested_updates": 0,
+    #                 "successful_updates": 0,
+    #                 "failed_updates": 0,
+    #                 "generation_failures": 0,
+    #                 "results": [],
+    #                 "generation_failures_detail": [],
+    #             }
+    #
+    #         total_anime = len(anime_entries)
+    #         all_batch_results: List[Dict[str, Any]] = []
+    #         all_generation_failures: List[Dict[str, Any]] = []
+    #
+    #         # Process in batches for memory efficiency
+    #         for batch_start in range(0, total_anime, batch_size):
+    #             batch_end = min(batch_start + batch_size, total_anime)
+    #             batch = anime_entries[batch_start:batch_end]
+    #
+    #             logger.debug(
+    #                 f"Processing batch {batch_start//batch_size + 1}: "
+    #                 f"anime {batch_start + 1}-{batch_end}/{total_anime}"
+    #             )
+    #
+    #             # Generate vectors for this batch using embedding manager
+    #             gen_results = await self.embedding_manager.process_anime_batch(batch)
+    #
+    #             # Prepare updates and track generation failures
+    #             batch_updates: List[Dict[str, Any]] = []
+    #
+    #             for i, anime_entry in enumerate(batch):
+    #                 gen_result = gen_results[i]
+    #                 vectors = gen_result.get("vectors", {})
+    #
+    #                 # Filter to requested vectors if specified
+    #                 if vector_names:
+    #                     requested_vectors = {
+    #                         k: v for k, v in vectors.items() if k in vector_names
+    #                     }
+    #                     # Track which requested vectors failed to generate
+    #                     for requested_vec in vector_names:
+    #                         if (
+    #                             requested_vec not in vectors
+    #                             or not vectors[requested_vec]
+    #                         ):
+    #                             all_generation_failures.append(
+    #                                 {
+    #                                     "anime_id": anime_entry.id,
+    #                                     "vector_name": requested_vec,
+    #                                     "error": "Vector generation failed or returned None",
+    #                                 }
+    #                             )
+    #                 else:
+    #                     requested_vectors = vectors
+    #
+    #                 # Add valid vectors to batch updates
+    #                 for vector_name, vector_data in requested_vectors.items():
+    #                     if vector_data and len(vector_data) > 0:
+    #                         batch_updates.append(
+    #                             {
+    #                                 "anime_id": anime_entry.id,
+    #                                 "vector_name": vector_name,
+    #                                 "vector_data": vector_data,
+    #                             }
+    #                         )
+    #
+    #             # Update in Qdrant if we have valid updates
+    #             if batch_updates:
+    #                 batch_result = await self._update_batch_vectors(batch_updates)
+    #             else:
+    #                 batch_result = {"success": 0, "failed": 0, "results": []}
+    #                 logger.warning(
+    #                     f"Batch {batch_start//batch_size + 1} had no valid updates"
+    #                 )
+    #
+    #             all_batch_results.append(batch_result)
+    #
+    #             # Call progress callback if provided
+    #             if progress_callback:
+    #                 progress_callback(batch_end, total_anime, batch_result)
+    #
+    #         # Aggregate all batch results
+    #         num_vectors = len(vector_names) if vector_names else 11
+    #         return self._aggregate_batch_results(
+    #             all_batch_results, all_generation_failures, total_anime, num_vectors
+    #         )
+    #
+    #     except Exception as e:
+    #         logger.exception(f"Failed to update anime vectors: {e}")
+    #         raise
 
     def _aggregate_batch_results(
         self,
@@ -1270,18 +1187,14 @@ class QdrantClient:
             Anime data dictionary or None if not found
         """
         try:
-            loop = asyncio.get_event_loop()
             point_id = self._generate_point_id(anime_id)
 
             # Retrieve point by ID
-            points = await loop.run_in_executor(
-                None,
-                lambda: self.client.retrieve(
-                    collection_name=self.collection_name,
-                    ids=[point_id],
-                    with_payload=True,
-                    with_vectors=False,
-                ),
+            points = await self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[point_id],
+                with_payload=True,
+                with_vectors=False,
             )
 
             if points:
@@ -1302,17 +1215,12 @@ class QdrantClient:
             Point data dictionary with vectors and payload or None if not found
         """
         try:
-            loop = asyncio.get_event_loop()
-
             # Retrieve point by ID with vectors
-            points = await loop.run_in_executor(
-                None,
-                lambda: self.client.retrieve(
-                    collection_name=self.collection_name,
-                    ids=[point_id],
-                    with_vectors=True,
-                    with_payload=True,
-                ),
+            points = await self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[point_id],
+                with_vectors=True,
+                with_payload=True,
             )
 
             if points:
@@ -1349,10 +1257,7 @@ class QdrantClient:
     async def delete_collection(self) -> bool:
         """Delete the anime collection (for testing/reset)."""
         try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, lambda: self.client.delete_collection(self.collection_name)
-            )
+            await self.client.delete_collection(self.collection_name)
             logger.info(f"Deleted collection: {self.collection_name}")
             return True
         except Exception as e:
@@ -1362,7 +1267,7 @@ class QdrantClient:
     async def create_collection(self) -> bool:
         """Create the anime collection."""
         try:
-            self._initialize_collection()
+            await self._initialize_collection()
             return True
         except Exception as e:
             logger.error(f"Failed to create collection: {e}")
@@ -1388,7 +1293,7 @@ class QdrantClient:
         """
         try:
             # Direct vector search with raw similarity scores
-            response = self.client.search(
+            response = await self.client.search(
                 collection_name=self.collection_name,
                 query_vector=(vector_name, vector_data),
                 limit=limit,
@@ -1396,7 +1301,6 @@ class QdrantClient:
                 with_vectors=False,
                 query_filter=filters,
             )
-
             # Convert response to our format with raw similarity scores
             results = []
             for point in response:
@@ -1473,7 +1377,7 @@ class QdrantClient:
             fusion_query = FusionQuery(fusion=fusion)
 
             # Execute the multi-vector search using query_points
-            response = self.client.query_points(
+            response = await self.client.query_points(
                 collection_name=self.collection_name,
                 prefetch=prefetch_queries,
                 query=fusion_query,
@@ -1481,7 +1385,6 @@ class QdrantClient:
                 with_payload=True,
                 with_vectors=False,
             )
-
             # Convert response to our format
             results = []
             for point in response.points:
@@ -1507,15 +1410,15 @@ class QdrantClient:
 
     async def search_text_comprehensive(
         self,
-        query: str,
+        query_embedding: List[float],
         limit: int = 10,
         fusion_method: str = "rrf",
         filters: Optional[Filter] = None,
     ) -> List[Dict[str, Any]]:
-        """Search across all 12 text vectors using native Qdrant fusion.
+        """Search across all 12 text vectors using native Qdrant fusion with a pre-computed query embedding.
 
         Args:
-            query: Text search query
+            query_embedding: Pre-computed text embedding for the query.
             limit: Maximum number of results
             fusion_method: Fusion algorithm - "rrf" or "dbsf"
             filters: Optional Qdrant filter conditions
@@ -1524,14 +1427,6 @@ class QdrantClient:
             List of search results with comprehensive text similarity scores
         """
         try:
-            # Generate text embedding once
-            query_embedding = self.embedding_manager.text_processor.encode_text(query)
-            if query_embedding is None:
-                logger.warning(
-                    "Failed to create embedding for comprehensive text search"
-                )
-                return []
-
             # All 11 text vectors for comprehensive search
             text_vector_names = [
                 "title_vector",
@@ -1571,15 +1466,15 @@ class QdrantClient:
 
     async def search_visual_comprehensive(
         self,
-        image_data: str,
+        image_embedding: List[float],
         limit: int = 10,
         fusion_method: str = "rrf",
         filters: Optional[Filter] = None,
     ) -> List[Dict[str, Any]]:
-        """Search across both image vectors using native Qdrant fusion.
+        """Search across both image vectors using native Qdrant fusion with a pre-computed image embedding.
 
         Args:
-            image_data: Base64 encoded image data
+            image_embedding: Pre-computed image embedding for the query.
             limit: Maximum number of results
             fusion_method: Fusion algorithm - "rrf" or "dbsf"
             filters: Optional Qdrant filter conditions
@@ -1588,16 +1483,6 @@ class QdrantClient:
             List of search results with comprehensive visual similarity scores
         """
         try:
-            # Generate image embedding once
-            image_embedding = self.embedding_manager.vision_processor.encode_image(
-                image_data
-            )
-            if image_embedding is None:
-                logger.error(
-                    "Failed to create image embedding for comprehensive visual search"
-                )
-                return []
-
             # Both image vectors for comprehensive visual search
             image_vector_names = ["image_vector", "character_image_vector"]
 
@@ -1627,17 +1512,17 @@ class QdrantClient:
 
     async def search_complete(
         self,
-        query: str,
-        image_data: Optional[str] = None,
+        query_embedding: Optional[List[float]] = None,
+        image_embedding: Optional[List[float]] = None,
         limit: int = 10,
         fusion_method: str = "rrf",
         filters: Optional[Filter] = None,
     ) -> List[Dict[str, Any]]:
-        """Search across all 11 vectors (9 text + 2 image) using native Qdrant fusion.
+        """Search across all 11 vectors (9 text + 2 image) using native Qdrant fusion with pre-computed embeddings.
 
         Args:
-            query: Text search query
-            image_data: Optional base64 encoded image data
+            query_embedding: Optional pre-computed text embedding for the query.
+            image_embedding: Optional pre-computed image embedding for the query.
             limit: Maximum number of results
             fusion_method: Fusion algorithm - "rrf" or "dbsf"
             filters: Optional Qdrant filter conditions
@@ -1648,11 +1533,7 @@ class QdrantClient:
         try:
             vector_queries = []
 
-            # Generate text embedding for all 12 text vectors
-            query_embedding = self.embedding_manager.text_processor.encode_text(query)
-            if query_embedding is None:
-                logger.warning("Failed to create text embedding for complete search")
-            else:
+            if query_embedding:
                 # All 11 text vectors
                 text_vector_names = [
                     "title_vector",
@@ -1671,26 +1552,17 @@ class QdrantClient:
                         {"vector_name": vector_name, "vector_data": query_embedding}
                     )
 
-            # Add image vectors if image provided
-            if image_data:
-                image_embedding = self.embedding_manager.vision_processor.encode_image(
-                    image_data
-                )
-                if image_embedding is None:
-                    logger.warning(
-                        "Failed to create image embedding for complete search"
-                    )
-                else:
-                    # Both image vectors
-                    image_vector_names = ["image_vector", "character_image_vector"]
+            if image_embedding:
+                # Both image vectors
+                image_vector_names = ["image_vector", "character_image_vector"]
 
-                    for vector_name in image_vector_names:
-                        vector_queries.append(
-                            {"vector_name": vector_name, "vector_data": image_embedding}
-                        )
+                for vector_name in image_vector_names:
+                    vector_queries.append(
+                        {"vector_name": vector_name, "vector_data": image_embedding}
+                    )
 
             if not vector_queries:
-                logger.error("No valid embeddings generated for complete search")
+                logger.error("No valid embeddings provided for complete search")
                 return []
 
             # Use native multi-vector search across all vectors
@@ -1712,8 +1584,8 @@ class QdrantClient:
 
     async def search_characters(
         self,
-        query: str,
-        image_data: Optional[str] = None,
+        query_embedding: List[float],
+        image_embedding: Optional[List[float]] = None,
         limit: int = 10,
         fusion_method: str = "rrf",
         filters: Optional[Filter] = None,
@@ -1721,8 +1593,8 @@ class QdrantClient:
         """Search specifically for character-related content using character vectors.
 
         Args:
-            query: Text search query focused on characters
-            image_data: Optional base64 encoded character image data
+            query_embedding: Pre-computed text embedding for the query.
+            image_embedding: Optional pre-computed image embedding for the query.
             limit: Maximum number of results
             fusion_method: Fusion algorithm - "rrf" or "dbsf"
             filters: Optional Qdrant filter conditions
@@ -1733,31 +1605,22 @@ class QdrantClient:
         try:
             vector_queries = []
 
-            # Generate text embedding for character_vector
-            query_embedding = self.embedding_manager.text_processor.encode_text(query)
-            if query_embedding is None:
-                logger.warning("Failed to create text embedding for character search")
-            else:
+            if query_embedding:
                 vector_queries.append(
                     {"vector_name": "character_vector", "vector_data": query_embedding}
                 )
+            else:
+                logger.warning("No query embedding provided for character search")
 
-            # Generate image embedding for character_image_vector if provided
-            if image_data:
-                image_embedding = self.embedding_manager.vision_processor.encode_image(
-                    image_data
+            if image_embedding:
+                vector_queries.append(
+                    {
+                        "vector_name": "character_image_vector",
+                        "vector_data": image_embedding,
+                    }
                 )
-                if image_embedding is None:
-                    logger.warning(
-                        "Failed to create image embedding for character search"
-                    )
-                else:
-                    vector_queries.append(
-                        {
-                            "vector_name": "character_image_vector",
-                            "vector_data": image_embedding,
-                        }
-                    )
+            else:
+                logger.warning("No image embedding provided for character search")
 
             if not vector_queries:
                 logger.error("No valid embeddings generated for character search")
@@ -1770,7 +1633,7 @@ class QdrantClient:
                 filters=filters,
             )
 
-            search_type = "text+image" if image_data else "text-only"
+            search_type = "text+image" if image_embedding else "text-only"
             logger.info(
                 f"Character search ({search_type}) returned {len(results)} results across {len(vector_queries)} vectors"
             )

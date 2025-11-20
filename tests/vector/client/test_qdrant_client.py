@@ -6,7 +6,6 @@ Tests the update_single_vector and update_batch_vectors methods
 added for selective vector updates without full reindexing.
 """
 
-import asyncio
 import json
 import sys
 from pathlib import Path
@@ -18,9 +17,9 @@ import pytest_asyncio
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config import get_settings
 from src.models.anime import AnimeEntry
 from src.vector.client.qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct
 
 
 @pytest.fixture
@@ -34,11 +33,18 @@ def test_anime_data():
 @pytest_asyncio.fixture
 async def seeded_test_data(client: QdrantClient, test_anime_data: List[Dict]):
     """Seed test anime data into Qdrant before running tests."""
-    # Convert to AnimeEntry objects
-    anime_entries = [AnimeEntry(**anime_dict) for anime_dict in test_anime_data]
+    # Convert to PointStruct objects
+    point_structs = [
+        PointStruct(
+            id=client._generate_point_id(anime_entry.id),
+            payload=anime_entry.model_dump(),
+            vector={}
+        )
+        for anime_entry in test_anime_data
+    ]
 
     # Upsert test data to ensure points exist
-    success = await client.add_documents(anime_entries, batch_size=len(anime_entries))
+    success = await client.add_documents(point_structs, batch_size=len(point_structs))
 
     if not success:
         pytest.skip("Failed to seed test data into Qdrant")
@@ -71,7 +77,7 @@ async def test_update_single_vector(client: QdrantClient, seeded_test_data: List
     title_vector = client.embedding_manager.text_processor.encode_text(title_content)
 
     # Update single vector
-    success = await client._update_single_vector(
+    success = await client.update_single_vector(
         anime_id=anime.id,
         vector_name='title_vector',
         vector_data=title_vector
@@ -89,7 +95,7 @@ async def test_update_single_vector_invalid_name(client: QdrantClient, seeded_te
     dummy_vector = [0.0] * 1024
 
     # Try to update non-existent vector
-    success = await client._update_single_vector(
+    success = await client.update_single_vector(
         anime_id=anime.id,
         vector_name='invalid_vector',
         vector_data=dummy_vector
@@ -116,7 +122,7 @@ async def test_update_batch_vectors(client: QdrantClient, seeded_test_data: List
         })
 
     # Execute batch update
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert 'success' in result, "Result should contain success count"
     assert 'failed' in result, "Result should contain failed count"
@@ -165,7 +171,7 @@ async def test_update_batch_vectors_mixed(client: QdrantClient, seeded_test_data
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 3, "All 3 vector updates should succeed"
     assert result['failed'] == 0, "No updates should fail"
@@ -174,7 +180,7 @@ async def test_update_batch_vectors_mixed(client: QdrantClient, seeded_test_data
 @pytest.mark.asyncio
 async def test_update_batch_vectors_empty(client: QdrantClient):
     """Test batch update with empty list."""
-    result = await client._update_batch_vectors([])
+    result = await client.update_batch_vectors([])
 
     assert result['success'] == 0, "Empty batch should have 0 successes"
     assert result['failed'] == 0, "Empty batch should have 0 failures"
@@ -193,7 +199,7 @@ async def test_update_image_vector(client: QdrantClient, seeded_test_data: List[
         pytest.skip("No image data available for this anime")
 
     # Update image vector
-    success = await client._update_single_vector(
+    success = await client.update_single_vector(
         anime_id=anime.id,
         vector_name='image_vector',
         vector_data=image_vector
@@ -252,7 +258,7 @@ async def test_update_all_text_vectors(client: QdrantClient, seeded_test_data: L
         })
 
     # Execute batch update
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 9, "All 9 text vector updates should succeed"
     assert result['failed'] == 0, "No updates should fail"
@@ -293,7 +299,7 @@ async def test_update_batch_vectors_with_failures(client: QdrantClient, seeded_t
         'vector_data': character_vector
     })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Verify result structure
     assert 'success' in result, "Result should contain success count"
@@ -343,7 +349,7 @@ async def test_update_batch_vectors_all_validation_failures(client: QdrantClient
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 0, "All updates should fail"
     assert result['failed'] == 3, "Should have 3 failures"
@@ -388,7 +394,7 @@ async def test_update_batch_vectors_partial_anime_success(client: QdrantClient, 
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 2, "Should have 2 successful updates"
     assert result['failed'] == 1, "Should have 1 failed update"
@@ -433,7 +439,7 @@ async def test_update_batch_vectors_multiple_anime_mixed_results(client: QdrantC
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 2, "Should have 2 successful updates"
     assert result['failed'] == 1, "Should have 1 failed update"
@@ -473,7 +479,7 @@ async def test_update_batch_vectors_dimension_validation(client: QdrantClient, s
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 0, "All dimension mismatches should fail"
     assert result['failed'] == 3, "Should have 3 failures"
@@ -518,7 +524,7 @@ async def test_update_batch_vectors_invalid_data_types(client: QdrantClient, see
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 0, "All invalid data types should fail"
     assert result['failed'] == 4, "Should have 4 failures"
@@ -551,7 +557,7 @@ async def test_update_batch_vectors_same_vector_multiple_updates(client: QdrantC
         }
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Due to deduplication by anime_id + vector_name, only 1 update actually happens (last one wins)
     assert result['success'] == 1, "Should have 1 successful update (deduplicated)"
@@ -602,7 +608,7 @@ async def test_update_batch_vectors_large_batch(client: QdrantClient, seeded_tes
             'vector_data': vector_data
         })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 9, "All 9 vector updates should succeed"
     assert result['failed'] == 0, "No failures expected"
@@ -629,7 +635,7 @@ async def test_update_batch_vectors_preserves_order(client: QdrantClient, seeded
         {'anime_id': anime.id, 'vector_name': 'invalid_2', 'vector_data': title_vector},     # Invalid
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Results should maintain relationship to input (though not necessarily same order)
     assert len(result['results']) == 4, "Should have 4 results"
@@ -663,7 +669,7 @@ async def test_deduplication_last_wins_policy(client: QdrantClient):
         {'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': second_vector},  # Duplicate
     ]
 
-    result = await client._update_batch_vectors(batch_updates, dedup_policy="last-wins")
+    result = await client.update_batch_vectors(batch_updates, dedup_policy="last-wins")
 
     assert result['success'] == 1, "Should have 1 successful update (last one)"
     assert result['duplicates_removed'] == 1, "Should have removed 1 duplicate"
@@ -695,7 +701,7 @@ async def test_deduplication_first_wins_policy(client: QdrantClient):
         {'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': second_vector},  # Duplicate
     ]
 
-    result = await client._update_batch_vectors(batch_updates, dedup_policy="first-wins")
+    result = await client.update_batch_vectors(batch_updates, dedup_policy="first-wins")
 
     assert result['success'] == 1, "Should have 1 successful update (first one)"
     assert result['duplicates_removed'] == 1, "Should have removed 1 duplicate"
@@ -723,7 +729,7 @@ async def test_deduplication_fail_policy(client: QdrantClient):
     ]
 
     with pytest.raises(ValueError, match="Duplicate update found"):
-        await client._update_batch_vectors(batch_updates, dedup_policy="fail")
+        await client.update_batch_vectors(batch_updates, dedup_policy="fail")
 
 
 @pytest.mark.asyncio
@@ -739,7 +745,7 @@ async def test_deduplication_warn_policy(client: QdrantClient, caplog):
 
     import logging
     with caplog.at_level(logging.WARNING):
-        result = await client._update_batch_vectors(batch_updates, dedup_policy="warn")
+        result = await client.update_batch_vectors(batch_updates, dedup_policy="warn")
 
     assert result['success'] == 1, "Should succeed with last-wins behavior"
     assert result['duplicates_removed'] == 1, "Should track duplicate removal"
@@ -761,7 +767,7 @@ async def test_no_duplicates_all_policies(client: QdrantClient):
     ]
 
     for policy in ["first-wins", "last-wins", "fail", "warn"]:
-        result = await client._update_batch_vectors(batch_updates, dedup_policy=policy)
+        result = await client.update_batch_vectors(batch_updates, dedup_policy=policy)
         assert result['success'] == 2, f"Policy {policy} should succeed with no duplicates"
         assert result['duplicates_removed'] == 0, f"Policy {policy} should report 0 duplicates"
 
@@ -793,7 +799,7 @@ async def test_retry_on_transient_error(client: QdrantClient):
             {'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': [0.1] * 1024}
         ]
 
-        result = await client._update_batch_vectors(
+        result = await client.update_batch_vectors(
             batch_updates,
             max_retries=3,
             retry_delay=0.1  # Fast retry for testing
@@ -822,7 +828,7 @@ async def test_max_retries_exceeded(client: QdrantClient):
             {'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': [0.1] * 1024}
         ]
 
-        result = await client._update_batch_vectors(
+        result = await client.update_batch_vectors(
             batch_updates,
             max_retries=2,
             retry_delay=0.05
@@ -852,7 +858,7 @@ async def test_non_transient_error_no_retry(client: QdrantClient):
             {'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': [0.1] * 1024}
         ]
 
-        result = await client._update_batch_vectors(
+        result = await client.update_batch_vectors(
             batch_updates,
             max_retries=3,
             retry_delay=0.1
@@ -1040,7 +1046,7 @@ async def test_update_single_anime_vector_invalid_vector_name(client: QdrantClie
 @pytest.mark.asyncio
 async def test_update_single_anime_vector_generation_failure(client: QdrantClient):
     """Test handling when vector generation fails."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     anime = create_test_anime(anime_id="single-anime-3")
     await client.add_documents([anime], batch_size=1)

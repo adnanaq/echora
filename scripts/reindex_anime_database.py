@@ -24,6 +24,11 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 from src.config import get_settings
 from src.models.anime import AnimeEntry
 from src.vector.client.qdrant_client import QdrantClient
+from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
+from src.vector.processors.text_processor import TextProcessor
+from src.vector.processors.vision_processor import VisionProcessor
+from qdrant_client import AsyncQdrantClient as QdrantSDK
+from qdrant_client.models import PointStruct
 
 
 async def main():
@@ -34,12 +39,32 @@ async def main():
     settings = get_settings()
     print(f" Configuration loaded: {len(settings.vector_names)} vectors configured")
 
-    # Initialize client and clean existing collection
-    client = QdrantClient(settings=settings)
+    # Initialize Qdrant SDK client
+    if settings.qdrant_api_key:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    else:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+
+    # Initialize embedding manager and processors
+    text_processor = TextProcessor(settings)
+    vision_processor = VisionProcessor(settings)
+    embedding_manager = MultiVectorEmbeddingManager(
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        settings=settings
+    )
+
+    # Initialize Qdrant client
+    client = await QdrantClient.create(
+        settings=settings,
+        qdrant_sdk_client=qdrant_sdk_client,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection_name,
+    )
 
     # Delete existing collection if it exists
     try:
-        client.client.delete_collection(settings.qdrant_collection_name)
+        await client.client.delete_collection(settings.qdrant_collection_name)
         print(f"  Deleted existing collection: {settings.qdrant_collection_name}")
     except Exception as e:
         print(f"  No existing collection to delete: {e}")
@@ -82,7 +107,7 @@ async def main():
         return
 
     # Start indexing with existing infrastructure
-    print(f"\n Starting vector indexing using existing infrastructure...")
+    print("\n Starting vector indexing using existing infrastructure...")
     print(" This will generate:")
     print("   - 9 text vectors (BGE-M3 1024D)")
     print("   - 2 image vectors (OpenCLIP 768D)")
@@ -90,40 +115,39 @@ async def main():
     print("   - Comprehensive payload indexing")
 
     try:
-        # Process entries individually for better logging
-        print(f"\n Processing {len(anime_entries)} anime entries individually...")
+        # Process batch to get vectors and payloads
+        print(f"\n Processing {len(anime_entries)} anime entries to generate vectors...")
+        processed_batch = await embedding_manager.process_anime_batch(
+            anime_entries
+        )
 
-        successful_entries = 0
-        failed_entries = 0
-
-        for i, anime_entry in enumerate(anime_entries):
-            try:
+        points = []
+        for doc_data in processed_batch:
+            if doc_data["metadata"].get("processing_failed"):
                 print(
-                    f"\n Processing {i+1}/{len(anime_entries)}: {anime_entry.title}"
+                    f"Skipping failed document: {doc_data['metadata'].get('anime_title')}"
                 )
-
-                # Process single entry
-                success = await client.add_documents([anime_entry], batch_size=1)
-
-                if success:
-                    print(f"    Successfully indexed: {anime_entry.title}")
-                    successful_entries += 1
-                else:
-                    print(f"    Failed to index: {anime_entry.title}")
-                    failed_entries += 1
-
-            except Exception as e:
-                print(f"    Error processing {anime_entry.title}: {e}")
-                failed_entries += 1
                 continue
 
-        print(f"\n Processing Summary:")
-        print(f"   Successful: {successful_entries}/{len(anime_entries)}")
-        print(f"   Failed: {failed_entries}/{len(anime_entries)}")
+            point_id = client._generate_point_id(doc_data["payload"]["id"])
 
-        if successful_entries > 0:
-            print("\n Indexing completed with some success!")
+            point = PointStruct(
+                id=point_id,
+                vector=doc_data["vectors"],
+                payload=doc_data["payload"],
+            )
+            points.append(point)
+        
+        print(f"Successfully generated vectors for {len(points)} entries.")
 
+        # Add documents in batches
+        success = await client.add_documents(
+            points,
+            batch_size=64, # Use a reasonable batch size for efficiency
+        )
+        if success:
+            print(f"\nSuccessfully indexed {len(points)} documents.")
+            
             # Save updated anime data with generated IDs
             print("\n💾 Saving updated anime data with generated IDs...")
             with open("./data/qdrant_storage/enriched_anime_database.json", "w", encoding="utf-8") as f:
@@ -131,14 +155,14 @@ async def main():
             print("✅ Updated data saved successfully")
 
             # Verify results
-            info = client.client.get_collection(settings.qdrant_collection_name)
-            print(f"\n Final collection status:")
+            info = await client.client.get_collection(settings.qdrant_collection_name)
+            print("\n Final collection status:")
             print(f"   Points: {info.points_count}")
-            print(f"   Expected: {len(anime_entries)} points")
+            print(f"   Expected: {len(points)} points")
 
             # Check vector completeness across sample points
             try:
-                result, _ = client.client.scroll(
+                result, _ = await client.client.scroll(
                     collection_name=settings.qdrant_collection_name,
                     limit=5,
                     with_vectors=True,

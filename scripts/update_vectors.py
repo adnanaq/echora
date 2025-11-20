@@ -50,6 +50,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.config import get_settings
 from src.models.anime import AnimeEntry
 from src.vector.client.qdrant_client import QdrantClient
+from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
+from src.vector.processors.text_processor import TextProcessor
+from src.vector.processors.vision_processor import VisionProcessor
+from qdrant_client import QdrantClient as QdrantSDK
 
 # Configure logging
 logging.basicConfig(
@@ -84,26 +88,30 @@ class VectorGenerationError(VectorUpdateError):
     pass
 
 
-# NOTE: Vector generation is now handled by QdrantClient.update_batch_anime_vectors()
-# using the existing embedding_manager. No need for manual generation in this script.
-
-
 async def update_vectors(
+    client: QdrantClient,
+    embedding_manager: MultiVectorEmbeddingManager,
     vector_names: List[str],
     anime_index: Optional[int] = None,
     anime_title: Optional[str] = None,
     batch_size: int = 100,
     data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
 ) -> Dict[str, Any]:
-    """Update specific vectors for anime entries using QdrantClient.update_batch_anime_vectors().
+    """Update specific vectors for anime entries.
 
-    This is a thin CLI wrapper that:
+    This function now handles vector generation and calls the low-level
+    QdrantClient.update_batch_vectors() method.
+
     1. Loads and filters anime data from JSON file
     2. Validates input parameters
-    3. Calls QdrantClient.update_batch_anime_vectors() to handle all processing
-    4. Formats and logs results for CLI display
+    3. Generates vectors using MultiVectorEmbeddingManager
+    4. Prepares updates for Qdrant
+    5. Calls QdrantClient.update_batch_vectors()
+    6. Formats and logs results for CLI display
 
     Args:
+        client: An initialized QdrantClient instance.
+        embedding_manager: An initialized MultiVectorEmbeddingManager instance.
         vector_names: List of vector names to update
         anime_index: Optional index of specific anime to update
         anime_title: Optional title to search for specific anime
@@ -117,10 +125,11 @@ async def update_vectors(
         InvalidVectorNameError: If any vector name is invalid
         AnimeNotFoundError: If specified anime cannot be found
         FileNotFoundError: If data file does not exist
+        VectorGenerationError: If vector generation fails
     """
     logger.info(f"Starting vector update for: {', '.join(vector_names)}")
 
-    # Load settings and client
+    # Load settings (still needed for vector_names validation)
     settings = get_settings()
 
     # Validate vector names against settings.vector_names
@@ -131,8 +140,6 @@ async def update_vectors(
             f"Invalid vector names: {', '.join(invalid_vectors)}. "
             f"Valid vectors: {', '.join(valid_vectors)}"
         )
-
-    client = QdrantClient(settings=settings)
 
     # Load anime data
     data_path = Path(data_file)
@@ -190,28 +197,52 @@ async def update_vectors(
         f"(batch size: {batch_size})"
     )
 
-    # Define progress callback for CLI logging
-    def log_progress(current: int, total: int, batch_result: Dict[str, Any]) -> None:
-        """Progress callback for batch completion logging."""
-        batch_num = (current + batch_size - 1) // batch_size
-        total_batches = (total + batch_size - 1) // batch_size
-        batch_success = batch_result.get("success", 0)
-        batch_failed = batch_result.get("failed", 0)
+    # Generate vectors for the target anime
+    logger.info(f"Generating vectors for {len(anime_entries)} anime entries...")
+    gen_results = await embedding_manager.process_anime_batch(anime_entries)
 
-        logger.info(
-            f"Batch {batch_num}/{total_batches} completed: "
-            f"{current}/{total} anime processed, "
-            f"{batch_success} vector updates succeeded, "
-            f"{batch_failed} failed"
-        )
+    # Prepare updates for Qdrant
+    updates: List[Dict[str, Any]] = []
+    generation_failures: List[Dict[str, Any]] = []
 
-    # Call the high-level method - it handles everything
-    result = await client.update_batch_anime_vectors(
-        anime_entries=anime_entries,
-        vector_names=vector_names,
-        batch_size=batch_size,
-        progress_callback=log_progress,
+    for i, anime_entry in enumerate(anime_entries):
+        gen_result = gen_results[i]
+        vectors = gen_result.get("vectors", {})
+
+        for vector_name in vector_names:
+            vector_data = vectors.get(vector_name)
+            if vector_data and len(vector_data) > 0:
+                updates.append(
+                    {
+                        "anime_id": anime_entry.id,
+                        "vector_name": vector_name,
+                        "vector_data": vector_data,
+                    }
+                )
+            else:
+                generation_failures.append(
+                    {
+                        "anime_id": anime_entry.id,
+                        "vector_name": vector_name,
+                        "error": "Vector generation failed or returned None",
+                    }
+                )
+    
+    if not updates:
+        raise VectorGenerationError("No vectors were successfully generated for update.")
+
+    logger.info(f"Prepared {len(updates)} vector updates.")
+
+    # Call the low-level update method
+    result = await client.update_batch_vectors(
+        updates=updates,
+        dedup_policy="last-wins", # Default policy
     )
+
+    # Add generation failures to the result for comprehensive reporting
+    result["generation_failures"] = len(generation_failures)
+    result["generation_failures_detail"] = generation_failures
+    result["total_requested_updates"] = total_anime * len(vector_names)
 
     # Calculate per-vector statistics from results
     vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
@@ -275,10 +306,9 @@ async def update_vectors(
         "vector_stats": vector_stats,
     }
 
-
 def main():
     """CLI entry point."""
-    # Load settings to get valid vector names for help text
+    # Load settings to get valid vector names for help text and client initialization
     settings = get_settings()
     valid_vectors = list(settings.vector_names.keys())
 
@@ -331,10 +361,35 @@ Examples:
 
     args = parser.parse_args()
 
+    # Initialize Qdrant SDK client
+    if settings.qdrant_api_key:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    else:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+
+    # Initialize embedding manager and processors
+    text_processor = TextProcessor(settings)
+    vision_processor = VisionProcessor(settings)
+    embedding_manager = MultiVectorEmbeddingManager(
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        settings=settings
+    )
+
+    # Initialize Qdrant client
+    qdrant_client = QdrantClient(
+        settings=settings,
+        qdrant_sdk_client=qdrant_sdk_client,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection_name,
+    )
+
     # Run update with proper error handling
     try:
         result = asyncio.run(
             update_vectors(
+                client=qdrant_client, # Pass the injected client
+                embedding_manager=embedding_manager, # Pass the embedding manager
                 vector_names=args.vectors,
                 anime_index=args.index,
                 anime_title=args.title,

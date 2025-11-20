@@ -7,10 +7,12 @@ Provides database statistics, health monitoring, and administrative operations.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from ..config import get_settings
+from ..dependencies import get_qdrant_client # New import
+from ..vector.client.qdrant_client import QdrantClient
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class StatsResponse(BaseModel):
 
 
 @router.get("/stats", response_model=StatsResponse)
-async def get_database_stats() -> StatsResponse:
+async def get_database_stats(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> StatsResponse:
     """
     Get comprehensive database statistics.
 
@@ -65,10 +67,10 @@ async def get_database_stats() -> StatsResponse:
     collection status, and performance metrics.
     """
     try:
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            raise HTTPException(status_code=503, detail="Vector database not available")
+        # if not qdrant_client: # No longer needed due to Depends
+        #     raise HTTPException(status_code=503, detail="Vector database not available")
 
         # Get database statistics
         stats = await qdrant_client.get_stats()
@@ -101,21 +103,21 @@ async def get_database_stats() -> StatsResponse:
 
 
 @router.get("/health")
-async def admin_health_check() -> Dict[str, Any]:
+async def admin_health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """
     Detailed health check for admin purposes.
 
     Provides more comprehensive health information than the basic health endpoint.
     """
     try:
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            return {
-                "status": "unhealthy",
-                "qdrant_client": "not_initialized",
-                "details": "Vector database client not available",
-            }
+        # if not qdrant_client: # No longer needed due to Depends
+        #     return {
+        #         "status": "unhealthy",
+        #         "qdrant_client": "not_initialized",
+        #         "details": "Vector database client not available",
+        #     }
 
         # Perform health check
         qdrant_healthy = await qdrant_client.health_check()
@@ -150,7 +152,7 @@ async def admin_health_check() -> Dict[str, Any]:
 
 
 @router.post("/vectors/upsert", response_model=UpsertResponse)
-async def upsert_vectors(request: UpsertRequest) -> UpsertResponse:
+async def upsert_vectors(request: UpsertRequest, qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> UpsertResponse:
     """
     Add or update vectors in the database.
 
@@ -160,10 +162,10 @@ async def upsert_vectors(request: UpsertRequest) -> UpsertResponse:
     try:
         import time
 
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            raise HTTPException(status_code=503, detail="Vector database not available")
+        # if not qdrant_client: # No longer needed due to Depends
+        #     raise HTTPException(status_code=503, detail="Vector database not available")
 
         if not request.documents:
             raise HTTPException(status_code=400, detail="No documents provided")
@@ -232,17 +234,17 @@ async def upsert_vectors(request: UpsertRequest) -> UpsertResponse:
 
 
 @router.delete("/vectors/{anime_id}")
-async def delete_vector(anime_id: str) -> Dict[str, Any]:
+async def delete_vector(anime_id: str, qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """
     Delete a vector from the database.
 
     Removes the specified anime from the vector collection.
     """
     try:
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            raise HTTPException(status_code=503, detail="Vector database not available")
+        # if not qdrant_client: # No longer needed due to Depends
+        #     raise HTTPException(status_code=503, detail="Vector database not available")
 
         # Check if anime exists
         existing = await qdrant_client.get_by_id(anime_id)
@@ -270,7 +272,7 @@ async def delete_vector(anime_id: str) -> Dict[str, Any]:
 
 
 @router.post("/reindex")
-async def reindex_collection() -> Dict[str, Any]:
+async def reindex_collection(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """
     Rebuild the vector index.
 
@@ -278,10 +280,10 @@ async def reindex_collection() -> Dict[str, Any]:
     Use with caution in production environments.
     """
     try:
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            raise HTTPException(status_code=503, detail="Vector database not available")
+        # if not qdrant_client: # No longer needed due to Depends
+        #     raise HTTPException(status_code=503, detail="Vector database not available")
 
         # Clear and recreate the index
         success = await qdrant_client.clear_index()
@@ -305,17 +307,17 @@ async def reindex_collection() -> Dict[str, Any]:
 
 
 @router.get("/collection/info")
-async def get_collection_info() -> Dict[str, Any]:
+async def get_collection_info(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """
     Get detailed collection information.
 
     Returns comprehensive information about the vector collection configuration.
     """
     try:
-        from ..main import qdrant_client
+        # from ..main import qdrant_client # Removed global import
 
-        if not qdrant_client:
-            raise HTTPException(status_code=503, detail="Vector database not available")
+        # if not qdrant_client: # No longer needed due to Depends
+        #     raise HTTPException(status_code=503, detail="Vector database not available")
 
         stats = await qdrant_client.get_stats()
 

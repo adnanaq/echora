@@ -12,11 +12,10 @@ import pytest
 import json
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Any
-import subprocess
 
 from src.vector.client.qdrant_client import QdrantClient
 from src.models.anime import AnimeEntry
+from qdrant_client.models import PointStruct
 
 
 @pytest.fixture
@@ -79,7 +78,7 @@ async def test_vector_persistence_after_update(client: QdrantClient):
         'vector_data': title_vector
     }]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Verify update succeeded
     assert result['success'] == 1, "Update should succeed"
@@ -141,7 +140,7 @@ async def test_detailed_results_provide_accurate_tracking(client: QdrantClient):
         'vector_data': title_vector2
     })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Verify detailed results enable accurate tracking
     assert 'results' in result, "Should have detailed results"
@@ -206,7 +205,7 @@ async def test_all_or_nothing_anime_success_logic(client: QdrantClient):
         },
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Verify detailed results
     assert result['success'] == 2, "Should have 2 successful updates"
@@ -278,7 +277,7 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient)
                 'vector_data': genre_vector
             })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Simulate the per-vector statistics tracking from update_vectors.py (lines 418-428)
     vector_stats = {
@@ -304,7 +303,7 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient)
 @pytest.mark.asyncio
 async def test_empty_batch_handling(client: QdrantClient):
     """Test that empty batch is handled gracefully."""
-    result = await client._update_batch_vectors([])
+    result = await client.update_batch_vectors([])
 
     assert result['success'] == 0, "Empty batch should have 0 successes"
     assert result['failed'] == 0, "Empty batch should have 0 failures"
@@ -333,7 +332,7 @@ async def test_all_validation_failures_no_qdrant_call(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'genre_vector', 'vector_data': "not a vector"},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # All should fail validation, no Qdrant operation should occur
     assert result['success'] == 0, "All updates should fail validation"
@@ -385,7 +384,7 @@ async def test_mixed_batch_all_combinations(client: QdrantClient):
         vector = client.embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[4].id, 'vector_name': vector_name, 'vector_data': vector})
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Calculate anime success map
     anime_success_map = {}
@@ -460,7 +459,7 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient):
             'vector_data': vector_data
         })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 11, "All 11 vectors should succeed"
     assert result['failed'] == 0, "No failures expected"
@@ -493,7 +492,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'title_vector', 'vector_data': [0.3] * 1024},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Due to deduplication, only last one should persist
     assert result['success'] == 1, "Should deduplicate to 1 update"
@@ -529,7 +528,7 @@ async def test_dimension_edge_cases(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'temporal_vector', 'vector_data': [0.1] * 1024},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 1, "Only correctly sized vector should succeed"
     assert result['failed'] == 4, "4 dimension mismatches should fail"
@@ -575,7 +574,7 @@ async def test_special_float_values(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'temporal_vector', 'vector_data': [0.5] * 1024},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # All valid float values should work
     assert result['success'] == 5, "All valid float values should succeed"
@@ -591,7 +590,7 @@ async def test_non_existent_anime_ids(client: QdrantClient):
         {'anime_id': 'non-existent-3', 'vector_name': 'character_vector', 'vector_data': [0.1] * 1024},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Qdrant should accept updates even if points don't exist (will create them)
     # OR reject them - document the actual behavior
@@ -623,7 +622,7 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'fake_vector_name', 'vector_data': [0.1] * 1024},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 0, "All should fail with invalid names"
     assert result['failed'] == 3, "All 3 should be rejected"
@@ -663,7 +662,7 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient):
         {'anime_id': existing_anime.id, 'vector_name': 'genre_vector', 'vector_data': vector},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Both existing anime updates should work
     assert result['success'] == 2, "Existing anime updates should work"
@@ -695,7 +694,7 @@ async def test_results_ordering_matches_input(client: QdrantClient):
             'vector_data': vector
         })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Verify we can match results to input
     assert len(result['results']) == 5, "Should have 5 results"
@@ -728,7 +727,7 @@ async def test_large_batch_realistic_failures(client: QdrantClient):
         else:  # 10% invalid
             batch_updates.append({'anime_id': anime.id, 'vector_name': 'title_vector', 'vector_data': [0.1] * 512})
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 90, "90 updates should succeed"
     assert result['failed'] == 10, "10 updates should fail"
@@ -755,7 +754,7 @@ async def test_sequential_updates_same_vector(client: QdrantClient):
         vector = [float(i)] * 1024  # Different values each time
         batch_updates = [{'anime_id': test_anime.id, 'vector_name': 'title_vector', 'vector_data': vector}]
 
-        result = await client._update_batch_vectors(batch_updates)
+        result = await client.update_batch_vectors(batch_updates)
         assert result['success'] == 1, f"Update {i+1} should succeed"
 
     # Verify last update persists
@@ -800,7 +799,7 @@ async def test_image_and_text_vectors_mixed(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'character_image_vector', 'vector_data': [0.1] * 768},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['success'] == 4, "All mixed dimension updates should succeed"
     assert result['failed'] == 0, "No failures expected"
@@ -826,9 +825,7 @@ async def test_single_vector_update_method(client: QdrantClient):
     vector = client.embedding_manager.text_processor.encode_text(content)
 
     success = await client.update_single_vector(
-        anime_id=test_anime.id,
-        vector_name='title_vector',
-        vector_data=vector
+        anime_id=test_anime.id, vector_name="title_vector", vector_data=vector
     )
 
     assert success is True, "Single vector update should succeed"
@@ -870,7 +867,7 @@ async def test_batch_size_boundaries(client: QdrantClient):
                 'vector_data': vector
             })
 
-        result = await client._update_batch_vectors(batch_updates)
+        result = await client.update_batch_vectors(batch_updates)
 
         assert result['success'] == batch_size, f"Batch size {batch_size} should have {batch_size} successes"
         assert result['failed'] == 0, f"Batch size {batch_size} should have 0 failures"
@@ -896,7 +893,7 @@ async def test_update_then_search_consistency(client: QdrantClient):
     content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
     title_vector = client.embedding_manager.text_processor.encode_text(content)
 
-    update_result = await client._update_batch_vectors([{
+    update_result = await client.update_batch_vectors([{
         'anime_id': test_anime.id,
         'vector_name': 'title_vector',
         'vector_data': title_vector
@@ -945,7 +942,7 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient):
             'vector_data': vector
         })
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
     assert result['success'] == 3, "All 3 updates should succeed"
 
     # Search with "Action Hero" query
@@ -1001,7 +998,7 @@ async def test_vector_extraction_failures_handling(client: QdrantClient):
     # Encode and update
     vector = client.embedding_manager.text_processor.encode_text(content)
 
-    result = await client._update_batch_vectors([{
+    result = await client.update_batch_vectors([{
         'anime_id': minimal_anime.id,
         'vector_name': 'genre_vector',
         'vector_data': vector
@@ -1039,7 +1036,7 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'staff_vector', 'vector_data': []},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     assert result['failed'] == 5, "All 5 should fail"
     assert len(result['results']) == 5, "Should have 5 detailed results"
@@ -1093,7 +1090,7 @@ async def test_multi_batch_statistics_aggregation(client: QdrantClient):
                 'vector_data': vector
             })
 
-        result = await client._update_batch_vectors(batch_updates)
+        result = await client.update_batch_vectors(batch_updates)
 
         # Aggregate stats
         total_success += result['success']
@@ -1137,7 +1134,7 @@ async def test_result_structure_completeness(client: QdrantClient):
         {'anime_id': test_anime.id, 'vector_name': 'invalid_vector', 'vector_data': vector},
     ]
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Check top-level structure
     assert 'success' in result, "Must have success count"
@@ -1195,7 +1192,7 @@ async def test_update_with_different_vector_combinations(client: QdrantClient):
         vector = client.embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[2].id, 'vector_name': vector_name, 'vector_data': vector})
 
-    result = await client._update_batch_vectors(batch_updates)
+    result = await client.update_batch_vectors(batch_updates)
 
     # Total: 1 + 2 + 3 = 6 updates
     assert result['success'] == 6, "All 6 updates should succeed"

@@ -6,16 +6,28 @@ with multi-modal embeddings (text + image) for anime content.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
+
+# Disable CUDA to force CPU usage
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, search, similarity
+from .api import admin
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
+from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
+from .vector.processors.text_processor import TextProcessor
+from .vector.processors.vision_processor import VisionProcessor
+from qdrant_client import AsyncQdrantClient as QdrantSDK
+# from src.cache_manager.instance import http_cache_manager
+# from src.cache_manager.result_cache import close_result_cache_redis_client
+from .dependencies import get_qdrant_client # New import
 
 # Get application settings
 settings = get_settings()
@@ -26,25 +38,43 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global instances
-qdrant_client: QdrantClient | None = None
 
+
+# No more global qdrant_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize services on startup"""
-    global qdrant_client
+    """Initialize services on startup and cleanup on shutdown."""
+    logger.info("Initializing Qdrant client and its dependencies...")
 
-    # Initialize Qdrant client
-    logger.info("Initializing Qdrant client...")
-    qdrant_client = QdrantClient(
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-        settings=settings,
+    # Initialize Qdrant SDK client
+    if settings.qdrant_api_key:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    else:
+        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+
+    # Initialize embedding manager and processors
+    text_processor = TextProcessor(settings)
+    vision_processor = VisionProcessor(settings)
+    embedding_manager = MultiVectorEmbeddingManager(
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        settings=settings
     )
 
+    # Initialize Qdrant client
+    qdrant_client_instance = await QdrantClient.create(
+        settings=settings,
+        qdrant_sdk_client=qdrant_sdk_client,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection_name,
+    )
+    
+    # Store the client on the app state
+    app.state.qdrant_client = qdrant_client_instance
+
     # Health check
-    healthy = await qdrant_client.health_check()
+    healthy = await app.state.qdrant_client.health_check()
     if not healthy:
         logger.error("Qdrant health check failed!")
         raise RuntimeError("Vector database is not available")
@@ -76,12 +106,9 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """Health check endpoint."""
     try:
-        if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
@@ -96,8 +123,6 @@ async def health_check() -> Dict[str, Any]:
 
 
 # Include API routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(similarity.router, prefix="/api/v1", tags=["similarity"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
