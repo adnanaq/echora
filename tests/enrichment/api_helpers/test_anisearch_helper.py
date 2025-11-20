@@ -660,6 +660,6 @@ async def test_context_manager_cleanup_on_exception():
     from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 
     with pytest.raises(ValueError, match="Test error"):
-        async with AniSearchEnrichmentHelper() as helper:
+        async with AniSearchEnrichmentHelper():
             raise ValueError("Test error")
     # If we get here, cleanup happened correctly

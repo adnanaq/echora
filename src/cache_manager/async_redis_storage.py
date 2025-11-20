@@ -140,7 +140,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
         ttl = self._get_entry_ttl(request)
 
         # Replace response stream with saving wrapper
-        assert isinstance(response.stream, AsyncIterator)
+        if not isinstance(response.stream, AsyncIterator):
+            raise TypeError(
+                f"Expected AsyncIterator for response.stream, got {type(response.stream).__name__}"
+            )
         response_with_stream = Response(
             status_code=response.status_code,
             headers=response.headers,
@@ -313,7 +316,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_data = pack(complete_entry, kind="pair")
 
         pipe = self.client.pipeline()
-        pipe.hset(entry_key, "data", cast("Optional[str]", entry_data))
+        pipe.hset(entry_key, b"data", entry_data)  # type: ignore[arg-type]
 
         # Update cache key index if changed
         if current_entry.cache_key != complete_entry.cache_key:
@@ -322,7 +325,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             pipe.srem(old_index_key, str(id).encode("utf-8"))
             pipe.sadd(new_index_key, str(id).encode("utf-8"))
-            pipe.hset(entry_key, "cache_key", cast("Optional[str]", complete_entry.cache_key))
+            pipe.hset(entry_key, b"cache_key", complete_entry.cache_key)  # type: ignore[arg-type]
 
         await pipe.execute()
 

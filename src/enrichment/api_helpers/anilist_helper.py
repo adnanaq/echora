@@ -87,8 +87,9 @@ class AniListEnrichmentHelper:
             )
             self._session_event_loop = current_loop
 
-        # Ensure mypy knows session is initialized before use
-        assert self.session is not None
+        # Session should always be initialized by this point
+        if self.session is None:
+            raise RuntimeError("Failed to initialize AniList session")
 
         try:
             if self.rate_limit_remaining < 5:

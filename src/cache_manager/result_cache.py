@@ -63,8 +63,9 @@ async def get_result_cache_redis_client() -> Redis:
                 retry_on_timeout=config.redis_retry_on_timeout,
                 health_check_interval=config.redis_health_check_interval,
             )
-        # Defensive assertion: after initialization, client is guaranteed non-None
-        assert _redis_client is not None
+        # After initialization, client must be non-None
+        if _redis_client is None:
+            raise RuntimeError("Failed to initialize Redis client for result cache")
         return _redis_client
 
 
