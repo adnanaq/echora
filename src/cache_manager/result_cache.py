@@ -36,30 +36,36 @@ _redis_client: Optional[Redis] = None
 
 
 async def get_result_cache_redis_client() -> Redis:
-    """Initializes and returns a singleton async Redis client for result caching."""
+    """Initializes and returns a singleton async Redis client for result caching.
+
+    Thread-safe singleton pattern with lock held until return to prevent race condition
+    where close() could set _redis_client to None between check and return.
+    """
     global _redis_client
-    if _redis_client is None:
-        async with _redis_lock:
-            # Double-check after acquiring lock
-            if _redis_client is None:
-                config = get_cache_config()
-                redis_url = config.redis_url or "redis://localhost:6379/0"
-                logging.info(
-                    f"Initializing singleton Redis client for result cache: {redis_url} "
-                    f"(max_connections={config.redis_max_connections})"
-                )
-                # Configure connection pool for multi-agent concurrency and reliability
-                _redis_client = Redis.from_url(
-                    redis_url,
-                    decode_responses=True,
-                    max_connections=config.redis_max_connections,
-                    socket_keepalive=config.redis_socket_keepalive,
-                    socket_connect_timeout=config.redis_socket_connect_timeout,
-                    socket_timeout=config.redis_socket_timeout,
-                    retry_on_timeout=config.redis_retry_on_timeout,
-                    health_check_interval=config.redis_health_check_interval,
-                )
-    return _redis_client
+    async with _redis_lock:
+        # Hold lock until return to ensure atomic check-and-return
+        # Prevents race: close() can't set to None while we hold the lock
+        if _redis_client is None:
+            config = get_cache_config()
+            redis_url = config.redis_url or "redis://localhost:6379/0"
+            logging.info(
+                f"Initializing singleton Redis client for result cache: {redis_url} "
+                f"(max_connections={config.redis_max_connections})"
+            )
+            # Configure connection pool for multi-agent concurrency and reliability
+            _redis_client = Redis.from_url(
+                redis_url,
+                decode_responses=True,
+                max_connections=config.redis_max_connections,
+                socket_keepalive=config.redis_socket_keepalive,
+                socket_connect_timeout=config.redis_socket_connect_timeout,
+                socket_timeout=config.redis_socket_timeout,
+                retry_on_timeout=config.redis_retry_on_timeout,
+                health_check_interval=config.redis_health_check_interval,
+            )
+        # Defensive assertion: after initialization, client is guaranteed non-None
+        assert _redis_client is not None
+        return _redis_client
 
 
 async def close_result_cache_redis_client() -> None:
@@ -77,23 +83,6 @@ async def close_result_cache_redis_client() -> None:
 
 # Type variable for generic function return type
 T = TypeVar("T")
-
-# Cache key length threshold
-# Redis has a 512MB key limit, but we keep keys under 200 chars for:
-# 1. Readability in Redis CLI/monitoring tools
-# 2. Performance (shorter keys = faster lookups)
-# 3. Memory efficiency (keys are stored in memory)
-# Keys exceeding this threshold are SHA256-hashed (64 hex chars)
-# Can be overridden via MAX_CACHE_KEY_LENGTH environment variable
-_MAX_CACHE_KEY_LENGTH_ENV = os.getenv("MAX_CACHE_KEY_LENGTH", "200")
-try:
-    MAX_CACHE_KEY_LENGTH = int(_MAX_CACHE_KEY_LENGTH_ENV)
-except ValueError:
-    logging.warning(
-        "Invalid MAX_CACHE_KEY_LENGTH=%r, falling back to 200",
-        _MAX_CACHE_KEY_LENGTH_ENV,
-    )
-    MAX_CACHE_KEY_LENGTH = 200
 
 
 def _compute_schema_hash(func: Callable[..., Any]) -> str:
@@ -134,6 +123,10 @@ def _generate_cache_key(
     Returns:
         Cache key string with format: result_cache:{prefix}:{schema_hash}:{args}
     """
+    # Get max key length from config
+    config = get_cache_config()
+    max_key_length = config.max_cache_key_length
+
     # Serialize arguments to create stable key
     key_parts = [prefix, schema_hash]  # Include schema hash
 
@@ -142,8 +135,12 @@ def _generate_cache_key(
         if isinstance(arg, (str, int, float, bool)):
             key_parts.append(str(arg))
         else:
-            # For complex types, use JSON serialization
-            key_parts.append(json.dumps(arg, sort_keys=True))
+            # For complex types, use JSON serialization with fallback to repr()
+            try:
+                key_parts.append(json.dumps(arg, sort_keys=True))
+            except TypeError:
+                # Fall back to repr() for non-JSON-serializable objects
+                key_parts.append(repr(arg))
 
     # Add keyword args (sorted for stability)
     for k in sorted(kwargs.keys()):
@@ -151,11 +148,16 @@ def _generate_cache_key(
         if isinstance(v, (str, int, float, bool, type(None))):
             key_parts.append(f"{k}={v}")
         else:
-            key_parts.append(f"{k}={json.dumps(v, sort_keys=True)}")
+            # For complex types, use JSON serialization with fallback to repr()
+            try:
+                key_parts.append(f"{k}={json.dumps(v, sort_keys=True)}")
+            except TypeError:
+                # Fall back to repr() for non-JSON-serializable objects
+                key_parts.append(f"{k}={repr(v)}")
 
     # Hash the combined key if it exceeds threshold
     key_string = ":".join(key_parts)
-    if len(key_string) > MAX_CACHE_KEY_LENGTH:
+    if len(key_string) > max_key_length:
         key_hash = hashlib.sha256(key_string.encode()).hexdigest()
         return f"result_cache:{prefix}:{schema_hash}:{key_hash}"
 
@@ -240,8 +242,9 @@ def cached_result(
                 # Fixed 24h default TTL (independent of CacheConfig, which is for HTTP caching)
                 cache_ttl = ttl if ttl is not None else 86400
                 await redis_client.setex(cache_key, cache_ttl, serialized)
-            except (RedisError, TypeError, ValueError) as e:
-                # Catch Redis errors, serialization errors (TypeError), and value errors
+            except (RedisError, TypeError) as e:
+                # RedisError: Redis connection/operation failures
+                # TypeError: JSON serialization fails for non-serializable objects
                 logging.warning(f"Cache write error in {func.__name__}: {e}")
 
             return result
