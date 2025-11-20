@@ -158,9 +158,12 @@ async def _fetch_anisearch_episodes_data(canonical_anime_id: str) -> Optional[li
                             item["episodeNumber"] = int(match.group(0))
 
                 return data
-            else:
-                logging.warning(f"Extraction failed: {result.error_message}")
-                return None
+
+            # Log extraction failure but continue to fallback return
+            logging.warning(f"Extraction failed: {result.error_message}")
+
+        # If loop completes without returning, no valid results were found
+        return None
 
 
 async def fetch_anisearch_episodes(
@@ -231,8 +234,11 @@ async def main() -> int:
             args.anime_id,
             output_path=args.output,
         )
+    except (ValueError, OSError) as e:
+        logging.error(f"Failed to fetch anisearch episode data: {e}")
+        return 1
     except Exception:
-        logging.exception("Failed to fetch anisearch episode data")
+        logging.exception("Unexpected error during episode fetch")
         return 1
     return 0
 

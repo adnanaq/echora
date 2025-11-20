@@ -751,8 +751,11 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
+    except (ValueError, OSError) as e:
+        logging.error(f"Failed to fetch anime-planet character data: {e}")
+        return 1
     except Exception:
-        logging.exception("Failed to fetch anime-planet character data")
+        logging.exception("Unexpected error during character fetch")
         return 1
     return 0
 

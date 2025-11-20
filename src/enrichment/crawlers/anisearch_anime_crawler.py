@@ -595,8 +595,11 @@ async def main() -> int:
             args.anime_id,
             output_path=args.output,
         )
+    except (ValueError, OSError) as e:
+        logging.error(f"Failed to fetch anisearch anime data: {e}")
+        return 1
     except Exception:
-        logging.exception("Failed to fetch anisearch anime data")
+        logging.exception("Unexpected error during anime fetch")
         return 1
     return 0
 
