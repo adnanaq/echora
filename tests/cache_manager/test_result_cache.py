@@ -17,6 +17,7 @@ import importlib
 import json
 import os
 import sys
+from datetime import datetime
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -276,6 +277,43 @@ class TestGenerateCacheKey:
         # Should contain JSON-serialized list
         assert "result_cache:test_func:abc12345:" in key
         assert "items=" in key
+
+    def test_cache_key_with_non_json_serializable_arg(self) -> None:
+        """Test cache key with non-JSON-serializable argument falls back to repr()."""
+        # datetime is not JSON-serializable by default
+        dt = datetime(2025, 1, 20, 12, 30, 45)
+
+        key = _generate_cache_key("test_func", "abc12345", dt)
+
+        # Should contain repr() representation instead of crashing
+        assert "result_cache:test_func:abc12345:" in key
+        assert "2025" in key  # repr of datetime contains the year
+
+    def test_cache_key_with_non_json_serializable_kwarg(self) -> None:
+        """Test cache key with non-JSON-serializable kwarg falls back to repr()."""
+        dt = datetime(2025, 1, 20, 12, 30, 45)
+
+        key = _generate_cache_key("test_func", "abc12345", timestamp=dt)
+
+        # Should contain repr() representation instead of crashing
+        assert "result_cache:test_func:abc12345:" in key
+        assert "timestamp=" in key
+        assert "2025" in key
+
+    def test_cache_key_with_custom_class_arg(self) -> None:
+        """Test cache key with custom class instance falls back to repr()."""
+        class CustomObject:
+            def __init__(self, value: str):
+                self.value = value
+            def __repr__(self) -> str:
+                return f"CustomObject(value={self.value!r})"
+
+        obj = CustomObject("test123")
+        key = _generate_cache_key("test_func", "abc12345", obj)
+
+        # Should contain repr() representation
+        assert "result_cache:test_func:abc12345:" in key
+        assert "CustomObject" in key or "test123" in key
 
 
 class TestCachedResultDecorator:
@@ -907,70 +945,102 @@ class TestGetResultCacheRedisClient:
             assert unique_count == 1, f"Expected 1 unique instance, got {unique_count}"
 
 
-class TestMaxCacheKeyLength:
-    """Test MAX_CACHE_KEY_LENGTH environment variable validation."""
+    @pytest.mark.asyncio
+    async def test_no_race_condition_with_concurrent_close(self) -> None:
+        """Test that get_result_cache_redis_client never returns None during concurrent close.
 
-    def test_invalid_max_cache_key_length_env_var(self) -> None:
-        """Test that invalid MAX_CACHE_KEY_LENGTH env var falls back to default.
+        Race condition scenario:
+        1. Coroutine A checks if client is None (passes, client exists)
+        2. Coroutine B closes client, sets to None
+        3. Coroutine A returns _redis_client (now None!)
 
-        CRITICAL: Invalid env var should log warning and use default (200),
-        not crash the module at import time.
+        This test verifies the fix: holding lock until return prevents this race.
         """
-        # Save original env var and module
-        original_env = os.environ.get("MAX_CACHE_KEY_LENGTH")
+        import asyncio
 
-        try:
-            # Set invalid env var
-            os.environ["MAX_CACHE_KEY_LENGTH"] = "not_a_number"
+        from redis.asyncio import Redis
 
-            # Remove module from cache to force reimport
-            if "src.cache_manager.result_cache" in sys.modules:
-                del sys.modules["src.cache_manager.result_cache"]
+        from src.cache_manager.config import CacheConfig
+        from src.cache_manager.result_cache import (
+            close_result_cache_redis_client,
+            get_result_cache_redis_client,
+        )
 
-            # Import should succeed with warning, not crash
-            import src.cache_manager.result_cache as result_cache_module
+        with (
+            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
+            patch("src.cache_manager.result_cache.Redis.from_url") as mock_from_url,
+        ):
+            mock_config_instance = MagicMock(spec=CacheConfig)
+            mock_config_instance.redis_url = "redis://localhost:6379/0"
+            mock_config_instance.redis_max_connections = 100
+            mock_config_instance.redis_socket_keepalive = True
+            mock_config_instance.redis_socket_connect_timeout = 5
+            mock_config_instance.redis_socket_timeout = 10
+            mock_config_instance.redis_retry_on_timeout = True
+            mock_config_instance.redis_health_check_interval = 30
+            mock_get_config.return_value = mock_config_instance
 
-            # Should fall back to default value of 200
-            assert result_cache_module.MAX_CACHE_KEY_LENGTH == 200
+            # Create mock clients
+            mock_client_1 = AsyncMock(spec=Redis)
+            mock_client_2 = AsyncMock(spec=Redis)
+            mock_from_url.side_effect = [mock_client_1, mock_client_2]
 
-        finally:
-            # Restore original env var
-            if original_env is None:
-                os.environ.pop("MAX_CACHE_KEY_LENGTH", None)
-            else:
-                os.environ["MAX_CACHE_KEY_LENGTH"] = original_env
+            # Initialize client first
+            initial_client = await get_result_cache_redis_client()
+            assert initial_client is not None
+            assert initial_client == mock_client_1
 
-            # Reload module with correct env
-            if "src.cache_manager.result_cache" in sys.modules:
-                del sys.modules["src.cache_manager.result_cache"]
-            importlib.import_module("src.cache_manager.result_cache")
+            # Track results from concurrent operations
+            get_results = []
+            none_returned = False
 
-    def test_valid_max_cache_key_length_env_var(self) -> None:
-        """Test that valid MAX_CACHE_KEY_LENGTH env var is used."""
-        # Save original env var
-        original_env = os.environ.get("MAX_CACHE_KEY_LENGTH")
+            async def concurrent_getter():
+                """Try to get client multiple times during close."""
+                nonlocal none_returned
+                for _ in range(10):
+                    try:
+                        client = await get_result_cache_redis_client()
+                        get_results.append(client)
+                        if client is None:
+                            none_returned = True
+                    except Exception:
+                        pass  # Ignore exceptions for this test
+                    await asyncio.sleep(0.001)
 
-        try:
-            # Set valid custom env var
-            os.environ["MAX_CACHE_KEY_LENGTH"] = "500"
+            async def concurrent_closer():
+                """Close client during active get operations."""
+                await asyncio.sleep(0.005)
+                await close_result_cache_redis_client()
 
-            # Remove module from cache to force reimport
-            if "src.cache_manager.result_cache" in sys.modules:
-                del sys.modules["src.cache_manager.result_cache"]
+            # Run concurrently to trigger potential race
+            await asyncio.gather(concurrent_getter(), concurrent_closer())
 
-            # Import should use custom value
-            import src.cache_manager.result_cache as result_cache_module
+            # CRITICAL: After fix, should NEVER return None
+            assert not none_returned, (
+                "Race condition detected: get_result_cache_redis_client() "
+                "returned None during concurrent close operation"
+            )
 
-            assert result_cache_module.MAX_CACHE_KEY_LENGTH == 500
+            # All results must be valid Redis clients (not None)
+            for i, result in enumerate(get_results):
+                assert result is not None, (
+                    f"Result at index {i} was None - race condition exists"
+                )
 
-        finally:
-            # Restore original env var
-            if original_env is None:
-                os.environ.pop("MAX_CACHE_KEY_LENGTH", None)
-            else:
-                os.environ["MAX_CACHE_KEY_LENGTH"] = original_env
 
-            # Reload module with correct env
-            if "src.cache_manager.result_cache" in sys.modules:
-                del sys.modules["src.cache_manager.result_cache"]
-            importlib.import_module("src.cache_manager.result_cache")
+class TestMaxCacheKeyLength:
+    """Test max_cache_key_length configuration parameter."""
+
+    def test_default_max_cache_key_length(self) -> None:
+        """Test that default max_cache_key_length is 200."""
+        from src.cache_manager.config import get_cache_config
+
+        config = get_cache_config()
+        assert config.max_cache_key_length == 200
+
+    def test_custom_max_cache_key_length_via_config(self) -> None:
+        """Test that custom max_cache_key_length can be set via config."""
+        from src.cache_manager.config import CacheConfig
+
+        config = CacheConfig(max_cache_key_length=500)
+        assert config.max_cache_key_length == 500

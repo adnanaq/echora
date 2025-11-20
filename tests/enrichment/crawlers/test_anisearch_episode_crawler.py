@@ -163,6 +163,57 @@ async def test_main_function_error_handling(mock_fetch):
 
 @pytest.mark.asyncio
 @patch("src.enrichment.crawlers.anisearch_episode_crawler.fetch_anisearch_episodes")
+async def test_main_function_handles_value_error(mock_fetch):
+    """Test main() handles ValueError with specific error message."""
+    from src.enrichment.crawlers.anisearch_episode_crawler import main
+
+    mock_fetch.side_effect = ValueError("Invalid anime URL format")
+
+    with patch("sys.argv", ["script.py", "invalid-url"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_episode_crawler.fetch_anisearch_episodes")
+async def test_main_function_handles_os_error(mock_fetch):
+    """Test main() handles OSError (file write failures)."""
+    from src.enrichment.crawlers.anisearch_episode_crawler import main
+
+    mock_fetch.side_effect = OSError("Permission denied")
+
+    with patch(
+        "sys.argv",
+        [
+            "script.py",
+            "https://www.anisearch.com/anime/18878/episodes",
+            "--output",
+            "/invalid/path.json",
+        ],
+    ):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_episode_crawler.fetch_anisearch_episodes")
+async def test_main_function_handles_unexpected_exception(mock_fetch):
+    """Test main() handles unexpected exceptions and logs full traceback."""
+    from src.enrichment.crawlers.anisearch_episode_crawler import main
+
+    # Simulate truly unexpected exception
+    mock_fetch.side_effect = RuntimeError("Unexpected internal error")
+
+    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch("src.enrichment.crawlers.anisearch_episode_crawler.fetch_anisearch_episodes")
 async def test_main_function_no_episodes_found(mock_fetch):
     """Test main() function when no episodes found."""
     from src.enrichment.crawlers.anisearch_episode_crawler import main

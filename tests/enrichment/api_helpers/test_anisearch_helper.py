@@ -217,7 +217,7 @@ class TestAniSearchEnrichmentHelper:
 
         assert result == sample_anime_data
         mock_fetch.assert_called_once_with(
-            url="https://www.anisearch.com/anime/18878",
+            anime_id="18878",
             return_data=True,
             output_path=None,
         )
@@ -259,7 +259,7 @@ class TestAniSearchEnrichmentHelper:
         assert result == sample_episode_data
         assert len(result) == 2
         mock_fetch.assert_called_once_with(
-            url="https://www.anisearch.com/anime/18878/episodes",
+            anime_id="18878",
             return_data=True,
             output_path=None,
         )
@@ -313,7 +313,7 @@ class TestAniSearchEnrichmentHelper:
         assert result["total_count"] == 2
         assert len(result["characters"]) == 2
         mock_fetch.assert_called_once_with(
-            url="https://www.anisearch.com/anime/18878/characters",
+            anime_id="18878",
             return_data=True,
             output_path=None,
         )
@@ -614,7 +614,7 @@ class TestAniSearchEnrichmentHelper:
 
             assert result is not None
             mock.assert_called_with(
-                url="https://www.anisearch.com/anime/999999999",
+                anime_id="999999999",
                 return_data=True,
                 output_path=None,
             )

@@ -1093,6 +1093,51 @@ async def test_main_function_error_handling(mock_fetch):
 @patch(
     "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
 )
+async def test_main_function_handles_value_error(mock_fetch):
+    """Test main() handles ValueError with specific error message."""
+    mock_fetch.side_effect = ValueError("Invalid character slug format")
+
+    with patch("sys.argv", ["script.py", "invalid-slug"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
+async def test_main_function_handles_os_error(mock_fetch):
+    """Test main() handles OSError (file write failures)."""
+    mock_fetch.side_effect = OSError("Permission denied")
+
+    with patch(
+        "sys.argv",
+        ["script.py", "dandadan", "--output", "/invalid/path.json"],
+    ):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
+async def test_main_function_handles_unexpected_exception(mock_fetch):
+    """Test main() handles unexpected exceptions and logs full traceback."""
+    mock_fetch.side_effect = RuntimeError("Unexpected internal error")
+
+    with patch("sys.argv", ["script.py", "dandadan"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
 async def test_main_function_with_full_url(mock_fetch):
     """Test main() function with full URL as identifier."""
     mock_fetch.return_value = {"characters": [], "total": 0}

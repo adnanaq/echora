@@ -55,7 +55,7 @@ async def test_main_function_error_handling(mock_helper_class):
     from src.enrichment.api_helpers.animeplanet_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_anime_data = AsyncMock(side_effect=Exception("Fetch error"))
+    mock_helper.fetch_anime_data = AsyncMock(side_effect=OSError("Fetch error"))
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 

@@ -168,6 +168,8 @@ def test_extract_studios():
         ("2024-12-01", "WINTER"),
         ("invalid-date", None),
         ("", None),
+        ("2024-00-15", None),  # Invalid month: 00
+        ("2024-13-01", None),  # Invalid month: 13
     ],
 )
 def test_determine_season_from_date(date_str, expected_season):
@@ -600,24 +602,21 @@ class TestCLI:
         )
 
 
-# --- TDD Tests for Cache Efficiency (RED Phase) ---
+# --- Cache Efficiency Tests ---
 
 
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_path):
     """
-    TDD Test: Cache should be reused when fetching same anime with different output paths.
+    Test: Cache should be reused when fetching same anime with different output paths.
 
-    Expected behavior (after refactoring):
+    Behavior:
     1. First call: Crawl website (expensive), cache result
     2. Second call (same slug, different output_path): Cache HIT, no crawl
     3. Both calls should write their respective files
 
-    Current behavior (before refactoring):
-    - Each call creates different cache key due to output_path parameter
-    - Result: Multiple crawls for same anime (inefficient)
-
-    This test will FAIL until we refactor to split pure cached function from side effects.
+    The cached function `_fetch_animeplanet_anime_data` is separate from the
+    side-effect wrapper `fetch_animeplanet_anime`, ensuring cache efficiency.
     """
     file1 = tmp_path / "call1.json"
     file2 = tmp_path / "call2.json"
@@ -699,7 +698,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
         assert result2["title"] == "Cache Test Anime"
         assert file2.exists(), "Call 2 should write file (side effect)"
 
-        # CRITICAL ASSERTION: This will FAIL until refactoring is done
+        # Verify cache efficiency: second call should hit cache, not re-crawl
         assert crawl_count == 1, (
             f"Expected 1 crawl (cache hit on 2nd call), but got {crawl_count} crawls. "
             "Cache is not being reused for same slug with different output_path!"
@@ -712,7 +711,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
-    """Test poster extraction via regex when CSS selector fails (line 309)."""
+    """Test poster extraction via regex when CSS selector fails."""
     css_data = {
         "poster": "",  # Empty poster from CSS
         "rank_text": [],
@@ -742,7 +741,7 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
 
 
 async def test_wrapper_return_none_when_return_data_false():
-    """Test wrapper returns None when return_data=False (line 412)."""
+    """Test wrapper returns None when return_data=False."""
     with patch(
         "src.enrichment.crawlers.anime_planet_anime_crawler._fetch_animeplanet_anime_data"
     ) as mock_fetch:
@@ -752,53 +751,17 @@ async def test_wrapper_return_none_when_return_data_false():
 
 
 def test_extract_rank_with_value_error():
-    """Test rank extraction handles ValueError (lines 462-463)."""
-    # Create a rank text that will match regex but fail int conversion
-    # This is actually impossible with the current regex r"#(\d+)" since \d+ only matches digits
-    # But we test the exception handling path exists
-    rank_texts = [{"text": "Rank #"}]  # Edge case: no number after #
+    """Test rank extraction handles ValueError for edge case rank text."""
+    # Edge case: no number after # symbol
+    rank_texts = [{"text": "Rank #"}]
     result = _extract_rank(rank_texts)
-    assert result is None
-
-
-
-def test_determine_season_from_date_with_invalid_format():
-    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
-
-    result = _determine_season_from_date("invalid-date")
-    assert result is None
-
-
-def test_determine_season_from_date_with_empty_string():
-    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
-
-    result = _determine_season_from_date("")
-    assert result is None
-
-
-
-def test_determine_season_from_date_with_invalid_month():
-    from src.enrichment.crawlers.anime_planet_anime_crawler import _determine_season_from_date
-
-    result = _determine_season_from_date("2024-00-15")
-    assert result is None
-
-
-def test_determine_season_with_value_error():
-    """Test season determination handles ValueError (lines 497-500)."""
-    # Test with month that causes ValueError in int conversion
-    result = _determine_season_from_date("2024-XX-01")
-    assert result is None
-
-    # Test with completely malformed date
-    result = _determine_season_from_date("not-a-date")
     assert result is None
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.AsyncWebCrawler")
 async def test_fetch_anime_empty_results_list(MockAsyncWebCrawler):
-    """Test handling when AsyncWebCrawler returns empty list (line 375)."""
+    """Test handling when AsyncWebCrawler returns empty list."""
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_crawler_instance.__aenter__.return_value.arun = AsyncMock(return_value=[])
 
@@ -830,6 +793,58 @@ async def test_main_function_error_handling(mock_fetch):
     mock_fetch.side_effect = Exception("Crawl failed")
 
     with patch("sys.argv", ["script.py", "test-anime"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
+)
+async def test_main_function_handles_value_error(mock_fetch):
+    """Test main() handles ValueError with specific error message."""
+    from src.enrichment.crawlers.anime_planet_anime_crawler import main
+
+    mock_fetch.side_effect = ValueError("Invalid anime slug format")
+
+    with patch("sys.argv", ["script.py", "invalid-slug"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
+)
+async def test_main_function_handles_os_error(mock_fetch):
+    """Test main() handles OSError (file write failures)."""
+    from src.enrichment.crawlers.anime_planet_anime_crawler import main
+
+    mock_fetch.side_effect = OSError("Permission denied")
+
+    with patch(
+        "sys.argv",
+        ["script.py", "dandadan", "--output", "/invalid/path.json"],
+    ):
+        exit_code = await main()
+
+    assert exit_code == 1
+
+
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
+)
+async def test_main_function_handles_unexpected_exception(mock_fetch):
+    """Test main() handles unexpected exceptions and logs full traceback."""
+    from src.enrichment.crawlers.anime_planet_anime_crawler import main
+
+    # Simulate truly unexpected exception
+    mock_fetch.side_effect = RuntimeError("Unexpected internal error")
+
+    with patch("sys.argv", ["script.py", "dandadan"]):
         exit_code = await main()
 
     assert exit_code == 1
