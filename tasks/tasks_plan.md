@@ -181,13 +181,27 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 **Sub-Phase 2.5.0: Unique ID Strategy & Core Data Model Enhancements** (Rollback-Safe: data model definition) - [ ] COMPLETED
 
-- [ ] **2.5.0a: Define Global Unique ID Strategy** (Est: 2 hours)
-  - [ ] Adopt ULID with prefixes for all primary identifiers:
-    - `anime_id`: `ani_<ULID>` (e.g., `ani_01H8X3Z2Y4QWERTY1234567890`)
-    - `episode_id`: `ep_<ULID>` (e.g., `ep_01H8X5F9TJVW0YQZJ6X9R7C8A0`)
-    - `character_id`: `char_<ULID>` (e.g., `char_01H8X5E7SJVW0YQZJ6X9R7C8A0`)
-  - [ ] Document rationale: global uniqueness, time-sortability, human-readability (with prefix).
-  - [ ] Ensure `AnimeEntry.id` is consistently generated as `ani_ULID`.
+- [ ] **2.5.0a: Define Global Unique ID Strategy** (Est: 3 hours) - REVISED
+  - [ ] **Adopt a Hybrid ID Strategy for all entities to ensure both uniqueness and deterministic deduplication.**
+  - [ ] **Primary Key (`id`):**
+    -   **Strategy:** Use a non-deterministic, prefixed **ULID** (e.g., `char_01H9J...`).
+    -   **Generation:** Generated **once** when an entity is first created.
+    -   **Properties:** This ID is **immutable** and serves as the permanent, internal primary key (`_id` in MongoDB, `id` in Qdrant). All foreign key relationships will reference this stable ID.
+  - [ ] **Deduplication Key (`deduplication_key`):**
+    -   **Strategy:** Use a **deterministic hash** (e.g., SHA-256) of a stable, canonical seed.
+    -   **Examples:**
+        -   For a character: `SHA-256(source_platform + source_character_id)`
+        -   For an episode: `SHA-256(source_platform + source_anime_id + episode_number)`
+    -   **Properties:** This key is used exclusively for **lookup and deduplication** during data ingestion and processing. It will be a separate, indexed field in MongoDB.
+  - [ ] **Ingestion Workflow:**
+    1.  When processing a new entity (e.g., a character), generate its deterministic `deduplication_key`.
+    2.  Query the database for an existing entity with that key.
+    3.  **If found:** Use the existing entity's immutable `id` (the ULID) for all operations.
+    4.  **If not found:** This is a new entity. Generate a new immutable `id` (ULID), and store the new entity with both its `id` and `deduplication_key`.
+  - [ ] **Rationale Document:**
+    -   **ULID (`id`):** Provides a globally unique, time-sortable, and stable primary key that is immune to changes in source metadata (e.g., a character name correction).
+    -   **Hash (`deduplication_key`):** Solves the critical need for deterministic deduplication across different data sources and processing runs, preventing duplicate entities.
+    -   **Combined:** This hybrid approach provides the resilience of immutable primary keys with the robustness of deterministic lookups.
 
 - [ ] **2.5.0b: Enhance `EpisodeDetailEntry` for Relationships** (Est: 1 hour)
   - [ ] Add `anime_id: str` field to `EpisodeDetailEntry` Pydantic model.
