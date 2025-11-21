@@ -1,14 +1,15 @@
 """
-This script crawls anime information from anime-planet.com anime pages.
+Crawls anime information from anime-planet.com anime pages with Redis caching.
 
-It accepts a slug as a command-line argument and extracts comprehensive anime data
-including related anime, rankings, studios, and all metadata from JSON-LD.
-
-The extracted data is saved to 'animeplanet_anime.json' in the project root.
+Extracts comprehensive anime data including related anime, rankings, studios,
+and all metadata from JSON-LD. Results are cached in Redis for 24 hours to avoid
+repeated crawling.
 
 Usage:
-    python anime_planet_anime_crawler.py <slug>
-    python anime_planet_anime_crawler.py dandadan
+    python -m src.enrichment.crawlers.anime_planet_anime_crawler <identifier> [--output PATH]
+
+    <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
+    --output PATH   optional output file path (default: animeplanet_anime.json)
 """
 
 import argparse
@@ -668,8 +669,8 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    except (ValueError, OSError) as e:
-        logging.error(f"Failed to fetch anime-planet anime data: {e}")
+    except (ValueError, OSError):
+        logging.exception("Failed to fetch anime-planet anime data")
         return 1
     except Exception:
         logging.exception("Unexpected error during anime fetch")

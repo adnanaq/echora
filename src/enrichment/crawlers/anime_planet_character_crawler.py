@@ -1,14 +1,15 @@
 """
-This script crawls character information from anime-planet.com anime character pages.
+Crawls character information from anime-planet.com anime character pages with Redis caching.
 
-It accepts a slug as a command-line argument and extracts comprehensive character data
-including detailed enrichment from individual character pages using concurrent batch processing.
-
-The extracted data is saved to 'animeplanet_characters.json' in the project root.
+Extracts comprehensive character data including detailed enrichment from individual
+character pages using concurrent batch processing. Results are cached in Redis for
+24 hours to avoid repeated crawling.
 
 Usage:
-    python anime_planet_character_crawler.py <slug>
-    python anime_planet_character_crawler.py dandadan
+    python -m src.enrichment.crawlers.anime_planet_character_crawler <identifier> [--output PATH]
+
+    <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
+    --output PATH   optional output file path (default: animeplanet_characters.json)
 """
 
 import argparse
@@ -751,8 +752,8 @@ async def main() -> int:
             return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
-    except (ValueError, OSError) as e:
-        logging.error(f"Failed to fetch anime-planet character data: {e}")
+    except (ValueError, OSError):
+        logging.exception("Failed to fetch anime-planet character data")
         return 1
     except Exception:
         logging.exception("Unexpected error during character fetch")
