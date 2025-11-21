@@ -190,10 +190,12 @@ async def my_function(arg1: str, arg2: int) -> Dict[str, Any]:
 ```
 
 **Features:**
-- Automatic cache key generation from function name + arguments
-- Schema versioning with automatic invalidation
-- Graceful fallback on Redis failures
+- Automatic cache key generation from function name + schema hash + arguments
+- Schema versioning with automatic invalidation (function source code hashing)
+- Graceful fallback on Redis failures (RedisError) and JSON serialization errors (TypeError)
 - Multi-process safe via Redis atomic operations
+- `None` return values are never cached (intentional design choice)
+- Supports complex argument types via JSON serialization with repr() fallback
 
 **Example:**
 ```python
@@ -223,16 +225,23 @@ async def fetch_external_data(item_id: str) -> dict:
 - **Technology:** Custom `@cached_result` decorator
 - **Use case:** Non-HTTP operations (web scraping, computations, file I/O)
 - **Caches:** Serialized function return values (JSON)
-- **Implementation:** Python decorator with Redis storage
-- **Key format:** `result_cache:{function_name}:{hash(args)}`
+- **Implementation:** Python decorator with Redis storage with automatic schema invalidation
+- **Key format:** `result_cache:{function_name}:{schema_hash}:{hash(args)}`
+  - Schema hash: 16-character hex from SHA-256 of function source code
+  - Automatically changes when function implementation changes
+  - Falls back to function name hash for built-ins/lambdas where source is unavailable
+  - Keys exceeding 200 characters are SHA-256 hashed (configurable via `max_cache_key_length`)
 
 ### Cache Management Features
 
-- **TTL enforcement:** Redis EXPIRE command (configurable per service)
-- **Schema versioning:** Automatic invalidation on data structure changes
-- **Graceful degradation:** Falls back to uncached execution on Redis failures
+- **TTL enforcement:** Redis EXPIRE command (configurable per service for HTTP caching; fixed 24h default for result caching)
+- **Schema versioning:** Automatic invalidation via function source code hashing (16-character SHA-256 prefix)
+  - Schema hash recomputed on decorator application (not per-call)
+  - Built-in functions and lambdas use name-based hash fallback
+- **Graceful degradation:** Falls back to uncached execution on Redis failures (connection errors, timeouts)
 - **Multi-process safe:** Redis atomic operations prevent race conditions
-- **Event loop aware:** Session management compatible with concurrent event loops
+- **Event loop aware:** Per-event-loop Redis client management (automatic cleanup on loop changes)
+- **Cache key optimization:** Keys > 200 chars are automatically hashed to 64-character SHA-256 hex
 
 ## Cache Management
 
@@ -309,6 +318,72 @@ ENABLE_HTTP_CACHE=false pytest tests/
 ```
 
 For enrichment pipeline-specific tests, see [enrichment/README.md - Testing](../enrichment/README.md#testing).
+
+## Important Edge Cases & Behaviors
+
+### Result Caching (`@cached_result`)
+
+**None Values Are Never Cached:**
+```python
+@cached_result(ttl=3600)
+async def fetch_data(id: str) -> Optional[dict]:
+    if not_found:
+        return None  # This will NOT be cached
+    return {"data": "value"}  # This WILL be cached
+```
+
+**Schema Hash Changes Invalidate Cache:**
+```python
+# Version 1 (schema_hash: abc123...)
+@cached_result()
+async def process(x: int) -> int:
+    return x * 2
+
+# Version 2 (schema_hash: def456... - DIFFERENT!)
+@cached_result()
+async def process(x: int) -> int:
+    return x * 3  # Changed logic = new schema hash = old cache ignored
+```
+
+**Built-in/Lambda Functions Use Name-Based Hashing:**
+```python
+# Lambda functions can't retrieve source code
+lambda_func = lambda x: x + 1  # Uses hash of "lambda" name
+# Built-in functions
+len_func = len  # Uses hash of "len" name
+```
+
+**Cache Key Length Optimization:**
+```python
+# Long keys are automatically hashed
+@cached_result()
+async def long_args(very_long_dict: dict, another_dict: dict) -> dict:
+    # If key > 200 chars, becomes: result_cache:long_args:{schema}:{sha256_hash}
+    pass
+```
+
+### HTTP Caching (Hishel + Redis)
+
+**Per-Event-Loop Redis Client Management:**
+```python
+# Each asyncio event loop gets its own Redis client
+# Automatic cleanup when event loop changes
+# Prevents "Event loop is closed" errors
+```
+
+**Body-Based Caching for GraphQL/POST:**
+```python
+# X-Hishel-Body-Key header automatically added
+# POST requests with different bodies = different cache entries
+# Essential for GraphQL APIs (AniList, etc.)
+```
+
+**Graceful Degradation on Errors:**
+```python
+# Redis connection failures → falls back to uncached requests
+# TypeError (non-JSON-serializable) → function called without caching
+# No application crashes, only performance impact
+```
 
 ## Troubleshooting
 

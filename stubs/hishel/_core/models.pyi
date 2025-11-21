@@ -12,9 +12,10 @@ class EntryMeta:
 
     def __init__(
         self, created_at: float, deleted_at: Optional[float] = None
-    ) -> None: """
+    ) -> None:
+        """
         Initialize an EntryMeta containing creation and optional deletion timestamps.
-        
+
         Parameters:
         	created_at (float): Unix timestamp when the entry was created.
         	deleted_at (Optional[float]): Unix timestamp when the entry was deleted, or `None` if not deleted.
@@ -36,9 +37,10 @@ class Request:
         headers: Union[Dict[str, str], Headers],
         stream: Optional[Iterator[bytes]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> None: """
+    ) -> None:
+        """
         Initialize a Request model representing an HTTP request used by the cache/system.
-        
+
         Parameters:
         	method (str): HTTP method (e.g., "GET", "POST").
         	url (str): Request URL.
@@ -61,9 +63,10 @@ class Response:
         headers: Union[Dict[str, str], Headers],
         stream: Optional[Union[Iterator[bytes], AsyncIterator[bytes]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> None: """
+    ) -> None:
+        """
         Initialize a Response model representing an HTTP response for the cache system.
-        
+
         Parameters:
             status_code (int): HTTP status code of the response.
             headers (Union[Dict[str, str], Headers]): Response headers as a plain dict or a Headers instance.
@@ -87,9 +90,10 @@ class Entry:
         response: Optional[Response],
         meta: EntryMeta,
         cache_key: bytes,
-    ) -> None: """
+    ) -> None:
+        """
         Create an Entry representing a cached request/response pair.
-        
+
         Parameters:
             id (uuid.UUID): Unique identifier for the cache entry.
             request (Request): The stored request.

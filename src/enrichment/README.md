@@ -199,6 +199,394 @@ src/enrichment/
 └── programmatic/         # Pipeline orchestration
 ```
 
+## Dual-Usage Pattern: CLI Scripts vs Function Imports
+
+**All helpers and crawlers support two usage modes:**
+
+### Mode 1: Standalone CLI Scripts
+
+**Every helper/crawler has a `main()` function** and can be executed directly from command line.
+
+#### API Helpers CLI Examples
+
+```bash
+# Jikan Helper - Fetch ONLY episodes OR ONLY characters (specify data_type)
+python -m src.enrichment.api_helpers.jikan_helper episodes 21 input.json output.json
+python -m src.enrichment.api_helpers.jikan_helper characters 21 input.json output.json
+
+# AniList Helper - Fetch by AniList ID
+python -m src.enrichment.api_helpers.anilist_helper --anilist-id 21 --output anilist.json
+
+# Kitsu Helper - Fetch by Kitsu anime ID
+python -m src.enrichment.api_helpers.kitsu_helper 1234 kitsu_output.json
+
+# AniDB Helper - Fetch by AniDB ID or search
+python -m src.enrichment.api_helpers.anidb_helper --anidb-id 4563 --output anidb.json
+python -m src.enrichment.api_helpers.anidb_helper --search-name "One Piece" --output anidb.json
+
+# Anime-Planet Helper - Fetch by slug
+python -m src.enrichment.api_helpers.animeplanet_helper one-piece output.json
+
+# AnimSchedule Fetcher - Search by title
+python -m src.enrichment.api_helpers.animeschedule_fetcher "One Piece" --output schedule.json
+```
+
+#### Crawlers CLI Examples
+
+```bash
+# AniSearch Anime Crawler - Accepts ID, path, or full URL
+python -m src.enrichment.crawlers.anisearch_anime_crawler "18878,dan-da-dan" --output anisearch.json
+python -m src.enrichment.crawlers.anisearch_anime_crawler "/18878,dan-da-dan" --output anisearch.json
+python -m src.enrichment.crawlers.anisearch_anime_crawler "https://www.anisearch.com/anime/18878,dan-da-dan" --output anisearch.json
+
+# AniSearch Character Crawler
+python -m src.enrichment.crawlers.anisearch_character_crawler 18878 --output characters.json
+
+# AniSearch Episode Crawler
+python -m src.enrichment.crawlers.anisearch_episode_crawler 18878 --output episodes.json
+
+# Anime-Planet Anime Crawler
+python -m src.enrichment.crawlers.anime_planet_anime_crawler "dandadan" --output anime.json
+
+# Anime-Planet Character Crawler
+python -m src.enrichment.crawlers.anime_planet_character_crawler "dandadan" --output characters.json
+```
+
+**CLI Pattern Structure:**
+
+```python
+# Every helper/crawler follows this pattern:
+
+async def main() -> int:
+    """CLI entry point with argument parsing."""
+    parser = argparse.ArgumentParser(description="...")
+    parser.add_argument(...)
+    args = parser.parse_args()
+
+    try:
+        # Fetch data
+        data = await fetch_function(args.id, ...)
+
+        # Write to file
+        with open(args.output, "w") as f:
+            json.dump(data, f, indent=2)
+
+        return 0  # Success
+    except Exception:
+        logger.exception("Error")
+        return 1  # Failure
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))
+```
+
+### Mode 2: Programmatic Function/Class Import
+
+**All helpers/crawlers export classes or functions** for import and use in Python code.
+
+#### API Helpers Programmatic Usage
+
+```python
+# Jikan Helper - ONLY for detailed episodes OR characters (NOT anime metadata)
+from src.enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+
+# Fetch ONLY detailed episodes
+async with JikanDetailedFetcher("21", "episodes") as fetcher:
+    await fetcher.fetch_detailed_data("episodes_input.json", "episodes_output.json")
+
+# Fetch ONLY detailed characters
+async with JikanDetailedFetcher("21", "characters") as fetcher:
+    await fetcher.fetch_detailed_data("characters_input.json", "characters_output.json")
+
+# Or use individual methods
+fetcher = JikanDetailedFetcher("21", "episodes")
+episode_detail = await fetcher.fetch_episode_detail(episode_num=1)
+character_detail = await fetcher.fetch_character_detail(character_data)
+
+# NOTE: To fetch anime metadata + episodes + characters together, use ParallelAPIFetcher
+# JikanDetailedFetcher is a low-level helper for batch fetching episode/character details only
+
+# AniList Helper - Class with methods
+from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+
+async with AniListEnrichmentHelper() as helper:
+    anime_data = await helper.fetch_all_data_by_anilist_id(21)
+    characters = await helper.fetch_all_characters(21)
+
+# Kitsu Helper - Class with methods
+from src.enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+
+helper = KitsuEnrichmentHelper()
+anime_data = await helper.fetch_all_data(anime_id=1234)
+
+# AniDB Helper - Class with methods
+from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+async with AniDBEnrichmentHelper() as helper:
+    anime_data = await helper.fetch_all_data(4563)
+    search_results = await helper.search_anime_by_name("One Piece")
+
+# Anime-Planet Helper - Class with methods
+from src.enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
+
+helper = AnimePlanetEnrichmentHelper()
+anime_data = await helper.fetch_anime_data("one-piece")
+
+# AnimSchedule Fetcher - Function
+from src.enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
+
+data = await fetch_animeschedule_data("One Piece", output_path="schedule.json")
+```
+
+#### Crawlers Programmatic Usage
+
+**Crawlers export top-level `fetch_*` functions** that handle normalization, caching, and I/O:
+
+```python
+# AniSearch Crawlers - Function imports
+from src.enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
+from src.enrichment.crawlers.anisearch_character_crawler import fetch_anisearch_characters
+from src.enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
+
+# Fetch anime data (accepts ID, path, or full URL)
+anime_data = await fetch_anisearch_anime("18878,dan-da-dan", return_data=True)
+anime_data = await fetch_anisearch_anime("/18878,dan-da-dan", output_path="anime.json")
+
+# Fetch characters
+characters = await fetch_anisearch_characters(18878, return_data=True)
+
+# Fetch episodes
+episodes = await fetch_anisearch_episodes(18878, output_path="episodes.json")
+
+# Anime-Planet Crawlers - Function imports
+from src.enrichment.crawlers.anime_planet_anime_crawler import fetch_anime_planet_anime
+from src.enrichment.crawlers.anime_planet_character_crawler import fetch_anime_planet_characters
+
+anime_data = await fetch_anime_planet_anime("dandadan", return_data=True)
+characters = await fetch_anime_planet_characters("dandadan", output_path="chars.json")
+```
+
+**Key Difference: Helpers vs Crawlers**
+- **API Helpers**: Export **classes** (e.g., `AniListEnrichmentHelper`, `JikanDetailedFetcher`)
+- **Crawlers**: Export **functions** (e.g., `fetch_anisearch_anime`, `fetch_anime_planet_characters`)
+
+### ParallelAPIFetcher Usage
+
+**The main programmatic interface** that orchestrates all helpers:
+
+```python
+from src.enrichment.programmatic.api_fetcher import ParallelAPIFetcher
+
+async with ParallelAPIFetcher(mal_id=21) as fetcher:
+    # Fetch all data sources in parallel
+    all_data = await fetcher.fetch_all_data()
+
+    # Access individual results
+    jikan_data = all_data.get("jikan")
+    anilist_data = all_data.get("anilist")
+    kitsu_data = all_data.get("kitsu")
+
+    # Or fetch selectively
+    selected_data = await fetcher.fetch_all_data(sources=["jikan", "anilist"])
+```
+
+### AniSearch Helper: Wrapper Around Crawlers
+
+**The AniSearch helper is unique** - it wraps the three AniSearch crawlers:
+
+```python
+from src.enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
+
+helper = AniSearchEnrichmentHelper()
+
+# Under the hood, calls fetch_anisearch_anime(), fetch_anisearch_characters(), etc.
+all_data = await helper.fetch_all_data(anisearch_id=18878)
+
+# Returns combined data from all three crawlers:
+# {
+#   "anime": {...},      # from anisearch_anime_crawler
+#   "characters": [...], # from anisearch_character_crawler
+#   "episodes": [...]    # from anisearch_episode_crawler
+# }
+```
+
+### When to Use Each Mode
+
+| Use Case | Mode | Example |
+|----------|------|---------|
+| Quick testing/debugging | **CLI** | `python -m src.enrichment.api_helpers.jikan_helper episodes 21 in.json out.json` |
+| Pipeline integration | **Import** | `from src.enrichment.programmatic.api_fetcher import ParallelAPIFetcher` |
+| Custom workflow | **Import** | `from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper` |
+| Selective data source | **Import** | `from src.enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime` |
+
+## Important Edge Cases & Caching Behaviors
+
+### Cache Hit Detection and Rate Limiting Optimization
+
+**All API helpers check `response.from_cache` attribute to optimize rate limiting:**
+
+```python
+# Jikan Helper (src/enrichment/api_helpers/jikan_helper.py)
+from_cache = (
+    isinstance(getattr(response, "from_cache", None), bool)
+    and response.from_cache
+)
+
+if response.status == 200:
+    data = await response.json()
+    # Only rate limit for network requests, not cache hits
+    await self._record_network_request(from_cache)
+```
+
+**Why this matters:**
+- Cache hits skip rate limiting delays (e.g., 0.5s between Jikan requests)
+- Enables 100-1000x speedup on repeated requests
+- Prevents unnecessary waits when data is already cached
+
+### Session Ownership and Resource Management
+
+**Pattern A (Jikan)**: Tracks session ownership to prevent resource leaks
+
+```python
+class JikanDetailedFetcher:
+    def __init__(self, anime_id: str, data_type: str, session: Optional[Any] = None):
+        # Track whether we own the session
+        self._owns_session = session is None
+        self.session = session or _cache_manager.get_aiohttp_session("jikan")
+
+    async def close(self) -> None:
+        """Close the underlying HTTP session if we created it."""
+        if self._owns_session and self.session:
+            await self.session.close()
+```
+
+**Pattern B (Kitsu)**: Per-request session pattern (context manager)
+
+```python
+async def _make_request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    # Create session per request via context manager (automatic cleanup)
+    async with _cache_manager.get_aiohttp_session("kitsu", timeout=...) as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            return await response.json()
+```
+
+**Pattern C (AniList)**: Per-event-loop session management with automatic recreation
+
+```python
+async def _make_request(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    # Check if we need to create/recreate session for current event loop
+    current_loop = asyncio.get_running_loop()
+    if self.session is None or self._session_event_loop != current_loop:
+        if self.session is not None:
+            try:
+                await self.session.close()  # Close old session
+            except Exception:
+                pass  # Ignore errors closing old session
+
+        # Create new session for current event loop
+        self.session = http_cache_manager.get_aiohttp_session("anilist", timeout=...,
+            headers={"X-Hishel-Body-Key": "true"}  # Enable body-based caching for GraphQL
+        )
+        self._session_event_loop = current_loop
+```
+
+**Why this matters:**
+- Prevents "Event loop is closed" errors in multi-event-loop scenarios
+- Ensures proper cleanup even when event loops change
+- Avoids resource leaks from unclosed sessions
+
+### Async Context Manager Protocol
+
+**All helpers implement `__aenter__` and `__aexit__` for context manager support:**
+
+```python
+# Recommended usage pattern
+async with JikanDetailedFetcher("21", "episodes") as fetcher:
+    await fetcher.fetch_detailed_data("input.json", "output.json")
+# Session automatically closed on exit (if owned)
+
+# AniList Helper
+async with AniListEnrichmentHelper() as helper:
+    anime_data = await helper.fetch_all_data_by_anilist_id(21)
+# Session closed on exit
+
+# Kitsu Helper (sessions created per request, context manager is no-op)
+async with KitsuEnrichmentHelper() as helper:
+    data = await helper.fetch_all_data(anime_id)
+```
+
+### GraphQL Body-Based Caching (AniList)
+
+**AniList helper uses `X-Hishel-Body-Key: true` header to enable POST request caching:**
+
+```python
+self.session = http_cache_manager.get_aiohttp_session(
+    "anilist",
+    timeout=aiohttp.ClientTimeout(total=None),
+    headers={"X-Hishel-Body-Key": "true"}  # Enable body-based caching for GraphQL
+)
+```
+
+**Why this is critical:**
+- GraphQL uses POST requests with different bodies for different queries
+- Without body-based caching, all GraphQL requests would share the same cache key
+- Hishel uses request body to generate unique cache keys per query
+
+### Crawler Caching with Canonical Path Normalization
+
+**Crawlers normalize anime identifiers to canonical paths for stable cache keys:**
+
+```python
+# anisearch_anime_crawler.py
+def _normalize_anime_url(anime_identifier: str) -> str:
+    """Convert anime identifier into canonical URL."""
+    if not anime_identifier.startswith("http"):
+        url = f"{BASE_ANIME_URL}{anime_identifier.lstrip('/')}"
+    else:
+        url = anime_identifier
+    return url
+
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
+async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str, Any]]:
+    """Cache keyed on canonical path (e.g., '18878,dan-da-dan') not full URL."""
+    url = f"{BASE_ANIME_URL}{canonical_path}"
+    # ... fetch logic
+```
+
+**Why this matters:**
+- Ensures cache reuse across different URL formats (relative, absolute, bare ID)
+- All of these hit the same cache: `"18878,dan-da-dan"`, `"/18878,dan-da-dan"`, `"https://www.anisearch.com/anime/18878,dan-da-dan"`
+- TTL configured centrally via `CacheConfig` in `src/cache_manager/config.py`
+
+### Graceful Fallback on Redis Unavailability
+
+**All caching gracefully falls back to uncached execution if Redis fails:**
+
+```python
+# HTTP caching (cache_manager/aiohttp_adapter.py)
+try:
+    storage = AsyncRedisStorage(redis_client, ttl=ttl)
+    self._storage = storage
+except Exception:
+    # Fallback to uncached session if Redis unavailable
+    logger.warning("Failed to set up Redis cache, using uncached session")
+    self._storage = None
+
+# Result caching (cache_manager/result_cache.py)
+try:
+    redis_client = get_result_cache_redis_client()
+    cached_value = await redis_client.get(cache_key)
+    # ... use cache
+except redis.RedisError:
+    # Fall back to uncached execution
+    result = await func(*args, **kwargs)
+```
+
+**Why this matters:**
+- Application never crashes due to Redis issues
+- Degraded performance (no caching) instead of hard failure
+- Useful for development without Redis or when Redis is temporarily down
+
 ## Usage
 
 ### Running Enrichment

@@ -23,9 +23,10 @@ class CrawlerRunConfig:
         wait_for: Optional[str] = None,
         js_only: bool = False,
         page_timeout: int = 60000,
-    ) -> None: """
+    ) -> None:
+        """
         Initialize a crawler run configuration with extraction options and runtime behaviors.
-        
+
         Parameters:
             extraction_strategy: Optional extraction schema specifying fields to extract from the page.
             wait_until: Optional name of a page lifecycle event to wait for before extracting (e.g., "load", "networkidle").
