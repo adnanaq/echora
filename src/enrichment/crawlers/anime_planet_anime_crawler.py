@@ -492,16 +492,13 @@ def _determine_season_from_date(date_str: str) -> Optional[str]:
         return None
 
     month = int(month_match.group(1))
-    if month in [12, 1, 2]:
-        return "WINTER"
-    elif month in [3, 4, 5]:
-        return "SPRING"
-    elif month in [6, 7, 8]:
-        return "SUMMER"
-    elif month in [9, 10, 11]:
-        return "FALL"
-
-    return None
+    season_map = {
+        12: "WINTER", 1: "WINTER", 2: "WINTER",
+        3: "SPRING", 4: "SPRING", 5: "SPRING",
+        6: "SUMMER", 7: "SUMMER", 8: "SUMMER",
+        9: "FALL", 10: "FALL", 11: "FALL",
+    }
+    return season_map.get(month)
 
 
 def _parse_anime_metadata(metadata_text: str, related_item: Dict[str, Any]) -> None:

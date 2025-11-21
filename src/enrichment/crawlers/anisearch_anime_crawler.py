@@ -306,7 +306,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
             if result.success and result.extracted_content:
                 data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
 
-                if not data:
+                if not data or not isinstance(data, list) or len(data) == 0:
                     logging.warning("Extraction returned empty data.")
                     return None
 
@@ -329,7 +329,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                 anime_data["start_date"] = None
                 anime_data["end_date"] = None
                 published_str = anime_data.get("published")
-                if published_str:
+                if published_str and isinstance(published_str, str):
                     match = re.search(
                         r"(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})",
                         published_str,
