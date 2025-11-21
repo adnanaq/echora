@@ -255,10 +255,13 @@ def remove_matched_entry(
     - "anidb": compares against the entry's `id` using string comparison.
     - "animeplanet": compares against the entry's `name`.
     
-    @param working_data: List of character dictionaries to filter.
-    @param matched_id: Identifier to match and remove (type depends on source).
-    @param source_type: One of "jikan", "anilist", "anidb", or "animeplanet"; other values return the input unchanged.
-    @returns: A new list of character dictionaries with the matching entry removed, or the original list if no match or unknown source.
+    Parameters:
+        working_data: List of character dictionaries to filter.
+        matched_id: Identifier to match and remove (type depends on source).
+        source_type: One of "jikan", "anilist", "anidb", or "animeplanet"; other values return the input unchanged.
+
+    Returns:
+        List[Dict[str, Any]: A new list of character dictionaries with the matching entry removed, or the original list if no match or unknown source.
     """
     if source_type == "jikan":
         # Jikan uses 'character_id' field
@@ -316,7 +319,7 @@ async def process_stage5_ai_characters(
             missing_files.append(str(stage_files[source]))
 
     if missing_files:
-        logger.error(f"Required source files missing:")
+        logger.error("Required source files missing:")
         for f in missing_files:
             logger.error(f"  - {f}")
         raise FileNotFoundError(
@@ -591,9 +594,9 @@ async def process_stage5_ai_characters(
         partial_matches = sum(1 for char in working_jikan if "found_in" in char)
         no_matches = len(working_jikan) - partial_matches
 
-        logger.info(f"=" * 80)
+        logger.info("=" * 80)
         logger.info(f"AI character processing complete for {anime_id}")
-        logger.info(f"=" * 80)
+        logger.info("=" * 80)
         logger.info(f"Total processed: {total_jikan} characters")
         logger.info(
             f"  Fully matched: {matched_count} (saved to stage5_characters.json)"
@@ -604,8 +607,8 @@ async def process_stage5_ai_characters(
         logger.info(
             f"  No matches: {no_matches} (in working_jikan.json, no 'found_in' field)"
         )
-        logger.info(f"=" * 80)
-        logger.info(f"Pool reduction:")
+        logger.info("=" * 80)
+        logger.info("Pool reduction:")
         logger.info(f"  AniList: {len(anilist_chars)} → {len(working_anilist)}")
         logger.info(f"  AniDB: {len(anidb_chars)} → {len(working_anidb)}")
         logger.info(

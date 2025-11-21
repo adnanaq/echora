@@ -205,7 +205,8 @@ class AnimePlanetEnrichmentHelper:
         """
         Provide async context manager entry that yields the helper instance.
         
-        @returns The AnimePlanetEnrichmentHelper instance to be used within the async context.
+        Returns:
+            AnimePlanetEnrichmentHelper: The AnimePlanetEnrichmentHelper instance to be used within the async context.
         """
         return self
 

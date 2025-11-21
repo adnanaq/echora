@@ -132,7 +132,7 @@ class _CachedResponse:
         """
         Enter the async context and yield the cached response instance.
         
-        @returns
+        Returns:
             _CachedResponse: the context-managed cached response object.
         """
         return self

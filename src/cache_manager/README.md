@@ -243,6 +243,41 @@ async def fetch_external_data(item_id: str) -> dict:
 - **Event loop aware:** Per-event-loop Redis client management (automatic cleanup on loop changes)
 - **Cache key optimization:** Keys > 200 chars are automatically hashed to 64-character SHA-256 hex
 
+## Thread-Safety and Concurrency
+
+### Concurrency Model
+
+The cache manager is designed for **async concurrency** within Python's asyncio event loop, supporting multiple concurrent operations without race conditions.
+
+**Supported Concurrent Operations:**
+
+- **Multiple async tasks in same event loop** - Concurrent HTTP requests via `asyncio.gather()`
+- **Multiple agents with shared Redis cache** - Multiple session instances safely share Redis storage
+- **Multiple processes** - Redis atomic operations coordinate cache access across processes
+- **Concurrent cache reads/writes** - Redis connection pooling (50 connections) handles concurrent operations
+
+**Not Thread-Safe:**
+
+- **Sharing sessions across OS threads** - Each thread needs its own session instance
+- **Sharing sessions across event loops** - Create separate sessions per event loop
+
+### Thread-Safety Guarantees
+
+**CachedAiohttpSession:**
+- Safe for concurrent async requests within single event loop
+- Multiple instances can share same Redis storage backend
+- Not safe for sharing across threads or event loops
+
+**AsyncRedisStorage:**
+- Connection pooling enables concurrent async operations
+- Multiple agents can safely access shared cache
+- Redis atomic operations prevent race conditions across processes
+
+**@cached_result Decorator:**
+- Safe for concurrent async function calls
+- Redis atomic operations ensure process-safe caching
+- Automatic per-event-loop client management
+
 ## Cache Management
 
 ### Clear Cache
