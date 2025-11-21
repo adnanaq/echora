@@ -105,6 +105,14 @@ async def _fetch_and_process_sub_page(
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
+# Error messages
+_ERR_INVALID_URL = (
+    "Invalid URL: Must be an anisearch.com anime URL. "
+    "Expected format: '{base_url}<anime-id>' or '/<anime-id>' or '<anime-id>'"
+)
+_ERR_URL_PREFIX = "URL must start with {base_url}"
+_ERR_MISSING_PATH = "URL does not contain anime path"
+
 
 def _normalize_anime_url(anime_identifier: str) -> str:
     """
@@ -129,10 +137,7 @@ def _normalize_anime_url(anime_identifier: str) -> str:
 
     # Validate it's an anisearch.com anime URL
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(
-            f"Invalid URL: Must be an anisearch.com anime URL. "
-            f"Expected format: '{BASE_ANIME_URL}<anime-id>' or '/<anime-id>' or '<anime-id>'"
-        )
+        raise ValueError(_ERR_INVALID_URL.format(base_url=BASE_ANIME_URL))
 
     return url
 
@@ -151,12 +156,12 @@ def _extract_path_from_url(url: str) -> str:
         ValueError: If URL cannot be parsed
     """
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(f"URL must start with {BASE_ANIME_URL}")
+        raise ValueError(_ERR_URL_PREFIX.format(base_url=BASE_ANIME_URL))
 
     # Extract path after BASE_ANIME_URL
     path = url[len(BASE_ANIME_URL):]
     if not path:
-        raise ValueError("URL does not contain anime path")
+        raise ValueError(_ERR_MISSING_PATH)
 
     return path
 

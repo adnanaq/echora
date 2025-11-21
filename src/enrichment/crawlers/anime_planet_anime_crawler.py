@@ -18,7 +18,7 @@ import json
 import logging
 import re
 import sys
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -504,13 +504,62 @@ def _determine_season_from_date(date_str: str) -> Optional[str]:
     return None
 
 
-def _process_related_anime(
-    related_anime_raw: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Process related anime data from raw extracted list."""
-    related_anime = []
+def _parse_anime_metadata(metadata_text: str, related_item: Dict[str, Any]) -> None:
+    """Parse anime-specific metadata (type, episodes)."""
+    if not metadata_text:
+        return
 
-    for item in related_anime_raw:
+    # Extract type and episodes (e.g., "TV: 12 ep")
+    type_ep_match = re.search(
+        r"(Web|TV Special|TV|OVA|Movie|Special|ONA|Music\s*Video)(?:\s*:\s*(\d+)\s*ep)?",
+        metadata_text,
+        re.IGNORECASE,
+    )
+    if type_ep_match:
+        related_item["type"] = type_ep_match.group(1).strip().upper()
+        if type_ep_match.group(2):
+            related_item["episodes"] = int(type_ep_match.group(2))
+
+
+def _parse_manga_metadata(metadata_text: str, related_item: Dict[str, Any]) -> None:
+    """Parse manga-specific metadata (volumes, chapters)."""
+    if not metadata_text:
+        return
+
+    # Example: "Vol: 1, Ch: 5"
+    vol_match = re.search(r"Vol:\s*([\d?]+)", metadata_text, re.IGNORECASE)
+    if vol_match:
+        vol_raw = vol_match.group(1)
+        if vol_raw.isdigit():
+            related_item["volumes"] = int(vol_raw)
+
+    ch_match = re.search(r"Ch:\s*([\d?]+)", metadata_text, re.IGNORECASE)
+    if ch_match:
+        ch_raw = ch_match.group(1)
+        if ch_raw.isdigit():
+            related_item["chapters"] = int(ch_raw)
+
+
+def _process_related_items(
+    items_raw: List[Dict[str, Any]],
+    item_type: str,
+    metadata_parser: Callable[[str, Dict[str, Any]], None],
+) -> List[Dict[str, Any]]:
+    """
+    Generic processor for related anime/manga items.
+
+    Args:
+        items_raw: Raw extracted list of related items
+        item_type: Type of item ("anime" or "manga")
+        metadata_parser: Function to parse type-specific metadata
+
+    Returns:
+        List of processed related items
+    """
+    processed_items = []
+    url_pattern = rf"/{item_type}/([^/?]+)"
+
+    for item in items_raw:
         title = item.get("title", "").strip()
         url = item.get("url", "").strip()
 
@@ -518,7 +567,7 @@ def _process_related_anime(
             continue
 
         # Extract slug from URL
-        slug_match = re.search(r"/anime/([^/?]+)", url)
+        slug_match = re.search(url_pattern, url)
         slug = slug_match.group(1) if slug_match else None
 
         if not slug:
@@ -555,98 +604,35 @@ def _process_related_anime(
                 if year_match:
                     related_item["year"] = int(year_match.group(1))
 
-        # Parse metadata text (contains: type, episodes)
+        # Parse type-specific metadata
         metadata_text = item.get("metadata_text", "")
-        if metadata_text:
-            # Extract type and episodes (e.g., "TV: 12 ep")
-            type_ep_match = re.search(
-                r"(Web|TV Special|TV|OVA|Movie|Special|ONA|Music\s*Video)(?:\s*:\s*(\d+)\s*ep)?",
-                metadata_text,
-                re.IGNORECASE,
-            )
-            if type_ep_match:
-                related_item["type"] = type_ep_match.group(1).strip().upper()
-                if type_ep_match.group(2):
-                    related_item["episodes"] = int(type_ep_match.group(2))
+        metadata_parser(metadata_text, related_item)
 
-        related_anime.append(related_item)
+        processed_items.append(related_item)
 
-    return related_anime
+    return processed_items
+
+
+def _process_related_anime(
+    related_anime_raw: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Process related anime data from raw extracted list."""
+    return _process_related_items(related_anime_raw, "anime", _parse_anime_metadata)
 
 
 def _process_related_manga(
     related_manga_raw: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Process related manga data from raw extracted list."""
-    related_manga = []
-
-    for item in related_manga_raw:
-        title = item.get("title", "").strip()
-        url = item.get("url", "").strip()
-
-        if not title or not url:
-            continue
-
-        # Extract slug from URL
-        slug_match = re.search(r"/manga/([^/?]+)", url)
-        slug = slug_match.group(1) if slug_match else None
-
-        if not slug:
-            continue
-
-        related_item = {
-            "title": title,
-            "slug": slug,
-            "url": f"https://www.anime-planet.com{url}",
-            "relation_type": "same_franchise",
-        }
-
-        # Add relation subtype if present (Sequel, Prequel, etc.)
-        relation_subtype = item.get("relation_subtype", "").strip()
-        if relation_subtype:
-            related_item["relation_subtype"] = relation_subtype.upper()
-
-        # Extract dates from data attributes (preferred method)
-        start_date = item.get("start_date_attr", "").strip()
-        end_date = item.get("end_date_attr", "").strip()
-
-        if start_date:
-            related_item["start_date"] = start_date
-            # Extract year from start date
-            year_match = re.search(r"(\d{4})", start_date)
-            if year_match:
-                related_item["year"] = int(year_match.group(1))
-
-        if end_date:
-            related_item["end_date"] = end_date
-            # Extract year from end date if no start date
-            if not start_date:
-                year_match = re.search(r"(\d{4})", end_date)
-                if year_match:
-                    related_item["year"] = int(year_match.group(1))
-
-        # Parse metadata text (contains: type, volumes, chapters)
-        metadata_text = item.get("metadata_text", "")
-        if metadata_text:
-            # Example: "Vol: 1, Ch: 5"
-            vol_match = re.search(r"Vol:\s*([\d?]+)", metadata_text, re.IGNORECASE)
-            if vol_match:
-                vol_raw = vol_match.group(1)
-                if vol_raw.isdigit():
-                    related_item["volumes"] = int(vol_raw)
-
-            ch_match = re.search(r"Ch:\s*([\d?]+)", metadata_text, re.IGNORECASE)
-            if ch_match:
-                ch_raw = ch_match.group(1)
-                if ch_raw.isdigit():
-                    related_item["chapters"] = int(ch_raw)
-        related_manga.append(related_item)
-
-    return related_manga
+    return _process_related_items(related_manga_raw, "manga", _parse_manga_metadata)
 
 
 async def main() -> int:
     """CLI entry point for anime-planet.com crawler."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     parser = argparse.ArgumentParser(
         description="Crawl anime data from anime-planet.com"
     )
