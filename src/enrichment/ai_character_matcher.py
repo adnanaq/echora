@@ -383,11 +383,16 @@ class EnsembleFuzzyMatcher:
     """Multi-algorithm fuzzy matching with ensemble scoring (enhanced)"""
 
     def __init__(self, model_name: str = "BAAI/bge-m3", enable_visual: bool = True):
-        """Initialize with multilingual embedding model and optional vision model
-
-        Args:
-            model_name: Text embedding model name
-            enable_visual: Enable visual similarity matching (requires VisionProcessor)
+        """
+        Initialize the ensemble fuzzy matcher with optional multilingual embedding and vision processors.
+        
+        Parameters:
+            model_name (str): Name or path of the text embedding model to load.
+            enable_visual (bool): If True, attempts to initialize a vision processor for image-based similarity.
+        
+        Notes:
+            - If the embedding model fails to load, `self.embedding_model` will be set to `None` and text-only fallback matching is used.
+            - Visual matching is enabled only when `enable_visual` is True and the vision components are available; on failure `self.enable_visual` is set to False and `self.vision_processor` remains `None`.
         """
         try:
             self.embedding_model = SentenceTransformer(
@@ -1443,16 +1448,23 @@ async def process_characters_with_ai_matching(
     matcher: Optional["AICharacterMatcher"] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Main function to process characters using AI matching
-
-    Returns the same JSON format as the original Stage 5 but with AI-powered matching
-
-    Args:
-        jikan_chars: Characters from Jikan
-        anilist_chars: Characters from AniList
-        anidb_chars: Characters from AniDB
-        anime_planet_chars: Characters from AnimePlanet (optional)
-        matcher: Reusable AICharacterMatcher instance (optional, creates new if not provided)
+    Process and integrate character data from multiple sources using AI-powered matching.
+    
+    This function runs the ensemble matcher over Jikan, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. If a reusable AICharacterMatcher instance is supplied it will be reused; otherwise a new matcher is created.
+    
+    Parameters:
+        jikan_chars (List[Dict[str, Any]]): Character entries from Jikan (primary source).
+        anilist_chars (List[Dict[str, Any]]): Character entries from AniList.
+        anidb_chars (List[Dict[str, Any]]): Character entries from AniDB.
+        anime_planet_chars (Optional[List[Dict[str, Any]]]): Character entries from AnimePlanet; may be omitted.
+        matcher (Optional[AICharacterMatcher]): An existing AICharacterMatcher to reuse; a new one is created when omitted.
+    
+    Returns:
+        Dict[str, List[Dict[str, Any]]]: A dictionary with a "characters" list where each entry is a dict containing the integrated fields:
+            - age, description, eye_color, favorites, gender, hair_color, name, name_native, role
+            - character_traits, images, name_variations, nicknames, voice_actors
+            - character_pages
+            - _match_scores (internal per-source match scoring; may be an empty dict)
     """
 
     # Reuse matcher if provided, otherwise create new instance
@@ -1518,7 +1530,14 @@ async def process_characters_with_ai_matching(
 if __name__ == "__main__":  # pragma: no cover
     # Example usage
     async def main() -> int:
-        """CLI entry point for AI character matcher."""
+        """
+        Run a sample CLI workflow that invokes the AI character matcher and prints results as JSON.
+        
+        Executes a demonstration run using mock character data, prints the matcher output to stdout as formatted JSON, and returns a numeric exit code.
+        
+        Returns:
+            int: `0` on successful completion, `1` if an unexpected error occurred (and an error message is written to stderr).
+        """
         try:
             # Mock data for testing
             jikan_chars = [{"name": "Spike Spiegel", "role": "Main", "mal_id": 1}]

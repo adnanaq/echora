@@ -21,11 +21,10 @@ class TestResultCacheRaceConditions:
 
     @pytest.mark.asyncio
     async def test_race_condition_fix_with_instrumentation(self) -> None:
-        """Integration test proving race condition is fixed using instrumentation.
-
-        This test uses a modified version of get_result_cache_redis_client
-        that adds a controlled delay in the critical section to reliably trigger
-        the race window. Without the fix (lock until return), this would fail.
+        """
+        Validate that holding the internal initialization lock until the client is returned prevents a race where a concurrent closer can set the client to None during initialization.
+        
+        Instruments get_result_cache_redis_client to introduce a short delay inside the critical section, runs an initialization getter and a concurrent closer, and asserts the getter still observes a non-None client even if the closer runs during the delay.
         """
         with (
             patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
@@ -55,7 +54,14 @@ class TestResultCacheRaceConditions:
             original_get = result_cache.get_result_cache_redis_client
 
             async def instrumented_get_with_delay():
-                """Add delay to simulate context switch in race window."""
+                """
+                Obtain the result cache Redis client while introducing a short delay inside the initialization lock to simulate a race window.
+                
+                This instrumented getter acquires the cache's internal lock, lazily initializes the Redis client if needed, awaits a brief sleep inside the critical section to allow concurrent operations to interleave, and then returns the client.
+                
+                Returns:
+                    The initialized Redis client instance from the result cache.
+                """
                 async with result_cache._redis_lock:
                     if result_cache._redis_client is None:
                         config = result_cache.get_cache_config()
@@ -83,12 +89,16 @@ class TestResultCacheRaceConditions:
                 race_result = None
 
                 async def getter_with_delay():
-                    """Get client with instrumented delay."""
+                    """
+                    Await the instrumented Redis client getter and store the obtained client in the enclosing `race_result` variable.
+                    """
                     nonlocal race_result
                     race_result = await instrumented_get_with_delay()
 
                 async def concurrent_closer():
-                    """Try to close during getter's critical section."""
+                    """
+                    Sleep briefly and then attempt to close the shared result cache Redis client to simulate a concurrent closer racing with a getter's critical section.
+                    """
                     await asyncio.sleep(0.005)
                     await close_result_cache_redis_client()
 

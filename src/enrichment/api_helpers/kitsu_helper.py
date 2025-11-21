@@ -29,7 +29,16 @@ class KitsuEnrichmentHelper:
     async def _make_request(
         self, endpoint: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make request to Kitsu API."""
+        """
+        Perform an HTTP GET request to a Kitsu API endpoint and return the parsed JSON response.
+        
+        Parameters:
+            endpoint (str): API path appended to the helper's base_url (e.g. '/anime/1').
+            params (Optional[Dict[str, Any]]): Query parameters to include in the request.
+        
+        Returns:
+            Dict[str, Any]: The parsed JSON response body when the server returns HTTP 200; an empty dict on non-200 responses or on error.
+        """
         headers = {
             "Accept": "application/vnd.api+json",
             "Content-Type": "application/vnd.api+json",
@@ -118,7 +127,18 @@ class KitsuEnrichmentHelper:
             return []
 
     async def fetch_all_data(self, anime_id: int) -> Dict[str, Any]:
-        """Fetch all Kitsu data for an anime ID."""
+        """
+        Fetch the anime record, all episodes, and categories for the given Kitsu anime ID concurrently.
+        
+        Parameters:
+            anime_id (int): The Kitsu anime identifier to fetch data for.
+        
+        Returns:
+            dict: Mapping with keys:
+                - "anime": The anime resource object from Kitsu, or `None` if it could not be retrieved.
+                - "episodes": A list of episode resource objects, or an empty list if unavailable.
+                - "categories": A list of category resource objects, or an empty list if unavailable.
+        """
         try:
             # Fetch all data concurrently
             results = await asyncio.gather(
@@ -147,11 +167,20 @@ class KitsuEnrichmentHelper:
             return {"anime": None, "episodes": [], "categories": []}
 
     async def close(self) -> None:
-        """No persistent session to close (creates per-request sessions)."""
+        """
+        No-op close method retained for interface compatibility.
+        
+        This method performs no action because HTTP sessions are created per request; it exists so callers can await a close() when an async lifecycle API is required.
+        """
         pass
 
     async def __aenter__(self) -> "KitsuEnrichmentHelper":
-        """Enter async context."""
+        """
+        Enter the asynchronous context manager and return the helper instance.
+        
+        Returns:
+            KitsuEnrichmentHelper: The KitsuEnrichmentHelper instance being managed by the context.
+        """
         return self
 
     async def __aexit__(
@@ -160,13 +189,27 @@ class KitsuEnrichmentHelper:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> bool:
-        """Exit async context."""
+        """
+        Exit the asynchronous context manager and ensure the helper is closed.
+        
+        Await the helper's close method to release any resources.
+        
+        Returns:
+            bool: `False` to indicate any exception should be propagated.
+        """
         await self.close()
         return False
 
 
 async def main() -> int:
-    """CLI entry point for Kitsu helper."""
+    """
+    CLI entry point that fetches Kitsu anime data and writes it to a JSON file.
+    
+    Expects exactly two command-line arguments: an integer `anime_id` and an `output_file` path. Attempts to fetch anime details, episodes, and categories for the given ID and writes the resulting JSON to the specified file. Any errors or invalid usage are reported to stderr.
+    
+    Returns:
+        int: 0 on success; 1 on invalid usage, fetch failure, or any error.
+    """
     if len(sys.argv) != 3:
         print("Usage: python kitsu_helper.py <anime_id> <output_file>", file=sys.stderr)
         return 1

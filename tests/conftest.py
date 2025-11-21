@@ -15,7 +15,11 @@ from src.vector.client.qdrant_client import QdrantClient
 
 @pytest.fixture
 def mock_redis_cache_miss():
-    """Fixture to ensure cached_result always results in a cache miss."""
+    """
+    Ensure any result cache lookup misses by patching the Redis client used by the result cache.
+    
+    This pytest fixture patches src.cache_manager.result_cache.get_result_cache_redis_client to return an AsyncMock Redis client whose `get` method always returns `None`, causing cached result lookups to behave as cache misses for the duration of the test.
+    """
     with patch(
         "src.cache_manager.result_cache.get_result_cache_redis_client"
     ) as mock_get_redis_client:
@@ -27,7 +31,14 @@ def mock_redis_cache_miss():
 
 @pytest.fixture(scope="session")
 def settings():
-    """Get test settings with test collection name."""
+    """
+    Provide application settings configured to use the test Qdrant collection.
+    
+    Overrides the `qdrant_collection_name` attribute to "anime_database_test" so all tests operate against the dedicated test collection.
+    
+    Returns:
+        settings: Settings instance with `qdrant_collection_name` set to "anime_database_test".
+    """
     settings = get_settings()
     # Override to use test collection for ALL tests
     settings.qdrant_collection_name = "anime_database_test"
@@ -36,9 +47,13 @@ def settings():
 
 @pytest_asyncio.fixture
 async def client(settings):
-    """Create QdrantClient with test collection.
-
-    Collection is automatically created/validated during client initialization.
+    """
+    Provide a QdrantClient configured to use the test collection and ensure the collection is deleted after the test.
+    
+    If the client cannot be created, the test is skipped.
+    
+    Returns:
+        QdrantClient: An instantiated QdrantClient configured for the test collection.
     """
     try:
         client = QdrantClient(settings=settings)

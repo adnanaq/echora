@@ -70,6 +70,11 @@ def get_anime_by_title(database: Dict[str, Any], title: str) -> Optional[Dict[st
 
 
 async def main():
+    """
+    Orchestrates command-line parsing, selection of an anime entry from an offline JSON database, and runs the enrichment pipeline for that entry.
+    
+    Parses CLI options (--file, --index, --title, --agent, --skip, --only), validates mutually exclusive and required arguments, loads the specified database file, selects an anime entry by index or title, and invokes ProgrammaticEnrichmentPipeline.enrich_anime with optional service filtering and agent directory. Prints progress, the selected entry summary, per-API success indicators, and total enrichment time. Exits the process with a non-zero status on argument validation failures or when the requested anime entry cannot be found.
+    """
     parser = argparse.ArgumentParser(
         description="Run enrichment pipeline on anime from offline database",
         formatter_class=argparse.RawDescriptionHelpFormatter,

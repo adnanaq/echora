@@ -75,7 +75,15 @@ def _normalize_characters_url(anime_identifier: str) -> str:
 
 
 def _extract_slug_from_characters_url(url: str) -> str:
-    """Extract slug from anime-planet characters URL."""
+    """
+    Extract the anime slug from an anime-planet characters URL.
+    
+    Returns:
+        The slug segment following `/anime/` in the URL (e.g., `"dandadan"`).
+    
+    Raises:
+        ValueError: If a slug cannot be found in the provided URL.
+    """
     # Extract slug from: https://www.anime-planet.com/anime/dandadan/characters
     import re
 
@@ -88,23 +96,36 @@ def _extract_slug_from_characters_url(url: str) -> str:
 @cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_characters")
 async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Dict[str, Any]]:
     """
-    Pure cached function that crawls and processes character data from anime-planet.com.
-    Uses concurrent batch processing for character detail enrichment.
-
-    Results are cached in Redis for 24 hours based ONLY on canonical slug.
-    This function has no side effects - it only fetches and returns data.
-
-    Args:
-        canonical_slug: Canonical anime slug (e.g., "dandadan") - already normalized by caller
-
+    Fetch and return enriched character data for a canonical anime slug from anime-planet.com.
+    
+    Performs a multi-phase crawl: it fetches the characters list page, normalizes the list into basic character entries,
+    concurrently fetches individual character detail pages to enrich those entries, and returns the combined result.
+    Results are cached (TTL configured by the module) based solely on the provided canonical slug. This function has no
+    side effects beyond network requests and returns None if fetching or extraction fails.
+    
+    Parameters:
+        canonical_slug (str): Canonical anime slug (e.g., "dandadan"); must already be normalized by the caller.
+    
     Returns:
-        Complete character data dictionary with enriched details, or None if fetch fails
+        dict: A dictionary with keys:
+            - "characters": List[dict] — enriched character dictionaries.
+            - "total_count": int — number of characters in the list.
+        Returns `None` if the crawl or extraction fails.
     """
     # Build URL from canonical slug (caller already normalized)
     characters_url = f"{BASE_URL}/anime/{canonical_slug}/characters"
 
     # Helper function to get reusable character field schema
     def _get_character_fields_schema() -> List[Dict[str, Any]]:
+        """
+        Provide the CSS extraction schema for fields present in an anime-planet character list row.
+        
+        Returns:
+            list[dict]: A list of field-schema dictionaries describing how to extract values from a character row.
+                Each dictionary contains keys like `name`, `selector`, and `type`, and may include `attribute`
+                for attribute extraction or `fields` for nested list items. The schema includes entries for:
+                `name`, `url`, `image_src`, `image_data_src`, `tags_raw`, and voice actor lists for JP/US/ES/FR.
+        """
         return [
             {"name": "name", "selector": "a.name", "type": "text"},
             {
@@ -364,19 +385,17 @@ async def fetch_animeplanet_characters(
     slug: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Wrapper function that handles side effects (file writing, return_data logic).
-
-    This function calls the cached _fetch_animeplanet_characters_data() to get the data,
-    then performs side effects that should execute regardless of cache status.
-
-    Args:
-        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan/characters"),
-              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan/characters")
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
-
+    Orchestrates retrieval of Anime-Planet character data, performs side effects (file output), and returns the result per caller preference.
+    
+    Normalizes the provided identifier to a canonical slug, invokes the cached internal fetcher keyed by that slug, and — if data is returned — writes a sanitized JSON file to `output_path` when provided. The file write executes regardless of whether the data came from cache or a fresh crawl.
+    
+    Parameters:
+        slug: Anime identifier in any supported form (slug, path, or full characters page URL).
+        return_data: If `True`, the fetched data dictionary is returned to the caller; if `False`, nothing is returned.
+        output_path: Optional filesystem path where the JSON result will be written (path is sanitized before writing).
+    
     Returns:
-        Complete character data dictionary (if return_data=True), otherwise None
+        The enriched character data dictionary if `return_data` is `True` and data was found, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical slug
     # This ensures cache reuse across different identifier formats
@@ -404,10 +423,13 @@ async def fetch_animeplanet_characters(
 
 
 def _get_character_detail_schema() -> Dict[str, Any]:
-    """Get CSS schema for character detail page extraction.
-
-    Note: We don't extract tables here since CSS can't easily get
-    tables following h3 headers. We'll parse from raw HTML instead.
+    """
+    Return a CSS-based extraction schema for an anime-planet character detail page.
+    
+    The schema describes selectors and field shapes used by the crawler to extract name, image, entry bar items (gender, hair color, ranks), metadata items (eye color, age, birthday, etc.), description paragraphs, tags, alternative names, and raw anime/manga role table rows. Table content is selected here but full table parsing is performed separately after extraction.
+    
+    Returns:
+        Dict[str, Any]: Extraction schema mapping compatible with the crawler's CSS/JSON extraction engine.
     """
     return {
         "baseSelector": "body",
@@ -608,14 +630,26 @@ def _normalize_value(value: str) -> Optional[str]:
 
 
 def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Process character detail page data into enriched character info.
-
-    Args:
-        detail_data: Extracted data from CSS schema
-        html: Raw HTML from detail page for table parsing
-
+    """
+    Convert extracted character detail page data into a flattened dictionary of enriched character attributes.
+    
+    Parameters:
+        detail_data (Dict[str, Any]): Mapping produced by the detail-page CSS extraction schema. Expected keys include:
+            - entry_bar_items: list of {"text": ...} entries used to extract `gender` and `hair_color`.
+            - loved_rank, hated_rank: rank strings (e.g. "#1", "1,234") parsed to integers.
+            - metadata_items: list of {"title": ..., "value": ...} entries converted into snake_case fields (e.g. "Eye Color" -> `eye_color`).
+            - description_paragraphs: list of {"text": ...} entries; the first substantive paragraph is used for `description`.
+            - alt_names_raw: list of alternative-name objects used to build `alternative_names`.
+            - anime_roles_raw, manga_roles_raw: lists of role objects used to build `anime_roles` and `manga_roles`.
+    
     Returns:
-        Dictionary of enriched character data
+        Dict[str, Any]: Enriched character fields, which may include:
+            - gender, hair_color (str or None)
+            - loved_rank, hated_rank (int)
+            - metadata-derived snake_case fields (str or None)
+            - description (str)
+            - alternative_names (List[str])
+            - anime_roles, manga_roles (List[Dict] with title, url and optional role)
     """
     enriched: Dict[str, Any] = {}
 
@@ -729,7 +763,14 @@ def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def main() -> int:
-    """CLI entry point for anime-planet.com character crawler."""
+    """
+    Parse command-line arguments and run the anime-planet character crawler, writing results to a file.
+    
+    Runs the crawler with the provided anime identifier (slug, path, or full URL) and writes output to the specified file path. Logs errors and returns a non-zero exit code on failure.
+    
+    Returns:
+        int: 0 on success, 1 on failure.
+    """
     parser = argparse.ArgumentParser(
         description="Crawl character data from an anime-planet.com anime characters page."
     )

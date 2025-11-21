@@ -186,6 +186,12 @@ class TestCachedRequestContextManager:
 
         # Create a proper coroutine that returns the response
         async def mock_coro():
+            """
+            Produce the predefined `mock_response` when awaited.
+            
+            Returns:
+                mock_response: The mocked response object returned by the coroutine.
+            """
             return mock_response
 
         mock_session = MagicMock()
@@ -207,6 +213,12 @@ class TestCachedRequestContextManager:
 
         # Create a proper coroutine that returns the response
         async def mock_coro():
+            """
+            Produce the predefined `mock_response` when awaited.
+            
+            Returns:
+                mock_response: The mocked response object returned by the coroutine.
+            """
             return mock_response
 
         mock_session = MagicMock()
@@ -223,13 +235,36 @@ class TestCachedRequestContextManager:
 
 class MockAsyncStorage:
     def __init__(self):
+        """
+        Initialize the instance and create an empty in-memory storage mapping for cache entries.
+        """
         self._storage = {}
 
     async def get_entries(self, key):
+        """
+        Retrieve cached entries for the given cache key.
+        
+        Parameters:
+            key (str): Cache key to look up.
+        
+        Returns:
+            list: The list of cache entries associated with `key`, or `None` if no entries exist.
+        """
         return self._storage.get(key)
 
     async def create_entry(self, request, response, key):
         # Simulate hishel consuming the stream and storing the body
+        """
+        Create and store a mock cache entry by consuming the provided response stream and materializing its body.
+        
+        Parameters:
+            request: The original request object (kept for interface compatibility; not inspected by this helper).
+            response: An object exposing `status_code`, `headers`, and `stream` (an async or sync iterable of bytes) whose stream will be consumed and materialized.
+            key (str): The storage key under which the created entry will be inserted.
+        
+        Returns:
+            MagicMock: A mock entry whose `.response` has `status_code`, `headers`, and a `.stream` set to a list containing the full body bytes; the entry is inserted at the front of the storage list for the given key.
+        """
         body_chunks = []
         if response and response.stream:
             stream = response.stream
@@ -258,6 +293,11 @@ class MockAsyncStorage:
         return entry
 
     async def close(self):
+        """
+        Clear all entries from the storage backend.
+        
+        This removes any cached entries held by the session's storage.
+        """
         self._storage.clear()
 
 
@@ -266,7 +306,12 @@ class TestCachedAiohttpSession:
 
     @pytest.fixture
     def mock_storage(self):
-        """Create mock async storage."""
+        """
+        Provide an AsyncMock-wrapped MockAsyncStorage suitable for tests.
+        
+        Returns:
+            AsyncMock: An AsyncMock wrapping a MockAsyncStorage instance. The wrapper preserves MockAsyncStorage behavior and exposes a replaceable `close` coroutine mocked as an AsyncMock.
+        """
         storage = MockAsyncStorage()
         mock = AsyncMock(wraps=storage)
         mock.close = AsyncMock()
@@ -495,6 +540,12 @@ class TestCachedAiohttpSession:
         from hishel import Headers
 
         async def mock_stream():
+            """
+            Yield a single bytes chunk containing JSON-formatted cached data.
+            
+            Yields:
+                bytes: A single chunk b'{"cached": "data"}' representing the cached response body.
+            """
             yield b'{"cached": "data"}'
 
         mock_hishel_response = MagicMock()
@@ -565,6 +616,12 @@ class TestCachedAiohttpSession:
 
         # Mock storage.create_entry to return an Entry with consumable stream
         async def mock_stream():
+            """
+            Asynchronous generator that yields a single JSON-encoded byte chunk.
+            
+            Returns:
+                An asynchronous iterator that yields one `bytes` object containing a JSON document (b'{"data": "test"}').
+            """
             yield b'{"data": "test"}'
 
         mock_hishel_response = MagicMock()
@@ -608,6 +665,12 @@ class TestCachedAiohttpSession:
 
         # Mock sync iterator (not async)
         def mock_sync_stream():
+            """
+            Yield a single bytes chunk representing a small JSON payload.
+            
+            Yields:
+                bytes: A single bytes object containing the JSON b'{"sync": "data"}'.
+            """
             yield b'{"sync": "data"}'
 
         mock_hishel_response = MagicMock()
@@ -640,6 +703,12 @@ class TestCachedAiohttpSession:
 
         # Mock cache entry with dict headers (not Headers object)
         async def mock_stream():
+            """
+            Async generator that yields a single JSON-encoded bytes chunk representing a simple header-like object.
+            
+            Returns:
+                An async iterator that yields one `bytes` value: the JSON-encoded representation of {"dict": "headers"}.
+            """
             yield b'{"dict": "headers"}'
 
         mock_hishel_response = MagicMock()
@@ -673,6 +742,12 @@ class TestCachedAiohttpSession:
 
         # Mock sync iterator in Entry response
         def mock_sync_stream():
+            """
+            Yield a single bytes chunk "test" to simulate a synchronous response body stream.
+            
+            Returns:
+                iterator (Iterator[bytes]): An iterator that yields a single `bytes` object `b"test"`.
+            """
             yield b"test"
 
         mock_hishel_response = MagicMock()
@@ -713,6 +788,12 @@ class TestCachedAiohttpSession:
         from hishel import Headers
 
         async def mock_stream():
+            """
+            Yield a single bytes payload representing a JSON-encoded exception object.
+            
+            Yields:
+                bytes: The JSON-encoded byte string b'{"exception": "test"}'.
+            """
             yield b'{"exception": "test"}'
 
         # Create Headers with _headers that will cause exception during iteration
@@ -756,6 +837,17 @@ class TestCachedAiohttpSession:
         captured_response = None
 
         async def capture_create_entry(request, response, cache_key):
+            """
+            Capture the provided request and response objects and return a mock cache entry that omits a response stream.
+            
+            Parameters:
+                request: The HTTP request object passed to the cache create routine; stored to `captured_request`.
+                response: The HTTP response object passed to the cache create routine; stored to `captured_response`.
+                cache_key: The cache key associated with this create operation (not modified).
+            
+            Returns:
+                mock_entry: A MagicMock instance representing a cache entry whose `response` attribute is set to `None` to indicate no body stream should be consumed.
+            """
             nonlocal captured_request, captured_response
             captured_request = request
             captured_response = response
@@ -809,6 +901,12 @@ class TestCachedAiohttpSession:
         from hishel import Headers
 
         async def mock_stream():
+            """
+            Yield a single bytes chunk containing a JSON-like payload.
+            
+            Returns:
+                bytes: A bytes object containing the JSON payload b'{"headers": "list"}'.
+            """
             yield b'{"headers": "list"}'
 
         # Create Headers and manually set _headers to a list structure
@@ -999,6 +1097,15 @@ class TestCachedAiohttpSession:
         # Create three mock entries with different timestamps
         # Simulate Redis returning them in "wrong" order (oldest first)
         async def create_mock_stream(data: bytes):
+            """
+            Produce an async iterator that yields the provided bytes exactly once.
+            
+            Parameters:
+                data (bytes): Byte sequence to be yielded by the async iterator.
+            
+            Returns:
+                An async iterator that yields the provided `data` a single time.
+            """
             yield data
 
         # OLD entry (created_at=1.0)

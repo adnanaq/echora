@@ -42,15 +42,15 @@ BASE_EPISODE_URL = "https://www.anisearch.com/anime/"
 
 def _normalize_episode_url(anime_identifier: str) -> str:
     """
-    Normalize various input formats to full anisearch episode URL.
-
-    Accepts:
-        - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
-        - Path: "/18878,dan-da-dan/episodes" or "18878,dan-da-dan/episodes"
-        - Anime ID: "18878,dan-da-dan" (will append /episodes)
-
+    Normalize an anime identifier into a full Anisearch episodes page URL.
+    
+    Accepts a full episodes URL, a full anime URL without the `/episodes` suffix, a path (with or without leading `/`), or a canonical anime id (e.g. `18878,dan-da-dan`) and returns the canonical episodes URL.
+    
+    Parameters:
+        anime_identifier (str): Full URL, path, or canonical anime id identifying the anime.
+    
     Returns:
-        Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
+        str: Full Anisearch episodes page URL (e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/episodes").
     """
     # If already full URL with /episodes, return as-is
     if anime_identifier.startswith("https://www.anisearch.com/anime/") and "/episodes" in anime_identifier:
@@ -72,13 +72,16 @@ def _normalize_episode_url(anime_identifier: str) -> str:
 
 def _extract_anime_id_from_episode_url(url: str) -> str:
     """
-    Extract anime ID from episode URL.
-
-    Args:
-        url: Episode URL
-
+    Extract the canonical anime identifier from an Anisearch episode page URL.
+    
+    Parameters:
+        url (str): Full episode page URL that begins with the module's BASE_EPISODE_URL and may end with `/episodes`.
+    
     Returns:
-        Anime ID (e.g., "18878,dan-da-dan")
+        str: Canonical anime ID extracted from the URL (for example, "18878,dan-da-dan").
+    
+    Raises:
+        ValueError: If `url` does not start with the expected base episode URL.
     """
     # Remove base URL and /episodes suffix
     if url.startswith(BASE_EPISODE_URL):
@@ -92,16 +95,16 @@ def _extract_anime_id_from_episode_url(url: str) -> str:
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_episodes")
 async def _fetch_anisearch_episodes_data(canonical_anime_id: str) -> Optional[list[dict[str, Any]]]:
     """
-    Pure cached function that fetches episode data from anisearch.com.
-
-    Cache key depends ONLY on canonical anime ID, not on output_path or return_data.
-    This ensures efficient cache usage across different output destinations.
-
-    Args:
-        canonical_anime_id: Canonical anime ID (e.g., "18878,dan-da-dan") - already normalized by caller
-
+    Fetches episode metadata for an anime from anisearch.com using its canonical anime ID.
+    
+    Results are cached by canonical anime ID (decorator-managed); callers should treat this function as a pure, cache-keyed data fetcher.
+    
+    Parameters:
+        canonical_anime_id (str): Canonical anime identifier portion used in anisearch episode URLs (e.g., "18878,dan-da-dan").
+    
     Returns:
-        List of episode dictionaries, or None if fetch fails.
+        list[dict[str, Any]] | None: A list of episode dictionaries when extraction succeeds, or `None` if no results or extraction fails.
+            Each episode dictionary contains keys: `episodeNumber` (int when present), `runtime` (str), `releaseDate` (str), and `title` (str).
     """
     # Build URL from canonical anime ID (caller already normalized)
     url = f"{BASE_EPISODE_URL}{canonical_anime_id}/episodes"
@@ -170,21 +173,18 @@ async def fetch_anisearch_episodes(
     anime_id: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[list[dict[str, Any]]]:
     """
-    Wrapper function that handles side effects (file writing, return_data logic).
-
-    This function calls the cached _fetch_anisearch_episodes_data() to get the data,
-    then performs side effects that should execute regardless of cache status.
-
-    Args:
-        anime_id: Anime identifier - can be:
+    Fetch episode data for an anime from Anisearch and optionally persist it to a JSON file.
+    
+    Parameters:
+        anime_id (str): Anime identifier in any of these forms:
             - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
             - Path: "/18878,dan-da-dan/episodes" or "18878,dan-da-dan/episodes"
-            - Anime ID: "18878,dan-da-dan" (will auto-append /episodes)
-        return_data: Whether to return the data (default: True)
-        output_path: Optional file path to save JSON (default: None)
-
+            - Canonical ID: "18878,dan-da-dan" ("/episodes" will be appended)
+        return_data (bool): If True, return the fetched episode list; otherwise do not return it.
+        output_path (Optional[str]): If provided, write the episode list to this file as JSON.
+    
     Returns:
-        List of episode dictionaries (if return_data=True), otherwise None
+        list[dict[str, Any]] if return_data is True, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical anime ID
     # This ensures cache reuse across different identifier formats
@@ -212,7 +212,14 @@ async def fetch_anisearch_episodes(
 
 
 async def main() -> int:
-    """CLI entry point for anisearch.com episode crawler."""
+    """
+    Run the CLI to fetch episode data from anisearch.com and optionally write it to a JSON file.
+    
+    The command accepts a positional `anime_id` (full URL, path like '/18878,dan-da-dan/episodes', or canonical ID like '18878,dan-da-dan') and an optional `--output` path (defaults to 'anisearch_episodes.json'). The function invokes the episode fetcher and exits with a status code indicating success or failure.
+    
+    Returns:
+        int: `0` on successful completion, `1` on error.
+    """
     parser = argparse.ArgumentParser(
         description="Crawl episode data from anisearch.com."
     )

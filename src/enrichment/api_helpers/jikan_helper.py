@@ -31,6 +31,18 @@ class JikanDetailedFetcher:
     """
 
     def __init__(self, anime_id: str, data_type: str, session: Optional[Any] = None):
+        """
+        Initialize the fetcher for detailed Jikan API data for a specific anime.
+        
+        Parameters:
+            anime_id (str): MyAnimeList anime ID used to build API requests.
+            data_type (str): Type of data to fetch; expected values are 'episodes' or 'characters'.
+            session (Optional[Any]): Optional aiohttp-style session to use for HTTP requests. If omitted, a cached session is obtained internally.
+        
+        Notes:
+            - Sets default rate-limit configuration to 3 requests/second and 60 requests/minute.
+            - Tracks whether the instance owns the provided session so it can close it when appropriate.
+        """
         self.anime_id = anime_id
         self.data_type = data_type  # 'episodes' or 'characters'
         self.request_count = 0
@@ -46,10 +58,10 @@ class JikanDetailedFetcher:
         self.session = session or _cache_manager.get_aiohttp_session("jikan")
 
     async def respect_rate_limits(self) -> None:
-        """Ensure we don't exceed Jikan API rate limits (async version).
-
-        Jikan limits: 3 requests/second, 60 requests/minute
-        Strategy: Wait 0.5s between each request (ensures 2 req/sec << 3/sec limit)
+        """
+        Enforce Jikan API pacing constraints to avoid exceeding 3 requests/second and 60 requests/minute.
+        
+        Resets the per-minute counter when a minute has elapsed or the system clock moves backwards, pauses until the minute boundary if 60 requests have been made, and enforces a 0.5‑second delay between consecutive network requests.
         """
         current_time = time.time()
         elapsed = current_time - self.start_time
@@ -80,7 +92,12 @@ class JikanDetailedFetcher:
             await asyncio.sleep(0.5)
 
     async def _record_network_request(self, from_cache: bool) -> None:
-        """Increment counters for real network hits and apply pacing."""
+        """
+        Increment the internal network request counter and enforce pacing when a response was not served from cache.
+        
+        Parameters:
+            from_cache (bool): True if the response was served from cache; when False the request counter is incremented and rate-limiting/pacing is applied.
+        """
         if not from_cache:
             self.request_count += 1
             await self.respect_rate_limits()
@@ -88,14 +105,16 @@ class JikanDetailedFetcher:
     async def fetch_episode_detail(
         self, episode_id: int, retry_count: int = 0
     ) -> Optional[Dict[str, Any]]:
-        """Fetch detailed episode data from Jikan API (async).
-
-        Args:
-            episode_id: Episode number to fetch
-            retry_count: Internal retry counter (max 3 retries)
-
+        """
+        Fetches detailed information for a specific episode from the Jikan API.
+        
+        Parameters:
+            episode_id (int): Episode number to fetch.
+            retry_count (int): Internal retry attempt count; used to retry up to 3 times when the API returns HTTP 429.
+        
         Returns:
-            Episode detail dict or None if failed
+            dict: Episode detail containing keys such as `episode_number`, `url`, `title`, `title_japanese`, `title_romaji`, `aired`, `score`, `filler`, `recap`, `duration`, and `synopsis` on success.
+            None: If the request ultimately fails or a non-recoverable HTTP error occurs.
         """
         try:
             url = (
@@ -158,14 +177,20 @@ class JikanDetailedFetcher:
     async def fetch_character_detail(
         self, character_data: Dict[str, Any], retry_count: int = 0
     ) -> Optional[Dict[str, Any]]:
-        """Fetch detailed character data from Jikan API (async).
-
-        Args:
-            character_data: Character data containing MAL ID
-            retry_count: Internal retry counter (max 3 retries)
-
+        """
+        Fetch detailed information for a character from the Jikan API.
+        
+        Parameters:
+            character_data (Dict[str, Any]): Input record containing at least
+                `character["mal_id"]`. May include additional fields such as
+                `role` and `voice_actors` which are preserved in the result.
+            retry_count (int): Internal retry counter; not required by callers.
+        
         Returns:
-            Character detail dict or None if failed
+            Optional[Dict[str, Any]]: A dictionary with selected character fields:
+            `character_id`, `url`, `name`, `name_kanji`, `nicknames`, `about`,
+            `images`, `favorites`, `role`, and `voice_actors`. Returns `None` if the
+            fetch ultimately fails.
         """
         character_id = character_data["character"]["mal_id"]
 
@@ -229,7 +254,18 @@ class JikanDetailedFetcher:
     def append_batch_to_file(
         self, batch_data: List[Dict[str, Any]], progress_file: str
     ) -> int:
-        """Append batch data to progress file."""
+        """
+        Append a batch of items into a JSON progress file.
+        
+        If the file does not exist it will be created containing the batch; if it exists the batch items are appended to the existing JSON array.
+        
+        Parameters:
+            batch_data (List[Dict[str, Any]]): Items to append to the progress file.
+            progress_file (str): Path to the JSON progress file.
+        
+        Returns:
+            total_items (int): Total number of items present in the progress file after appending.
+        """
         # Load existing data
         if os.path.exists(progress_file):
             with open(progress_file, "r", encoding="utf-8") as f:
@@ -252,7 +288,12 @@ class JikanDetailedFetcher:
             await self.session.close()
 
     async def __aenter__(self) -> "JikanDetailedFetcher":
-        """Enter async context - session may be provided or created lazily."""
+        """
+        Enter the asynchronous context and yield the fetcher instance.
+        
+        Returns:
+            JikanDetailedFetcher: The fetcher instance to be used as the async context manager.
+        """
         return self
 
     async def __aexit__(
@@ -261,28 +302,24 @@ class JikanDetailedFetcher:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> bool:
-        """Exit async context - cleanup if we own the session."""
+        """
+        Exit the async context and close the owned HTTP session.
+        
+        Returns:
+            bool: `False` to indicate any exception should be propagated.
+        """
         await self.close()
         return False
 
     async def fetch_detailed_data(self, input_file: str, output_file: str) -> None:
-        """Main async method to fetch detailed data with batch processing. When processing each object should
-        have these properties, example for characters:
-        {
-            "name": "Character Full Name",
-            "role": "Main/Supporting/Minor",
-            "name_variations": ["Alternative names"],
-            "name_kanji": "漢字名",
-            "name_native": "Native Name",
-            "character_ids": {{"mal": 12345, "anilist": null}},
-            "images": {{"mal": "image_url", "anilist": null}},
-            "description": "Character description",
-            "age": "Character age or null",
-            "gender": "Male/Female/Other or null",
-            "voice_actors": [
-                {{"name": "Voice Actor Name", "language": "Japanese"}}
-            ]
-        }
+        """
+        Fetch detailed episode or character data from input_file and write aggregated results to output_file.
+        
+        Reads input_file (supports episode lists, paginated "data" shapes, or anime-level episode counts; for characters accepts list or "data" wrapped list), resumes work from a progress file named "<output_file>.progress", fetches details in batches (flushed to the progress file every self.batch_size items), prints periodic progress, and finally writes the assembled and sorted detailed items to output_file. If no items are present, writes an empty array to output_file. Removes the progress file after successful completion.
+        
+        Parameters:
+        	input_file (str): Path to the JSON input describing episodes or characters.
+        	output_file (str): Path where the final detailed JSON array will be written.
         """
         # Load input data
         with open(input_file, "r", encoding="utf-8") as f:
@@ -399,7 +436,12 @@ class JikanDetailedFetcher:
 
 
 async def main() -> int:
-    """CLI entry point for Jikan helper."""
+    """
+    Parse CLI arguments and run the JikanDetailedFetcher to fetch detailed Jikan data and write output.
+    
+    Returns:
+        exit_code (int): 0 on success, 1 on error.
+    """
     parser = argparse.ArgumentParser(description="Fetch detailed data from Jikan API")
     parser.add_argument(
         "data_type", choices=["episodes", "characters"], help="Type of data to fetch"

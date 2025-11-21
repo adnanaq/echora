@@ -70,7 +70,18 @@ def _normalize_anime_url(anime_identifier: str) -> str:
 
 
 def _extract_slug_from_url(url: str) -> str:
-    """Extract slug from anime-planet URL."""
+    """
+    Extract the anime slug from a canonical Anime-Planet anime URL.
+    
+    Parameters:
+        url (str): An Anime-Planet anime URL or path containing "/anime/<slug>".
+    
+    Returns:
+        str: The slug segment following "/anime/".
+    
+    Raises:
+        ValueError: If a slug cannot be found in the provided URL.
+    """
     # Extract slug from: https://www.anime-planet.com/anime/dandadan
     match = re.search(r"/anime/([^/?#]+)", url)
     if not match:
@@ -81,17 +92,15 @@ def _extract_slug_from_url(url: str) -> str:
 @cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_anime")
 async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[str, Any]]:
     """
-    Pure cached function that crawls and processes anime data from anime-planet.com.
-    All data is available on the main anime page - no navigation needed.
-
-    Results are cached in Redis for 24 hours based ONLY on canonical slug.
-    This function has no side effects - it only fetches and returns data.
-
-    Args:
-        canonical_slug: Canonical anime slug (e.g., "dandadan") - already normalized by caller
-
+    Fetches and assembles comprehensive anime metadata for a given canonical anime-planet slug.
+    
+    Data is extracted from the anime's page (JSON-LD and page sections); the function performs no side effects and is cached by canonical slug.
+    
+    Parameters:
+        canonical_slug (str): Canonical anime slug normalized by the caller (e.g., "dandadan").
+    
     Returns:
-        Complete anime data dictionary, or None on failure
+        Complete anime data dictionary with consolidated fields (titles, dates, genres, studios, related items, poster, rank, status, etc.), or `None` if extraction fails.
     """
     # Build URL from canonical slug (caller already normalized)
     url = f"{BASE_ANIME_URL}{canonical_slug}"
@@ -384,19 +393,17 @@ async def fetch_animeplanet_anime(
     slug: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Wrapper function that handles side effects (file writing, return_data logic).
-
-    This function calls the cached _fetch_animeplanet_anime_data() to get the data,
-    then performs side effects that should execute regardless of cache status.
-
-    Args:
-        slug: Anime slug (e.g., "dandadan"), path (e.g., "/anime/dandadan"),
-              or full URL (e.g., "https://www.anime-planet.com/anime/dandadan")
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
-
+    Fetch anime data for an Anime-Planet identifier, optionally write it to disk, and return it based on the caller's preference.
+    
+    Normalize the provided slug/URL, obtain the canonical anime data (may be returned from cache), write the JSON to `output_path` if provided, and return the data only when `return_data` is True.
+    
+    Parameters:
+        slug (str): Anime identifier — a slug (e.g., "dandadan"), a path (e.g., "/anime/dandadan"), or a full URL.
+        return_data (bool): If True, return the fetched data; if False, perform side effects only.
+        output_path (Optional[str]): If provided, write the resulting JSON to this file path.
+    
     Returns:
-        Complete anime data dictionary (if return_data=True), otherwise None
+        dict: Complete anime data dictionary if data was found and `return_data` is True, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical slug
     # This ensures cache reuse across different identifier formats
@@ -423,7 +430,17 @@ async def fetch_animeplanet_anime(
 
 
 def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
-    """Extract JSON-LD structured data from HTML."""
+    """
+    Extract JSON-LD structured data from an HTML document.
+    
+    Parses the first <script type="application/ld+json"> block in the provided HTML and returns its content as a dictionary. If present, HTML entities in the `description` field are unescaped and known malformed image URLs are corrected.
+    
+    Parameters:
+        html (str): Full HTML source of a page.
+    
+    Returns:
+        Dict[str, Any]: Parsed JSON-LD object when extraction succeeds, `None` otherwise.
+    """
     try:
         import html as html_lib
 
@@ -461,7 +478,15 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
 
 
 def _extract_rank(rank_texts: List[Dict[str, str]]) -> Optional[int]:
-    """Extract popularity rank from entry bar text."""
+    """
+    Determine the numeric popularity rank from a list of entry-bar text items.
+    
+    Parameters:
+        rank_texts (List[Dict[str, str]]): List of extracted text items (each dict should include a "text" key) to search for a rank.
+    
+    Returns:
+        int or None: The first integer rank found (for example, 123), or `None` if no rank is present.
+    """
     for item in rank_texts:
         text = item.get("text", "")
         # Look for "Rank #N" or "#N"
@@ -482,7 +507,15 @@ def _extract_studios(studios_raw: List[Dict[str, str]]) -> List[str]:
 
 
 def _determine_season_from_date(date_str: str) -> Optional[str]:
-    """Determine anime season from start date string."""
+    """
+    Infer the anime season (WINTER, SPRING, SUMMER, or FALL) from a date string.
+    
+    Parameters:
+        date_str (str): A date string containing a two-digit month segment in the form "-MM-" (for example "2023-04-15").
+    
+    Returns:
+        Optional[str]: "WINTER", "SPRING", "SUMMER", or "FALL" when the month maps to a season; `None` if the input is empty or no month segment can be found.
+    """
     if not date_str:
         return None
 
@@ -502,7 +535,13 @@ def _determine_season_from_date(date_str: str) -> Optional[str]:
 
 
 def _parse_anime_metadata(metadata_text: str, related_item: Dict[str, Any]) -> None:
-    """Parse anime-specific metadata (type, episodes)."""
+    """
+    Parse anime-specific metadata and populate the related item with `type` and `episodes` when present.
+    
+    Parameters:
+        metadata_text (str): Metadata string containing type and optional episode count (e.g., "TV: 12 ep").
+        related_item (Dict[str, Any]): Mutable mapping representing the related anime; this function sets `type` (uppercased) and `episodes` (int) in place.
+    """
     if not metadata_text:
         return
 
@@ -519,7 +558,15 @@ def _parse_anime_metadata(metadata_text: str, related_item: Dict[str, Any]) -> N
 
 
 def _parse_manga_metadata(metadata_text: str, related_item: Dict[str, Any]) -> None:
-    """Parse manga-specific metadata (volumes, chapters)."""
+    """
+    Parse manga metadata text and populate numeric `volumes` and `chapters` fields on the provided related item.
+    
+    Extracts "Vol: N" and "Ch: N" patterns from the metadata text and sets related_item["volumes"] and related_item["chapters"] to the parsed integers when numeric values are present. Non-numeric or missing values are ignored. The function mutates the given related_item in place.
+    
+    Parameters:
+        metadata_text (str): Raw metadata string (e.g., "Vol: 1, Ch: 5").
+        related_item (Dict[str, Any]): Dictionary representing a related manga item to be updated.
+    """
     if not metadata_text:
         return
 
@@ -543,15 +590,15 @@ def _process_related_items(
     metadata_parser: Callable[[str, Dict[str, Any]], None],
 ) -> List[Dict[str, Any]]:
     """
-    Generic processor for related anime/manga items.
-
-    Args:
-        items_raw: Raw extracted list of related items
-        item_type: Type of item ("anime" or "manga")
-        metadata_parser: Function to parse type-specific metadata
-
+    Normalize and enrich raw related anime/manga entries into structured related-item records.
+    
+    Parameters:
+        items_raw (List[Dict[str, Any]]): Raw extracted items containing keys like `title`, `url`, `relation_subtype`, `start_date_attr`, `end_date_attr`, and `metadata_text`.
+        item_type (str): Either `"anime"` or `"manga"`, used to locate and extract the slug from the item's URL path.
+        metadata_parser (Callable[[str, Dict[str, Any]], None]): Function that parses the item's `metadata_text` and mutates the provided related-item dict with type-specific fields (for example, `episodes`, `volumes`, `chapters`, or `type`).
+    
     Returns:
-        List of processed related items
+        List[Dict[str, Any]]: A list of processed related-item dictionaries. Each dictionary always includes `title`, `slug`, `url` (absolute, prefixed with "https://www.anime-planet.com"), and `relation_type`. Optional fields produced when present include `relation_subtype` (uppercased), `start_date`, `end_date`, `year` (integer extracted from dates), and any additional fields populated by `metadata_parser`.
     """
     processed_items = []
     url_pattern = rf"/{item_type}/([^/?]+)"
@@ -613,19 +660,64 @@ def _process_related_items(
 def _process_related_anime(
     related_anime_raw: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Process related anime data from raw extracted list."""
+    """
+    Normalize and enrich raw related-anime entries extracted from an Anime-Planet page.
+    
+    Process each raw item to produce a canonical related-anime record: extract and normalize the slug and absolute URL, uppercase and attach relation subtype when present, parse start/end dates and derive a year when available, and parse metadata to populate `type` (uppercased) and numeric `episodes` when present.
+    
+    Parameters:
+        related_anime_raw (List[Dict[str, Any]]): Raw extracted items (each typically contains keys such as `title`, `url`, `relation_subtype`, `image`, `start_date_attr`, `end_date_attr`, and `metadata_text`).
+    
+    Returns:
+        List[Dict[str, Any]]: A list of processed related-anime dictionaries. Typical keys include:
+            - title (str)
+            - slug (str)
+            - url (str) — absolute Anime-Planet URL
+            - relation_type (str) — set to "same_franchise"
+            - relation_subtype (str) — uppercased, if present
+            - start_date (str) / end_date (str) — if present
+            - year (int) — derived from dates when available
+            - type (str) — uppercased media type when parsed from metadata
+            - episodes (int) — when parsed from metadata
+            - image (str) and other preserved fields from the raw item
+    """
     return _process_related_items(related_anime_raw, "anime", _parse_anime_metadata)
 
 
 def _process_related_manga(
     related_manga_raw: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Process related manga data from raw extracted list."""
+    """
+    Convert a list of raw related-manga entries into normalized related-manga records.
+    
+    Parameters:
+        related_manga_raw (List[Dict[str, Any]]): Raw extraction items for related manga. Each item is expected to include at least `title` and `url` and may contain `relation_subtype`, `start_date_attr`, `end_date_attr`, and `metadata_text` (e.g., "Vol: X Ch: Y").
+    
+    Returns:
+        List[Dict[str, Any]]: Normalized related-manga objects containing:
+            - title (str)
+            - slug (str): extracted slug from the manga URL
+            - url (str): absolute anime-planet URL
+            - relation_type (str): set to "same_franchise"
+            - relation_subtype (str, optional): uppercased subtype if present
+            - start_date (str, optional)
+            - end_date (str, optional)
+            - start_year (int, optional)
+            - volumes (int, optional)
+            - chapters (int, optional)
+    """
     return _process_related_items(related_manga_raw, "manga", _parse_manga_metadata)
 
 
 async def main() -> int:
-    """CLI entry point for anime-planet.com crawler."""
+    """
+    Run the CLI to crawl a single anime page from anime-planet.com and optionally write the result to a JSON file.
+    
+    Parses command-line arguments (anime identifier and optional --output path), invokes the crawler, and exits with a process-style code.
+    
+    Returns:
+        exit_code (int): 0 on success, 1 on failure.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

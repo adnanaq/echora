@@ -24,7 +24,16 @@ class AniListEnrichmentHelper:
     """Helper for AniList data fetching in AI enrichment pipeline."""
 
     def __init__(self) -> None:
-        """Initialize AniList enrichment helper."""
+        """
+        Create an AniListEnrichmentHelper and initialize its internal state.
+        
+        Attributes:
+            base_url (str): AniList GraphQL endpoint URL.
+            session (Optional[aiohttp.ClientSession]): Per-event-loop HTTP session, created lazily.
+            rate_limit_remaining (int): Estimated remaining requests before hitting rate limit.
+            rate_limit_reset (Optional[int]): Timestamp when the rate limit resets, if known.
+            _session_event_loop (Optional[asyncio.AbstractEventLoop]): Event loop associated with the current session.
+        """
         self.base_url = "https://graphql.anilist.co"
         self.session: Optional[aiohttp.ClientSession] = None
         self.rate_limit_remaining = 90
@@ -34,27 +43,21 @@ class AniListEnrichmentHelper:
     async def _make_request(
         self, query: str, variables: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make GraphQL request to AniList API with HTTP caching.
-
-        Uses centralized cache manager which respects REDIS_CACHE_URL environment
-        variable for both local and Docker deployments. The session is created
-        per-event-loop to avoid event loop conflicts in concurrent processing.
-
-        GraphQL caching is enabled via X-Hishel-Body-Key header, ensuring different
-        queries/variables get separate cache entries despite same URL.
-
-        Args:
-            query: GraphQL query string
-            variables: Optional variables for GraphQL query
-
+        """
+        Send a GraphQL request to the AniList API and return the parsed response data with cache metadata.
+        
+        Handles per-event-loop session management and respects server rate limits; on 429 responses it waits according to Retry-After and retries the request.
+        
+        Parameters:
+            query (str): GraphQL query string.
+            variables (Optional[Dict[str, Any]]): Mapping of variables for the GraphQL query.
+        
         Returns:
-            Dict containing response data and '_from_cache' metadata indicating
-            whether the response was served from cache.
-
-        Note:
-            - Automatically handles rate limiting (90 requests per minute)
-            - Retries on 429 responses with exponential backoff
-            - Creates new session for each event loop to maintain isolation
+            result (Dict[str, Any]): The GraphQL `data` object merged into a dict. Contains an additional
+            key `_from_cache` set to `True` if the response was served from cache, `False` otherwise.
+        
+        Raises:
+            RuntimeError: If an aiohttp session cannot be initialized for the current event loop.
         """
         headers = {
             "Content-Type": "application/json",
@@ -132,6 +135,15 @@ class AniListEnrichmentHelper:
             return {"_from_cache": False}
 
     def _get_media_query_fields(self) -> str:
+        """
+        GraphQL selection set for requesting Media (ANIME) fields from the AniList API.
+        
+        Returns:
+            str: A multiline GraphQL field selection string that requests comprehensive Media fields
+                 (titles, identifiers, images, stats, relations, studios, external links, tags,
+                 rankings, airing/trailer info, and other metadata) used when querying an AniList
+                 Media node.
+        """
         return """
         id
         idMal
@@ -271,6 +283,17 @@ class AniListEnrichmentHelper:
     async def _fetch_paginated_data(
         self, anilist_id: int, query_template: str, data_key: str
     ) -> List[Dict[str, Any]]:
+        """
+        Fetches and accumulative list of paginated edges for a specific Media sub-resource by AniList ID.
+        
+        Parameters:
+            anilist_id (int): AniList numeric identifier for the Media node to query.
+            query_template (str): GraphQL query string that accepts `id` and `page` variables and returns a pagination structure under `Media`.
+            data_key (str): Key name under `Media` whose pagination container provides `edges` and `pageInfo` (e.g., "characters", "staff", "airingSchedule").
+        
+        Returns:
+            List[Dict[str, Any]]: Concatenated list of edge objects from all fetched pages. Paging stops when the container is missing, empty, or `pageInfo.hasNextPage` is false. If a response indicates it was served from cache via a `_from_cache` flag, the routine does not apply the inter-page throttle delay.
+        """
         all_items = []
         page = 1
         has_next_page = True
@@ -296,6 +319,15 @@ class AniListEnrichmentHelper:
         return all_items
 
     async def fetch_all_characters(self, anilist_id: int) -> List[Dict[str, Any]]:
+        """
+        Fetches all character edges for an anime from AniList by its AniList ID.
+        
+        Parameters:
+        	anilist_id (int): AniList numeric ID of the anime to query.
+        
+        Returns:
+        	characters (List[Dict[str, Any]]): A list of edge dictionaries from the GraphQL `characters` connection; each edge contains `node` (character data), `role`, and `voiceActors`.
+        """
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -389,11 +421,23 @@ class AniListEnrichmentHelper:
         return await self._fetch_and_populate_details(anime_data)
 
     async def close(self) -> None:
+        """
+        Close the helper's active aiohttp session if one exists.
+        
+        If a session is present, closes the underlying ClientSession; otherwise does nothing.
+        """
         if self.session:
             await self.session.close()
 
     async def __aenter__(self) -> "AniListEnrichmentHelper":
-        """Enter async context - session created lazily on first request."""
+        """
+        Enter the async context manager for this helper.
+        
+        The underlying HTTP session is not created on enter; it will be created lazily on first request.
+        
+        Returns:
+            AniListEnrichmentHelper: The helper instance (`self`).
+        """
         return self
 
     async def __aexit__(
@@ -402,13 +446,25 @@ class AniListEnrichmentHelper:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> bool:
-        """Exit async context - ensure session cleanup."""
+        """
+        Exit the asynchronous context and close the helper's HTTP session.
+        
+        Returns:
+            False to indicate exceptions are not suppressed.
+        """
         await self.close()
         return False
 
 
 async def main() -> int:
-    """CLI entry point for AniList helper."""
+    """
+    CLI entry point that fetches AniList data for a provided ID and writes the result as JSON to a file.
+    
+    Parses command-line arguments --anilist-id (required) and optional --output (defaults to "test_anilist_output.json"), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
+    
+    Returns:
+        int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
+    """
     parser = argparse.ArgumentParser(description="Test AniList data fetching")
     group = parser.add_mutually_exclusive_group(required=True)
     # group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")

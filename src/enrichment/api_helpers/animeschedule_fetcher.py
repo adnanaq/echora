@@ -39,15 +39,15 @@ async def fetch_animeschedule_data(
     search_term: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Fetch AnimSchedule data for an anime (async version).
-
-    Args:
-        search_term: Anime title to search for
-        output_path: Optional file path to save JSON output.
-                    If None, data is returned without saving to file.
-
+    Fetch AnimSchedule data for the first matching anime title.
+    
+    Parameters:
+        search_term (str): Anime title to search for.
+        output_path (Optional[str]): If provided, write the fetched anime data as pretty-printed JSON to this path.
+    
     Returns:
-        Dict containing anime data or None if fetch fails
+        dict: The first matching anime's data if found.
+        None: If no results are found or an HTTP/JSON error occurs.
     """
 
     print(f"🔄 Fetching AnimSchedule data for: {search_term}")
@@ -92,7 +92,14 @@ async def fetch_animeschedule_data(
 
 
 async def main() -> int:
-    """CLI entry point for AnimSchedule fetcher."""
+    """
+    Entry point for the CLI that fetches anime data from AnimSchedule using provided arguments.
+    
+    Parses command-line arguments `search_term` and optional `--output`, invokes `fetch_animeschedule_data`, and maps the outcome to an exit code.
+    
+    Returns:
+        int: 0 if data was fetched successfully, 1 on failure.
+    """
     parser = argparse.ArgumentParser(
         description="Fetch anime data from AnimSchedule API."
     )

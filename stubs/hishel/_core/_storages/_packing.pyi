@@ -4,26 +4,26 @@ from typing import Any, Literal
 
 def pack(obj: Any, kind: Literal["pair"] = "pair") -> bytes:
     """
-    Serialize a cache entry to bytes using msgpack.
-
-    Args:
-        obj: Object to serialize (typically Entry)
-        kind: Serialization type (default: "pair")
-
+    Serialize a cache entry to bytes using MessagePack.
+    
+    Parameters:
+        obj (Any): Object to serialize (typically an Entry).
+        kind (Literal["pair"], optional): Serialization variant to use; defaults to "pair".
+    
     Returns:
-        Serialized bytes
+        bytes: Serialized bytes.
     """
     ...
 
 def unpack(data: bytes, kind: Literal["pair"] = "pair") -> Any:
     """
-    Deserialize bytes to cache entry using msgpack.
-
-    Args:
-        data: Serialized bytes
-        kind: Serialization type (default: "pair")
-
+    Deserialize `data` into a cache entry using msgpack.
+    
+    Parameters:
+        data (bytes): Serialized bytes produced by the corresponding pack function.
+        kind (Literal["pair"], optional): Deserialization format selector; only "pair" is supported by this stub. Defaults to "pair".
+    
     Returns:
-        Deserialized object (typically Entry)
+        Any: The deserialized object (typically an Entry).
     """
     ...

@@ -23,7 +23,24 @@ class CrawlerRunConfig:
         wait_for: Optional[str] = None,
         js_only: bool = False,
         page_timeout: int = 60000,
-    ) -> None: ...
+    ) -> None:
+        """
+        Initialize a crawler run configuration with extraction options and runtime behaviors.
+
+        Parameters:
+            extraction_strategy: Optional extraction schema specifying fields to extract from the page.
+            wait_until: Optional name of a page lifecycle event to wait for before extracting (e.g., "load", "networkidle").
+            wait_for_images: Whether to wait for images to finish loading before returning results.
+            scan_full_page: Whether to scan and extract content from the full page (including content loaded outside the initial viewport).
+            adjust_viewport_to_content: Whether to adjust the browser viewport to fit page content before extraction.
+            delay_before_return_html: Delay in seconds to wait after extraction before returning the HTML.
+            session_id: Optional identifier to reuse or group browser sessions across runs.
+            js_code: Optional JavaScript code to execute in the page context prior to extraction.
+            wait_for: Optional CSS selector or expression to wait for before extracting.
+            js_only: If true, perform extraction using JavaScript execution results only (skip DOM-based extraction).
+            page_timeout: Maximum time in milliseconds to wait for the page load or specified waits before timing out.
+        """
+        ...
 
 class CrawlResult:
     success: bool

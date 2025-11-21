@@ -40,15 +40,18 @@ BASE_CHARACTER_URL = "https://www.anisearch.com/anime/"
 
 def _normalize_character_url(anime_identifier: str) -> str:
     """
-    Normalize various input formats to full anisearch character URL.
-
-    Accepts:
-        - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
-        - Path: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
-        - Anime ID: "18878,dan-da-dan" (will append /characters)
-
+    Normalize an anime identifier into a full Anisearch characters page URL.
+    
+    Parameters:
+        anime_identifier (str): A full Anisearch anime URL, a path, or a canonical anime id.
+            Accepted forms:
+            - Full URL with characters: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+            - Full URL without characters: "https://www.anisearch.com/anime/18878,dan-da-dan"
+            - Path with or without leading slash: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
+            - Canonical anime id: "18878,dan-da-dan"
+    
     Returns:
-        Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+        str: A complete characters page URL, e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
     """
     # If already full URL with /characters, return as-is
     if anime_identifier.startswith("https://www.anisearch.com/anime/") and "/characters" in anime_identifier:
@@ -70,13 +73,16 @@ def _normalize_character_url(anime_identifier: str) -> str:
 
 def _extract_anime_id_from_character_url(url: str) -> str:
     """
-    Extract anime ID from character URL.
-
-    Args:
-        url: Character URL
-
+    Extract the canonical anime identifier from an AniSearch character page URL.
+    
+    Parameters:
+        url (str): Full character URL under BASE_CHARACTER_URL (e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/characters").
+    
     Returns:
-        Anime ID (e.g., "18878,dan-da-dan")
+        str: Canonical anime ID (e.g., "18878,dan-da-dan").
+    
+    Raises:
+        ValueError: If the URL does not start with the expected base character URL.
     """
     # Remove base URL and /characters suffix
     if url.startswith(BASE_CHARACTER_URL):
@@ -90,16 +96,16 @@ def _extract_anime_id_from_character_url(url: str) -> str:
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_characters")
 async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[Dict[str, Any]]:
     """
-    Pure cached function that crawls and processes character data from anisearch.com.
-
-    Results are cached in Redis for 24 hours based ONLY on canonical anime ID.
-    This function has no side effects - it only fetches and returns data.
-
-    Args:
-        canonical_anime_id: Canonical anime ID (e.g., "18878,dan-da-dan") - already normalized by caller
-
+    Crawl anisearch.com and return normalized, enriched character data for the given canonical anime ID.
+    
+    Results are cached in Redis for 24 hours using the canonical anime ID as the cache key; this function performs no side effects.
+    
+    Parameters:
+        canonical_anime_id (str): Canonical anime identifier already normalized (e.g., "18878,dan-da-dan").
+    
     Returns:
-        Complete character data dictionary with enriched details, or None if fetch fails
+        dict: A dictionary with a "characters" key containing a list of character objects enriched with
+        `role`, absolute `url`, optional integer `favorites`, and `image` URL; or `None` if fetching or extraction failed.
     """
     # Build URL from canonical anime ID (caller already normalized)
     url = f"{BASE_CHARACTER_URL}{canonical_anime_id}/characters"
@@ -206,21 +212,15 @@ async def fetch_anisearch_characters(
     anime_id: str, return_data: bool = True, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Wrapper function that handles side effects (file writing, return_data logic).
-
-    This function calls the cached _fetch_anisearch_characters_data() to get the data,
-    then performs side effects that should execute regardless of cache status.
-
-    Args:
-        anime_id: Anime identifier - can be:
-            - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
-            - Path: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
-            - Anime ID: "18878,dan-da-dan" (will auto-append /characters)
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
-
+    Fetch character data for an anime from AniSearch, optionally save it to a file, and return the processed data.
+    
+    Parameters:
+        anime_id (str): Anime identifier in one of three forms: a full characters URL (https://www.anisearch.com/anime/.../characters), a path (with or without a leading slash, e.g., "/18878,dan-da-dan/characters"), or a canonical ID without the "/characters" suffix (e.g., "18878,dan-da-dan").
+        return_data (bool): If True, return the fetched character data; if False, do not return it (default: True).
+        output_path (Optional[str]): If provided, write the resulting JSON to this file path (UTF-8, pretty-printed).
+    
     Returns:
-        Complete character data dictionary (if return_data=True), otherwise None
+        dict: The complete processed character data dictionary when `return_data` is True; `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical anime ID
     # This ensures cache reuse across different identifier formats
@@ -248,7 +248,14 @@ async def fetch_anisearch_characters(
 
 
 async def main() -> int:
-    """CLI entry point for anisearch.com character crawler."""
+    """
+    Run the CLI for crawling character data from anisearch.com and handle exit codes.
+    
+    Parses command-line arguments, invokes the crawler with the provided anime identifier, optionally writes output to a file, and returns an exit code.
+    
+    Returns:
+        int: Exit code `0` on success, `1` if a parsing or runtime error occurred.
+    """
     parser = argparse.ArgumentParser(
         description="Crawl character data from anisearch.com."
     )
