@@ -88,6 +88,8 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 retry_on_timeout=config.redis_retry_on_timeout,
                 health_check_interval=config.redis_health_check_interval,
             )
+        if default_ttl is not None and default_ttl < 0:
+            raise ValueError("default_ttl must be non-negative")
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix
@@ -446,7 +448,12 @@ class AsyncRedisStorage(AsyncBaseStorage):
         if "hishel_ttl" in request.metadata:
             ttl_value = request.metadata["hishel_ttl"]
             if isinstance(ttl_value, (int, float)):
-                return float(ttl_value)
+                ttl_float = float(ttl_value)
+                if ttl_float < 0:
+                    raise ValueError(
+                        f"TTL must be non-negative, got {ttl_float}"
+                    )
+                return ttl_float
 
         # Use default TTL
         return self.default_ttl

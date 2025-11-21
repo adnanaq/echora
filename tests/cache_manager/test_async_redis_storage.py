@@ -170,6 +170,27 @@ class TestAsyncRedisStorageInit:
         )
         assert storage._owns_client is True
 
+    def test_init_with_negative_default_ttl_raises_error(
+        self, mock_redis_client: AsyncMock
+    ) -> None:
+        """Test that negative default_ttl raises ValueError."""
+        with pytest.raises(ValueError, match="default_ttl must be non-negative"):
+            AsyncRedisStorage(client=mock_redis_client, default_ttl=-100.0)
+
+    def test_init_with_zero_default_ttl_allowed(
+        self, mock_redis_client: AsyncMock
+    ) -> None:
+        """Test that zero default_ttl is allowed (immediate expiry)."""
+        storage = AsyncRedisStorage(client=mock_redis_client, default_ttl=0.0)
+        assert storage.default_ttl == 0.0
+
+    def test_init_with_none_default_ttl_allowed(
+        self, mock_redis_client: AsyncMock
+    ) -> None:
+        """Test that None default_ttl is allowed (no expiry)."""
+        storage = AsyncRedisStorage(client=mock_redis_client, default_ttl=None)
+        assert storage.default_ttl is None
+
 
 # ============================================================================
 # Test Class: Key Generation Methods
@@ -1428,6 +1449,36 @@ class TestTTLHandling:
         ttl = storage._get_entry_ttl(request)
 
         assert ttl is None
+
+    def test_get_entry_ttl_raises_on_negative_request_ttl(
+        self, mock_redis_client: AsyncMock
+    ) -> None:
+        """Test _get_entry_ttl raises ValueError for negative request TTL."""
+        storage = AsyncRedisStorage(client=mock_redis_client)
+        request = Request(
+            method="GET",
+            url="https://api.example.com",
+            headers={},
+            metadata={"hishel_ttl": -50.0},
+        )
+
+        with pytest.raises(ValueError, match="TTL must be non-negative"):
+            storage._get_entry_ttl(request)
+
+    def test_get_entry_ttl_allows_zero_request_ttl(
+        self, mock_redis_client: AsyncMock
+    ) -> None:
+        """Test _get_entry_ttl allows zero request TTL (immediate expiry)."""
+        storage = AsyncRedisStorage(client=mock_redis_client)
+        request = Request(
+            method="GET",
+            url="https://api.example.com",
+            headers={},
+            metadata={"hishel_ttl": 0.0},
+        )
+
+        ttl = storage._get_entry_ttl(request)
+        assert ttl == 0.0
 
 
 # ============================================================================
