@@ -998,13 +998,10 @@ class TestGetResultCacheRedisClient:
                 """Try to get client multiple times during close."""
                 nonlocal none_returned
                 for _ in range(10):
-                    try:
-                        client = await get_result_cache_redis_client()
-                        get_results.append(client)
-                        if client is None:
-                            none_returned = True
-                    except Exception:
-                        pass  # Ignore exceptions for this test
+                    client = await get_result_cache_redis_client()
+                    get_results.append(client)
+                    if client is None:
+                        none_returned = True
                     await asyncio.sleep(0.001)
 
             async def concurrent_closer():

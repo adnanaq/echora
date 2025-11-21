@@ -201,12 +201,8 @@ class TestGetCacheConfig:
         # "yes" != "true", so should be False
         assert config.enabled is False
 
-    def test_get_cache_config_storage_redis(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test get_cache_config() with HTTP_CACHE_STORAGE=redis."""
-        monkeypatch.setenv("HTTP_CACHE_STORAGE", "redis")
-
+    def test_get_cache_config_storage_type_is_redis(self) -> None:
+        """Test that storage_type is always 'redis' (hardcoded, not configurable)."""
         config = get_cache_config()
         assert config.storage_type == "redis"
 

@@ -22,7 +22,7 @@ async def test_main_function_success(mock_helper_class):
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "test-anime", "/tmp/output.json"]):
+    with patch("sys.argv", ["script.py", "test-anime", "output.json"]):
         with patch("builtins.open", MagicMock()):
             exit_code = await main()
 
@@ -42,7 +42,7 @@ async def test_main_function_no_data_found(mock_helper_class):
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "nonexistent", "/tmp/output.json"]):
+    with patch("sys.argv", ["script.py", "nonexistent", "output.json"]):
         exit_code = await main()
 
     assert exit_code == 1
@@ -59,7 +59,7 @@ async def test_main_function_error_handling(mock_helper_class):
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "test-anime", "/tmp/output.json"]):
+    with patch("sys.argv", ["script.py", "test-anime", "output.json"]):
         exit_code = await main()
 
     assert exit_code == 1
@@ -115,7 +115,7 @@ async def test_context_manager_cleanup_on_exception():
     )
 
     with pytest.raises(ValueError, match="Test error"):
-        async with AnimePlanetEnrichmentHelper() as helper:
+        async with AnimePlanetEnrichmentHelper():
             # close() should be called even when exception raised
             raise ValueError("Test error")
     # If we get here, cleanup happened correctly

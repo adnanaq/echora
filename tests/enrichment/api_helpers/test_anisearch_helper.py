@@ -549,29 +549,19 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.mark.asyncio
     async def test_fetch_all_data_outer_exception_handler(
-        self, helper, sample_anime_data
+        self, helper
     ):
-        """Test outer exception handler when exception occurs outside inner try-except blocks (lines 219-221)."""
-        with patch(
-            "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
-        ) as mock_anime:
-            mock_anime.return_value = sample_anime_data
+        """Test outer exception handler when exception occurs outside inner try-except blocks."""
+        with patch.object(
+            helper,
+            "fetch_anime_data",
+            side_effect=RuntimeError("Outer handler test"),
+        ):
+            result = await helper.fetch_all_data(
+                18878, include_episodes=False, include_characters=False
+            )
 
-            with patch(
-                "src.enrichment.api_helpers.anisearch_helper.logger"
-            ) as mock_logger:
-                mock_logger.info.side_effect = [
-                    None,
-                    None,
-                    None,
-                    RuntimeError("Logger error"),
-                ]
-
-                result = await helper.fetch_all_data(
-                    18878, include_episodes=False, include_characters=False
-                )
-
-                assert result is None
+            assert result is None
 
     # ========================================
     # Test: close
@@ -580,9 +570,7 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     async def test_close(self, helper):
         """Test close method (should be no-op for stateless crawlers)."""
-        # Should not raise any exceptions
         await helper.close()
-        assert True  # If we get here, close() worked
 
     # ========================================
     # Edge Cases and Integration Tests

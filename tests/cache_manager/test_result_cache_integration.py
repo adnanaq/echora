@@ -74,32 +74,34 @@ class TestResultCacheRaceConditions:
                     await asyncio.sleep(0.01)
                     return result_cache._redis_client
 
-            # Initialize with instrumented version
-            result_cache.get_result_cache_redis_client = instrumented_get_with_delay
-            await instrumented_get_with_delay()
-            assert result_cache._redis_client is not None
+            try:
+                # Initialize with instrumented version
+                result_cache.get_result_cache_redis_client = instrumented_get_with_delay
+                await instrumented_get_with_delay()
+                assert result_cache._redis_client is not None
 
-            race_result = None
+                race_result = None
 
-            async def getter_with_delay():
-                """Get client with instrumented delay."""
-                nonlocal race_result
-                race_result = await instrumented_get_with_delay()
+                async def getter_with_delay():
+                    """Get client with instrumented delay."""
+                    nonlocal race_result
+                    race_result = await instrumented_get_with_delay()
 
-            async def concurrent_closer():
-                """Try to close during getter's critical section."""
-                await asyncio.sleep(0.005)
-                await close_result_cache_redis_client()
+                async def concurrent_closer():
+                    """Try to close during getter's critical section."""
+                    await asyncio.sleep(0.005)
+                    await close_result_cache_redis_client()
 
-            # Run concurrently - closer tries to set None during getter's delay
-            await asyncio.gather(getter_with_delay(), concurrent_closer())
+                # Run concurrently - closer tries to set None during getter's delay
+                await asyncio.gather(getter_with_delay(), concurrent_closer())
 
-            # PROOF: With lock held until return, getter cannot return None
-            # even though closer tried to set it to None during getter's execution
-            assert race_result is not None, (
-                "Race condition still exists: getter returned None "
-                "even though lock was held until return. Fix is incorrect."
-            )
-
-            # Restore original function
-            result_cache.get_result_cache_redis_client = original_get
+                # PROOF: With lock held until return, getter cannot return None
+                # even though closer tried to set it to None during getter's execution
+                assert race_result is not None, (
+                    "Race condition still exists: getter returned None "
+                    "even though lock was held until return. Fix is incorrect."
+                )
+            finally:
+                # Ensure clean state for other tests
+                result_cache._redis_client = None
+                result_cache.get_result_cache_redis_client = original_get

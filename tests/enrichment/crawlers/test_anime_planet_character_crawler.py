@@ -1165,6 +1165,7 @@ async def test_cache_key_only_depends_on_slug():
     mock_cache_config = MagicMock()
     mock_cache_config.enabled = True
     mock_cache_config.storage_type = "redis"
+    mock_cache_config.max_cache_key_length = 200
 
     with patch(
         "src.cache_manager.result_cache.get_cache_config",
