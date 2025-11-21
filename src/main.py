@@ -34,7 +34,12 @@ qdrant_client: QdrantClient | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize services on startup and cleanup on shutdown."""
+    """
+    Manage application lifespan: initialize the Qdrant client and verify health on startup; close HTTP and result cache clients on shutdown.
+    
+    Raises:
+        RuntimeError: If the Qdrant health check fails during startup.
+    """
     global qdrant_client
 
     # Initialize Qdrant client

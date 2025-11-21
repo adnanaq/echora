@@ -37,10 +37,10 @@ class ParallelAPIFetcher:
 
     def __init__(self, config: Optional[EnrichmentConfig] = None):
         """
-        Initialize with configuration and API helpers.
-
-        Args:
-            config: Enrichment configuration (uses defaults if not provided)
+        Initialize the ParallelAPIFetcher with an optional configuration and prepare lazy helper placeholders and performance trackers.
+        
+        Parameters:
+            config (Optional[EnrichmentConfig]): Enrichment configuration to use; if not provided, a default EnrichmentConfig() is created.
         """
         self.config = config or EnrichmentConfig()
 
@@ -57,7 +57,11 @@ class ParallelAPIFetcher:
         self.api_errors: Dict[str, str] = {}
 
     async def initialize_helpers(self) -> None:
-        """Initialize async API helpers."""
+        """
+        Lazily initialize enrichment helpers and a shared cached aiohttp session for Jikan.
+        
+        This prepares helper instances for AniList, Kitsu, AniDB, Anime-Planet, and AniSearch only if they are not already created, and obtains a shared cached aiohttp session for Jikan requests to enable connection pooling and reuse.
+        """
         if not self.anilist_helper:
             self.anilist_helper = AniListEnrichmentHelper()
         if not self.kitsu_helper:
@@ -82,22 +86,17 @@ class ParallelAPIFetcher:
         only_services: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Fetch data from all APIs in parallel with optional service filtering.
-
-        Args:
-            ids: Dictionary of platform IDs
-            offline_data: Original offline anime data
-            temp_dir: Optional temp directory for saving responses
-            skip_services: Optional list of service names to skip (e.g., ["jikan", "anidb"])
-            only_services: Optional list of service names to fetch exclusively (e.g., ["anime_planet"])
-
+        Fetch data from multiple anime APIs concurrently, allowing optional service filtering.
+        
+        Parameters:
+            ids (Dict[str, str]): Mapping of platform keys to their IDs or slugs (e.g., "mal_id", "anilist_id", "kitsu_id", "anidb_id", "anime_planet_slug", "anisearch_id").
+            offline_data (Dict): Original offline anime metadata used as input or fallback by some fetchers (e.g., title, episode count).
+            temp_dir (Optional[str]): Directory path where per-service JSON responses will be saved when provided.
+            skip_services (Optional[List[str]]): Services to omit from fetching. Ignored if `only_services` is provided.
+            only_services (Optional[List[str]]): If provided, only these services will be fetched; takes precedence over `skip_services`.
+        
         Returns:
-            Dictionary with API responses
-
-        Note: skip_services and only_services are mutually exclusive.
-              If both provided, only_services takes precedence.
-
-        Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
+            Dict[str, Any]: Mapping of service names to their fetched result object, or `None` for services that failed or timed out.
         """
         await self.initialize_helpers()
 
@@ -167,8 +166,17 @@ class ParallelAPIFetcher:
         self, mal_id: str, offline_data: Dict, temp_dir: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Fetch ALL Jikan data using the JikanDetailedFetcher helper.
-        This properly handles rate limiting and batch processing for large series.
+        Fetch comprehensive Jikan data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
+        
+        Fetches the anime "full" endpoint, attempts to retrieve detailed episodes and character data (respecting rate limits), falls back to offline_data for missing episode counts, and saves/loads temporary JSON files if temp_dir is supplied.
+        
+        Parameters:
+            mal_id (str): The MyAnimeList identifier for the anime.
+            offline_data (Dict): Local/offline metadata used as fallback (e.g., episode count).
+            temp_dir (Optional[str]): Directory path to write/read temporary JSON files for intermediate results.
+        
+        Returns:
+            Optional[Dict[str, Any]]: A dictionary with keys "anime" (anime info), "episodes" (list of episode dicts), and "characters" (list of character dicts); returns `None` on failure.
         """
         try:
             logger.info(
@@ -321,7 +329,17 @@ class ParallelAPIFetcher:
     async def _fetch_all_jikan_episodes(
         self, mal_id: str, episode_count: int, loop
     ) -> List[Dict]:
-        """Fetch ALL episodes with pagination."""
+        """
+        Retrieve all episodes for a Jikan anime entry by following the paginated episodes endpoint until no more pages remain.
+        
+        Parameters:
+        	mal_id (str): MyAnimeList ID for the anime used to build the Jikan endpoint URL.
+        	episode_count (int): Expected total number of episodes; used for progress logging and may be 0.
+        	loop: Event loop object (kept for compatibility; not required by this function).
+        
+        Returns:
+        	episodes (List[Dict]): Aggregated list of episode objects as returned by the Jikan episodes endpoint.
+        """
         if episode_count == 0:
             return []
 
@@ -351,7 +369,16 @@ class ParallelAPIFetcher:
         return all_episodes
 
     async def _fetch_all_jikan_characters(self, mal_id: str, loop) -> List[Dict]:
-        """Fetch ALL characters with pagination."""
+        """
+        Retrieve the complete list of characters for a MyAnimeList anime from the Jikan API.
+        
+        Parameters:
+            mal_id (str): The MyAnimeList anime identifier.
+            loop: The asyncio event loop used for async operations.
+        
+        Returns:
+            List[Dict]: A list of character objects as returned by Jikan; returns an empty list if no character data is available.
+        """
         all_characters = []
 
         # First, get initial page to see how many there are
@@ -369,11 +396,14 @@ class ParallelAPIFetcher:
         return all_characters
 
     async def _fetch_jikan_async(self, url: str) -> Optional[Dict]:
-        """Async Jikan API fetch with HTTP caching.
-
-        Note: Rate limiting is handled by JikanDetailedFetcher for bulk operations.
-        For simple requests (anime data, character list), they are infrequent enough
-        to not need rate limiting.
+        """
+        Fetches JSON data from a Jikan API URL using a cached aiohttp session.
+        
+        Initializes and reuses an internal cached HTTP session if needed. On HTTP 429 the request is retried once after a 2 second delay. Any non-200 response or exceptions result in `None`.
+        
+        Returns:
+            dict: Parsed JSON response on success.
+            None: If the request fails, is rate-limited beyond the single retry, or returns a non-200 status.
         """
         try:
             # Use the reusable cached session (initialized in initialize_helpers)
@@ -578,7 +608,13 @@ class ParallelAPIFetcher:
 
     async def _fetch_animeschedule(self, offline_data: Dict) -> Optional[Dict]:
         """
-        Fetch AnimSchedule data using async helper.
+        Fetches anime schedule information based on the title found in the provided offline data.
+        
+        Parameters:
+            offline_data (Dict): A dictionary containing at least a "title" key whose value is used as the search term.
+        
+        Returns:
+            Dict: Schedule data returned by the AnimSchedule lookup, or `None` if no title is available or the lookup fails.
         """
         try:
             start = time.time()
@@ -603,15 +639,16 @@ class ParallelAPIFetcher:
         self, tasks: List[Tuple[str, Any]], timeout: int
     ) -> Dict[str, Any]:
         """
-        Execute tasks in parallel using asyncio.gather for improved performance.
-        Implements graceful degradation - doesn't fail if one API is down.
-
-        Args:
-            tasks: List of (name, coroutine) tuples
-            timeout: Timeout in seconds (ignored if no_timeout_mode is True)
-
+        Run multiple named coroutines concurrently and collect their results with optional per-task timeouts and graceful degradation.
+        
+        If a coroutine raises an exception or times out, its entry in the returned mapping will be None and the error string will be recorded in self.api_errors. When self.config.no_timeout_mode is True, the timeout parameter is ignored and all coroutines are allowed to complete.
+        
+        Parameters:
+            tasks (List[Tuple[str, Any]]): List of (name, coroutine) pairs identifying each task.
+            timeout (int): Per-task timeout in seconds (ignored when no_timeout_mode is enabled).
+        
         Returns:
-            Dictionary of results
+            Dict[str, Any]: Mapping from task name to the coroutine result, or None for timed-out/failed tasks.
         """
         results = {}
         task_names = [name for name, _ in tasks]
@@ -669,7 +706,18 @@ class ParallelAPIFetcher:
                     logger.warning(f"Failed to save {api_name} response: {e}")
 
     def _log_performance_metrics(self, total_time: float) -> None:
-        """Log detailed performance metrics for optimization."""
+        """
+        Log API performance metrics including total runtime, per-service timings, recorded errors, and a computed success rate.
+        
+        Parameters:
+            total_time (float): Total elapsed time in seconds for the overall parallel fetch operation.
+        
+        Description:
+            - Writes an informational header with the total elapsed time.
+            - Writes per-API timing entries from `self.api_timings`.
+            - Writes warnings for any entries in `self.api_errors`.
+            - Computes and logs a simple success rate based on the number of timed APIs versus total recorded APIs (timings + errors).
+        """
         logger.info("API Performance Metrics:")
         logger.info(f"  Total Time: {total_time:.2f}s")
 
@@ -689,12 +737,24 @@ class ParallelAPIFetcher:
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
     async def __aenter__(self) -> "ParallelAPIFetcher":
-        """Enter async context - initialize helpers."""
+        """
+        Initialize internal helpers and return the fetcher instance for use as an async context manager.
+        
+        Returns:
+            ParallelAPIFetcher: The same fetcher instance with helpers initialized.
+        """
         await self.initialize_helpers()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
-        """Exit async context - cleanup all helper resources."""
+        """
+        Cleanup and close all initialized helper resources when exiting the async context.
+        
+        Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared Jikan session if they were created.
+        
+        Returns:
+            bool: `False` to indicate exceptions (if any) should not be suppressed.
+        """
         # Close all helpers (now ALL have close() methods)
         if self.anilist_helper:
             await self.anilist_helper.close()

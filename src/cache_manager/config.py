@@ -91,25 +91,34 @@ class CacheConfig(BaseModel):
 
 def get_cache_config() -> CacheConfig:
     """
-    Get cache configuration from environment variables.
-
-    Environment Variables:
-        ENABLE_HTTP_CACHE: Enable caching (default: true)
-        REDIS_CACHE_URL: Redis connection URL (default: redis://localhost:6379/0)
-        REDIS_MAX_CONNECTIONS: Max connection pool size (default: 100)
-        REDIS_SOCKET_KEEPALIVE: Enable TCP keepalive (default: true)
-        REDIS_SOCKET_CONNECT_TIMEOUT: Connection timeout in seconds (default: 5)
-        REDIS_SOCKET_TIMEOUT: Read/write timeout in seconds (default: 10)
-        REDIS_RETRY_ON_TIMEOUT: Retry on timeout (default: true)
-        REDIS_HEALTH_CHECK_INTERVAL: Health check interval in seconds (default: 30)
-
+    Builds a CacheConfig populated from environment variables.
+    
+    Environment variables read (with defaults):
+        ENABLE_HTTP_CACHE (default: "true")
+        REDIS_CACHE_URL (default: "redis://localhost:6379/0")
+        REDIS_MAX_CONNECTIONS (default: "100")
+        REDIS_SOCKET_KEEPALIVE (default: "true")
+        REDIS_SOCKET_CONNECT_TIMEOUT (default: "5")
+        REDIS_SOCKET_TIMEOUT (default: "10")
+        REDIS_RETRY_ON_TIMEOUT (default: "true")
+        REDIS_HEALTH_CHECK_INTERVAL (default: "30")
+    
     Returns:
-        CacheConfig instance
+        CacheConfig: Configuration populated from the environment; missing or invalid environment values fall back to the model's defaults or the listed fallback strings above.
     """
     import os
 
     def parse_bool(value: str, default: bool) -> bool:
-        """Parse boolean from environment variable string."""
+        """
+        Interpret a string as a boolean with a default fallback.
+        
+        Parameters:
+            value (str): Input string to interpret; accepts "true", "1", "yes" (case-insensitive) as True and "false", "0", "no" as False.
+            default (bool): Value to return when the input is not a recognized boolean token.
+        
+        Returns:
+            bool: `True` if `value` represents truth, `False` if it represents falsehood, otherwise `default`.
+        """
         if value.lower() in ("true", "1", "yes"):
             return True
         elif value.lower() in ("false", "0", "no"):
@@ -117,7 +126,16 @@ def get_cache_config() -> CacheConfig:
         return default
 
     def parse_int(value: str, default: int) -> int:
-        """Parse integer from environment variable string."""
+        """
+        Parse an integer from a string, falling back to a default when parsing fails.
+        
+        Parameters:
+            value (str): String to parse as an integer.
+            default (int): Value to return if `value` cannot be parsed as an integer.
+        
+        Returns:
+            int: The parsed integer, or `default` if parsing raises a ValueError or TypeError.
+        """
         try:
             return int(value)
         except (ValueError, TypeError):

@@ -23,7 +23,21 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.fixture
     def sample_anime_data(self) -> Dict[str, Any]:
-        """Sample anime data matching crawler output format."""
+        """
+        Provide a representative sample anime data dictionary that matches the structure returned by the AniSearch crawler.
+        
+        Returns:
+            sample (Dict[str, Any]): Dictionary containing example fields used in tests, including:
+                - `japanese_title`, `japanese_title_alt`: title strings
+                - `cover_image`: cover image URL
+                - `type`, `status`: type and release status
+                - `start_date`, `end_date`: date strings
+                - `studio`, `source_material`: production and source info
+                - `genres`, `tags`: lists of genre and tag strings
+                - `description`: short synopsis
+                - `screenshots`: list of screenshot URLs
+                - `anime_relations`, `manga_relations`: lists of relation objects (each relation may include `type`, `title`, `url`)
+        """
         return {
             "japanese_title": "ダンダダン",
             "japanese_title_alt": "Dandadan",
@@ -91,7 +105,14 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.fixture
     def sample_offline_data(self) -> Dict[str, Any]:
-        """Sample offline anime data with sources."""
+        """
+        Provide sample offline anime data containing a title and a list of source URLs.
+        
+        Returns:
+            dict: A dictionary with keys:
+                - "title" (str): The anime title.
+                - "sources" (List[str]): A list of source URLs (e.g., MyAnimeList, AniSearch, AniList).
+        """
         return {
             "title": "Dandadan",
             "sources": [
@@ -528,7 +549,11 @@ class TestAniSearchEnrichmentHelper:
     async def test_fetch_all_data_character_method_raises_exception(
         self, helper, sample_anime_data
     ):
-        """Test exception handling when fetch_character_data itself raises (lines 212-213)."""
+        """
+        Verify fetch_all_data returns anime information and omits characters if fetch_character_data raises an exception.
+        
+        Patches the AniSearch anime fetch to return sample data and forces helper.fetch_character_data to raise; asserts the combined result is not None, contains anime fields (e.g., "japanese_title"), and does not include a "characters" key.
+        """
         with patch(
             "src.enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime"
         ) as mock_anime:

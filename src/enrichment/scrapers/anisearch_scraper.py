@@ -81,15 +81,16 @@ class AniSearchScraper(BaseScraper):
     async def _parse_anime_page(
         self, soup: BeautifulSoup, anime_id: int, url: str
     ) -> Optional[Dict[str, Any]]:
-        """Parse anime page HTML to extract all data.
-
-        Args:
-            soup: BeautifulSoup object
-            anime_id: Anime ID
-            url: Original URL
-
+        """
+        Extract structured anime metadata from an AniSearch anime page.
+        
+        Parameters:
+            soup (BeautifulSoup): Parsed HTML of the anime page.
+            anime_id (int): AniSearch numeric identifier for the anime.
+            url (str): Original page URL for the anime.
+        
         Returns:
-            Dict with anime data or None if parsing fails
+            Dict[str, Any]: Dictionary of extracted anime fields (for example: `anisearch_id`, `url`, `title`, `title_japanese`, `description`, `cover`, `episodes`, `start_date`, `end_date`, `genres`, `rating`, `detailed_ratings`, `studios`, `regional_publishers`, `tags`, `relations`, `synonyms`, `external_links`, `staff`, `characters`, `screenshots`, `trailers`) if parsing succeeds; `None` if required data (such as `title`) is missing or parsing fails.
         """
         try:
             anime_data: Dict[str, Any] = {
@@ -207,10 +208,13 @@ class AniSearchScraper(BaseScraper):
             return None
 
     def _extract_japanese_title(self, soup: BeautifulSoup) -> Optional[str]:
-        """Extract Japanese title from subheader.
-
+        """
+        Extract the Japanese title from the page subheader.
+        
+        Scans the first span with class "subheader" and returns the text portion after a "/" delimiter if that portion contains Japanese characters (hiragana, katakana, or kanji).
+        
         Returns:
-            Japanese title or None
+            str: Japanese title if found, `None` otherwise.
         """
         import re
 
@@ -232,14 +236,13 @@ class AniSearchScraper(BaseScraper):
         return None
 
     def _extract_english_description(self, soup: BeautifulSoup) -> Optional[str]:
-        """Extract English anime description only.
-
-        AniSearch provides descriptions in multiple languages in
-        <div class="textblock details-text"> elements.
-        We only extract the English version.
-
+        """
+        Selects and returns the English description text from a page's multi-language description blocks.
+        
+        Searches description blocks (elements with classes "textblock" and/or "details-text"), ignores empty or very short entries, and heuristically filters out German and Japanese content; returns the first block that appears to be English.
+        
         Returns:
-            English description text or None
+            The English description string if found, otherwise None.
         """
         # Find all description divs
         desc_divs = soup.find_all("div", class_=["textblock", "details-text"])
@@ -268,10 +271,14 @@ class AniSearchScraper(BaseScraper):
         return None
 
     def _extract_header_metadata(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        """Extract metadata from header fields (Type, Status, Adapted From, etc.).
-
+        """
+        Extract header metadata fields such as type, status, adapted source, and season.
+        
+        Only fields present in the page are returned; values are the extracted text as-is.
+        
         Returns:
-            Dict with metadata fields
+            metadata (Dict[str, Any]): Mapping of metadata keys to their string values. Possible keys include
+            `type`, `status`, `adapted_from`, and `season`.
         """
         metadata = {}
 
@@ -316,10 +323,11 @@ class AniSearchScraper(BaseScraper):
         return metadata
 
     def _extract_studios(self, soup: BeautifulSoup) -> list[str]:
-        """Extract studio/production company names.
-
+        """
+        Collect studio and production company names from the provided page soup.
+        
         Returns:
-            List of studio names
+            studios (list[str]): Unique studio or production company names in the order they appear.
         """
         studios = []
 
@@ -343,10 +351,19 @@ class AniSearchScraper(BaseScraper):
     def _extract_detailed_ratings(
         self, soup: BeautifulSoup
     ) -> Optional[Dict[str, Any]]:
-        """Extract detailed rating information from ratings section.
-
+        """
+        Extract detailed rating metrics from the anime's ratings section.
+        
+        Scans the ratings block for a displayed calculated rating, the aggregated number of ratings derived from the star distribution, and ranking positions (toplist, popular, trending).
+        
         Returns:
-            Dict with calculated_value, total_count, and rankings or None
+            ratings (dict): Mapping of extracted metrics. Possible keys:
+                - `calculated_value` (str): Calculated rating value as shown (e.g., "4.17").
+                - `total_count` (int): Sum of votes across the star distribution.
+                - `toplist_rank` (int): Position in the toplist, if present.
+                - `popular_rank` (int): Position in the popular list, if present.
+                - `trending_rank` (int): Position in the trending list, if present.
+            Returns `None` if no ratings information is found.
         """
         import re
 
@@ -415,10 +432,13 @@ class AniSearchScraper(BaseScraper):
         return tags
 
     def _extract_publishers(self, soup: BeautifulSoup) -> list[list[str]]:
-        """Extract regional publisher information.
-
+        """
+        Extract regional publisher names grouped by region.
+        
+        Scans company sections labeled "Publisher" and collects publisher names from links within each region block.
+        
         Returns:
-            List of publisher lists (one list per region)
+            list[list[str]]: A list where each element is a list of publisher names for a specific region.
         """
         regional_publishers = []
 
@@ -554,10 +574,11 @@ class AniSearchScraper(BaseScraper):
         return relations
 
     def _extract_synonyms(self, soup: BeautifulSoup) -> list[str]:
-        """Extract alternative titles/synonyms.
-
+        """
+        Extract alternative titles (synonyms) from the page.
+        
         Returns:
-            List of synonyms
+            synonyms (list[str]): List of synonym strings found on the page.
         """
         synonyms = []
 
@@ -575,10 +596,16 @@ class AniSearchScraper(BaseScraper):
         return synonyms
 
     def _extract_external_links(self, soup: BeautifulSoup) -> Dict[str, str]:
-        """Extract external links (official website, streaming platforms).
-
+        """
+        Collects external (non-AniSearch) links from the parsed page and classifies common platforms.
+        
+        Searches anchor tags with http(s) hrefs that do not contain "anisearch" and maps recognized targets to short keys (e.g., `netflix`, `crunchyroll`, `twitter`, `facebook`, `youtube`, `discord`). If no specific platform is matched, the first substantial external link is assigned to `official_website`.
+        
+        Parameters:
+            soup (BeautifulSoup): Parsed HTML of the anime page.
+        
         Returns:
-            Dict mapping link type to URL
+            Dict[str, str]: A mapping from link type to URL (keys include `netflix`, `crunchyroll`, `twitter`, `facebook`, `youtube`, `discord`, `official_website` when present).
         """
         links = {}
 
@@ -617,10 +644,13 @@ class AniSearchScraper(BaseScraper):
         return links
 
     def _extract_staff(self, soup: BeautifulSoup) -> list[Dict[str, str]]:
-        """Extract staff information (directors, etc.).
-
+        """
+        Extract staff members referenced on the page.
+        
+        Parses links to person pages and returns up to 20 unique staff entries containing the person's name and their role (inferred from nearby parenthesis text, or "Unknown" when not found).
+        
         Returns:
-            List of staff dicts with name and role
+            list[dict[str, str]]: A list of dictionaries with keys `name` and `role`. Limited to the first 20 unique entries.
         """
         staff = []
 
@@ -650,13 +680,19 @@ class AniSearchScraper(BaseScraper):
         return staff[:20]  # Limit to top 20
 
     async def _extract_characters(self, anime_id: int) -> list[Dict[str, Any]]:
-        """Extract characters from /characters page.
-
-        Args:
-            anime_id: Anime ID
-
+        """
+        Extract character entries from the anime's characters page on AniSearch.
+        
+        Parameters:
+            anime_id (int): AniSearch numeric ID of the anime.
+        
         Returns:
-            List of character dicts with name, image, favorites, and URL
+            characters (list[dict]): List of character objects. Each dict contains:
+                - name (str): Character's display name.
+                - url (str, optional): Absolute URL to the character page.
+                - image (str, optional): Absolute URL to the character image.
+                - role (str, optional): Character role or section label (e.g., "Main", "Supporting").
+                - favorites (int, optional): Number of favorites for the character.
         """
         import re
 
@@ -748,18 +784,17 @@ class AniSearchScraper(BaseScraper):
     async def _extract_all_images(
         self, soup: BeautifulSoup, anime_id: int, cover_url: Optional[str] = None
     ) -> list[str]:
-        """Extract all anime-related images (screenshots only, excluding cover).
-
-        Fetches the screenshots page to get all screenshot URLs.
-        Excludes the cover image to avoid duplication (cover is stored separately).
-
-        Args:
-            soup: BeautifulSoup object
-            anime_id: Anime ID
-            cover_url: Cover image URL to exclude from results (optional)
-
+        """
+        Retrieve screenshot image URLs for an anime, excluding the cover image.
+        
+        Parses the anime's screenshots page on AniSearch and collects full-size CDN image links.
+        If `cover_url` is provided, that URL is excluded from the results; duplicate URLs are deduplicated.
+        
+        Parameters:
+            cover_url (Optional[str]): Cover image URL to exclude from the returned screenshots (if present).
+        
         Returns:
-            List of screenshot URLs (excludes cover image)
+            list[str]: Screenshot image URLs (does not include the cover image when `cover_url` is provided).
         """
         images = []
 
@@ -797,10 +832,11 @@ class AniSearchScraper(BaseScraper):
         return images
 
     def _extract_trailers(self, soup: BeautifulSoup) -> list[str]:
-        """Extract trailer URLs.
-
+        """
+        Collect YouTube trailer URLs from the provided BeautifulSoup document.
+        
         Returns:
-            List of trailer URLs (YouTube, etc.)
+            trailers (list[str]): Trailer URLs found in anchor hrefs and iframe src attributes; duplicates removed.
         """
         trailers = []
 
@@ -826,17 +862,17 @@ class AniSearchScraper(BaseScraper):
     async def search_anime(
         self, query: str, limit: int = 10
     ) -> Optional[list[Dict[str, Any]]]:
-        """Search for anime by title.
-
-        Note: AniSearch blocks external AJAX search requests.
-        This method is a placeholder for future API access or alternative methods.
-
-        Args:
-            query: Search query
-            limit: Maximum number of results
-
+        """
+        Attempt to search AniSearch for anime titles (not supported via scraping).
+        
+        This method is a placeholder because AniSearch blocks external AJAX search requests; use direct anime ID lookup instead.
+        
+        Parameters:
+            query (str): Search query string.
+            limit (int): Maximum number of results to return (ignored; method returns None).
+        
         Returns:
-            None (search not available via scraping)
+            None: Always returns `None` because external search is not available.
         """
         logger.warning(
             "AniSearch search is not available - AJAX endpoint blocks external access. "
@@ -847,10 +883,19 @@ class AniSearchScraper(BaseScraper):
     def _parse_search_results(
         self, soup: BeautifulSoup, limit: int
     ) -> list[Dict[str, Any]]:
-        """Parse search results page.
-
+        """
+        Extracts basic anime entries from a search results page.
+        
+        Parameters:
+            soup (BeautifulSoup): Parsed HTML of an AniSearch search results page.
+            limit (int): Maximum number of results to return.
+        
         Returns:
-            List of result dicts with basic anime info
+            list[Dict[str, Any]]: A list of result dictionaries. Each dictionary contains:
+                - `anisearch_id` (int): AniSearch numeric ID for the anime.
+                - `title` (str): Display title of the anime.
+                - `url` (str): Absolute or site-relative URL to the anime page.
+                - `image` (str, optional): URL of an associated image if found.
         """
         results = []
 

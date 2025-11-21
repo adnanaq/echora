@@ -30,7 +30,17 @@ from src.cache_manager.async_redis_storage import AsyncRedisStorage
 
 @pytest.fixture
 def mock_redis_client() -> AsyncMock:
-    """Create a mock async Redis client."""
+    """
+    Create a mock Async Redis client preconfigured for tests.
+    
+    The mock exposes common async Redis methods with sensible default return values to simplify unit tests.
+    
+    Returns:
+        AsyncMock: A mock Redis client with methods like `from_url`, `aclose`, `pipeline`,
+        `hset`, `hgetall` (returns `{}`), `sadd`, `smembers` (returns `set()`),
+        `srem`, `expire`, `rpush`, `lrange` (returns `[]`), `scan` (returns `(0, [])`),
+        and `delete` already set as AsyncMock/MagicMock.
+    """
     mock_client = AsyncMock()
     mock_client.from_url = AsyncMock(return_value=mock_client)
     mock_client.aclose = AsyncMock()
@@ -50,7 +60,15 @@ def mock_redis_client() -> AsyncMock:
 
 @pytest.fixture
 def storage_with_mock_client(mock_redis_client: AsyncMock) -> AsyncRedisStorage:
-    """Create AsyncRedisStorage with mocked Redis client."""
+    """
+    Create an AsyncRedisStorage configured with a mocked Redis client for tests.
+    
+    Parameters:
+        mock_redis_client (AsyncMock): Mocked AsyncRedis client to be used by the storage.
+    
+    Returns:
+        AsyncRedisStorage: Storage instance configured for testing (default_ttl=3600.0, refresh_ttl_on_access=True, key_prefix="test_cache").
+    """
     return AsyncRedisStorage(
         client=mock_redis_client,
         default_ttl=3600.0,
@@ -61,7 +79,12 @@ def storage_with_mock_client(mock_redis_client: AsyncMock) -> AsyncRedisStorage:
 
 @pytest.fixture
 def mock_request() -> Request:
-    """Create a mock HTTP request."""
+    """
+    Create a mock GET Request targeting a sample resource.
+    
+    Returns:
+        request (Request): A Request with method "GET", URL "https://api.example.com/anime/1", empty headers, and empty metadata.
+    """
     return Request(
         method="GET",
         url="https://api.example.com/anime/1",
@@ -72,9 +95,20 @@ def mock_request() -> Request:
 
 @pytest.fixture
 def mock_response() -> Response:
-    """Create a mock HTTP response with async stream."""
+    """
+    Create a mock HTTP Response containing a three-chunk async body stream.
+    
+    Returns:
+        Response: A Response with status_code 200, a `Content-Type: application/json` header, an async stream that yields `b"chunk1"`, `b"chunk2"`, and `b"chunk3"`, and empty metadata.
+    """
 
     async def mock_stream() -> AsyncIterator[bytes]:
+        """
+        Asynchronously yields three byte chunks to simulate a response stream.
+        
+        Returns:
+            An async iterator yielding three byte chunks: b'chunk1', b'chunk2', and b'chunk3'.
+        """
         yield b"chunk1"
         yield b"chunk2"
         yield b"chunk3"
@@ -981,6 +1015,15 @@ class TestUpdateEntry:
 
         # Callable that transforms entry
         def transform_entry(entry: Entry) -> Entry:
+            """
+            Create a copy of an Entry with its response replaced by a 304 Response containing an ETag of "transformed".
+            
+            Parameters:
+                entry (Entry): The source entry to transform.
+            
+            Returns:
+                Entry: A new Entry with the same `id`, `request`, `meta`, and `cache_key` as `entry`, and a `response` set to a `Response` with `status_code` 304, `headers` {'ETag': 'transformed'}, `stream` None, and empty `metadata`.
+            """
             return Entry(
                 id=entry.id,
                 request=entry.request,
@@ -1024,7 +1067,11 @@ class TestUpdateEntry:
         storage_with_mock_client: AsyncRedisStorage,
         mock_redis_client: AsyncMock,
     ) -> None:
-        """Test update_entry returns None when entry not found."""
+        """
+        Verify update_entry leaves storage unchanged when the specified entry ID does not exist.
+        
+        Simulates missing stored data for the given ID and asserts that update_entry returns None.
+        """
         entry_id = uuid.uuid4()
         mock_redis_client.hgetall.return_value = {}  # No data
 
@@ -1268,6 +1315,12 @@ class TestStreamOperations:
         """Test _save_stream saves chunks to Redis."""
 
         async def mock_stream() -> AsyncIterator[bytes]:
+            """
+            Asynchronous test stream that yields three byte chunks.
+            
+            Returns:
+                An async iterator yielding three byte chunks in order: b'chunk1', b'chunk2', b'chunk3'.
+            """
             yield b"chunk1"
             yield b"chunk2"
             yield b"chunk3"
@@ -1303,6 +1356,12 @@ class TestStreamOperations:
         """Test _save_stream sets TTL on the stream key."""
 
         async def mock_stream() -> AsyncIterator[bytes]:
+            """
+            Provide an async iterator that yields a single bytes chunk for tests.
+            
+            Returns:
+                AsyncIterator[bytes]: An async iterator that yields b'chunk1' once.
+            """
             yield b"chunk1"
 
         entry_id = uuid.uuid4()

@@ -28,10 +28,14 @@ class ProgrammaticEnrichmentPipeline:
 
     def __init__(self, config: Optional[EnrichmentConfig] = None):
         """
-        Initialize pipeline with configuration.
-
-        Args:
-            config: Enrichment configuration (uses defaults if not provided)
+        Create a ProgrammaticEnrichmentPipeline configured for enrichment runs.
+        
+        Initializes internal components used by the pipeline (ID extractor, parallel API fetcher)
+        and a timing breakdown store. When `config` is omitted, a default EnrichmentConfig is used;
+        if `config.verbose_logging` is true the configuration will be logged.
+        
+        Parameters:
+            config (Optional[EnrichmentConfig]): Pipeline configuration; defaults to a new EnrichmentConfig().
         """
         self.config = config or EnrichmentConfig()
 
@@ -54,19 +58,29 @@ class ProgrammaticEnrichmentPipeline:
         only_services: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Enrich a single anime with data from all APIs.
-
-        Args:
-            offline_data: Offline anime data from database
-            agent_dir: Optional agent directory name (e.g., "Dandadan_agent1").
-                      If not provided, auto-generates with gap filling.
-            skip_services: Optional list of services to skip (e.g., ["jikan", "anidb"])
-            only_services: Optional list of services to fetch exclusively
-
+        Enrich a single anime record with data fetched from configured APIs.
+        
+        Parameters:
+            offline_data (Dict): Existing anime data used as the basis for enrichment.
+            agent_dir (Optional[str]): Optional agent directory name to use for temporary processing (e.g., "Dandadan_agent1"). If omitted, a new directory is created with gap-filled agent ID.
+            skip_services (Optional[List[str]]): Optional list of service names to skip when fetching API data.
+            only_services (Optional[List[str]]): Optional list of service names to fetch exclusively; if provided, other services are ignored.
+        
         Returns:
-            Enriched anime data ready for AI enhancement
-
-        Performance: 10-30 seconds (vs 5-15 minutes with AI)
+            Dict[str, Any]: A dictionary with the following keys:
+                - offline_data: The original input `offline_data`.
+                - extracted_ids: Validated platform IDs extracted from `offline_data`.
+                - api_data: Raw responses from the fetched APIs keyed by service name.
+                - processed_episodes: Episode data extracted from API responses.
+                - enrichment_metadata: Metadata about the enrichment run containing:
+                    - method: The enrichment method used ("programmatic").
+                    - total_time: Total elapsed time in seconds for the enrichment.
+                    - timing_breakdown: Per-step timing information.
+                    - successful_apis: Count of successful API responses.
+                    - temp_directory: Path to the temporary agent directory used.
+        
+        Notes:
+            If an error occurs during enrichment and the pipeline is configured to skip failed APIs, the function returns a partial result containing `offline_data`, an `error` string, and `partial_data: True`.
         """
         start_time = time.time()
         anime_title = offline_data.get("title", "Unknown")
@@ -198,15 +212,13 @@ class ProgrammaticEnrichmentPipeline:
 
     def _find_next_agent_id(self, anime_name: str) -> int:
         """
-        Find next available agent ID globally across ALL anime.
-        Fills gaps first (e.g., if agent2 and agent4 exist, returns 3).
-        Otherwise returns max + 1.
-
-        Args:
-            anime_name: Clean anime name (unused, kept for backward compatibility)
-
+        Determine the next available global agent ID, preferring the lowest missing positive integer.
+        
+        Parameters:
+            anime_name (str): Unused; retained for backward compatibility.
+        
         Returns:
-            Next available agent ID number (global across all anime)
+            int: The next available agent ID (fills gaps first, otherwise returns one greater than the current maximum).
         """
         # Check if temp directory exists
         temp_base = self.config.temp_dir
@@ -261,14 +273,16 @@ class ProgrammaticEnrichmentPipeline:
 
     def _create_temp_dir(self, anime_title: str) -> str:
         """
-        Create temp directory for anime processing with auto-assigned agent ID.
-        Format: temp/<FirstWord>_agent<N>/
-
-        Args:
-            anime_title: Anime title from offline data
-
+        Create a temporary processing directory for an anime and return its path.
+        
+        The directory is created under the configured temp_dir and named "<FirstWord>_agent<N>",
+        where FirstWord is the sanitized first token of `anime_title` and N is the next available agent ID.
+        
+        Parameters:
+            anime_title (str): Anime title from offline data; the first word is used for the directory name.
+        
         Returns:
-            Full path to created directory
+            str: Full path to the created temporary directory.
         """
         # Get first word from title for directory name
         first_word = anime_title.split()[0] if anime_title else "unknown"
@@ -287,7 +301,12 @@ class ProgrammaticEnrichmentPipeline:
         return temp_dir
 
     def _process_episodes(self, api_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract episode data from Jikan API."""
+        """
+        Extract episode entries from the Jikan response present in `api_data`.
+        
+        Returns:
+            A list of episode dictionaries from Jikan's `episodes` field (each typically includes title, synopsis, aired date, etc.); returns an empty list if no Jikan data or episodes are present.
+        """
         # Only use Jikan episodes - they have full details (title, synopsis, aired, etc.)
         # AniList episodes only have episode number and air time, not useful
         if jikan_data := api_data.get("jikan"):
@@ -298,7 +317,12 @@ class ProgrammaticEnrichmentPipeline:
         return []
 
     async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
-        """Enter async context - pipeline ready."""
+        """
+        Enter the asynchronous context for the pipeline.
+        
+        Returns:
+            ProgrammaticEnrichmentPipeline: The pipeline instance.
+        """
         return self
 
     async def __aexit__(
@@ -307,12 +331,26 @@ class ProgrammaticEnrichmentPipeline:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> bool:
-        """Exit async context - cleanup API fetcher resources."""
+        """
+        Async context manager exit that delegates cleanup to the pipeline's API fetcher.
+        
+        Delegates async cleanup to the internal `api_fetcher` and does not suppress exceptions raised in the context.
+        
+        Returns:
+            bool: `False` to indicate exceptions should be propagated.
+        """
         await self.api_fetcher.__aexit__(exc_type, exc_val, exc_tb)
         return False
 
     def get_performance_report(self) -> str:
-        """Generate performance report."""
+        """
+        Produce a human-readable performance report for the pipeline.
+        
+        The report includes the configured maximum concurrent APIs and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
+        
+        Returns:
+            report (str): A multi-line string containing the assembled performance report.
+        """
         report = ["Performance Report:"]
         report.append(f"  Total APIs configured: {self.config.max_concurrent_apis}")
         report.append(f"  Batch size: {self.config.batch_size}")
@@ -331,7 +369,14 @@ class ProgrammaticEnrichmentPipeline:
 
 
 async def main() -> int:
-    """Test the pipeline with a sample anime."""
+    """
+    Run a test enrichment of the pipeline using sample anime data and save the results.
+    
+    Performs a single enrichment with a built-in sample anime, prints a short summary and a performance report to stdout, writes the full enrichment result to "programmatic_enrichment_test.json", and returns an exit code.
+    
+    Returns:
+        int: 0 on success.
+    """
 
     # Sample offline data
     sample_anime = {

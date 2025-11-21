@@ -13,7 +13,15 @@ import pytest
 
 
 def create_mock_session_with_response(mock_response):
-    """Helper to create properly mocked session with async context manager."""
+    """
+    Create an aiohttp-style async session mock whose `.get()` returns an async context manager that yields the provided response.
+    
+    Parameters:
+        mock_response: The value to be returned from the async context manager's `__aenter__` (typically a mocked response object).
+    
+    Returns:
+        AsyncMock: A mock session whose `get()` method returns an async context manager that yields `mock_response`.
+    """
     # Mock async context manager for session.get()
     mock_cm = MagicMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_response)

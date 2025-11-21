@@ -38,6 +38,12 @@ class TestComputeSchemaHash:
         """Test schema hash computation for regular function."""
 
         def test_func() -> str:
+            """
+            Return a constant string used for testing.
+            
+            Returns:
+                result (str): The string "test".
+            """
             return "test"
 
         hash1 = _compute_schema_hash(test_func)
@@ -50,6 +56,12 @@ class TestComputeSchemaHash:
         """Test that same function produces same hash."""
 
         def test_func() -> str:
+            """
+            Return a constant string used for testing.
+            
+            Returns:
+                result (str): The string "test".
+            """
             return "test"
 
         hash1 = _compute_schema_hash(test_func)
@@ -61,9 +73,21 @@ class TestComputeSchemaHash:
         """Test that different functions produce different hashes."""
 
         def func1() -> str:
+            """
+            Return the fixed string "func1".
+            
+            Returns:
+                str: The literal string "func1".
+            """
             return "func1"
 
         def func2() -> str:
+            """
+            Return the literal string 'func2'.
+            
+            Returns:
+                result (str): The literal string "func2".
+            """
             return "func2"
 
         hash1 = _compute_schema_hash(func1)
@@ -75,11 +99,23 @@ class TestComputeSchemaHash:
         """Test that changing function code changes hash."""
 
         def func_v1() -> str:
+            """
+            Return a fixed identifier for this function implementation version.
+            
+            Returns:
+                str: The literal string "version 1" identifying this version.
+            """
             return "version 1"
 
         hash1 = _compute_schema_hash(func_v1)
 
         def func_v2() -> str:
+            """
+            Return a literal indicating the function's version.
+            
+            Returns:
+                version (str): The string "version 2".
+            """
             return "version 2"
 
         hash2 = _compute_schema_hash(func_v2)
@@ -111,7 +147,12 @@ class TestComputeSchemaHash:
         """Test hash computation for functions with multiline code."""
 
         def complex_func(x: int, y: int) -> int:
-            """Complex function with multiple lines."""
+            """
+            Compute the sum of x and y, doubling the result when the sum is greater than 10.
+            
+            Returns:
+                The sum of x and y; if the sum is greater than 10, returns that sum multiplied by 2.
+            """
             result = x + y
             if result > 10:
                 return result * 2
@@ -126,6 +167,13 @@ class TestComputeSchemaHash:
         """Test hash computation for decorated functions."""
 
         def decorator(func):  # type: ignore
+            """
+            Create a simple decorator that forwards calls to the decorated function.
+            
+            Returns:
+                A wrapper function that calls the original `func` with the same positional and
+                keyword arguments and returns its result.
+            """
             def wrapper(*args, **kwargs):  # type: ignore
                 return func(*args, **kwargs)
 
@@ -133,6 +181,12 @@ class TestComputeSchemaHash:
 
         @decorator
         def decorated_func() -> str:
+            """
+            Provide the constant string "decorated".
+            
+            Returns:
+                str: The string "decorated".
+            """
             return "decorated"
 
         hash_result = _compute_schema_hash(decorated_func)
@@ -304,8 +358,20 @@ class TestGenerateCacheKey:
         """Test cache key with custom class instance falls back to repr()."""
         class CustomObject:
             def __init__(self, value: str):
+                """
+                Initialize the instance with a string value.
+                
+                Parameters:
+                    value (str): The string assigned to the instance's `value` attribute.
+                """
                 self.value = value
             def __repr__(self) -> str:
+                """
+                Return the canonical string representation of the CustomObject for debugging.
+                
+                Returns:
+                    repr_str (str): A string in the form "CustomObject(value=...)" where the contained value is represented using its own `repr`.
+                """
                 return f"CustomObject(value={self.value!r})"
 
         obj = CustomObject("test123")
@@ -328,6 +394,15 @@ class TestCachedResultDecorator:
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, Any]:
 
+            """
+            Fetch test data for the specified item and increment an internal call counter.
+            
+            Parameters:
+                item_id (str): Identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping containing "id" set to the provided `item_id` and "data" set to "test_data".
+            """
             nonlocal call_count
 
             call_count += 1
@@ -409,6 +484,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, Any]:
+            """
+            Fetch test data for the given item identifier.
+            
+            Parameters:
+                item_id (str): Identifier of the item to fetch.
+            
+            Returns:
+                dict: A dictionary with "id" set to the provided identifier and "data" containing a test payload.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -426,10 +510,20 @@ class TestCachedResultDecorator:
 
     @pytest.mark.asyncio
     async def test_decorator_with_default_ttl(self) -> None:
-        """Test decorator with default TTL (no explicit ttl parameter)."""
+        """
+        Verifies the cached_result decorator applies the default TTL when no `ttl` is specified.
+        
+        Patches the Redis client to simulate a cache miss and asserts that the decorator calls `setex` with the default TTL of 86400 seconds (24 hours).
+        """
 
         @cached_result(key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Return a mapping containing the provided item identifier under the "id" key.
+            
+            Returns:
+                dict: A dictionary with a single entry `"id": item_id`.
+            """
             return {"id": item_id}
 
         with patch(
@@ -452,6 +546,12 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=3600, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Return a mapping containing the provided item identifier under the "id" key.
+            
+            Returns:
+                dict: A dictionary with a single entry `"id": item_id`.
+            """
             return {"id": item_id}
 
         with patch(
@@ -474,6 +574,12 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60)
         async def my_custom_function(item_id: str) -> Dict[str, str]:
+            """
+            Create a minimal mapping containing the provided item identifier.
+            
+            Returns:
+                dict: A dictionary with the key "id" whose value is the given `item_id`.
+            """
             return {"id": item_id}
 
         with patch(
@@ -496,6 +602,14 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Optional[Dict[str, str]]:
+            """
+            Simulates fetching data for the given item while incrementing a call counter.
+            
+            Increments the enclosing scope's `call_count` nonlocal variable to record an invocation and always returns None.
+            
+            Returns:
+                None
+            """
             nonlocal call_count
             call_count += 1
             return None
@@ -522,6 +636,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Fetches mock data for a given item identifier and records the invocation.
+            
+            Parameters:
+                item_id (str): The identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -545,6 +668,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Fetches mock data for a given item identifier and records the invocation.
+            
+            Parameters:
+                item_id (str): The identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -573,6 +705,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Fetches mock data for a given item identifier and records the invocation.
+            
+            Parameters:
+                item_id (str): The identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -607,6 +748,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Fetches mock data for a given item identifier and records the invocation.
+            
+            Parameters:
+                item_id (str): The identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -644,6 +794,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Fetches mock data for a given item identifier and records the invocation.
+            
+            Parameters:
+                item_id (str): The identifier of the item to fetch.
+            
+            Returns:
+                dict: A mapping with keys `"id"` set to the provided `item_id` and `"data"` set to the string `"test"`.
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": "test"}
@@ -674,6 +833,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Return a simple data record for the given item identifier.
+            
+            Parameters:
+                item_id (str): Identifier of the item.
+            
+            Returns:
+                Dict[str, str]: A dictionary containing 'id' set to the provided `item_id` and 'data' set to "data_{item_id}".
+            """
             nonlocal call_count
             call_count += 1
             return {"id": item_id, "data": f"data_{item_id}"}
@@ -698,6 +866,12 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, str]:
+            """
+            Return a mapping containing the provided item identifier under the "id" key.
+            
+            Returns:
+                dict: A dictionary with a single entry `"id": item_id`.
+            """
             return {"id": item_id}
 
         with patch(
@@ -725,7 +899,15 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def my_function(item_id: str) -> Dict[str, str]:
-            """My function docstring."""
+            """
+            Construct a result dictionary containing the provided item identifier under the 'id' key.
+            
+            Parameters:
+                item_id (str): The identifier of the item to include in the result.
+            
+            Returns:
+                Dict[str, str]: A dictionary with a single key `'id'` whose value is `item_id`.
+            """
             return {"id": item_id}
 
         # functools.wraps should preserve metadata
@@ -738,6 +920,22 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_complex_data(item_id: str) -> Dict[str, Any]:
+            """
+            Return a structured dictionary representing complex data for the given item ID.
+            
+            Parameters:
+                item_id (str): Identifier of the item to fetch.
+            
+            Returns:
+                data (dict): Dictionary with keys:
+                    - "id" (str): the provided item_id
+                    - "nested" (dict): contains "key" (str) and "list" (list of ints)
+                    - "array" (list): list of strings
+                    - "number" (int): integer value
+                    - "float" (float): floating-point value
+                    - "bool" (bool): boolean value
+                    - "null" (None): null value
+            """
             return {
                 "id": item_id,
                 "nested": {"key": "value", "list": [1, 2, 3]},
@@ -782,11 +980,26 @@ class TestSchemaHashInvalidation:
         # Version 1 of function
         @cached_result(ttl=60, key_prefix="versioned_func")
         async def fetch_data_v1(item_id: str) -> Dict[str, str]:
+            """
+            Return a simple data dictionary for the given item identifier indicating version 1.
+            
+            Parameters:
+                item_id (str): Identifier of the item to fetch.
+            
+            Returns:
+                Dict[str, str]: Dictionary with 'id' set to the provided identifier and 'version' set to "1".
+            """
             return {"id": item_id, "version": "1"}
 
         # Version 2 of function (different code)
         @cached_result(ttl=60, key_prefix="versioned_func")
         async def fetch_data_v2(item_id: str) -> Dict[str, str]:
+            """
+            Builds a versioned data payload for the given item identifier.
+            
+            Returns:
+                dict: A mapping containing 'id' (the provided item_id), 'version' set to "2", and 'new_field' set to "data".
+            """
             return {"id": item_id, "version": "2", "new_field": "data"}
 
         with patch(
@@ -904,7 +1117,15 @@ class TestGetResultCacheRedisClient:
         call_count = 0
         
         def counting_from_url(*args, **kwargs):
-            """Count Redis.from_url calls to verify singleton behavior."""
+            """
+            Count Redis.from_url calls to verify singleton behavior.
+            
+            Increments the enclosing `call_count` counter each time it is invoked and returns
+            an AsyncMock that acts like a Redis client.
+            
+            Returns:
+                AsyncMock: An AsyncMock instance with the Redis spec that simulates a Redis client.
+            """
             nonlocal call_count
             call_count += 1
             return AsyncMock(spec=Redis)
@@ -1005,7 +1226,11 @@ class TestGetResultCacheRedisClient:
                     await asyncio.sleep(0.001)
 
             async def concurrent_closer():
-                """Close client during active get operations."""
+                """
+                Delays briefly and then closes the global Redis result cache client.
+                
+                Used in tests to simulate closing the cache client while concurrent get operations are in progress by awaiting a short sleep before calling the close helper.
+                """
                 await asyncio.sleep(0.005)
                 await close_result_cache_redis_client()
 

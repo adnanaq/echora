@@ -66,7 +66,13 @@ class AniDBEnrichmentHelper:
     def __init__(
         self, client_name: Optional[str] = None, client_version: Optional[str] = None
     ):
-        """Initialize AniDB enrichment helper with enhanced reliability features."""
+        """
+        Initialize the AniDB enrichment helper and configure client metadata, session policy, rate limiting, retry behavior, circuit breaker, and request metrics.
+        
+        Parameters:
+            client_name (Optional[str]): Client identifier sent to AniDB; if None the value is taken from the `ANIDB_CLIENT` environment variable or defaults to `"animeenrichment"`.
+            client_version (Optional[str]): Client version sent to AniDB; if None the value is taken from the `ANIDB_CLIENTVER` environment variable or defaults to `"1.0"`.
+        """
         self.base_url = "http://api.anidb.net:9001/httpapi"
 
         # Client configuration
@@ -190,7 +196,11 @@ class AniDBEnrichmentHelper:
         self.metrics.current_interval = adaptive_interval
 
     async def _ensure_session_health(self) -> None:
-        """Ensure session is healthy and recreate if needed."""
+        """
+        Ensure an active HTTP session for AniDB exists and recreate it if missing or expired.
+        
+        If the current session is absent or older than the configured maximum age, create a new aiohttp session via the cache manager and update the session creation timestamp.
+        """
         current_time = time.time()
 
         # Check if session needs recreation
@@ -817,7 +827,11 @@ class AniDBEnrichmentHelper:
         return False
 
     async def close(self) -> None:
-        """Close the HTTP session with cleanup."""
+        """
+        Close and clean up the helper's internal HTTP session.
+        
+        If an active session exists, close it, clear the session reference, and reset the session creation timestamp.
+        """
         if self.session:
             try:
                 await self.session.close()
@@ -829,7 +843,12 @@ class AniDBEnrichmentHelper:
                 self._session_created_at = 0
 
     async def __aenter__(self) -> "AniDBEnrichmentHelper":
-        """Enter async context - session created lazily on first request."""
+        """
+        Enter asynchronous context and return the helper instance.
+        
+        Returns:
+            AniDBEnrichmentHelper: The helper instance to use within an `async with` block.
+        """
         return self
 
     async def __aexit__(
@@ -838,13 +857,27 @@ class AniDBEnrichmentHelper:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> bool:
-        """Exit async context - ensure session cleanup."""
+        """
+        Ensure the helper's HTTP session is closed when exiting an async context.
+        
+        This awaits close() to release network resources.
+        
+        Returns:
+            False: do not suppress exceptions raised within the context.
+        """
         await self.close()
         return False
 
 
 async def main() -> int:
-    """Main function for testing AniDB data fetching."""
+    """
+    Command-line test driver that fetches AniDB data and writes the result to a JSON file.
+    
+    Parses command-line options (--anidb-id, --search-name, --output), performs the requested fetch or search using AniDBEnrichmentHelper, and saves the retrieved anime data to the specified output path.
+    
+    Returns:
+        int: Exit code where `0` indicates success and `1` indicates failure, no data found, or interruption.
+    """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
     parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
     parser.add_argument("--search-name", type=str, help="Search anime by name")

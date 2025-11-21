@@ -11,4 +11,11 @@ class CacheAdapter(HTTPAdapter):
 
     def __init__(
         self, storage: Optional[SyncBaseStorage] = None, **kwargs: object
-    ) -> None: ...
+    ) -> None: """
+        Initialize the CacheAdapter with an optional storage backend.
+        
+        Parameters:
+            storage (Optional[SyncBaseStorage]): Storage implementation used to persist cached responses. If omitted, no storage backend is configured.
+            **kwargs: Additional keyword arguments forwarded to the underlying HTTPAdapter initializer.
+        """
+        ...

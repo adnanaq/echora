@@ -1395,7 +1395,11 @@ class TestAniListEnrichmentHelperCLI:
 
     @pytest.mark.asyncio
     async def test_main_with_no_data_found(self, tmp_path):
-        """Test CLI when no data is found."""
+        """
+        Verify CLI main closes the helper and does not create an output file when no data is found.
+        
+        Asserts that AniListEnrichmentHelper.fetch_all_data_by_anilist_id returning None causes helper.close() to be awaited and prevents creation of the specified output file.
+        """
         import sys
         from unittest.mock import patch
 

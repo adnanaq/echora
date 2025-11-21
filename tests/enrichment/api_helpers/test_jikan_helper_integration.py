@@ -34,7 +34,14 @@ if not os.getenv("ENABLE_LIVE_API_TESTS"):
 
 @pytest.fixture(scope="module")
 def redis_client():
-    """Provides a Redis client for the test module, skipping tests if Redis is unavailable."""
+    """
+    Provide a Redis client connected to redis://localhost:6379/0 for module-scoped tests.
+    
+    Flushes the database at module setup and teardown. If Redis is unreachable, the fixture skips the tests in this module.
+    
+    Returns:
+        redis.Redis: A Redis client connected to redis://localhost:6379/0 with decode_responses=True.
+    """
     try:
         r = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
         r.ping()
@@ -283,7 +290,13 @@ async def test_all_items_fail_gracefully(redis_client, clean_cache_manager):
 
 @pytest.mark.asyncio
 async def test_main_entrypoint(redis_client, clean_cache_manager):
-    """Test __main__ entrypoint execution with real subprocess."""
+    """
+    Exercise the module's __main__ entrypoint by running it as a subprocess.
+    
+    Creates a temporary input JSON file containing a minimal entry, invokes the package as a script
+    (via `python -m src.enrichment.api_helpers.jikan_helper ...`) with a 30-second timeout, and
+    asserts that the process exited with code 0 or 1 to confirm the main path was executed.
+    """
     import subprocess
     import sys
 
@@ -319,8 +332,11 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
     @pytest.mark.asyncio
     async def test_failed_request_increments_rate_limit_counter(redis_client, clean_cache_manager):
         """
-        Integration test to verify that failed Jikan API requests (e.g., 404 for characters,
-        or 200 OK with empty data for episodes) correctly increment the rate limit counter.
+        Verifies that failed Jikan API requests increment the fetcher's rate-limit request counter.
+        
+        Checks two failure scenarios:
+        - Episode fetch for a non-existent episode returns a dict with `episode_number` equal to the requested id, an empty `title`, and `aired` set to `None`, and increments the fetcher's `request_count` by 1.
+        - Character fetch for a non-existent character returns `None` (404 handling) and increments the fetcher's `request_count` by 1.
         """
         # Test for episodes (returns 200 OK with empty data for non-existent)
         anime_id = "21"  # A real anime ID

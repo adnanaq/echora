@@ -52,6 +52,15 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     original_redis_from_url = mocker.AsyncMock()
 
     def track_redis_call(url, **kwargs):
+        """
+        Record a Redis connection URL and return the captured `original_redis_from_url` callable.
+        
+        Parameters:
+            url (str): The Redis connection URL that was requested.
+        
+        Returns:
+            callable: The `original_redis_from_url` callable used to delegate the actual Redis creation.
+        """
         redis_calls.append(url)
         return original_redis_from_url
 
@@ -124,7 +133,11 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
 
 @pytest.mark.asyncio
 async def test_anilist_helper_no_hardcoded_redis(mocker):
-    """Specific test for AniList helper (regression prevention)."""
+    """
+    Verify that AniListEnrichmentHelper obtains its HTTP session from the centralized cache manager and does not create a Redis client via a hard-coded Redis URL.
+    
+    This test patches the HTTP cache manager to return a mocked aiohttp session, patches `redis.asyncio.Redis.from_url` to detect any direct Redis usage, triggers a representative fetch to cause session initialization, and asserts that `Redis.from_url` was never called. The helper is closed at the end of the test.
+    """
     from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
     # Mock Redis.from_url to detect calls
@@ -191,7 +204,11 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
 
 @pytest.mark.asyncio
 async def test_kitsu_helper_no_hardcoded_redis(mocker):
-    """Specific test for Kitsu helper."""
+    """
+    Verify that KitsuEnrichmentHelper uses the centralized HTTP cache session and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
+    
+    Patches the HTTP cache manager to return a mocked aiohttp session, patches `Redis.from_url` to observe calls, invokes `get_anime_by_id`, and asserts that no direct Redis connection was created. API errors during the fetch are tolerated.
+    """
     from src.enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     # Mock Redis.from_url
@@ -224,7 +241,11 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
 
 @pytest.mark.asyncio
 async def test_anidb_helper_no_hardcoded_redis(mocker):
-    """Specific test for AniDB helper."""
+    """
+    Verifies that AniDBEnrichmentHelper obtains its HTTP session from the centralized cache manager and does not create a Redis client with a hard-coded URL.
+    
+    This test patches the HTTP cache manager to return a mocked session and monitors `redis.asyncio.Redis.from_url`; API errors raised during the fetch are tolerated.
+    """
     from src.enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 
     # Mock Redis.from_url
