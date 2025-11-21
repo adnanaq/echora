@@ -522,9 +522,12 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
 
                 # Always return data (no conditional return or file writing)
                 return anime_data
-            else:
-                logging.warning(f"Extraction failed: {result.error_message}")
-                return None
+
+            # Log extraction failure but continue to check remaining results
+            logging.warning(f"Extraction failed: {result.error_message}")
+
+        # If loop completes without returning, no valid results were found
+        return None
 
 
 async def fetch_anisearch_anime(
@@ -595,8 +598,8 @@ async def main() -> int:
             args.anime_id,
             output_path=args.output,
         )
-    except (ValueError, OSError) as e:
-        logging.error(f"Failed to fetch anisearch anime data: {e}")
+    except (ValueError, OSError):
+        logging.exception("Failed to fetch anisearch anime data")
         return 1
     except Exception:
         logging.exception("Unexpected error during anime fetch")
