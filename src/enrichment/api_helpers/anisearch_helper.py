@@ -124,8 +124,8 @@ class AniSearchEnrichmentHelper:
             )
             return episode_data
 
-        except Exception as e:
-            logger.error(f"Error fetching episode data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching episode data for ID {anisearch_id}")
             return None
 
     async def fetch_character_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
@@ -158,8 +158,8 @@ class AniSearchEnrichmentHelper:
             )
             return character_data
 
-        except Exception as e:
-            logger.error(f"Error fetching character data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching character data for ID {anisearch_id}")
             return None
 
     async def fetch_all_data(
@@ -224,8 +224,8 @@ class AniSearchEnrichmentHelper:
             )
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error in fetch_all_data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error in fetch_all_data for ID {anisearch_id}")
             return None
 
     async def close(self) -> None:

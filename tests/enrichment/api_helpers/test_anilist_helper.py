@@ -201,6 +201,20 @@ class TestAniListEnrichmentHelperSessionManagement:
         # Should create uncached session
         assert helper.session is mock_uncached_session
 
+    @pytest.mark.asyncio
+    async def test_session_initialization_failure_raises_runtime_error(self, mocker):
+        """Test that RuntimeError is raised if session fails to initialize."""
+        helper = AniListEnrichmentHelper()
+
+        # Mock get_aiohttp_session to return None
+        mocker.patch(
+            "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+            return_value=None,
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to initialize AniList session"):
+            await helper._make_request("query { test }")
+
 
 class TestAniListEnrichmentHelperMakeRequest:
     """Test GraphQL request making with various scenarios."""
@@ -371,13 +385,14 @@ class TestAniListEnrichmentHelperMakeRequest:
 
     @pytest.mark.asyncio
     async def test_make_request_429_retry(self):
-        """Test that 429 status triggers retry after wait."""
+        """Test that 429 status triggers retry after wait, and exhausts after max attempts."""
         helper = AniListEnrichmentHelper()
 
         # First response: 429 rate limit
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
         mock_response_429.headers = {"Retry-After": "30"}
+        mock_response_429.from_cache = False
 
         # Second response: success
         mock_response_ok = AsyncMock()
@@ -410,6 +425,25 @@ class TestAniListEnrichmentHelperMakeRequest:
             assert result["Media"]["id"] == 1
             # Should make 2 requests
             assert mock_session.post.call_count == 2
+
+        # Test max retries exhaustion
+        helper2 = AniListEnrichmentHelper()
+        cm_429_persistent = AsyncMock()
+        cm_429_persistent.__aenter__ = AsyncMock(return_value=mock_response_429)
+        cm_429_persistent.__aexit__ = AsyncMock()
+
+        mock_session2 = MagicMock()
+        mock_session2.post = MagicMock(return_value=cm_429_persistent)
+
+        helper2.session = mock_session2
+        helper2._session_event_loop = asyncio.get_running_loop()
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result2 = await helper2._make_request("query { test }")
+
+            # Should give up after 3 attempts
+            assert result2 == {"_from_cache": False}
+            assert mock_session2.post.call_count == 3
 
     @pytest.mark.asyncio
     async def test_make_request_429_no_retry_after_header(self):
@@ -511,10 +545,12 @@ class TestAniListEnrichmentHelperMakeRequest:
     @pytest.mark.asyncio
     async def test_make_request_exception(self):
         """Test handling of request exceptions."""
+        import aiohttp
+
         helper = AniListEnrichmentHelper()
 
         mock_session = MagicMock()
-        mock_session.post = MagicMock(side_effect=Exception("Network error"))
+        mock_session.post = MagicMock(side_effect=aiohttp.ClientError("Network error"))
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
@@ -1053,11 +1089,15 @@ class TestAniListEnrichmentHelperEdgeCases:
     @pytest.mark.asyncio
     async def test_invalid_json_response(self):
         """Test handling of invalid JSON in response."""
+        import json
+
         helper = AniListEnrichmentHelper()
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(side_effect=Exception("Invalid JSON"))
+        mock_response.json = AsyncMock(
+            side_effect=json.JSONDecodeError("Invalid JSON", "", 0)
+        )
         mock_response.from_cache = False
         mock_response.headers = {}
         mock_response.raise_for_status = MagicMock()  # Should not raise
@@ -1327,13 +1367,22 @@ class TestAniListEnrichmentHelperCacheIntegration:
 
         # Mock cache manager to provide a working session
         mock_session = mocker.AsyncMock()
-        mock_session.post = mocker.AsyncMock()
-        mock_session.post.return_value.__aenter__.return_value.status = 200
-        mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(
+
+        # Create async context manager for post()
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.json = mocker.AsyncMock(
             return_value={"data": {"Media": {"id": 1, "title": {"romaji": "Test"}}}}
         )
-        mock_session.post.return_value.__aenter__.return_value.from_cache = False
-        mock_session.post.return_value.__aenter__.return_value.headers = {}
+        mock_response.from_cache = False
+        mock_response.headers = {}
+        mock_response.raise_for_status = mocker.MagicMock()
+
+        mock_cm = mocker.AsyncMock()
+        mock_cm.__aenter__ = mocker.AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = mocker.AsyncMock(return_value=False)
+
+        mock_session.post = mocker.MagicMock(return_value=mock_cm)
 
         mocker.patch(
             "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
@@ -1492,8 +1541,35 @@ class TestAniListEnrichmentHelperCLI:
                     call_args = mock_open.call_args[0]
                     assert "test_anilist_output.json" in call_args[0]
 
+    @pytest.mark.asyncio
+    async def test_main_with_file_write_error(self):
+        """Test CLI handles file writing errors in outer exception handler."""
+        import sys
+        from unittest.mock import patch
 
-# --- Tests for main() function following jikan_helper pattern ---
+        test_args = ["script_name", "--anilist-id", "21"]
+
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "src.enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
+                mock_helper_instance = MagicMock()
+                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                    return_value={"id": 21}
+                )
+                mock_helper_instance.close = AsyncMock()
+                MockHelper.return_value = mock_helper_instance
+
+                # Mock open() to raise exception during file writing
+                with patch("builtins.open", side_effect=IOError("Disk full")):
+                    from src.enrichment.api_helpers.anilist_helper import main
+
+                    exit_code = await main()
+
+                    # Should return 1 due to exception
+                    assert exit_code == 1
+                    # Helper should still be closed
+                    mock_helper_instance.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

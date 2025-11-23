@@ -617,10 +617,15 @@ def _process_related_items(
         if not slug:
             continue
 
+        # Build absolute URL, handling both relative and absolute href values
+        full_url = url
+        if not full_url.startswith("http"):
+            full_url = f"https://www.anime-planet.com{full_url}"
+
         related_item = {
             "title": title,
             "slug": slug,
-            "url": f"https://www.anime-planet.com{url}",
+            "url": full_url,
             "relation_type": "same_franchise",
         }
 
@@ -689,10 +694,10 @@ def _process_related_manga(
 ) -> List[Dict[str, Any]]:
     """
     Convert a list of raw related-manga entries into normalized related-manga records.
-    
+
     Parameters:
         related_manga_raw (List[Dict[str, Any]]): Raw extraction items for related manga. Each item is expected to include at least `title` and `url` and may contain `relation_subtype`, `start_date_attr`, `end_date_attr`, and `metadata_text` (e.g., "Vol: X Ch: Y").
-    
+
     Returns:
         List[Dict[str, Any]]: Normalized related-manga objects containing:
             - title (str)
@@ -702,7 +707,7 @@ def _process_related_manga(
             - relation_subtype (str, optional): uppercased subtype if present
             - start_date (str, optional)
             - end_date (str, optional)
-            - start_year (int, optional)
+            - year (int, optional): extracted from start_date or end_date
             - volumes (int, optional)
             - chapters (int, optional)
     """

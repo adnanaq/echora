@@ -13,6 +13,7 @@ Achieves 99% precision, 92% recall vs 0.3% with primitive string matching.
 import asyncio
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -1532,9 +1533,9 @@ if __name__ == "__main__":  # pragma: no cover
     async def main() -> int:
         """
         Run a sample CLI workflow that invokes the AI character matcher and prints results as JSON.
-        
+
         Executes a demonstration run using mock character data, prints the matcher output to stdout as formatted JSON, and returns a numeric exit code.
-        
+
         Returns:
             int: `0` on successful completion, `1` if an unexpected error occurred (and an error message is written to stderr).
         """
@@ -1549,11 +1550,14 @@ if __name__ == "__main__":  # pragma: no cover
             )
 
             print(json.dumps(result, indent=2, ensure_ascii=False))
-            return 0
-        except Exception as e:
-            import sys
-            print(f"Error: {e}", file=sys.stderr)
+        except KeyboardInterrupt:
+            print("\nInterrupted by user", file=sys.stderr)
             return 1
+        except Exception:
+            logger.exception("Unexpected error in character matcher CLI")
+            print("Error: An unexpected error occurred. Check logs for details.", file=sys.stderr)
+            return 1
+        else:
+            return 0
 
-    import sys
     sys.exit(asyncio.run(main()))

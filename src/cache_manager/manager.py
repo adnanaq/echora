@@ -169,7 +169,9 @@ class HTTPCacheManager:
 
             # Enable body-based caching by adding X-Hishel-Body-Key header
             # This ensures POST requests (GraphQL, etc.) include body in cache key
-            headers = session_kwargs.get("headers", {})
+            # Copy headers to avoid mutating caller's dict
+            base_headers = session_kwargs.get("headers") or {}
+            headers = dict(base_headers)
             headers["X-Hishel-Body-Key"] = "true"
             session_kwargs["headers"] = headers
 

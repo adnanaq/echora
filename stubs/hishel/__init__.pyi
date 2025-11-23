@@ -112,7 +112,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         refresh_ttl_on_access: bool = True,
     ) -> None:
         """
-        Initialize a synchronous SQLite-backed cache storage.
+        Initialize an asynchronous SQLite-backed cache storage for use with async event loops.
 
         Parameters:
             connection (Optional[Any]): Existing DB connection or driver-specific connection object to use instead of opening a new file-based database.

@@ -190,6 +190,11 @@ def test_process_related_anime():
             "url": "/anime/end-date-slug",
             "end_date_attr": "2023-12-31",
         },
+        {
+            "title": "Absolute URL",
+            "url": "https://www.anime-planet.com/anime/absolute-slug",
+            "metadata_text": "TV: 24 ep",
+        },
         {"title": "Prequel", "url": ""},  # Invalid, should be skipped
         {"title": "", "url": "/anime/no-title"},  # No title
         {"title": "No URL", "url": ""},  # No URL
@@ -207,8 +212,8 @@ def test_process_related_anime():
     ]
     processed = _process_related_anime(related_anime_raw)
     assert (
-        len(processed) == 4
-    )  # Original valid + end date + No Episodes + No Type Match
+        len(processed) == 5
+    )  # Original valid + end date + absolute URL + No Episodes + No Type Match
     item = processed[0]
     assert item["title"] == "Sequel"
     assert item["slug"] == "sequel-slug"
@@ -220,10 +225,16 @@ def test_process_related_anime():
     # Assertions for the new edge cases
     assert processed[1]["slug"] == "end-date-slug"
     assert processed[1]["year"] == 2023
-    assert processed[2]["slug"] == "no-episodes"
-    assert "episodes" not in processed[2]
-    assert processed[3]["slug"] == "no-type-match"
-    assert "type" not in processed[3]
+
+    # Test absolute URL handling (should not double-prefix)
+    assert processed[2]["slug"] == "absolute-slug"
+    assert processed[2]["url"] == "https://www.anime-planet.com/anime/absolute-slug"
+    assert processed[2]["episodes"] == 24
+
+    assert processed[3]["slug"] == "no-episodes"
+    assert "episodes" not in processed[3]
+    assert processed[4]["slug"] == "no-type-match"
+    assert "type" not in processed[4]
 
 
 def test_process_related_manga():

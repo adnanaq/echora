@@ -899,15 +899,7 @@ class TestCachedResultDecorator:
 
         @cached_result(ttl=60, key_prefix="test")
         async def my_function(item_id: str) -> Dict[str, str]:
-            """
-            Construct a result dictionary containing the provided item identifier under the 'id' key.
-            
-            Parameters:
-                item_id (str): The identifier of the item to include in the result.
-            
-            Returns:
-                Dict[str, str]: A dictionary with a single key `'id'` whose value is `item_id`.
-            """
+            """My function docstring."""
             return {"id": item_id}
 
         # functools.wraps should preserve metadata

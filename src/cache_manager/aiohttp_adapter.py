@@ -347,7 +347,7 @@ class CachedAiohttpSession:
         # NEVER cache error responses (4xx, 5xx) as they are temporary
         if response.status < 400:
             await self._store_response_with_body(
-                method, url, response, cache_key, kwargs, body
+                method, response, cache_key, kwargs, body
             )
 
         # Return cached response wrapper (allows multiple reads)
@@ -419,7 +419,7 @@ class CachedAiohttpSession:
             key_parts.append(f"params={serialize_payload(params)}")
 
         if "data" in kwargs:
-            key_parts.append(f"data={serialize_payload(kwargs['data'])} ")
+            key_parts.append(f"data={serialize_payload(kwargs['data'])}")
 
         # Hash to create stable key
         key_string = ":".join(key_parts)
@@ -429,7 +429,6 @@ class CachedAiohttpSession:
     async def _store_response_with_body(
         self,
         method: str,
-        url: str,
         response: aiohttp.ClientResponse,
         cache_key: str,
         request_kwargs: Dict[str, Any],
@@ -437,14 +436,13 @@ class CachedAiohttpSession:
     ) -> None:
         """
         Store an aiohttp response and its pre-read body into the storage backend under the given cache key.
-        
+
         Converts the live aiohttp response and request information into Hishel `Request` and `Response`
         models, creates a cache entry via the storage backend, and consumes the entry's response stream
         so any wrapped stream persistence logic (e.g., saving chunks to Redis) is triggered.
-        
+
         Parameters:
             method: HTTP method used for the original request.
-            url: Request URL (informational; the stored Request uses response.url).
             response: The aiohttp.ClientResponse that was received.
             cache_key: The key under which the entry will be stored in the backend.
             request_kwargs: Original request keyword arguments; `metadata` (if present) is propagated to the stored Request.

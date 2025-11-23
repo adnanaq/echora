@@ -4,6 +4,7 @@ Root test configuration for all tests.
 Provides isolated test collection to avoid touching production data.
 """
 
+import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,8 +18,11 @@ from src.vector.client.qdrant_client import QdrantClient
 def mock_redis_cache_miss():
     """
     Ensure any result cache lookup misses by patching the Redis client used by the result cache.
-    
+
     This pytest fixture patches src.cache_manager.result_cache.get_result_cache_redis_client to return an AsyncMock Redis client whose `get` method always returns `None`, causing cached result lookups to behave as cache misses for the duration of the test.
+
+    Yields:
+        AsyncMock: The mocked Redis client, allowing tests to assert on call counts or behavior.
     """
     with patch(
         "src.cache_manager.result_cache.get_result_cache_redis_client"
@@ -26,7 +30,7 @@ def mock_redis_cache_miss():
         mock_redis_client = AsyncMock()
         mock_redis_client.get.return_value = None  # Always return None for get
         mock_get_redis_client.return_value = mock_redis_client
-        yield
+        yield mock_redis_client
 
 
 @pytest.fixture(scope="session")
@@ -65,6 +69,8 @@ async def client(settings):
     # Cleanup: Delete test collection after tests for isolation
     try:
         await client.delete_collection()
-    except Exception:
-        # Ignore cleanup errors to avoid test failures
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # Log cleanup errors for visibility, but don't fail the test
+        logging.getLogger(__name__).warning(
+            f"Cleanup failed for test collection '{settings.qdrant_collection_name}': {exc}"
+        )

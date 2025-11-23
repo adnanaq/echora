@@ -223,8 +223,8 @@ def load_working_file(file_path: Path) -> List[Dict[str, Any]]:
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load working file {file_path}: {e}")
+    except (FileNotFoundError, json.JSONDecodeError, IOError) as e:
+        logger.exception(f"Failed to load working file {file_path}: {e}")
         return []
 
 
@@ -239,8 +239,8 @@ def save_working_file(file_path: Path, data: List[Dict[str, Any]]) -> None:
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error(f"Failed to save working file {file_path}: {e}")
+    except (IOError, OSError, TypeError) as e:
+        logger.exception(f"Failed to save working file {file_path}: {e}")
 
 
 def remove_matched_entry(

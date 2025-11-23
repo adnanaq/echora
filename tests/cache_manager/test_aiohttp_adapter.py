@@ -252,16 +252,16 @@ class MockAsyncStorage:
         """
         return self._storage.get(key)
 
-    async def create_entry(self, request, response, key):
+    async def create_entry(self, _request, response, key):
         # Simulate hishel consuming the stream and storing the body
         """
         Create and store a mock cache entry by consuming the provided response stream and materializing its body.
-        
+
         Parameters:
-            request: The original request object (kept for interface compatibility; not inspected by this helper).
+            _request: The original request object (kept for interface compatibility; not inspected by this helper).
             response: An object exposing `status_code`, `headers`, and `stream` (an async or sync iterable of bytes) whose stream will be consumed and materialized.
             key (str): The storage key under which the created entry will be inserted.
-        
+
         Returns:
             MagicMock: A mock entry whose `.response` has `status_code`, `headers`, and a `.stream` set to a list containing the full body bytes; the entry is inserted at the front of the storage list for the given key.
         """
@@ -648,7 +648,6 @@ class TestCachedAiohttpSession:
         # Execute store
         await cached_session._store_response_with_body(
             method="GET",
-            url="https://example.com/api",
             response=mock_response,
             cache_key="GET:test123",
             request_kwargs={"metadata": {"test": "value"}},
@@ -773,7 +772,6 @@ class TestCachedAiohttpSession:
         # Execute - should handle sync iterator without error
         await cached_session._store_response_with_body(
             method="POST",
-            url="https://example.com",
             response=mock_response,
             cache_key="POST:abc",
             request_kwargs={},
@@ -836,15 +834,15 @@ class TestCachedAiohttpSession:
         captured_request = None
         captured_response = None
 
-        async def capture_create_entry(request, response, cache_key):
+        async def capture_create_entry(request, response, _cache_key):
             """
             Capture the provided request and response objects and return a mock cache entry that omits a response stream.
-            
+
             Parameters:
                 request: The HTTP request object passed to the cache create routine; stored to `captured_request`.
                 response: The HTTP response object passed to the cache create routine; stored to `captured_response`.
-                cache_key: The cache key associated with this create operation (not modified).
-            
+                _cache_key: The cache key associated with this create operation (not used).
+
             Returns:
                 mock_entry: A MagicMock instance representing a cache entry whose `response` attribute is set to `None` to indicate no body stream should be consumed.
             """
@@ -876,7 +874,6 @@ class TestCachedAiohttpSession:
         body_data = b'{"factory": "test"}'
         await cached_session._store_response_with_body(
             method="GET",
-            url="https://example.com/api",
             response=mock_response,
             cache_key="GET:test",
             request_kwargs={},

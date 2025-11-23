@@ -11,7 +11,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
@@ -45,12 +46,12 @@ class ParallelAPIFetcher:
         self.config = config or EnrichmentConfig()
 
         # Initialize async helpers
-        self.anilist_helper = None  # Lazy init in async context
-        self.kitsu_helper = None
-        self.anidb_helper = None
-        self.anime_planet_helper = None
-        self.anisearch_helper = None
-        self.jikan_session = None
+        self.anilist_helper: Optional[AniListEnrichmentHelper] = None  # Lazy init in async context
+        self.kitsu_helper: Optional[KitsuEnrichmentHelper] = None
+        self.anidb_helper: Optional[AniDBEnrichmentHelper] = None
+        self.anime_planet_helper: Optional[AnimePlanetEnrichmentHelper] = None
+        self.anisearch_helper: Optional[AniSearchEnrichmentHelper] = None
+        self.jikan_session: Optional[Any] = None
 
         # Track API performance
         self.api_timings: Dict[str, float] = {}
@@ -395,12 +396,12 @@ class ParallelAPIFetcher:
 
         return all_characters
 
-    async def _fetch_jikan_async(self, url: str) -> Optional[Dict]:
+    async def _fetch_jikan_async(self, url: str) -> Optional[Dict[str, Any]]:
         """
         Fetches JSON data from a Jikan API URL using a cached aiohttp session.
-        
+
         Initializes and reuses an internal cached HTTP session if needed. On HTTP 429 the request is retried once after a 2 second delay. Any non-200 response or exceptions result in `None`.
-        
+
         Returns:
             dict: Parsed JSON response on success.
             None: If the request fails, is rate-limited beyond the single retry, or returns a non-200 status.
@@ -419,8 +420,6 @@ class ParallelAPIFetcher:
                     return await response.json()
                 elif response.status == 429:
                     # Rate limited - wait and retry once
-                    import asyncio
-
                     logger.warning(
                         f"Jikan rate limited for {url}, waiting 2s and retrying..."
                     )
@@ -650,7 +649,7 @@ class ParallelAPIFetcher:
         Returns:
             Dict[str, Any]: Mapping from task name to the coroutine result, or None for timed-out/failed tasks.
         """
-        results = {}
+        results: Dict[str, Any] = {}
         task_names = [name for name, _ in tasks]
         coroutines = [coro for _, coro in tasks]
 
@@ -746,12 +745,17 @@ class ParallelAPIFetcher:
         await self.initialize_helpers()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
         """
         Cleanup and close all initialized helper resources when exiting the async context.
-        
+
         Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared Jikan session if they were created.
-        
+
         Returns:
             bool: `False` to indicate exceptions (if any) should not be suppressed.
         """

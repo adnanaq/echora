@@ -15,6 +15,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sys
 from typing import Any, Dict, Optional
@@ -28,6 +29,8 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 from src.cache_manager.config import get_cache_config
+
+logger = logging.getLogger(__name__)
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
 
@@ -153,7 +156,7 @@ async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[
         results: RunManyReturn = await crawler.arun(url, config=config)
 
         if not results:
-            print("No results found.")
+            logger.info("No results found.")
             return None
 
         for result in results:
@@ -162,8 +165,8 @@ async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[
                     f"Unexpected result type: {type(result)}, expected CrawlResult."
                 )
 
-            print(f"URL: {result.url}")
-            print(f"Success: {result.success}")
+            logger.info(f"URL: {result.url}")
+            logger.info(f"Success: {result.success}")
 
             if result.success and result.extracted_content:
                 # The result is a JSON string, so we need to load it first
@@ -204,7 +207,7 @@ async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[
                 # Always return data (no conditional return or file writing)
                 return output_data
             else:
-                print(f"Extraction failed: {result.error_message}")
+                logger.warning(f"Extraction failed: {result.error_message}")
                 return None
 
 

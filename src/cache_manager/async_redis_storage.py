@@ -11,6 +11,7 @@ aiohttp-based API helpers (AniList, Kitsu, AniDB).
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import (
@@ -133,7 +134,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         """
         return self._make_key("stream", str(entry_id))
 
-    def _index_key(self, cache_key: str) -> str:
+    def _index_key(self, cache_key: str | bytes) -> str:
         """
         Redis key for the index that maps a cache key to its entry IDs.
         
@@ -307,8 +308,16 @@ class AsyncRedisStorage(AsyncBaseStorage):
             if self.refresh_ttl_on_access:
                 ttl = self._get_entry_ttl(entry.request)
                 if ttl is not None:
-                    await self.client.expire(entry_key, int(ttl))
-                    await self.client.expire(self._stream_key(entry_id), int(ttl))
+                    ttl_seconds = int(ttl)
+                    await self.client.expire(entry_key, ttl_seconds)
+                    await self.client.expire(self._stream_key(entry_id), ttl_seconds)
+                    # Also refresh index key TTL to keep all three keys aging consistently
+                    # Only extend if current TTL is shorter (same logic as create_entry)
+                    current_index_ttl = await self.client.ttl(index_key)
+                    if current_index_ttl == -2 or (
+                        current_index_ttl >= 0 and current_index_ttl < ttl_seconds
+                    ):
+                        await self.client.expire(index_key, ttl_seconds)
 
             final_entries.append(entry_with_stream)
 
@@ -422,7 +431,8 @@ class AsyncRedisStorage(AsyncBaseStorage):
         try:
             await self.client.aclose()
         except Exception as e:
-            import logging
+            # Intentionally broad: best-effort cleanup during shutdown
+            # Log and continue rather than propagating errors during teardown
             logging.warning(f"Error closing Redis client: {e}")
 
     async def _save_stream(

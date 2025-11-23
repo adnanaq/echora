@@ -14,6 +14,7 @@ Examples:
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -21,6 +22,8 @@ from types import TracebackType
 from typing import Any, Dict, List, Optional, Type
 
 from src.cache_manager.instance import http_cache_manager as _cache_manager
+
+logger = logging.getLogger(__name__)
 
 
 class JikanDetailedFetcher:
@@ -170,8 +173,8 @@ class JikanDetailedFetcher:
                     await self._record_network_request(from_cache)
                     return None
 
-        except Exception as e:
-            print(f"Error fetching episode {episode_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching episode {episode_id}")
             return None
 
     async def fetch_character_detail(
@@ -247,8 +250,8 @@ class JikanDetailedFetcher:
                     await self._record_network_request(from_cache)
                     return None
 
-        except Exception as e:
-            print(f"Error fetching character {character_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching character {character_id}")
             return None
 
     def append_batch_to_file(

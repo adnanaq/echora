@@ -45,17 +45,17 @@ class AniListEnrichmentHelper:
     ) -> Dict[str, Any]:
         """
         Send a GraphQL request to the AniList API and return the parsed response data with cache metadata.
-        
-        Handles per-event-loop session management and respects server rate limits; on 429 responses it waits according to Retry-After and retries the request.
-        
+
+        Handles per-event-loop session management and respects server rate limits; on 429 responses it waits according to Retry-After and retries the request up to a maximum of 3 attempts.
+
         Parameters:
             query (str): GraphQL query string.
             variables (Optional[Dict[str, Any]]): Mapping of variables for the GraphQL query.
-        
+
         Returns:
             result (Dict[str, Any]): The GraphQL `data` object merged into a dict. Contains an additional
             key `_from_cache` set to `True` if the response was served from cache, `False` otherwise.
-        
+
         Raises:
             RuntimeError: If an aiohttp session cannot be initialized for the current event loop.
         """
@@ -94,45 +94,63 @@ class AniListEnrichmentHelper:
         if self.session is None:
             raise RuntimeError("Failed to initialize AniList session")
 
-        try:
-            if self.rate_limit_remaining < 5:
-                logger.info(
-                    f"Rate limit low ({self.rate_limit_remaining}), waiting 60 seconds..."
-                )
-                await asyncio.sleep(60)
-                self.rate_limit_remaining = 90
-
-            async with self.session.post(
-                self.base_url, json=payload, headers=headers
-            ) as response:
-                # Capture cache status before response is consumed
-                from_cache = getattr(response, "from_cache", False)
-
-                if "X-RateLimit-Remaining" in response.headers:
-                    self.rate_limit_remaining = int(
-                        response.headers["X-RateLimit-Remaining"]
+        # Retry loop with bounded attempts to avoid unbounded recursion
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if self.rate_limit_remaining < 5:
+                    logger.info(
+                        f"Rate limit low ({self.rate_limit_remaining}), waiting 60 seconds..."
                     )
+                    await asyncio.sleep(60)
+                    self.rate_limit_remaining = 90
 
-                if response.status == 429:
-                    retry_after = int(response.headers.get("Retry-After", 60))
-                    logger.warning(
-                        f"Rate limit exceeded. Waiting {retry_after} seconds..."
-                    )
-                    await asyncio.sleep(retry_after)
-                    return await self._make_request(query, variables)
+                async with self.session.post(
+                    self.base_url, json=payload, headers=headers
+                ) as response:
+                    # Capture cache status before response is consumed
+                    from_cache = getattr(response, "from_cache", False)
 
-                response.raise_for_status()
-                data: Any = await response.json()
-                if "errors" in data:
-                    logger.error(f"AniList GraphQL errors: {data['errors']}")
-                    return {"_from_cache": from_cache}
-                result: Dict[str, Any] = data.get("data", {})
-                # Add cache metadata to result
-                result["_from_cache"] = from_cache
-                return result
-        except Exception:
-            logger.exception("AniList API request failed")
-            return {"_from_cache": False}
+                    if "X-RateLimit-Remaining" in response.headers:
+                        self.rate_limit_remaining = int(
+                            response.headers["X-RateLimit-Remaining"]
+                        )
+
+                    if response.status == 429:
+                        if attempt < max_retries - 1:
+                            retry_after = int(response.headers.get("Retry-After", 60))
+                            logger.warning(
+                                f"Rate limit exceeded (attempt {attempt + 1}/{max_retries}). Waiting {retry_after} seconds..."
+                            )
+                            await asyncio.sleep(retry_after)
+                            continue  # Retry in loop instead of recursion
+                        else:
+                            logger.error(
+                                f"Rate limit exceeded after {max_retries} attempts. Giving up."
+                            )
+                            return {"_from_cache": from_cache}
+
+                    response.raise_for_status()
+                    data: Any = await response.json()
+                    if "errors" in data:
+                        logger.error(f"AniList GraphQL errors: {data['errors']}")
+                        return {"_from_cache": from_cache}
+                    result: Dict[str, Any] = data.get("data", {})
+                    # Add cache metadata to result
+                    result["_from_cache"] = from_cache
+                    return result
+            except (
+                aiohttp.ClientError,
+                aiohttp.ClientResponseError,
+                asyncio.TimeoutError,
+                json.JSONDecodeError,
+            ) as e:
+                # Network/JSON errors: log and return empty result
+                logger.exception(f"AniList API request failed: {e}")
+                return {"_from_cache": False}
+
+        # Should not reach here, but defensive fallback
+        return {"_from_cache": False}
 
     def _get_media_query_fields(self) -> str:
         """
@@ -423,11 +441,14 @@ class AniListEnrichmentHelper:
     async def close(self) -> None:
         """
         Close the helper's active aiohttp session if one exists.
-        
-        If a session is present, closes the underlying ClientSession; otherwise does nothing.
+
+        If a session is present, closes the underlying ClientSession and resets session state to make the helper safe for potential reuse.
         """
         if self.session:
             await self.session.close()
+            # Reset session state to prevent accidental reuse of closed session
+            self.session = None
+            self._session_event_loop = None
 
     async def __aenter__(self) -> "AniListEnrichmentHelper":
         """

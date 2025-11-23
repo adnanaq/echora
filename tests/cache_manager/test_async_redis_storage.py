@@ -675,6 +675,33 @@ class TestCreateEntry:
                 "key_index:" in key for key in called_keys
             ), "Should create index_key with TTL"
 
+    @pytest.mark.asyncio
+    async def test_create_entry_raises_on_invalid_stream_type(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+    ) -> None:
+        """Test that create_entry raises TypeError if response.stream is not AsyncIterator."""
+        from hishel._core.models import Response
+
+        # Create response with invalid stream (not AsyncIterator)
+        invalid_response = Response(
+            status_code=200,
+            headers={},
+            stream="not_an_async_iterator",  # Invalid type
+            metadata={},
+        )
+
+        with pytest.raises(
+            TypeError,
+            match="Expected AsyncIterator for response.stream, got str",
+        ):
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=invalid_response,
+                key="test_key",
+            )
+
 
 # ============================================================================
 # Test Class: Get Entries
@@ -734,6 +761,8 @@ class TestGetEntries:
                 b"chunk2",
                 AsyncRedisStorage._COMPLETE_CHUNK_MARKER,
             ]
+            # Mock TTL check for index key refresh logic
+            mock_redis_client.ttl.return_value = 1800
 
             entries = await storage_with_mock_client.get_entries(cache_key)
 
@@ -870,10 +899,14 @@ class TestGetEntries:
                 AsyncRedisStorage._COMPLETE_CHUNK_MARKER
             ]
 
+            # Mock TTL check for index key refresh logic
+            mock_redis_client.ttl.return_value = 1800  # Shorter than default 3600
+
             await storage_with_mock_client.get_entries(cache_key)
 
             # Check expire was called (storage has default_ttl=3600.0 and refresh_ttl_on_access=True)
-            assert mock_redis_client.expire.call_count == 2  # entry key + stream key
+            # Should refresh: entry key + stream key + index key (new)
+            assert mock_redis_client.expire.call_count == 3
 
     @pytest.mark.asyncio
     async def test_get_entries_no_ttl_refresh_when_disabled(

@@ -23,7 +23,8 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     """
 
     # Mock cache manager to provide working sessions WITHOUT initializing Redis
-    mock_session = mocker.MagicMock()
+    # Create the actual session mock with HTTP methods
+    mock_session = mocker.AsyncMock()
     mock_session.get = mocker.AsyncMock()
     mock_session.post = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
@@ -42,27 +43,41 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     mock_session.post.return_value.__aenter__.return_value.headers = {}
     mock_session.close = mocker.AsyncMock()
 
+    # Create async context manager wrapper for get_aiohttp_session
+    # This is needed because KitsuEnrichmentHelper uses: async with get_aiohttp_session(...) as session
+    # While other helpers use: self.session = get_aiohttp_session(...)
+    # The mock_cm needs to:
+    # 1. Act as async context manager (for Kitsu) returning mock_session via __aenter__
+    # 2. Have .get() and .post() methods (for AniList/Jikan/AniDB) that work when stored
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    # Copy HTTP methods to mock_cm so it works when used directly (not via async with)
+    mock_cm.get = mock_session.get
+    mock_cm.post = mock_session.post
+    mock_cm.close = mock_session.close
+
     mocker.patch(
         "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
-        return_value=mock_session,
+        return_value=mock_cm,
     )
 
     # Track what Redis URLs were used (if any)
     redis_calls = []
-    original_redis_from_url = mocker.AsyncMock()
 
-    def track_redis_call(url, **kwargs):
+    def track_redis_call(url, **_kwargs: object):
         """
-        Record a Redis connection URL and return the captured `original_redis_from_url` callable.
-        
+        Record a Redis connection URL and return a mock Redis client.
+
         Parameters:
             url (str): The Redis connection URL that was requested.
-        
+            **_kwargs: Unused keyword arguments (prefixed with _ to satisfy linting).
+
         Returns:
-            callable: The `original_redis_from_url` callable used to delegate the actual Redis creation.
+            AsyncMock: A mocked Redis client for tracking purposes.
         """
         redis_calls.append(url)
-        return original_redis_from_url
+        return mocker.AsyncMock()
 
     mocker.patch("redis.asyncio.Redis.from_url", side_effect=track_redis_call)
 
@@ -101,9 +116,9 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
                     await helper.get_anime_by_id(1)
                 elif class_name == "AniDBEnrichmentHelper":
                     await helper.get_anime_by_id(1)
-            except Exception:
-                # API errors are OK, we're testing cache setup not API calls
-                pass
+            except Exception as e:
+                # API errors are expected/ignored here; only Redis usage matters
+                print(f"API error ignored in cache-integration test for {class_name}: {e}")
 
             # Check if THIS helper created any Redis clients
             redis_calls_after = len(redis_calls)
@@ -124,9 +139,9 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     # Report failures
     if failed_helpers:
         pytest.fail(
-            f"Some helpers are creating their own Redis clients!\n"
-            f"Helpers should use http_cache_manager.get_aiohttp_session() instead.\n"
-            f"Failed helpers:\n"
+            "Some helpers are creating their own Redis clients!\n"
+            "Helpers should use http_cache_manager.get_aiohttp_session() instead.\n"
+            "Failed helpers:\n"
             + "\n".join([f"  - {name}: {err}" for name, err in failed_helpers])
         )
 
@@ -195,8 +210,9 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.fetch_episode_detail(1)
-    except Exception:
-        pass  # API errors OK
+    except Exception as e:
+        # API errors are expected/ignored here; only Redis usage matters
+        print(f"API error ignored in Jikan helper test: {e}")
 
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()
@@ -232,8 +248,9 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.get_anime_by_id(1)
-    except Exception:
-        pass  # API errors OK
+    except Exception as e:
+        # API errors are expected/ignored here; only Redis usage matters
+        print(f"API error ignored in Kitsu helper test: {e}")
 
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()
@@ -269,8 +286,9 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.get_anime_by_id(1)
-    except Exception:
-        pass  # API errors OK
+    except Exception as e:
+        # API errors are expected/ignored here; only Redis usage matters
+        print(f"API error ignored in AniDB helper test: {e}")
 
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()
