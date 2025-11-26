@@ -1066,12 +1066,20 @@ async def test_main_function_with_default_output(mock_fetch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exception_type,error_msg",
+    [
+        (ValueError, "Invalid anime ID"),
+        (OSError, "File write failed"),
+        (RuntimeError, "Unexpected crawler error"),
+    ],
+)
 @patch("src.enrichment.crawlers.anisearch_character_crawler.fetch_anisearch_characters")
-async def test_main_function_error_handling(mock_fetch):
-    """Test main() function handles errors and returns non-zero exit code."""
+async def test_main_function_error_handling(mock_fetch, exception_type, error_msg):
+    """Test main() function handles various exception types and returns non-zero exit code."""
     from src.enrichment.crawlers.anisearch_character_crawler import main
 
-    mock_fetch.side_effect = ValueError("Crawler error")
+    mock_fetch.side_effect = exception_type(error_msg)
     with patch(
         "sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/characters"]
     ):

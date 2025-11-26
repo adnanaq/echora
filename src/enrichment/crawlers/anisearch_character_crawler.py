@@ -29,10 +29,10 @@ from crawl4ai import (
 from crawl4ai.types import RunManyReturn
 
 from src.cache_manager.config import get_cache_config
-
-logger = logging.getLogger(__name__)
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
 
 # Get TTL from config to keep cache control centralized
 _CACHE_CONFIG = get_cache_config()
@@ -280,8 +280,11 @@ async def main() -> int:
             args.anime_id,
             output_path=args.output,
         )
-    except (ValueError, RuntimeError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except (ValueError, OSError):
+        logging.exception("Failed to fetch anisearch character data")
+        return 1
+    except Exception:
+        logging.exception("Unexpected error during character fetch")
         return 1
     return 0
 

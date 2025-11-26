@@ -308,7 +308,7 @@ class TestCreateEntry:
                 request=mock_request,
                 response=mock_response,
                 key=cache_key,
-                id=entry_id,
+                id_=entry_id,
             )
 
             # Check entry structure
@@ -350,7 +350,7 @@ class TestCreateEntry:
                 request=mock_request,
                 response=mock_response,
                 key=cache_key,
-                id=None,  # No ID provided
+                id_=None,  # No ID provided
             )
 
             # Check entry has generated UUID

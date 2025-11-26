@@ -114,7 +114,7 @@ class SyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id: Optional[uuid.UUID] = None,
+        id_: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create a cache entry.
@@ -123,7 +123,7 @@ class SyncBaseStorage:
             request (Request): The request to cache.
             response (Response): The response to cache.
             key (str): Cache key.
-            id (Optional[uuid.UUID]): Optional entry ID.
+            id_ (Optional[uuid.UUID]): Optional entry ID.
 
         Returns:
             Entry: The created cache entry.
@@ -144,14 +144,14 @@ class SyncBaseStorage:
 
     def update_entry(
         self,
-        id: uuid.UUID,
+        id_: uuid.UUID,
         new_entry: Union[Entry, Callable[[Entry], Entry]],
     ) -> Optional[Entry]:
         """
         Update an existing cache entry.
 
         Parameters:
-            id (uuid.UUID): Entry identifier.
+            id_ (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -159,12 +159,12 @@ class SyncBaseStorage:
         """
         ...
 
-    def remove_entry(self, id: uuid.UUID) -> None:
+    def remove_entry(self, id_: uuid.UUID) -> None:
         """
         Remove a cache entry.
 
         Parameters:
-            id (uuid.UUID): Entry identifier to remove.
+            id_ (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -176,7 +176,7 @@ class AsyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id: Optional[uuid.UUID] = None,
+        id_: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create a cache entry asynchronously.
@@ -185,7 +185,7 @@ class AsyncBaseStorage:
             request (Request): The request to cache.
             response (Response): The response to cache.
             key (str): Cache key.
-            id (Optional[uuid.UUID]): Optional entry ID.
+            id_ (Optional[uuid.UUID]): Optional entry ID.
 
         Returns:
             Entry: The created cache entry.
@@ -206,14 +206,14 @@ class AsyncBaseStorage:
 
     async def update_entry(
         self,
-        id: uuid.UUID,
+        id_: uuid.UUID,
         new_entry: Union[Entry, Callable[[Entry], Entry]],
     ) -> Optional[Entry]:
         """
         Update an existing cache entry asynchronously.
 
         Parameters:
-            id (uuid.UUID): Entry identifier.
+            id_ (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -221,12 +221,12 @@ class AsyncBaseStorage:
         """
         ...
 
-    async def remove_entry(self, id: uuid.UUID) -> None:
+    async def remove_entry(self, id_: uuid.UUID) -> None:
         """
         Remove a cache entry asynchronously.
 
         Parameters:
-            id (uuid.UUID): Entry identifier to remove.
+            id_ (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -267,14 +267,14 @@ class SyncSqliteStorage(SyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id: Optional[uuid.UUID] = None,
+        id_: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create a cache entry for the given request and response under the specified cache key.
 
         Parameters:
             key (str): Cache key under which the entry will be stored.
-            id (Optional[uuid.UUID]): Optional explicit UUID to assign to the created entry; a new UUID is generated if omitted.
+            id_ (Optional[uuid.UUID]): Optional explicit UUID to assign to the created entry; a new UUID is generated if omitted.
 
         Returns:
             Entry: The created cache entry.
@@ -293,26 +293,26 @@ class SyncSqliteStorage(SyncBaseStorage):
         ...
     def update_entry(
         self,
-        id: uuid.UUID,
+        id_: uuid.UUID,
         new_entry: Union[Entry, Callable[[Entry], Entry]],
     ) -> Optional[Entry]:
         """
         Update an existing cache entry identified by its UUID.
 
         Parameters:
-            id (uuid.UUID): UUID of the entry to update.
+            id_ (uuid.UUID): UUID of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either the replacement Entry or a callable that receives the current Entry and returns the updated Entry.
 
         Returns:
             Optional[Entry]: The updated Entry if the entry existed and was updated, `None` otherwise.
         """
         ...
-    def remove_entry(self, id: uuid.UUID) -> None:
+    def remove_entry(self, id_: uuid.UUID) -> None:
         """
         Remove the cache entry with the given identifier from storage.
 
         Parameters:
-            id (uuid.UUID): UUID of the entry to remove.
+            id_ (uuid.UUID): UUID of the entry to remove.
         """
         ...
 
@@ -342,7 +342,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id: Optional[uuid.UUID] = None,
+        id_: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create a cache entry for the given request/response pair under the specified key.
@@ -351,7 +351,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
             request (Request): The original request to be associated with the entry.
             response (Response): The response to be stored in the entry.
             key (str): The cache key under which the entry will be stored.
-            id (Optional[uuid.UUID]): Optional UUID to assign as the entry's identifier.
+            id_ (Optional[uuid.UUID]): Optional UUID to assign as the entry's identifier.
 
         Returns:
             Entry: The created cache entry.
@@ -370,26 +370,26 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         ...
     async def update_entry(
         self,
-        id: uuid.UUID,
+        id_: uuid.UUID,
         new_entry: Union[Entry, Callable[[Entry], Entry]],
     ) -> Optional[Entry]:
         """
-        Update an existing cache entry identified by `id` with new content.
+        Update an existing cache entry identified by `id_` with new content.
 
         Parameters:
-        	id (uuid.UUID): Identifier of the entry to update.
-        	new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an `Entry` to replace the existing one, or a callable that receives the current `Entry` and returns the updated `Entry`.
+            id_ (uuid.UUID): Identifier of the entry to update.
+            new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an `Entry` to replace the existing one, or a callable that receives the current `Entry` and returns the updated `Entry`.
 
         Returns:
-        	updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id` existed and was updated, `None` otherwise.
+            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id` existed and was updated, `None` otherwise.
         """
         ...
-    async def remove_entry(self, id: uuid.UUID) -> None:
+    async def remove_entry(self, id_: uuid.UUID) -> None:
         """
-        Remove the cache entry identified by `id`.
+        Remove the cache entry identified by `id_`.
 
         Parameters:
-            id (uuid.UUID): Identifier of the entry to remove.
+            id_ (uuid.UUID): Identifier of the entry to remove.
         """
         ...
 

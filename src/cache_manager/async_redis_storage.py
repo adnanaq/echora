@@ -157,7 +157,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id: uuid.UUID | None = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create and store a cache Entry for the given request/response and cache key.
@@ -168,7 +168,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             request: Original HTTP request associated with the entry.
             response: HTTP response whose `stream` will be wrapped to persist streamed chunks.
             key: Cache key used to index the entry.
-            id: Optional UUID to use for the entry; a new UUID is generated if omitted.
+            id_: Optional UUID to use for the entry; a new UUID is generated if omitted.
 
         Returns:
             The persisted Entry with its response.stream wrapped to save chunks to Redis.
@@ -176,7 +176,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         Raises:
             TypeError: If `response.stream` is not an AsyncIterator.
         """
-        entry_id = id if id is not None else uuid.uuid4()
+        entry_id = id_ if id_ is not None else uuid.uuid4()
         entry_meta = EntryMeta(created_at=time.time())
         ttl = self._get_entry_ttl(request)
 

@@ -73,7 +73,7 @@ class AniListEnrichmentHelper:
                 try:
                     await self.session.close()
                 except Exception:
-                    pass  # Ignore errors closing old session
+                    logger.debug("Ignoring error while closing old session", exc_info=True)
 
             # Get cached session from centralized cache manager
             # Each event loop gets its own session via the cache manager
@@ -144,7 +144,7 @@ class AniListEnrichmentHelper:
                 aiohttp.ClientResponseError,
                 asyncio.TimeoutError,
                 json.JSONDecodeError,
-            ) as e:
+            ):
                 # Network/JSON errors: log and return empty result
                 logger.exception("AniList API request failed")
                 return {"_from_cache": False}

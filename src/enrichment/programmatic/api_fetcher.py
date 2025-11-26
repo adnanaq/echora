@@ -342,7 +342,7 @@ class ParallelAPIFetcher:
             return None
 
     async def _fetch_all_jikan_episodes(
-        self, mal_id: str, episode_count: int, loop: Any
+        self, mal_id: str, episode_count: int
     ) -> List[Dict[str, Any]]:
         """
         Retrieve all episodes for a Jikan anime entry by following the paginated episodes endpoint until no more pages remain.
@@ -384,7 +384,7 @@ class ParallelAPIFetcher:
         return all_episodes
 
     async def _fetch_all_jikan_characters(
-        self, mal_id: str, loop: Any
+        self, mal_id: str
     ) -> List[Dict[str, Any]]:
         """
         Retrieve the complete list of characters for a MyAnimeList anime from the Jikan API.
@@ -455,8 +455,8 @@ class ParallelAPIFetcher:
                         f"Jikan API returned status {response.status} for {url}"
                     )
                     return None
-        except Exception as e:
-            logger.error(f"Jikan API request failed: {e}")
+        except Exception:
+            logger.exception("Jikan API request failed")
             return None
 
     def _fetch_anilist_sync(

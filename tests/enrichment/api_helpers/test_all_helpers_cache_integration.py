@@ -134,7 +134,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
 
         except Exception as e:  # noqa: BLE001 - Integration test: catch all to track any failures
             # Track which helpers failed
-            failed_helpers.append((class_name, f"Exception: {str(e)}"))
+            failed_helpers.append((class_name, f"Exception: {e!r}"))
 
     # Report failures
     if failed_helpers:
@@ -234,6 +234,8 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()
 
+    await helper.close()
+
 
 @pytest.mark.asyncio
 async def test_kitsu_helper_no_hardcoded_redis(mocker):
@@ -281,6 +283,8 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
 
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()
+
+    await helper.close()
 
 
 @pytest.mark.asyncio

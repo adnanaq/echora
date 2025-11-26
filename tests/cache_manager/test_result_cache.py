@@ -601,7 +601,7 @@ class TestCachedResultDecorator:
         call_count = 0
 
         @cached_result(ttl=60, key_prefix="test")
-        async def fetch_data(item_id: str) -> Optional[Dict[str, str]]:
+        async def fetch_data(item_id: str) -> Optional[Dict[str, str]]:  # noqa: ARG001
             """
             Simulates fetching data for the given item while incrementing a call counter.
             
