@@ -6,10 +6,10 @@ like 'favorites' and 'image', and adds character roles. Results are cached
 in Redis for 24 hours to avoid repeated crawling.
 
 Usage:
-    python -m src.enrichment.crawlers.anisearch_character_crawler <url> [--output PATH]
+    python -m src.enrichment.crawlers.anisearch_character_crawler <anime_id> [--output PATH]
 
-    <url>           anisearch.com anime character page URL
-    --output PATH   optional output file path (default: anisearch_characters.json)
+    <anime_id>      Anime identifier: full URL, path (e.g., '/18878,dan-da-dan/characters'), or ID (e.g., '18878,dan-da-dan')
+    --output PATH   Output file path (default: anisearch_characters.json in current directory)
 """
 
 import argparse

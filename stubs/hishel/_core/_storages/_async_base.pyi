@@ -16,17 +16,17 @@ class AsyncBaseStorage(abc.ABC):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create and store a new cache Entry for the given request/response under the specified key.
-        
+
         Parameters:
             request (Request): The request associated with the entry.
             response (Response): The response to be cached.
             key (str): The cache key under which the entry will be stored.
-            id_ (Optional[uuid.UUID]): Optional UUID to assign to the new entry; if omitted, an identifier will be generated.
-        
+            id (Optional[uuid.UUID]): Optional UUID to assign to the new entry; if omitted, an identifier will be generated.
+
         Returns:
             Entry: The created cache entry.
         """

@@ -16,17 +16,17 @@ class SyncBaseStorage(abc.ABC):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id: Optional[uuid.UUID] = None,
     ) -> Entry:
         """
         Create and store a cache entry for the given request/response under the provided key.
-        
+
         Parameters:
             request (Request): The original request to associate with the entry.
             response (Response): The response to store alongside the request.
             key (str): Cache key under which the entry will be stored.
-            id_ (Optional[uuid.UUID]): Optional UUID to assign as the entry's identifier; if omitted an identifier will be generated.
-        
+            id (Optional[uuid.UUID]): Optional UUID to assign as the entry's identifier; if omitted an identifier will be generated.
+
         Returns:
             Entry: The stored cache entry.
         """
