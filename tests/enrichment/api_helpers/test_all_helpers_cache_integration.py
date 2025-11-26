@@ -116,7 +116,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
                     await helper.get_anime_by_id(1)
                 elif class_name == "AniDBEnrichmentHelper":
                     await helper.get_anime_by_id(1)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - Integration test: catch all to verify Redis usage only
                 # API errors are expected/ignored here; only Redis usage matters
                 print(f"API error ignored in cache-integration test for {class_name}: {e}")
 
@@ -132,7 +132,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             if hasattr(helper, "close"):
                 await helper.close()
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Integration test: catch all to track any failures
             # Track which helpers failed
             failed_helpers.append((class_name, f"Exception: {str(e)}"))
 
@@ -158,19 +158,36 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
     # Mock Redis.from_url to detect calls
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager
+    # Mock cache manager with async context manager wrapper
+    # AniListEnrichmentHelper stores session directly: self.session = get_aiohttp_session(...)
+    # Then uses: async with self.session.post(...) as response
+    mock_response = mocker.AsyncMock()
+    mock_response.status = 200
+    mock_response.json = mocker.AsyncMock(return_value={"data": {"Media": {"id": 1}}})
+    mock_response.from_cache = False
+    mock_response.headers = {}
+
     mock_session = mocker.AsyncMock()
-    mock_session.post = mocker.AsyncMock()
-    mock_session.post.return_value.__aenter__.return_value.status = 200
-    mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(
-        return_value={"data": {"Media": {"id": 1}}}
+    # Use MagicMock for .post (synchronous call), with AsyncMock return_value (context manager)
+    mock_session.post = mocker.MagicMock(
+        return_value=mocker.AsyncMock(
+            __aenter__=mocker.AsyncMock(return_value=mock_response),
+            __aexit__=mocker.AsyncMock()
+        )
     )
-    mock_session.post.return_value.__aenter__.return_value.from_cache = False
-    mock_session.post.return_value.__aenter__.return_value.headers = {}
+    mock_session.close = mocker.AsyncMock()
+
+    # Create async context manager wrapper for get_aiohttp_session
+    # Supports both direct storage (AniList) and context manager usage (Kitsu)
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    mock_cm.post = mock_session.post
+    mock_cm.close = mock_session.close
 
     mocker.patch(
         "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
-        return_value=mock_session,
+        return_value=mock_cm,
     )
 
     helper = AniListEnrichmentHelper()
@@ -230,17 +247,27 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager
+    # Mock cache manager with async context manager wrapper
+    # This properly mocks the async context manager protocol that KitsuEnrichmentHelper uses
     mock_session = mocker.AsyncMock()
     mock_session.get = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
     mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
         return_value={"data": {"id": "1"}}
     )
+    mock_session.close = mocker.AsyncMock()
+
+    # Create async context manager wrapper for get_aiohttp_session
+    # KitsuEnrichmentHelper uses: async with get_aiohttp_session(...) as session
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    mock_cm.get = mock_session.get
+    mock_cm.close = mock_session.close
 
     mocker.patch(
         "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
-        return_value=mock_session,
+        return_value=mock_cm,
     )
 
     helper = KitsuEnrichmentHelper()

@@ -308,7 +308,7 @@ class TestCreateEntry:
                 request=mock_request,
                 response=mock_response,
                 key=cache_key,
-                id_=entry_id,
+                id=entry_id,
             )
 
             # Check entry structure
@@ -350,7 +350,7 @@ class TestCreateEntry:
                 request=mock_request,
                 response=mock_response,
                 key=cache_key,
-                id_=None,  # No ID provided
+                id=None,  # No ID provided
             )
 
             # Check entry has generated UUID
@@ -694,7 +694,7 @@ class TestCreateEntry:
 
         with pytest.raises(
             TypeError,
-            match="Expected AsyncIterator for response.stream, got str",
+            match=r"Expected AsyncIterator for response\.stream, got str",
         ):
             await storage_with_mock_client.create_entry(
                 request=mock_request,

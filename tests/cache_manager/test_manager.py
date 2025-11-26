@@ -76,12 +76,20 @@ class TestGetAiohttpSession:
             assert session == mock_session
             mock_session_class.assert_called_once()
 
-    def test_get_aiohttp_session_no_async_redis_client(self) -> None:
-        """Test regular session returned when async Redis client is None."""
+    def test_get_aiohttp_session_redis_connection_failure_fallback(self) -> None:
+        """Test graceful fallback to regular session when Redis connection fails.
+
+        When Redis client creation fails (connection error, authentication failure, etc.),
+        the manager should log a warning and return a regular aiohttp session instead
+        of crashing. This ensures the application continues to work without caching.
+        """
         config = CacheConfig(enabled=True, storage_type="redis")
 
         with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis_class.from_url.side_effect = Exception("Failed")
+            # Simulate Redis connection failure with realistic exception
+            mock_async_redis_class.from_url.side_effect = Exception(
+                "Connection refused: Redis server not available"
+            )
 
             with patch(
                 "src.cache_manager.manager.aiohttp.ClientSession"
@@ -92,8 +100,12 @@ class TestGetAiohttpSession:
                 manager = HTTPCacheManager(config)
                 session = manager.get_aiohttp_session("jikan")
 
+                # Should fall back to regular session, not crash
                 assert session == mock_session
                 mock_session_class.assert_called_once()
+
+                # Verify Redis client was never successfully created
+                assert manager._async_redis_client is None
 
     @pytest.mark.asyncio
     async def test_get_aiohttp_session_with_redis_success(self) -> None:
@@ -824,6 +836,7 @@ class TestGetAiohttpSessionErrorHandling:
 
                     # Should fall back to regular session (line 185)
                     mock_session.assert_called_once()
+                    assert session is mock_session.return_value
 
     @pytest.mark.asyncio
     async def test_general_exception_in_async_storage_creation(self) -> None:
@@ -845,6 +858,7 @@ class TestGetAiohttpSessionErrorHandling:
 
                     # Should fall back to regular session (line 188)
                     mock_session.assert_called_once()
+                    assert session is mock_session.return_value
 
 
 class TestCloseErrorHandling:

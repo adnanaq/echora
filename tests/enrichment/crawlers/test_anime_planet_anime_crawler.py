@@ -792,8 +792,21 @@ async def test_main_function_success(mock_fetch):
 
     assert exit_code == 0
     mock_fetch.assert_awaited_once_with(
-        "test-anime", return_data=False, output_path="output.json"
+        "test-anime", return_data=True, output_path="output.json"
     )
+
+
+@patch("src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")
+async def test_main_function_no_data_extracted(mock_fetch):
+    """Test main() function returns exit code 1 when no data is extracted."""
+    from src.enrichment.crawlers.anime_planet_anime_crawler import main
+
+    mock_fetch.return_value = None  # Extraction failure
+
+    with patch("sys.argv", ["script.py", "test-anime"]):
+        exit_code = await main()
+
+    assert exit_code == 1
 
 
 @patch("src.enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")

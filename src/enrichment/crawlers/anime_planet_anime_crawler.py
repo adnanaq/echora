@@ -622,7 +622,7 @@ def _process_related_items(
         if not full_url.startswith("http"):
             full_url = f"https://www.anime-planet.com{full_url}"
 
-        related_item = {
+        related_item: Dict[str, Any] = {
             "title": title,
             "slug": slug,
             "url": full_url,
@@ -633,6 +633,11 @@ def _process_related_items(
         relation_subtype = item.get("relation_subtype", "").strip()
         if relation_subtype:
             related_item["relation_subtype"] = relation_subtype.upper()
+
+        # Preserve image URL when available
+        image = item.get("image", "").strip()
+        if image:
+            related_item["image"] = image
 
         # Extract dates from data attributes (preferred method)
         start_date = item.get("start_date_attr", "").strip()
@@ -744,11 +749,14 @@ async def main() -> int:
     args = parser.parse_args()
 
     try:
-        await fetch_animeplanet_anime(
+        data = await fetch_animeplanet_anime(
             args.identifier,
-            return_data=False,  # CLI doesn't need return value
+            return_data=True,  # Check return value to detect failures
             output_path=args.output,
         )
+        if data is None:
+            logging.error("No data was extracted; see logs above for details.")
+            return 1
     except (ValueError, OSError):
         logging.exception("Failed to fetch anime-planet anime data")
         return 1
