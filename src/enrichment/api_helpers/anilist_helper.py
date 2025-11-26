@@ -146,7 +146,7 @@ class AniListEnrichmentHelper:
                 json.JSONDecodeError,
             ) as e:
                 # Network/JSON errors: log and return empty result
-                logger.exception(f"AniList API request failed: {e}")
+                logger.exception("AniList API request failed")
                 return {"_from_cache": False}
 
         # Should not reach here, but defensive fallback

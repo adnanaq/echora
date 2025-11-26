@@ -64,7 +64,7 @@ class JikanDetailedFetcher:
         """
         Enforce Jikan API pacing constraints to avoid exceeding 3 requests/second and 60 requests/minute.
         
-        Resets the per-minute counter when a minute has elapsed or the system clock moves backwards, pauses until the minute boundary if 60 requests have been made, and enforces a 0.5‑second delay between consecutive network requests.
+        Resets the per-minute counter when a minute has elapsed or the system clock moves backwards, pauses until the minute boundary if 60 requests have been made, and enforces a 0.5-second delay between consecutive network requests.
         """
         current_time = time.time()
         elapsed = current_time - self.start_time

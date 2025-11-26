@@ -157,26 +157,26 @@ class AsyncRedisStorage(AsyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id_: uuid.UUID | None = None,
+        id: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create and store a cache Entry for the given request/response and cache key.
-        
+
         The response's stream is replaced with a wrapper that saves streamed chunks to Redis so the stored entry can be replayed later; the entry metadata and an index mapping from the cache key to the entry ID are persisted, and optional TTLs are applied.
-        
+
         Parameters:
             request: Original HTTP request associated with the entry.
             response: HTTP response whose `stream` will be wrapped to persist streamed chunks.
             key: Cache key used to index the entry.
-            id_: Optional UUID to use for the entry; a new UUID is generated if omitted.
-        
+            id: Optional UUID to use for the entry; a new UUID is generated if omitted.
+
         Returns:
             The persisted Entry with its response.stream wrapped to save chunks to Redis.
-        
+
         Raises:
             TypeError: If `response.stream` is not an AsyncIterator.
         """
-        entry_id = id_ if id_ is not None else uuid.uuid4()
+        entry_id = id if id is not None else uuid.uuid4()
         entry_meta = EntryMeta(created_at=time.time())
         ttl = self._get_entry_ttl(request)
 
@@ -211,9 +211,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
         # Use pipeline for atomic operations
         pipe = self.client.pipeline()
 
-        current_index_ttle: int | None = None
+        current_index_ttl: int | None = None
         if ttl is not None:
-            current_index_ttle = await self.client.ttl(index_key)
+            current_index_ttl = await self.client.ttl(index_key)
 
         # Store entry data
         pipe.hset(
@@ -237,13 +237,13 @@ class AsyncRedisStorage(AsyncBaseStorage):
             ttl_seconds = int(ttl)
             pipe.expire(entry_key, ttl_seconds)
             # Only apply expire to index if:
-            # 1. Key doesn't exist (current_index_ttle == -2), OR
-            # 2. Key has finite TTL shorter than new TTL (0 <= current_index_ttle < ttl_seconds)
-            # Never apply if key is persistent (current_index_ttle == -1)
-            if current_index_ttle == -2 or (
-                current_index_ttle is not None
-                and current_index_ttle >= 0
-                and current_index_ttle < ttl_seconds
+            # 1. Key doesn't exist (current_index_ttl == -2), OR
+            # 2. Key has finite TTL shorter than new TTL (0 <= current_index_ttl < ttl_seconds)
+            # Never apply if key is persistent (current_index_ttl == -1)
+            if current_index_ttl == -2 or (
+                current_index_ttl is not None
+                and current_index_ttl >= 0
+                and current_index_ttl < ttl_seconds
             ):
                 pipe.expire(index_key, ttl_seconds)
 

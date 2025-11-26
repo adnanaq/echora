@@ -1108,13 +1108,13 @@ class TestGetResultCacheRedisClient:
 
         call_count = 0
         
-        def counting_from_url(*args, **kwargs):
+        def counting_from_url(*_args, **_kwargs):
             """
             Count Redis.from_url calls to verify singleton behavior.
-            
+
             Increments the enclosing `call_count` counter each time it is invoked and returns
             an AsyncMock that acts like a Redis client.
-            
+
             Returns:
                 AsyncMock: An AsyncMock instance with the Redis spec that simulates a Redis client.
             """
