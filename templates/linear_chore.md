@@ -14,9 +14,9 @@ Explain the motivation behind this task
 
 ### Acceptance Criteria
 
-- Criteria 1
-- Criteria 2
-- Criteria 3
+- [ ] Criteria 1
+- [ ] Criteria 2
+- [ ] Criteria 3
 
 ### Development Checklist [tasks to complete before closing the issue]
 
