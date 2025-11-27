@@ -31,6 +31,7 @@ Which role should I adopt? (Required before proceeding)
 ```
 
 **Enforcement Mechanism:**
+
 - If user attempts to bypass role selection, respond: "🚫 Role selection required. Please choose from the available roles before I can assist with technical tasks."
 - Only after role confirmation, proceed with: "✅ [ROLE] adopted. Ready to proceed with [role-specific] expertise."
 
@@ -54,38 +55,6 @@ Analyze the user's request topic and intelligently suggest the most appropriate 
 - **DevOps Engineer**: High confidence in deployment, monitoring, infrastructure (95%+ threshold)
 - **Others**: Apply appropriate confidence thresholds per expertise domain
 
-**Role Context Templates:**
-
-**Backend Engineer Adoption:**
-
-```
-🔧 ROLE ADOPTED: Backend Engineer
-Expertise Focus: APIs, databases, system architecture, performance optimization
-Knowledge Areas: FastAPI, Qdrant, async patterns, scalability, data consistency
-Session Context: Backend engineering perspective applied to all tasks
-Ready to assist with backend-focused solutions.
-```
-
-**Data Scientist Adoption:**
-
-```
-🧠 ROLE ADOPTED: Data Scientist
-Expertise Focus: ML models, embeddings, vector optimization, research analysis
-Knowledge Areas: BGE-M3, OpenCLIP, vector similarity, model evaluation, benchmarks
-Session Context: Data science perspective applied to all tasks
-Ready to assist with ML and research-focused solutions.
-```
-
-**DevOps Engineer Adoption:**
-
-```
-⚙️ ROLE ADOPTED: DevOps Engineer
-Expertise Focus: Deployment, monitoring, CI/CD, infrastructure management
-Knowledge Areas: Docker, Kubernetes, Prometheus, GitHub Actions, production operations
-Session Context: DevOps perspective applied to all tasks
-Ready to assist with deployment and operational solutions.
-```
-
 **Mid-Session Role Switching:**
 
 ```
@@ -99,21 +68,6 @@ Switching to [NEW_ROLE] expertise...
 New Focus: [role-specific focus areas]
 Session context updated: [NEW_ROLE] mode active
 Ready to proceed with [NEW_ROLE] perspective.
-```
-
-**Session Context Documentation:**
-Role selection must be documented in project memory files:
-
-**tasks/active_context.md Update:**
-
-```markdown
-## Current Session Context
-
-**Active Role**: [Selected Role]
-**Role Focus**: [Expertise areas]
-**Session Started**: [Date/Time]
-**Key Priorities**: [Role-specific current priorities]
-**Role-Specific Goals**: [What this session aims to accomplish from this role's perspective]
 ```
 
 ## MANDATORY PROTOCOL ENFORCEMENT (ZERO TOLERANCE FOR VIOLATIONS)
@@ -140,12 +94,14 @@ I cannot proceed without clarification questions. This is non-negotiable.
 - **ALWAYS** state: "Activating [X] protocol per CLAUDE.md rules"
 
 **MANDATORY TODOWRITE USAGE**:
+
 - **ANY task with 3+ distinct steps** = MUST use TodoWrite
 - **ANY task spanning multiple exchanges** = MUST use TodoWrite
 - **ANY complex implementation work** = MUST use TodoWrite
 - **VIOLATION RESPONSE**: "🛑 TodoWrite required per CLAUDE.md BP-1. Creating task list now."
 
 **TodoWrite Trigger Examples**:
+
 - "Implement comprehensive title vector test" → TodoWrite required
 - "Analyze data structure and create tests" → TodoWrite required
 - "Fix multimodal testing with field combinations" → TodoWrite required
@@ -395,14 +351,6 @@ uv run mypy --strict src/ --show-error-codes
 uv run mypy --strict src/vector/text_processor.py --show-error-codes
 ```
 
-**Type Safety Guidelines:**
-
-- All function parameters and return values must be properly typed
-- Use `Dict[str, Any]` instead of bare `Dict`
-- Use `cast()` for external library types when needed
-- Add null checks for Optional types before usage
-- Test all type fixes with real functionality before committing
-
 ### Service Health Checks
 
 ```bash
@@ -468,6 +416,7 @@ The service follows a layered microservice architecture with clear separation of
 **Database**: Reads from `data/qdrant_storage/anime-offline-database.json` (39,244+ anime entries)
 
 **Arguments**:
+
 - `--index N`: Process anime at index N (0-based)
 - `--title "Title"`: Search for anime by title (case-insensitive, partial match)
 - `--file PATH`: Use custom database file (optional)
@@ -478,6 +427,7 @@ The service follows a layered microservice architecture with clear separation of
 **Available Services**: `jikan`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
 
 **Example Usage**:
+
 ```bash
 # Process first anime in database
 python run_enrichment.py --index 0
@@ -499,6 +449,7 @@ python run_enrichment.py --title "Dandadan" --only anime_planet anisearch
 ```
 
 **Notes**:
+
 - `--skip` and `--only` are mutually exclusive
 - **Auto-Agent Assignment**: Pipeline automatically assigns agent IDs using gap-filling logic if `--agent` not specified
 
@@ -507,6 +458,7 @@ python run_enrichment.py --title "Dandadan" --only anime_planet anisearch
 All stage scripts follow a consistent pattern for multi-agent concurrent processing. Each stage accepts an `agent_id` positional argument that specifies the directory name within the temp directory.
 
 **Common Pattern**: `python process_stage<N>.py <agent_id> [--temp-dir <base>]`
+
 - `agent_id`: Directory name (e.g., `One_agent1`, `Dandadan_agent1`)
 - `--temp-dir`: Base directory path (default: `temp`) - optional
 
@@ -519,6 +471,7 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 **Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--current-anime` (legacy support)
 
 **Example Usage**:
+
 ```bash
 # Recommended: Use agent_id
 python process_stage1_metadata.py One_agent1
@@ -537,6 +490,7 @@ python process_stage1_metadata.py --current-anime temp/One_agent1/current_anime.
 **Required File**: `episodes_detailed.json` (must exist in agent directory)
 
 **Example Usage**:
+
 ```bash
 # Recommended: Use agent_id
 python process_stage2_episodes.py One_agent1
@@ -550,6 +504,7 @@ python process_stage2_episodes.py One_agent1 --temp-dir custom_temp
 **Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--current-anime` (legacy support)
 
 **Example Usage**:
+
 ```bash
 # Recommended: Use agent_id
 python process_stage3_relationships.py One_agent1
@@ -566,6 +521,7 @@ python process_stage3_relationships.py --current-anime temp/One_agent1/current_a
 **Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`)
 
 **Example Usage**:
+
 ```bash
 # Recommended: Use agent_id
 python scripts/process_stage4_statistics.py Dandadan_agent1
@@ -579,6 +535,7 @@ python scripts/process_stage4_statistics.py Dandadan_agent1 --temp-dir custom_te
 **Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--restart` (optional flag)
 
 **Example Usage**:
+
 ```bash
 # Process with resume support (recommended)
 python process_stage5_characters.py One_agent1
@@ -597,6 +554,7 @@ python process_stage5_characters.py One_agent1 --temp-dir custom_temp
 Update specific vectors without full reindexing.
 
 **Arguments**:
+
 - `--vectors VECTOR [VECTOR ...]`: Vector names to update (required)
 - `--index N`: Update specific anime by index (0-based)
 - `--title "TITLE"`: Update anime matching title (partial match)
@@ -604,6 +562,7 @@ Update specific vectors without full reindexing.
 - `--file PATH`: Custom data file path
 
 **Example Usage**:
+
 ```bash
 # Update single vector for all anime
 uv run python scripts/update_vectors.py --vectors title_vector
@@ -676,21 +635,3 @@ The service supports multiple embedding providers through configuration:
 - `VECTOR_SERVICE_PORT`: Service port (default: 8002)
 - `DEBUG`: Enable debug mode (default: true)
 - `LOG_LEVEL`: Logging level (default: INFO)
-
-## Memory Files System
-
-This repository uses a comprehensive Memory Files system for project documentation. Always consult these files before making architectural changes or planning new features.
-
-## Integration Points
-
-### External Dependencies
-
-- **Qdrant Database**: Primary vector storage (required)
-- **HuggingFace Models**: Text and image embeddings (cached locally)
-- **External APIs**: Optional enrichment from anime platforms
-
-### Client Integration
-
-- Python client library available in `client/` directory
-- REST API with comprehensive OpenAPI documentation at `/docs`
-- Health check endpoint at `/health` for load balancer integration

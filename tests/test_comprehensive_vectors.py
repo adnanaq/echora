@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
-import requests
 from PIL import Image
 
 # Add src to path for imports
@@ -1494,4 +1493,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

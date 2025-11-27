@@ -29,6 +29,8 @@ dependencies = [
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
     # HTTP dependencies
     "requests>=2.32.4",
+    "hishel>=1.0.0",
+    "redis>=7.0.1",
     "rapidfuzz>=3.14.1",
     "jellyfish>=1.2.0",
     "jaconv>=0.4.0",
@@ -89,10 +91,21 @@ addopts = [
     "--cov-report=html:htmlcov",
     "--cov-fail-under=80"
 ]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
 filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 [dependency-groups]
