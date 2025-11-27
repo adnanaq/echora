@@ -236,7 +236,7 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.fetch_episode_detail(1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
         print(f"API error ignored in Jikan helper test: {e}")
 
@@ -286,7 +286,7 @@ async def test_kitsu_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.get_anime_by_id(1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
         print(f"API error ignored in Kitsu helper test: {e}")
 
@@ -335,7 +335,7 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     # Make request
     try:
         await helper.get_anime_by_id(1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
         print(f"API error ignored in AniDB helper test: {e}")
 
@@ -384,7 +384,7 @@ async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
     # Make request
     try:
         await fetch_animeschedule_data("Test Anime")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
         print(f"API error ignored in AnimSchedule fetcher test: {e}")
 

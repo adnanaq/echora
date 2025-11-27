@@ -1137,6 +1137,21 @@ async def test_main_function_with_full_url(mock_fetch):
     mock_fetch.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+@patch(
+    "src.enrichment.crawlers.anime_planet_character_crawler.fetch_animeplanet_characters"
+)
+async def test_main_function_returns_error_when_no_data(mock_fetch):
+    """Test main() returns exit code 1 when fetch_animeplanet_characters returns None."""
+    mock_fetch.return_value = None
+
+    with patch("sys.argv", ["script.py", "nonexistent-anime"]):
+        exit_code = await main()
+
+    assert exit_code == 1
+    mock_fetch.assert_awaited_once()
+
+
 # --- Tests for cache key generation ---
 
 
