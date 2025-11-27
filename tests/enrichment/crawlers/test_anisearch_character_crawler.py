@@ -602,7 +602,6 @@ class TestFetchAnisearchCharacters:
 
                 result = await fetch_anisearch_characters(
                     "https://www.anisearch.com/anime/test_fetch_anisearch_characters_with_output_file/characters",
-                    return_data=True,
                     output_path=str(output_file),
                 )
 
@@ -614,54 +613,6 @@ class TestFetchAnisearchCharacters:
                     data = json.load(f)
                 assert "characters" in data
                 assert data["characters"][0]["name"] == "Test"
-
-    @pytest.mark.asyncio
-    async def test_fetch_anisearch_characters_return_data_false(self):
-        """Test with return_data=False."""
-        with patch(
-            "src.enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler"
-        ) as MockCrawler:
-            mock_redis = AsyncMock()
-
-            mock_redis.get = AsyncMock(return_value=None)
-
-            mock_redis.setex = AsyncMock()
-
-
-            with patch(
-
-                "src.cache_manager.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
-            ):
-                mock_result = MagicMock(spec=CrawlResult)
-                mock_result.success = True
-                mock_result.url = "https://www.anisearch.com/anime/test_fetch_anisearch_characters_return_data_false/characters"
-                mock_result.extracted_content = json.dumps(
-                    [
-                        {
-                            "role": "Main",
-                            "characters": [
-                                {"name": "Test", "url": "/character/1"},
-                            ],
-                        }
-                    ]
-                )
-
-                mock_crawler = AsyncMock()
-                mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                MockCrawler.return_value.__aenter__ = AsyncMock(
-                    return_value=mock_crawler
-                )
-                MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-
-                result = await fetch_anisearch_characters(
-                    "https://www.anisearch.com/anime/test_fetch_anisearch_characters_return_data_false/characters",
-                    return_data=False,
-                )
-
-                assert result is None
 
     @pytest.mark.asyncio
     async def test_fetch_anisearch_characters_multiple_failed_results(self):
@@ -875,7 +826,7 @@ class TestCLI:
                     args = parser.parse_args(test_args[1:])
 
                     await fetch_anisearch_characters(
-                        args.url, return_data=False, output_path=args.output
+                        args.url, output_path=args.output
                     )
 
                 assert output_file.exists()
@@ -928,17 +879,15 @@ class TestCLI:
                 MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
                 MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
 
-                # First call with output_file1, return_data=True
+                # First call with output_file1
                 result1 = await fetch_anisearch_characters(
                     "https://www.anisearch.com/anime/test/characters",
-                    return_data=True,
                     output_path=str(output_file1),
                 )
 
-                # Second call with output_file2, return_data=False
+                # Second call with output_file2
                 result2 = await fetch_anisearch_characters(
                     "https://www.anisearch.com/anime/test/characters",
-                    return_data=False,
                     output_path=str(output_file2),
                 )
 
@@ -946,9 +895,9 @@ class TestCLI:
                 assert output_file1.exists(), "First output file should be written"
                 assert output_file2.exists(), "Second output file should be written"
 
-                # Verify return_data behavior
+                # Both calls should return data
                 assert result1 is not None, "First call should return data"
-                assert result2 is None, "Second call should not return data (return_data=False)"
+                assert result2 is not None, "Second call should return data (from cache)"
 
                 # Verify cache behavior: should only create ONE cache entry
                 assert mock_redis.get.call_count == 2, "Should query cache twice"
@@ -957,12 +906,9 @@ class TestCLI:
                 # Extract cache key from setex call
                 cache_key = mock_redis.setex.call_args[0][0]
 
-                # Cache key should NOT contain output_path or return_data
+                # Cache key should NOT contain output_path
                 assert "output_path" not in cache_key, (
                     "Cache key must not include output_path parameter"
-                )
-                assert "return_data" not in cache_key, (
-                    "Cache key must not include return_data parameter"
                 )
 
                 # Cache key should only contain canonical anime ID and schema hash

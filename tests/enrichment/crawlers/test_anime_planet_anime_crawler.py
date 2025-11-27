@@ -600,7 +600,6 @@ class TestCLI:
             await mock_asyncio_run(
                 mock_fetch_animeplanet_anime(
                     args.identifier,
-                    return_data=False,
                     output_path=args.output,
                 )
             )
@@ -608,7 +607,6 @@ class TestCLI:
         # 4. Assert the mock was called correctly
         mock_fetch_animeplanet_anime.assert_awaited_once_with(
             "dandadan",
-            return_data=False,
             output_path="test.json",
         )
 
@@ -691,7 +689,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
 
         # Call 1: First fetch with output_path
         result1 = await fetch_animeplanet_anime(
-            "cache-test", return_data=True, output_path=str(file1)
+            "cache-test", output_path=str(file1)
         )
 
         assert result1 is not None
@@ -702,7 +700,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
         # Call 2: Same slug, different output_path
         # After refactoring: Should hit cache, NOT crawl again
         result2 = await fetch_animeplanet_anime(
-            "cache-test", return_data=True, output_path=str(file2)
+            "cache-test", output_path=str(file2)
         )
 
         assert result2 is not None
@@ -751,14 +749,6 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
     assert data["poster"] == "http://example.com/poster.jpg"
 
 
-async def test_wrapper_return_none_when_return_data_false():
-    """Test wrapper returns None when return_data=False."""
-    with patch(
-        "src.enrichment.crawlers.anime_planet_anime_crawler._fetch_animeplanet_anime_data"
-    ) as mock_fetch:
-        mock_fetch.return_value = {"title": "Test", "slug": "test"}
-        result = await fetch_animeplanet_anime("test", return_data=False)
-        assert result is None
 
 
 def test_extract_rank_with_value_error():
@@ -792,7 +782,7 @@ async def test_main_function_success(mock_fetch):
 
     assert exit_code == 0
     mock_fetch.assert_awaited_once_with(
-        "test-anime", return_data=True, output_path="output.json"
+        "test-anime", output_path="output.json"
     )
 
 

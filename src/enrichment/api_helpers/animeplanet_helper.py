@@ -81,7 +81,6 @@ class AnimePlanetEnrichmentHelper:
         try:
             character_data = await fetch_animeplanet_characters(
                 slug=slug,
-                return_data=True,
                 output_path=None,  # No file output - return data only
             )
 
@@ -118,7 +117,6 @@ class AnimePlanetEnrichmentHelper:
         try:
             anime_data = await fetch_animeplanet_anime(
                 slug=slug,
-                return_data=True,
                 output_path=None,  # No file output - return data only
             )
 

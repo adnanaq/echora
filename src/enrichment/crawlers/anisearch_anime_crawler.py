@@ -540,20 +540,18 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
 
 
 async def fetch_anisearch_anime(
-    anime_id: str, return_data: bool = True, output_path: Optional[str] = None
+    anime_id: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Fetches anisearch anime data for the given identifier and optionally writes the result to a file.
-    
+
     Parameters:
         anime_id (str): Anime identifier in one of these forms: full URL (https://www.anisearch.com/anime/...),
             relative path (/18878,dan-da-dan), or ID/path fragment (18878,dan-da-dan).
-        return_data (bool): If True, return the fetched data dictionary; if False, do not return it.
         output_path (Optional[str]): If provided, the fetched data is written as JSON to this path.
-    
+
     Returns:
-        Optional[Dict[str, Any]]: The assembled anime data dictionary if available and if `return_data` is True;
-            `None` if no data was found or if `return_data` is False.
+        Optional[Dict[str, Any]]: The assembled anime data dictionary if available; `None` if no data was found.
     """
     # Normalize identifier once so cache keys depend on canonical path
     # This ensures cache reuse across different identifier formats
@@ -573,11 +571,7 @@ async def fetch_anisearch_anime(
             json.dump(data, f, ensure_ascii=False, indent=2)
         logging.info(f"Data written to {safe_path}")
 
-    # Return data based on return_data parameter
-    if return_data:
-        return data
-
-    return None
+    return data
 
 
 async def main() -> int:

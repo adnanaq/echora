@@ -75,7 +75,6 @@ class AniSearchEnrichmentHelper:
             # Call anime crawler with anime_id (accepts ID, path, or full URL)
             anime_data = await fetch_anisearch_anime(
                 anime_id=str(anisearch_id),  # Pass ID directly
-                return_data=True,
                 output_path=None,  # No file output - return data only
             )
 
@@ -111,7 +110,6 @@ class AniSearchEnrichmentHelper:
             # Call episode crawler with anime_id (accepts ID, path, or full URL)
             episode_data = await fetch_anisearch_episodes(
                 anime_id=str(anisearch_id),  # Pass ID directly
-                return_data=True,
                 output_path=None,  # No file output - return data only
             )
 
@@ -144,7 +142,6 @@ class AniSearchEnrichmentHelper:
             # Call character crawler with anime_id (accepts ID, path, or full URL)
             character_data = await fetch_anisearch_characters(
                 anime_id=str(anisearch_id),  # Pass ID directly
-                return_data=True,
                 output_path=None,  # No file output - return data only
             )
 

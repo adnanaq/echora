@@ -212,18 +212,17 @@ async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[
 
 
 async def fetch_anisearch_characters(
-    anime_id: str, return_data: bool = True, output_path: Optional[str] = None
+    anime_id: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Fetch character data for an anime from AniSearch, optionally save it to a file, and return the processed data.
-    
+
     Parameters:
         anime_id (str): Anime identifier in one of three forms: a full characters URL (https://www.anisearch.com/anime/.../characters), a path (with or without a leading slash, e.g., "/18878,dan-da-dan/characters"), or a canonical ID without the "/characters" suffix (e.g., "18878,dan-da-dan").
-        return_data (bool): If True, return the fetched character data; if False, do not return it (default: True).
         output_path (Optional[str]): If provided, write the resulting JSON to this file path (UTF-8, pretty-printed).
-    
+
     Returns:
-        dict: The complete processed character data dictionary when `return_data` is True; `None` otherwise.
+        dict: The complete processed character data dictionary if data was found; `None` if extraction failed or no data available.
     """
     # Normalize identifier once so cache keys depend on canonical anime ID
     # This ensures cache reuse across different identifier formats
@@ -243,11 +242,7 @@ async def fetch_anisearch_characters(
             json.dump(data, f, ensure_ascii=False, indent=2)
         print(f"Data written to {safe_path}")
 
-    # Return data based on return_data parameter
-    if return_data:
-        return data
-
-    return None
+    return data
 
 
 async def main() -> int:

@@ -390,20 +390,19 @@ async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[st
 
 
 async def fetch_animeplanet_anime(
-    slug: str, return_data: bool = True, output_path: Optional[str] = None
+    slug: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Fetch anime data for an Anime-Planet identifier, optionally write it to disk, and return it based on the caller's preference.
-    
-    Normalize the provided slug/URL, obtain the canonical anime data (may be returned from cache), write the JSON to `output_path` if provided, and return the data only when `return_data` is True.
-    
+    Fetch anime data for an Anime-Planet identifier, optionally write it to disk, and return it.
+
+    Normalize the provided slug/URL, obtain the canonical anime data (may be returned from cache), write the JSON to `output_path` if provided, and return the data.
+
     Parameters:
         slug (str): Anime identifier — a slug (e.g., "dandadan"), a path (e.g., "/anime/dandadan"), or a full URL.
-        return_data (bool): If True, return the fetched data; if False, perform side effects only.
         output_path (Optional[str]): If provided, write the resulting JSON to this file path.
-    
+
     Returns:
-        dict: Complete anime data dictionary if data was found and `return_data` is True, `None` otherwise.
+        dict: Complete anime data dictionary if data was found, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical slug
     # This ensures cache reuse across different identifier formats
@@ -423,10 +422,7 @@ async def fetch_animeplanet_anime(
             json.dump(data, f, ensure_ascii=False, indent=2)
         logging.info(f"Data written to {safe_path}")
 
-    # Return data based on return_data parameter
-    if return_data:
-        return data
-    return None
+    return data
 
 
 def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
@@ -751,7 +747,6 @@ async def main() -> int:
     try:
         data = await fetch_animeplanet_anime(
             args.identifier,
-            return_data=True,  # Check return value to detect failures
             output_path=args.output,
         )
         if data is None:

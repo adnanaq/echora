@@ -170,21 +170,20 @@ async def _fetch_anisearch_episodes_data(canonical_anime_id: str) -> Optional[li
 
 
 async def fetch_anisearch_episodes(
-    anime_id: str, return_data: bool = True, output_path: Optional[str] = None
+    anime_id: str, output_path: Optional[str] = None
 ) -> Optional[list[dict[str, Any]]]:
     """
     Fetch episode data for an anime from Anisearch and optionally persist it to a JSON file.
-    
+
     Parameters:
         anime_id (str): Anime identifier in any of these forms:
             - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
             - Path: "/18878,dan-da-dan/episodes" or "18878,dan-da-dan/episodes"
             - Canonical ID: "18878,dan-da-dan" ("/episodes" will be appended)
-        return_data (bool): If True, return the fetched episode list; otherwise do not return it.
         output_path (Optional[str]): If provided, write the episode list to this file as JSON.
-    
+
     Returns:
-        list[dict[str, Any]] if return_data is True, `None` otherwise.
+        list[dict[str, Any]] if data was found, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical anime ID
     # This ensures cache reuse across different identifier formats
@@ -204,11 +203,7 @@ async def fetch_anisearch_episodes(
             json.dump(data, f, ensure_ascii=False, indent=2)
         logging.info(f"Data written to {safe_path}")
 
-    # Return based on return_data parameter
-    if return_data:
-        return data
-
-    return None
+    return data
 
 
 async def main() -> int:

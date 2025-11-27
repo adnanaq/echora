@@ -464,21 +464,6 @@ async def test_fetch_animeplanet_characters_with_output_path():
 
 
 @pytest.mark.asyncio
-async def test_fetch_animeplanet_characters_return_data_false():
-    """Test character fetch with return_data=False returns None."""
-    mock_data = {"characters": [], "total_count": 0}
-
-    with patch(
-        "src.enrichment.crawlers.anime_planet_character_crawler._fetch_animeplanet_characters_data",
-        new_callable=AsyncMock,
-        return_value=mock_data,
-    ):
-        result = await fetch_animeplanet_characters("test", return_data=False)
-
-        assert result is None
-
-
-@pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_returns_none_on_failure():
     """Test character fetch returns None when data fetch fails."""
     with patch(
@@ -1158,7 +1143,7 @@ async def test_main_function_with_full_url(mock_fetch):
 @pytest.mark.asyncio
 async def test_cache_key_only_depends_on_slug():
     """
-    Test that cache key only depends on slug parameter, not return_data or output_path.
+    Test that cache key only depends on slug parameter, not output_path.
     """
     cache_keys_used = []
 
@@ -1199,9 +1184,9 @@ async def test_cache_key_only_depends_on_slug():
             "src.enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler",
             return_value=mock_crawler_instance,
         ):
-            await fetch_animeplanet_characters("test-slug", return_data=True, output_path=None)
-            await fetch_animeplanet_characters("test-slug", return_data=False, output_path="/tmp/test.json")
-            await fetch_animeplanet_characters("test-slug", return_data=True, output_path="/tmp/other.json")
+            await fetch_animeplanet_characters("test-slug", output_path=None)
+            await fetch_animeplanet_characters("test-slug", output_path="/tmp/test.json")
+            await fetch_animeplanet_characters("test-slug", output_path="/tmp/other.json")
 
     assert len(cache_keys_used) == 3
     assert cache_keys_used[0] == cache_keys_used[1]

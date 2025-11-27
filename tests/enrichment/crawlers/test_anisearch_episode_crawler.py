@@ -17,7 +17,7 @@ from src.enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_ep
 
 @pytest.mark.asyncio
 async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
-    """Test that cache key only depends on URL, not output_path or return_data."""
+    """Test that cache key only depends on URL, not output_path."""
     from src.enrichment.crawlers.anisearch_episode_crawler import (
         fetch_anisearch_episodes,
     )
@@ -57,17 +57,15 @@ async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
             MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            # First call with output_file1, return_data=True
+            # First call with output_file1
             result1 = await fetch_anisearch_episodes(
                 "https://www.anisearch.com/anime/test/episodes",
-                return_data=True,
                 output_path=str(output1),
             )
 
-            # Second call with output_file2, return_data=False
+            # Second call with output_file2
             result2 = await fetch_anisearch_episodes(
                 "https://www.anisearch.com/anime/test/episodes",
-                return_data=False,
                 output_path=str(output2),
             )
 
@@ -75,19 +73,18 @@ async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
     assert output1.exists(), "First output file should be written"
     assert output2.exists(), "Second output file should be written on cache hit"
 
-    # Verify return_data parameter works
+    # Verify both calls return data
     assert result1 is not None, "First call should return data"
-    assert result2 is None, "Second call with return_data=False should return None"
+    assert result2 is not None, "Second call should return data from cache"
 
     # Verify only ONE cache entry was created (same URL = same cache key)
     assert mock_redis.setex.call_count == 1, (
-        "Should only create one cache entry for same URL, regardless of output_path/return_data"
+        "Should only create one cache entry for same URL, regardless of output_path"
     )
 
-    # Verify cache key doesn't contain output_path or return_data
+    # Verify cache key doesn't contain output_path
     cache_key = mock_redis.setex.call_args[0][0]
     assert "output_path" not in cache_key, "Cache key must not contain output_path"
-    assert "return_data" not in cache_key, "Cache key must not contain return_data"
 
 
 # --- Tests for main() function ---

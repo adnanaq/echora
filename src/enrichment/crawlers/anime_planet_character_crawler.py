@@ -382,20 +382,19 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
 
 
 async def fetch_animeplanet_characters(
-    slug: str, return_data: bool = True, output_path: Optional[str] = None
+    slug: str, output_path: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Orchestrates retrieval of Anime-Planet character data, performs side effects (file output), and returns the result per caller preference.
-    
+    Orchestrates retrieval of Anime-Planet character data, performs side effects (file output), and returns the result.
+
     Normalizes the provided identifier to a canonical slug, invokes the cached internal fetcher keyed by that slug, and — if data is returned — writes a sanitized JSON file to `output_path` when provided. The file write executes regardless of whether the data came from cache or a fresh crawl.
-    
+
     Parameters:
         slug: Anime identifier in any supported form (slug, path, or full characters page URL).
-        return_data: If `True`, the fetched data dictionary is returned to the caller; if `False`, nothing is returned.
         output_path: Optional filesystem path where the JSON result will be written (path is sanitized before writing).
-    
+
     Returns:
-        The enriched character data dictionary if `return_data` is `True` and data was found, `None` otherwise.
+        The enriched character data dictionary if data was found, `None` otherwise.
     """
     # Normalize identifier once so cache keys depend on canonical slug
     # This ensures cache reuse across different identifier formats
@@ -415,11 +414,7 @@ async def fetch_animeplanet_characters(
             json.dump(data, f, ensure_ascii=False, indent=2)
         logging.info(f"Data written to {safe_path}")
 
-    # Return data based on return_data parameter
-    if return_data:
-        return data
-
-    return None
+    return data
 
 
 def _get_character_detail_schema() -> Dict[str, Any]:
@@ -790,7 +785,6 @@ async def main() -> int:
     try:
         await fetch_animeplanet_characters(
             args.identifier,
-            return_data=False,  # CLI doesn't need return value
             output_path=args.output,
         )
     except (ValueError, OSError):

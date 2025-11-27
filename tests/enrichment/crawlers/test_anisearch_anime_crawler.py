@@ -953,7 +953,6 @@ class TestFetchAnisearchAnimeMainFunction:
 
                     result = await fetch_anisearch_anime(
                         "https://www.anisearch.com/anime/123",
-                        return_data=True,
                         output_path=str(output_file),
                     )
 
@@ -966,49 +965,9 @@ class TestFetchAnisearchAnimeMainFunction:
                     assert data["japanese_title"] == "Test"
 
     @pytest.mark.asyncio
-    async def test_fetch_anisearch_anime_return_data_false(self):
-        """Test with return_data=False."""
-        with patch(
-            "src.enrichment.crawlers.anisearch_anime_crawler.AsyncWebCrawler"
-        ) as MockCrawler:
-            mock_redis = AsyncMock()
-
-            mock_redis.get = AsyncMock(return_value=None)
-
-            mock_redis.setex = AsyncMock()
-
-
-            with patch(
-
-                "src.cache_manager.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
-            ):
-                with patch(
-                    "src.enrichment.crawlers.anisearch_anime_crawler._fetch_and_process_sub_page"
-                ):
-                    mock_result = MagicMock(spec=CrawlResult)
-                    mock_result.success = True
-                    mock_result.extracted_content = json.dumps([{"title": "Test"}])
-
-                    mock_crawler = AsyncMock()
-                    mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                    MockCrawler.return_value.__aenter__ = AsyncMock(
-                        return_value=mock_crawler
-                    )
-                    MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
-
-                    result = await fetch_anisearch_anime(
-                        "https://www.anisearch.com/anime/123", return_data=False
-                    )
-
-                    assert result is None
-
-    @pytest.mark.asyncio
     async def test_cache_key_only_depends_on_url(self, tmp_path):
         """
-        Test that cache keys depend ONLY on URL, not on output_path or return_data.
+        Test that cache keys depend ONLY on URL, not on output_path.
 
         This validates the fix for the reviewer's comment: cache keys should be
         based purely on the URL being crawled, so different output paths reuse
@@ -1016,7 +975,6 @@ class TestFetchAnisearchAnimeMainFunction:
 
         Expected behavior (after fix):
         - Same URL + different output_path = SAME cache key
-        - Same URL + different return_data = SAME cache key
         - Result: Single cache entry reused for all calls with same URL
         """
         output_file1 = tmp_path / "output1.json"
@@ -1048,17 +1006,15 @@ class TestFetchAnisearchAnimeMainFunction:
                 MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
                 MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
 
-                # First call with output_file1, return_data=True
+                # First call with output_file1
                 result1 = await fetch_anisearch_anime(
                     "https://www.anisearch.com/anime/test",
-                    return_data=True,
                     output_path=str(output_file1),
                 )
 
-                # Second call with output_file2, return_data=False
+                # Second call with output_file2
                 result2 = await fetch_anisearch_anime(
                     "https://www.anisearch.com/anime/test",
-                    return_data=False,
                     output_path=str(output_file2),
                 )
 
@@ -1066,9 +1022,9 @@ class TestFetchAnisearchAnimeMainFunction:
                 assert output_file1.exists(), "First output file should be written"
                 assert output_file2.exists(), "Second output file should be written"
 
-                # Verify return_data behavior
+                # Verify both calls return data
                 assert result1 is not None, "First call should return data"
-                assert result2 is None, "Second call should not return data (return_data=False)"
+                assert result2 is not None, "Second call should return data from cache"
 
                 # Verify cache behavior: should only create ONE cache entry
                 assert mock_redis.get.call_count == 2, "Should query cache twice"
@@ -1077,12 +1033,9 @@ class TestFetchAnisearchAnimeMainFunction:
                 # Extract cache key from setex call
                 cache_key = mock_redis.setex.call_args[0][0]
 
-                # Cache key should NOT contain output_path or return_data
+                # Cache key should NOT contain output_path
                 assert "output_path" not in cache_key, (
                     "Cache key must not include output_path parameter"
-                )
-                assert "return_data" not in cache_key, (
-                    "Cache key must not include return_data parameter"
                 )
 
                 # Cache key should only contain URL and schema hash
@@ -1293,7 +1246,7 @@ class TestCLI:
                         args = parser.parse_args(test_args[1:])
 
                         await fetch_anisearch_anime(
-                            args.url, return_data=False, output_path=args.output
+                            args.url, output_path=args.output
                         )
 
                     assert output_file.exists()
@@ -1524,7 +1477,7 @@ class TestCLIExecution:
                         args = parser.parse_args(test_args[1:])
 
                         await fetch_anisearch_anime(
-                            args.url, return_data=False, output_path=args.output
+                            args.url, output_path=args.output
                         )
 
                     assert output_file.exists()
