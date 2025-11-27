@@ -42,19 +42,30 @@ TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_EPISODE_URL = "https://www.anisearch.com/anime/"
 
+# Error message constants (for Ruff TRY003 compliance)
+_INVALID_EPISODE_URL_MSG = "Invalid episode URL: must start with {base}"
+
 
 def _normalize_episode_url(anime_identifier: str) -> str:
     """
     Normalize an anime identifier into a full Anisearch episodes page URL.
-    
+
     Accepts a full episodes URL, a full anime URL without the `/episodes` suffix, a path (with or without leading `/`), or a canonical anime id (e.g. `18878,dan-da-dan`) and returns the canonical episodes URL.
-    
+
     Parameters:
         anime_identifier (str): Full URL, path, or canonical anime id identifying the anime.
-    
+
     Returns:
         str: Full Anisearch episodes page URL (e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/episodes").
+
+    Raises:
+        ValueError: If anime_identifier is an HTTP(S) URL but not an anisearch.com domain.
     """
+    # Reject non-anisearch HTTP(S) URLs early for transparency
+    if anime_identifier.startswith(("http://", "https://")) and "anisearch.com" not in anime_identifier:
+        msg = f"Invalid URL: expected anisearch.com domain, got {anime_identifier}"
+        raise ValueError(msg)
+
     # If already full URL with /episodes, return as-is
     if anime_identifier.startswith("https://www.anisearch.com/anime/") and "/episodes" in anime_identifier:
         return anime_identifier
@@ -92,7 +103,7 @@ def _extract_anime_id_from_episode_url(url: str) -> str:
         # Remove /episodes suffix
         return path.replace("/episodes", "").rstrip("/")
 
-    raise ValueError(f"Invalid episode URL: {url}")
+    raise ValueError(_INVALID_EPISODE_URL_MSG.format(base=BASE_EPISODE_URL))
 
 
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_episodes")

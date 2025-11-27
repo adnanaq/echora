@@ -107,8 +107,12 @@ async def _fetch_and_process_sub_page(
 
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
-            if sub_page_data:
+            if isinstance(sub_page_data, list) and sub_page_data:
                 return cast(Dict[str, Any], sub_page_data[0])
+            else:
+                logger.warning(
+                    f"Unexpected sub-page data shape: expected non-empty list, got {type(sub_page_data).__name__}"
+                )
     return None
 
 
@@ -140,8 +144,9 @@ def _normalize_anime_url(anime_identifier: str) -> str:
     """
     # Normalize the URL
     if not anime_identifier.startswith("http"):
-        # Remove leading slash if present, then construct full URL
-        url = f"{BASE_ANIME_URL}{anime_identifier.lstrip('/')}"
+        # Remove leading/trailing slashes to normalize cache keys
+        normalized = anime_identifier.lstrip("/").rstrip("/")
+        url = f"{BASE_ANIME_URL}{normalized}"
     else:
         url = anime_identifier
 
@@ -168,8 +173,8 @@ def _extract_path_from_url(url: str) -> str:
     if not url.startswith(BASE_ANIME_URL):
         raise ValueError(_ERR_URL_PREFIX.format(base_url=BASE_ANIME_URL))
 
-    # Extract path after BASE_ANIME_URL
-    path = url[len(BASE_ANIME_URL):]
+    # Extract and normalize path after BASE_ANIME_URL
+    path = url[len(BASE_ANIME_URL):].strip("/")
     if not path:
         raise ValueError(_ERR_MISSING_PATH)
 
