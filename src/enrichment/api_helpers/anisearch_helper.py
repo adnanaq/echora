@@ -116,11 +116,11 @@ class AniSearchEnrichmentHelper:
             if not episode_data:
                 logger.debug(f"No episode data found for ID {anisearch_id}")
                 return None
-            else:
-                logger.info(
-                    f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}"
-                )
-                return episode_data
+
+            logger.info(
+                f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}"
+            )
+            return episode_data
 
         except Exception:
             logger.exception(f"Error fetching episode data for ID {anisearch_id}")
@@ -148,12 +148,12 @@ class AniSearchEnrichmentHelper:
             if not character_data:
                 logger.debug(f"No character data found for ID {anisearch_id}")
                 return None
-            else:
-                char_count = len(character_data.get("characters", []))
-                logger.info(
-                    f"Successfully fetched {char_count} characters for ID {anisearch_id}"
-                )
-                return character_data
+
+            char_count = len(character_data.get("characters", []))
+            logger.info(
+                f"Successfully fetched {char_count} characters for ID {anisearch_id}"
+            )
+            return character_data
 
         except Exception:
             logger.exception(f"Error fetching character data for ID {anisearch_id}")
@@ -185,44 +185,44 @@ class AniSearchEnrichmentHelper:
             if not anime_data:
                 logger.warning(f"Failed to fetch anime data for ID {anisearch_id}")
                 return None
-            else:
-                # Fetch episodes if requested
-                if include_episodes:
-                    try:
-                        episode_data = await self.fetch_episode_data(anisearch_id)
-                        if episode_data:
-                            anime_data["episodes"] = episode_data
-                            logger.info(
-                                f"Integrated {len(episode_data)} episodes into anime data"
-                            )
-                    except Exception:
-                        logger.warning(
-                            f"Failed to fetch episodes for ID {anisearch_id}",
-                            exc_info=True,
-                        )
-                        # Continue without episodes - non-critical
 
-                # Fetch characters if requested
-                if include_characters:
-                    try:
-                        character_data = await self.fetch_character_data(anisearch_id)
-                        if character_data:
-                            characters = character_data.get("characters", [])
-                            anime_data["characters"] = characters
-                            logger.info(
-                                f"Integrated {len(characters)} characters into anime data"
-                            )
-                    except Exception:
-                        logger.warning(
-                            f"Failed to fetch characters for ID {anisearch_id}",
-                            exc_info=True,
+            # Fetch episodes if requested
+            if include_episodes:
+                try:
+                    episode_data = await self.fetch_episode_data(anisearch_id)
+                    if episode_data:
+                        anime_data["episodes"] = episode_data
+                        logger.info(
+                            f"Integrated {len(episode_data)} episodes into anime data"
                         )
-                        # Continue without characters - non-critical
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch episodes for ID {anisearch_id}",
+                        exc_info=True,
+                    )
+                    # Continue without episodes - non-critical
 
-                logger.info(
-                    f"Successfully fetched all AniSearch data for ID {anisearch_id}"
-                )
-                return anime_data
+            # Fetch characters if requested
+            if include_characters:
+                try:
+                    character_data = await self.fetch_character_data(anisearch_id)
+                    if character_data:
+                        characters = character_data.get("characters", [])
+                        anime_data["characters"] = characters
+                        logger.info(
+                            f"Integrated {len(characters)} characters into anime data"
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch characters for ID {anisearch_id}",
+                        exc_info=True,
+                    )
+                    # Continue without characters - non-critical
+
+            logger.info(
+                f"Successfully fetched all AniSearch data for ID {anisearch_id}"
+            )
+            return anime_data
 
         except Exception:
             logger.exception(f"Error in fetch_all_data for ID {anisearch_id}")

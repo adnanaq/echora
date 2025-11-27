@@ -422,7 +422,7 @@ all_data = await helper.fetch_all_data(anisearch_id=18878)
 
 ## Important Edge Cases & Caching Behaviors
 
-### Cache Hit Detection and Rate Limiting Optimization
+### Cache Hit Detection and Rate-Limiting Optimization
 
 **All API helpers check `response.from_cache` attribute to optimize rate limiting:**
 
@@ -440,7 +440,7 @@ if response.status == 200:
 ```
 
 **Why this matters:**
-- Cache hits skip rate limiting delays (e.g., 0.5s between Jikan requests)
+- Cache hits skip rate-limiting delays (e.g., 0.5s between Jikan requests)
 - Enables 100-1000x speedup on repeated requests
 - Prevents unnecessary waits when data is already cached
 
