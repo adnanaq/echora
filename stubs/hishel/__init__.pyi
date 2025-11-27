@@ -273,6 +273,8 @@ class SyncSqliteStorage(SyncBaseStorage):
         Create a cache entry for the given request and response under the specified cache key.
 
         Parameters:
+            request (Request): The request to cache.
+            response (Response): The response to cache.
             key (str): Cache key under which the entry will be stored.
             id_ (Optional[uuid.UUID]): Optional explicit UUID to assign to the created entry; a new UUID is generated if omitted.
 
@@ -447,5 +449,17 @@ class AsyncCacheProxy:
             client (Any): The HTTP client instance used to send requests (e.g., aiohttp or httpx client).
             storage (AsyncBaseStorage): Asynchronous storage backend used to persist and retrieve cache entries.
             options (Optional[CacheOptions]): Optional cache configuration and behavior overrides.
+        """
+        ...
+
+    async def handle_request(self, request: Request) -> Response:
+        """
+        Handle an HTTP request with caching logic.
+
+        Parameters:
+            request (Request): The HTTP request to process.
+
+        Returns:
+            Response: The HTTP response, either from cache or from the underlying client.
         """
         ...

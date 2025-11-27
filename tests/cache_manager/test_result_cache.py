@@ -13,10 +13,7 @@ Tests cover:
 """
 
 import hashlib
-import importlib
 import json
-import os
-import sys
 from datetime import datetime
 from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -399,15 +396,8 @@ class TestCachedResultDecorator:
         @cached_result(ttl=60, key_prefix="test")
         async def fetch_data(item_id: str) -> Dict[str, Any]:
 
-            """
-            Fetch test data for the specified item and increment an internal call counter.
-            
-            Parameters:
-                item_id (str): Identifier of the item to fetch.
-            
-            Returns:
-                dict: A mapping containing "id" set to the provided `item_id` and "data" set to "test_data".
-            """
+            """Fetch test data and increment call counter."""
+
             nonlocal call_count
 
             call_count += 1
