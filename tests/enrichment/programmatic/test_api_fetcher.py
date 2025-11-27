@@ -33,7 +33,7 @@ class TestParallelAPIFetcherContextManager:
 
     @pytest.mark.asyncio
     async def test_context_manager_closes_all_helpers(self):
-        """Test that __aexit__ closes all helper resources."""
+        """Test that __aexit__ closes all helper resources and resets them to None for safe reusability."""
         fetcher = ParallelAPIFetcher()
 
         # Mock all helpers
@@ -61,6 +61,14 @@ class TestParallelAPIFetcherContextManager:
         mock_anime_planet.close.assert_awaited_once()
         mock_anisearch.close.assert_awaited_once()
         mock_jikan_session.close.assert_awaited_once()
+
+        # All helpers should be reset to None for safe reusability
+        assert fetcher.anilist_helper is None
+        assert fetcher.kitsu_helper is None
+        assert fetcher.anidb_helper is None
+        assert fetcher.anime_planet_helper is None
+        assert fetcher.anisearch_helper is None
+        assert fetcher.jikan_session is None
 
     @pytest.mark.asyncio
     async def test_context_manager_cleanup_on_exception(self):

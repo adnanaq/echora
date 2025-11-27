@@ -346,12 +346,11 @@ class ParallelAPIFetcher:
     ) -> List[Dict[str, Any]]:
         """
         Retrieve all episodes for a Jikan anime entry by following the paginated episodes endpoint until no more pages remain.
-        
+
         Parameters:
         	mal_id (str): MyAnimeList ID for the anime used to build the Jikan endpoint URL.
         	episode_count (int): Expected total number of episodes; used for progress logging and may be 0.
-        	loop: Event loop object (kept for compatibility; not required by this function).
-        
+
         Returns:
         	episodes (List[Dict]): Aggregated list of episode objects as returned by the Jikan episodes endpoint.
         """
@@ -388,11 +387,10 @@ class ParallelAPIFetcher:
     ) -> List[Dict[str, Any]]:
         """
         Retrieve the complete list of characters for a MyAnimeList anime from the Jikan API.
-        
+
         Parameters:
             mal_id (str): The MyAnimeList anime identifier.
-            loop: The asyncio event loop used for async operations.
-        
+
         Returns:
             List[Dict]: A list of character objects as returned by Jikan; returns an empty list if no character data is available.
         """
@@ -698,6 +696,7 @@ class ParallelAPIFetcher:
             if isinstance(result, asyncio.TimeoutError):
                 logger.warning(f"API {name} timed out after {timeout}s")
                 results[name] = None
+                self.api_errors[name] = f"Timeout after {timeout}s"
                 # The task is already cancelled by wait_for, so no need to call cancel()
             elif isinstance(result, Exception):
                 logger.error(f"API {name} failed with error: {result}")
@@ -777,21 +776,28 @@ class ParallelAPIFetcher:
         Cleanup and close all initialized helper resources when exiting the async context.
 
         Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared Jikan session if they were created.
+        Resets all attributes to None for safe reusability of the fetcher instance.
 
         Returns:
             bool: `False` to indicate exceptions (if any) should not be suppressed.
         """
-        # Close all helpers (now ALL have close() methods)
+        # Close all helpers and reset to None for safe reusability
         if self.anilist_helper:
             await self.anilist_helper.close()
+            self.anilist_helper = None
         if self.anidb_helper:
             await self.anidb_helper.close()
+            self.anidb_helper = None
         if self.anisearch_helper:
             await self.anisearch_helper.close()
+            self.anisearch_helper = None
         if self.kitsu_helper:
             await self.kitsu_helper.close()
+            self.kitsu_helper = None
         if self.anime_planet_helper:
             await self.anime_planet_helper.close()
+            self.anime_planet_helper = None
         if self.jikan_session:
             await self.jikan_session.close()
+            self.jikan_session = None
         return False
