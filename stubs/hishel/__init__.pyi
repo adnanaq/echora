@@ -89,7 +89,7 @@ class Entry:
 
     def __init__(
         self,
-        id: uuid.UUID,
+        id_: uuid.UUID,
         request: Request,
         response: Response,
         meta: EntryMeta,
@@ -98,7 +98,7 @@ class Entry:
         Initialize a cache entry.
 
         Parameters:
-            id (uuid.UUID): Unique identifier for the entry.
+            id_ (uuid.UUID): Unique identifier for the entry.
             request (Request): The cached request.
             response (Response): The cached response.
             meta (EntryMeta): Entry metadata including timestamps.
@@ -381,7 +381,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an `Entry` to replace the existing one, or a callable that receives the current `Entry` and returns the updated `Entry`.
 
         Returns:
-            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id` existed and was updated, `None` otherwise.
+            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id_` existed and was updated, `None` otherwise.
         """
         ...
     async def remove_entry(self, id_: uuid.UUID) -> None:
