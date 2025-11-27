@@ -249,9 +249,18 @@ def test_normalize_episode_url_from_id():
     assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
 
 
-def test_extract_anime_id_raises_on_invalid_url():
-    from src.enrichment.crawlers.anisearch_episode_crawler import _extract_anime_id_from_episode_url
+def test_url_helpers_reject_invalid_urls():
+    """Test that both URL helper functions reject invalid URLs with ValueError."""
+    from src.enrichment.crawlers.anisearch_episode_crawler import (
+        _extract_anime_id_from_episode_url,
+        _normalize_episode_url,
+    )
 
+    # Test _normalize_episode_url rejects non-anisearch domains
+    with pytest.raises(ValueError, match="Invalid URL: expected anisearch.com domain"):
+        _normalize_episode_url("https://other.example.com/anime/123")
+
+    # Test _extract_anime_id_from_episode_url rejects URLs without proper base
     with pytest.raises(ValueError, match="Invalid episode URL"):
         _extract_anime_id_from_episode_url("https://example.com/anime/123")
 
