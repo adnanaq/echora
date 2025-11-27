@@ -209,17 +209,26 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager
+    # Mock cache manager with async context manager wrapper
+    # This properly mocks the async context manager protocol for defensive consistency
     mock_session = mocker.AsyncMock()
     mock_session.get = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
     mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
         return_value={"data": {"mal_id": 1}}
     )
+    mock_session.close = mocker.AsyncMock()
+
+    # Create async context manager wrapper for get_aiohttp_session
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    mock_cm.get = mock_session.get
+    mock_cm.close = mock_session.close
 
     mocker.patch(
         "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
-        return_value=mock_session,
+        return_value=mock_cm,
     )
 
     helper = JikanDetailedFetcher(anime_id="1", data_type="episodes")
@@ -299,17 +308,26 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager
+    # Mock cache manager with async context manager wrapper
+    # This properly mocks the async context manager protocol for defensive consistency
     mock_session = mocker.AsyncMock()
     mock_session.get = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
     mock_session.get.return_value.__aenter__.return_value.text = mocker.AsyncMock(
         return_value='<?xml version="1.0"?><anime></anime>'
     )
+    mock_session.close = mocker.AsyncMock()
+
+    # Create async context manager wrapper for get_aiohttp_session
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    mock_cm.get = mock_session.get
+    mock_cm.close = mock_session.close
 
     mocker.patch(
         "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
-        return_value=mock_session,
+        return_value=mock_cm,
     )
 
     helper = AniDBEnrichmentHelper()
@@ -325,3 +343,50 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
     mock_redis_from_url.assert_not_called()
 
     await helper.close()
+
+
+@pytest.mark.asyncio
+async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
+    """
+    Verify that fetch_animeschedule_data uses the centralized HTTP cache session and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
+
+    Patches the HTTP cache manager to return a mocked aiohttp session, patches `Redis.from_url` to observe calls, invokes `fetch_animeschedule_data`, and asserts that no direct Redis connection was created. API errors during the fetch are tolerated.
+    """
+    from src.enrichment.api_helpers.animeschedule_fetcher import (
+        fetch_animeschedule_data,
+    )
+
+    # Mock Redis.from_url
+    mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
+
+    # Mock cache manager with async context manager wrapper
+    # This properly mocks the async context manager protocol for defensive consistency
+    mock_session = mocker.AsyncMock()
+    mock_session.get = mocker.AsyncMock()
+    mock_session.get.return_value.__aenter__.return_value.status = 200
+    mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
+        return_value=[]  # Empty results for search
+    )
+    mock_session.close = mocker.AsyncMock()
+
+    # Create async context manager wrapper for get_aiohttp_session
+    mock_cm = mocker.AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = False
+    mock_cm.get = mock_session.get
+    mock_cm.close = mock_session.close
+
+    mocker.patch(
+        "src.cache_manager.instance.http_cache_manager.get_aiohttp_session",
+        return_value=mock_cm,
+    )
+
+    # Make request
+    try:
+        await fetch_animeschedule_data("Test Anime")
+    except Exception as e:
+        # API errors are expected/ignored here; only Redis usage matters
+        print(f"API error ignored in AnimSchedule fetcher test: {e}")
+
+    # Verify no hard-coded Redis
+    mock_redis_from_url.assert_not_called()

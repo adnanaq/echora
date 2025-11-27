@@ -286,15 +286,20 @@ class TestGenerateCacheKey:
         assert json.dumps({"z": 1, "a": 2, "m": 3}, sort_keys=True) in key
 
     def test_cache_key_long_key_hashed(self) -> None:
-        """Test that very long cache keys are hashed."""
+        """Test that very long cache keys are hashed instead of including full argument."""
+        from src.cache_manager.config import get_cache_config
+
         # Create a key longer than 200 characters
         long_arg = "x" * 200
 
         key = _generate_cache_key("test_func", "abc12345", long_arg)
 
-        # Should contain hash instead of full key
+        # Should contain prefix and schema hash
         assert "result_cache:test_func:abc12345:" in key
-        assert len(key) < 250  # Should be hashed and shorter
+        # Should NOT contain the full long argument (proves it was hashed)
+        assert long_arg not in key
+        # Should respect configured max cache key length
+        assert len(key) <= get_cache_config().max_cache_key_length
 
     def test_cache_key_stability_same_inputs(self) -> None:
         """Test that same inputs always produce same cache key."""
@@ -538,7 +543,9 @@ class TestCachedResultDecorator:
             # Should use default 24h TTL (86400 seconds)
             mock_redis.setex.assert_called_once()
             call_args = mock_redis.setex.call_args
-            assert call_args[0][1] == 86400  # Default TTL
+            # Access TTL more resiliently - check kwargs first, fall back to positional
+            ttl = call_args.kwargs.get("time") if call_args.kwargs else call_args.args[1]
+            assert ttl == 86400  # Default TTL
 
     @pytest.mark.asyncio
     async def test_decorator_with_custom_ttl(self) -> None:
@@ -566,7 +573,9 @@ class TestCachedResultDecorator:
             # Should use custom TTL
             mock_redis.setex.assert_called_once()
             call_args = mock_redis.setex.call_args
-            assert call_args[0][1] == 3600
+            # Access TTL more resiliently - check kwargs first, fall back to positional
+            ttl = call_args.kwargs.get("time") if call_args.kwargs else call_args.args[1]
+            assert ttl == 3600
 
     @pytest.mark.asyncio
     async def test_decorator_uses_function_name_as_default_prefix(self) -> None:
@@ -950,7 +959,9 @@ class TestCachedResultDecorator:
 
             # Verify complex data serialized
             assert mock_redis.setex.called
-            stored_data = mock_redis.setex.call_args[0][2]
+            call_args = mock_redis.setex.call_args
+            # Access payload more resiliently - check kwargs first, fall back to positional
+            stored_data = call_args.kwargs.get("value") if call_args.kwargs else call_args.args[2]
             parsed = json.loads(stored_data)
             assert parsed["nested"]["list"] == [1, 2, 3]
 
@@ -1207,23 +1218,31 @@ class TestGetResultCacheRedisClient:
             get_results = []
             none_returned = False
 
+            # Use events for coordination instead of sleep-based timing
+            getter_started = asyncio.Event()
+            closer_can_start = asyncio.Event()
+
             async def concurrent_getter():
                 """Try to get client multiple times during close."""
                 nonlocal none_returned
+                getter_started.set()  # Signal that getter has started
+                await closer_can_start.wait()  # Wait for signal to ensure overlap
                 for _ in range(10):
                     client = await get_result_cache_redis_client()
                     get_results.append(client)
                     if client is None:
                         none_returned = True
-                    await asyncio.sleep(0.001)
+                    await asyncio.sleep(0.001)  # Small sleep to yield control
 
             async def concurrent_closer():
                 """
-                Delays briefly and then closes the global Redis result cache client.
-                
-                Used in tests to simulate closing the cache client while concurrent get operations are in progress by awaiting a short sleep before calling the close helper.
+                Waits for getter to start, then closes the global Redis result cache client.
+
+                Used in tests to simulate closing the cache client while concurrent get operations are in progress.
                 """
-                await asyncio.sleep(0.005)
+                await getter_started.wait()  # Wait for getter to start
+                closer_can_start.set()  # Signal getter can proceed
+                await asyncio.sleep(0.001)  # Brief delay to ensure getter is mid-execution
                 await close_result_cache_redis_client()
 
             # Run concurrently to trigger potential race
