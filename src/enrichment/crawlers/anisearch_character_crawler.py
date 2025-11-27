@@ -240,8 +240,7 @@ async def fetch_anisearch_characters(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"Data written to {safe_path}")
-
+        logger.info(f"Data written to {safe_path}")
     return data
 
 

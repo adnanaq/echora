@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import logging
+
 import re
 import sys
 from typing import Any, Callable, Dict, List, Optional, cast
@@ -31,6 +32,8 @@ from crawl4ai.types import RunManyReturn
 from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
 
 # Get TTL from config to keep cache control centralized
 _CACHE_CONFIG = get_cache_config()
@@ -236,11 +239,11 @@ async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[st
         extraction_strategy = JsonCssExtractionStrategy(css_schema)
         config = CrawlerRunConfig(extraction_strategy=extraction_strategy)
 
-        logging.info(f"Fetching anime data: {url}")
+        logger.info(f"Fetching anime data: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            logging.warning("No results found.")
+            logger.warning("No results found.")
             return None
 
         for result in results:
@@ -253,7 +256,7 @@ async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[st
                 data = json.loads(result.extracted_content)
 
                 if not data:
-                    logging.warning("Extraction returned empty data.")
+                    logger.warning("Extraction returned empty data.")
                     return None
 
                 anime_data = cast(Dict[str, Any], data[0])
@@ -385,7 +388,7 @@ async def _fetch_animeplanet_anime_data(canonical_slug: str) -> Optional[Dict[st
                 # Return pure data (no side effects)
                 return anime_data
             else:
-                logging.warning(f"Extraction failed: {result.error_message}")
+                logger.warning(f"Extraction failed: {result.error_message}")
                 return None
 
 
@@ -420,7 +423,7 @@ async def fetch_animeplanet_anime(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"Data written to {safe_path}")
+        logger.info(f"Data written to {safe_path}")
 
     return data
 
@@ -469,7 +472,7 @@ def _extract_json_ld(html: str) -> Optional[Dict[str, Any]]:
 
             return json_ld
     except (json.JSONDecodeError, AttributeError) as e:
-        logging.warning(f"Failed to extract JSON-LD: {e}")
+        logger.warning(f"Failed to extract JSON-LD: {e}")
     return None
 
 
@@ -750,13 +753,13 @@ async def main() -> int:
             output_path=args.output,
         )
         if data is None:
-            logging.error("No data was extracted; see logs above for details.")
+            logger.error("No data was extracted; see logs above for details.")
             return 1
     except (ValueError, OSError):
-        logging.exception("Failed to fetch anime-planet anime data")
+        logger.exception("Failed to fetch anime-planet anime data")
         return 1
     except Exception:
-        logging.exception("Unexpected error during anime fetch")
+        logger.exception("Unexpected error during anime fetch")
         return 1
     return 0
 

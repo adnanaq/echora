@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import logging
+
 import re
 import sys
 from typing import Any, Optional, cast
@@ -32,6 +33,8 @@ from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 
 from .utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
 
 # Get TTL from config to keep cache control centralized
 _CACHE_CONFIG = get_cache_config()
@@ -141,7 +144,7 @@ async def _fetch_anisearch_episodes_data(canonical_anime_id: str) -> Optional[li
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            logging.warning("No results found.")
+            logger.warning("No results found.")
             return None
 
         for result in results:
@@ -163,7 +166,7 @@ async def _fetch_anisearch_episodes_data(canonical_anime_id: str) -> Optional[li
                 return data
 
             # Log extraction failure but continue to fallback return
-            logging.warning(f"Extraction failed: {result.error_message}")
+            logger.warning(f"Extraction failed: {result.error_message}")
 
         # If loop completes without returning, no valid results were found
         return None
@@ -201,7 +204,7 @@ async def fetch_anisearch_episodes(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"Data written to {safe_path}")
+        logger.info(f"Data written to {safe_path}")
 
     return data
 
@@ -237,10 +240,10 @@ async def main() -> int:
             output_path=args.output,
         )
     except (ValueError, OSError):
-        logging.exception("Failed to fetch anisearch episode data")
+        logger.exception("Failed to fetch anisearch episode data")
         return 1
     except Exception:
-        logging.exception("Unexpected error during episode fetch")
+        logger.exception("Unexpected error during episode fetch")
         return 1
     return 0
 

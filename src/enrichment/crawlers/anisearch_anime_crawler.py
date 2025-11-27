@@ -17,6 +17,7 @@ import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
 import logging
+
 import re
 import sys
 import uuid
@@ -33,6 +34,8 @@ from crawl4ai.types import RunManyReturn
 from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 from src.enrichment.crawlers.utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
 
 # Get TTL from config to keep cache control centralized
 _CACHE_CONFIG = get_cache_config()
@@ -294,11 +297,11 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
             session_id=session_id, extraction_strategy=extraction_strategy
         )
 
-        logging.info(f"Fetching main page: {url}")
+        logger.info(f"Fetching main page: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            logging.warning("No results found.")
+            logger.warning("No results found.")
             return None
 
         for result in results:
@@ -311,7 +314,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                 data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
 
                 if not data or not isinstance(data, list) or len(data) == 0:
-                    logging.warning("Extraction returned empty data.")
+                    logger.warning("Extraction returned empty data.")
                     return None
 
                 anime_data = data[0]
@@ -432,7 +435,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                 }
 
                 # Crawl screenshots using JS navigation
-                logging.info("Navigating to screenshots page...")
+                logger.info("Navigating to screenshots page...")
                 js_navigate_screenshots = """
                 const screenshotsLink = document.querySelector('a[href*="/screenshots"]');
                 if (screenshotsLink) {
@@ -455,12 +458,12 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                         for item in screenshots_raw_data["screenshot_urls"]
                         if "url" in item
                     ]
-                    logging.info(f"Extracted {len(anime_data['screenshots'])} screenshots")
+                    logger.info(f"Extracted {len(anime_data['screenshots'])} screenshots")
                 else:
                     anime_data["screenshots"] = []
 
                 # Crawl relations using JS navigation with dropdown selection (two-step for reliability)
-                logging.info("Navigating to relations page...")
+                logger.info("Navigating to relations page...")
 
                 # Step 1: Navigate to relations page
                 js_navigate_relations = """
@@ -507,7 +510,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                         anime_data["anime_relations"] = relations_raw_data[
                             "anime_relations"
                         ]
-                        logging.info(
+                        logger.info(
                             f"Extracted {len(anime_data['anime_relations'])} anime relations"
                         )
                     else:
@@ -520,7 +523,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                         anime_data["manga_relations"] = relations_raw_data[
                             "manga_relations"
                         ]
-                        logging.info(
+                        logger.info(
                             f"Extracted {len(anime_data['manga_relations'])} manga relations"
                         )
                     else:
@@ -533,7 +536,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                 return anime_data
 
             # Log extraction failure but continue to check remaining results
-            logging.warning(f"Extraction failed: {result.error_message}")
+            logger.warning(f"Extraction failed: {result.error_message}")
 
         # If loop completes without returning, no valid results were found
         return None
@@ -569,7 +572,7 @@ async def fetch_anisearch_anime(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"Data written to {safe_path}")
+        logger.info(f"Data written to {safe_path}")
 
     return data
 
@@ -605,10 +608,10 @@ async def main() -> int:
             output_path=args.output,
         )
     except (ValueError, OSError):
-        logging.exception("Failed to fetch anisearch anime data")
+        logger.exception("Failed to fetch anisearch anime data")
         return 1
     except Exception:
-        logging.exception("Unexpected error during anime fetch")
+        logger.exception("Unexpected error during anime fetch")
         return 1
     return 0
 
