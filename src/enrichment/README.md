@@ -185,7 +185,7 @@ class AniListEnrichmentHelper:
 
 ## Directory Structure
 
-```
+```text
 src/enrichment/
 ├── api_helpers/          # Async API integrations
 │   ├── jikan_helper.py
@@ -359,11 +359,11 @@ characters = await fetch_anisearch_characters(18878)
 episodes = await fetch_anisearch_episodes(18878, output_path="episodes.json")
 
 # Anime-Planet Crawlers - Function imports
-from src.enrichment.crawlers.anime_planet_anime_crawler import fetch_anime_planet_anime
-from src.enrichment.crawlers.anime_planet_character_crawler import fetch_anime_planet_characters
+from src.enrichment.crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
+from src.enrichment.crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
 
-anime_data = await fetch_anime_planet_anime("dandadan")
-characters = await fetch_anime_planet_characters("dandadan", output_path="chars.json")
+anime_data = await fetch_animeplanet_anime("dandadan")
+characters = await fetch_animeplanet_characters("dandadan", output_path="chars.json")
 ```
 
 **Key Difference: Helpers vs Crawlers**
