@@ -349,11 +349,11 @@ from src.enrichment.crawlers.anisearch_character_crawler import fetch_anisearch_
 from src.enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
 
 # Fetch anime data (accepts ID, path, or full URL)
-anime_data = await fetch_anisearch_anime("18878,dan-da-dan", return_data=True)
+anime_data = await fetch_anisearch_anime("18878,dan-da-dan")
 anime_data = await fetch_anisearch_anime("/18878,dan-da-dan", output_path="anime.json")
 
 # Fetch characters
-characters = await fetch_anisearch_characters(18878, return_data=True)
+characters = await fetch_anisearch_characters(18878)
 
 # Fetch episodes
 episodes = await fetch_anisearch_episodes(18878, output_path="episodes.json")
@@ -362,7 +362,7 @@ episodes = await fetch_anisearch_episodes(18878, output_path="episodes.json")
 from src.enrichment.crawlers.anime_planet_anime_crawler import fetch_anime_planet_anime
 from src.enrichment.crawlers.anime_planet_character_crawler import fetch_anime_planet_characters
 
-anime_data = await fetch_anime_planet_anime("dandadan", return_data=True)
+anime_data = await fetch_anime_planet_anime("dandadan")
 characters = await fetch_anime_planet_characters("dandadan", output_path="chars.json")
 ```
 
