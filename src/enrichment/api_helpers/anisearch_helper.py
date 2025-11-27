@@ -232,6 +232,7 @@ class AniSearchEnrichmentHelper:
         """
         Perform cleanup for the helper; currently a no-op since crawlers are stateless.
         """
+        pass
 
     async def __aenter__(self) -> "AniSearchEnrichmentHelper":
         """

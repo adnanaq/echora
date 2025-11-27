@@ -369,7 +369,7 @@ characters = await fetch_animeplanet_characters("dandadan", output_path="chars.j
 ### Key Difference: Helpers vs Crawlers
 
 - **API Helpers**: Export **classes** (e.g., `AniListEnrichmentHelper`, `JikanDetailedFetcher`)
-- **Crawlers**: Export **functions** (e.g., `fetch_anisearch_anime`, `fetch_anime_planet_characters`)
+- **Crawlers**: Export **functions** (e.g., `fetch_anisearch_anime`, `fetch_animeplanet_characters`)
 
 ### ParallelAPIFetcher Usage
 
