@@ -366,7 +366,8 @@ anime_data = await fetch_animeplanet_anime("dandadan")
 characters = await fetch_animeplanet_characters("dandadan", output_path="chars.json")
 ```
 
-**Key Difference: Helpers vs Crawlers**
+### Key Difference: Helpers vs Crawlers
+
 - **API Helpers**: Export **classes** (e.g., `AniListEnrichmentHelper`, `JikanDetailedFetcher`)
 - **Crawlers**: Export **functions** (e.g., `fetch_anisearch_anime`, `fetch_anime_planet_characters`)
 
