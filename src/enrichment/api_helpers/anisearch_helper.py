@@ -129,12 +129,12 @@ class AniSearchEnrichmentHelper:
     async def fetch_character_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
         """
         Retrieve character information for a given AniSearch anime ID.
-        
+
         Parameters:
             anisearch_id (int): AniSearch numeric ID of the anime.
-        
+
         Returns:
-            dict: Character data dictionary (includes keys such as `characters` and `total_count`) if successful, `None` otherwise.
+            dict: Character data dictionary with `characters` key if successful, `None` otherwise.
         """
         try:
             logger.info(f"Fetching AniSearch character data for ID {anisearch_id}")
@@ -149,7 +149,7 @@ class AniSearchEnrichmentHelper:
                 logger.debug(f"No character data found for ID {anisearch_id}")
                 return None
 
-            char_count = character_data.get("total_count", 0)
+            char_count = len(character_data.get("characters", []))
             logger.info(
                 f"Successfully fetched {char_count} characters for ID {anisearch_id}"
             )
@@ -206,9 +206,10 @@ class AniSearchEnrichmentHelper:
                 try:
                     character_data = await self.fetch_character_data(anisearch_id)
                     if character_data:
-                        anime_data["characters"] = character_data.get("characters", [])
+                        characters = character_data.get("characters", [])
+                        anime_data["characters"] = characters
                         logger.info(
-                            f"Integrated {character_data.get('total_count', 0)} characters into anime data"
+                            f"Integrated {len(characters)} characters into anime data"
                         )
                 except Exception as e:
                     logger.warning(

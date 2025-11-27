@@ -17,6 +17,7 @@ import asyncio
 import json
 import sys
 import logging
+
 from typing import Any, Dict, List, Optional
 
 from crawl4ai import (
@@ -31,6 +32,8 @@ from src.cache_manager.config import get_cache_config
 from src.cache_manager.result_cache import cached_result
 
 from .utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
 
 # Get TTL from config to keep cache control centralized
 _CACHE_CONFIG = get_cache_config()
@@ -220,7 +223,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
     }
 
     async with AsyncWebCrawler() as crawler:
-        logging.info(f"Fetching character list: {characters_url}")
+        logger.info(f"Fetching character list: {characters_url}")
 
         # Phase 1: Fetch character list page
         list_config = CrawlerRunConfig(
@@ -231,7 +234,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
         )
 
         if not results:
-            logging.warning(f"Failed to fetch character list: {characters_url}")
+            logger.warning(f"Failed to fetch character list: {characters_url}")
             return None
 
         for result in results:
@@ -244,7 +247,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                 data = json.loads(result.extracted_content)
 
                 if not data:
-                    logging.warning("Extraction returned empty data.")
+                    logger.warning("Extraction returned empty data.")
                     continue
 
                 # Phase 2: Process character list and assign roles
@@ -253,10 +256,10 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                 )
 
                 if not characters_basic:
-                    logging.warning("No characters found.")
+                    logger.warning("No characters found.")
                     return None
 
-                logging.info(f"Found {len(characters_basic)} characters")
+                logger.info(f"Found {len(characters_basic)} characters")
 
                 # Phase 3: Prepare character detail URLs for concurrent enrichment
                 character_detail_urls = []
@@ -272,12 +275,11 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                         )
 
                 if not character_detail_urls:
-                    logging.warning("No valid character URLs found.")
+                    logger.warning("No valid character URLs found.")
                     return None
 
                 # Phase 4: CONCURRENT BATCH ENRICHMENT using arun_many()
-                logging.info(
-                    f"Enriching {len(character_detail_urls)} characters concurrently..."
+                logger.info(f"Enriching {len(character_detail_urls)} characters concurrently..."
                 )
 
                 detail_schema = _get_character_detail_schema()
@@ -293,11 +295,11 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
 
                 # Validate the results - arun_many returns List[CrawlResultContainer]
                 if not list_results:
-                    logging.warning("No results returned from batch character fetch")
+                    logger.warning("No results returned from batch character fetch")
                     return None
 
                 if not isinstance(list_results, list):
-                    logging.warning(
+                    logger.warning(
                         f"Unexpected return type from arun_many: {type(list_results)}"
                     )
                     return None
@@ -318,7 +320,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                         unwrapped_results.append(container)
 
                 if not unwrapped_results:
-                    logging.warning("No valid CrawlResult objects found after unwrapping")
+                    logger.warning("No valid CrawlResult objects found after unwrapping")
                     return None
 
                 # Replace list_results with unwrapped results
@@ -348,7 +350,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                                     characters_basic[idx].update(enriched_data)
                                     enriched_count += 1
                                 else:
-                                    logging.warning(
+                                    logger.warning(
                                         f"Could not match character: {detail_name}"
                                     )
                         except (
@@ -357,13 +359,13 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                             IndexError,
                             TypeError,
                         ) as e:
-                            logging.warning(f"Failed to process enrichment: {e}")
+                            logger.warning(f"Failed to process enrichment: {e}")
                     else:
-                        logging.warning(
+                        logger.warning(
                             f"Failed to enrich detail page - {detail_result.error_message}"
                         )
 
-                logging.info(
+                logger.info(
                     f"Successfully enriched {enriched_count}/{len(characters_basic)} characters"
                 )
 
@@ -376,7 +378,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                 # Always return data (no conditional return or file writing)
                 return output_data
             else:
-                logging.warning(f"Extraction failed: {result.error_message}")
+                logger.warning(f"Extraction failed: {result.error_message}")
                 return None
         return None
 
@@ -412,7 +414,7 @@ async def fetch_animeplanet_characters(
         safe_path = sanitize_output_path(output_path)
         with open(safe_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logging.info(f"Data written to {safe_path}")
+        logger.info(f"Data written to {safe_path}")
 
     return data
 
@@ -783,15 +785,20 @@ async def main() -> int:
     args = parser.parse_args()
 
     try:
-        await fetch_animeplanet_characters(
+        data = await fetch_animeplanet_characters(
             args.identifier,
             output_path=args.output,
         )
+        if data is None:
+            logger.error(
+                "No character data was extracted; see logs above for details."
+            )
+            return 1
     except (ValueError, OSError):
-        logging.exception("Failed to fetch anime-planet character data")
+        logger.exception("Failed to fetch anime-planet character data")
         return 1
     except Exception:
-        logging.exception("Unexpected error during character fetch")
+        logger.exception("Unexpected error during character fetch")
         return 1
     return 0
 
