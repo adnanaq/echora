@@ -241,17 +241,17 @@ async def main() -> int:
         slug = sys.argv[1]
         output_file = sys.argv[2]
 
-        helper = AnimePlanetEnrichmentHelper()
-        data = await helper.fetch_anime_data(slug)
+        async with AnimePlanetEnrichmentHelper() as helper:
+            data = await helper.fetch_anime_data(slug)
 
-        if data:
-            with open(output_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            print(f"Data for {slug} saved to {output_file}")
-            return 0
-        else:
-            print(f"Could not fetch data for {slug}", file=sys.stderr)
-            return 1
+            if data:
+                with open(output_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                print(f"Data for {slug} saved to {output_file}")
+                return 0
+            else:
+                print(f"Could not fetch data for {slug}", file=sys.stderr)
+                return 1
     except (OSError, ValueError, KeyError) as e:
         # OSError: File I/O failures
         # ValueError: Invalid JSON encoding
