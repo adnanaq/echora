@@ -89,6 +89,9 @@ addopts = [
     "--cov-report=html:htmlcov",
     "--cov-fail-under=80"
 ]
+markers = [
+    "integration: marks tests as integration tests (require database, models, etc.)"
+]
 filterwarnings = [
     "error",
     "ignore::UserWarning",

@@ -6,7 +6,7 @@ Provides isolated test collection to avoid touching production data.
 
 import pytest
 import pytest_asyncio
-from qdrant_client import QdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient
 
 from src.config.settings import get_settings
 from src.vector.client.qdrant_client import QdrantClient
@@ -24,34 +24,49 @@ def settings():
     return settings
 
 
-@pytest_asyncio.fixture
-async def client(settings):
+@pytest_asyncio.fixture(scope="session")
+async def text_processor(settings):
+    """Create TextProcessor for tests."""
+    return TextProcessor(settings)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def vision_processor(settings):
+    """Create VisionProcessor for tests."""
+    return VisionProcessor(settings)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def embedding_manager(text_processor, vision_processor, settings):
+    """Create MultiVectorEmbeddingManager for tests."""
+    return MultiVectorEmbeddingManager(
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        settings=settings,
+    )
+
+
+@pytest_asyncio.fixture(scope="session")
+async def client(settings, embedding_manager):
     """Create QdrantClient with test collection.
 
     Collection is automatically created/validated during client initialization.
+    Uses session scope so collection persists across all tests.
     """
+    async_qdrant_client = None
     try:
-        # Initialize Qdrant SDK client
+        # Initialize AsyncQdrantClient from qdrant-client library
         if settings.qdrant_api_key:
-            qdrant_sdk_client = QdrantSDK(
+            async_qdrant_client = AsyncQdrantClient(
                 url=settings.qdrant_url, api_key=settings.qdrant_api_key
             )
         else:
-            qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-        # Initialize embedding manager and processors
-        text_processor = TextProcessor(settings)
-        vision_processor = VisionProcessor(settings)
-        embedding_manager = MultiVectorEmbeddingManager(
-            text_processor=text_processor,
-            vision_processor=vision_processor,
+        # Initialize our QdrantClient wrapper with injected dependencies
+        client = await QdrantClient.create(
             settings=settings,
-        )
-
-        # Initialize Qdrant client with injected dependencies
-        client = QdrantClient(
-            settings=settings,
-            qdrant_sdk_client=qdrant_sdk_client,
+            async_qdrant_client=async_qdrant_client,
             url=settings.qdrant_url,
             collection_name=settings.qdrant_collection_name,
         )
@@ -65,4 +80,12 @@ async def client(settings):
         await client.delete_collection()
     except Exception:
         # Ignore cleanup errors to avoid test failures
+        pass
+
+    # Close AsyncQdrantClient connection to release resources
+    try:
+        if async_qdrant_client:
+            await async_qdrant_client.close()
+    except Exception:
+        # Ignore close errors to avoid test failures
         pass

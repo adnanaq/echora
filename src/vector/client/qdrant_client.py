@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional, TypeGuard
 
 # fastembed import moved to _init_encoder method for lazy loading
-from qdrant_client import AsyncQdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (  # Qdrant optimization models; Multi-vector search models
     BinaryQuantization,
     BinaryQuantizationConfig,
@@ -39,12 +39,20 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
 )
 
 from ...config import Settings
+from ..utils.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
 
 def is_float_vector(vector: Any) -> TypeGuard[List[float]]:
-    """Type guard to check if vector is a List[float]."""
+    """Type guard to check if vector is a List[float].
+
+    Args:
+        vector: Value to check
+
+    Returns:
+        True if vector is a non-empty list of numeric values, False otherwise
+    """
     return (
         isinstance(vector, list)
         and len(vector) > 0
@@ -58,7 +66,7 @@ class QdrantClient:
     def __init__(
         self,
         settings: Settings,
-        qdrant_sdk_client: QdrantSDK,
+        async_qdrant_client: AsyncQdrantClient,
         url: Optional[str] = None,
         collection_name: Optional[str] = None,
     ):
@@ -66,7 +74,7 @@ class QdrantClient:
 
         Args:
             settings: Configuration settings instance.
-            qdrant_sdk_client: An initialized QdrantSDK client instance.
+            async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library.
             url: Qdrant server URL (optional, uses settings if not provided)
             collection_name: Name of the anime collection (optional, uses settings if not provided)
         """
@@ -74,7 +82,7 @@ class QdrantClient:
         self.url = url or settings.qdrant_url
         self.collection_name = collection_name or settings.qdrant_collection_name
 
-        self.client = qdrant_sdk_client
+        self.client = async_qdrant_client
 
         self._distance_metric = settings.qdrant_distance_metric
 
@@ -86,19 +94,44 @@ class QdrantClient:
     async def create(
         cls,
         settings: Settings,
-        qdrant_sdk_client: QdrantSDK,
+        async_qdrant_client: AsyncQdrantClient,
         url: Optional[str] = None,
         collection_name: Optional[str] = None,
     ) -> "QdrantClient":
-        """Create and initialize a QdrantClient instance."""
-        client = cls(settings, qdrant_sdk_client, url, collection_name)
+        """Create and initialize a QdrantClient instance.
+
+        Factory method that creates a QdrantClient instance and initializes the
+        collection. This is the recommended way to instantiate QdrantClient as it
+        ensures the collection is properly initialized before use.
+
+        Args:
+            settings: Configuration settings instance
+            async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library
+            url: Qdrant server URL (optional, uses settings if not provided)
+            collection_name: Name of the anime collection (optional, uses settings if not provided)
+
+        Returns:
+            Initialized QdrantClient instance with collection ready
+
+        Raises:
+            Exception: If collection initialization fails
+        """
+        client = cls(settings, async_qdrant_client, url, collection_name)
         await client._initialize_collection()
         return client
 
 
 
     async def _initialize_collection(self) -> None:
-        """Initialize and validate anime collection with 11-vector architecture and performance optimization."""
+        """Initialize and validate anime collection with 11-vector architecture and performance optimization.
+
+        Creates collection if it doesn't exist with optimized configuration including
+        quantization, HNSW parameters, and payload indexing. Validates existing collections
+        for compatibility with current vector architecture.
+
+        Raises:
+            Exception: If collection creation or validation fails
+        """
         try:
             # Check if collection exists and validate its configuration
             collections = (await self.client.get_collections()).collections
@@ -154,7 +187,13 @@ class QdrantClient:
             raise
 
     async def _validate_collection_compatibility(self) -> bool:
-        """Validate existing collection compatibility with current vector architecture."""
+        """Validate existing collection compatibility with current vector architecture.
+
+        Checks if existing collection has all expected vectors defined in settings.
+
+        Returns:
+            True if collection is compatible with current configuration, False otherwise
+        """
         try:
             collection_info = await self.client.get_collection(self.collection_name)
             existing_vectors = collection_info.config.params.vectors
@@ -187,7 +226,14 @@ class QdrantClient:
             return False
 
     def _validate_vector_config(self, vectors_config: Dict[str, VectorParams]) -> None:
-        """Validate vector configuration before collection creation."""
+        """Validate vector configuration before collection creation.
+
+        Args:
+            vectors_config: Dictionary mapping vector names to VectorParams
+
+        Raises:
+            ValueError: If configuration is invalid or dimensions don't match
+        """
         if not vectors_config:
             raise ValueError("Vector configuration is empty")
 
@@ -219,7 +265,14 @@ class QdrantClient:
     }
 
     def _create_multi_vector_config(self) -> Dict[str, VectorParams]:
-        """Create 11-vector configuration with priority-based optimization."""
+        """Create 11-vector configuration with priority-based optimization.
+
+        Generates VectorParams for all vectors defined in settings with appropriate
+        HNSW and quantization configurations based on priority levels.
+
+        Returns:
+            Dictionary mapping vector names to VectorParams with optimized configurations
+        """
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
         # Use new 11-vector architecture from settings
@@ -241,7 +294,14 @@ class QdrantClient:
     # NEW: Priority-Based Configuration Methods for Million-Query Optimization
 
     def _get_quantization_config(self, priority: str) -> Optional[QuantizationConfig]:
-        """Get quantization config based on vector priority."""
+        """Get quantization config based on vector priority.
+
+        Args:
+            priority: Priority level string (e.g., "high", "medium", "low")
+
+        Returns:
+            QuantizationConfig appropriate for priority level, or None if not configured
+        """
         config = self.settings.quantization_config.get(priority, {})
         if config.get("type") == "scalar":
             scalar_config = ScalarQuantizationConfig(
@@ -256,21 +316,39 @@ class QdrantClient:
         return None
 
     def _get_hnsw_config(self, priority: str) -> HnswConfigDiff:
-        """Get HNSW config based on vector priority."""
+        """Get HNSW config based on vector priority.
+
+        Args:
+            priority: Priority level string (e.g., "high", "medium", "low")
+
+        Returns:
+            HnswConfigDiff with appropriate parameters for priority level
+        """
         config = self.settings.hnsw_config.get(priority, {})
         return HnswConfigDiff(
             ef_construct=config.get("ef_construct", 200), m=config.get("m", 48)
         )
 
     def _get_vector_priority(self, vector_name: str) -> str:
-        """Determine priority level for vector."""
+        """Determine priority level for vector.
+
+        Args:
+            vector_name: Name of the vector (e.g., "title_vector")
+
+        Returns:
+            Priority level string ("high", "medium", or "low"), defaults to "medium"
+        """
         for priority, vectors in self.settings.vector_priorities.items():
             if vector_name in vectors:
                 return str(priority)
         return "medium"  # default
 
     def _create_optimized_optimizers_config(self) -> Optional[OptimizersConfigDiff]:
-        """Create optimized optimizers configuration for million-query scale."""
+        """Create optimized optimizers configuration for million-query scale.
+
+        Returns:
+            OptimizersConfigDiff with production-tuned parameters, or None on error
+        """
         try:
             return OptimizersConfigDiff(
                 default_segment_number=4,
@@ -284,7 +362,11 @@ class QdrantClient:
     def _create_quantization_config(
         self,
     ) -> Optional[BinaryQuantization | ScalarQuantization | ProductQuantization]:
-        """Create quantization configuration for performance optimization."""
+        """Create quantization configuration for performance optimization.
+
+        Returns:
+            Quantization config based on settings (binary, scalar, or product), or None if disabled
+        """
         if not getattr(self.settings, "qdrant_enable_quantization", False):
             return None
 
@@ -322,7 +404,11 @@ class QdrantClient:
             return None
 
     def _create_optimizers_config(self) -> Optional[OptimizersConfig]:
-        """Create optimizers configuration for indexing performance."""
+        """Create optimizers configuration for indexing performance.
+
+        Returns:
+            OptimizersConfig with memory mapping and indexing settings, or None if not configured
+        """
         try:
             optimizer_params = {}
 
@@ -349,7 +435,11 @@ class QdrantClient:
             return None
 
     def _create_wal_config(self) -> Optional[WalConfigDiff]:
-        """Create Write-Ahead Logging configuration."""
+        """Create Write-Ahead Logging configuration.
+
+        Returns:
+            WalConfigDiff with WAL parameters, or None if not enabled in settings
+        """
         enable_wal = getattr(self.settings, "qdrant_enable_wal", None)
         if enable_wal is not None:
             try:
@@ -432,7 +522,11 @@ class QdrantClient:
             # Don't fail collection creation if indexing fails
 
     async def health_check(self) -> bool:
-        """Check if Qdrant is healthy and reachable."""
+        """Check if Qdrant is healthy and reachable.
+
+        Returns:
+            True if Qdrant is accessible and responding, False otherwise
+        """
         try:
             # Simple health check by getting collections
             collections = await self.client.get_collections()
@@ -442,7 +536,12 @@ class QdrantClient:
             return False
 
     async def get_stats(self) -> Dict[str, Any]:
-        """Get collection statistics."""
+        """Get collection statistics.
+
+        Returns:
+            Dictionary containing collection statistics including document count,
+            vector configuration, and optimizer status
+        """
         try:
             # Get collection info
             collection_info = await self.client.get_collection(self.collection_name)
@@ -468,7 +567,14 @@ class QdrantClient:
             return {"error": str(e)}
 
     def _generate_point_id(self, anime_id: str) -> str:
-        """Generate unique point ID from anime ID."""
+        """Generate unique point ID from anime ID.
+
+        Args:
+            anime_id: Anime identifier string
+
+        Returns:
+            MD5 hash of anime ID as hexadecimal string
+        """
         return hashlib.md5(anime_id.encode()).hexdigest()
 
     async def add_documents(
@@ -546,6 +652,8 @@ class QdrantClient:
         anime_id: str,
         vector_name: str,
         vector_data: List[float],
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ) -> bool:
         """Update a single named vector for an existing anime point.
 
@@ -557,6 +665,8 @@ class QdrantClient:
             anime_id: Anime ID (will be hashed to point ID)
             vector_name: Name of vector to update (e.g., "review_vector")
             vector_data: New vector embedding
+            max_retries: Maximum number of retry attempts (default: 3)
+            retry_delay: Initial delay in seconds between retries (default: 1.0)
 
         Returns:
             True if successful, False otherwise
@@ -570,21 +680,28 @@ class QdrantClient:
 
             point_id = self._generate_point_id(anime_id)
 
-            await self.client.update_vectors(
-                collection_name=self.collection_name,
-                points=[
-                    PointVectors(id=point_id, vector={vector_name: vector_data})
-                ],
-                wait=True,
+            # Define the update operation
+            async def _perform_update() -> None:
+                await self.client.update_vectors(
+                    collection_name=self.collection_name,
+                    points=[
+                        PointVectors(id=point_id, vector={vector_name: vector_data})
+                    ],
+                    wait=True,
+                )
+
+            # Execute with retry logic
+            await retry_with_backoff(
+                operation=_perform_update,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
             )
 
             logger.debug(f"Updated {vector_name} for anime {anime_id}")
             return True
 
         except Exception as e:
-            logger.exception(
-                f"Failed to update vector {vector_name} for {anime_id}: {e}"
-            )
+            logger.exception(f"Failed to update vector {vector_name} for {anime_id}: {e}")
             return False
 
     # async def update_single_anime_vector(
@@ -826,74 +943,42 @@ class QdrantClient:
 
             # Only execute if we have valid updates
             if point_updates:
-                # Execute batch update with retry logic for transient failures
-                retry_count = 0
-                last_error = None
+                # Define the update operation
+                async def _perform_batch_update() -> None:
+                    await self.client.update_vectors(
+                        collection_name=self.collection_name,
+                        points=point_updates,
+                        wait=True,
+                    )
 
-                while retry_count <= max_retries:
-                    try:
-                        await self.client.update_vectors(
-                            collection_name=self.collection_name,
-                            points=point_updates,
-                            wait=True,
-                        )
-                        # Success - mark all grouped updates as successful
-                        for anime_id in grouped_updates.keys():
-                            for vector_name in grouped_updates[anime_id].keys():
-                                results.append({
-                                    "anime_id": anime_id,
-                                    "vector_name": vector_name,
-                                    "success": True
-                                })
+                try:
+                    # Execute batch update with retry logic using retry utility
+                    await retry_with_backoff(
+                        operation=_perform_batch_update,
+                        max_retries=max_retries,
+                        retry_delay=retry_delay,
+                    )
 
-                        # Break out of retry loop on success
-                        break
+                    # Success - mark all grouped updates as successful
+                    for anime_id in grouped_updates.keys():
+                        for vector_name in grouped_updates[anime_id].keys():
+                            results.append({
+                                "anime_id": anime_id,
+                                "vector_name": vector_name,
+                                "success": True
+                            })
 
-                    except Exception as e:
-                        last_error = e
-                        retry_count += 1
-
-                        # Check if this is a transient error worth retrying
-                        error_str = str(e).lower()
-                        is_transient = any(
-                            keyword in error_str
-                            for keyword in [
-                                "timeout",
-                                "connection",
-                                "network",
-                                "temporary",
-                                "unavailable",
-                            ]
-                        )
-
-                        if is_transient and retry_count <= max_retries:
-                            # Exponential backoff
-                            delay = retry_delay * (2 ** (retry_count - 1))
-                            logger.warning(
-                                f"Transient error on batch update (attempt {retry_count}/{max_retries}): {e}. "
-                                f"Retrying in {delay}s..."
-                            )
-                            await asyncio.sleep(delay)
-                        else:
-                            # Non-transient error or max retries exceeded
-                            if retry_count > max_retries:
-                                logger.error(
-                                    f"Max retries ({max_retries}) exceeded for batch update. "
-                                    f"Last error: {last_error}"
-                                )
-                            else:
-                                logger.error(f"Non-transient error on batch update: {e}")
-
-                            # Mark all as failed
-                            for anime_id in grouped_updates.keys():
-                                for vector_name in grouped_updates[anime_id].keys():
-                                    results.append({
-                                        "anime_id": anime_id,
-                                        "vector_name": vector_name,
-                                        "success": False,
-                                        "error": f"Update failed after {retry_count} attempts: {str(last_error)}"
-                                    })
-                            break
+                except Exception as e:
+                    # Retry failed - mark all as failed
+                    logger.error(f"Batch update failed after retries: {e}")
+                    for anime_id in grouped_updates.keys():
+                        for vector_name in grouped_updates[anime_id].keys():
+                            results.append({
+                                "anime_id": anime_id,
+                                "vector_name": vector_name,
+                                "success": False,
+                                "error": f"Update failed after {max_retries} retries: {str(e)}"
+                            })
 
             logger.info(
                 f"Batch updated {len(point_updates)} points with {len(deduplicated_updates)} vector updates"
@@ -1108,8 +1193,8 @@ class QdrantClient:
             return {
                 "total_anime": total_anime,
                 "total_requested_updates": total_anime * num_vectors,
-                "successful_updates": total_successful,
-                "failed_updates": total_failed,
+                "success": total_successful,
+                "failed": total_failed,
                 "generation_failures": len(generation_failures),
                 "results": combined_results,
                 "generation_failures_detail": generation_failures,
@@ -1120,8 +1205,8 @@ class QdrantClient:
             return {
                 "total_anime": total_anime,
                 "total_requested_updates": total_anime * num_vectors,
-                "successful_updates": 0,
-                "failed_updates": 0,
+                "success": 0,
+                "failed": 0,
                 "generation_failures": len(generation_failures),
                 "results": [],
                 "generation_failures_detail": generation_failures,
@@ -1237,7 +1322,11 @@ class QdrantClient:
             return None
 
     async def clear_index(self) -> bool:
-        """Clear all points from the collection (for fresh re-indexing)."""
+        """Clear all points from the collection (for fresh re-indexing).
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             # Delete and recreate collection for clean state
             delete_success = await self.delete_collection()
@@ -1255,7 +1344,11 @@ class QdrantClient:
             return False
 
     async def delete_collection(self) -> bool:
-        """Delete the anime collection (for testing/reset)."""
+        """Delete the anime collection (for testing/reset).
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             await self.client.delete_collection(self.collection_name)
             logger.info(f"Deleted collection: {self.collection_name}")
@@ -1265,7 +1358,11 @@ class QdrantClient:
             return False
 
     async def create_collection(self) -> bool:
-        """Create the anime collection."""
+        """Create the anime collection.
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             await self._initialize_collection()
             return True

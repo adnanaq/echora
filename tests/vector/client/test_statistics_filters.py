@@ -27,7 +27,7 @@ async def _test_single_filter(
         qdrant_filter = client._build_filter(filter_dict)
 
         # Use the underlying Qdrant SDK client's scroll method
-        results, _ = client.client.scroll(
+        results, _ = await client.client.scroll(
             collection_name=client.collection_name,
             scroll_filter=qdrant_filter,
             limit=5,
@@ -143,7 +143,7 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         "statistics.anilist.score": {"gte": 7.0}
     }
     multi_filter = client._build_filter(multi_filter_dict)
-    multi_results, _ = client.client.scroll(
+    multi_results, _ = await client.client.scroll(
         collection_name=client.collection_name,
         scroll_filter=multi_filter,
         limit=5,
@@ -159,7 +159,7 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         "score.arithmetic_mean": {"gte": 7.0}
     }
     combo_filter = client._build_filter(combo_filter_dict)
-    combo_results, _ = client.client.scroll(
+    combo_results, _ = await client.client.scroll(
         collection_name=client.collection_name,
         scroll_filter=combo_filter,
         limit=5,

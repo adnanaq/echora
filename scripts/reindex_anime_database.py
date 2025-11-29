@@ -27,7 +27,7 @@ from src.vector.client.qdrant_client import QdrantClient
 from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
 from src.vector.processors.text_processor import TextProcessor
 from src.vector.processors.vision_processor import VisionProcessor
-from qdrant_client import AsyncQdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct
 
 
@@ -39,11 +39,11 @@ async def main():
     settings = get_settings()
     print(f" Configuration loaded: {len(settings.vector_names)} vectors configured")
 
-    # Initialize Qdrant SDK client
+    # Initialize AsyncQdrantClient
     if settings.qdrant_api_key:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
     else:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
     # Initialize embedding manager and processors
     text_processor = TextProcessor(settings)
@@ -57,7 +57,7 @@ async def main():
     # Initialize Qdrant client
     client = await QdrantClient.create(
         settings=settings,
-        qdrant_sdk_client=qdrant_sdk_client,
+        async_qdrant_client=async_qdrant_client,
         url=settings.qdrant_url,
         collection_name=settings.qdrant_collection_name,
     )

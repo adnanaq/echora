@@ -24,7 +24,7 @@ from .vector.client.qdrant_client import QdrantClient
 from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
 from .vector.processors.text_processor import TextProcessor
 from .vector.processors.vision_processor import VisionProcessor
-from qdrant_client import AsyncQdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient
 # from src.cache_manager.instance import http_cache_manager
 # from src.cache_manager.result_cache import close_result_cache_redis_client
 from .dependencies import get_qdrant_client # New import
@@ -44,46 +44,76 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize services on startup and cleanup on shutdown."""
-    logger.info("Initializing Qdrant client and its dependencies...")
+    """
+    Initialize services on startup and cleanup on shutdown.
 
-    # Initialize Qdrant SDK client
-    if settings.qdrant_api_key:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-    else:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
+    Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes Qdrant client,
+    and stores all processors on app.state for dependency injection. Ensures proper
+    cleanup of AsyncQdrantClient connection on shutdown.
 
-    # Initialize embedding manager and processors
-    text_processor = TextProcessor(settings)
-    vision_processor = VisionProcessor(settings)
-    embedding_manager = MultiVectorEmbeddingManager(
-        text_processor=text_processor,
-        vision_processor=vision_processor,
-        settings=settings
-    )
+    Args:
+        app: FastAPI application instance
 
-    # Initialize Qdrant client
-    qdrant_client_instance = await QdrantClient.create(
-        settings=settings,
-        qdrant_sdk_client=qdrant_sdk_client,
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-    )
-    
-    # Store the client on the app state
-    app.state.qdrant_client = qdrant_client_instance
+    Yields:
+        None after successful initialization
 
-    # Health check
-    healthy = await app.state.qdrant_client.health_check()
-    if not healthy:
-        logger.error("Qdrant health check failed!")
-        raise RuntimeError("Vector database is not available")
+    Raises:
+        RuntimeError: If Qdrant health check fails or vector database is unavailable
+    """
+    logger.info("Initializing Qdrant client, embedding models, and dependencies...")
 
-    logger.info("Vector service initialized successfully")
-    yield
+    async_qdrant_client = None
+    try:
+        # Initialize AsyncQdrantClient from qdrant-client library
+        if settings.qdrant_api_key:
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        else:
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-    # Cleanup on shutdown
-    logger.info("Shutting down vector service...")
+        # Initialize embedding processors
+        logger.info("Loading embedding models...")
+        text_processor = TextProcessor(settings)
+        vision_processor = VisionProcessor(settings)
+        embedding_manager = MultiVectorEmbeddingManager(
+            text_processor=text_processor,
+            vision_processor=vision_processor,
+            settings=settings,
+        )
+        logger.info("Embedding models loaded successfully")
+
+        # Initialize QdrantClient
+        qdrant_client_instance = await QdrantClient.create(
+            settings=settings,
+            async_qdrant_client=async_qdrant_client,
+            url=settings.qdrant_url,
+            collection_name=settings.qdrant_collection_name,
+        )
+
+        # Store all clients and processors on app state
+        app.state.qdrant_client = qdrant_client_instance
+        app.state.async_qdrant_client = async_qdrant_client
+        app.state.embedding_manager = embedding_manager
+        app.state.text_processor = text_processor
+        app.state.vision_processor = vision_processor
+
+        # Health check
+        healthy = await app.state.qdrant_client.health_check()
+        if not healthy:
+            logger.error("Qdrant health check failed!")
+            raise RuntimeError("Vector database is not available")
+
+        logger.info("Vector service initialized successfully with embedding models ready")
+        yield
+
+    finally:
+        # Cleanup on shutdown - guaranteed to run
+        logger.info("Shutting down vector service...")
+        if async_qdrant_client:
+            try:
+                await async_qdrant_client.close()
+                logger.info("AsyncQdrantClient closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing AsyncQdrantClient: {e}")
 
 
 # Create FastAPI app
@@ -136,14 +166,11 @@ async def root() -> Dict[str, Any]:
         "description": "Microservice for anime vector database operations",
         "endpoints": {
             "health": "/health",
-            "search": "/api/v1/search",
-            "image_search": "/api/v1/search/image",
-            "multimodal_search": "/api/v1/search/multimodal",
-            "similar": "/api/v1/similarity/anime/{anime_id}",
-            "visual_similar": "/api/v1/similarity/visual/{anime_id}",
+            "admin_health": "/api/v1/admin/health",
             "stats": "/api/v1/admin/stats",
+            "collection_info": "/api/v1/admin/collection/info",
             "docs": "/docs",
-        },
+        }
     }
 
 

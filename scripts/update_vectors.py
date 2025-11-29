@@ -53,7 +53,7 @@ from src.vector.client.qdrant_client import QdrantClient
 from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
 from src.vector.processors.text_processor import TextProcessor
 from src.vector.processors.vision_processor import VisionProcessor
-from qdrant_client import QdrantClient as QdrantSDK
+from qdrant_client import AsyncQdrantClient
 
 # Configure logging
 logging.basicConfig(
@@ -306,6 +306,43 @@ async def update_vectors(
         "vector_stats": vector_stats,
     }
 
+async def async_main(args, settings):
+    """Async main function that initializes clients and runs updates."""
+    # Initialize AsyncQdrantClient
+    if settings.qdrant_api_key:
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+    else:
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+
+    # Initialize embedding manager and processors
+    text_processor = TextProcessor(settings)
+    vision_processor = VisionProcessor(settings)
+    embedding_manager = MultiVectorEmbeddingManager(
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        settings=settings
+    )
+
+    # Initialize Qdrant client using async factory
+    qdrant_client = await QdrantClient.create(
+        settings=settings,
+        async_qdrant_client=async_qdrant_client,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection_name,
+    )
+
+    # Run update and return result
+    return await update_vectors(
+        client=qdrant_client,
+        embedding_manager=embedding_manager,
+        vector_names=args.vectors,
+        anime_index=args.index,
+        anime_title=args.title,
+        batch_size=args.batch_size,
+        data_file=args.file,
+    )
+
+
 def main():
     """CLI entry point."""
     # Load settings to get valid vector names for help text and client initialization
@@ -361,42 +398,9 @@ Examples:
 
     args = parser.parse_args()
 
-    # Initialize Qdrant SDK client
-    if settings.qdrant_api_key:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-    else:
-        qdrant_sdk_client = QdrantSDK(url=settings.qdrant_url)
-
-    # Initialize embedding manager and processors
-    text_processor = TextProcessor(settings)
-    vision_processor = VisionProcessor(settings)
-    embedding_manager = MultiVectorEmbeddingManager(
-        text_processor=text_processor,
-        vision_processor=vision_processor,
-        settings=settings
-    )
-
-    # Initialize Qdrant client
-    qdrant_client = QdrantClient(
-        settings=settings,
-        qdrant_sdk_client=qdrant_sdk_client,
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-    )
-
     # Run update with proper error handling
     try:
-        result = asyncio.run(
-            update_vectors(
-                client=qdrant_client, # Pass the injected client
-                embedding_manager=embedding_manager, # Pass the embedding manager
-                vector_names=args.vectors,
-                anime_index=args.index,
-                anime_title=args.title,
-                batch_size=args.batch_size,
-                data_file=args.file,
-            )
-        )
+        result = asyncio.run(async_main(args, settings))
 
         # Exit with appropriate code
         if result.get("failed_anime", 0) > 0:
