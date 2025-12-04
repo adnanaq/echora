@@ -4,7 +4,6 @@ Provides high-performance vector search capabilities optimized for anime data
 with advanced filtering, cross-platform ID lookups, and hybrid search.
 """
 
-import asyncio
 import hashlib
 import logging
 from typing import Any, Dict, List, Optional, TypeGuard

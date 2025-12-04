@@ -1,22 +1,26 @@
 """
-This script crawls anime information from a given anisearch.com anime URL.
+Crawls anime information from anisearch.com URLs with Redis caching.
 
-It accepts a URL as a command-line argument. It then uses the crawl4ai
-library to extract anime data based on a predefined CSS schema.
-The extracted data is processed to clean it up.
-
-The final processed data, a dictionary of anime details, is saved
-to 'anisearch_anime.json' in the project root.
+Extracts comprehensive anime data including metadata, screenshots, and relations
+using crawl4ai with CSS selectors and JavaScript navigation. Results are cached
+in Redis for 24 hours to avoid repeated crawling.
 
 Usage:
-    python anime_crawler.py <anisearch_url>
+    python -m src.enrichment.crawlers.anisearch_anime_crawler <url> [--output PATH]
+
+    <url>           anisearch.com anime page URL (full or relative path)
+    --output PATH   optional output file path (default: anisearch_anime.json)
 """
 
 import argparse
 import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
+import logging
+
 import re
+import sys
+import uuid
 from typing import Any, Dict, List, Optional, cast
 
 from crawl4ai import (
@@ -27,16 +31,31 @@ from crawl4ai import (
 )
 from crawl4ai.types import RunManyReturn
 
-from .utils import sanitize_output_path
+from src.cache_manager.config import get_cache_config
+from src.cache_manager.result_cache import cached_result
+from src.enrichment.crawlers.utils import sanitize_output_path
+
+logger = logging.getLogger(__name__)
+
+# Get TTL from config to keep cache control centralized
+_CACHE_CONFIG = get_cache_config()
+TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 
 def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
     """
-    Processes a list of relations to extract image URLs from tooltip_html and renames the field.
+    Normalize relation entries by extracting the first image URL from an HTML-escaped tooltip and replacing the `image` field with that URL.
+    
+    Parameters:
+        relations_list (List[Dict[str, Any]]): List of relation dictionaries. If a relation contains an HTML-escaped string under the `"image"` key, the first `<img src="...">` URL will be extracted and the `"image"` value replaced with that URL.
+    
+    Notes:
+        This function mutates the input list in place.
     """
     for relation in relations_list:
-        if "image" in relation and relation["image"]:
-            unescaped_html = html.unescape(relation["image"])
+        image = relation.get("image")
+        if image:
+            unescaped_html = html.unescape(image)
             img_match = re.search(r'<img src="([^"]+)"', unescaped_html)
             if img_match:
                 relation["image"] = img_match.group(1)  # Set image to processed URL
@@ -88,48 +107,96 @@ async def _fetch_and_process_sub_page(
 
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
-            if sub_page_data:
+            if isinstance(sub_page_data, list) and sub_page_data:
                 return cast(Dict[str, Any], sub_page_data[0])
+            else:
+                logger.warning(
+                    f"Unexpected sub-page data shape: expected non-empty list, got {type(sub_page_data).__name__}"
+                )
     return None
 
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
 
+# Error messages
+_ERR_INVALID_URL = (
+    "Invalid URL: Must be an anisearch.com anime URL. "
+    "Expected format: '{base_url}<anime-id>' or '/<anime-id>' or '<anime-id>'"
+)
+_ERR_URL_PREFIX = "URL must start with {base_url}"
+_ERR_MISSING_PATH = "URL does not contain anime path"
 
-async def fetch_anisearch_anime(
-    url: str, return_data: bool = True, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+
+def _normalize_anime_url(anime_identifier: str) -> str:
     """
-    Crawls, processes, and saves anime data from a given anisearch.com URL.
-    Uses JS-based navigation for screenshots and relations pages.
-
-    Args:
-        url: Can be either:
-            - Full URL: "https://www.anisearch.com/anime/18878,dan-da-dan"
-            - Relative path: "/18878,dan-da-dan" or "18878,dan-da-dan"
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
-
+    Convert an anime identifier into a canonical Anisearch anime URL.
+    
+    Accepts a full anisearch URL, a site-relative path, or a bare path/ID and returns the equivalent full URL beginning with https://www.anisearch.com/anime/.
+    
+    Parameters:
+        anime_identifier (str): Full URL, a leading-slash relative path, or a bare path/ID (e.g. "18878,dan-da-dan", "/18878,dan-da-dan", or the full https://... URL).
+    
     Returns:
-        Complete anime data dictionary (if return_data=True), otherwise None
-
+        str: Full anisearch anime URL starting with https://www.anisearch.com/anime/.
+    
     Raises:
-        ValueError: If URL is not from anisearch.com/anime
+        ValueError: If the resulting URL does not start with the anisearch anime base URL.
     """
     # Normalize the URL
-    if not url.startswith("http"):
-        # Remove leading slash if present, then construct full URL
-        url = f"{BASE_ANIME_URL}{url.lstrip('/')}"
+    if not anime_identifier.startswith("http"):
+        # Remove leading/trailing slashes to normalize cache keys
+        normalized = anime_identifier.lstrip("/").rstrip("/")
+        url = f"{BASE_ANIME_URL}{normalized}"
+    else:
+        url = anime_identifier
 
     # Validate it's an anisearch.com anime URL
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(
-            f"Invalid URL: Must be an anisearch.com anime URL. "
-            f"Expected format: '{BASE_ANIME_URL}<anime-id>' or '/<anime-id>' or '<anime-id>'"
-        )
+        raise ValueError(_ERR_INVALID_URL.format(base_url=BASE_ANIME_URL))
+
+    return url
+
+
+def _extract_path_from_url(url: str) -> str:
+    """
+    Extract anime path from anisearch URL.
+
+    Args:
+        url: Full anisearch anime URL
+
+    Returns:
+        Anime path (e.g., "18878,dan-da-dan")
+
+    Raises:
+        ValueError: If URL cannot be parsed
+    """
+    if not url.startswith(BASE_ANIME_URL):
+        raise ValueError(_ERR_URL_PREFIX.format(base_url=BASE_ANIME_URL))
+
+    # Extract and normalize path after BASE_ANIME_URL
+    path = url[len(BASE_ANIME_URL):].strip("/")
+    if not path:
+        raise ValueError(_ERR_MISSING_PATH)
+
+    return path
+
+
+@cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
+async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetches enriched anime metadata and related assets from anisearch.com for a given canonical anime path.
+    
+    Parameters:
+        canonical_path (str): Canonical anime path (e.g., "18878,dan-da-dan") normalized by the caller.
+    
+    Returns:
+        dict: Anime data dictionary containing metadata (titles, cover image, type, status), normalized dates (`start_date`, `end_date`), flattened `genres` and `tags`, `screenshots`, `anime_relations`, and `manga_relations`.
+        None: If no valid data could be extracted.
+    """
+    # Build URL from canonical path (caller already normalized)
+    url = f"{BASE_ANIME_URL}{canonical_path}"
 
     # Generate unique session ID for maintaining browser state
-    import uuid
 
     session_id = f"anime_session_{uuid.uuid4().hex[:8]}"
 
@@ -235,11 +302,11 @@ async def fetch_anisearch_anime(
             session_id=session_id, extraction_strategy=extraction_strategy
         )
 
-        print(f"Fetching main page: {url}")
+        logger.info(f"Fetching main page: {url}")
         results: RunManyReturn = await crawler.arun(url=url, config=config)
 
         if not results:
-            print("No results found.")
+            logger.warning("No results found.")
             return None
 
         for result in results:
@@ -249,10 +316,10 @@ async def fetch_anisearch_anime(
                 )
 
             if result.success and result.extracted_content:
-                data = json.loads(result.extracted_content)
+                data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
 
-                if not data:
-                    print("Extraction returned empty data.")
+                if not data or not isinstance(data, list) or len(data) == 0:
+                    logger.warning("Extraction returned empty data.")
                     return None
 
                 anime_data = data[0]
@@ -273,8 +340,8 @@ async def fetch_anisearch_anime(
                 # Extract start_date and end_date from published field
                 anime_data["start_date"] = None
                 anime_data["end_date"] = None
-                if "published" in anime_data and anime_data["published"]:
-                    published_str = anime_data["published"]
+                published_str = anime_data.get("published")
+                if published_str and isinstance(published_str, str):
                     match = re.search(
                         r"(\d{2}\.\d{2}\.\d{4})\s*[-–]\s*(\d{2}\.\d{2}\.\d{4})",
                         published_str,
@@ -373,7 +440,7 @@ async def fetch_anisearch_anime(
                 }
 
                 # Crawl screenshots using JS navigation
-                print("Navigating to screenshots page...")
+                logger.info("Navigating to screenshots page...")
                 js_navigate_screenshots = """
                 const screenshotsLink = document.querySelector('a[href*="/screenshots"]');
                 if (screenshotsLink) {
@@ -396,12 +463,12 @@ async def fetch_anisearch_anime(
                         for item in screenshots_raw_data["screenshot_urls"]
                         if "url" in item
                     ]
-                    print(f"Extracted {len(anime_data['screenshots'])} screenshots")
+                    logger.info(f"Extracted {len(anime_data['screenshots'])} screenshots")
                 else:
                     anime_data["screenshots"] = []
 
                 # Crawl relations using JS navigation with dropdown selection (two-step for reliability)
-                print("Navigating to relations page...")
+                logger.info("Navigating to relations page...")
 
                 # Step 1: Navigate to relations page
                 js_navigate_relations = """
@@ -448,7 +515,7 @@ async def fetch_anisearch_anime(
                         anime_data["anime_relations"] = relations_raw_data[
                             "anime_relations"
                         ]
-                        print(
+                        logger.info(
                             f"Extracted {len(anime_data['anime_relations'])} anime relations"
                         )
                     else:
@@ -461,7 +528,7 @@ async def fetch_anisearch_anime(
                         anime_data["manga_relations"] = relations_raw_data[
                             "manga_relations"
                         ]
-                        print(
+                        logger.info(
                             f"Extracted {len(anime_data['manga_relations'])} manga relations"
                         )
                     else:
@@ -470,30 +537,67 @@ async def fetch_anisearch_anime(
                     anime_data["anime_relations"] = []
                     anime_data["manga_relations"] = []
 
-                # Conditionally write to file
-                if output_path:
-                    safe_path = sanitize_output_path(output_path)
-                    with open(safe_path, "w", encoding="utf-8") as f:
-                        json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                    print(f"Data written to {safe_path}")
+                # Always return data (no conditional return or file writing)
+                return anime_data
 
-                # Return data for programmatic usage
-                if return_data:
-                    return anime_data
+            # Log extraction failure but continue to check remaining results
+            logger.warning(f"Extraction failed: {result.error_message}")
 
-                return None
-            else:
-                print(f"Extraction failed: {result.error_message}")
-                return None
+        # If loop completes without returning, no valid results were found
         return None
 
 
-if __name__ == "__main__":
+async def fetch_anisearch_anime(
+    anime_id: str, output_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetches anisearch anime data for the given identifier and optionally writes the result to a file.
+
+    Parameters:
+        anime_id (str): Anime identifier in one of these forms: full URL (https://www.anisearch.com/anime/...),
+            relative path (/18878,dan-da-dan), or ID/path fragment (18878,dan-da-dan).
+        output_path (Optional[str]): If provided, the fetched data is written as JSON to this path.
+
+    Returns:
+        Optional[Dict[str, Any]]: The assembled anime data dictionary if available; `None` if no data was found.
+    """
+    # Normalize identifier once so cache keys depend on canonical path
+    # This ensures cache reuse across different identifier formats
+    anime_url = _normalize_anime_url(anime_id)
+    canonical_path = _extract_path_from_url(anime_url)
+
+    # Fetch data from cache or crawl (pure function keyed only on canonical path)
+    data = await _fetch_anisearch_anime_data(canonical_path)
+
+    if data is None:
+        return None
+
+    # Side effect: Write to file (always executes, even on cache hit)
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Data written to {safe_path}")
+
+    return data
+
+
+async def main() -> int:
+    """
+    CLI entry point for the anisearch.com anime crawler.
+    
+    Parses command-line arguments, invokes the crawler to fetch anime data, and handles expected errors.
+    
+    Returns:
+        int: Process exit code — `0` on success, `1` on failure.
+    """
     parser = argparse.ArgumentParser(
-        description="Crawl anime data from an anisearch.com URL."
+        description="Crawl anime data from anisearch.com anime page."
     )
     parser.add_argument(
-        "url", type=str, help="The anisearch.com URL for the anime page."
+        "anime_id",
+        type=str,
+        help="Anime identifier: full URL, path (e.g., '/18878,dan-da-dan'), or ID (e.g., '18878,dan-da-dan')",
     )
     parser.add_argument(
         "--output",
@@ -502,10 +606,20 @@ if __name__ == "__main__":
         help="Output file path (default: anisearch_anime.json in current directory)",
     )
     args = parser.parse_args()
-    asyncio.run(
-        fetch_anisearch_anime(
-            args.url,
-            return_data=False,  # CLI doesn't need return value
+
+    try:
+        await fetch_anisearch_anime(
+            args.anime_id,
             output_path=args.output,
         )
-    )
+    except (ValueError, OSError):
+        logger.exception("Failed to fetch anisearch anime data")
+        return 1
+    except Exception:
+        logger.exception("Unexpected error during anime fetch")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(asyncio.run(main()))

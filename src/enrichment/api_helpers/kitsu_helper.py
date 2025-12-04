@@ -9,9 +9,12 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type, cast
 
 import aiohttp
+
+from src.cache_manager.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,16 @@ class KitsuEnrichmentHelper:
     async def _make_request(
         self, endpoint: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Make request to Kitsu API."""
+        """
+        Perform an HTTP GET request to a Kitsu API endpoint and return the parsed JSON response.
+        
+        Parameters:
+            endpoint (str): API path appended to the helper's base_url (e.g. '/anime/1').
+            params (Optional[Dict[str, Any]]): Query parameters to include in the request.
+        
+        Returns:
+            Dict[str, Any]: The parsed JSON response body when the server returns HTTP 200; an empty dict on non-200 responses or on error.
+        """
         headers = {
             "Accept": "application/vnd.api+json",
             "Content-Type": "application/vnd.api+json",
@@ -35,12 +47,12 @@ class KitsuEnrichmentHelper:
         url = f"{self.base_url}{endpoint}"
 
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=30)
+            async with _cache_manager.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
             ) as session:
                 async with session.get(url, headers=headers, params=params) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(Dict[str, Any], await response.json())
                     else:
                         logger.warning(f"Kitsu API error: HTTP {response.status}")
                         return {}
@@ -115,7 +127,18 @@ class KitsuEnrichmentHelper:
             return []
 
     async def fetch_all_data(self, anime_id: int) -> Dict[str, Any]:
-        """Fetch all Kitsu data for an anime ID."""
+        """
+        Fetch the anime record, all episodes, and categories for the given Kitsu anime ID concurrently.
+        
+        Parameters:
+            anime_id (int): The Kitsu anime identifier to fetch data for.
+        
+        Returns:
+            dict: Mapping with keys:
+                - "anime": The anime resource object from Kitsu, or `None` if it could not be retrieved.
+                - "episodes": A list of episode resource objects, or an empty list if unavailable.
+                - "categories": A list of category resource objects, or an empty list if unavailable.
+        """
         try:
             # Fetch all data concurrently
             results = await asyncio.gather(
@@ -143,26 +166,74 @@ class KitsuEnrichmentHelper:
             logger.error(f"Kitsu fetch_all_data failed for ID {anime_id}: {e}")
             return {"anime": None, "episodes": [], "categories": []}
 
+    async def close(self) -> None:
+        """
+        No-op close method retained for interface compatibility.
+        
+        This method performs no action because HTTP sessions are created per request; it exists so callers can await a close() when an async lifecycle API is required.
+        """
+        pass
 
-async def main() -> None:
+    async def __aenter__(self) -> "KitsuEnrichmentHelper":
+        """
+        Enter the asynchronous context manager and return the helper instance.
+        
+        Returns:
+            KitsuEnrichmentHelper: The KitsuEnrichmentHelper instance being managed by the context.
+        """
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
+        """
+        Exit the asynchronous context manager and ensure the helper is closed.
+        
+        Await the helper's close method to release any resources.
+        
+        Returns:
+            bool: `False` to indicate any exception should be propagated.
+        """
+        await self.close()
+        return False
+
+
+async def main() -> int:
+    """
+    CLI entry point that fetches Kitsu anime data and writes it to a JSON file.
+    
+    Expects exactly two command-line arguments: an integer `anime_id` and an `output_file` path. Attempts to fetch anime details, episodes, and categories for the given ID and writes the resulting JSON to the specified file. Any errors or invalid usage are reported to stderr.
+    
+    Returns:
+        int: 0 on success; 1 on invalid usage, fetch failure, or any error.
+    """
     if len(sys.argv) != 3:
-        print("Usage: python kitsu_helper.py <anime_id> <output_file>")
-        sys.exit(1)
+        print("Usage: python kitsu_helper.py <anime_id> <output_file>", file=sys.stderr)
+        return 1
 
-    anime_id = int(sys.argv[1])
-    output_file = sys.argv[2]
+    try:
+        anime_id = int(sys.argv[1])
+        output_file = sys.argv[2]
 
-    helper = KitsuEnrichmentHelper()
-    data = await helper.fetch_all_data(anime_id)
+        helper = KitsuEnrichmentHelper()
+        data = await helper.fetch_all_data(anime_id)
 
-    if data:
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        print(f"Data for {anime_id} saved to {output_file}")
-    else:
-        print(f"Could not fetch data for {anime_id}")
+        if data:
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            print(f"Data for {anime_id} saved to {output_file}")
+            return 0
+        else:
+            print(f"Could not fetch data for {anime_id}", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

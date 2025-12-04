@@ -28,6 +28,8 @@ from qdrant_client import AsyncQdrantClient
 # from src.cache_manager.instance import http_cache_manager
 # from src.cache_manager.result_cache import close_result_cache_redis_client
 from .dependencies import get_qdrant_client # New import
+from src.cache_manager.instance import http_cache_manager
+from src.cache_manager.result_cache import close_result_cache_redis_client
 
 # Get application settings
 settings = get_settings()
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
+<<<<<<< HEAD
     Initialize services on startup and cleanup on shutdown.
 
     Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes Qdrant client,
@@ -57,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Yields:
         None after successful initialization
 
+<<<<<<< HEAD
     Raises:
         RuntimeError: If Qdrant health check fails or vector database is unavailable
     """
@@ -107,13 +111,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     finally:
         # Cleanup on shutdown - guaranteed to run
-        logger.info("Shutting down vector service...")
+        logger.info("Shutting down vector service and closing clients...")
         if async_qdrant_client:
             try:
                 await async_qdrant_client.close()
                 logger.info("AsyncQdrantClient closed successfully")
             except Exception as e:
                 logger.error(f"Error closing AsyncQdrantClient: {e}")
+
+            try:
+                await http_cache_manager.close_async()
+                logger.info("HTTP cache client closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing HTTP cache manager: {e}")
+
+            try:
+                await close_result_cache_redis_client()
+                logger.info("Result cache Redis client closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing result cache Redis client: {e}")
 
 
 # Create FastAPI app

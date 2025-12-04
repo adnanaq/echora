@@ -2,7 +2,8 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Type
 
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
@@ -59,25 +60,22 @@ class AniSearchEnrichmentHelper:
             return None
 
     async def fetch_anime_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch anime data using anisearch_anime_crawler.
-
-        Args:
-            anisearch_id: AniSearch anime ID (e.g., 18878 for Dandadan)
-
+        """
+        Fetches anime metadata from AniSearch for the given AniSearch numeric ID.
+        
+        Parameters:
+            anisearch_id (int): AniSearch anime ID (for example, 18878 for Dandadan).
+        
         Returns:
-            Dict containing anime data or None if fetch fails
+            dict: Anime data dictionary if available, `None` otherwise.
         """
         try:
-            # Construct URL from ID
-            url = f"https://www.anisearch.com/anime/{anisearch_id}"
-
             logger.info(f"Fetching AniSearch anime data for ID {anisearch_id}")
 
-            # Call anime crawler
+            # Call anime crawler with anime_id (accepts ID, path, or full URL)
             anime_data = await fetch_anisearch_anime(
-                url=url,
-                return_data=True,
-                output_path=None  # No file output - return data only
+                anime_id=str(anisearch_id),  # Pass ID directly
+                output_path=None,  # No file output - return data only
             )
 
             if not anime_data:
@@ -90,92 +88,93 @@ class AniSearchEnrichmentHelper:
             )
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error fetching anime data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching anime data for ID {anisearch_id}")
             return None
 
-    async def fetch_episode_data(self, anisearch_id: int) -> Optional[List[Dict[str, Any]]]:
-        """Fetch episode data using anisearch_episode_crawler.
-
-        Args:
-            anisearch_id: AniSearch anime ID
-
+    async def fetch_episode_data(
+        self, anisearch_id: int
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch episode data for a given AniSearch anime ID.
+        
+        Parameters:
+            anisearch_id (int): AniSearch numeric anime ID.
+        
         Returns:
-            List of episode dicts or None if fetch fails
+            Optional[List[Dict[str, Any]]]: List of episode dictionaries if found, `None` otherwise.
         """
         try:
-            # Construct episodes URL
-            url = f"https://www.anisearch.com/anime/{anisearch_id}/episodes"
-
             logger.info(f"Fetching AniSearch episode data for ID {anisearch_id}")
 
-            # Call episode crawler
+            # Call episode crawler with anime_id (accepts ID, path, or full URL)
             episode_data = await fetch_anisearch_episodes(
-                url=url,
-                return_data=True,
-                output_path=None  # No file output - return data only
+                anime_id=str(anisearch_id),  # Pass ID directly
+                output_path=None,  # No file output - return data only
             )
 
             if not episode_data:
                 logger.debug(f"No episode data found for ID {anisearch_id}")
                 return None
 
-            logger.info(f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}")
+            logger.info(
+                f"Successfully fetched {len(episode_data)} episodes for ID {anisearch_id}"
+            )
             return episode_data
 
-        except Exception as e:
-            logger.error(f"Error fetching episode data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching episode data for ID {anisearch_id}")
             return None
 
     async def fetch_character_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch character data using anisearch_character_crawler.
+        """
+        Retrieve character information for a given AniSearch anime ID.
 
-        Args:
-            anisearch_id: AniSearch anime ID
+        Parameters:
+            anisearch_id (int): AniSearch numeric ID of the anime.
 
         Returns:
-            Dict containing character data or None if fetch fails
+            dict: Character data dictionary with `characters` key if successful, `None` otherwise.
         """
         try:
-            # Construct characters URL
-            url = f"https://www.anisearch.com/anime/{anisearch_id}/characters"
-
             logger.info(f"Fetching AniSearch character data for ID {anisearch_id}")
 
-            # Call character crawler
+            # Call character crawler with anime_id (accepts ID, path, or full URL)
             character_data = await fetch_anisearch_characters(
-                url=url,
-                return_data=True,
-                output_path=None  # No file output - return data only
+                anime_id=str(anisearch_id),  # Pass ID directly
+                output_path=None,  # No file output - return data only
             )
 
             if not character_data:
                 logger.debug(f"No character data found for ID {anisearch_id}")
                 return None
 
-            char_count = character_data.get("total_count", 0)
-            logger.info(f"Successfully fetched {char_count} characters for ID {anisearch_id}")
+            char_count = len(character_data.get("characters", []))
+            logger.info(
+                f"Successfully fetched {char_count} characters for ID {anisearch_id}"
+            )
             return character_data
 
-        except Exception as e:
-            logger.error(f"Error fetching character data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error fetching character data for ID {anisearch_id}")
             return None
 
     async def fetch_all_data(
         self,
         anisearch_id: int,
         include_episodes: bool = True,
-        include_characters: bool = True
+        include_characters: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        """Fetch comprehensive AniSearch data (anime + episodes + characters).
-
-        Args:
-            anisearch_id: AniSearch anime ID (e.g., 18878 for Dandadan)
-            include_episodes: Whether to fetch episode data (default: True)
-            include_characters: Whether to fetch character data (default: True)
-
+        """
+        Fetches anime data from AniSearch and enriches it with optional episodes and characters.
+        
+        Parameters:
+            anisearch_id (int): AniSearch numeric anime ID (e.g., 18878 for Dandadan).
+            include_episodes (bool): If True, attempt to attach an "episodes" list to the returned data.
+            include_characters (bool): If True, attempt to attach a "characters" list to the returned data.
+        
         Returns:
-            Dict containing complete AniSearch data or None if fetch fails
+            The anime data dictionary enriched with optional "episodes" and "characters" keys, or `None` if the primary anime data could not be fetched.
         """
         try:
             logger.info(f"Fetching all AniSearch data for ID {anisearch_id}")
@@ -193,9 +192,14 @@ class AniSearchEnrichmentHelper:
                     episode_data = await self.fetch_episode_data(anisearch_id)
                     if episode_data:
                         anime_data["episodes"] = episode_data
-                        logger.info(f"Integrated {len(episode_data)} episodes into anime data")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch episodes for ID {anisearch_id}: {e}")
+                        logger.info(
+                            f"Integrated {len(episode_data)} episodes into anime data"
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch episodes for ID {anisearch_id}",
+                        exc_info=True,
+                    )
                     # Continue without episodes - non-critical
 
             # Fetch characters if requested
@@ -203,20 +207,55 @@ class AniSearchEnrichmentHelper:
                 try:
                     character_data = await self.fetch_character_data(anisearch_id)
                     if character_data:
-                        anime_data["characters"] = character_data.get("characters", [])
+                        characters = character_data.get("characters", [])
+                        anime_data["characters"] = characters
                         logger.info(
-                            f"Integrated {character_data.get('total_count', 0)} characters into anime data"
+                            f"Integrated {len(characters)} characters into anime data"
                         )
-                except Exception as e:
-                    logger.warning(f"Failed to fetch characters for ID {anisearch_id}: {e}")
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch characters for ID {anisearch_id}",
+                        exc_info=True,
+                    )
                     # Continue without characters - non-critical
 
-            logger.info(f"Successfully fetched all AniSearch data for ID {anisearch_id}")
+            logger.info(
+                f"Successfully fetched all AniSearch data for ID {anisearch_id}"
+            )
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error in fetch_all_data for ID {anisearch_id}: {e}")
+        except Exception:
+            logger.exception(f"Error in fetch_all_data for ID {anisearch_id}")
             return None
 
     async def close(self) -> None:
-        """Cleanup (crawlers are stateless, no cleanup needed)."""
+        """
+        Perform cleanup for the helper; currently a no-op since crawlers are stateless.
+        """
+        pass
+
+    async def __aenter__(self) -> "AniSearchEnrichmentHelper":
+        """
+        Enter the asynchronous context and make the helper available as the context value.
+        
+        Returns:
+            AniSearchEnrichmentHelper: The same helper instance.
+        """
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> bool:
+        """
+        Perform cleanup when exiting the async context.
+        
+        Calls the helper's cleanup routine and returns `False` to indicate any exception raised in the context should not be suppressed.
+        
+        Returns:
+            `False` to indicate exceptions are not suppressed.
+        """
+        await self.close()
+        return False
