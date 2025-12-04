@@ -17,10 +17,10 @@ from typing import Dict, List, Tuple, Optional
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
-from src.vector.client.qdrant_client import QdrantClient
+from common.config import get_settings
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
+from qdrant_db import QdrantClient
 import requests
 
 def load_anime_database() -> Dict:

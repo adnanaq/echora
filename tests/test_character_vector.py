@@ -14,9 +14,9 @@ from typing import Dict, List, Tuple, Optional
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 import requests
 
 def test_character_vector_realistic():
@@ -370,7 +370,7 @@ def test_multimodal_character_search():
     # Import QdrantClient for multimodal search
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from src.vector.client.qdrant_client import QdrantClient
+    from qdrant_db import QdrantClient
 
     qdrant_client = QdrantClient(settings=settings)
 

@@ -2,7 +2,7 @@
 import pytest
 from typing import Any, Dict, List
 
-from src.vector.client.qdrant_client import QdrantClient
+from qdrant_db import QdrantClient
 
 
 async def _test_single_filter(

@@ -1,8 +1,4 @@
-"""Database Client Infrastructure
+"""Vector client module - migrated to libs/qdrant_client.
 
-Vector database operations and search coordination for anime content.
+Import from: echora_qdrant_client
 """
-
-from .qdrant_client import QdrantClient
-
-__all__ = ["QdrantClient"]

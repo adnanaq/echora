@@ -1,31 +1,10 @@
-"""Vector Processing Module for Anime Search
+"""Vector module - migrated to libs structure.
 
-This module provides a comprehensive vector processing pipeline for anime content,
-including text and image embedding generation, database operations, and AI enhancements.
-
-Architecture:
-- client/: Database operations and search infrastructure
-- processors/: Core embedding generation (text, vision, multi-vector coordination)
-- providers/: Model provider abstractions
+All functionality has been moved to:
+- libs/qdrant_client - Database client
+- libs/vector_processing - Embedding processors
 """
 
-# Core database client
-from .client.qdrant_client import QdrantClient
-from .processors.anime_field_mapper import AnimeFieldMapper
-from .processors.embedding_manager import MultiVectorEmbeddingManager
-
-# Core processors
-from .processors.text_processor import TextProcessor
-from .processors.vision_processor import VisionProcessor
-
-
-# Public API
-__all__ = [
-    # Core infrastructure
-    "QdrantClient",
-    # Processors
-    "TextProcessor",
-    "VisionProcessor",
-    "MultiVectorEmbeddingManager",
-    "AnimeFieldMapper",
-]
+# This module is deprecated - import from libs instead
+# Example: from qdrant_db import QdrantClient
+# Example: from vector_processing import TextProcessor, VisionProcessor

@@ -41,10 +41,10 @@ services:
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION_NAME=anime_database
-      - QDRANT_VECTOR_SIZE=1024
       - QDRANT_DISTANCE_METRIC=cosine
 
       # Multi-Vector Configuration
+      - TEXT_VECTOR_SIZE=1024
       - IMAGE_VECTOR_SIZE=768
 
       # Modern Embedding Configuration

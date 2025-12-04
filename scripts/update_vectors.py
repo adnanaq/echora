@@ -46,13 +46,16 @@ from typing import Any, Dict, List, Optional
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "libs" / "common" / "src"))
 
-from src.config import get_settings
-from src.models.anime import AnimeEntry
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from common.models.anime import AnimeEntry
+from qdrant_db import QdrantClient
+from vector_processing import MultiVectorEmbeddingManager
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
 from qdrant_client import AsyncQdrantClient
 
 # Configure logging
@@ -314,9 +317,17 @@ async def async_main(args, settings):
     else:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-    # Initialize embedding manager and processors
-    text_processor = TextProcessor(settings)
-    vision_processor = VisionProcessor(settings)
+    # Initialize models via factory
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    
+    # Initialize utilities
+    image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
+
+    # Initialize processors with injected dependencies
+    text_processor = TextProcessor(text_model, settings)
+    vision_processor = VisionProcessor(vision_model, image_downloader, settings)
+    
     embedding_manager = MultiVectorEmbeddingManager(
         text_processor=text_processor,
         vision_processor=vision_processor,

@@ -33,13 +33,15 @@ from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
 try:
-    from ..config.settings import Settings
-    from ..vector.processors.vision_processor import VisionProcessor
+    from common.config.settings import Settings
+    from vector_processing.processors.vision_processor import VisionProcessor
+    from vector_processing.legacy_ccips import LegacyCCIPS
 
     VISION_AVAILABLE = True
 except ImportError:
     VISION_AVAILABLE = False
     VisionProcessor = None  # type: ignore[misc,assignment]
+    LegacyCCIPS = None  # type: ignore[misc,assignment]
     Settings = None  # type: ignore[misc,assignment]
 
 try:
@@ -407,6 +409,7 @@ class EnsembleFuzzyMatcher:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
                     self.vision_processor = VisionProcessor(settings)
+                    self.ccips = LegacyCCIPS()
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
                     )
@@ -438,8 +441,8 @@ class EnsembleFuzzyMatcher:
             return 0.0
 
         try:
-            # Use CCIP from VisionProcessor (with OpenCLIP fallback)
-            similarity = self.vision_processor.calculate_character_similarity(
+            # Use CCIP from LegacyCCIPS
+            similarity = self.ccips.calculate_character_similarity(
                 image_url1, image_url2
             )
 

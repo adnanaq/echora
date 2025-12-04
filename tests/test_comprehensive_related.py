@@ -22,9 +22,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 os.chdir(str(project_root))
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.client.qdrant_client import QdrantClient
+from common.config import get_settings
+from vector_processing import TextProcessor
+from qdrant_db import QdrantClient
 import requests
 
 def load_related_content_data() -> Dict[str, Any]:

@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     from pydantic import ValidationError
 
-    from src.models.anime import AnimeEntry
+    from common.models.anime import AnimeEntry
 except ImportError:
     print("Error: Could not import AnimeEntry model. Ensure you're in the correct directory.")
     exit(1)

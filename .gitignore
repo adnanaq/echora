@@ -139,7 +139,9 @@ model_cache/
 *.bin
 
 # Vector database storage (except sample data)
-data/qdrant_storage/
+data/qdrant_storage/*
+!data/qdrant_storage/enriched_anime_database.json
+!data/qdrant_storage/BUILD
 data/processed/
 data/cache/
 data/temp/
@@ -217,3 +219,7 @@ __pycache__/
 
 .gemini/
 gha-creds-*.json
+
+# Pants build system
+/.pants.d/
+.pids/

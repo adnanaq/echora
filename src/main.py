@@ -19,11 +19,13 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import admin
-from .config import get_settings
-from .vector.client.qdrant_client import QdrantClient
-from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from .vector.processors.text_processor import TextProcessor
-from .vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from qdrant_db import QdrantClient
+from vector_processing import MultiVectorEmbeddingManager
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
 from qdrant_client import AsyncQdrantClient
 # from src.cache_manager.instance import http_cache_manager
 # from src.cache_manager.result_cache import close_result_cache_redis_client
@@ -72,8 +74,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Initialize embedding processors
         logger.info("Loading embedding models...")
-        text_processor = TextProcessor(settings)
-        vision_processor = VisionProcessor(settings)
+        
+        # Create models via factory
+        text_model = EmbeddingModelFactory.create_text_model(settings)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        
+        # Create utilities
+        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
+        
+        # Initialize processors with injected dependencies
+        text_processor = TextProcessor(text_model, settings)
+        vision_processor = VisionProcessor(vision_model, image_downloader, settings)
+        
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,

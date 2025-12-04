@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.config import get_settings
-from src.vector.client.qdrant_client import QdrantClient
+from common.config import get_settings
+from qdrant_db import QdrantClient
 
 
 class TestUpdateSingleVectorRetry:

@@ -31,7 +31,7 @@ try:
 
     from pydantic import ValidationError
 
-    from src.models.anime import AnimeEntry, EnrichmentMetadata
+    from common.models.anime import AnimeEntry, EnrichmentMetadata
 
     sys.path.append(str(Path(__file__).parent.parent.parent.parent))
     from validate_enrichment_database import EnrichmentValidator

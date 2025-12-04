@@ -2,10 +2,10 @@ import logging
 
 from fastapi import Request
 
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from qdrant_db import QdrantClient
+from vector_processing import MultiVectorEmbeddingManager
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 
 logger = logging.getLogger(__name__)
 

@@ -10,11 +10,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from ..config import get_settings
+from common.config import get_settings
 from ..dependencies import get_qdrant_client, get_text_processor, get_vision_processor
-from ..vector.client.qdrant_client import QdrantClient
-from ..vector.processors.text_processor import TextProcessor
-from ..vector.processors.vision_processor import VisionProcessor
+from qdrant_db import QdrantClient
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 
 settings = get_settings()
 logger = logging.getLogger(__name__)

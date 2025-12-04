@@ -21,12 +21,14 @@ from typing import List
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
-from src.config import get_settings
-from src.models.anime import AnimeEntry
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from common.models.anime import AnimeEntry
+from qdrant_db.client import QdrantClient
+from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
+from vector_processing.processors.text_processor import TextProcessor
+from vector_processing.processors.vision_processor import VisionProcessor
+from vector_processing.utils.image_downloader import ImageDownloader
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct
 
@@ -45,17 +47,29 @@ async def main():
     else:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-    # Initialize embedding manager and processors
-    text_processor = TextProcessor(settings)
-    vision_processor = VisionProcessor(settings)
+    # Initialize embedding manager and processors using factory pattern
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(model=text_model, settings=settings)
+
+    # Initialize vision dependencies using factory pattern
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+
+    image_downloader = ImageDownloader(cache_dir="cache")
+
+    vision_processor = VisionProcessor(
+        model=vision_model,
+        downloader=image_downloader,
+        settings=settings
+    )
+
     embedding_manager = MultiVectorEmbeddingManager(
         text_processor=text_processor,
         vision_processor=vision_processor,
         settings=settings
     )
 
-    # Initialize Qdrant client
-    client = await QdrantClient.create(
+    # Initialize Qdrant client (refactored version from libs)
+    client = QdrantClient(
         settings=settings,
         async_qdrant_client=async_qdrant_client,
         url=settings.qdrant_url,
@@ -115,39 +129,61 @@ async def main():
     print("   - Comprehensive payload indexing")
 
     try:
-        # Process batch to get vectors and payloads
-        print(f"\n Processing {len(anime_entries)} anime entries to generate vectors...")
-        processed_batch = await embedding_manager.process_anime_batch(
-            anime_entries
-        )
+        # Process anime entries SEQUENTIALLY to avoid thundering herd of concurrent downloads
+        print(f"\n Processing {len(anime_entries)} anime entries individually...")
 
-        points = []
-        for doc_data in processed_batch:
-            if doc_data["metadata"].get("processing_failed"):
+        successful_entries = 0
+        failed_entries = 0
+
+        for i, anime_entry in enumerate(anime_entries):
+            try:
                 print(
-                    f"Skipping failed document: {doc_data['metadata'].get('anime_title')}"
+                    f"\n Processing {i+1}/{len(anime_entries)}: {anime_entry.title}"
                 )
+
+                # Process anime to get vectors and payload
+                processed_result = await embedding_manager.process_anime_vectors(anime_entry)
+
+                # Check if processing was successful
+                if processed_result.get("metadata", {}).get("processing_failed"):
+                    print(f"    Failed to process vectors: {processed_result['metadata'].get('error')}")
+                    failed_entries += 1
+                    continue
+
+                # Generate point ID
+                point_id = client._generate_point_id(anime_entry.id)
+
+                # Create PointStruct
+                point = PointStruct(
+                    id=point_id,
+                    vector=processed_result["vectors"],
+                    payload=processed_result["payload"],
+                )
+
+                # Add to Qdrant
+                success = await client.add_documents([point], batch_size=1)
+
+                if success:
+                    print(f"    Successfully indexed: {anime_entry.title}")
+                    successful_entries += 1
+                else:
+                    print(f"    Failed to index: {anime_entry.title}")
+                    failed_entries += 1
+
+            except Exception as e:
+                print(f"    Error processing {anime_entry.title}: {e}")
+                import traceback
+                traceback.print_exc()
+                failed_entries += 1
                 continue
 
-            point_id = client._generate_point_id(doc_data["payload"]["id"])
+        print(f"\n Processing Summary:")
+        print(f"   Successful: {successful_entries}/{len(anime_entries)}")
+        print(f"   Failed: {failed_entries}/{len(anime_entries)}")
 
-            point = PointStruct(
-                id=point_id,
-                vector=doc_data["vectors"],
-                payload=doc_data["payload"],
-            )
-            points.append(point)
-        
-        print(f"Successfully generated vectors for {len(points)} entries.")
+        if successful_entries > 0:
+            print(f"\nIndexing completed with some success!")
 
-        # Add documents in batches
-        success = await client.add_documents(
-            points,
-            batch_size=64, # Use a reasonable batch size for efficiency
-        )
-        if success:
-            print(f"\nSuccessfully indexed {len(points)} documents.")
-            
             # Save updated anime data with generated IDs
             print("\n💾 Saving updated anime data with generated IDs...")
             with open("./data/qdrant_storage/enriched_anime_database.json", "w", encoding="utf-8") as f:
@@ -158,7 +194,7 @@ async def main():
             info = await client.client.get_collection(settings.qdrant_collection_name)
             print("\n Final collection status:")
             print(f"   Points: {info.points_count}")
-            print(f"   Expected: {len(points)} points")
+            print(f"   Expected: {successful_entries} points")
 
             # Check vector completeness across sample points
             try:
