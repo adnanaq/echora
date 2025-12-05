@@ -92,7 +92,7 @@ addopts = [
     "--cov-fail-under=80"
 ]
 markers = [
-    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "integration: marks tests as integration tests (require database, models, etc.)"
 ]
 filterwarnings = [
     "error",

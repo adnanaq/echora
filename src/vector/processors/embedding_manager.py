@@ -20,11 +20,18 @@ logger = logging.getLogger(__name__)
 class MultiVectorEmbeddingManager:
     """Manager for coordinated generation of all 11 embedding vectors."""
 
-    def __init__(self, settings: Optional[Settings] = None):
-        """Initialize the multi-vector embedding manager.
+    def __init__(
+        self,
+        text_processor: TextProcessor,
+        vision_processor: VisionProcessor,
+        settings: Optional[Settings] = None,
+    ):
+        """Initialize the multi-vector embedding manager with injected processors.
 
         Args:
-            settings: Configuration settings instance
+            text_processor: An initialized TextProcessor instance.
+            vision_processor: An initialized VisionProcessor instance.
+            settings: Configuration settings instance.
         """
         if settings is None:
             from ...config import Settings
@@ -33,9 +40,9 @@ class MultiVectorEmbeddingManager:
 
         self.settings = settings
 
-        # Initialize processors
-        self.text_processor = TextProcessor(settings)
-        self.vision_processor = VisionProcessor(settings)
+        # Use injected processors
+        self.text_processor = text_processor
+        self.vision_processor = vision_processor
 
         # Initialize field mapper
         self.field_mapper = AnimeFieldMapper()

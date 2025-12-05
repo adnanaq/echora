@@ -6,16 +6,26 @@ with multi-modal embeddings (text + image) for anime content.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+
+# Disable CUDA to force CPU usage
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin, search, similarity
+from .api import admin
 from .config import get_settings
 from .vector.client.qdrant_client import QdrantClient
+from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
+from .vector.processors.text_processor import TextProcessor
+from .vector.processors.vision_processor import VisionProcessor
+from qdrant_client import AsyncQdrantClient
+from .dependencies import get_qdrant_client
 from src.cache_manager.instance import http_cache_manager
 from src.cache_manager.result_cache import close_result_cache_redis_client
 
@@ -28,41 +38,94 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global instances
-qdrant_client: QdrantClient | None = None
 
+
+# No more global qdrant_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-    Manage application lifespan: initialize the Qdrant client and verify health on startup; close HTTP and result cache clients on shutdown.
-    
+    Initialize services on startup and cleanup on shutdown.
+
+    Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes Qdrant client,
+    and stores all processors on app.state for dependency injection. Ensures proper
+    cleanup of AsyncQdrantClient connection on shutdown.
+
+    Args:
+        app: FastAPI application instance
+
+    Yields:
+        None after successful initialization
+
     Raises:
-        RuntimeError: If the Qdrant health check fails during startup.
+        RuntimeError: If Qdrant health check fails or vector database is unavailable
     """
-    global qdrant_client
+    logger.info("Initializing Qdrant client, embedding models, and dependencies...")
 
-    # Initialize Qdrant client
-    logger.info("Initializing Qdrant client...")
-    qdrant_client = QdrantClient(
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-        settings=settings,
-    )
+    async_qdrant_client = None
+    try:
+        # Initialize AsyncQdrantClient from qdrant-client library
+        if settings.qdrant_api_key:
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        else:
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-    # Health check
-    healthy = await qdrant_client.health_check()
-    if not healthy:
-        logger.error("Qdrant health check failed!")
-        raise RuntimeError("Vector database is not available")
+        # Initialize embedding processors
+        logger.info("Loading embedding models...")
+        text_processor = TextProcessor(settings)
+        vision_processor = VisionProcessor(settings)
+        embedding_manager = MultiVectorEmbeddingManager(
+            text_processor=text_processor,
+            vision_processor=vision_processor,
+            settings=settings,
+        )
+        logger.info("Embedding models loaded successfully")
 
-    logger.info("Vector service initialized successfully")
-    yield
+        # Initialize QdrantClient
+        qdrant_client_instance = await QdrantClient.create(
+            settings=settings,
+            async_qdrant_client=async_qdrant_client,
+            url=settings.qdrant_url,
+            collection_name=settings.qdrant_collection_name,
+        )
 
-    # Cleanup on shutdown
-    logger.info("Shutting down vector service and closing cache clients...")
-    await http_cache_manager.close_async()
-    await close_result_cache_redis_client()
+        # Store all clients and processors on app state
+        app.state.qdrant_client = qdrant_client_instance
+        app.state.async_qdrant_client = async_qdrant_client
+        app.state.embedding_manager = embedding_manager
+        app.state.text_processor = text_processor
+        app.state.vision_processor = vision_processor
+
+        # Health check
+        healthy = await app.state.qdrant_client.health_check()
+        if not healthy:
+            logger.error("Qdrant health check failed!")
+            raise RuntimeError("Vector database is not available")
+
+        logger.info("Vector service initialized successfully with embedding models ready")
+        yield
+
+    finally:
+        # Cleanup on shutdown - guaranteed to run
+        logger.info("Shutting down vector service and closing clients...")
+        if async_qdrant_client:
+            try:
+                await async_qdrant_client.close()
+                logger.info("AsyncQdrantClient closed successfully")
+            except Exception:
+                logger.exception("Error closing AsyncQdrantClient")
+
+        try:
+            await http_cache_manager.close_async()
+            logger.info("HTTP cache client closed successfully")
+        except Exception:
+            logger.exception("Error closing HTTP cache manager")
+
+        try:
+            await close_result_cache_redis_client()
+            logger.info("Result cache Redis client closed successfully")
+        except Exception:
+            logger.exception("Error closing result cache Redis client")
 
 
 # Create FastAPI app
@@ -85,16 +148,13 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
     """Health check endpoint."""
     try:
-        if qdrant_client is None:
-            raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "anime-vector-service",
             "version": settings.api_version,
             "qdrant_status": qdrant_status,
@@ -105,8 +165,6 @@ async def health_check() -> Dict[str, Any]:
 
 
 # Include API routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(similarity.router, prefix="/api/v1", tags=["similarity"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
@@ -120,14 +178,11 @@ async def root() -> Dict[str, Any]:
         "description": "Microservice for anime vector database operations",
         "endpoints": {
             "health": "/health",
-            "search": "/api/v1/search",
-            "image_search": "/api/v1/search/image",
-            "multimodal_search": "/api/v1/search/multimodal",
-            "similar": "/api/v1/similarity/anime/{anime_id}",
-            "visual_similar": "/api/v1/similarity/visual/{anime_id}",
+            "admin_health": "/api/v1/admin/health",
             "stats": "/api/v1/admin/stats",
+            "collection_info": "/api/v1/admin/collection/info",
             "docs": "/docs",
-        },
+        }
     }
 
 
