@@ -89,6 +89,21 @@ class QdrantClient:
         self._vector_size = settings.vector_names.get("title_vector", 1024)  # BGE-M3 default
         self._image_vector_size = settings.vector_names.get("image_vector", 768)  # OpenCLIP ViT-L/14 default
 
+    @property
+    def vector_size(self) -> int:
+        """Get the text vector embedding size."""
+        return self._vector_size
+
+    @property
+    def image_vector_size(self) -> int:
+        """Get the image vector embedding size."""
+        return self._image_vector_size
+
+    @property
+    def distance_metric(self) -> str:
+        """Get the distance metric used for vector similarity."""
+        return self._distance_metric
+
     @classmethod
     async def create(
         cls,
@@ -698,7 +713,7 @@ class QdrantClient:
             return True
 
         except Exception as e:
-            logger.exception(f"Failed to update vector {vector_name} for {anime_id}: {e}")
+            logger.exception(f"Failed to update vector {vector_name} for {anime_id}")
             return False
 
     async def update_batch_vectors(
@@ -858,7 +873,7 @@ class QdrantClient:
 
                 except Exception as e:
                     # Retry failed - mark all as failed
-                    logger.error(f"Batch update failed after retries: {e}")
+                    logger.exception("Batch update failed after retries")
                     for anime_id in grouped_updates.keys():
                         for vector_name in grouped_updates[anime_id].keys():
                             results.append({

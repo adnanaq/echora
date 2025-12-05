@@ -194,9 +194,9 @@ async def get_collection_info(
         return {
             "collection_name": qdrant_client.collection_name,
             "qdrant_url": qdrant_client.url,
-            "vector_size": qdrant_client._vector_size,
-            "image_vector_size": qdrant_client._image_vector_size,
-            "distance_metric": qdrant_client._distance_metric,
+            "vector_size": qdrant_client.vector_size,
+            "image_vector_size": qdrant_client.image_vector_size,
+            "distance_metric": qdrant_client.distance_metric,
             "stats": stats,
             "processors": {
                 "text_processor": text_processor.get_model_info(),
