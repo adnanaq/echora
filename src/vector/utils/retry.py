@@ -113,7 +113,7 @@ async def retry_with_backoff(
                         f"Max retries ({max_retries}) exceeded. Last error: {last_error}"
                     )
                 else:
-                    logger.exception(f"Non-transient error: {e}")
+                    logger.exception("Non-transient error")
 
                 raise
 
