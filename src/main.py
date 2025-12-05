@@ -25,9 +25,7 @@ from .vector.processors.embedding_manager import MultiVectorEmbeddingManager
 from .vector.processors.text_processor import TextProcessor
 from .vector.processors.vision_processor import VisionProcessor
 from qdrant_client import AsyncQdrantClient
-# from src.cache_manager.instance import http_cache_manager
-# from src.cache_manager.result_cache import close_result_cache_redis_client
-from .dependencies import get_qdrant_client # New import
+from .dependencies import get_qdrant_client
 from src.cache_manager.instance import http_cache_manager
 from src.cache_manager.result_cache import close_result_cache_redis_client
 
@@ -117,17 +115,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Error closing AsyncQdrantClient")
 
-            try:
-                await http_cache_manager.close_async()
-                logger.info("HTTP cache client closed successfully")
-            except Exception:
-                logger.exception("Error closing HTTP cache manager")
+        try:
+            await http_cache_manager.close_async()
+            logger.info("HTTP cache client closed successfully")
+        except Exception:
+            logger.exception("Error closing HTTP cache manager")
 
-            try:
-                await close_result_cache_redis_client()
-                logger.info("Result cache Redis client closed successfully")
-            except Exception:
-                logger.exception("Error closing result cache Redis client")
+        try:
+            await close_result_cache_redis_client()
+            logger.info("Result cache Redis client closed successfully")
+        except Exception:
+            logger.exception("Error closing result cache Redis client")
 
 
 # Create FastAPI app
