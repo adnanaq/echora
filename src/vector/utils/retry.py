@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, TypeVar
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +30,14 @@ def default_is_transient_error(error: Exception) -> bool:
 
 
 async def retry_with_backoff(
-    operation: Callable[..., Any],
+    operation: Callable[..., Awaitable[T]],
     max_retries: int = 3,
     retry_delay: float = 1.0,
     operation_args: Optional[Tuple[Any, ...]] = None,
     operation_kwargs: Optional[Dict[str, Any]] = None,
     is_transient_error: Optional[Callable[[Exception], bool]] = None,
     on_retry: Optional[Callable[..., None]] = None,
-) -> Any:
+) -> T:
     """Execute an async operation with retry logic and exponential backoff.
 
     This utility function handles transient errors by retrying the operation
@@ -70,22 +72,21 @@ async def retry_with_backoff(
     """
     operation_args = operation_args or ()
     operation_kwargs = operation_kwargs or {}
-    error_checker = is_transient_error or default_is_transient_error
 
     retry_count = 0
-    last_error = None
 
     while retry_count <= max_retries:
         try:
             result = await operation(*operation_args, **operation_kwargs)
-            return result
-
         except Exception as e:
-            last_error = e
             retry_count += 1
 
             # Check if this is a transient error worth retrying
-            is_transient = error_checker(e)
+            # Use provided error checker or default
+            if is_transient_error is not None:
+                is_transient = is_transient_error(e)
+            else:
+                is_transient = default_is_transient_error(e)
 
             if is_transient and retry_count <= max_retries:
                 # Exponential backoff
@@ -109,13 +110,14 @@ async def retry_with_backoff(
             else:
                 # Non-transient error or max retries exceeded
                 if retry_count > max_retries:
-                    logger.exception(
-                        f"Max retries ({max_retries}) exceeded. Last error: {last_error}"
-                    )
+                    logger.exception(f"Max retries ({max_retries}) exceeded. Last error: {e}")
                 else:
                     logger.exception("Non-transient error")
 
                 raise
+        else:
+            # Success - return result
+            return result
 
-    # This should never be reached, but raise last error as fallback
-    raise last_error  # type: ignore
+    # Unreachable: loop either returns on success or raises on error
+    raise RuntimeError("Unexpected state in retry_with_backoff")
