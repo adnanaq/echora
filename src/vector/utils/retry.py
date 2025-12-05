@@ -18,6 +18,16 @@ def default_is_transient_error(error: Exception) -> bool:
     Returns:
         True if error is transient, False otherwise
     """
+    # Check common transient exception types
+    transient_types = (
+        asyncio.TimeoutError,
+        ConnectionError,
+        TimeoutError,
+    )
+    if isinstance(error, transient_types):
+        return True
+
+    # Fallback to keyword matching for library-specific errors
     error_str = str(error).lower()
     transient_keywords = [
         "timeout",
@@ -110,7 +120,7 @@ async def retry_with_backoff(
             else:
                 # Non-transient error or max retries exceeded
                 if retry_count > max_retries:
-                    logger.exception(f"Max retries ({max_retries}) exceeded. Last error: {e}")
+                    logger.exception(f"Max retries ({max_retries}) exceeded")
                 else:
                     logger.exception("Non-transient error")
 
