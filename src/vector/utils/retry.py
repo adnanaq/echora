@@ -61,12 +61,13 @@ async def retry_with_backoff(
         operation_args: Tuple of positional arguments to pass to operation
         operation_kwargs: Dictionary of keyword arguments to pass to operation
         is_transient_error: Optional custom function to determine if error is transient
-        on_retry: Optional callback function called on each retry attempt
+        on_retry: Optional callback called on each retry with (attempt, max_retries, error, delay)
 
     Returns:
         Result of the operation if successful
 
     Raises:
+        ValueError: If max_retries or retry_delay are negative
         Exception: The last exception if all retries are exhausted or if non-transient error
 
     Example:
@@ -80,8 +81,17 @@ async def retry_with_backoff(
         ...     operation_kwargs={"id": "123", "value": 456}
         ... )
     """
-    operation_args = operation_args or ()
-    operation_kwargs = operation_kwargs or {}
+    # Validate input parameters
+    if max_retries < 0:
+        raise ValueError("max_retries must be >= 0")
+    if retry_delay < 0:
+        raise ValueError("retry_delay must be >= 0")
+
+    # Normalize optional arguments for type checker
+    if operation_args is None:
+        operation_args = ()
+    if operation_kwargs is None:
+        operation_kwargs = {}
 
     retry_count = 0
 
@@ -129,5 +139,6 @@ async def retry_with_backoff(
             # Success - return result
             return result
 
-    # Unreachable: loop either returns on success or raises on error
-    raise RuntimeError("Unexpected state in retry_with_backoff")
+    # pragma: no cover - This is truly unreachable with validation in place
+    # The loop always returns on success or raises on error
+    raise RuntimeError
