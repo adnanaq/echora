@@ -20,6 +20,7 @@ services:
       start_period: 40s
     restart: unless-stopped
     ulimits:
+      # Increase file descriptor limit for high-concurrency database operations
       nofile:
         soft: 65536
         hard: 65536
