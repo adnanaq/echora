@@ -4,13 +4,14 @@ Root test configuration for all tests.
 Provides isolated test collection to avoid touching production data.
 """
 
+from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 from qdrant_client import AsyncQdrantClient
 
-from src.config.settings import get_settings
+from src.config.settings import Settings, get_settings
 from src.vector.client.qdrant_client import QdrantClient
 from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
 from src.vector.processors.text_processor import TextProcessor
@@ -18,7 +19,7 @@ from src.vector.processors.vision_processor import VisionProcessor
 
 
 @pytest.fixture
-def mock_redis_cache_miss():
+def mock_redis_cache_miss() -> Generator[AsyncMock, None, None]:
     """
     Ensure any result cache lookup misses by patching the Redis client used by the result cache.
 
@@ -37,12 +38,12 @@ def mock_redis_cache_miss():
 
 
 @pytest.fixture(scope="session")
-def settings():
+def settings() -> Settings:
     """
     Provide application settings configured to use the test Qdrant collection.
-    
+
     Overrides the `qdrant_collection_name` attribute to "anime_database_test" so all tests operate against the dedicated test collection.
-    
+
     Returns:
         settings: Settings instance with `qdrant_collection_name` set to "anime_database_test".
     """
@@ -53,19 +54,21 @@ def settings():
 
 
 @pytest_asyncio.fixture(scope="session")
-async def text_processor(settings):
+async def text_processor(settings: Settings) -> TextProcessor:
     """Create TextProcessor for tests."""
     return TextProcessor(settings)
 
 
 @pytest_asyncio.fixture(scope="session")
-async def vision_processor(settings):
+async def vision_processor(settings: Settings) -> VisionProcessor:
     """Create VisionProcessor for tests."""
     return VisionProcessor(settings)
 
 
 @pytest_asyncio.fixture(scope="session")
-async def embedding_manager(text_processor, vision_processor, settings):
+async def embedding_manager(
+    text_processor: TextProcessor, vision_processor: VisionProcessor, settings: Settings
+) -> MultiVectorEmbeddingManager:
     """Create MultiVectorEmbeddingManager for tests."""
     return MultiVectorEmbeddingManager(
         text_processor=text_processor,
@@ -75,14 +78,21 @@ async def embedding_manager(text_processor, vision_processor, settings):
 
 
 @pytest_asyncio.fixture(scope="session")
-async def client(settings, embedding_manager):
+async def client(
+    settings: Settings, embedding_manager: MultiVectorEmbeddingManager
+) -> AsyncGenerator[QdrantClient, None]:
     """Create QdrantClient with test collection.
 
     Collection is automatically created/validated during client initialization.
     Uses session scope so collection persists across all tests.
+
+    Args:
+        settings: Application settings fixture
+        embedding_manager: Unused parameter, declared to ensure embedding models
+                          are loaded before client initialization (fixture dependency ordering)
     """
 
-    async_qdrant_client = None
+    async_qdrant_client: AsyncQdrantClient | None = None
 
     try:
         # Initialize AsyncQdrantClient from qdrant-client library
@@ -108,14 +118,14 @@ async def client(settings, embedding_manager):
     # Cleanup: Delete test collection after tests for isolation
     try:
         await client.delete_collection()
-    except Exception:
-        # Ignore cleanup errors to avoid test failures
-        pass
+    except Exception as e:
+        # Ignore cleanup errors to avoid test failures, but log for visibility
+        print(f"Warning: failed to delete test collection: {e}")
 
     # Close AsyncQdrantClient connection to release resources
     try:
         if async_qdrant_client:
             await async_qdrant_client.close()
-    except Exception:
-        # Ignore close errors to avoid test failures
-        pass
+    except Exception as e:
+        # Ignore close errors to avoid test failures, but log for visibility
+        print(f"Warning: failed to close AsyncQdrantClient: {e}")

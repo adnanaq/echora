@@ -192,57 +192,99 @@ async def update_vectors(
         anime_entries.append(AnimeEntry(**anime_dict))
 
     total_anime = len(anime_entries)
+    num_batches = (total_anime + batch_size - 1) // batch_size  # Ceiling division
     logger.info(
         f"Updating {len(vector_names)} vector(s) across {total_anime} anime entries "
-        f"(batch size: {batch_size})"
+        f"in {num_batches} batch(es) of {batch_size}"
     )
 
-    # Generate vectors for the target anime
-    logger.info(f"Generating vectors for {len(anime_entries)} anime entries...")
-    gen_results = await embedding_manager.process_anime_batch(anime_entries)
+    # Process anime in batches to control memory usage
+    all_batch_results: List[Dict[str, Any]] = []
+    all_generation_failures: List[Dict[str, Any]] = []
 
-    # Prepare updates for Qdrant
-    updates: List[Dict[str, Any]] = []
-    generation_failures: List[Dict[str, Any]] = []
+    for batch_num in range(num_batches):
+        batch_start = batch_num * batch_size
+        batch_end = min(batch_start + batch_size, total_anime)
+        batch_anime = anime_entries[batch_start:batch_end]
 
-    for i, anime_entry in enumerate(anime_entries):
-        gen_result = gen_results[i]
-        vectors = gen_result.get("vectors", {})
+        logger.info(
+            f"Processing batch {batch_num + 1}/{num_batches}: "
+            f"anime {batch_start + 1}-{batch_end} of {total_anime}"
+        )
 
-        for vector_name in vector_names:
-            vector_data = vectors.get(vector_name)
-            if vector_data and len(vector_data) > 0:
-                updates.append(
-                    {
-                        "anime_id": anime_entry.id,
-                        "vector_name": vector_name,
-                        "vector_data": vector_data,
-                    }
-                )
-            else:
-                generation_failures.append(
-                    {
-                        "anime_id": anime_entry.id,
-                        "vector_name": vector_name,
-                        "error": "Vector generation failed or returned None",
-                    }
-                )
-    
-    if not updates:
+        # Generate vectors for this batch
+        gen_results = await embedding_manager.process_anime_batch(batch_anime)
+
+        # Validate generation results match batch length
+        if not gen_results or len(gen_results) != len(batch_anime):
+            raise VectorGenerationError(
+                f"Vector generation failed for batch {batch_num + 1}: "
+                f"expected {len(batch_anime)} results, got {len(gen_results) if gen_results else 0}"
+            )
+
+        # Prepare updates for this batch
+        batch_updates: List[Dict[str, Any]] = []
+        batch_generation_failures: List[Dict[str, Any]] = []
+
+        for i, anime_entry in enumerate(batch_anime):
+            gen_result = gen_results[i]
+            vectors = gen_result.get("vectors", {})
+
+            for vector_name in vector_names:
+                vector_data = vectors.get(vector_name)
+                if vector_data and len(vector_data) > 0:
+                    batch_updates.append(
+                        {
+                            "anime_id": anime_entry.id,
+                            "vector_name": vector_name,
+                            "vector_data": vector_data,
+                        }
+                    )
+                else:
+                    batch_generation_failures.append(
+                        {
+                            "anime_id": anime_entry.id,
+                            "vector_name": vector_name,
+                            "error": "Vector generation failed or returned None",
+                        }
+                    )
+
+        all_generation_failures.extend(batch_generation_failures)
+
+        # Update Qdrant with this batch
+        if batch_updates:
+            batch_result = await client.update_batch_vectors(
+                updates=batch_updates,
+                dedup_policy="last-wins",
+            )
+            all_batch_results.append(batch_result)
+            logger.info(
+                f"Batch {batch_num + 1} complete: "
+                f"{batch_result['success']} successful, {batch_result['failed']} failed"
+            )
+        else:
+            logger.warning(f"Batch {batch_num + 1} had no valid updates to process")
+
+    # Check if we got any results
+    if not all_batch_results:
         raise VectorGenerationError("No vectors were successfully generated for update.")
 
-    logger.info(f"Prepared {len(updates)} vector updates.")
+    # Aggregate results from all batches
+    total_successful = sum(r["success"] for r in all_batch_results)
+    total_failed = sum(r["failed"] for r in all_batch_results)
+    combined_results: List[Dict[str, Any]] = []
+    for batch_result in all_batch_results:
+        combined_results.extend(batch_result.get("results", []))
 
-    # Call the low-level update method
-    result = await client.update_batch_vectors(
-        updates=updates,
-        dedup_policy="last-wins", # Default policy
-    )
-
-    # Add generation failures to the result for comprehensive reporting
-    result["generation_failures"] = len(generation_failures)
-    result["generation_failures_detail"] = generation_failures
-    result["total_requested_updates"] = total_anime * len(vector_names)
+    # Create aggregated result
+    result = {
+        "success": total_successful,
+        "failed": total_failed,
+        "results": combined_results,
+        "total_requested_updates": total_anime * len(vector_names),
+        "generation_failures": len(all_generation_failures),
+        "generation_failures_detail": all_generation_failures,
+    }
 
     # Calculate per-vector statistics from results
     vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
@@ -300,8 +342,8 @@ async def update_vectors(
         "successful_anime": successful_anime,
         "failed_anime": failed_anime,
         "total_updates": result["total_requested_updates"],
-        "successful_updates": result["successful_updates"],
-        "failed_updates": result["failed_updates"],
+        "successful_updates": result["success"],
+        "failed_updates": result["failed"],
         "generation_failures": result["generation_failures"],
         "vector_stats": vector_stats,
     }
@@ -314,33 +356,36 @@ async def async_main(args, settings):
     else:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
-    # Initialize embedding manager and processors
-    text_processor = TextProcessor(settings)
-    vision_processor = VisionProcessor(settings)
-    embedding_manager = MultiVectorEmbeddingManager(
-        text_processor=text_processor,
-        vision_processor=vision_processor,
-        settings=settings
-    )
+    try:
+        # Initialize embedding manager and processors
+        text_processor = TextProcessor(settings)
+        vision_processor = VisionProcessor(settings)
+        embedding_manager = MultiVectorEmbeddingManager(
+            text_processor=text_processor,
+            vision_processor=vision_processor,
+            settings=settings
+        )
 
-    # Initialize Qdrant client using async factory
-    qdrant_client = await QdrantClient.create(
-        settings=settings,
-        async_qdrant_client=async_qdrant_client,
-        url=settings.qdrant_url,
-        collection_name=settings.qdrant_collection_name,
-    )
+        # Initialize Qdrant client using async factory
+        qdrant_client = await QdrantClient.create(
+            settings=settings,
+            async_qdrant_client=async_qdrant_client,
+            url=settings.qdrant_url,
+            collection_name=settings.qdrant_collection_name,
+        )
 
-    # Run update and return result
-    return await update_vectors(
-        client=qdrant_client,
-        embedding_manager=embedding_manager,
-        vector_names=args.vectors,
-        anime_index=args.index,
-        anime_title=args.title,
-        batch_size=args.batch_size,
-        data_file=args.file,
-    )
+        # Run update and return result
+        return await update_vectors(
+            client=qdrant_client,
+            embedding_manager=embedding_manager,
+            vector_names=args.vectors,
+            anime_index=args.index,
+            anime_title=args.title,
+            batch_size=args.batch_size,
+            data_file=args.file,
+        )
+    finally:
+        await async_qdrant_client.close()
 
 
 def main():
