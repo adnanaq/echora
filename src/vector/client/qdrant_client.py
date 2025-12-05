@@ -545,8 +545,8 @@ class QdrantClient:
             # Simple health check by getting collections
             await self.client.get_collections()
             return True
-        except Exception as e:
-            logger.error(f"Health check failed: {e}")
+        except Exception:
+            logger.exception("Health check failed")
             return False
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -579,6 +579,37 @@ class QdrantClient:
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
             return {"error": str(e)}
+
+    async def get_collection_info(self) -> Any:
+        """Get collection information.
+
+        Returns:
+            Collection information from Qdrant
+        """
+        return await self.client.get_collection(self.collection_name)
+
+    async def scroll(
+        self,
+        limit: int = 10,
+        with_vectors: bool = False,
+        offset: Optional[Any] = None,
+    ) -> Tuple[List[Any], Optional[Any]]:
+        """Scroll through collection points.
+
+        Args:
+            limit: Maximum number of points to return
+            with_vectors: Whether to include vector data
+            offset: Pagination offset (point ID to start from)
+
+        Returns:
+            Tuple of (list of records, next offset for pagination)
+        """
+        return await self.client.scroll(
+            collection_name=self.collection_name,
+            limit=limit,
+            with_vectors=with_vectors,
+            offset=offset,
+        )
 
     def _generate_point_id(self, anime_id: str) -> str:
         """Generate unique point ID from anime ID.
@@ -712,7 +743,7 @@ class QdrantClient:
             logger.debug(f"Updated {vector_name} for anime {anime_id}")
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Failed to update vector {vector_name} for {anime_id}")
             return False
 
@@ -880,7 +911,7 @@ class QdrantClient:
                                 "anime_id": anime_id,
                                 "vector_name": vector_name,
                                 "success": False,
-                                "error": f"Update failed after {max_retries} retries: {str(e)}"
+                                "error": f"Update failed after {max_retries} retries: {e!s}"
                             })
 
             logger.info(
@@ -1110,8 +1141,8 @@ class QdrantClient:
             await self.client.delete_collection(self.collection_name)
             logger.info(f"Deleted collection: {self.collection_name}")
             return True
-        except Exception as e:
-            logger.error(f"Failed to delete collection: {e}")
+        except Exception:
+            logger.exception(f"Failed to delete collection: {self.collection_name}")
             return False
 
     async def create_collection(self) -> bool:
@@ -1438,7 +1469,7 @@ class QdrantClient:
 
     async def search_characters(
         self,
-        query_embedding: List[float],
+        query_embedding: Optional[List[float]] = None,
         image_embedding: Optional[List[float]] = None,
         limit: int = 10,
         fusion_method: str = "rrf",
@@ -1447,7 +1478,7 @@ class QdrantClient:
         """Search specifically for character-related content using character vectors.
 
         Args:
-            query_embedding: Pre-computed text embedding for the query.
+            query_embedding: Optional pre-computed text embedding for the query.
             image_embedding: Optional pre-computed image embedding for the query.
             limit: Maximum number of results
             fusion_method: Fusion algorithm - "rrf" or "dbsf"
