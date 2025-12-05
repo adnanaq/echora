@@ -82,7 +82,7 @@ async def main() -> None:
             await client.delete_collection()
             print(f"  Deleted existing collection: {settings.qdrant_collection_name}")
         except Exception as e:
-            print(f"  No existing collection to delete: {e}")
+            print(f"  Could not delete existing collection (may not exist): {e}")
 
         # Create fresh collection
         await client.create_collection()
