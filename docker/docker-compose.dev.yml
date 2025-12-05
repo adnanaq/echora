@@ -20,9 +20,29 @@ services:
       start_period: 40s
     restart: unless-stopped
     ulimits:
+      # Increase file descriptor limit for high-concurrency database operations
       nofile:
         soft: 65536
         hard: 65536
+
+  # Redis Cache (for HTTP caching in enrichment pipeline)
+  redis:
+    image: redis:7-alpine
+    container_name: anime-vector-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - vector-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
   # Anime Vector Service
   vector-service:
@@ -65,12 +85,19 @@ services:
 
       # Logging
       - LOG_LEVEL=INFO
+
+      # HTTP Cache Configuration
+      - ENABLE_HTTP_CACHE=false
+      - HTTP_CACHE_STORAGE=redis
+      - REDIS_CACHE_URL=redis://redis:6379/0
     volumes:
       - model_cache:/app/cache
     networks:
       - vector-network
     depends_on:
       qdrant:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -86,6 +113,8 @@ networks:
 
 volumes:
   qdrant_data:
+    driver: local
+  redis-data:
     driver: local
   model_cache:
     driver: local
