@@ -9,6 +9,7 @@ Uses existing infrastructure:
 - TextProcessor and VisionProcessor
 """
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -32,8 +33,20 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct, Record
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Reindex anime database with vector embeddings")
+    parser.add_argument(
+        "--data-file",
+        default="./data/qdrant_storage/enriched_anime_database.json",
+        help="Path to enriched anime database JSON file (default: ./data/qdrant_storage/enriched_anime_database.json)"
+    )
+    return parser.parse_args()
+
+
 async def main() -> None:
     """Main reindexing function."""
+    args = parse_args()
     print(" Starting anime database reindexing...")
 
     # Load settings
@@ -76,8 +89,8 @@ async def main() -> None:
         print(" Created fresh collection with 11-vector configuration")
 
         # Load anime data
-        print(" Loading anime data...")
-        with open("./data/qdrant_storage/enriched_anime_database.json", "r") as f:
+        print(f" Loading anime data from {args.data_file}...")
+        with open(args.data_file, "r") as f:
             enrichment_data = json.load(f)
 
         anime_data = enrichment_data["data"]
@@ -152,15 +165,13 @@ async def main() -> None:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
         
                 # Save updated anime data with generated IDs
-                print("\n💾 Saving updated anime data with generated IDs...")
-                with open("./data/qdrant_storage/enriched_anime_database.json", "w", encoding="utf-8") as f:
+                print(f"\nSaving updated anime data with generated IDs to {args.data_file}...")
+                with open(args.data_file, "w", encoding="utf-8") as f:
                     json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
-                print("✅ Updated data saved successfully")
+                print("Updated data saved successfully")
 
-                # Verify results
-                # Note: Using internal client.client for verification operations not exposed in wrapper
-                # TODO: Consider adding wrapper methods for get_collection() and scroll() if used frequently
-                info = await client.client.get_collection(settings.qdrant_collection_name)
+                # Verify results using wrapper methods
+                info = await client.get_collection_info()
                 print("\n Final collection status:")
                 print(f"   Points: {info.points_count}")
                 print(f"   Expected: {len(points)} points")
@@ -168,8 +179,7 @@ async def main() -> None:
                 # Check vector completeness across sample points
                 try:
                     # scroll() returns tuple[list[Record], Union[int, str, PointId, None]]
-                    scroll_result: Tuple[List[Record], Any] = await client.client.scroll(
-                        collection_name=settings.qdrant_collection_name,
+                    scroll_result: Tuple[List[Record], Any] = await client.scroll(
                         limit=5,
                         with_vectors=True,
                     )
