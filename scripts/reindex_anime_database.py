@@ -81,7 +81,7 @@ async def main() -> None:
         try:
             await client.delete_collection()
             print(f"  Deleted existing collection: {settings.qdrant_collection_name}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Best effort: continue if collection doesn't exist
             print(f"  Could not delete existing collection (may not exist): {e}")
 
         # Create fresh collection
@@ -90,7 +90,7 @@ async def main() -> None:
 
         # Load anime data
         print(f" Loading anime data from {args.data_file}...")
-        with open(args.data_file, "r") as f:
+        with open(args.data_file, "r", encoding="utf-8") as f:
             enrichment_data = json.load(f)
 
         anime_data = enrichment_data["data"]
@@ -111,7 +111,7 @@ async def main() -> None:
                 anime_entries.append(anime_entry)
                 print(f"   {i+1}/{len(anime_data)}: {anime_entry.title}")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - Skip invalid entries, continue processing rest
                 print(f"   Failed to convert entry {i+1}: {e}")
                 continue
 
@@ -144,8 +144,9 @@ async def main() -> None:
                     )
                     continue
 
-                # Generate point ID from anime ID (same logic as QdrantClient._generate_point_id)
-                point_id = hashlib.md5(doc_data["payload"]["id"].encode()).hexdigest()
+                # Generate point ID from anime ID (matches QdrantClient._generate_point_id)
+                # MD5 is used for non-cryptographic deterministic ID generation
+                point_id = hashlib.md5(doc_data["payload"]["id"].encode()).hexdigest()  # noqa: S324
 
                 point = PointStruct(
                     id=point_id,
@@ -156,10 +157,14 @@ async def main() -> None:
 
             print(f"Successfully generated vectors for {len(points)} entries.")
 
+            if not points:
+                print("No points to index after embedding; skipping Qdrant upsert.")
+                return
+
             # Add documents in batches
             success = await client.add_documents(
                 points,
-                batch_size=64, # Use a reasonable batch size for efficiency
+                batch_size=64,  # Use a reasonable batch size for efficiency
             )
             if success:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
@@ -212,13 +217,13 @@ async def main() -> None:
                     else:
                         print("  Warning: Not all vectors being generated")
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - Verification is optional, continue on failure
                     print(f"  Could not verify vector completeness: {e}")
 
             else:
                 print(" All indexing failed")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Log all indexing errors with traceback for debugging
             print(f" Indexing error: {e}")
             import traceback
 

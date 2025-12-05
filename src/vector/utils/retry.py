@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 def default_is_transient_error(error: Exception) -> bool:
     """Check if an error is transient and worth retrying.
 
+    Detects common transient errors using type checking and keyword matching.
+    Type-based detection covers standard Python exceptions (asyncio.TimeoutError,
+    ConnectionError, TimeoutError). Keyword matching handles library-specific errors
+    from HTTP clients, database drivers, etc.
+
+    For library-specific exceptions (e.g., qdrant_client.http.exceptions, httpx errors),
+    consider passing a custom is_transient_error function to retry_with_backoff that
+    checks for specific exception types relevant to your use case.
+
     Args:
         error: Exception to check
 
@@ -83,9 +92,9 @@ async def retry_with_backoff(
     """
     # Validate input parameters
     if max_retries < 0:
-        raise ValueError("max_retries must be >= 0")
+        raise ValueError("max_retries must be >= 0")  # noqa: TRY003
     if retry_delay < 0:
-        raise ValueError("retry_delay must be >= 0")
+        raise ValueError("retry_delay must be >= 0")  # noqa: TRY003
 
     # Normalize optional arguments for type checker
     if operation_args is None:
