@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ async def retry_with_backoff(
     max_retries: int = 3,
     retry_delay: float = 1.0,
     operation_args: Optional[Tuple[Any, ...]] = None,
-    operation_kwargs: Optional[dict] = None,
+    operation_kwargs: Optional[Dict[str, Any]] = None,
     is_transient_error: Optional[Callable[[Exception], bool]] = None,
     on_retry: Optional[Callable[..., None]] = None,
 ) -> Any:
@@ -109,11 +109,11 @@ async def retry_with_backoff(
             else:
                 # Non-transient error or max retries exceeded
                 if retry_count > max_retries:
-                    logger.error(
+                    logger.exception(
                         f"Max retries ({max_retries}) exceeded. Last error: {last_error}"
                     )
                 else:
-                    logger.error(f"Non-transient error: {e}")
+                    logger.exception(f"Non-transient error: {e}")
 
                 raise
 

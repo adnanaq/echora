@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 # Disable CUDA to force CPU usage
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-<<<<<<< HEAD
     Initialize services on startup and cleanup on shutdown.
 
     Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes Qdrant client,
@@ -60,7 +59,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Yields:
         None after successful initialization
 
-<<<<<<< HEAD
     Raises:
         RuntimeError: If Qdrant health check fails or vector database is unavailable
     """
@@ -116,20 +114,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             try:
                 await async_qdrant_client.close()
                 logger.info("AsyncQdrantClient closed successfully")
-            except Exception as e:
-                logger.error(f"Error closing AsyncQdrantClient: {e}")
+            except Exception:
+                logger.exception("Error closing AsyncQdrantClient")
 
             try:
                 await http_cache_manager.close_async()
                 logger.info("HTTP cache client closed successfully")
-            except Exception as e:
-                logger.error(f"Error closing HTTP cache manager: {e}")
+            except Exception:
+                logger.exception("Error closing HTTP cache manager")
 
             try:
                 await close_result_cache_redis_client()
                 logger.info("Result cache Redis client closed successfully")
-            except Exception as e:
-                logger.error(f"Error closing result cache Redis client: {e}")
+            except Exception:
+                logger.exception("Error closing result cache Redis client")
 
 
 # Create FastAPI app
@@ -158,7 +156,7 @@ async def health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client))
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "anime-vector-service",
             "version": settings.api_version,
             "qdrant_status": qdrant_status,

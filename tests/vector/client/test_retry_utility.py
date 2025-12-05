@@ -1,7 +1,7 @@
 """Unit tests for retry utility function."""
 
 import asyncio
-from typing import Any, Callable, Optional
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -86,7 +86,7 @@ class TestRetryWithBackoff:
             "success"
         ]
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         await retry_with_backoff(
             operation=mock_operation,
@@ -94,7 +94,7 @@ class TestRetryWithBackoff:
             retry_delay=0.1,
         )
 
-        end_time = asyncio.get_event_loop().time()
+        end_time = asyncio.get_running_loop().time()
         elapsed = end_time - start_time
 
         # First retry: 0.1s, second retry: 0.2s

@@ -6,7 +6,7 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional, TypeGuard
+from typing import Any, Dict, List, Optional, Tuple, TypeGuard, cast
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -86,8 +86,8 @@ class QdrantClient:
         self._distance_metric = settings.qdrant_distance_metric
 
         # Initialize vector sizes based on settings
-        self._vector_size = settings.vector_names.get("title_vector", 384) # Default to a common text vector size
-        self._image_vector_size = settings.vector_names.get("image_vector", 512) # Default to a common image vector size
+        self._vector_size = settings.vector_names.get("title_vector", 1024)  # BGE-M3 default
+        self._image_vector_size = settings.vector_names.get("image_vector", 768)  # OpenCLIP ViT-L/14 default
 
     @classmethod
     async def create(
@@ -528,7 +528,7 @@ class QdrantClient:
         """
         try:
             # Simple health check by getting collections
-            collections = await self.client.get_collections()
+            await self.client.get_collections()
             return True
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -586,8 +586,6 @@ class QdrantClient:
         Args:
             documents: List of PointStruct objects (each containing ID, vectors, and payload)
             batch_size: Number of documents to process per batch
-            progress_callback: Optional callback function to report progress.
-                             It receives the index of the processed document, the total number of documents, and the point itself.
 
         Returns:
             True if successful, False otherwise
@@ -600,14 +598,14 @@ class QdrantClient:
                 batch_points = documents[i : i + batch_size]
 
                 if batch_points:
-                        # Upsert batch to Qdrant
-                        await self.client.upsert(
-                            collection_name=self.collection_name, points=batch_points, wait=True
-                        )
-                        logger.info(
-                            f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(batch_points)} points)"
-                        )
-                        
+                    # Upsert batch to Qdrant
+                    await self.client.upsert(
+                        collection_name=self.collection_name, points=batch_points, wait=True
+                    )
+                    logger.info(
+                        f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(batch_points)} points)"
+                    )
+
             logger.info(f"Successfully added {total_docs} documents")
             return True
 
@@ -703,114 +701,6 @@ class QdrantClient:
             logger.exception(f"Failed to update vector {vector_name} for {anime_id}: {e}")
             return False
 
-    # async def update_single_anime_vector(
-    #     self,
-    #     anime_entry: AnimeEntry,
-    #     vector_name: str,
-    # ) -> Dict[str, Any]:
-    #     """Update a single vector for an anime by auto-generating the embedding.
-    #
-    #     This is a high-level convenience method that:
-    #     1. Takes an AnimeEntry object
-    #     2. Automatically generates the vector embedding
-    #     3. Updates the vector in Qdrant
-    #
-    #     Args:
-    #         anime_entry: AnimeEntry object containing anime data
-    #         vector_name: Name of vector to update (e.g., "title_vector", "genre_vector")
-    #
-    #     Returns:
-    #         Dictionary with update result:
-    #             - success: Boolean indicating success/failure
-    #             - anime_id: Anime ID that was updated
-    #             - vector_name: Vector name that was updated
-    #             - error: Error message (only if success=False)
-    #             - generation_failed: Boolean indicating if vector generation failed
-    #
-    #     Example:
-    #         >>> anime = AnimeEntry(id="anime_123", title="One Piece", ...)
-    #         >>> result = await client.update_single_anime_vector(
-    #         ...     anime_entry=anime,
-    #         ...     vector_name="title_vector"
-    #         ... )
-    #         >>> if result['success']:
-    #         ...     print(f"Updated {result['vector_name']} for {result['anime_id']}")
-    #         >>> else:
-    #         ...     print(f"Failed: {result['error']}")
-    #     """
-    #     try:
-    #         # Validate vector name first
-    #         if vector_name not in self.settings.vector_names:
-    #             return {
-    #                 "success": False,
-    #                 "anime_id": anime_entry.id,
-    #                 "vector_name": vector_name,
-    #                 "error": f"Invalid vector name: {vector_name}",
-    #                 "generation_failed": False,
-    #             }
-    #
-    #         # Generate vector using embedding manager
-    #         gen_results = await self.embedding_manager.process_anime_batch([anime_entry])
-    #
-    #         if not gen_results or len(gen_results) == 0:
-    #             return {
-    #                 "success": False,
-    #                 "anime_id": anime_entry.id,
-    #                 "vector_name": vector_name,
-    #                 "error": "Vector generation returned no results",
-    #                 "generation_failed": True,
-    #             }
-    #
-    #         gen_result = gen_results[0]
-    #         vectors = gen_result.get("vectors", {})
-    #
-    #         # Check if requested vector was generated
-    #         if vector_name not in vectors or not vectors[vector_name]:
-    #             return {
-    #                 "success": False,
-    #                 "anime_id": anime_entry.id,
-    #                 "vector_name": vector_name,
-    #                 "error": f"Vector generation failed for {vector_name}",
-    #                 "generation_failed": True,
-    #             }
-    #
-    #         vector_data = vectors[vector_name]
-    #
-    #         # Update the vector in Qdrant using low-level method
-    #         success = await self._update_single_vector(
-    #             anime_id=anime_entry.id,
-    #             vector_name=vector_name,
-    #             vector_data=vector_data,
-    #         )
-    #
-    #         if success:
-    #             return {
-    #                 "success": True,
-    #                 "anime_id": anime_entry.id,
-    #                 "vector_name": vector_name,
-    #                 "generation_failed": False,
-    #             }
-    #         else:
-    #             return {
-    #                 "success": False,
-    #                 "anime_id": anime_entry.id,
-    #                 "vector_name": vector_name,
-    #                 "error": "Failed to update vector in Qdrant",
-    #                 "generation_failed": False,
-    #             }
-    #
-    #     except Exception as e:
-    #         logger.exception(
-    #             f"Failed to update {vector_name} for anime {anime_entry.id}: {e}"
-    #         )
-    #         return {
-    #             "success": False,
-    #             "anime_id": anime_entry.id,
-    #             "vector_name": vector_name,
-    #             "error": str(e),
-    #             "generation_failed": False,
-    #         }
-
     async def update_batch_vectors(
         self,
         updates: List[Dict[str, Any]],
@@ -855,8 +745,8 @@ class QdrantClient:
                 return {"success": 0, "failed": 0, "results": [], "duplicates_removed": 0}
 
             # Check for duplicates and apply deduplication policy
-            seen_keys: Dict[tuple, int] = {}  # (anime_id, vector_name) -> first index
-            duplicates: List[tuple] = []
+            seen_keys: Dict[Tuple[str, str], int] = {}  # (anime_id, vector_name) -> first index
+            duplicates: List[Tuple[str, str]] = []
             deduplicated_updates: List[Dict[str, Any]] = []
 
             for idx, update in enumerate(updates):
@@ -869,8 +759,6 @@ class QdrantClient:
                         continue
                     elif dedup_policy == "last-wins":
                         # Remove previous occurrence, keep this one
-                        first_idx = seen_keys[key]
-                        # Mark for removal by finding it in deduplicated_updates
                         deduplicated_updates = [
                             u for u in deduplicated_updates
                             if not (u["anime_id"] == update["anime_id"] and u["vector_name"] == update["vector_name"])
@@ -938,7 +826,8 @@ class QdrantClient:
             point_updates = []
             for anime_id, vectors_dict in grouped_updates.items():
                 point_id = self._generate_point_id(anime_id)
-                point_updates.append(PointVectors(id=point_id, vector=vectors_dict))
+                # Cast to Any to satisfy mypy - Dict[str, List[float]] is valid for VectorStruct
+                point_updates.append(PointVectors(id=point_id, vector=cast(Any, vectors_dict)))
 
             # Only execute if we have valid updates
             if point_updates:
@@ -1016,152 +905,6 @@ class QdrantClient:
                 "results": results,
                 "duplicates_removed": 0,
             }
-
-    # async def update_batch_anime_vectors(
-    #     self,
-    #     anime_entries: List[AnimeEntry],
-    #     vector_names: Optional[List[str]] = None,
-    #     batch_size: int = 100,
-    #     progress_callback: Optional[Any] = None,
-    # ) -> Dict[str, Any]:
-    #     """Generate and update vectors for a batch of anime entries with automatic batching.
-    #
-    #     This is a high-level method that:
-    #     1. Generates vectors from AnimeEntry objects using the embedding manager
-    #     2. Batches processing for memory efficiency
-    #     3. Updates Qdrant with the generated vectors
-    #     4. Provides progress callbacks for monitoring
-    #
-    #     Args:
-    #         anime_entries: List of AnimeEntry objects to process
-    #         vector_names: Optional list of specific vectors to update.
-    #                      If None, generates and updates all 11 vectors.
-    #                      Valid names: title_vector, character_vector, genre_vector,
-    #                      staff_vector, temporal_vector, streaming_vector, related_vector,
-    #                      franchise_vector, episode_vector, image_vector, character_image_vector
-    #         batch_size: Number of anime to process per batch (default: 100).
-    #                    Smaller values use less memory, larger values are faster.
-    #         progress_callback: Optional callback function(current, total, batch_result)
-    #                           called after each batch completes. Useful for progress logging.
-    #
-    #     Returns:
-    #         Dictionary with comprehensive statistics:
-    #             - total_anime: Total number of anime processed
-    #             - total_requested_updates: Total updates attempted (anime × vectors)
-    #             - successful_updates: Number of successful vector updates
-    #             - failed_updates: Number of failed vector updates
-    #             - generation_failures: Number of vectors that failed to generate
-    #             - results: List of per-update results with anime_id, vector_name, success, error
-    #             - generation_failures_detail: List of generation failures with details
-    #
-    #     Example:
-    #         >>> # Update all vectors for a batch of anime
-    #         >>> result = await client.update_batch_anime_vectors(
-    #         ...     anime_entries=[anime1, anime2],
-    #         ...     vector_names=["title_vector", "genre_vector"]
-    #         ... )
-    #         >>> print(f"Success: {result['successful_updates']}")
-    #
-    #         >>> # With progress callback for CLI
-    #         >>> def log_progress(current, total, batch_result):
-    #         ...     print(f"Processed {current}/{total} anime")
-    #         >>> result = await client.update_batch_anime_vectors(
-    #         ...     anime_entries=large_list,
-    #         ...     progress_callback=log_progress
-    #         ... )
-    #     """
-    #     try:
-    #         if not anime_entries:
-    #             return {
-    #                 "total_anime": 0,
-    #                 "total_requested_updates": 0,
-    #                 "successful_updates": 0,
-    #                 "failed_updates": 0,
-    #                 "generation_failures": 0,
-    #                 "results": [],
-    #                 "generation_failures_detail": [],
-    #             }
-    #
-    #         total_anime = len(anime_entries)
-    #         all_batch_results: List[Dict[str, Any]] = []
-    #         all_generation_failures: List[Dict[str, Any]] = []
-    #
-    #         # Process in batches for memory efficiency
-    #         for batch_start in range(0, total_anime, batch_size):
-    #             batch_end = min(batch_start + batch_size, total_anime)
-    #             batch = anime_entries[batch_start:batch_end]
-    #
-    #             logger.debug(
-    #                 f"Processing batch {batch_start//batch_size + 1}: "
-    #                 f"anime {batch_start + 1}-{batch_end}/{total_anime}"
-    #             )
-    #
-    #             # Generate vectors for this batch using embedding manager
-    #             gen_results = await self.embedding_manager.process_anime_batch(batch)
-    #
-    #             # Prepare updates and track generation failures
-    #             batch_updates: List[Dict[str, Any]] = []
-    #
-    #             for i, anime_entry in enumerate(batch):
-    #                 gen_result = gen_results[i]
-    #                 vectors = gen_result.get("vectors", {})
-    #
-    #                 # Filter to requested vectors if specified
-    #                 if vector_names:
-    #                     requested_vectors = {
-    #                         k: v for k, v in vectors.items() if k in vector_names
-    #                     }
-    #                     # Track which requested vectors failed to generate
-    #                     for requested_vec in vector_names:
-    #                         if (
-    #                             requested_vec not in vectors
-    #                             or not vectors[requested_vec]
-    #                         ):
-    #                             all_generation_failures.append(
-    #                                 {
-    #                                     "anime_id": anime_entry.id,
-    #                                     "vector_name": requested_vec,
-    #                                     "error": "Vector generation failed or returned None",
-    #                                 }
-    #                             )
-    #                 else:
-    #                     requested_vectors = vectors
-    #
-    #                 # Add valid vectors to batch updates
-    #                 for vector_name, vector_data in requested_vectors.items():
-    #                     if vector_data and len(vector_data) > 0:
-    #                         batch_updates.append(
-    #                             {
-    #                                 "anime_id": anime_entry.id,
-    #                                 "vector_name": vector_name,
-    #                                 "vector_data": vector_data,
-    #                             }
-    #                         )
-    #
-    #             # Update in Qdrant if we have valid updates
-    #             if batch_updates:
-    #                 batch_result = await self._update_batch_vectors(batch_updates)
-    #             else:
-    #                 batch_result = {"success": 0, "failed": 0, "results": []}
-    #                 logger.warning(
-    #                     f"Batch {batch_start//batch_size + 1} had no valid updates"
-    #                 )
-    #
-    #             all_batch_results.append(batch_result)
-    #
-    #             # Call progress callback if provided
-    #             if progress_callback:
-    #                 progress_callback(batch_end, total_anime, batch_result)
-    #
-    #         # Aggregate all batch results
-    #         num_vectors = len(vector_names) if vector_names else 11
-    #         return self._aggregate_batch_results(
-    #             all_batch_results, all_generation_failures, total_anime, num_vectors
-    #         )
-    #
-    #     except Exception as e:
-    #         logger.exception(f"Failed to update anime vectors: {e}")
-    #         raise
 
     def _aggregate_batch_results(
         self,
