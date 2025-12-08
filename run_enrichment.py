@@ -70,6 +70,11 @@ def get_anime_by_title(database: Dict[str, Any], title: str) -> Optional[Dict[st
 
 
 async def main():
+    """
+    Orchestrates command-line parsing, selection of an anime entry from an offline JSON database, and runs the enrichment pipeline for that entry.
+    
+    Parses CLI options (--file, --index, --title, --agent, --skip, --only), validates mutually exclusive and required arguments, loads the specified database file, selects an anime entry by index or title, and invokes ProgrammaticEnrichmentPipeline.enrich_anime with optional service filtering and agent directory. Prints progress, the selected entry summary, per-API success indicators, and total enrichment time. Exits the process with a non-zero status on argument validation failures or when the requested anime entry cannot be found.
+    """
     parser = argparse.ArgumentParser(
         description="Run enrichment pipeline on anime from offline database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -165,29 +170,24 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
     print(f"Status: {anime_entry.get('status', 'Unknown')}")
     print(f"{'='*60}\n")
 
-    # Initialize pipeline
-    pipeline = ProgrammaticEnrichmentPipeline()
+    async with ProgrammaticEnrichmentPipeline() as pipeline:
+        # Run enrichment with optional service filtering and agent directory
+        result = await pipeline.enrich_anime(
+            anime_entry,
+            agent_dir=args.agent,
+            skip_services=args.skip,
+            only_services=args.only
+        )
 
-    # Run enrichment with optional service filtering and agent directory
-    result = await pipeline.enrich_anime(
-        anime_entry,
-        agent_dir=args.agent,
-        skip_services=args.skip,
-        only_services=args.only
-    )
+        # Show results
+        print(f"\n{'='*60}")
+        print("API Results:")
+        for api_name, data in result["api_data"].items():
+            status = "✓" if data else "✗"
+            print(f"  {api_name}: {status}")
 
-    # Show results
-    print(f"\n{'='*60}")
-    print("API Results:")
-    for api_name, data in result["api_data"].items():
-        status = "✓" if data else "✗"
-        print(f"  {api_name}: {status}")
-
-    print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
-    print(f"{'='*60}")
-
-    # Cleanup
-    await pipeline.cleanup()
+        print(f"\nTime: {result['enrichment_metadata']['total_time']:.2f}s")
+        print(f"{'='*60}")
 
 
 if __name__ == "__main__":

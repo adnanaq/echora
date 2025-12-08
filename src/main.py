@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 # Disable CUDA to force CPU usage
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -27,9 +27,9 @@ from vector_processing import VisionProcessor
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.utils.image_downloader import ImageDownloader
 from qdrant_client import AsyncQdrantClient
-# from src.cache_manager.instance import http_cache_manager
-# from src.cache_manager.result_cache import close_result_cache_redis_client
-from .dependencies import get_qdrant_client # New import
+from .dependencies import get_qdrant_client
+from src.cache_manager.instance import http_cache_manager
+from src.cache_manager.result_cache import close_result_cache_redis_client
 
 # Get application settings
 settings = get_settings()
@@ -74,18 +74,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Initialize embedding processors
         logger.info("Loading embedding models...")
-        
+
         # Create models via factory
         text_model = EmbeddingModelFactory.create_text_model(settings)
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
-        
+
         # Create utilities
         image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
-        
+
         # Initialize processors with injected dependencies
         text_processor = TextProcessor(text_model, settings)
         vision_processor = VisionProcessor(vision_model, image_downloader, settings)
-        
+
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
@@ -119,13 +119,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     finally:
         # Cleanup on shutdown - guaranteed to run
-        logger.info("Shutting down vector service...")
+        logger.info("Shutting down vector service and closing clients...")
         if async_qdrant_client:
             try:
                 await async_qdrant_client.close()
                 logger.info("AsyncQdrantClient closed successfully")
-            except Exception as e:
-                logger.error(f"Error closing AsyncQdrantClient: {e}")
+            except Exception:
+                logger.exception("Error closing AsyncQdrantClient")
+
+        try:
+            await http_cache_manager.close_async()
+            logger.info("HTTP cache client closed successfully")
+        except Exception:
+            logger.exception("Error closing HTTP cache manager")
+
+        try:
+            await close_result_cache_redis_client()
+            logger.info("Result cache Redis client closed successfully")
+        except Exception:
+            logger.exception("Error closing result cache Redis client")
 
 
 # Create FastAPI app
@@ -154,7 +166,7 @@ async def health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client))
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "anime-vector-service",
             "version": settings.api_version,
             "qdrant_status": qdrant_status,

@@ -169,15 +169,20 @@ Vector embedding generation and processing.
 ## 🧪 Testing
 
 ```bash
-# Run all tests
+# Run all tests (unit + integration)
 ./pants test ::
 
-# Run unit tests only
+# Skip integration tests (fast, no DB/models required)
+./pants test :: -- -m "not integration"
+
+# Run ONLY integration tests (requires Qdrant + ML models)
+docker compose up -d qdrant
+./pants test :: -- -m integration
+
+# Run tests for specific library
 ./pants test libs/qdrant_db/tests/unit::
 
-# Run integration tests (requires Qdrant running)
-docker compose up -d qdrant
-./pants test libs/qdrant_db/tests/integration::
+# Run tests in specific directory
 ./pants test tests/integration::
 
 # Run with coverage
@@ -186,12 +191,15 @@ docker compose up -d qdrant
 
 ### Test Organization
 
-- **Unit Tests**: Mock external dependencies, fast execution
+- **Unit Tests**: Mock external dependencies, fast execution (~seconds)
   - `libs/*/tests/unit/` - Library unit tests
   - `tests/unit/` - Application unit tests
-- **Integration Tests**: Real database and models, slower execution
+  - No external dependencies required
+- **Integration Tests**: Real database and models, slower execution (~minutes)
   - `libs/*/tests/integration/` - Library integration tests
   - `tests/integration/` - Application integration tests
+  - Marked with `@pytest.mark.integration` or `pytestmark = pytest.mark.integration`
+  - Requires: Qdrant DB, ML models (BGE-M3, OpenCLIP), real embeddings
 
 ## 🔧 Configuration
 

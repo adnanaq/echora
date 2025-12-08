@@ -6,7 +6,7 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional, TypeGuard
+from typing import Any, Dict, List, Optional, Tuple, TypeGuard, cast
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -89,6 +89,21 @@ class QdrantClient(VectorDBClient):
         # Initialize vector sizes based on settings
         self._vector_size = settings.text_vector_size
         self._image_vector_size = settings.image_vector_size
+
+    @property
+    def vector_size(self) -> int:
+        """Get the text vector embedding size."""
+        return self._vector_size
+
+    @property
+    def image_vector_size(self) -> int:
+        """Get the image vector embedding size."""
+        return self._image_vector_size
+
+    @property
+    def distance_metric(self) -> str:
+        """Get the distance metric used for vector similarity."""
+        return self._distance_metric
 
     @classmethod
     async def create(
@@ -565,6 +580,37 @@ class QdrantClient(VectorDBClient):
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
             return {"error": str(e)}
+
+    async def get_collection_info(self) -> Any:
+        """Get collection information.
+
+        Returns:
+            Collection information from Qdrant
+        """
+        return await self.client.get_collection(self.collection_name)
+
+    async def scroll(
+        self,
+        limit: int = 10,
+        with_vectors: bool = False,
+        offset: Optional[Any] = None,
+    ) -> Tuple[List[Any], Optional[Any]]:
+        """Scroll through collection points.
+
+        Args:
+            limit: Maximum number of points to return
+            with_vectors: Whether to include vector data
+            offset: Pagination offset (point ID to start from)
+
+        Returns:
+            Tuple of (list of records, next offset for pagination)
+        """
+        return await self.client.scroll(
+            collection_name=self.collection_name,
+            limit=limit,
+            with_vectors=with_vectors,
+            offset=offset,
+        )
 
     def _generate_point_id(self, anime_id: str) -> str:
         """Generate unique point ID from anime ID.

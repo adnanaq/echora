@@ -1,0 +1,103 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.1, pluggy-1.6.0 -- /home/dani/code/echora/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/dani/code/echora
+configfile: pyproject.toml
+plugins: cov-7.0.0, anyio-4.11.0, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 27 items / 26 deselected / 1 selected
+
+tests/scripts/test_update_vectors_integration.py::test_vector_persistence_after_update DEBUG: result={"success": 0, "failed": 1, "results": [{"anime_id": "persistence-test-1", "vector_name": "title_vector", "success": false, "error": "Update failed after 3 retries: Unexpected Response: 404 (Not Found)\nRaw response content:\nb'{\"status\":{\"error\":\"Not found: No point with id 37a3ef5a-e19b-b921-505f-8a4e03e34a9f found\"},\"time\":0.002217023}'"}], "duplicates_removed": 0}
+FAILED
+ERROR: Coverage failure: total of 19 is less than fail-under=80
+
+
+=================================== FAILURES ===================================
+_____________________ test_vector_persistence_after_update _____________________
+
+client = <src.vector.client.qdrant_client.QdrantClient object at 0x7496605c7380>
+embedding_manager = <src.vector.processors.embedding_manager.MultiVectorEmbeddingManager object at 0x7497bf6839e0>
+
+    @pytest.mark.asyncio
+    async def test_vector_persistence_after_update(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
+        """Test that vectors are actually persisted and retrievable after update."""
+        # Create and seed test anime
+        test_anime = AnimeEntry(
+            id="persistence-test-1",
+            title="Persistence Test Anime",
+            genre=["Action"],
+            year=2020,
+            type="TV",
+            status="FINISHED",
+            sources=[]
+        )
+    
+        await client.add_documents([test_anime], batch_size=1)
+    
+        # Generate and update title_vector
+        title_content = embedding_manager.field_mapper._extract_title_content(test_anime)
+        title_vector = embedding_manager.text_processor.encode_text(title_content)
+    
+        batch_updates = [{
+            'anime_id': test_anime.id,
+            'vector_name': 'title_vector',
+            'vector_data': title_vector
+        }]
+    
+        result = await client.update_batch_vectors(batch_updates)
+        print(f"DEBUG: result={json.dumps(result, default=str)}")
+    
+        # Verify update succeeded
+>       assert result['success'] == 1, "Update should succeed"
+E       AssertionError: Update should succeed
+E       assert 0 == 1
+
+tests/scripts/test_update_vectors_integration.py:85: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.vector.client.qdrant_client:qdrant_client.py:615 Failed to add documents: unhashable type: 'dict'
+ERROR    src.vector.utils.retry:retry.py:116 Non-transient error: Unexpected Response: 404 (Not Found)
+Raw response content:
+b'{"status":{"error":"Not found: No point with id 37a3ef5a-e19b-b921-505f-8a4e03e34a9f found"},"time":0.002217023}'
+ERROR    src.vector.client.qdrant_client:qdrant_client.py:972 Batch update failed after retries: Unexpected Response: 404 (Not Found)
+Raw response content:
+b'{"status":{"error":"Not found: No point with id 37a3ef5a-e19b-b921-505f-8a4e03e34a9f found"},"time":0.002217023}'
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                          Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------
+src/api/admin.py                                 76     76     0%   7-233
+src/cache_manager/__init__.py                     3      3     0%   3-6
+src/cache_manager/aiohttp_adapter.py            138    138     0%   12-516
+src/cache_manager/async_redis_storage.py        182    182     0%   12-588
+src/cache_manager/config.py                      36     36     0%   7-144
+src/cache_manager/instance.py                     4      4     0%   9-16
+src/cache_manager/manager.py                     86     86     0%   8-231
+src/cache_manager/result_cache.py                96     96     0%   12-288
+src/config/settings.py                           92      4    96%   356, 365, 376, 387
+src/dependencies.py                              27     27     0%   1-102
+src/main.py                                      77     77     0%   8-179
+src/models/anime.py                             243      7    97%   358-366
+src/validation/__init__.py                        6      6     0%   16-22
+src/validation/ab_testing.py                    213    213     0%   12-643
+src/validation/dataset_analyzer.py              215    215     0%   8-506
+src/validation/embedding_quality.py             249    249     0%   10-592
+src/validation/search_quality.py                185    185     0%   10-566
+src/validation/vector_field_mapping.py           18     18     0%   4-124
+src/validation/vector_system_validator.py       269    269     0%   12-762
+src/vector/client/qdrant_client.py              488    306    37%   172-186, 196-225, 237, 243, 251, 315, 343, 357-359, 372-403, 411-434, 444-449, 470-471, 519-520, 529-535, 544-566, 607-612, 637, 641, 645, 673-704, 855, 866-889, 900, 921-927, 962-964, 997-1013, 1184-1204, 1223-1262, 1273-1290, 1301-1321, 1329-1343, 1355-1357, 1365-1370, 1390-1421, 1444-1505, 1525-1561, 1581-1607, 1629-1679, 1701-1740
+src/vector/processors/anime_field_mapper.py     347    316     9%   45-64, 78, 80, 84, 88, 90, 96-125, 129-153, 157-215, 219-269, 273-294, 298-348, 352-387, 391-491, 499-535, 539-551, 559, 577-585, 597-616
+src/vector/processors/embedding_manager.py      199    170    15%   37-39, 75-95, 110-137, 150-182, 195-299, 313-325, 340-381, 394-433, 444-507, 515-535
+src/vector/processors/text_processor.py         305    218    29%   29-31, 58, 64-66, 79, 82-85, 96-122, 164-168, 179-203, 215-227, 260-275, 279-289, 303, 310-315, 333, 336-344, 358-370, 408, 416-418, 432-441, 449-453, 467-494, 502-512, 524-538, 546-554, 565-578, 586-590, 602-661, 675-730, 743-768, 772-776, 780-781
+src/vector/processors/vision_processor.py       390    313    20%   36-38, 76, 82-84, 97, 123-124, 128-129, 136-137, 157-158, 181-188, 200, 204-215, 226-229, 240-251, 265-282, 296-323, 334-355, 369-396, 400-415, 432-456, 470-515, 523-535, 547-561, 572-576, 580-582, 595-659, 672-736, 748-756, 767-818, 826-838, 849-877, 885
+src/vector/utils/retry.py                        33      8    76%   81, 92-108, 112, 121
+---------------------------------------------------------------------------
+TOTAL                                          3994   3222    19%
+
+8 files skipped due to complete coverage.
+Coverage HTML written to dir htmlcov
+FAIL Required test coverage of 80% not reached. Total coverage: 19.33%
+=========================== short test summary info ============================
+FAILED tests/scripts/test_update_vectors_integration.py::test_vector_persistence_after_update - AssertionError: Update should succeed
+assert 0 == 1
+====================== 1 failed, 26 deselected in 14.70s =======================

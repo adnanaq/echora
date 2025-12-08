@@ -12,10 +12,15 @@ import pytest
 import json
 import tempfile
 from pathlib import Path
+from typing import List
 
 from qdrant_db import QdrantClient
+from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from common.models.anime import AnimeEntry
 from qdrant_client.models import PointStruct
+
+# Mark all tests in this file as integration tests
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -52,8 +57,22 @@ def temp_anime_database():
     Path(temp_path).unlink(missing_ok=True)
 
 
+async def add_test_anime(client: QdrantClient, anime_list: List[AnimeEntry] | AnimeEntry, batch_size: int = 100):
+    """Helper to add anime with correct point IDs."""
+    if isinstance(anime_list, AnimeEntry):
+        anime_list = [anime_list]
+    
+    points = []
+    for anime in anime_list:
+        point_id = client._generate_point_id(anime.id)
+        points.append(PointStruct(id=point_id, payload=anime.model_dump(), vector={}))
+    
+    await client.add_documents(points, batch_size=batch_size)
+
+
+
 @pytest.mark.asyncio
-async def test_vector_persistence_after_update(client: QdrantClient, add_test_anime):
+async def test_vector_persistence_after_update(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that vectors are actually persisted and retrievable after update."""
     # Create and seed test anime
     test_anime = AnimeEntry(
@@ -66,11 +85,11 @@ async def test_vector_persistence_after_update(client: QdrantClient, add_test_an
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Generate and update title_vector
-    title_content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    title_vector = client.embedding_manager.text_processor.encode_text(title_content)
+    title_content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    title_vector = embedding_manager.text_processor.encode_text(title_content)
 
     batch_updates = [{
         'anime_id': test_anime.id,
@@ -86,7 +105,7 @@ async def test_vector_persistence_after_update(client: QdrantClient, add_test_an
 
     # Verify vector is retrievable via search
     # Generate query vector for the same title
-    query_vector = client.embedding_manager.text_processor.encode_text("Persistence Test Anime")
+    query_vector = embedding_manager.text_processor.encode_text("Persistence Test Anime")
 
     search_results = await client.search_single_vector(
         vector_name="title_vector",
@@ -103,21 +122,21 @@ async def test_vector_persistence_after_update(client: QdrantClient, add_test_an
 
 
 @pytest.mark.asyncio
-async def test_detailed_results_provide_accurate_tracking(client: QdrantClient, add_test_anime):
+async def test_detailed_results_provide_accurate_tracking(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that detailed results from update_batch_vectors enable accurate per-update tracking."""
     test_anime = [
         AnimeEntry(id=f"detailed-test-{i}", title=f"Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(3)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=len(test_anime))
 
     # Create batch with mix of valid and invalid updates
     batch_updates = []
 
     # Valid update for anime-0
-    title_content = client.embedding_manager.field_mapper._extract_title_content(test_anime[0])
-    title_vector = client.embedding_manager.text_processor.encode_text(title_content)
+    title_content = embedding_manager.field_mapper._extract_title_content(test_anime[0])
+    title_vector = embedding_manager.text_processor.encode_text(title_content)
     batch_updates.append({
         'anime_id': test_anime[0].id,
         'vector_name': 'title_vector',
@@ -132,8 +151,8 @@ async def test_detailed_results_provide_accurate_tracking(client: QdrantClient, 
     })
 
     # Valid update for anime-2
-    title_content2 = client.embedding_manager.field_mapper._extract_title_content(test_anime[2])
-    title_vector2 = client.embedding_manager.text_processor.encode_text(title_content2)
+    title_content2 = embedding_manager.field_mapper._extract_title_content(test_anime[2])
+    title_vector2 = embedding_manager.text_processor.encode_text(title_content2)
     batch_updates.append({
         'anime_id': test_anime[2].id,
         'vector_name': 'title_vector',
@@ -162,7 +181,7 @@ async def test_detailed_results_provide_accurate_tracking(client: QdrantClient, 
 
 
 @pytest.mark.asyncio
-async def test_all_or_nothing_anime_success_logic(client: QdrantClient, add_test_anime):
+async def test_all_or_nothing_anime_success_logic(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """
     Test the critical all-or-nothing logic:
     An anime is only considered successful if ALL its vectors succeed.
@@ -178,14 +197,14 @@ async def test_all_or_nothing_anime_success_logic(client: QdrantClient, add_test
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Generate 3 vectors: 2 valid, 1 invalid
-    title_content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    title_vector = client.embedding_manager.text_processor.encode_text(title_content)
+    title_content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    title_vector = embedding_manager.text_processor.encode_text(title_content)
 
-    character_content = client.embedding_manager.field_mapper._extract_character_content(test_anime)
-    character_vector = client.embedding_manager.text_processor.encode_text(character_content)
+    character_content = embedding_manager.field_mapper._extract_character_content(test_anime)
+    character_vector = embedding_manager.text_processor.encode_text(character_content)
 
     batch_updates = [
         {
@@ -234,7 +253,7 @@ async def test_all_or_nothing_anime_success_logic(client: QdrantClient, add_test
 
 
 @pytest.mark.asyncio
-async def test_per_vector_statistics_from_detailed_results(client: QdrantClient, add_test_anime):
+async def test_per_vector_statistics_from_detailed_results(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """
     Test that per-vector statistics are accurately tracked using detailed results.
     This validates the fix from lines 418-428 in update_vectors.py.
@@ -244,7 +263,7 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient,
         for i in range(3)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=len(test_anime))
 
     # Create updates with specific failure pattern:
     # - title_vector: all 3 succeed
@@ -253,8 +272,8 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient,
 
     for i, anime in enumerate(test_anime):
         # Title vector - all valid
-        title_content = client.embedding_manager.field_mapper._extract_title_content(anime)
-        title_vector = client.embedding_manager.text_processor.encode_text(title_content)
+        title_content = embedding_manager.field_mapper._extract_title_content(anime)
+        title_vector = embedding_manager.text_processor.encode_text(title_content)
         batch_updates.append({
             'anime_id': anime.id,
             'vector_name': 'title_vector',
@@ -269,8 +288,8 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient,
                 'vector_data': [0.1] * 512  # Invalid
             })
         else:
-            genre_content = client.embedding_manager.field_mapper._extract_genre_content(anime)
-            genre_vector = client.embedding_manager.text_processor.encode_text(genre_content)
+            genre_content = embedding_manager.field_mapper._extract_genre_content(anime)
+            genre_vector = embedding_manager.text_processor.encode_text(genre_content)
             batch_updates.append({
                 'anime_id': anime.id,
                 'vector_name': 'genre_vector',
@@ -301,7 +320,7 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient,
 
 
 @pytest.mark.asyncio
-async def test_empty_batch_handling(client: QdrantClient, add_test_anime):
+async def test_empty_batch_handling(client: QdrantClient):
     """Test that empty batch is handled gracefully."""
     result = await client.update_batch_vectors([])
 
@@ -311,7 +330,7 @@ async def test_empty_batch_handling(client: QdrantClient, add_test_anime):
 
 
 @pytest.mark.asyncio
-async def test_all_validation_failures_no_qdrant_call(client: QdrantClient, add_test_anime):
+async def test_all_validation_failures_no_qdrant_call(client: QdrantClient):
     """Test that when all updates fail validation, no Qdrant call is made."""
     test_anime = AnimeEntry(
         id="validation-only-test",
@@ -323,7 +342,7 @@ async def test_all_validation_failures_no_qdrant_call(client: QdrantClient, add_
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # All updates have validation errors
     batch_updates = [
@@ -346,21 +365,21 @@ async def test_all_validation_failures_no_qdrant_call(client: QdrantClient, add_
 
 
 @pytest.mark.asyncio
-async def test_mixed_batch_all_combinations(client: QdrantClient, add_test_anime):
+async def test_mixed_batch_all_combinations(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test batch with all possible anime success combinations: all pass, partial pass, all fail."""
     test_anime = [
         AnimeEntry(id=f"mixed-{i}", title=f"Mixed Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(5)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=len(test_anime))
 
     batch_updates = []
 
     # Anime 0: 3/3 vectors succeed (all pass)
     for vector_name in ['title_vector', 'genre_vector', 'character_vector']:
-        content = client.embedding_manager.field_mapper._extract_title_content(test_anime[0])
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(test_anime[0])
+        vector = embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[0].id, 'vector_name': vector_name, 'vector_data': vector})
 
     # Anime 1: 2/3 vectors succeed (partial pass)
@@ -380,8 +399,8 @@ async def test_mixed_batch_all_combinations(client: QdrantClient, add_test_anime
 
     # Anime 4: 3/3 vectors succeed (all pass)
     for vector_name in ['title_vector', 'genre_vector', 'character_vector']:
-        content = client.embedding_manager.field_mapper._extract_title_content(test_anime[4])
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(test_anime[4])
+        vector = embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[4].id, 'vector_name': vector_name, 'vector_data': vector})
 
     result = await client.update_batch_vectors(batch_updates)
@@ -421,7 +440,7 @@ async def test_mixed_batch_all_combinations(client: QdrantClient, add_test_anime
 
 
 @pytest.mark.asyncio
-async def test_all_11_vectors_simultaneously(client: QdrantClient, add_test_anime):
+async def test_all_11_vectors_simultaneously(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test updating all 11 vector types in a single batch."""
     test_anime = AnimeEntry(
         id="all-vectors-test",
@@ -433,7 +452,7 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient, add_test_anim
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # All 11 vector names
     vector_names = [
@@ -450,8 +469,8 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient, add_test_anim
             vector_data = [0.1] * 768
         else:
             # Text vectors are 1024-dimensional
-            content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-            vector_data = client.embedding_manager.text_processor.encode_text(content)
+            content = embedding_manager.field_mapper._extract_title_content(test_anime)
+            vector_data = embedding_manager.text_processor.encode_text(content)
 
         batch_updates.append({
             'anime_id': test_anime.id,
@@ -471,7 +490,7 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient, add_test_anim
 
 
 @pytest.mark.asyncio
-async def test_duplicate_anime_in_same_batch(client: QdrantClient, add_test_anime):
+async def test_duplicate_anime_in_same_batch(client: QdrantClient):
     """Test batch with duplicate anime IDs (same vector updated multiple times)."""
     test_anime = AnimeEntry(
         id="duplicate-test",
@@ -483,7 +502,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient, add_test_anim
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Update same vector 3 times with different values
     batch_updates = [
@@ -501,7 +520,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient, add_test_anim
 
 
 @pytest.mark.asyncio
-async def test_dimension_edge_cases(client: QdrantClient, add_test_anime):
+async def test_dimension_edge_cases(client: QdrantClient):
     """Test various dimension edge cases."""
     test_anime = AnimeEntry(
         id="dimension-test",
@@ -513,7 +532,7 @@ async def test_dimension_edge_cases(client: QdrantClient, add_test_anime):
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     batch_updates = [
         # Empty vector
@@ -542,7 +561,7 @@ async def test_dimension_edge_cases(client: QdrantClient, add_test_anime):
 
 
 @pytest.mark.asyncio
-async def test_special_float_values(client: QdrantClient, add_test_anime):
+async def test_special_float_values(client: QdrantClient):
     """Test special float values: very small, very large, normal.
 
     Note: NaN and Inf values are rejected by Qdrant at the API level,
@@ -559,7 +578,7 @@ async def test_special_float_values(client: QdrantClient, add_test_anime):
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     batch_updates = [
         # Very small values (near zero)
@@ -582,7 +601,7 @@ async def test_special_float_values(client: QdrantClient, add_test_anime):
 
 
 @pytest.mark.asyncio
-async def test_non_existent_anime_ids(client: QdrantClient, add_test_anime):
+async def test_non_existent_anime_ids(client: QdrantClient):
     """Test updates to anime IDs that don't exist in Qdrant."""
     batch_updates = [
         {'anime_id': 'non-existent-1', 'vector_name': 'title_vector', 'vector_data': [0.1] * 1024},
@@ -602,7 +621,7 @@ async def test_non_existent_anime_ids(client: QdrantClient, add_test_anime):
 
 
 @pytest.mark.asyncio
-async def test_batch_with_only_invalid_vector_names(client: QdrantClient, add_test_anime):
+async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
     """Test batch where all vector names are invalid."""
     test_anime = AnimeEntry(
         id="invalid-names-test",
@@ -614,7 +633,7 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient, add_te
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     batch_updates = [
         {'anime_id': test_anime.id, 'vector_name': 'invalid_vector_1', 'vector_data': [0.1] * 1024},
@@ -634,7 +653,7 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient, add_te
 
 
 @pytest.mark.asyncio
-async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, add_test_anime):
+async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test batch with mix of existing and non-existing anime IDs.
 
     Note: Qdrant's update_vectors operation updates existing points.
@@ -650,10 +669,10 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, add_test_anim
         sources=[]
     )
 
-    await add_test_anime([existing_anime])
+    await add_test_anime(client, [existing_anime], batch_size=1)
 
-    content = client.embedding_manager.field_mapper._extract_title_content(existing_anime)
-    vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(existing_anime)
+    vector = embedding_manager.text_processor.encode_text(content)
 
     batch_updates = [
         # Existing anime - should work
@@ -670,21 +689,21 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, add_test_anim
 
 
 @pytest.mark.asyncio
-async def test_results_ordering_matches_input(client: QdrantClient, add_test_anime):
+async def test_results_ordering_matches_input(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that detailed results maintain relationship to input order."""
     test_anime = [
         AnimeEntry(id=f"order-{i}", title=f"Order Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(5)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=len(test_anime))
 
     # Create specific pattern: success, fail, success, fail, success
     batch_updates = []
     for i, anime in enumerate(test_anime):
         if i % 2 == 0:  # Even indices - valid
-            content = client.embedding_manager.field_mapper._extract_title_content(anime)
-            vector = client.embedding_manager.text_processor.encode_text(content)
+            content = embedding_manager.field_mapper._extract_title_content(anime)
+            vector = embedding_manager.text_processor.encode_text(content)
         else:  # Odd indices - invalid
             vector = [0.1] * 512  # Wrong dimension
 
@@ -707,19 +726,19 @@ async def test_results_ordering_matches_input(client: QdrantClient, add_test_ani
 
 
 @pytest.mark.asyncio
-async def test_large_batch_realistic_failures(client: QdrantClient, add_test_anime):
+async def test_large_batch_realistic_failures(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test large batch (100 anime) with realistic failure patterns."""
     test_anime = [
         AnimeEntry(id=f"large-{i}", title=f"Large Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(100)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=50)
 
     batch_updates = []
     for i, anime in enumerate(test_anime):
-        content = client.embedding_manager.field_mapper._extract_title_content(anime)
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(anime)
+        vector = embedding_manager.text_processor.encode_text(content)
 
         # 90% success rate - realistic scenario
         if i % 10 != 0:  # 90% valid
@@ -735,7 +754,7 @@ async def test_large_batch_realistic_failures(client: QdrantClient, add_test_ani
 
 
 @pytest.mark.asyncio
-async def test_sequential_updates_same_vector(client: QdrantClient, add_test_anime):
+async def test_sequential_updates_same_vector(client: QdrantClient):
     """Test updating same vector multiple times sequentially."""
     test_anime = AnimeEntry(
         id="sequential-test",
@@ -747,7 +766,7 @@ async def test_sequential_updates_same_vector(client: QdrantClient, add_test_ani
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Update same vector 3 times sequentially
     for i in range(3):
@@ -771,7 +790,7 @@ async def test_sequential_updates_same_vector(client: QdrantClient, add_test_ani
 
 
 @pytest.mark.asyncio
-async def test_image_and_text_vectors_mixed(client: QdrantClient, add_test_anime):
+async def test_image_and_text_vectors_mixed(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test mixing image vectors (768-dim) and text vectors (1024-dim) in same batch."""
     test_anime = AnimeEntry(
         id="mixed-dim-test",
@@ -783,10 +802,10 @@ async def test_image_and_text_vectors_mixed(client: QdrantClient, add_test_anime
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
-    content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    text_vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    text_vector = embedding_manager.text_processor.encode_text(content)
 
     batch_updates = [
         # Text vector (1024-dim)
@@ -806,7 +825,7 @@ async def test_image_and_text_vectors_mixed(client: QdrantClient, add_test_anime
 
 
 @pytest.mark.asyncio
-async def test_single_vector_update_method(client: QdrantClient, add_test_anime):
+async def test_single_vector_update_method(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test update_single_vector method (not just batch updates)."""
     test_anime = AnimeEntry(
         id="single-update-test",
@@ -818,11 +837,11 @@ async def test_single_vector_update_method(client: QdrantClient, add_test_anime)
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Test single vector update
-    content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    vector = embedding_manager.text_processor.encode_text(content)
 
     success = await client.update_single_vector(
         anime_id=test_anime.id, vector_name="title_vector", vector_data=vector
@@ -841,7 +860,7 @@ async def test_single_vector_update_method(client: QdrantClient, add_test_anime)
 
 
 @pytest.mark.asyncio
-async def test_batch_size_boundaries(client: QdrantClient, add_test_anime):
+async def test_batch_size_boundaries(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test various batch sizes: 1, 2, 50, 100, 500."""
     # Create test anime
     test_anime = [
@@ -851,7 +870,7 @@ async def test_batch_size_boundaries(client: QdrantClient, add_test_anime):
 
     # Add in batches to avoid memory issues
     for i in range(0, 500, 100):
-        await add_test_anime(test_anime[i:i+100])
+        await add_test_anime(client, test_anime[i:i+100], batch_size=100)
 
     # Test different batch sizes
     batch_sizes_to_test = [1, 2, 50, 100, 500]
@@ -859,8 +878,8 @@ async def test_batch_size_boundaries(client: QdrantClient, add_test_anime):
     for batch_size in batch_sizes_to_test:
         batch_updates = []
         for i in range(batch_size):
-            content = client.embedding_manager.field_mapper._extract_title_content(test_anime[i])
-            vector = client.embedding_manager.text_processor.encode_text(content)
+            content = embedding_manager.field_mapper._extract_title_content(test_anime[i])
+            vector = embedding_manager.text_processor.encode_text(content)
             batch_updates.append({
                 'anime_id': test_anime[i].id,
                 'vector_name': 'title_vector',
@@ -875,7 +894,7 @@ async def test_batch_size_boundaries(client: QdrantClient, add_test_anime):
 
 
 @pytest.mark.asyncio
-async def test_update_then_search_consistency(client: QdrantClient, add_test_anime):
+async def test_update_then_search_consistency(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that updated vectors are immediately searchable with correct results."""
     test_anime = AnimeEntry(
         id="consistency-test",
@@ -887,11 +906,11 @@ async def test_update_then_search_consistency(client: QdrantClient, add_test_ani
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     # Update title_vector
-    content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    title_vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    title_vector = embedding_manager.text_processor.encode_text(content)
 
     update_result = await client.update_batch_vectors([{
         'anime_id': test_anime.id,
@@ -920,7 +939,7 @@ async def test_update_then_search_consistency(client: QdrantClient, add_test_ani
 
 
 @pytest.mark.asyncio
-async def test_similarity_search_after_multiple_updates(client: QdrantClient, add_test_anime):
+async def test_similarity_search_after_multiple_updates(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that similarity search returns correct results after vector updates."""
     # Create 3 similar anime
     anime_list = [
@@ -929,13 +948,13 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient, ad
         AnimeEntry(id="different-1", title="Romance Comedy Love", genre=["Romance"], year=2020, type="TV", status="FINISHED", sources=[]),
     ]
 
-    await add_test_anime(anime_list)
+    await add_test_anime(client, anime_list, batch_size=3)
 
     # Update all title vectors
     batch_updates = []
     for anime in anime_list:
-        content = client.embedding_manager.field_mapper._extract_title_content(anime)
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(anime)
+        vector = embedding_manager.text_processor.encode_text(content)
         batch_updates.append({
             'anime_id': anime.id,
             'vector_name': 'title_vector',
@@ -946,7 +965,7 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient, ad
     assert result['success'] == 3, "All 3 updates should succeed"
 
     # Search with "Action Hero" query
-    query_vector = client.embedding_manager.text_processor.encode_text("Action Hero")
+    query_vector = embedding_manager.text_processor.encode_text("Action Hero")
     search_results = await client.search_single_vector(
         vector_name="title_vector",
         vector_data=query_vector,
@@ -974,7 +993,7 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient, ad
 
 
 @pytest.mark.asyncio
-async def test_vector_extraction_failures_handling(client: QdrantClient, add_test_anime):
+async def test_vector_extraction_failures_handling(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test handling when field_mapper extraction returns empty/minimal data."""
     # Create anime with minimal data
     minimal_anime = AnimeEntry(
@@ -987,16 +1006,16 @@ async def test_vector_extraction_failures_handling(client: QdrantClient, add_tes
         sources=[]
     )
 
-    await add_test_anime([minimal_anime])
+    await add_test_anime(client, [minimal_anime], batch_size=1)
 
     # Try to extract and update vectors for minimal anime
-    content = client.embedding_manager.field_mapper._extract_genre_content(minimal_anime)
+    content = embedding_manager.field_mapper._extract_genre_content(minimal_anime)
 
     # Even with minimal data, extraction should return something
     assert content is not None, "Extraction should not return None"
 
     # Encode and update
-    vector = client.embedding_manager.text_processor.encode_text(content)
+    vector = embedding_manager.text_processor.encode_text(content)
 
     result = await client.update_batch_vectors([{
         'anime_id': minimal_anime.id,
@@ -1009,7 +1028,7 @@ async def test_vector_extraction_failures_handling(client: QdrantClient, add_tes
 
 
 @pytest.mark.asyncio
-async def test_all_error_types_in_detailed_results(client: QdrantClient, add_test_anime):
+async def test_all_error_types_in_detailed_results(client: QdrantClient):
     """Test that all error types return detailed, accurate error messages."""
     test_anime = AnimeEntry(
         id="error-types-test",
@@ -1021,7 +1040,7 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient, add_tes
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
     batch_updates = [
         # Invalid vector name
@@ -1057,14 +1076,14 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient, add_tes
 
 
 @pytest.mark.asyncio
-async def test_multi_batch_statistics_aggregation(client: QdrantClient, add_test_anime):
+async def test_multi_batch_statistics_aggregation(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that statistics are correctly aggregated across multiple sequential batches."""
     test_anime = [
         AnimeEntry(id=f"multi-batch-{i}", title=f"Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(30)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=30)
 
     # Track stats across 3 batches of 10
     total_success = 0
@@ -1081,8 +1100,8 @@ async def test_multi_batch_statistics_aggregation(client: QdrantClient, add_test
             if i % 5 == 0:
                 vector = [0.1] * 512  # Wrong dimension - will fail
             else:
-                content = client.embedding_manager.field_mapper._extract_title_content(test_anime[i])
-                vector = client.embedding_manager.text_processor.encode_text(content)
+                content = embedding_manager.field_mapper._extract_title_content(test_anime[i])
+                vector = embedding_manager.text_processor.encode_text(content)
 
             batch_updates.append({
                 'anime_id': test_anime[i].id,
@@ -1110,7 +1129,7 @@ async def test_multi_batch_statistics_aggregation(client: QdrantClient, add_test
 
 
 @pytest.mark.asyncio
-async def test_result_structure_completeness(client: QdrantClient, add_test_anime):
+async def test_result_structure_completeness(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that result structure contains all required fields for both success and failure."""
     test_anime = AnimeEntry(
         id="structure-test",
@@ -1122,10 +1141,10 @@ async def test_result_structure_completeness(client: QdrantClient, add_test_anim
         sources=[]
     )
 
-    await add_test_anime([test_anime])
+    await add_test_anime(client, [test_anime], batch_size=1)
 
-    content = client.embedding_manager.field_mapper._extract_title_content(test_anime)
-    vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(test_anime)
+    vector = embedding_manager.text_processor.encode_text(content)
 
     batch_updates = [
         # Success case
@@ -1164,32 +1183,32 @@ async def test_result_structure_completeness(client: QdrantClient, add_test_anim
 
 
 @pytest.mark.asyncio
-async def test_update_with_different_vector_combinations(client: QdrantClient, add_test_anime):
+async def test_update_with_different_vector_combinations(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test various combinations of vector updates in single batch."""
     test_anime = [
         AnimeEntry(id=f"combo-{i}", title=f"Combo Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(3)
     ]
 
-    await add_test_anime(test_anime)
+    await add_test_anime(client, test_anime, batch_size=3)
 
     batch_updates = []
 
     # Anime 0: Only title_vector
-    content = client.embedding_manager.field_mapper._extract_title_content(test_anime[0])
-    vector = client.embedding_manager.text_processor.encode_text(content)
+    content = embedding_manager.field_mapper._extract_title_content(test_anime[0])
+    vector = embedding_manager.text_processor.encode_text(content)
     batch_updates.append({'anime_id': test_anime[0].id, 'vector_name': 'title_vector', 'vector_data': vector})
 
     # Anime 1: title_vector + genre_vector
     for vector_name in ['title_vector', 'genre_vector']:
-        content = client.embedding_manager.field_mapper._extract_title_content(test_anime[1])
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(test_anime[1])
+        vector = embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[1].id, 'vector_name': vector_name, 'vector_data': vector})
 
     # Anime 2: title_vector + genre_vector + character_vector
     for vector_name in ['title_vector', 'genre_vector', 'character_vector']:
-        content = client.embedding_manager.field_mapper._extract_title_content(test_anime[2])
-        vector = client.embedding_manager.text_processor.encode_text(content)
+        content = embedding_manager.field_mapper._extract_title_content(test_anime[2])
+        vector = embedding_manager.text_processor.encode_text(content)
         batch_updates.append({'anime_id': test_anime[2].id, 'vector_name': vector_name, 'vector_data': vector})
 
     result = await client.update_batch_vectors(batch_updates)

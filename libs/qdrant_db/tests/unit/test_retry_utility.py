@@ -1,12 +1,12 @@
 """Unit tests for retry utility function."""
 
 import asyncio
-from typing import Any, Callable, Optional
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from qdrant_db.utils import retry_with_backoff
+from qdrant_db.utils.retry import retry_with_backoff, default_is_transient_error
 
 
 class TestRetryWithBackoff:
@@ -86,7 +86,7 @@ class TestRetryWithBackoff:
             "success"
         ]
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
 
         await retry_with_backoff(
             operation=mock_operation,
@@ -94,7 +94,7 @@ class TestRetryWithBackoff:
             retry_delay=0.1,
         )
 
-        end_time = asyncio.get_event_loop().time()
+        end_time = asyncio.get_running_loop().time()
         elapsed = end_time - start_time
 
         # First retry: 0.1s, second retry: 0.2s
@@ -203,3 +203,152 @@ class TestRetryWithBackoff:
         assert first_call[1]["attempt"] == 1
         assert first_call[1]["max_retries"] == 3
         assert isinstance(first_call[1]["error"], Exception)
+
+    @pytest.mark.asyncio
+    async def test_negative_max_retries_validation(self):
+        """Test that negative max_retries raises ValueError."""
+        mock_operation = AsyncMock(return_value="success")
+
+        with pytest.raises(ValueError, match="max_retries must be >= 0"):
+            await retry_with_backoff(
+                operation=mock_operation,
+                max_retries=-1,
+                retry_delay=0.01,
+            )
+
+        # Operation should never be called due to validation failure
+        assert mock_operation.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_negative_retry_delay_validation(self):
+        """Test that negative retry_delay raises ValueError."""
+        mock_operation = AsyncMock(return_value="success")
+
+        with pytest.raises(ValueError, match="retry_delay must be >= 0"):
+            await retry_with_backoff(
+                operation=mock_operation,
+                max_retries=3,
+                retry_delay=-0.5,
+            )
+
+        # Operation should never be called due to validation failure
+        assert mock_operation.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_type_based_transient_error_detection(self):
+        """Test that common transient exception types are detected."""
+        # Test asyncio.TimeoutError
+        mock_operation = AsyncMock()
+        mock_operation.side_effect = [asyncio.TimeoutError(), "success"]
+
+        result = await retry_with_backoff(
+            operation=mock_operation,
+            max_retries=2,
+            retry_delay=0.01,
+        )
+
+        assert result == "success"
+        assert mock_operation.call_count == 2
+
+        # Test ConnectionError
+        mock_operation = AsyncMock()
+        mock_operation.side_effect = [ConnectionError("Connection failed"), "success"]
+
+        result = await retry_with_backoff(
+            operation=mock_operation,
+            max_retries=2,
+            retry_delay=0.01,
+        )
+
+        assert result == "success"
+        assert mock_operation.call_count == 2
+
+        # Test TimeoutError
+        mock_operation = AsyncMock()
+        mock_operation.side_effect = [TimeoutError("Timeout occurred"), "success"]
+
+        result = await retry_with_backoff(
+            operation=mock_operation,
+            max_retries=2,
+            retry_delay=0.01,
+        )
+
+        assert result == "success"
+        assert mock_operation.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_none_args_and_kwargs_normalization(self):
+        """Test that None args and kwargs are properly normalized."""
+        mock_operation = AsyncMock(return_value="success")
+
+        result = await retry_with_backoff(
+            operation=mock_operation,
+            max_retries=1,
+            retry_delay=0.01,
+            operation_args=None,
+            operation_kwargs=None,
+        )
+
+        assert result == "success"
+        mock_operation.assert_called_once_with()
+
+
+class TestDefaultIsTransientError:
+    """Test suite for default_is_transient_error function."""
+
+    def test_type_based_detection_asyncio_timeout(self):
+        """Test that asyncio.TimeoutError is detected as transient."""
+        error = asyncio.TimeoutError()
+        assert default_is_transient_error(error) is True
+
+    def test_type_based_detection_connection_error(self):
+        """Test that ConnectionError is detected as transient."""
+        error = ConnectionError("Connection failed")
+        assert default_is_transient_error(error) is True
+
+    def test_type_based_detection_timeout_error(self):
+        """Test that TimeoutError is detected as transient."""
+        error = TimeoutError("Timeout occurred")
+        assert default_is_transient_error(error) is True
+
+    def test_keyword_based_detection_timeout(self):
+        """Test that errors with 'timeout' keyword are detected as transient."""
+        error = Exception("Connection timeout occurred")
+        assert default_is_transient_error(error) is True
+
+    def test_keyword_based_detection_connection(self):
+        """Test that errors with 'connection' keyword are detected as transient."""
+        error = Exception("Connection refused")
+        assert default_is_transient_error(error) is True
+
+    def test_keyword_based_detection_network(self):
+        """Test that errors with 'network' keyword are detected as transient."""
+        error = Exception("Network unreachable")
+        assert default_is_transient_error(error) is True
+
+    def test_keyword_based_detection_temporary(self):
+        """Test that errors with 'temporary' keyword are detected as transient."""
+        error = Exception("Service temporarily unavailable")
+        assert default_is_transient_error(error) is True
+
+    def test_keyword_based_detection_unavailable(self):
+        """Test that errors with 'unavailable' keyword are detected as transient."""
+        error = Exception("Resource unavailable")
+        assert default_is_transient_error(error) is True
+
+    def test_case_insensitive_keyword_matching(self):
+        """Test that keyword matching is case-insensitive."""
+        error = Exception("CONNECTION TIMEOUT")
+        assert default_is_transient_error(error) is True
+
+    def test_non_transient_error_detection(self):
+        """Test that non-transient errors are not detected as transient."""
+        non_transient_errors = [
+            ValueError("Invalid value"),
+            TypeError("Wrong type"),
+            KeyError("Missing key"),
+            Exception("Something went wrong"),
+        ]
+
+        for error in non_transient_errors:
+            assert default_is_transient_error(error) is False
