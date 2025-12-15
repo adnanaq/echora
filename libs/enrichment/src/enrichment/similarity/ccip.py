@@ -16,6 +16,13 @@ class CCIP:
 
     Provides character similarity calculation using dghs-imgutils CCIP algorithm
     with OpenCLIP fallback for graceful degradation when CCIP is unavailable.
+
+    TODO: Convert to async/await pattern to avoid blocking event loop
+    - Replace requests.get with httpx.AsyncClient for async HTTP calls
+    - Make _load_image_for_ccip, _calculate_openclip_similarity, and
+      calculate_character_similarity async methods
+    - Add httpx as dependency
+    - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
     def __init__(self, settings: Optional["Settings"] = None):

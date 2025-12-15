@@ -36,13 +36,13 @@ from sentence_transformers import SentenceTransformer
 try:
     from common.config.settings import Settings
     from vector_processing.processors.vision_processor import VisionProcessor
-    from vector_processing.legacy_ccips import LegacyCCIPS
+    from enrichment.similarity.ccip import CCIP
 
     VISION_AVAILABLE = True
 except ImportError:
     VISION_AVAILABLE = False
     VisionProcessor = None  # type: ignore[misc,assignment]
-    LegacyCCIPS = None  # type: ignore[misc,assignment]
+    CCIP = None  # type: ignore[misc,assignment]
     Settings = None  # type: ignore[misc,assignment]
 
 try:
@@ -417,7 +417,7 @@ class EnsembleFuzzyMatcher:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
                     self.vision_processor = VisionProcessor(settings)
-                    self.ccips = LegacyCCIPS()
+                    self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
                     )
