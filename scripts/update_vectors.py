@@ -56,7 +56,7 @@ from vector_processing.processors.vision_processor import VisionProcessor
 from vector_processing.utils.image_downloader import ImageDownloader
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct, Record
+from qdrant_client.models import Record
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",

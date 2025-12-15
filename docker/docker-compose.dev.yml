@@ -87,7 +87,7 @@ services:
       - LOG_LEVEL=INFO
 
       # HTTP Cache Configuration
-      - ENABLE_HTTP_CACHE=false
+      - ENABLE_HTTP_CACHE=true
       - HTTP_CACHE_STORAGE=redis
       - REDIS_CACHE_URL=redis://redis:6379/0
     volumes:

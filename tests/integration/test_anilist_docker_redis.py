@@ -4,8 +4,10 @@ import os
 
 import pytest
 
+# Mark all tests in this file as integration tests
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
+
 @pytest.mark.asyncio
 async def test_anilist_helper_respects_redis_cache_url_env():
     """Test that AniList helper respects REDIS_CACHE_URL environment variable."""

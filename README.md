@@ -82,6 +82,9 @@ pip install -e .
 
 ```bash
 docker compose up -d qdrant
+
+# Access Qdrant UI dashboard
+# http://localhost:6333/dashboard
 ```
 
 #### 3. Run the Service

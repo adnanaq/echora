@@ -129,20 +129,20 @@ class VisionProcessor:
 
             for i, image_url in enumerate(image_urls):
                 try:
-                    logger.info(f"[DEBUG] Processing image {i+1}/{len(image_urls)}: {image_url}")
-                    
+                    logger.debug(f"Processing image {i+1}/{len(image_urls)}: {image_url}")
+
                     # Download and cache image using injected downloader
                     # Returns path to cached file
                     image_path = await self.downloader.download_and_cache_image(image_url)
-                    
-                    logger.info(f"[DEBUG] Downloader returned path: {image_path}")
-                    
+
+                    logger.debug(f"Downloader returned path: {image_path}")
+
                     if image_path:
                         # Encode using path
-                        logger.info(f"[DEBUG] Encoding image from path: {image_path}")
+                        logger.debug(f"Encoding image from path: {image_path}")
                         embedding = self.encode_image(image_path)
-                        logger.info(f"[DEBUG] Encoding result: {embedding is not None}, length: {len(embedding) if embedding else 0}")
-                        
+                        logger.debug(f"Encoding result: {embedding is not None}, length: {len(embedding) if embedding else 0}")
+
                         if embedding:
                             # Create hash of embedding to check for duplicates
                             embedding_hash = self._hash_embedding(embedding)
@@ -150,21 +150,19 @@ class VisionProcessor:
                             if embedding_hash not in processed_vectors:
                                 successful_embeddings.append(embedding)
                                 processed_vectors.add(embedding_hash)
-                                logger.info(
-                                    f"[DEBUG] Successfully encoded unique image {i+1}/{len(image_urls)}"
+                                logger.debug(
+                                    f"Successfully encoded unique image {i+1}/{len(image_urls)}"
                                 )
                             else:
-                                logger.info(
-                                    f"[DEBUG] Skipped duplicate image {i+1}/{len(image_urls)}"
+                                logger.debug(
+                                    f"Skipped duplicate image {i+1}/{len(image_urls)}"
                                 )
                         else:
-                            logger.warning(f"[DEBUG] Encoding returned None for image {i+1}")
+                            logger.warning(f"Encoding returned None for image {i+1}")
                     else:
-                        logger.warning(f"[DEBUG] Downloader returned None for image {i+1}: {image_url}")
+                        logger.warning(f"Downloader returned None for image {i+1}: {image_url}")
                 except Exception as e:
-                    logger.error(f"[DEBUG] Failed to process image {i+1}: {e}")
-                    import traceback
-                    logger.error(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                    logger.error(f"Failed to process image {i+1}: {e}", exc_info=True)
                     continue
 
             if successful_embeddings:

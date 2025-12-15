@@ -30,25 +30,46 @@ class OpenClipModel(VisionEmbeddingModel):
 
             # Parse model name to extract OpenCLIP model and pretrained weights
             if "/" in model_name:
-                # HuggingFace style name
-                _, model_part = model_name.split("/", 1)
-                if "ViT-L-14" in model_part:
-                    clip_model_name = "ViT-L-14"
-                    pretrained = model_part
-                elif "ViT-B-32" in model_part:
-                    clip_model_name = "ViT-B-32"
-                    pretrained = model_part
-                else:
-                    # Default fallback
-                    clip_model_name = "ViT-L-14"
-                    pretrained = "laion2b_s32b_b82k"
+                # Format: model_name/checkpoint (e.g., ViT-L-14/laion2b_s32b_b82k)
+                clip_model_name, pretrained = model_name.split("/", 1)
             else:
-                # Direct OpenCLIP model name
+                # Direct OpenCLIP model name without checkpoint
                 clip_model_name = model_name
-                pretrained = "laion2b_s32b_b82k"  # Default for ViT-L-14
+                # Get first available checkpoint for this model
+                available_models = open_clip.list_pretrained()
+                matching_checkpoints = [cp for m, cp in available_models if m == clip_model_name]
+                if not matching_checkpoints:
+                    available_model_names = sorted(set(m for m, _ in available_models))
+                    raise ValueError(
+                        f"Unknown OpenCLIP model '{clip_model_name}'. "
+                        f"Available models: {', '.join(available_model_names[:10])}... "
+                        f"(use open_clip.list_pretrained() for full list)"
+                    )
+                pretrained = matching_checkpoints[0]
+                logger.warning(
+                    f"No checkpoint specified for {clip_model_name}, using default: {pretrained}"
+                )
+
+            # Validate model/checkpoint combination
+            available_models = open_clip.list_pretrained()
+            valid_checkpoints = [cp for m, cp in available_models if m == clip_model_name]
+            if not valid_checkpoints:
+                available_model_names = sorted(set(m for m, _ in available_models))
+                raise ValueError(
+                    f"Unknown OpenCLIP model '{clip_model_name}'. "
+                    f"Available models: {', '.join(available_model_names[:10])}... "
+                    f"(use open_clip.list_pretrained() for full list)"
+                )
+
+            if pretrained not in valid_checkpoints:
+                raise ValueError(
+                    f"Invalid checkpoint '{pretrained}' for model '{clip_model_name}'. "
+                    f"Available checkpoints: {', '.join(valid_checkpoints)}"
+                )
 
             self._clip_model_name = clip_model_name
             self._pretrained = pretrained
+            logger.info(f"Using OpenCLIP model: {clip_model_name} with checkpoint: {pretrained}")
 
             # Load OpenCLIP model
             self.model, _, self.preprocess = open_clip.create_model_and_transforms(
