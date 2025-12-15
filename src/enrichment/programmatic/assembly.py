@@ -33,7 +33,7 @@ try:
 
     from common.models.anime import AnimeEntry, EnrichmentMetadata
 
-    sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+    sys.path.append(str(Path(__file__).parent.parent.parent.parent / "scripts"))
     from validate_enrichment_database import EnrichmentValidator
 
     # Set the type markers for successful imports

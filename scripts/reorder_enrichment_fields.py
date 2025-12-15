@@ -90,7 +90,7 @@ def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
     """
     logger.info(f"Starting field reordering for {input_file}")
 
-    # Create backup if requested
+    backup_path = None
     if backup:
         backup_path = f"{input_file}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         with open(input_file, "r") as original, open(backup_path, "w") as backup_file:
@@ -151,7 +151,7 @@ def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
         "reordered_entries": reordered_count,
         "validation_errors": validation_errors,
         "success": True,
-        "backup_created": backup_path if backup else None,
+        "backup_created": backup_path,
     }
 
 
