@@ -14,13 +14,8 @@ import asyncio
 import hashlib
 import json
 import os
-import sys
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, cast
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 from common.config import get_settings
@@ -32,7 +27,8 @@ from vector_processing.processors.vision_processor import VisionProcessor
 from vector_processing.utils.image_downloader import ImageDownloader
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct, Record
+from qdrant_client.models import Record
+from vector_db_interface import VectorDocument
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Reindex anime database with vector embeddings")
@@ -157,12 +153,12 @@ async def main() -> None:
                 # MD5 is used for non-cryptographic deterministic ID generation
                 point_id = hashlib.md5(doc_data["payload"]["id"].encode()).hexdigest()  # noqa: S324
 
-                point = PointStruct(
+                doc = VectorDocument(
                     id=point_id,
-                    vector=doc_data["vectors"],
+                    vectors=doc_data["vectors"],
                     payload=doc_data["payload"],
                 )
-                points.append(point)
+                points.append(doc)
 
             print(f"Successfully generated vectors for {len(points)} entries.")
 

@@ -29,8 +29,8 @@ dependencies = [
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
     # HTTP dependencies
     "requests>=2.32.4",
-    "hishel>=1.0.0",
-    "redis>=7.0.1",
+    "hishel>=1.0.0,<2.0.0",
+    "redis>=7.1.0,<8.0.0",
     "rapidfuzz>=3.14.1",
     "jellyfish>=1.2.0",
     "jaconv>=0.4.0",
@@ -79,7 +79,6 @@ line_length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = [".", "scripts"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
