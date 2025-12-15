@@ -82,18 +82,6 @@ async def admin_health_check(qdrant_client: QdrantClient = Depends(get_qdrant_cl
     Provides more comprehensive health information than the basic health endpoint.
     """
     try:
-<<<<<<< HEAD
-        # from ..main import qdrant_client # Removed global import
-
-        # if not qdrant_client: # No longer needed due to Depends
-        #     return {
-        #         "status": "unhealthy",
-        #         "qdrant_client": "not_initialized",
-        #         "details": "Vector database client not available",
-        #     }
-
-=======
->>>>>>> origin/main
         # Perform health check
         qdrant_healthy = await qdrant_client.health_check()
 
@@ -134,14 +122,6 @@ async def delete_vector(anime_id: str, qdrant_client: QdrantClient = Depends(get
     Removes the specified anime from the vector collection.
     """
     try:
-<<<<<<< HEAD
-        # from ..main import qdrant_client # Removed global import
-
-        # if not qdrant_client: # No longer needed due to Depends
-        #     raise HTTPException(status_code=503, detail="Vector database not available")
-
-=======
->>>>>>> origin/main
         # Check if anime exists
         existing = await qdrant_client.get_by_id(anime_id)
         if not existing:
@@ -176,14 +156,6 @@ async def reindex_collection(qdrant_client: QdrantClient = Depends(get_qdrant_cl
     Use with caution in production environments.
     """
     try:
-<<<<<<< HEAD
-        # from ..main import qdrant_client # Removed global import
-
-        # if not qdrant_client: # No longer needed due to Depends
-        #     raise HTTPException(status_code=503, detail="Vector database not available")
-
-=======
->>>>>>> origin/main
         # Clear and recreate the index
         success = await qdrant_client.clear_index()
 
@@ -227,13 +199,8 @@ async def get_collection_info(
             "distance_metric": qdrant_client.distance_metric,
             "stats": stats,
             "processors": {
-<<<<<<< HEAD
-                "text_processor": text_processor.get_model_info() if text_processor else None,
-                "vision_processor": vision_processor.get_model_info() if vision_processor else None,
-=======
                 "text_processor": text_processor.get_model_info(),
                 "vision_processor": vision_processor.get_model_info(),
->>>>>>> origin/main
             },
         }
 

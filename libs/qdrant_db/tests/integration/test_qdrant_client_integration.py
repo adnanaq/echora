@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from common.models.anime import AnimeEntry
 from qdrant_db import QdrantClient
-from qdrant_client.models import PointStruct
+from vector_db_interface import VectorDocument
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
@@ -54,25 +54,25 @@ async def seeded_test_data(client: QdrantClient, embedding_manager, test_anime_d
     # Generate vectors using embedding_manager
     gen_results = await embedding_manager.process_anime_batch(anime_entries)
 
-    # Create PointStruct objects with generated vectors
-    points = []
+    # Create VectorDocument objects with generated vectors
+    documents = []
     for i, anime_entry in enumerate(anime_entries):
         gen_result = gen_results[i]
         if gen_result.get("metadata", {}).get("processing_failed"):
             pytest.skip(f"Failed to generate vectors for test anime: {anime_entry.title}")
 
-        # Create point with generated vectors
-        point = PointStruct(
+        # Create document with generated vectors
+        doc = VectorDocument(
             id=client._generate_point_id(anime_entry.id),
+            vectors=gen_result.get("vectors", {}),
             payload=anime_entry.model_dump(),
-            vector=gen_result.get("vectors", {})
         )
-        points.append(point)
+        documents.append(doc)
 
     # Upsert test data to ensure points exist
-    success = await client.add_documents(points, batch_size=len(points))
+    result = await client.add_documents(documents, batch_size=len(documents))
 
-    if not success:
+    if not result.get("success"):
         pytest.skip("Failed to seed test data into Qdrant")
 
     # Return the anime entries for tests to use
@@ -84,7 +84,7 @@ def create_test_anime(anime_id: str = "test-anime", title: str = "Test Anime"):
     return AnimeEntry(
         id=anime_id,
         title=title,
-        genre=["Action", "Adventure"],
+        genres=["Action", "Adventure"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -94,16 +94,17 @@ def create_test_anime(anime_id: str = "test-anime", title: str = "Test Anime"):
 
 async def add_test_anime(client: QdrantClient, embedding_manager, anime: AnimeEntry) -> bool:
     """Add anime entry to Qdrant with generated vectors.
-    
+
     Helper function that mimics the old add_documents([anime]) behavior.
     """
     gen_results = await embedding_manager.process_anime_batch([anime])
-    point = PointStruct(
+    doc = VectorDocument(
         id=client._generate_point_id(anime.id),
+        vectors=gen_results[0].get("vectors", {}),
         payload=anime.model_dump(),
-        vector=gen_results[0].get("vectors", {})
     )
-    return await client.add_documents([point], batch_size=1)
+    result = await client.add_documents([doc], batch_size=1)
+    return result.get("success", False)
 
 
 @pytest.mark.asyncio
@@ -1009,14 +1010,14 @@ async def test_update_batch_anime_vectors_handles_generation_failures(client: Qd
     minimal_anime = AnimeEntry(
         id="minimal",
         title="",  # Empty title
-        genre=[],  # Empty genre
+        genres=[],  # Empty genres
         year=2020,
         type="TV",
         status="FINISHED",
         sources=[]
     )
 
-    await client.add_documents([minimal_anime], batch_size=1)
+    await add_test_anime(client, embedding_manager, minimal_anime)
 
     # Generate vectors
     gen_results = await embedding_manager.process_anime_batch([minimal_anime])

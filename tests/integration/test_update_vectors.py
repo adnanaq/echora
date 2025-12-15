@@ -17,57 +17,23 @@ from typing import List
 from qdrant_db import QdrantClient
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from common.models.anime import AnimeEntry
-from qdrant_client.models import PointStruct
+from vector_db_interface import VectorDocument
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def temp_anime_database():
-    """Create a temporary anime database file for testing."""
-    anime_data = {
-        "data": [
-            {
-                "id": f"test-anime-{i}",
-                "title": f"Test Anime {i}",
-                "genre": ["Action", "Adventure"],
-                "year": 2020 + i,
-                "type": "TV",
-                "episodes": 12,
-                "status": "finished",
-                "season": "fall",
-                "synonyms": [],
-                "sources": [],
-                "tags": [],
-                "relations": [],
-                "picture": "",
-            }
-            for i in range(5)
-        ]
-    }
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(anime_data, f)
-        temp_path = f.name
-
-    yield temp_path
-
-    # Cleanup
-    Path(temp_path).unlink(missing_ok=True)
 
 
 async def add_test_anime(client: QdrantClient, anime_list: List[AnimeEntry] | AnimeEntry, batch_size: int = 100):
     """Helper to add anime with correct point IDs."""
     if isinstance(anime_list, AnimeEntry):
         anime_list = [anime_list]
-    
-    points = []
+
+    documents = []
     for anime in anime_list:
         point_id = client._generate_point_id(anime.id)
-        points.append(PointStruct(id=point_id, payload=anime.model_dump(), vector={}))
-    
-    await client.add_documents(points, batch_size=batch_size)
+        documents.append(VectorDocument(id=point_id, vectors={}, payload=anime.model_dump()))
+
+    await client.add_documents(documents, batch_size=batch_size)
 
 
 
@@ -78,7 +44,7 @@ async def test_vector_persistence_after_update(client: QdrantClient, embedding_m
     test_anime = AnimeEntry(
         id="persistence-test-1",
         title="Persistence Test Anime",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -190,7 +156,7 @@ async def test_all_or_nothing_anime_success_logic(client: QdrantClient, embeddin
     test_anime = AnimeEntry(
         id="all-or-nothing-test",
         title="All Or Nothing Test",
-        genre=["Action", "Drama"],
+        genres=["Action", "Drama"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -335,7 +301,7 @@ async def test_all_validation_failures_no_qdrant_call(client: QdrantClient):
     test_anime = AnimeEntry(
         id="validation-only-test",
         title="Validation Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -445,7 +411,7 @@ async def test_all_11_vectors_simultaneously(client: QdrantClient, embedding_man
     test_anime = AnimeEntry(
         id="all-vectors-test",
         title="All Vectors Test",
-        genre=["Action", "Drama"],
+        genres=["Action", "Drama"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -495,7 +461,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient):
     test_anime = AnimeEntry(
         id="duplicate-test",
         title="Duplicate Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -525,7 +491,7 @@ async def test_dimension_edge_cases(client: QdrantClient):
     test_anime = AnimeEntry(
         id="dimension-test",
         title="Dimension Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -571,7 +537,7 @@ async def test_special_float_values(client: QdrantClient):
     test_anime = AnimeEntry(
         id="float-test",
         title="Float Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -626,7 +592,7 @@ async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
     test_anime = AnimeEntry(
         id="invalid-names-test",
         title="Invalid Names Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -662,7 +628,7 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, embedding_man
     existing_anime = AnimeEntry(
         id="existing-anime",
         title="Existing Anime",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -759,7 +725,7 @@ async def test_sequential_updates_same_vector(client: QdrantClient):
     test_anime = AnimeEntry(
         id="sequential-test",
         title="Sequential Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -795,7 +761,7 @@ async def test_image_and_text_vectors_mixed(client: QdrantClient, embedding_mana
     test_anime = AnimeEntry(
         id="mixed-dim-test",
         title="Mixed Dimension Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -830,7 +796,7 @@ async def test_single_vector_update_method(client: QdrantClient, embedding_manag
     test_anime = AnimeEntry(
         id="single-update-test",
         title="Single Update Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -899,7 +865,7 @@ async def test_update_then_search_consistency(client: QdrantClient, embedding_ma
     test_anime = AnimeEntry(
         id="consistency-test",
         title="Consistency Test Anime",
-        genre=["Action", "Adventure"],
+        genres=["Action", "Adventure"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -999,7 +965,7 @@ async def test_vector_extraction_failures_handling(client: QdrantClient, embeddi
     minimal_anime = AnimeEntry(
         id="minimal-data",
         title="M",  # Very short title
-        genre=[],  # Empty genre
+        genres=[],  # Empty genre
         year=2020,
         type="TV",
         status="FINISHED",
@@ -1033,7 +999,7 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient):
     test_anime = AnimeEntry(
         id="error-types-test",
         title="Error Types Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",
@@ -1134,7 +1100,7 @@ async def test_result_structure_completeness(client: QdrantClient, embedding_man
     test_anime = AnimeEntry(
         id="structure-test",
         title="Structure Test",
-        genre=["Action"],
+        genres=["Action"],
         year=2020,
         type="TV",
         status="FINISHED",

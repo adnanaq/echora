@@ -37,7 +37,7 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
     WalConfigDiff,
 )
 
-from vector_db_interface import VectorDBClient
+from vector_db_interface import VectorDBClient, VectorDocument
 from common.config import Settings
 from qdrant_db.utils import retry_with_backoff
 
@@ -625,26 +625,34 @@ class QdrantClient(VectorDBClient):
 
     async def add_documents(
         self,
-        documents: List[PointStruct],
+        documents: List[VectorDocument],
         batch_size: int = 100,
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """Add documents (with pre-generated vectors) to the collection.
 
         Args:
-            documents: List of PointStruct objects (each containing ID, vectors, and payload)
+            documents: List of VectorDocument objects (provider-agnostic)
             batch_size: Number of documents to process per batch
-            progress_callback: Optional callback function to report progress.
-                             It receives the index of the processed document, the total number of documents, and the point itself.
 
         Returns:
-            True if successful, False otherwise
+            Dict with success status and document count
         """
         try:
-            total_docs = len(documents)
+            # Convert VectorDocument to Qdrant PointStruct
+            qdrant_points = [
+                PointStruct(
+                    id=doc.id,
+                    vector=cast(Dict[str, Any], doc.vectors),
+                    payload=doc.payload,
+                )
+                for doc in documents
+            ]
+
+            total_docs = len(qdrant_points)
             logger.info(f"Adding {total_docs} pre-processed documents in batches of {batch_size}")
 
             for i in range(0, total_docs, batch_size):
-                batch_points = documents[i : i + batch_size]
+                batch_points = qdrant_points[i : i + batch_size]
 
                 if batch_points:
                         # Upsert batch to Qdrant
@@ -654,13 +662,13 @@ class QdrantClient(VectorDBClient):
                         logger.info(
                             f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(batch_points)} points)"
                         )
-                        
+
             logger.info(f"Successfully added {total_docs} documents")
-            return True
+            return {"success": True, "document_count": total_docs}
 
         except Exception as e:
             logger.error(f"Failed to add documents: {e}")
-            return False
+            return {"success": False, "error": str(e)}
 
     def _validate_vector_update(
         self,
@@ -902,8 +910,8 @@ class QdrantClient(VectorDBClient):
                 return {"success": 0, "failed": 0, "results": [], "duplicates_removed": 0}
 
             # Check for duplicates and apply deduplication policy
-            seen_keys: Dict[tuple, int] = {}  # (anime_id, vector_name) -> first index
-            duplicates: List[tuple] = []
+            seen_keys: Dict[Tuple[str, str], int] = {}  # (anime_id, vector_name) -> first index
+            duplicates: List[Tuple[str, str]] = []
             deduplicated_updates: List[Dict[str, Any]] = []
 
             for idx, update in enumerate(updates):
@@ -985,7 +993,8 @@ class QdrantClient(VectorDBClient):
             point_updates = []
             for anime_id, vectors_dict in grouped_updates.items():
                 point_id = self._generate_point_id(anime_id)
-                point_updates.append(PointVectors(id=point_id, vector=vectors_dict))
+                # Cast needed due to dict invariance: Dict[str, List[float]] -> Dict[str, Union[List[float], ...]]
+                point_updates.append(PointVectors(id=point_id, vector=cast(Dict[str, Any], vectors_dict)))
 
             # Only execute if we have valid updates
             if point_updates:
@@ -1308,24 +1317,27 @@ class QdrantClient(VectorDBClient):
 
         return Filter(must=conditions) if conditions else None  # type: ignore[arg-type]
 
-    async def get_by_id(self, anime_id: str) -> Optional[Dict[str, Any]]:
+    async def get_by_id(
+        self, point_id: str, with_vectors: bool = False
+    ) -> Optional[Dict[str, Any]]:
         """Get anime by ID.
 
         Args:
-            anime_id: The anime ID to retrieve
+            point_id: The anime ID to retrieve
+            with_vectors: Whether to include vector data in response
 
         Returns:
             Anime data dictionary or None if not found
         """
         try:
-            point_id = self._generate_point_id(anime_id)
+            internal_point_id = self._generate_point_id(point_id)
 
             # Retrieve point by ID
             points = await self.client.retrieve(
                 collection_name=self.collection_name,
-                ids=[point_id],
+                ids=[internal_point_id],
                 with_payload=True,
-                with_vectors=False,
+                with_vectors=with_vectors,
             )
 
             if points:
@@ -1333,7 +1345,7 @@ class QdrantClient(VectorDBClient):
             return None
 
         except Exception as e:
-            logger.error(f"Failed to get anime by ID {anime_id}: {e}")
+            logger.error(f"Failed to get anime by ID {point_id}: {e}")
             return None
 
     async def get_point(self, point_id: str) -> Optional[Dict[str, Any]]:
@@ -1390,7 +1402,7 @@ class QdrantClient(VectorDBClient):
             return False
 
     async def delete_collection(self) -> bool:
-        """Delete the anime collection (for testing/reset).
+        """Delete the collection.
 
         Returns:
             True if successful, False otherwise
@@ -1403,24 +1415,21 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Failed to delete collection: {e}")
             return False
 
-    async def collection_exists(self, collection_name: str) -> bool:
-        """Check if a collection exists.
+    async def collection_exists(self) -> bool:
+        """Check if the collection exists.
         
-        Args:
-            collection_name: Name of the collection to check
-            
         Returns:
             True if collection exists, False otherwise
         """
         try:
             collections = (await self.client.get_collections()).collections
-            return any(col.name == collection_name for col in collections)
+            return any(col.name == self.collection_name for col in collections)
         except Exception as e:
             logger.error(f"Failed to check collection existence: {e}")
             return False
 
     async def create_collection(self) -> bool:
-        """Create the anime collection.
+        """Create a new collection with configuration from settings.
 
         Returns:
             True if successful, False otherwise
