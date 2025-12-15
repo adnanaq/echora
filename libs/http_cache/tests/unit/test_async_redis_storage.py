@@ -21,104 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from hishel._core.models import Entry, EntryMeta, Headers, Request, Response
 
-from src.cache_manager.async_redis_storage import AsyncRedisStorage
-
-# ============================================================================
-# Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def mock_redis_client() -> AsyncMock:
-    """
-    Create a mock Async Redis client preconfigured for tests.
-    
-    The mock exposes common async Redis methods with sensible default return values to simplify unit tests.
-    
-    Returns:
-        AsyncMock: A mock Redis client with methods like `from_url`, `aclose`, `pipeline`,
-        `hset`, `hgetall` (returns `{}`), `sadd`, `smembers` (returns `set()`),
-        `srem`, `expire`, `rpush`, `lrange` (returns `[]`), `scan` (returns `(0, [])`),
-        and `delete` already set as AsyncMock/MagicMock.
-    """
-    mock_client = AsyncMock()
-    mock_client.from_url = AsyncMock(return_value=mock_client)
-    mock_client.aclose = AsyncMock()
-    mock_client.pipeline = MagicMock(return_value=AsyncMock())
-    mock_client.hset = AsyncMock()
-    mock_client.hgetall = AsyncMock(return_value={})
-    mock_client.sadd = AsyncMock()
-    mock_client.smembers = AsyncMock(return_value=set())
-    mock_client.srem = AsyncMock()
-    mock_client.expire = AsyncMock()
-    mock_client.rpush = AsyncMock()
-    mock_client.lrange = AsyncMock(return_value=[])
-    mock_client.scan = AsyncMock(return_value=(0, []))
-    mock_client.delete = AsyncMock()
-    return mock_client
-
-
-@pytest.fixture
-def storage_with_mock_client(mock_redis_client: AsyncMock) -> AsyncRedisStorage:
-    """
-    Create an AsyncRedisStorage configured with a mocked Redis client for tests.
-    
-    Parameters:
-        mock_redis_client (AsyncMock): Mocked AsyncRedis client to be used by the storage.
-    
-    Returns:
-        AsyncRedisStorage: Storage instance configured for testing (default_ttl=3600.0, refresh_ttl_on_access=True, key_prefix="test_cache").
-    """
-    return AsyncRedisStorage(
-        client=mock_redis_client,
-        default_ttl=3600.0,
-        refresh_ttl_on_access=True,
-        key_prefix="test_cache",
-    )
-
-
-@pytest.fixture
-def mock_request() -> Request:
-    """
-    Create a mock GET Request targeting a sample resource.
-    
-    Returns:
-        request (Request): A Request with method "GET", URL "https://api.example.com/anime/1", empty headers, and empty metadata.
-    """
-    return Request(
-        method="GET",
-        url="https://api.example.com/anime/1",
-        headers=Headers({}),
-        metadata={},
-    )
-
-
-@pytest.fixture
-def mock_response() -> Response:
-    """
-    Create a mock HTTP Response containing a three-chunk async body stream.
-    
-    Returns:
-        Response: A Response with status_code 200, a `Content-Type: application/json` header, an async stream that yields `b"chunk1"`, `b"chunk2"`, and `b"chunk3"`, and empty metadata.
-    """
-
-    async def mock_stream() -> AsyncIterator[bytes]:
-        """
-        Asynchronously yields three byte chunks to simulate a response stream.
-        
-        Returns:
-            An async iterator yielding three byte chunks: b'chunk1', b'chunk2', and b'chunk3'.
-        """
-        yield b"chunk1"
-        yield b"chunk2"
-        yield b"chunk3"
-
-    return Response(
-        status_code=200,
-        headers=Headers({"Content-Type": "application/json"}),
-        stream=mock_stream(),
-        metadata={},
-    )
+from http_cache.async_redis_storage import AsyncRedisStorage
 
 
 # ============================================================================
@@ -129,7 +32,7 @@ def mock_response() -> Response:
 class TestAsyncRedisStorageInit:
     """Test initialization and client ownership patterns."""
 
-    @patch("src.cache_manager.async_redis_storage.Redis")
+    @patch("http_cache.async_redis_storage.Redis")
     def test_init_without_client_creates_new_client(
         self, mock_redis_class: MagicMock
     ) -> None:
@@ -182,7 +85,7 @@ class TestAsyncRedisStorageInit:
         assert storage.refresh_ttl_on_access is True
         assert storage.key_prefix == "hishel_cache"
 
-    @patch("src.cache_manager.async_redis_storage.Redis")
+    @patch("http_cache.async_redis_storage.Redis")
     def test_init_without_client_uses_default_url(
         self, mock_redis_class: MagicMock
     ) -> None:
@@ -301,7 +204,7 @@ class TestCreateEntry:
         # Mock index key doesn't exist (will be created with TTL)
         mock_redis_client.ttl.return_value = -2
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             entry = await storage_with_mock_client.create_entry(
@@ -343,7 +246,7 @@ class TestCreateEntry:
         # Mock index key doesn't exist (will be created with TTL)
         mock_redis_client.ttl.return_value = -2
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             entry = await storage_with_mock_client.create_entry(
@@ -383,7 +286,7 @@ class TestCreateEntry:
         # Mock index key doesn't exist (will be created with TTL)
         mock_redis_client.ttl.return_value = -2
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -417,7 +320,7 @@ class TestCreateEntry:
         # Mock index key doesn't exist (will be created with TTL)
         mock_redis_client.ttl.return_value = -2
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -451,7 +354,7 @@ class TestCreateEntry:
         mock_pipeline.expire = MagicMock()
         mock_pipeline.execute = AsyncMock()
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage.create_entry(
@@ -495,7 +398,7 @@ class TestCreateEntry:
         # CRITICAL: Index key has TTL=-1 (persistent, no expiry)
         mock_redis_client.ttl.return_value = -1
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -546,7 +449,7 @@ class TestCreateEntry:
         # Index key has shorter TTL (1800 < 3600)
         mock_redis_client.ttl.return_value = 1800
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -599,7 +502,7 @@ class TestCreateEntry:
         # Index key has longer TTL (7200 > 3600)
         mock_redis_client.ttl.return_value = 7200
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -650,7 +553,7 @@ class TestCreateEntry:
         # Index key doesn't exist (TTL=-2)
         mock_redis_client.ttl.return_value = -2
 
-        with patch("src.cache_manager.async_redis_storage.pack") as mock_pack:
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
             mock_pack.return_value = b"serialized_entry"
 
             await storage_with_mock_client.create_entry(
@@ -753,7 +656,7 @@ class TestGetEntries:
             cache_key=cache_key.encode("utf-8"),
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = mock_entry
             mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
             mock_redis_client.lrange.return_value = [
@@ -796,7 +699,7 @@ class TestGetEntries:
         mock_redis_client.smembers.return_value = {str(entry_id).encode("utf-8")}
         mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = "not_an_entry_object"  # Invalid type
 
             entries = await storage_with_mock_client.get_entries("test_key")
@@ -824,7 +727,7 @@ class TestGetEntries:
             cache_key=b"test_key",
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = mock_entry
 
             entries = await storage_with_mock_client.get_entries("test_key")
@@ -859,7 +762,7 @@ class TestGetEntries:
             cache_key=b"test_key",
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = mock_entry
 
             entries = await storage_with_mock_client.get_entries("test_key")
@@ -892,7 +795,7 @@ class TestGetEntries:
             cache_key=cache_key.encode("utf-8"),
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = mock_entry
             mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
             mock_redis_client.lrange.return_value = [
@@ -939,7 +842,7 @@ class TestGetEntries:
             cache_key=cache_key.encode("utf-8"),
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = mock_entry
             mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
             mock_redis_client.lrange.return_value = [
@@ -1006,8 +909,8 @@ class TestUpdateEntry:
         mock_pipeline.execute = AsyncMock()
 
         with (
-            patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack,
-            patch("src.cache_manager.async_redis_storage.pack") as mock_pack,
+            patch("http_cache.async_redis_storage.unpack") as mock_unpack,
+            patch("http_cache.async_redis_storage.pack") as mock_pack,
         ):
             mock_unpack.return_value = current_entry
             mock_pack.return_value = b"serialized_new_entry"
@@ -1077,8 +980,8 @@ class TestUpdateEntry:
         mock_pipeline.execute = AsyncMock()
 
         with (
-            patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack,
-            patch("src.cache_manager.async_redis_storage.pack") as mock_pack,
+            patch("http_cache.async_redis_storage.unpack") as mock_unpack,
+            patch("http_cache.async_redis_storage.pack") as mock_pack,
         ):
             mock_unpack.return_value = current_entry
             mock_pack.return_value = b"serialized_transformed_entry"
@@ -1132,7 +1035,7 @@ class TestUpdateEntry:
         entry_id = uuid.uuid4()
         mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = "not_an_entry"  # Invalid type
 
             new_entry = Entry(
@@ -1180,7 +1083,7 @@ class TestUpdateEntry:
             cache_key=b"test_key",
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = current_entry
             mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
 
@@ -1226,8 +1129,8 @@ class TestUpdateEntry:
         mock_pipeline.execute = AsyncMock()
 
         with (
-            patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack,
-            patch("src.cache_manager.async_redis_storage.pack") as mock_pack,
+            patch("http_cache.async_redis_storage.unpack") as mock_unpack,
+            patch("http_cache.async_redis_storage.pack") as mock_pack,
         ):
             mock_unpack.return_value = current_entry
             mock_pack.return_value = b"serialized_new_entry"
@@ -1272,8 +1175,8 @@ class TestRemoveEntry:
         )
 
         with (
-            patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack,
-            patch("src.cache_manager.async_redis_storage.pack") as mock_pack,
+            patch("http_cache.async_redis_storage.unpack") as mock_unpack,
+            patch("http_cache.async_redis_storage.pack") as mock_pack,
         ):
             mock_unpack.return_value = mock_entry
             mock_pack.return_value = b"serialized_deleted_entry"
@@ -1323,7 +1226,7 @@ class TestRemoveEntry:
         entry_id = uuid.uuid4()
         mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = "not_an_entry"  # Invalid type
 
             await storage_with_mock_client.remove_entry(entry_id)
@@ -1609,7 +1512,7 @@ class TestCleanupOperations:
             cache_key=b"test_key",
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = deleted_entry
             mock_redis_client.hgetall.return_value = {
                 b"data": b"serialized_entry",
@@ -1664,7 +1567,7 @@ class TestCleanupOperations:
             cache_key=b"test_key",
         )
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = entry
             mock_redis_client.hgetall.return_value = {b"data": b"serialized_entry"}
 
@@ -1731,7 +1634,7 @@ class TestCleanupOperations:
         # Mock hgetall with data
         mock_redis_client.hgetall.return_value = {b"data": b"serialized_invalid_entry"}
 
-        with patch("src.cache_manager.async_redis_storage.unpack") as mock_unpack:
+        with patch("http_cache.async_redis_storage.unpack") as mock_unpack:
             mock_unpack.return_value = "not_an_entry_object"  # Invalid type
 
             cleaned = await storage_with_mock_client.cleanup_expired()
@@ -1808,7 +1711,7 @@ class TestClose:
         self, mock_redis_client: AsyncMock
     ) -> None:
         """Test close() closes Redis client when storage owns it."""
-        with patch("src.cache_manager.async_redis_storage.Redis") as mock_redis_class:
+        with patch("http_cache.async_redis_storage.Redis") as mock_redis_class:
             mock_redis_class.from_url.return_value = mock_redis_client
 
             storage = AsyncRedisStorage()  # Creates own client
@@ -1834,7 +1737,7 @@ class TestClose:
         mock_client = AsyncMock()
         mock_client.aclose.side_effect = Exception("Close failed")
 
-        with patch("src.cache_manager.async_redis_storage.Redis") as mock_redis_class:
+        with patch("http_cache.async_redis_storage.Redis") as mock_redis_class:
             mock_redis_class.from_url.return_value = mock_client
 
             storage = AsyncRedisStorage()

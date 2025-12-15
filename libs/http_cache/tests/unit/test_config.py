@@ -15,7 +15,7 @@ Tests cover:
 import pytest
 from pydantic import ValidationError
 
-from src.cache_manager.config import CacheConfig, get_cache_config
+from http_cache.config import CacheConfig, get_cache_config
 
 
 class TestCacheConfigModel:

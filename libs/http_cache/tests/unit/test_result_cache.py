@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisError
 
-from src.cache_manager.result_cache import (
+from http_cache.result_cache import (
     _compute_schema_hash,
     _generate_cache_key,
     cached_result,
@@ -284,7 +284,7 @@ class TestGenerateCacheKey:
 
     def test_cache_key_long_key_hashed(self) -> None:
         """Test that very long cache keys are hashed instead of including full argument."""
-        from src.cache_manager.config import get_cache_config
+        from http_cache.config import get_cache_config
 
         # Create a key longer than 200 characters
         long_arg = "x" * 200
@@ -405,7 +405,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test_data"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
 
             mock_redis = AsyncMock()
@@ -414,7 +414,7 @@ class TestCachedResultDecorator:
 
             # Ensure _redis_client is None initially to cover lines 36-43
 
-            from src.cache_manager import result_cache
+            from http_cache import result_cache
 
             result_cache._redis_client = None
 
@@ -448,13 +448,13 @@ class TestCachedResultDecorator:
 
         from redis.asyncio import Redis
 
-        from src.cache_manager.result_cache import close_result_cache_redis_client
+        from http_cache.result_cache import close_result_cache_redis_client
 
         mock_redis = AsyncMock(spec=Redis)
 
         mock_redis.aclose = AsyncMock()
 
-        with patch("src.cache_manager.result_cache._redis_client", new=mock_redis):
+        with patch("http_cache.result_cache._redis_client", new=mock_redis):
 
             await close_result_cache_redis_client()
 
@@ -464,9 +464,9 @@ class TestCachedResultDecorator:
     async def test_close_result_cache_redis_client_no_client(self) -> None:
         """Test close_result_cache_redis_client when no client is set."""
 
-        from src.cache_manager.result_cache import close_result_cache_redis_client
+        from http_cache.result_cache import close_result_cache_redis_client
 
-        with patch("src.cache_manager.result_cache._redis_client", new=None):
+        with patch("http_cache.result_cache._redis_client", new=None):
 
             # Should not raise an error
 
@@ -493,7 +493,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         # Mock get_cache_config to return disabled config
-        with patch("src.cache_manager.result_cache.get_cache_config") as mock_config:
+        with patch("http_cache.result_cache.get_cache_config") as mock_config:
             mock_config.return_value = MagicMock(enabled=False)
 
             result1 = await fetch_data("item1")
@@ -522,7 +522,7 @@ class TestCachedResultDecorator:
             return {"id": item_id}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -552,7 +552,7 @@ class TestCachedResultDecorator:
             return {"id": item_id}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -582,7 +582,7 @@ class TestCachedResultDecorator:
             return {"id": item_id}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -614,7 +614,7 @@ class TestCachedResultDecorator:
             return None
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -649,7 +649,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             # Simulate Redis connection error
             mock_get_client.side_effect = RedisError("Connection failed")
@@ -681,7 +681,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -718,7 +718,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -761,8 +761,8 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         with (
-            patch("src.cache_manager.result_cache.get_result_cache_redis_client") as mock_get_client,
-            patch("src.cache_manager.result_cache.json.dumps") as mock_dumps,
+            patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client,
+            patch("http_cache.result_cache.json.dumps") as mock_dumps,
         ):
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -807,7 +807,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": "test"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -846,7 +846,7 @@ class TestCachedResultDecorator:
             return {"id": item_id, "data": f"data_{item_id}"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -874,7 +874,7 @@ class TestCachedResultDecorator:
             return {"id": item_id}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -938,7 +938,7 @@ class TestCachedResultDecorator:
             }
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -996,7 +996,7 @@ class TestSchemaHashInvalidation:
             return {"id": item_id, "version": "2", "new_field": "data"}
 
         with patch(
-            "src.cache_manager.result_cache.get_result_cache_redis_client"
+            "http_cache.result_cache.get_result_cache_redis_client"
         ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_get_client.return_value = mock_redis
@@ -1016,26 +1016,20 @@ class TestSchemaHashInvalidation:
 class TestGetResultCacheRedisClient:
     """Test get_result_cache_redis_client function."""
 
-    def setup_method(self) -> None:
-        """Reset the _redis_client before each test to ensure a clean state."""
-        import src.cache_manager.result_cache
-
-        src.cache_manager.result_cache._redis_client = None
-
     @pytest.mark.asyncio
     async def test_initialization_and_singleton(self) -> None:
         """Test that the Redis client is initialized and is a singleton."""
         from redis.asyncio import Redis
 
-        from src.cache_manager.config import CacheConfig
-        from src.cache_manager.result_cache import get_result_cache_redis_client
+        from http_cache.config import CacheConfig
+        from http_cache.result_cache import get_result_cache_redis_client
 
         with (
-            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
+            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
             patch(
-                "src.cache_manager.result_cache.Redis.from_url"
+                "http_cache.result_cache.Redis.from_url"
             ) as mock_redis_from_url,
-            patch("src.cache_manager.result_cache.logging") as mock_logging,
+            patch("http_cache.result_cache.logging") as mock_logging,
         ):
 
             mock_config_instance = MagicMock(spec=CacheConfig)
@@ -1071,7 +1065,7 @@ class TestGetResultCacheRedisClient:
             assert "redis://test-host:6379/1" in log_call_args
             assert "max_connections=100" in log_call_args
             assert client1 is mock_redis_client_instance
-            from src.cache_manager.result_cache import _redis_client
+            from http_cache.result_cache import _redis_client
 
             assert _redis_client is client1
 
@@ -1104,8 +1098,8 @@ class TestGetResultCacheRedisClient:
 
         from redis.asyncio import Redis
 
-        from src.cache_manager.config import CacheConfig
-        from src.cache_manager.result_cache import get_result_cache_redis_client
+        from http_cache.config import CacheConfig
+        from http_cache.result_cache import get_result_cache_redis_client
 
         call_count = 0
         
@@ -1124,9 +1118,9 @@ class TestGetResultCacheRedisClient:
             return AsyncMock(spec=Redis)
 
         with (
-            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
+            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
             patch(
-                "src.cache_manager.result_cache.Redis.from_url",
+                "http_cache.result_cache.Redis.from_url",
                 side_effect=counting_from_url
             ),
         ):
@@ -1174,15 +1168,15 @@ class TestGetResultCacheRedisClient:
 
         from redis.asyncio import Redis
 
-        from src.cache_manager.config import CacheConfig
-        from src.cache_manager.result_cache import (
+        from http_cache.config import CacheConfig
+        from http_cache.result_cache import (
             close_result_cache_redis_client,
             get_result_cache_redis_client,
         )
 
         with (
-            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
-            patch("src.cache_manager.result_cache.Redis.from_url") as mock_from_url,
+            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
+            patch("http_cache.result_cache.Redis.from_url") as mock_from_url,
         ):
             mock_config_instance = MagicMock(spec=CacheConfig)
             mock_config_instance.redis_url = "redis://localhost:6379/0"
@@ -1256,14 +1250,14 @@ class TestMaxCacheKeyLength:
 
     def test_default_max_cache_key_length(self) -> None:
         """Test that default max_cache_key_length is 200."""
-        from src.cache_manager.config import get_cache_config
+        from http_cache.config import get_cache_config
 
         config = get_cache_config()
         assert config.max_cache_key_length == 200
 
     def test_custom_max_cache_key_length_via_config(self) -> None:
         """Test that custom max_cache_key_length can be set via config."""
-        from src.cache_manager.config import CacheConfig
+        from http_cache.config import CacheConfig
 
         config = CacheConfig(max_cache_key_length=500)
         assert config.max_cache_key_length == 500

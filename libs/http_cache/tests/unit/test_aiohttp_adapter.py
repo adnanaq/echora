@@ -10,7 +10,7 @@ import pytest
 from multidict import CIMultiDictProxy
 from yarl import URL
 
-from src.cache_manager.aiohttp_adapter import (
+from http_cache.aiohttp_adapter import (
     CachedAiohttpSession,
     _CachedRequestContextManager,
     _CachedResponse,
@@ -233,89 +233,8 @@ class TestCachedRequestContextManager:
         assert mock_response._released is True
 
 
-class MockAsyncStorage:
-    def __init__(self):
-        """
-        Initialize the instance and create an empty in-memory storage mapping for cache entries.
-        """
-        self._storage = {}
-
-    async def get_entries(self, key):
-        """
-        Retrieve cached entries for the given cache key.
-        
-        Parameters:
-            key (str): Cache key to look up.
-        
-        Returns:
-            list: The list of cache entries associated with `key`, or `None` if no entries exist.
-        """
-        return self._storage.get(key)
-
-    async def create_entry(self, _request, response, key):
-        # Simulate hishel consuming the stream and storing the body
-        """
-        Create and store a mock cache entry by consuming the provided response stream and materializing its body.
-
-        Parameters:
-            _request: The original request object (kept for interface compatibility; not inspected by this helper).
-            response: An object exposing `status_code`, `headers`, and `stream` (an async or sync iterable of bytes) whose stream will be consumed and materialized.
-            key (str): The storage key under which the created entry will be inserted.
-
-        Returns:
-            MagicMock: A mock entry whose `.response` has `status_code`, `headers`, and a `.stream` set to a list containing the full body bytes; the entry is inserted at the front of the storage list for the given key.
-        """
-        body_chunks = []
-        if response and response.stream:
-            stream = response.stream
-            if hasattr(stream, "__aiter__"):
-                async for chunk in stream:
-                    body_chunks.append(chunk)
-            else:
-                for chunk in stream:
-                    body_chunks.append(chunk)
-        body = b"".join(body_chunks)
-
-        # Create a simplified mock entry that directly holds the body
-        mock_response_for_storage = MagicMock()
-        mock_response_for_storage.status_code = response.status_code
-        mock_response_for_storage.headers = response.headers  # Assuming Headers object
-        mock_response_for_storage.stream = [
-            body
-        ]  # Store body directly as a list for iteration
-
-        entry = MagicMock()
-        entry.response = mock_response_for_storage
-
-        if key not in self._storage:
-            self._storage[key] = []
-        self._storage[key].insert(0, entry)
-        return entry
-
-    async def close(self):
-        """
-        Clear all entries from the storage backend.
-        
-        This removes any cached entries held by the session's storage.
-        """
-        self._storage.clear()
-
-
 class TestCachedAiohttpSession:
     """Test CachedAiohttpSession wrapper."""
-
-    @pytest.fixture
-    def mock_storage(self):
-        """
-        Provide an AsyncMock-wrapped MockAsyncStorage suitable for tests.
-        
-        Returns:
-            AsyncMock: An AsyncMock wrapping a MockAsyncStorage instance. The wrapper preserves MockAsyncStorage behavior and exposes a replaceable `close` coroutine mocked as an AsyncMock.
-        """
-        storage = MockAsyncStorage()
-        mock = AsyncMock(wraps=storage)
-        mock.close = AsyncMock()
-        return mock
 
     @pytest.mark.asyncio
     async def test_init_with_session(self, mock_storage):
@@ -334,7 +253,7 @@ class TestCachedAiohttpSession:
     async def test_init_creates_session(self, mock_storage):
         """Test lazy session creation on first request."""
         with patch(
-            "src.cache_manager.aiohttp_adapter.aiohttp.ClientSession"
+            "http_cache.aiohttp_adapter.aiohttp.ClientSession"
         ) as mock_client_session:
             mock_session_instance = AsyncMock()
             mock_client_session.return_value = mock_session_instance

@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.cache_manager.config import CacheConfig
-from src.cache_manager.manager import HTTPCacheManager
+from http_cache.config import CacheConfig
+from http_cache.manager import HTTPCacheManager
 
 
 class TestHTTPCacheManagerInit:
@@ -66,7 +66,7 @@ class TestGetAiohttpSession:
         manager = HTTPCacheManager(config)
 
         with patch(
-            "src.cache_manager.manager.aiohttp.ClientSession"
+            "http_cache.manager.aiohttp.ClientSession"
         ) as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
@@ -85,14 +85,14 @@ class TestGetAiohttpSession:
         """
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             # Simulate Redis connection failure with realistic exception
             mock_async_redis_class.from_url.side_effect = Exception(
                 "Connection refused: Redis server not available"
             )
 
             with patch(
-                "src.cache_manager.manager.aiohttp.ClientSession"
+                "http_cache.manager.aiohttp.ClientSession"
             ) as mock_session_class:
                 mock_session = MagicMock()
                 mock_session_class.return_value = mock_session
@@ -112,15 +112,15 @@ class TestGetAiohttpSession:
         """Test aiohttp session creation with Redis caching (lazy initialization)."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
             with patch(
-                "src.cache_manager.async_redis_storage.AsyncRedisStorage"
+                "http_cache.async_redis_storage.AsyncRedisStorage"
             ) as mock_async_storage:
                 with patch(
-                    "src.cache_manager.aiohttp_adapter.CachedAiohttpSession"
+                    "http_cache.aiohttp_adapter.CachedAiohttpSession"
                 ) as mock_cached_session:
                     mock_session_instance = MagicMock()
                     mock_cached_session.return_value = mock_session_instance
@@ -140,13 +140,13 @@ class TestGetAiohttpSession:
         """Test that body-based caching header is added."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
+            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
                 with patch(
-                    "src.cache_manager.aiohttp_adapter.CachedAiohttpSession"
+                    "http_cache.aiohttp_adapter.CachedAiohttpSession"
                 ) as mock_cached_session:
                     manager = HTTPCacheManager(config)
                     manager.get_aiohttp_session("anilist")
@@ -161,14 +161,14 @@ class TestGetAiohttpSession:
         """Test that service-specific TTL is used."""
         config = CacheConfig(enabled=True, storage_type="redis", ttl_jikan=7200)
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
             with patch(
-                "src.cache_manager.async_redis_storage.AsyncRedisStorage"
+                "http_cache.async_redis_storage.AsyncRedisStorage"
             ) as mock_async_storage:
-                with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession"):
+                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
                     manager.get_aiohttp_session("jikan")
 
@@ -180,16 +180,16 @@ class TestGetAiohttpSession:
         """Test fallback to regular session when cached session creation fails."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
             with patch(
-                "src.cache_manager.aiohttp_adapter.CachedAiohttpSession",
+                "http_cache.aiohttp_adapter.CachedAiohttpSession",
                 side_effect=Exception("Creation failed"),
             ):
                 with patch(
-                    "src.cache_manager.manager.aiohttp.ClientSession"
+                    "http_cache.manager.aiohttp.ClientSession"
                 ) as mock_session_class:
                     mock_session = MagicMock()
                     mock_session_class.return_value = mock_session
@@ -205,16 +205,16 @@ class TestGetAiohttpSession:
         """Test fallback to regular session when imports fail."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
             with patch(
-                "src.cache_manager.async_redis_storage.AsyncRedisStorage",
+                "http_cache.async_redis_storage.AsyncRedisStorage",
                 side_effect=ImportError("No module"),
             ):
                 with patch(
-                    "src.cache_manager.manager.aiohttp.ClientSession"
+                    "http_cache.manager.aiohttp.ClientSession"
                 ) as mock_session_class:
                     mock_session = MagicMock()
                     mock_session_class.return_value = mock_session
@@ -281,12 +281,12 @@ class TestCacheManagerClose:
         """Test async closing manager with Redis client (lazy initialization)."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = AsyncMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
-                with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession"):
+            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
+                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
                     # Trigger lazy initialization by calling get_aiohttp_session
                     manager.get_aiohttp_session("jikan")
@@ -300,7 +300,7 @@ class TestCacheManagerClose:
         """Test that close_async() handles Redis errors gracefully."""
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = AsyncMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
             mock_async_redis.aclose.side_effect = Exception("Close error")
@@ -330,7 +330,7 @@ class TestGetStats:
             redis_url="redis://test:6379/0",
         )
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
@@ -356,12 +356,12 @@ class TestIntegrationScenarios:
             ttl_anilist=86400,
         )
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            with patch("src.cache_manager.async_redis_storage.AsyncRedisStorage"):
-                with patch("src.cache_manager.aiohttp_adapter.CachedAiohttpSession"):
+            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
+                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
 
                     # Redis client is lazily initialized
@@ -382,12 +382,12 @@ class TestIntegrationScenarios:
         """
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch("src.cache_manager.manager.AsyncRedis") as mock_async_redis_class:
+        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
             with patch(
-                "src.cache_manager.manager.aiohttp.ClientSession"
+                "http_cache.manager.aiohttp.ClientSession"
             ) as mock_session_class:
                 mock_session = MagicMock()
                 mock_session_class.return_value = mock_session
@@ -829,8 +829,8 @@ class TestGetAiohttpSessionErrorHandling:
             mock_redis.return_value = MagicMock()
 
             # Mock ImportError when importing CachedAiohttpSession (within get_aiohttp_session)
-            with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession', side_effect=ImportError("Module not found")):
-                with patch('src.cache_manager.manager.aiohttp.ClientSession') as mock_session:
+            with patch('http_cache.aiohttp_adapter.CachedAiohttpSession', side_effect=ImportError("Module not found")):
+                with patch('http_cache.manager.aiohttp.ClientSession') as mock_session:
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("test")
 
@@ -851,8 +851,8 @@ class TestGetAiohttpSessionErrorHandling:
             mock_redis.return_value = MagicMock()
 
             # Mock exception during AsyncRedisStorage creation
-            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage', side_effect=RuntimeError("Storage init failed")):
-                with patch('src.cache_manager.manager.aiohttp.ClientSession') as mock_session:
+            with patch('http_cache.async_redis_storage.AsyncRedisStorage', side_effect=RuntimeError("Storage init failed")):
+                with patch('http_cache.manager.aiohttp.ClientSession') as mock_session:
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("test")
 
@@ -876,8 +876,8 @@ class TestCloseErrorHandling:
         mock_redis.aclose.side_effect = Exception("Redis close error")
 
         with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
-            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage'):
-                with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession'):
+            with patch('http_cache.async_redis_storage.AsyncRedisStorage'):
+                with patch('http_cache.aiohttp_adapter.CachedAiohttpSession'):
                     manager = HTTPCacheManager(config)
 
                     # Trigger lazy initialization
@@ -912,8 +912,8 @@ class TestCloseErrorHandling:
         mock_redis = AsyncMock()
         
         with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
-            with patch('src.cache_manager.async_redis_storage.AsyncRedisStorage'):
-                with patch('src.cache_manager.aiohttp_adapter.CachedAiohttpSession'):
+            with patch('http_cache.async_redis_storage.AsyncRedisStorage'):
+                with patch('http_cache.aiohttp_adapter.CachedAiohttpSession'):
                     manager = HTTPCacheManager(config)
 
                     # Step 1: Create first session (triggers lazy initialization)

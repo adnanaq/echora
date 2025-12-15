@@ -153,8 +153,8 @@ class HTTPCacheManager:
 
         # Create async Redis storage for aiohttp caching
         try:
-            from src.cache_manager.aiohttp_adapter import CachedAiohttpSession
-            from src.cache_manager.async_redis_storage import AsyncRedisStorage
+            from http_cache.aiohttp_adapter import CachedAiohttpSession
+            from http_cache.async_redis_storage import AsyncRedisStorage
 
             # Get service-specific TTL
             ttl = self._get_service_ttl(service)

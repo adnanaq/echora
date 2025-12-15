@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.asyncio import Redis
 
-from src.cache_manager.config import CacheConfig
+from http_cache.config import CacheConfig
 
 pytestmark = pytest.mark.integration
 
@@ -27,8 +27,8 @@ class TestResultCacheRaceConditions:
         Instruments get_result_cache_redis_client to introduce a short delay inside the critical section, runs an initialization getter and a concurrent closer, and asserts the getter still observes a non-None client even if the closer runs during the delay.
         """
         with (
-            patch("src.cache_manager.result_cache.get_cache_config") as mock_get_config,
-            patch("src.cache_manager.result_cache.Redis.from_url") as mock_from_url,
+            patch("http_cache.result_cache.get_cache_config") as mock_get_config,
+            patch("http_cache.result_cache.Redis.from_url") as mock_from_url,
         ):
             mock_config_instance = MagicMock(spec=CacheConfig)
             mock_config_instance.redis_url = "redis://localhost:6379/0"
@@ -44,8 +44,8 @@ class TestResultCacheRaceConditions:
             mock_from_url.return_value = mock_client
 
             # Import module to access internals
-            from src.cache_manager import result_cache
-            from src.cache_manager.result_cache import close_result_cache_redis_client
+            from http_cache import result_cache
+            from http_cache.result_cache import close_result_cache_redis_client
 
             # Reset state
             result_cache._redis_client = None
