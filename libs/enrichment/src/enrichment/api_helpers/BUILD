@@ -1,8 +1,8 @@
-"""Enrichment sources - API helpers, crawlers, and similarity matching."""
+"""API Helpers - External anime API integrations."""
 
 python_sources(
     resolve="enrichment",
-    # Explicit dependencies (will be added after api_helpers migration)
+    # Explicit dependencies for API helpers
     dependencies=[
         "//libs/http_cache/src/http_cache",
         "//libs/common/src/common",
