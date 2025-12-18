@@ -54,7 +54,7 @@ async def _test_single_filter(
         return {
             "description": description,
             "filter_dict": filter_dict,
-            "status": f"FAIL: {str(e)}",
+            "status": f"FAIL: {e!s}",
             "result_count": 0,
             "sample_results": []
         }
