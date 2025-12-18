@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from src.enrichment.programmatic.enrichment_pipeline import (
+from enrichment.programmatic.enrichment_pipeline import (
     ProgrammaticEnrichmentPipeline,
 )
 
