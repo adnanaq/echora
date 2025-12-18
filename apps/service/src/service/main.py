@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator, Dict
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import admin
+from .routes import admin
 from common.config import get_settings
 from qdrant_db import QdrantClient
 from vector_processing import MultiVectorEmbeddingManager
@@ -28,8 +28,8 @@ from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.utils.image_downloader import ImageDownloader
 from qdrant_client import AsyncQdrantClient
 from .dependencies import get_qdrant_client
-from src.cache_manager.instance import http_cache_manager
-from src.cache_manager.result_cache import close_result_cache_redis_client
+from http_cache.instance import http_cache_manager
+from http_cache.result_cache import close_result_cache_redis_client
 
 # Get application settings
 settings = get_settings()
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "src.main:app",
+        "service.main:app",
         host=settings.vector_service_host,
         port=settings.vector_service_port,
         reload=settings.debug,
