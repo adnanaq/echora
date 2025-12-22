@@ -75,10 +75,10 @@ REDIS_CACHE_URL=redis://localhost:6379/0
 
 ### TTL Configuration
 
-Configure cache expiration via `CacheConfig` in `src/cache_manager/config.py`:
+Configure cache expiration via `CacheConfig` in `http_cache/config.py`:
 
 ```python
-from src.cache_manager.config import CacheConfig
+from http_cache.config import CacheConfig
 
 config = CacheConfig(
     service_ttls={
@@ -102,7 +102,7 @@ All caching classes implement async context manager protocol for automatic resou
 The `CachedAiohttpSession` returned by `http_cache_manager.get_aiohttp_session()` is an async context manager:
 
 ```python
-from src.cache_manager.instance import http_cache_manager
+from http_cache.instance import http_cache_manager
 
 # Recommended: Use as context manager (automatic cleanup)
 async with http_cache_manager.get_aiohttp_session("jikan") as session:
@@ -132,7 +132,7 @@ For detailed usage patterns in the enrichment pipeline (session ownership, event
 **Basic usage example:**
 
 ```python
-from src.cache_manager.instance import http_cache_manager
+from http_cache.instance import http_cache_manager
 
 # Context manager pattern (recommended)
 async with http_cache_manager.get_aiohttp_session("my_service") as session:
@@ -151,14 +151,14 @@ await session.close()  # Closes session + storage
 **HTTPCacheManager.close_async()**:
 
 ```python
-from src.cache_manager.instance import http_cache_manager
+from http_cache.instance import http_cache_manager
 await http_cache_manager.close_async()  # Close async Redis client
 ```
 
 **Result Cache Cleanup**:
 
 ```python
-from src.cache_manager.result_cache import close_result_cache_redis_client
+from http_cache.result_cache import close_result_cache_redis_client
 await close_result_cache_redis_client()  # Close singleton Redis client
 ```
 
@@ -168,7 +168,7 @@ await close_result_cache_redis_client()  # Close singleton Redis client
 
 ### HTTPCacheManager
 
-**Singleton instance:** `http_cache_manager` from `src.cache_manager.instance`
+**Singleton instance:** `http_cache_manager` from `http_cache.instance`
 
 **Methods:**
 - `get_aiohttp_session(service_name: str, **kwargs) -> CachedAiohttpSession`
@@ -179,7 +179,7 @@ await close_result_cache_redis_client()  # Close singleton Redis client
 
 ### @cached_result Decorator
 
-**Location:** `src.cache_manager.result_cache`
+**Location:** `http_cache.result_cache`
 
 **Signature:**
 ```python
@@ -199,7 +199,7 @@ async def my_function(arg1: str, arg2: int) -> Dict[str, Any]:
 
 **Example:**
 ```python
-from src.cache_manager.result_cache import cached_result
+from http_cache.result_cache import cached_result
 
 @cached_result(ttl=3600, key_prefix="api_results")
 async def fetch_external_data(item_id: str) -> dict:
@@ -319,11 +319,11 @@ docker exec -it anime-vector-redis redis-cli
 **Unit Tests** (fast, no external dependencies):
 
 ```bash
-# Test cache manager components
-pytest tests/cache_manager/
+# Test cache manager components (in tests/libs/http_cache/)
+pytest tests/libs/http_cache/
 
 # Run with coverage
-pytest tests/cache_manager/ --cov=src/cache_manager
+pytest tests/libs/http_cache/ --cov=http_cache
 ```
 
 **Integration Tests** (require Redis):
@@ -494,30 +494,30 @@ For multi-event-loop scenarios, see [enrichment/README.md - Pattern C](../enrich
 
 ## Key Files
 
-- `src/cache_manager/result_cache.py` - Result-level caching decorator for crawlers
+- `libs/http_cache/src/http_cache/result_cache.py` - Result-level caching decorator for crawlers
   - Provides `@cached_result` decorator with automatic schema invalidation
   - Singleton Redis client with `close_result_cache_redis_client()` cleanup
 
-- `src/cache_manager/manager.py` - HTTP cache manager for API sources
+- `libs/http_cache/src/http_cache/manager.py` - HTTP cache manager for API sources
   - Provides `get_aiohttp_session()` factory method
   - Has `close_async()` for closing async Redis connections
   - NOT a context manager itself (returns context managers)
 
-- `src/cache_manager/aiohttp_adapter.py` - Cached aiohttp session wrapper
+- `libs/http_cache/src/http_cache/aiohttp_adapter.py` - Cached aiohttp session wrapper
   - **CachedAiohttpSession**: Async context manager implementing `__aenter__` and `__aexit__`
   - `close()` method for manual cleanup (closes session + storage)
   - Wraps `aiohttp.ClientSession` with Redis caching via Hishel
 
-- `src/cache_manager/async_redis_storage.py` - Async Redis storage backend
+- `libs/http_cache/src/http_cache/async_redis_storage.py` - Async Redis storage backend
   - Implements Hishel's `AsyncBaseStorage` interface
   - Has `close()` method (closes Redis client if owned)
   - Manages ownership via `_owns_client` flag
 
-- `src/cache_manager/instance.py` - Singleton instance of the cache manager
+- `libs/http_cache/src/http_cache/instance.py` - Singleton instance of the cache manager
   - Global `http_cache_manager` instance (fully type annotated)
   - Used by all API helpers for consistent caching
 
-- `src/cache_manager/config.py` - Cache configuration and environment variables
+- `libs/http_cache/src/http_cache/config.py` - Cache configuration and environment variables
   - Pydantic-based config with env var support
   - Service-specific TTLs and storage backend configuration
 

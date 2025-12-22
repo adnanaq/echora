@@ -6,7 +6,7 @@ using crawl4ai with CSS selectors and JavaScript navigation. Results are cached
 in Redis for 24 hours to avoid repeated crawling.
 
 Usage:
-    python -m src.enrichment.crawlers.anisearch_anime_crawler <url> [--output PATH]
+    python -m enrichment.crawlers.anisearch_anime_crawler <url> [--output PATH]
 
     <url>           anisearch.com anime page URL (full or relative path)
     --output PATH   optional output file path (default: anisearch_anime.json)

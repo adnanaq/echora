@@ -6,7 +6,7 @@ and all metadata from JSON-LD. Results are cached in Redis for 24 hours to avoid
 repeated crawling.
 
 Usage:
-    python -m src.enrichment.crawlers.anime_planet_anime_crawler <identifier> [--output PATH]
+    python -m enrichment.crawlers.anime_planet_anime_crawler <identifier> [--output PATH]
 
     <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
     --output PATH   optional output file path (default: animeplanet_anime.json)

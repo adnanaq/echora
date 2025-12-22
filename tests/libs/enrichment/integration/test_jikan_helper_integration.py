@@ -294,7 +294,7 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
     Exercise the module's __main__ entrypoint by running it as a subprocess.
     
     Creates a temporary input JSON file containing a minimal entry, invokes the package as a script
-    (via `python -m src.enrichment.api_helpers.jikan_helper ...`) with a 30-second timeout, and
+    (via `python -m enrichment.api_helpers.jikan_helper ...`) with a 30-second timeout, and
     asserts that the process exited with code 0 or 1 to confirm the main path was executed.
     """
     import subprocess
@@ -313,7 +313,7 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
             [
                 sys.executable,
                 "-m",
-                "src.enrichment.api_helpers.jikan_helper",
+                "enrichment.api_helpers.jikan_helper",
                 "episodes",
                 "21",
                 str(input_file),

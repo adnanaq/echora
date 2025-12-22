@@ -10,14 +10,14 @@ These crawlers use browser automation with JavaScript rendering and Cloudflare b
 
 ## Crawlers vs Scrapers
 
-**Crawlers** (`src/enrichment/crawlers/`) - **Future production code**:
+**Crawlers** (`libs/enrichment/src/enrichment/crawlers/`) - **Future production code**:
 - Heavy-duty browser automation using crawl4ai
 - JavaScript rendering and Cloudflare bypass
 - CSS extraction strategies with structured schemas
 - Will be refactored into library classes
 - More reliable data extraction
 
-**Scrapers** (`src/enrichment/scrapers/`) - **Legacy code**:
+**Scrapers** (`libs/enrichment/src/enrichment/scrapers/`) - **Legacy code**:
 - Lightweight HTTP scraping using cloudscraper + BeautifulSoup
 - Library classes meant to be imported
 - Currently used in enrichment pipeline
@@ -33,12 +33,12 @@ Extracts comprehensive anime information from Anime-Planet anime pages.
 **CLI Usage:**
 ```bash
 # Flexible input formats (all equivalent)
-python src/enrichment/crawlers/anime_planet_anime_crawler.py dandadan
-python src/enrichment/crawlers/anime_planet_anime_crawler.py /anime/dandadan
-python src/enrichment/crawlers/anime_planet_anime_crawler.py https://www.anime-planet.com/anime/dandadan
+python -m enrichment.crawlers.anime_planet_anime_crawler dandadan
+python -m enrichment.crawlers.anime_planet_anime_crawler /anime/dandadan
+python -m enrichment.crawlers.anime_planet_anime_crawler https://www.anime-planet.com/anime/dandadan
 
 # Custom output file
-python src/enrichment/crawlers/anime_planet_anime_crawler.py dandadan --output /path/to/output.json
+python -m enrichment.crawlers.anime_planet_anime_crawler dandadan --output /path/to/output.json
 ```
 
 **Arguments:**
@@ -47,7 +47,7 @@ python src/enrichment/crawlers/anime_planet_anime_crawler.py dandadan --output /
 
 **Programmatic Usage:**
 ```python
-from src.enrichment.crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
+from enrichment.crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
 
 # Return data without writing file
 anime_data = await fetch_animeplanet_anime(
@@ -75,13 +75,13 @@ Extracts character information from Anime-Planet anime character pages.
 **CLI Usage:**
 ```bash
 # Flexible input formats (all equivalent)
-python src/enrichment/crawlers/anime_planet_character_crawler.py dandadan
-python src/enrichment/crawlers/anime_planet_character_crawler.py /anime/dandadan
-python src/enrichment/crawlers/anime_planet_character_crawler.py /anime/dandadan/characters
-python src/enrichment/crawlers/anime_planet_character_crawler.py https://www.anime-planet.com/anime/dandadan
+python -m enrichment.crawlers.anime_planet_character_crawler dandadan
+python -m enrichment.crawlers.anime_planet_character_crawler /anime/dandadan
+python -m enrichment.crawlers.anime_planet_character_crawler /anime/dandadan/characters
+python -m enrichment.crawlers.anime_planet_character_crawler https://www.anime-planet.com/anime/dandadan
 
 # Custom output file
-python src/enrichment/crawlers/anime_planet_character_crawler.py dandadan --output /path/to/output.json
+python -m enrichment.crawlers.anime_planet_character_crawler dandadan --output /path/to/output.json
 ```
 
 **Arguments:**
@@ -90,7 +90,7 @@ python src/enrichment/crawlers/anime_planet_character_crawler.py dandadan --outp
 
 **Programmatic Usage:**
 ```python
-from src.enrichment.crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
+from enrichment.crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
 
 # Return data without writing file
 character_data = await fetch_animeplanet_characters(
@@ -119,8 +119,8 @@ Extracts anime information from AniSearch anime pages.
 
 **Usage:**
 ```bash
-python src/enrichment/crawlers/anisearch_anime_crawler.py <slug>
-python src/enrichment/crawlers/anisearch_anime_crawler.py dandadan
+python -m enrichment.crawlers.anisearch_anime_crawler <slug>
+python -m enrichment.crawlers.anisearch_anime_crawler dandadan
 ```
 
 **Data Extracted:**
@@ -134,7 +134,7 @@ Extracts character information from AniSearch character pages.
 
 **Usage:**
 ```bash
-python src/enrichment/crawlers/anisearch_character_crawler.py <slug>
+python -m enrichment.crawlers.anisearch_character_crawler <slug>
 ```
 
 **Data Extracted:**
@@ -147,7 +147,7 @@ Extracts episode information from AniSearch.
 
 **Usage:**
 ```bash
-python src/enrichment/crawlers/anisearch_episode_crawler.py <anime_id>
+python -m enrichment.crawlers.anisearch_episode_crawler <anime_id>
 ```
 
 **Data Extracted:**
@@ -177,7 +177,7 @@ uv pip install crawl4ai
 1. Refactor crawlers into importable library classes
 2. Create base crawler class (similar to `base_scraper.py`)
 3. Update helpers in `api_helpers/` to use crawlers instead of scrapers
-4. Deprecate `src/enrichment/scrapers/` once migration is complete
+4. Deprecate `libs/enrichment/src/enrichment/scrapers/` once migration is complete
 
 ## Notes
 

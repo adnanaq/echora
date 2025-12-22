@@ -13,11 +13,11 @@ Usage:
     data = await fetch_animeschedule_data("One Piece", output_path="temp/as.json")
 
     # CLI usage (default output to CWD)
-    python -m src.enrichment.api_helpers.animeschedule_fetcher "One Piece"
+    python -m enrichment.api_helpers.animeschedule_fetcher "One Piece"
     # Output: animeschedule.json
 
     # CLI usage (custom output path)
-    python -m src.enrichment.api_helpers.animeschedule_fetcher "One Piece" --output temp/as.json
+    python -m enrichment.api_helpers.animeschedule_fetcher "One Piece" --output temp/as.json
     # Output: temp/as.json
 """
 
