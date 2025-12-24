@@ -21,31 +21,40 @@ A production-ready semantic search microservice for anime content using an 11-ve
 
 ## 🏗️ Monorepo Structure
 
-```
+```text
 echora/
+├── apps/                          # Applications
+│   └── service/                   # Vector search service
+│       └── src/service/           # FastAPI application (main.py, api/, etc.)
 ├── libs/                          # Shared libraries
 │   ├── common/                    # Common models and configuration
 │   │   └── src/common/
 │   │       ├── config/            # Settings and configuration
 │   │       └── models/            # Shared data models (AnimeEntry, etc.)
+│   ├── enrichment/                # Anime data enrichment pipeline
+│   │   └── src/enrichment/
+│   │       ├── api_helpers/       # External API integrations (AniList, Kitsu, etc.)
+│   │       ├── crawlers/          # Web crawlers (Crawl4ai-based)
+│   │       ├── programmatic/      # Multi-stage enrichment pipeline
+│   │       └── similarity/        # Character similarity (CCIP)
+│   ├── http_cache/                # HTTP response caching (Redis-backed)
+│   │   └── src/http_cache/        # Cache manager, aiohttp adapter
 │   ├── qdrant_db/                 # Qdrant database client
 │   │   ├── src/qdrant_db/         # Client implementation with retry logic
 │   │   └── tests/                 # Unit and integration tests
+│   ├── vector_db_interface/       # Database-agnostic vector interface
+│   │   └── src/vector_db_interface/
 │   └── vector_processing/         # Vector embedding processing
 │       ├── src/vector_processing/
-│       │   ├── embedding_models/  # Model implementations (FastEmbed, HuggingFace, SentenceTransformers, OpenCLIP)
+│       │   ├── embedding_models/  # Model implementations (FastEmbed, OpenCLIP)
 │       │   ├── processors/        # Text/Vision processors, field mapping
 │       │   └── utils/             # Image downloading, caching
 │       └── tests/                 # Unit tests
-├── src/                           # Main application
-│   ├── api/                       # FastAPI endpoints
-│   ├── enrichment/                # Anime data enrichment pipeline
-│   └── validation/                # Search quality validation
-├── scripts/                       # Utility scripts
-├── tests/                         # Application tests
+├── scripts/                       # Utility scripts (reindexing, validation, etc.)
+├── tests/                         # Cross-library integration tests
 │   ├── integration/               # Integration tests
-│   └── unit/                      # Unit tests
-└── data/                          # Data storage
+│   └── libs/                      # Per-library test suites
+└── data/                          # Data storage (Qdrant, anime databases)
 ```
 
 ## 🚀 Quick Start
