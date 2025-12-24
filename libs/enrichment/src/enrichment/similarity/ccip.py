@@ -92,7 +92,7 @@ class CCIP:
             # Get fallback model
             model = self._get_fallback_model()
             if not model:
-                logger.warning("OpenCLIP fallback model unavailable")
+                logger.debug("OpenCLIP fallback model unavailable")
                 return 0.0
 
             # Load images
@@ -100,7 +100,7 @@ class CCIP:
             img2 = self._load_image_for_ccip(image_url_2)
 
             if not img1 or not img2:
-                logger.warning("Could not load images for OpenCLIP fallback")
+                logger.debug("Could not load images for OpenCLIP fallback")
                 return 0.0
 
             # Encode both images (model expects list of paths, but we have PIL Images)
