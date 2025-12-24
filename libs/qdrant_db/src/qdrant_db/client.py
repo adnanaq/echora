@@ -544,10 +544,10 @@ class QdrantClient(VectorDBClient):
         """
         try:
             # Simple health check by getting collections
-            collections = await self.client.get_collections()
+            await self.client.get_collections()
             return True
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
+            logger.exception(f"Health check failed: {e}")
             return False
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -924,8 +924,6 @@ class QdrantClient(VectorDBClient):
                         continue
                     elif dedup_policy == "last-wins":
                         # Remove previous occurrence, keep this one
-                        first_idx = seen_keys[key]
-                        # Mark for removal by finding it in deduplicated_updates
                         deduplicated_updates = [
                             u for u in deduplicated_updates
                             if not (u["anime_id"] == update["anime_id"] and u["vector_name"] == update["vector_name"])

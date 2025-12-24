@@ -34,7 +34,6 @@ async def test_anilist_helper_respects_redis_cache_url_env():
     await helper.close()
 
 
-@pytest.mark.integration
 @pytest.mark.skipif(
     not os.path.exists("/.dockerenv"),
     reason="Docker-specific test - only runs in container",
