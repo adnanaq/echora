@@ -363,7 +363,7 @@ async def async_main(args, settings):
         text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
-        image_downloader = ImageDownloader(cache_dir="cache")
+        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir or "cache")
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,

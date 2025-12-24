@@ -61,7 +61,7 @@ async def main() -> None:
         text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
-        image_downloader = ImageDownloader(cache_dir="cache")
+        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir or "cache")
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
@@ -167,11 +167,11 @@ async def main() -> None:
                 return
 
             # Add documents in batches
-            success = await client.add_documents(
+            result = await client.add_documents(
                 points,
                 batch_size=64,  # Use a reasonable batch size for efficiency
             )
-            if success:
+            if result["success"]:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
         
                 # Save updated anime data with generated IDs

@@ -91,7 +91,7 @@ async def test_vector_persistence_after_update(client: QdrantClient, embedding_m
 async def test_detailed_results_provide_accurate_tracking(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that detailed results from update_batch_vectors enable accurate per-update tracking."""
     test_anime = [
-        AnimeEntry(id=f"detailed-test-{i}", title=f"Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"detailed-test-{i}", title=f"Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(3)
     ]
 
@@ -225,7 +225,7 @@ async def test_per_vector_statistics_from_detailed_results(client: QdrantClient,
     This validates the fix from lines 418-428 in update_vectors.py.
     """
     test_anime = [
-        AnimeEntry(id=f"stats-test-{i}", title=f"Stats Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"stats-test-{i}", title=f"Stats Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(3)
     ]
 
@@ -334,7 +334,7 @@ async def test_all_validation_failures_no_qdrant_call(client: QdrantClient):
 async def test_mixed_batch_all_combinations(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test batch with all possible anime success combinations: all pass, partial pass, all fail."""
     test_anime = [
-        AnimeEntry(id=f"mixed-{i}", title=f"Mixed Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"mixed-{i}", title=f"Mixed Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(5)
     ]
 
@@ -658,7 +658,7 @@ async def test_mixed_valid_invalid_anime_ids(client: QdrantClient, embedding_man
 async def test_results_ordering_matches_input(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that detailed results maintain relationship to input order."""
     test_anime = [
-        AnimeEntry(id=f"order-{i}", title=f"Order Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"order-{i}", title=f"Order Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(5)
     ]
 
@@ -695,7 +695,7 @@ async def test_results_ordering_matches_input(client: QdrantClient, embedding_ma
 async def test_large_batch_realistic_failures(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test large batch (100 anime) with realistic failure patterns."""
     test_anime = [
-        AnimeEntry(id=f"large-{i}", title=f"Large Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"large-{i}", title=f"Large Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(100)
     ]
 
@@ -830,7 +830,7 @@ async def test_batch_size_boundaries(client: QdrantClient, embedding_manager: Mu
     """Test various batch sizes: 1, 2, 50, 100, 500."""
     # Create test anime
     test_anime = [
-        AnimeEntry(id=f"batch-size-{i}", title=f"Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"batch-size-{i}", title=f"Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(500)
     ]
 
@@ -909,9 +909,9 @@ async def test_similarity_search_after_multiple_updates(client: QdrantClient, em
     """Test that similarity search returns correct results after vector updates."""
     # Create 3 similar anime
     anime_list = [
-        AnimeEntry(id="similar-1", title="Action Hero Adventure", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[]),
-        AnimeEntry(id="similar-2", title="Action Hero Story", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[]),
-        AnimeEntry(id="different-1", title="Romance Comedy Love", genre=["Romance"], year=2020, type="TV", status="FINISHED", sources=[]),
+        AnimeEntry(id="similar-1", title="Action Hero Adventure", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[]),
+        AnimeEntry(id="similar-2", title="Action Hero Story", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[]),
+        AnimeEntry(id="different-1", title="Romance Comedy Love", genres=["Romance"], year=2020, type="TV", status="FINISHED", sources=[]),
     ]
 
     await add_test_anime(client, anime_list, batch_size=3)
@@ -1045,7 +1045,7 @@ async def test_all_error_types_in_detailed_results(client: QdrantClient):
 async def test_multi_batch_statistics_aggregation(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test that statistics are correctly aggregated across multiple sequential batches."""
     test_anime = [
-        AnimeEntry(id=f"multi-batch-{i}", title=f"Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"multi-batch-{i}", title=f"Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(30)
     ]
 
@@ -1152,7 +1152,7 @@ async def test_result_structure_completeness(client: QdrantClient, embedding_man
 async def test_update_with_different_vector_combinations(client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager):
     """Test various combinations of vector updates in single batch."""
     test_anime = [
-        AnimeEntry(id=f"combo-{i}", title=f"Combo Test {i}", genre=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
+        AnimeEntry(id=f"combo-{i}", title=f"Combo Test {i}", genres=["Action"], year=2020, type="TV", status="FINISHED", sources=[])
         for i in range(3)
     ]
 
