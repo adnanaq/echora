@@ -53,7 +53,7 @@ class CCIP:
                 )
                 logger.info("OpenCLIP fallback model initialized for CCIP")
             except Exception as e:
-                logger.error(f"Failed to initialize OpenCLIP fallback model: {e}")
+                logger.exception(f"Failed to initialize OpenCLIP fallback model: {e}")
                 return None
         return self._fallback_model
 
@@ -73,7 +73,7 @@ class CCIP:
                 # Handle local file path
                 return Image.open(url_or_path)
         except Exception as e:
-            logger.error(f"Failed to load image from {url_or_path}: {e}")
+            logger.exception(f"Failed to load image from {url_or_path}: {e}")
             return None
 
     def _calculate_openclip_similarity(
@@ -135,7 +135,7 @@ class CCIP:
             return similarity
 
         except Exception as e:
-            logger.error(f"OpenCLIP fallback similarity calculation failed: {e}")
+            logger.exception(f"OpenCLIP fallback similarity calculation failed: {e}")
             return 0.0
 
     def calculate_character_similarity(

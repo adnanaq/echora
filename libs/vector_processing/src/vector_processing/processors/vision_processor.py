@@ -67,7 +67,7 @@ class VisionProcessor:
             return None
 
         except Exception as e:
-            logger.error(f"Image encoding failed: {e}")
+            logger.exception(f"Image encoding failed: {e}")
             return None
 
     def _hash_embedding(self, embedding: List[float], precision: int = 4) -> str:
@@ -187,7 +187,7 @@ class VisionProcessor:
             return None
 
         except Exception as e:
-            logger.error(f"General image vector processing failed: {e}")
+            logger.exception(f"General image vector processing failed: {e}")
             return None
 
     async def process_anime_character_image_vector(
@@ -266,7 +266,7 @@ class VisionProcessor:
             return None
 
         except Exception as e:
-            logger.error(f"Character image vector processing failed: {e}")
+            logger.exception(f"Character image vector processing failed: {e}")
             return None
 
     def get_cache_stats(self) -> Dict[str, Any]:

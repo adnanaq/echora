@@ -313,7 +313,7 @@ class CachedAiohttpSession:
                 if isinstance(entry.response.headers, Headers):
                     # Headers._headers is list-based with nested structure
                     # Convert to dict (taking last value for duplicate keys)
-                    headers_dict = {}
+                    headers_dict: Dict[str, str] = {}
                     try:
                         # Try direct iteration first
                         for item in entry.response.headers._headers:
@@ -322,7 +322,7 @@ class CachedAiohttpSession:
                                 headers_dict[key] = value
                     except (ValueError, TypeError):
                         # Fallback: headers might be already a dict
-                        headers_dict = dict(entry.response.headers._headers)
+                        headers_dict = dict(entry.response.headers._headers)  # type: ignore[arg-type]  # _headers is private multidict format
                 else:
                     headers_dict = entry.response.headers
 
@@ -453,7 +453,7 @@ class CachedAiohttpSession:
             method=method,
             url=str(response.url),
             headers=Headers(dict(response.request_info.headers)),
-            stream=None,
+            stream=None,  # type: ignore[arg-type]  # Request body not needed for caching
             metadata=request_kwargs.get("metadata", {}),
         )
 

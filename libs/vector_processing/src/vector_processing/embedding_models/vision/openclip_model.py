@@ -96,12 +96,12 @@ class OpenClipModel(VisionEmbeddingModel):
             logger.info(f"Initialized OpenCLIP model: {model_name} on {self.device}")
 
         except ImportError as e:
-            logger.error(
+            logger.exception(
                 "OpenCLIP dependencies not installed. Install with: pip install open-clip-torch"
             )
             raise ImportError("OpenCLIP dependencies missing") from e
         except Exception as e:
-            logger.error(f"Failed to load OpenCLIP model {model_name}: {e}")
+            logger.exception(f"Failed to load OpenCLIP model {model_name}: {e}")
             raise
 
     def encode_image(self, images: List[Union[Image.Image, str]]) -> List[List[float]]:
@@ -119,15 +119,18 @@ class OpenClipModel(VisionEmbeddingModel):
             # Preprocess images
             processed_images = []
             for img in images:
+                pil_img: Image.Image
                 if isinstance(img, str):
                     # Load from path if string
                     try:
-                        pil_img = Image.open(img)
-                        if pil_img.mode != "RGB":
-                            pil_img = pil_img.convert("RGB")
+                        loaded_img = Image.open(img)
+                        if loaded_img.mode != "RGB":
+                            pil_img = loaded_img.convert("RGB")
+                        else:
+                            pil_img = loaded_img  # type: ignore[assignment]  # ImageFile is compatible with Image
                     except Exception as e:
                         logger.error(f"Failed to load image from path {img}: {e}")
-                        # Skip failed images or raise? 
+                        # Skip failed images or raise?
                         # To keep consistent list length, we should probably raise or handle gracefully.
                         # For now, let's raise as the input is expected to be valid.
                         raise
@@ -151,7 +154,7 @@ class OpenClipModel(VisionEmbeddingModel):
                 return cast(List[List[float]], image_features.cpu().numpy().tolist())
 
         except Exception as e:
-            logger.error(f"OpenCLIP encoding failed: {e}")
+            logger.exception(f"OpenCLIP encoding failed: {e}")
             raise
 
     @property
