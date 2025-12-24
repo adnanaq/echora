@@ -1,3 +1,1 @@
-python_tests(
-    resolve="enrichment",
-)
+python_tests()

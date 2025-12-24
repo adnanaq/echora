@@ -25,7 +25,7 @@ class SentenceTransformerModel(TextEmbeddingModel):
             self.model = SentenceTransformer(model_name, cache_folder=cache_dir)
 
             # Get model info
-            self._embedding_size = self.model.get_sentence_embedding_dimension()
+            self._embedding_size = cast(int, self.model.get_sentence_embedding_dimension())
             self._max_length = self.model.max_seq_length
             
             logger.info(f"Initialized Sentence Transformers model: {model_name}")

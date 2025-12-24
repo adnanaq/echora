@@ -107,16 +107,19 @@ class ProcessedCharacter:
 class LanguageDetector:
     """Detect and classify character name languages"""
 
+    kks: Any  # pykakasi instance
+    conv: Any  # pykakasi converter instance
+
     def __init__(self) -> None:
         if pykakasi is None:
             self.kks = None
             self.conv = None
         else:
             self.kks = pykakasi.kakasi()  # type: ignore[no-untyped-call]
-            self.kks.setMode("H", "a")  # Hiragana to ASCII  # type: ignore[has-type]
-            self.kks.setMode("K", "a")  # Katakana to ASCII  # type: ignore[has-type]
-            self.kks.setMode("J", "a")  # Kanji to ASCII  # type: ignore[has-type]
-            self.conv = self.kks.getConverter()  # type: ignore[has-type]
+            self.kks.setMode("H", "a")  # Hiragana to ASCII
+            self.kks.setMode("K", "a")  # Katakana to ASCII
+            self.kks.setMode("J", "a")  # Kanji to ASCII
+            self.conv = self.kks.getConverter()
 
     def detect_language(self, name: str) -> str:
         """Detect if name is Japanese, English, or mixed"""
@@ -416,7 +419,7 @@ class EnsembleFuzzyMatcher:
             try:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
-                    self.vision_processor = VisionProcessor(settings)
+                    self.vision_processor = VisionProcessor(settings)  # type: ignore[call-arg,arg-type]  # TODO: Fix - VisionProcessor requires model and downloader
                     self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
@@ -670,8 +673,8 @@ class EnsembleFuzzyMatcher:
             return 0.0
 
         # Extract all name variations for both characters
-        name1_variants = []
-        name2_variants = []
+        name1_variants: list[str] = []
+        name2_variants: list[str] = []
 
         # Add standard name variations with AniDB optimization
         for name_repr, variants in [

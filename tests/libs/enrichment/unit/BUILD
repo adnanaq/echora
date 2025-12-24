@@ -1,8 +1,8 @@
-"""Enrichment API helpers and crawlers unit tests."""
+"""Enrichment unit tests - shared conftest for all subdirectories."""
 
 python_sources(
     name="conftest",
-    sources=["conftest.py"],
+    sources=["conftest.py", "__init__.py"],
     dependencies=[
         "//libs/http_cache/src/http_cache",
         "//:reqs0#pytest-asyncio",

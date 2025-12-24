@@ -12,6 +12,10 @@ python_distribution(
     name="vector_processing_dist",
     dependencies=[
         "//libs/vector_processing/src/vector_processing",
+        # Transitively exclude type stubs (only those this library uses)
+        "!!stubs/fastembed:fastembed",
+        "!!stubs/numpy:numpy",
+        "!!stubs/torch:torch",
     ],
     provides=python_artifact(
         name="echora-vector-processing",
