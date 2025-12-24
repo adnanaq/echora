@@ -26,15 +26,10 @@ _ValidationError: Type[Exception] = Exception
 
 try:
     # Import the existing validator
-    import sys
-    from pathlib import Path
-
     from pydantic import ValidationError
 
     from common.models.anime import AnimeEntry, EnrichmentMetadata
-
-    sys.path.append(str(Path(__file__).parent.parent.parent.parent / "scripts"))
-    from validate_enrichment_database import EnrichmentValidator
+    from scripts.validate_enrichment_database import EnrichmentValidator
 
     # Set the type markers for successful imports
     _AnimeEntry = AnimeEntry
@@ -127,8 +122,8 @@ class EnrichmentAssembler:
     }
 
     def __init__(self) -> None:
-        self.errors = []
-        self.warnings = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def assemble_from_stages(
         self,

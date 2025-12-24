@@ -16,7 +16,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -31,10 +31,6 @@ class DateTimeEncoder(json.JSONEncoder):
             # Always append Z for UTC timestamps
             return obj.isoformat() + 'Z'
         return super().default(obj)
-
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from pydantic import ValidationError
@@ -90,7 +86,7 @@ def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
     """
     logger.info(f"Starting field reordering for {input_file}")
 
-    backup_path = None
+    backup_path: Optional[str] = None
     if backup:
         backup_path = f"{input_file}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         with open(input_file, "r") as original, open(backup_path, "w") as backup_file:

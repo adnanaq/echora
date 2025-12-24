@@ -24,9 +24,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "libs" / "common" / "src"))
-
 try:
     from pydantic import ValidationError
 
