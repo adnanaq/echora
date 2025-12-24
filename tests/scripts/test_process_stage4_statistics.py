@@ -10,6 +10,12 @@ import sys
 from pathlib import Path
 
 import pytest
+
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
 from process_stage4_statistics import (
     extract_all_statistics,
     extract_anidb_statistics,

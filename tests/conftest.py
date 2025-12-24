@@ -11,11 +11,11 @@ import pytest
 import pytest_asyncio
 from qdrant_client import AsyncQdrantClient
 
-from src.config.settings import Settings, get_settings
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config.settings import Settings, get_settings
+from qdrant_db import QdrantClient
+from vector_processing import MultiVectorEmbeddingManager
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 
 
 @pytest.fixture
@@ -23,13 +23,13 @@ def mock_redis_cache_miss() -> Generator[AsyncMock, None, None]:
     """
     Ensure any result cache lookup misses by patching the Redis client used by the result cache.
 
-    This pytest fixture patches src.cache_manager.result_cache.get_result_cache_redis_client to return an AsyncMock Redis client whose `get` method always returns `None`, causing cached result lookups to behave as cache misses for the duration of the test.
+    This pytest fixture patches http_cache.result_cache.get_result_cache_redis_client to return an AsyncMock Redis client whose `get` method always returns `None`, causing cached result lookups to behave as cache misses for the duration of the test.
 
     Yields:
         AsyncMock: The mocked Redis client, allowing tests to assert on call counts or behavior.
     """
     with patch(
-        "src.cache_manager.result_cache.get_result_cache_redis_client"
+        "http_cache.result_cache.get_result_cache_redis_client"
     ) as mock_get_redis_client:
         mock_redis_client = AsyncMock()
         mock_redis_client.get.return_value = None  # Always return None for get
@@ -56,13 +56,23 @@ def settings() -> Settings:
 @pytest_asyncio.fixture(scope="session")
 async def text_processor(settings: Settings) -> TextProcessor:
     """Create TextProcessor for tests."""
-    return TextProcessor(settings)
+    from vector_processing.embedding_models.factory import EmbeddingModelFactory
+
+    # Create text model using factory
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    return TextProcessor(model=text_model, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")
 async def vision_processor(settings: Settings) -> VisionProcessor:
     """Create VisionProcessor for tests."""
-    return VisionProcessor(settings)
+    from vector_processing.embedding_models.factory import EmbeddingModelFactory
+    from vector_processing.utils.image_downloader import ImageDownloader
+
+    # Create vision model and downloader using factory
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    downloader = ImageDownloader(settings.model_cache_dir)
+    return VisionProcessor(model=vision_model, downloader=downloader, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")

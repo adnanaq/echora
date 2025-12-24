@@ -22,9 +22,9 @@ pytestmark = pytest.mark.integration
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.config import get_settings
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.text_processor import TextProcessor
+from common.config import get_settings
+from qdrant_db import QdrantClient
+from vector_processing import TextProcessor
 
 
 def load_episode_data() -> Dict[str, List[Dict]]:

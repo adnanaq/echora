@@ -24,12 +24,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 try:
     from pydantic import ValidationError
 
-    from src.models.anime import AnimeEntry, CharacterEntry, SimpleVoiceActor
+    from common.models.anime import AnimeEntry, CharacterEntry, SimpleVoiceActor
 except ImportError:
     print(
         "Warning: Could not import Pydantic models. Schema validation will be limited."

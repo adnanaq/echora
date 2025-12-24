@@ -22,10 +22,9 @@ pytestmark = pytest.mark.integration
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "tests"))
 
-from src.config import get_settings
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.text_processor import TextProcessor
-
+from common.config import get_settings
+from vector_processing import TextProcessor
+from qdrant_db import QdrantClient
 
 def load_anime_database() -> Dict:
     """Load full anime database from enrichment file."""

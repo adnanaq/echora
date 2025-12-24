@@ -29,15 +29,15 @@ dependencies = [
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
     # HTTP dependencies
     "requests>=2.32.4",
-    "hishel>=1.0.0",
-    "redis>=7.0.1",
+    "hishel>=1.0.0,<2.0.0",
+    "redis>=7.1.0,<8.0.0",
     "rapidfuzz>=3.14.1",
     "jellyfish>=1.2.0",
     "jaconv>=0.4.0",
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
     "crawl4ai>=0.7.4",
-    # "dghs-imgutils>=0.4.6",  # Temporarily commented - conflicts with crawl4ai chardet dependency
+    # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
 ]
 
 [project.optional-dependencies]
@@ -54,6 +54,7 @@ dev = [
     "isort>=5.13.0",
     "autoflake>=2.3.0",
     "mypy>=1.18.1",
+    "types-requests>=2.32.0",
 
     # Pretty output formatting
     "rich>=13.0.0",
@@ -79,20 +80,21 @@ line_length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = [".", "scripts"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=src",
+    "--cov=libs",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html:htmlcov",
     "--cov-fail-under=80"
 ]
 markers = [
-    "integration: marks tests as integration tests (require database, models, etc.)"
+    "integration: marks tests as integration tests (require database, models, etc.)",
 ]
 filterwarnings = [
     "error",

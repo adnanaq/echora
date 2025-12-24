@@ -14,25 +14,21 @@ import asyncio
 import hashlib
 import json
 import os
-import sys
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union, cast
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
-from src.config import get_settings
-from src.models.anime import AnimeEntry
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.embedding_manager import MultiVectorEmbeddingManager
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from common.models.anime import AnimeEntry
+from qdrant_db.client import QdrantClient
+from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
+from vector_processing.processors.text_processor import TextProcessor
+from vector_processing.processors.vision_processor import VisionProcessor
+from vector_processing.utils.image_downloader import ImageDownloader
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct, Record
-
-
+from qdrant_client.models import Record
+from vector_db_interface import VectorDocument
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Reindex anime database with vector embeddings")
@@ -60,9 +56,18 @@ async def main() -> None:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
     try:
-        # Initialize embedding manager and processors
-        text_processor = TextProcessor(settings)
-        vision_processor = VisionProcessor(settings)
+        # Initialize embedding manager and processors using factory pattern
+        text_model = EmbeddingModelFactory.create_text_model(settings)
+        text_processor = TextProcessor(model=text_model, settings=settings)
+
+        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir or "cache")
+        vision_processor = VisionProcessor(
+            model=vision_model,
+            downloader=image_downloader,
+            settings=settings
+        )
+
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
@@ -148,12 +153,12 @@ async def main() -> None:
                 # MD5 is used for non-cryptographic deterministic ID generation
                 point_id = hashlib.md5(doc_data["payload"]["id"].encode()).hexdigest()  # noqa: S324
 
-                point = PointStruct(
+                doc = VectorDocument(
                     id=point_id,
-                    vector=doc_data["vectors"],
+                    vectors=doc_data["vectors"],
                     payload=doc_data["payload"],
                 )
-                points.append(point)
+                points.append(doc)
 
             print(f"Successfully generated vectors for {len(points)} entries.")
 
@@ -162,11 +167,11 @@ async def main() -> None:
                 return
 
             # Add documents in batches
-            success = await client.add_documents(
+            result = await client.add_documents(
                 points,
                 batch_size=64,  # Use a reasonable batch size for efficiency
             )
-            if success:
+            if result["success"]:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
         
                 # Save updated anime data with generated IDs
@@ -235,3 +240,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+

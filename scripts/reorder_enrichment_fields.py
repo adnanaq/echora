@@ -16,7 +16,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -32,14 +32,10 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat() + 'Z'
         return super().default(obj)
 
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 try:
     from pydantic import ValidationError
 
-    from src.models.anime import AnimeEntry
+    from common.models.anime import AnimeEntry
 except ImportError:
     print("Error: Could not import AnimeEntry model. Ensure you're in the correct directory.")
     exit(1)
@@ -90,7 +86,7 @@ def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
     """
     logger.info(f"Starting field reordering for {input_file}")
 
-    # Create backup if requested
+    backup_path: Optional[str] = None
     if backup:
         backup_path = f"{input_file}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         with open(input_file, "r") as original, open(backup_path, "w") as backup_file:
@@ -151,7 +147,7 @@ def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
         "reordered_entries": reordered_count,
         "validation_errors": validation_errors,
         "success": True,
-        "backup_created": backup_path if backup else None,
+        "backup_created": backup_path,
     }
 
 

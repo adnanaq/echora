@@ -1,0 +1,9 @@
+python_sources(
+    name="utils",
+    sources=["**/*.py"],
+    dependencies=[
+        "libs/common/src/common:common",
+        "//:reqs0#aiohttp",
+        "//:reqs0#pillow",
+    ],
+)

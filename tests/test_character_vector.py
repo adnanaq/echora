@@ -18,13 +18,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import requests
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
-
 
 def test_character_vector_realistic():
     """Test character vector against actual available data."""
@@ -398,7 +397,7 @@ def test_multimodal_character_search():
     import sys
 
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from src.vector.client.qdrant_client import QdrantClient
+    from qdrant_db import QdrantClient
 
     qdrant_client = QdrantClient(settings=settings)
 

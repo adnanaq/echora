@@ -23,12 +23,14 @@ pytestmark = pytest.mark.integration
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import requests
+from qdrant_client import AsyncQdrantClient
 
-from src.config import get_settings
-from src.vector.client.qdrant_client import QdrantClient
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
-
+from common.config import get_settings
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
+from qdrant_db import QdrantClient
 
 def load_anime_database() -> Dict:
     """Load full anime database from enrichment file."""
@@ -132,7 +134,8 @@ def test_title_vector_comprehensive():
     )
 
     settings = get_settings()
-    text_processor = TextProcessor(settings=settings)
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(model=text_model, settings=settings)
 
     # Load anime database
     anime_database = load_anime_database()
@@ -311,7 +314,9 @@ def test_image_vector_comprehensive():
     )
 
     settings = get_settings()
-    vision_processor = VisionProcessor(settings=settings)
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
+    vision_processor = VisionProcessor(model=vision_model, downloader=image_downloader, settings=settings)
 
     # Load anime database
     anime_database = load_anime_database()
@@ -464,7 +469,11 @@ def test_multimodal_title_search():
     )
 
     settings = get_settings()
-    qdrant_client = QdrantClient(settings=settings)
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key if hasattr(settings, 'qdrant_api_key') else None,
+    )
+    qdrant_client = QdrantClient(settings=settings, async_qdrant_client=async_qdrant_client)
 
     # Load anime database
     anime_database = load_anime_database()

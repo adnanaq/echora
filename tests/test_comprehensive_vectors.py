@@ -30,9 +30,9 @@ from PIL import Image
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-from src.vector.processors.vision_processor import VisionProcessor
+from common.config import get_settings
+from vector_processing import TextProcessor
+from vector_processing import VisionProcessor
 
 
 @dataclass
@@ -79,7 +79,7 @@ class ComprehensiveVectorTester:
         self.vision_processor = VisionProcessor(settings)
 
         # Initialize QdrantClient for multi-vector operations
-        from src.vector.client.qdrant_client import QdrantClient
+        from qdrant_db import QdrantClient
 
         qdrant_settings = get_settings()
         qdrant_settings.qdrant_url = qdrant_url

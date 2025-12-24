@@ -29,9 +29,9 @@ os.chdir(str(project_root))
 
 import requests
 
-from src.config import get_settings
-from src.vector.processors.text_processor import TextProcessor
-
+from common.config import get_settings
+from vector_processing import TextProcessor
+from qdrant_db import QdrantClient
 
 def load_related_content_data() -> Dict[str, Any]:
     """Load anime data and categorize by related content types."""

@@ -4,12 +4,14 @@ import os
 
 import pytest
 
+# Mark all tests in this file as integration tests
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
+
 @pytest.mark.asyncio
 async def test_anilist_helper_respects_redis_cache_url_env():
     """Test that AniList helper respects REDIS_CACHE_URL environment variable."""
-    from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+    from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
     # This test verifies the fix for hard-coded Redis URL
     # The helper should now use cache manager which reads REDIS_CACHE_URL
@@ -32,7 +34,6 @@ async def test_anilist_helper_respects_redis_cache_url_env():
     await helper.close()
 
 
-@pytest.mark.integration
 @pytest.mark.skipif(
     not os.path.exists("/.dockerenv"),
     reason="Docker-specific test - only runs in container",
@@ -40,7 +41,7 @@ async def test_anilist_helper_respects_redis_cache_url_env():
 @pytest.mark.asyncio
 async def test_anilist_helper_connects_in_docker():
     """Test that AniList helper successfully connects to Redis in Docker."""
-    from src.enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+    from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
     # This test only runs inside Docker container
     # Verifies that Redis hostname resolution works (not localhost)

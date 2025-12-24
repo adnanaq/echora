@@ -61,10 +61,10 @@ services:
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION_NAME=anime_database
-      - QDRANT_VECTOR_SIZE=1024
       - QDRANT_DISTANCE_METRIC=cosine
 
       # Multi-Vector Configuration
+      - TEXT_VECTOR_SIZE=1024
       - IMAGE_VECTOR_SIZE=768
 
       # Modern Embedding Configuration
@@ -87,7 +87,7 @@ services:
       - LOG_LEVEL=INFO
 
       # HTTP Cache Configuration
-      - ENABLE_HTTP_CACHE=false
+      - ENABLE_HTTP_CACHE=true
       - HTTP_CACHE_STORAGE=redis
       - REDIS_CACHE_URL=redis://redis:6379/0
     volumes:
