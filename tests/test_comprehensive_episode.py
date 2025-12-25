@@ -6,31 +6,33 @@ Tests episode search functionality with random field combinations and comprehens
 Follows the same pattern as test_comprehensive_title.py and test_character_vector.py.
 """
 
+import asyncio
 import json
 import random
 import sys
 import time
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from common.config import get_settings
+from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from vector_processing import TextProcessor
 
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-def load_episode_data() -> Dict[str, List[Dict]]:
+
+def load_episode_data() -> dict[str, list[dict]]:
     """Load episode data from enrichment file."""
     with open(
-        "./data/qdrant_storage/enriched_anime_database.json", "r", encoding="utf-8"
+        "./data/qdrant_storage/enriched_anime_database.json", encoding="utf-8"
     ) as f:
         data = json.load(f)
 
@@ -45,7 +47,7 @@ def load_episode_data() -> Dict[str, List[Dict]]:
     return anime_with_episodes
 
 
-def get_episode_fields(episode: Dict[str, Any]) -> List[str]:
+def get_episode_fields(episode: dict[str, Any]) -> list[str]:
     """Get available fields from an episode for testing."""
     available_fields = []
 
@@ -76,7 +78,7 @@ def get_episode_fields(episode: Dict[str, Any]) -> List[str]:
     return available_fields
 
 
-def generate_field_combinations(fields: List[str]) -> List[List[str]]:
+def generate_field_combinations(fields: list[str]) -> list[list[str]]:
     """Generate all possible field combinations for comprehensive testing."""
     combinations_list = []
 
@@ -105,7 +107,7 @@ def generate_field_combinations(fields: List[str]) -> List[List[str]]:
     return combinations_list
 
 
-def create_episode_query(episode: Dict[str, Any], field_combination: List[str]) -> str:
+def create_episode_query(episode: dict[str, Any], field_combination: list[str]) -> str:
     """Create a search query from episode data using specified fields."""
     query_parts = []
 
@@ -150,7 +152,7 @@ def create_episode_query(episode: Dict[str, Any], field_combination: List[str]) 
     return " ".join(query_parts).strip()
 
 
-def print_episode_info(episode: Dict[str, Any]) -> str:
+def print_episode_info(episode: dict[str, Any]) -> str:
     """Format episode information for display."""
     info_parts = []
 
@@ -193,7 +195,11 @@ async def test_comprehensive_episode_vector():
     )
 
     settings = get_settings()
-    qdrant_client = QdrantClient(settings=settings)
+    # Initialize Qdrant client with async factory pattern
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    qdrant_client = asyncio.run(QdrantClient.create(settings, async_qdrant_client))
     text_processor = TextProcessor(settings=settings)
 
     # Load episode data
@@ -214,7 +220,7 @@ async def test_comprehensive_episode_vector():
         "╭────────────────────── Episode Vector Test Configuration ──────────────────────╮"
     )
     print(
-        f"│ ╭─────────────────────────────┬────────────╮                                 │"
+        "│ ╭─────────────────────────────┬────────────╮                                 │"
     )
     print(
         f"│ │ 📊 Total anime with episodes: │ {total_anime:<10} │                                 │"
@@ -226,7 +232,7 @@ async def test_comprehensive_episode_vector():
         f"│ │ 🎲 Random seed:               │ {seed:<10} │                                 │"
     )
     print(
-        f"│ ╰─────────────────────────────┴────────────╯                                 │"
+        "│ ╰─────────────────────────────┴────────────╯                                 │"
     )
     print(
         "╰──────────────────────────────────────────────────────────────────────────────╯"
@@ -248,11 +254,11 @@ async def test_comprehensive_episode_vector():
         # Randomly select an episode
         selected_episode = random.choice(episodes)
 
-        print(f"📺 Target Anime")
+        print("📺 Target Anime")
         print(f"   {anime_title}")
 
         episode_info = print_episode_info(selected_episode)
-        print(f"📝 Selected Episode")
+        print("📝 Selected Episode")
         print(f"   {episode_info}")
 
         # Get available fields for this episode
@@ -360,7 +366,9 @@ async def test_comprehensive_episode_vector():
                         if j == 0:  # Top result
                             found_target = True
 
-                    print(f"    {j+1:<3} {display_title:<47} {score:<8.4f} {status:<8}")
+                    print(
+                        f"    {j + 1:<3} {display_title:<47} {score:<8.4f} {status:<8}"
+                    )
 
                 print()
 
@@ -475,7 +483,9 @@ async def test_comprehensive_episode_vector():
         assessment = (
             "EXCELLENT"
             if success_rate >= 90
-            else "GOOD" if success_rate >= 70 else "NEEDS WORK"
+            else "GOOD"
+            if success_rate >= 70
+            else "NEEDS WORK"
         )
         print(
             f"│ │ 🔬 Assessment:   │ {assessment:<10} │                                            │"

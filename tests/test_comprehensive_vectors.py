@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import aiohttp
 from PIL import Image
@@ -31,8 +31,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from common.config import get_settings
-from vector_processing import TextProcessor
-from vector_processing import VisionProcessor
+from vector_processing import TextProcessor, VisionProcessor
 
 
 @dataclass
@@ -46,8 +45,8 @@ class TestResult:
     results_count: int
     top_score: float
     success: bool
-    error: Optional[str] = None
-    results: List[Dict] = field(default_factory=list)
+    error: str | None = None
+    results: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -56,8 +55,8 @@ class TestSuite:
 
     name: str
     description: str
-    tests: List[Dict] = field(default_factory=list)
-    results: List[TestResult] = field(default_factory=list)
+    tests: list[dict] = field(default_factory=list)
+    results: list[TestResult] = field(default_factory=list)
 
 
 class ComprehensiveVectorTester:
@@ -78,14 +77,12 @@ class ComprehensiveVectorTester:
         self.text_processor = TextProcessor(settings)
         self.vision_processor = VisionProcessor(settings)
 
-        # Initialize QdrantClient for multi-vector operations
-        from qdrant_db import QdrantClient
-
-        qdrant_settings = get_settings()
-        qdrant_settings.qdrant_url = qdrant_url
-        qdrant_settings.qdrant_api_key = api_key
-        qdrant_settings.qdrant_collection_name = collection_name
-        self.qdrant_client = QdrantClient(settings=qdrant_settings)
+        # Initialize QdrantClient for multi-vector operations (async, will be set later)
+        self.qdrant_client = None
+        self._qdrant_settings = get_settings()
+        self._qdrant_settings.qdrant_url = qdrant_url
+        self._qdrant_settings.qdrant_api_key = api_key
+        self._qdrant_settings.qdrant_collection_name = collection_name
 
         # Test suites
         self.test_suites = []
@@ -99,6 +96,20 @@ class ComprehensiveVectorTester:
         print(
             f"👁️  Vision Model: {self.vision_processor.get_model_info()['model_name']}"
         )
+
+    async def async_init(self):
+        """Asynchronously initialize the Qdrant client."""
+        from qdrant_client import AsyncQdrantClient
+        from qdrant_db import QdrantClient
+
+        async_qdrant_client = AsyncQdrantClient(
+            url=self._qdrant_settings.qdrant_url,
+            api_key=self._qdrant_settings.qdrant_api_key,
+        )
+        self.qdrant_client = await QdrantClient.create(
+            self._qdrant_settings, async_qdrant_client
+        )
+        return self
 
     def _initialize_test_suites(self):
         """Initialize all test suites."""
@@ -629,7 +640,7 @@ class ComprehensiveVectorTester:
             ],
         )
 
-    async def process_uploaded_image(self, image_path: str) -> Dict[str, List[float]]:
+    async def process_uploaded_image(self, image_path: str) -> dict[str, list[float]]:
         """Process an uploaded image and return embeddings for both image vectors."""
         if image_path in self._uploaded_image_vectors:
             return self._uploaded_image_vectors[image_path]
@@ -676,10 +687,10 @@ class ComprehensiveVectorTester:
         self,
         query: str,
         vector_name: str,
-        payload_filter: Optional[Dict] = None,
+        payload_filter: dict | None = None,
         limit: int = 5,
-        query_vector: Optional[List[float]] = None,
-    ) -> Tuple[Dict, float]:
+        query_vector: list[float] | None = None,
+    ) -> tuple[dict, float]:
         """Execute a single search query and return results with timing."""
         start_time = time.time()
 
@@ -728,7 +739,7 @@ class ComprehensiveVectorTester:
                     error_text = await response.text()
                     raise Exception(f"Search failed: {response.status} - {error_text}")
 
-    async def get_sample_vectors_from_collection(self) -> Dict[str, List[float]]:
+    async def get_sample_vectors_from_collection(self) -> dict[str, list[float]]:
         """Get sample vectors from the collection for image similarity testing."""
         if self._sample_images:
             return self._sample_images
@@ -780,7 +791,7 @@ class ComprehensiveVectorTester:
 
     async def execute_image_similarity_test(
         self, vector_name: str, limit: int = 5
-    ) -> Tuple[Dict, float, str]:
+    ) -> tuple[dict, float, str]:
         """Execute image similarity test using actual image vectors from collection."""
         # Get sample vectors
         sample_vectors = await self.get_sample_vectors_from_collection()
@@ -807,7 +818,7 @@ class ComprehensiveVectorTester:
 
     async def execute_uploaded_image_test(
         self, image_path: str, vector_name: str, limit: int = 5
-    ) -> Tuple[Dict, float, str]:
+    ) -> tuple[dict, float, str]:
         """Execute search using an uploaded image."""
         # Process the uploaded image
         image_vectors = await self.process_uploaded_image(image_path)
@@ -826,8 +837,8 @@ class ComprehensiveVectorTester:
         return result, exec_time, f"uploaded_image_{vector_name}"
 
     async def execute_cross_vector_image_test(
-        self, image_path: str, vector_names: List[str], limit: int = 5
-    ) -> Dict[str, Tuple[Dict, float]]:
+        self, image_path: str, vector_names: list[str], limit: int = 5
+    ) -> dict[str, tuple[dict, float]]:
         """Execute search using uploaded image across multiple vectors for comparison."""
         # Process the uploaded image
         image_vectors = await self.process_uploaded_image(image_path)
@@ -853,10 +864,10 @@ class ComprehensiveVectorTester:
     async def execute_combined_image_search(
         self,
         image_path: str,
-        vector_names: List[str],
-        weights: List[float],
+        vector_names: list[str],
+        weights: list[float],
         limit: int = 5,
-    ) -> Tuple[Dict, float]:
+    ) -> tuple[dict, float]:
         """Execute combined search using uploaded image across multiple vectors."""
         # Process the uploaded image
         image_vectors = await self.process_uploaded_image(image_path)
@@ -915,8 +926,8 @@ class ComprehensiveVectorTester:
         return {"result": sorted_results}, execution_time
 
     async def execute_multi_vector_query(
-        self, query_configs: List[Dict], limit: int = 5
-    ) -> Tuple[Dict, float]:
+        self, query_configs: list[dict], limit: int = 5
+    ) -> tuple[dict, float]:
         """Execute multi-vector search using Qdrant's native multi-vector API."""
         start_time = time.time()
 
@@ -958,10 +969,10 @@ class ComprehensiveVectorTester:
 
     async def run_test_suite(self, suite: TestSuite) -> TestSuite:
         """Execute all tests in a test suite."""
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"🧪 {suite.name}")
         print(f"📝 {suite.description}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         for i, test_config in enumerate(suite.tests, 1):
             test_name = test_config.get("name", f"Test {i}")
@@ -976,16 +987,18 @@ class ComprehensiveVectorTester:
                     # Find uploaded image file (look for common temp paths)
                     image_path = self._find_uploaded_image()
                     if not image_path:
-                        print(f"   ⚠️  No uploaded image found, skipping test")
+                        print("   ⚠️  No uploaded image found, skipping test")
                         continue
 
                     vector_name = test_config["vector"]
                     limit = test_config.get("limit", 5)
 
-                    result, exec_time, source_info = (
-                        await self.execute_uploaded_image_test(
-                            image_path, vector_name, limit
-                        )
+                    (
+                        result,
+                        exec_time,
+                        source_info,
+                    ) = await self.execute_uploaded_image_test(
+                        image_path, vector_name, limit
                     )
                     print(f"   📸 Using uploaded image for {vector_name}")
 
@@ -993,7 +1006,7 @@ class ComprehensiveVectorTester:
                     # Cross-vector uploaded image test
                     image_path = self._find_uploaded_image()
                     if not image_path:
-                        print(f"   ⚠️  No uploaded image found, skipping test")
+                        print("   ⚠️  No uploaded image found, skipping test")
                         continue
 
                     vector_names = test_config["vectors"]
@@ -1004,7 +1017,7 @@ class ComprehensiveVectorTester:
                     )
 
                     # Display cross-vector comparison
-                    print(f"   🔄 Cross-vector image test results:")
+                    print("   🔄 Cross-vector image test results:")
                     for vector_name, (result, exec_time) in cross_results.items():
                         search_results = result.get("result", [])
                         top_score = (
@@ -1035,7 +1048,7 @@ class ComprehensiveVectorTester:
                     # Combined image vector test
                     image_path = self._find_uploaded_image()
                     if not image_path:
-                        print(f"   ⚠️  No uploaded image found, skipping test")
+                        print("   ⚠️  No uploaded image found, skipping test")
                         continue
 
                     vector_names = test_config["vectors"]
@@ -1057,9 +1070,11 @@ class ComprehensiveVectorTester:
                     vector_name = test_config["vector"]
                     limit = test_config.get("limit", 5)
 
-                    result, exec_time, source_info = (
-                        await self.execute_image_similarity_test(vector_name, limit)
-                    )
+                    (
+                        result,
+                        exec_time,
+                        source_info,
+                    ) = await self.execute_image_similarity_test(vector_name, limit)
                     print(f"   📸 Using sample from collection: {source_info}")
 
                 elif test_config.get("test_type") == "cross_vector_text_comparison":
@@ -1071,10 +1086,11 @@ class ComprehensiveVectorTester:
                     cross_results = {}
                     for vector_name in vector_names:
                         try:
-                            result_single, exec_time_single = (
-                                await self.execute_search_query(
-                                    query, vector_name, limit=limit
-                                )
+                            (
+                                result_single,
+                                exec_time_single,
+                            ) = await self.execute_search_query(
+                                query, vector_name, limit=limit
                             )
                             cross_results[vector_name] = (
                                 result_single,
@@ -1085,7 +1101,7 @@ class ComprehensiveVectorTester:
                             cross_results[vector_name] = ({"result": []}, 0.0)
 
                     # Display cross-vector comparison
-                    print(f"   🔄 Cross-vector text comparison results:")
+                    print("   🔄 Cross-vector text comparison results:")
                     for vector_name, (
                         result_single,
                         exec_time_single,
@@ -1149,7 +1165,7 @@ class ComprehensiveVectorTester:
                     image_data = test_config.get("image_data")
                     if not image_data or image_data == "placeholder_base64_image_data":
                         print(
-                            f"   ⚠️  No image data provided, skipping visual comprehensive test"
+                            "   ⚠️  No image data provided, skipping visual comprehensive test"
                         )
                         continue
 
@@ -1204,13 +1220,13 @@ class ComprehensiveVectorTester:
                 for j, item in enumerate(search_results[:2]):
                     title = item.get("payload", {}).get("title", "Unknown")
                     score = item.get("score", 0)
-                    print(f"   {j+1}. {title} (score: {score:.3f})")
+                    print(f"   {j + 1}. {title} (score: {score:.3f})")
 
                 # Performance warnings
                 if exec_time > 2.0:
                     print(f"   ⚠️  Slow query: {exec_time:.3f}s")
                 if len(search_results) == 0:
-                    print(f"   ⚠️  No results found")
+                    print("   ⚠️  No results found")
 
             except Exception as e:
                 print(f"   ❌ Test failed: {e}")
@@ -1229,7 +1245,7 @@ class ComprehensiveVectorTester:
 
         return suite
 
-    async def run_all_tests(self) -> Dict[str, Any]:
+    async def run_all_tests(self) -> dict[str, Any]:
         """Run all test suites and generate comprehensive report."""
         print("🚀 Starting Comprehensive Vector Database Test Suite")
         print(f"🎯 Collection: {self.collection_name}")
@@ -1254,8 +1270,8 @@ class ComprehensiveVectorTester:
         return report
 
     def _generate_report(
-        self, suites: List[TestSuite], total_time: float
-    ) -> Dict[str, Any]:
+        self, suites: list[TestSuite], total_time: float
+    ) -> dict[str, Any]:
         """Generate comprehensive test report."""
         total_tests = sum(len(suite.results) for suite in suites)
         passed_tests = sum(
@@ -1287,7 +1303,7 @@ class ComprehensiveVectorTester:
                         sum(
                             result.top_score
                             for result in suite.results
-                            if isinstance(result.top_score, (int, float))
+                            if isinstance(result.top_score, int | float)
                         )
                         / suite_total
                         if suite_total > 0
@@ -1316,11 +1332,11 @@ class ComprehensiveVectorTester:
             "detailed_results": suites,
         }
 
-    def _display_summary(self, report: Dict[str, Any]):
+    def _display_summary(self, report: dict[str, Any]):
         """Display test summary report."""
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("📊 COMPREHENSIVE TEST SUITE SUMMARY")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         print(f"🎯 Total Tests: {report['total_tests']}")
         print(f"✅ Passed: {report['passed_tests']}")
@@ -1329,7 +1345,7 @@ class ComprehensiveVectorTester:
         print(f"⏱️  Total Time: {report['total_execution_time']:.2f}s")
         print(f"⚡ Avg Query Time: {report['avg_execution_time']:.3f}s")
 
-        print(f"\n📋 Suite Breakdown:")
+        print("\n📋 Suite Breakdown:")
         for suite in report["suite_summaries"]:
             print(
                 f"   {suite['name']}: {suite['passed']}/{suite['total']} "
@@ -1338,7 +1354,7 @@ class ComprehensiveVectorTester:
                 f"avg_time: {suite['avg_time']:.3f}s"
             )
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("🎉 Test Suite Complete!")
 
         if report["success_rate"] >= 95:
@@ -1347,9 +1363,9 @@ class ComprehensiveVectorTester:
             print("👍 Good performance! Some areas for improvement.")
         else:
             print("⚠️  Performance issues detected. Review failed tests.")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
-    async def save_detailed_report(self, report: Dict[str, Any], filename: str = None):
+    async def save_detailed_report(self, report: dict[str, Any], filename: str = None):
         """Save detailed test report to file."""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1405,7 +1421,7 @@ class ComprehensiveVectorTester:
 
         print(f"📄 Detailed report saved to: {filename}")
 
-    def _find_uploaded_image(self) -> Optional[str]:
+    def _find_uploaded_image(self) -> str | None:
         """Find uploaded image file in common temporary locations."""
         # Common paths where uploaded images might be stored
         common_paths = [
@@ -1440,7 +1456,7 @@ class ComprehensiveVectorTester:
 
         return None
 
-    def _convert_to_qdrant_filter(self, test_filter: Dict) -> Dict:
+    def _convert_to_qdrant_filter(self, test_filter: dict) -> dict:
         """Convert test filter format to Qdrant filter format."""
         key = test_filter["key"]
 
@@ -1483,6 +1499,7 @@ async def main():
 
     # Initialize and run comprehensive test suite
     tester = ComprehensiveVectorTester(QDRANT_CLOUD_URL, QDRANT_API_KEY)
+    tester = await tester.async_init()
 
     # Run all tests
     report = await tester.run_all_tests()
