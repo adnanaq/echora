@@ -3,6 +3,8 @@ pants_version = "2.29.1"
 backend_packages = [
   "pants.backend.python",
   "pants.backend.python.typecheck.mypy",
+  "pants.backend.experimental.python.lint.ruff.check",
+  "pants.backend.experimental.python.lint.ruff.format",
 ]
 
 [source]
@@ -25,4 +27,7 @@ string_imports = true
 
 [pytest]
 args = ["-v", "--tb=short"]
+config_discovery = true
+
+[ruff]
 config_discovery = true
