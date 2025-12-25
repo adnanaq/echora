@@ -303,7 +303,7 @@ pip install -e ".[dev]"
 - **Package Manager**: UV
 - **Testing**: pytest, pytest-asyncio
 - **Type Checking**: mypy
-- **Formatting**: black, isort
+- **Formatting**: ruff format, ruff check
 
 ## 🤝 Contributing
 

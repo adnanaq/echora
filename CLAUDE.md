@@ -334,14 +334,22 @@ uv run pytest --cov=src
 uv run mypy --strict src/
 
 # Code formatting
-uv run black src/
-uv run isort src/
-uv run autoflake --remove-all-unused-imports --in-place --recursive src/
+uv run ruff format src/
+uv run ruff check --select I --fix src/
+
+# Or use Pants (recommended)
+./pants fmt ::
 ```
 
 ### Type Safety Protocol
 
 **MANDATORY**: All code must pass strict mypy type checking before commits.
+
+**Code Quality Tools**:
+- Type checking: mypy with strict mode
+- Formatting: ruff format (replaces black)
+- Import sorting: ruff (replaces isort)
+- Linting: ruff check (replaces autoflake and flake8)
 
 ```bash
 # Check all source files with strict typing
@@ -349,6 +357,13 @@ uv run mypy --strict src/ --show-error-codes
 
 # Check specific file
 uv run mypy --strict src/vector/text_processor.py --show-error-codes
+
+# Format and lint code
+uv run ruff format src/
+uv run ruff check --fix src/
+
+# Or use Pants
+./pants fmt lint check ::
 ```
 
 ### Service Health Checks
