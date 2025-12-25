@@ -546,7 +546,7 @@ def extract_synonyms_from_sources(sources: dict[str, dict]) -> list[str]:
     return all_synonyms
 
 
-def extract_tags_from_sources(sources: dict[str, dict]) -> list[str]:
+def extract_tags_from_sources(_sources: dict[str, dict]) -> list[str]:
     """Extract tags from external sources (currently none have simple string tags)."""
     # Tags are only available from offline database as simple strings
     # External sources have 'tags' that go into themes field with descriptions
@@ -678,7 +678,8 @@ def cross_validate_with_offline(
                             aired["from"].replace("Z", "+00:00")
                         ).year
                         value = year
-                    except Exception:
+                    except (ValueError, TypeError):
+                        # Year parsing failed, continue to next source
                         pass
             elif field == "season":
                 value = data.get("season")

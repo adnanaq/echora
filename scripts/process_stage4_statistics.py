@@ -15,11 +15,7 @@ Key Features:
 
 import argparse
 import json
-from pathlib import Path
 from typing import Any
-
-# Project root for resolving paths
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:

@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image
@@ -25,7 +25,7 @@ class CCIP:
     - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
-    def __init__(self, settings: Optional["Settings"] = None):
+    def __init__(self, settings: "Settings | None" = None):
         """Initialize CCIP with optional settings.
 
         Args:
@@ -34,7 +34,7 @@ class CCIP:
         self.settings = settings
         self._fallback_model: VisionEmbeddingModel | None = None
 
-    def _get_fallback_model(self) -> Optional["VisionEmbeddingModel"]:
+    def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
         """Lazy-load OpenCLIP model for fallback similarity calculation.
 
         Returns:

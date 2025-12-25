@@ -235,7 +235,7 @@ class TestRetryWithBackoff:
     @pytest.mark.asyncio
     async def test_type_based_transient_error_detection(self):
         """Test that common transient exception types are detected."""
-        # Test asyncio.TimeoutError
+        # Test TimeoutError
         mock_operation = AsyncMock()
         mock_operation.side_effect = [TimeoutError(), "success"]
 
@@ -294,8 +294,8 @@ class TestRetryWithBackoff:
 class TestDefaultIsTransientError:
     """Test suite for default_is_transient_error function."""
 
-    def test_type_based_detection_asyncio_timeout(self):
-        """Test that asyncio.TimeoutError is detected as transient."""
+    def test_type_based_detection_timeout(self):
+        """Test that TimeoutError is detected as transient."""
         error = TimeoutError()
         assert default_is_transient_error(error) is True
 

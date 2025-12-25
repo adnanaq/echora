@@ -17,14 +17,14 @@ class Redis:
         """Create Redis client from URL."""
         ...
 
-    def hset(
+    async def hset(
         self,
         name: str | bytes,
         key: str | bytes | None = None,
         value: str | bytes | None = None,
         mapping: dict[str | bytes, str | bytes] | None = None,
         items: list[Any] | None = None,
-    ) -> Awaitable[int]:
+    ) -> int:
         """
         Set field in hash to value.
 

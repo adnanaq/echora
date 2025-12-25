@@ -22,7 +22,9 @@ from typing import Any
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder that handles datetime objects"""
 
-    def default(self, o: object) -> str | list[Any] | dict[str, Any] | int | float | bool | None:
+    def default(
+        self, o: object
+    ) -> str | list[Any] | dict[str, Any] | int | float | bool | None:
         if isinstance(o, datetime):
             # Convert to UTC and force Z format for consistency
             if o.tzinfo is not None:
@@ -75,15 +77,15 @@ def reorder_entry_fields(entry: dict[str, Any]) -> dict[str, Any]:
 
         return reordered_entry
 
-    except ValidationError as e:
-        logger.error(
-            f"Validation error for entry '{entry.get('title', 'Unknown')}': {e}"
+    except ValidationError:
+        logger.exception(
+            f"Validation error for entry '{entry.get('title', 'Unknown')}'"
         )
         # Return original entry if validation fails
         return entry
-    except Exception as e:
-        logger.error(
-            f"Unexpected error for entry '{entry.get('title', 'Unknown')}': {e}"
+    except Exception:
+        logger.exception(
+            f"Unexpected error for entry '{entry.get('title', 'Unknown')}'"
         )
         # Return original entry if any other error
         return entry
@@ -98,7 +100,10 @@ def reorder_database(input_file: str, backup: bool = True) -> dict[str, Any]:
     backup_path: str | None = None
     if backup:
         backup_path = f"{input_file}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        with open(input_file) as original, open(backup_path, "w") as backup_file:
+        with (
+            open(input_file, encoding="utf-8") as original,
+            open(backup_path, "w", encoding="utf-8") as backup_file,
+        ):
             backup_file.write(original.read())
         logger.info(f"Created backup: {backup_path}")
 

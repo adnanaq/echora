@@ -219,7 +219,7 @@ class HTTPCacheManager:
         Provide a summary of the cache manager's current configuration and status.
 
         Returns:
-            stats (Dict[str, Any]): If caching is disabled, `{"enabled": False}`.
+            stats (dict[str, Any]): If caching is disabled, `{"enabled": False}`.
                 If enabled, a dictionary with keys:
                 - `"enabled"`: `True`
                 - `"storage_type"`: configured storage backend

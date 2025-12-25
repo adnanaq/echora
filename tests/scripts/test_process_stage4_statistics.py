@@ -756,7 +756,7 @@ class TestMainExecution:
         assert result.returncode == 0
 
         # Verify output
-        with open(agent_dir / "stage4_statistics.json") as f:
+        with open(agent_dir / "stage4_statistics.json", encoding="utf-8") as f:
             output = json.load(f)
 
         # Only mal should be present
@@ -818,7 +818,7 @@ class TestMainExecution:
         )
 
         # Verify structure
-        with open(agent_dir / "stage4_statistics.json") as f:
+        with open(agent_dir / "stage4_statistics.json", encoding="utf-8") as f:
             output = json.load(f)
 
         assert isinstance(output, dict)

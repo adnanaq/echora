@@ -588,15 +588,6 @@ class TestRedisClientEventLoopSwitching:
 
                     new_loop = asyncio.new_event_loop()
 
-                    async def get_new_loop():
-                        """
-                        Create and return a newly created asyncio event loop.
-
-                        Returns:
-                            asyncio.AbstractEventLoop: The newly created event loop.
-                        """
-                        return new_loop
-
                     with patch("asyncio.get_running_loop", return_value=new_loop):
                         manager.get_aiohttp_session("test")
 

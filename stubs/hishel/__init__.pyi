@@ -90,7 +90,7 @@ class Entry:
 
     def __init__(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         request: Request,
         response: Response,
         meta: EntryMeta,
@@ -99,7 +99,7 @@ class Entry:
         Initialize a cache entry.
 
         Parameters:
-            id_ (uuid.UUID): Unique identifier for the entry.
+            id (uuid.UUID): Unique identifier for the entry.
             request (Request): The cached request.
             response (Response): The cached response.
             meta (EntryMeta): Entry metadata including timestamps.
@@ -107,6 +107,12 @@ class Entry:
         ...
 
 # Storage base classes (public API)
+#
+# NOTE ON PARAMETER NAMING: id vs id_
+# - create_entry uses 'id_' (optional parameter, avoids shadowing Python builtin)
+# - update_entry and remove_entry use 'id' (required parameter, matches hishel runtime)
+# Verified via inspect.signature() against hishel 0.0.x library.
+# DO NOT change without verifying against actual hishel source.
 class SyncBaseStorage:
     """Base class for synchronous cache storage implementations."""
 
@@ -145,14 +151,14 @@ class SyncBaseStorage:
 
     def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
         Update an existing cache entry.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier.
+            id (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -160,12 +166,12 @@ class SyncBaseStorage:
         """
         ...
 
-    def remove_entry(self, id_: uuid.UUID) -> None:
+    def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove a cache entry.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier to remove.
+            id (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -207,14 +213,14 @@ class AsyncBaseStorage:
 
     async def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
         Update an existing cache entry asynchronously.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier.
+            id (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -222,12 +228,12 @@ class AsyncBaseStorage:
         """
         ...
 
-    async def remove_entry(self, id_: uuid.UUID) -> None:
+    async def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove a cache entry asynchronously.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier to remove.
+            id (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -296,26 +302,26 @@ class SyncSqliteStorage(SyncBaseStorage):
         ...
     def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
         Update an existing cache entry identified by its UUID.
 
         Parameters:
-            id_ (uuid.UUID): UUID of the entry to update.
+            id (uuid.UUID): UUID of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either the replacement Entry or a callable that receives the current Entry and returns the updated Entry.
 
         Returns:
             Optional[Entry]: The updated Entry if the entry existed and was updated, `None` otherwise.
         """
         ...
-    def remove_entry(self, id_: uuid.UUID) -> None:
+    def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove the cache entry with the given identifier from storage.
 
         Parameters:
-            id_ (uuid.UUID): UUID of the entry to remove.
+            id (uuid.UUID): UUID of the entry to remove.
         """
         ...
 
@@ -373,26 +379,26 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         ...
     async def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
-        Update an existing cache entry identified by `id_` with new content.
+        Update an existing cache entry identified by `id` with new content.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to update.
+            id (uuid.UUID): Identifier of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an `Entry` to replace the existing one, or a callable that receives the current `Entry` and returns the updated `Entry`.
 
         Returns:
-            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id_` existed and was updated, `None` otherwise.
+            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id` existed and was updated, `None` otherwise.
         """
         ...
-    async def remove_entry(self, id_: uuid.UUID) -> None:
+    async def remove_entry(self, id: uuid.UUID) -> None:
         """
-        Remove the cache entry identified by `id_`.
+        Remove the cache entry identified by `id`.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to remove.
+            id (uuid.UUID): Identifier of the entry to remove.
         """
         ...
 

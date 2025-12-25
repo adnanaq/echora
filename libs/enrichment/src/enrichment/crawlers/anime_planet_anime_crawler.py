@@ -19,7 +19,7 @@ import logging
 import re
 import sys
 from collections.abc import Callable
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from crawl4ai import (
@@ -366,8 +366,6 @@ async def _fetch_animeplanet_anime_data(
                     if start_date and end_date:
                         anime_data["status"] = "COMPLETED"
                     elif start_date and not end_date:
-                        from datetime import datetime
-
                         try:
                             start_dt = datetime.fromisoformat(
                                 start_date.replace("Z", "+00:00")

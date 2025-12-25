@@ -402,15 +402,12 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_data = pack(deleted_entry, kind="pair")
 
         # Update entry with deleted_at timestamp
-        await cast(
-            "Awaitable[int]",
-            self.client.hset(
-                entry_key,
-                mapping={
-                    b"data": entry_data,
-                    b"deleted_at": str(deleted_entry.meta.deleted_at).encode("utf-8"),
-                },
-            ),
+        await self.client.hset(
+            entry_key,
+            mapping={
+                b"data": entry_data,
+                b"deleted_at": str(deleted_entry.meta.deleted_at).encode("utf-8"),
+            },
         )
 
     async def close(self) -> None:

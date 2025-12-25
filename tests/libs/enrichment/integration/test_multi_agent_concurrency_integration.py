@@ -93,8 +93,7 @@ class TestConcurrentAgentDirectoryCreation:
         # Verify all directories are unique (no collisions)
         unique_dirs = set(created_dirs)
         assert len(unique_dirs) == num_agents, (
-            f"Directory collision detected! Expected {num_agents} unique dirs, got {len(unique_dirs)}. "
-            f"Dirs: {created_dirs}"
+            f"Directory collision detected! Expected {num_agents} unique dirs, got {len(unique_dirs)}. Dirs: {created_dirs}"
         )
 
         # Verify all directories actually exist
@@ -397,9 +396,6 @@ class TestConcurrentPipelineExecution:
             f"Only {success_count}/{len(anime_configs)} pipelines succeeded. "
             f"Results: {results}"
         )
-
-        # Verify cache was used (at least one cache hit expected)
-        sum(1 for r in results if r["from_cache"])
 
         # Performance check: concurrent execution should be faster than sequential
         # (This is optional - just validating concurrency works)

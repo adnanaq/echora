@@ -9,10 +9,8 @@ Follows the same pattern as test_comprehensive_title.py and test_character_vecto
 import asyncio
 import json
 import random
-import sys
 import time
 from itertools import combinations
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -24,9 +22,6 @@ from common.config import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from vector_processing import TextProcessor
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def load_episode_data() -> dict[str, list[dict]]:
@@ -199,7 +194,7 @@ async def test_comprehensive_episode_vector():
     async_qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url, api_key=settings.qdrant_api_key
     )
-    qdrant_client = asyncio.run(QdrantClient.create(settings, async_qdrant_client))
+    qdrant_client = await QdrantClient.create(settings, async_qdrant_client)
     text_processor = TextProcessor(settings=settings)
 
     # Load episode data
@@ -520,6 +515,4 @@ async def test_comprehensive_episode_vector():
 
 
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(test_comprehensive_episode_vector())

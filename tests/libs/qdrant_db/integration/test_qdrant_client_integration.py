@@ -476,7 +476,7 @@ async def test_update_batch_vectors_partial_anime_success(
     assert len(result["results"]) == 3, "Should have 3 detailed results"
 
     # Verify we can identify which specific update failed
-    failed_result = [r for r in result["results"] if not r["success"]][0]
+    failed_result = next(r for r in result["results"] if not r["success"])
     assert failed_result["vector_name"] == "genre_vector", (
         "Should identify genre_vector as failed"
     )

@@ -21,20 +21,24 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Type
+from typing import Any
 
 try:
     from common.models.anime import (
         AnimeEntry as _AnimeEntry,
+    )
+    from common.models.anime import (
         CharacterEntry as _CharacterEntry,
+    )
+    from common.models.anime import (
         SimpleVoiceActor as _SimpleVoiceActor,
     )
     from pydantic import ValidationError as _ValidationError
 
-    AnimeEntry: Type[_AnimeEntry] | None = _AnimeEntry
-    CharacterEntry: Type[_CharacterEntry] | None = _CharacterEntry
-    SimpleVoiceActor: Type[_SimpleVoiceActor] | None = _SimpleVoiceActor
-    ValidationError: Type[_ValidationError] | Type[Exception] = _ValidationError
+    AnimeEntry: type[_AnimeEntry] | None = _AnimeEntry
+    CharacterEntry: type[_CharacterEntry] | None = _CharacterEntry
+    SimpleVoiceActor: type[_SimpleVoiceActor] | None = _SimpleVoiceActor
+    ValidationError: type[_ValidationError] | type[Exception] = _ValidationError
 except ImportError:
     print(
         "Warning: Could not import Pydantic models. Schema validation will be limited."
@@ -641,8 +645,8 @@ class EnrichmentValidator:
                 f"{file_path}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             )
             with (
-                open(file_path) as original,
-                open(backup_path, "w") as backup_file,
+                open(file_path, encoding="utf-8") as original,
+                open(backup_path, "w", encoding="utf-8") as backup_file,
             ):
                 backup_file.write(original.read())
             logger.info(f"Created backup: {backup_path}")

@@ -9,6 +9,11 @@ import json
 import sys
 from pathlib import Path
 
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
 import pytest
 from process_stage2_episodes import (
     auto_detect_temp_dir,
@@ -17,11 +22,6 @@ from process_stage2_episodes import (
     load_kitsu_episode_data,
     process_all_episodes,
 )
-
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 class TestTimezoneConversion:

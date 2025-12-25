@@ -25,8 +25,8 @@ pytestmark = pytest.mark.integration
 
 def test_character_vector_realistic():
     """Test character vector against actual available data."""
-    print("🧠 Character Vector Validation - Data-Driven Testing")
-    print("📋 Testing against actual character data from 13 anime with characters")
+    print("[INFO] Character Vector Validation - Data-Driven Testing")
+    print("[INFO] Testing against actual character data from 13 anime with characters")
 
     settings = get_settings()
     text_processor = TextProcessor(settings=settings)
@@ -60,12 +60,12 @@ def test_character_vector_realistic():
         },
     ]
 
-    print(f"📊 Testing {len(test_cases)} realistic character queries...")
+    print(f"[STATS] Testing {len(test_cases)} realistic character queries...")
 
     passed = 0
     for i, test_case in enumerate(test_cases):
-        print(f"\n🔍 Test {i + 1}: '{test_case['query']}'")
-        print(f"   💭 Expected: {test_case['reason']}")
+        print(f"\n[TEST] Test {i + 1}: '{test_case['query']}'")
+        print(f"   [NOTE] Expected: {test_case['reason']}")
 
         # Generate embedding
         embedding = text_processor.encode_text(test_case["query"])
@@ -89,7 +89,7 @@ def test_character_vector_realistic():
 
         if response.status_code == 200:
             results = response.json()["result"]
-            print(f"   ✅ Found {len(results)} results")
+            print(f"   [PASS] Found {len(results)} results")
 
             for j, result in enumerate(results):
                 title = result["payload"]["title"]
@@ -102,12 +102,12 @@ def test_character_vector_realistic():
             if "expected_title" in test_case:
                 if test_case["expected_title"] == top_title:
                     print(
-                        f"   ✅ PASS - Found expected anime: {test_case['expected_title']}"
+                        f"   [PASS] PASS - Found expected anime: {test_case['expected_title']}"
                     )
                     passed += 1
                 else:
                     print(
-                        f"   ❌ FAIL - Expected '{test_case['expected_title']}', got '{top_title}'"
+                        f"   [FAIL] FAIL - Expected '{test_case['expected_title']}', got '{top_title}'"
                     )
             elif "expected_contains" in test_case:
                 if any(
@@ -115,31 +115,33 @@ def test_character_vector_realistic():
                     for title in [r["payload"]["title"] for r in results]
                 ):
                     print(
-                        f"   ✅ PASS - Found anime containing: {test_case['expected_contains']}"
+                        f"   [PASS] PASS - Found anime containing: {test_case['expected_contains']}"
                     )
                     passed += 1
                 else:
                     print(
-                        f"   ❌ FAIL - No results contained: {test_case['expected_contains']}"
+                        f"   [FAIL] FAIL - No results contained: {test_case['expected_contains']}"
                     )
         else:
-            print(f"   ❌ Search failed: {response.status_code}")
+            print(f"   [FAIL] Search failed: {response.status_code}")
 
-    print("\n📊 Final Character Vector Validation:")
-    print(f"   ✅ Passed: {passed}/{len(test_cases)}")
-    print(f"   📈 Success Rate: {(passed / len(test_cases) * 100):.1f}%")
+    print("\n[STATS] Final Character Vector Validation:")
+    print(f"   [PASS] Passed: {passed}/{len(test_cases)}")
+    print(f"   [ANALYSIS] Success Rate: {(passed / len(test_cases) * 100):.1f}%")
 
     if passed >= 4:  # 80% success rate
-        print("   🎉 Character vector is working excellently!")
+        print("   [SUCCESS] Character vector is working excellently!")
     elif passed >= 3:  # 60% success rate
-        print("   ✅ Character vector is working adequately!")
+        print("   [PASS] Character vector is working adequately!")
     else:
-        print("   ⚠️  Character vector needs improvement")
+        print("   [WARNING]  Character vector needs improvement")
 
 
 def load_character_data() -> dict[str, list[dict]]:
     """Load character data from enrichment file."""
-    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
+    with open(
+        "./data/qdrant_storage/enriched_anime_database.json", encoding="utf-8"
+    ) as f:
         data = json.load(f)
 
     anime_with_character_images = {}
@@ -172,14 +174,14 @@ def download_character_image(image_url: str) -> str | None:
             return temp_file.name
 
     except Exception as e:
-        print(f"   ⚠️  Failed to download image {image_url}: {e}")
+        print(f"   [WARNING]  Failed to download image {image_url}: {e}")
         return None
 
 
 def test_character_image_vector():
     """Test character_image_vector with actual character images."""
-    print("\n📸 Character Image Vector Validation")
-    print("📋 Testing character_image_vector with real character images")
+    print("\n[IMAGE] Character Image Vector Validation")
+    print("[INFO] Testing character_image_vector with real character images")
 
     settings = get_settings()
     vision_processor = VisionProcessor(settings=settings)
@@ -188,10 +190,10 @@ def test_character_image_vector():
     anime_with_images = load_character_data()
 
     if not anime_with_images:
-        print("   ❌ No character images found for testing")
+        print("   [FAIL] No character images found for testing")
         return
 
-    print(f"   📊 Found {len(anime_with_images)} anime with character images")
+    print(f"   [STATS] Found {len(anime_with_images)} anime with character images")
 
     # Randomly select 5 anime with character images for testing
     test_anime = random.sample(
@@ -213,11 +215,11 @@ def test_character_image_vector():
             if not image_urls:
                 continue
 
-            print(f"\n🎭 Testing: {character_name} from '{anime_title}'")
+            print(f"\n[CHARACTER] Testing: {character_name} from '{anime_title}'")
 
             # Try first image URL
             image_url = image_urls[0]
-            print(f"   📥 Downloading: {image_url}")
+            print(f"   [DOWNLOAD] Downloading: {image_url}")
 
             # Download image
             temp_image_path = download_character_image(image_url)
@@ -237,10 +239,12 @@ def test_character_image_vector():
                 # Generate embedding
                 embedding = vision_processor.encode_image(image_b64)
                 if not embedding:
-                    print(f"   ❌ Failed to generate embedding for {character_name}")
+                    print(
+                        f"   [FAIL] Failed to generate embedding for {character_name}"
+                    )
                     continue
 
-                print(f"   ✅ Generated {len(embedding)}-dimensional embedding")
+                print(f"   [PASS] Generated {len(embedding)}-dimensional embedding")
 
                 # Search character_image_vector
                 search_payload = {
@@ -261,7 +265,7 @@ def test_character_image_vector():
 
                 if response.status_code == 200:
                     results = response.json()["result"]
-                    print(f"   📊 Found {len(results)} results")
+                    print(f"   [STATS] Found {len(results)} results")
 
                     if results:
                         top_result = results[0]
@@ -273,24 +277,24 @@ def test_character_image_vector():
                         # Validate that the top result is the expected anime
                         if top_title == anime_title:
                             print(
-                                "   ✅ PASS - Character image correctly matched to source anime!"
+                                "   [PASS] PASS - Character image correctly matched to source anime!"
                             )
                             passed_tests += 1
                         else:
                             print(
-                                f"   ❌ FAIL - Expected '{anime_title}', got '{top_title}'"
+                                f"   [FAIL] FAIL - Expected '{anime_title}', got '{top_title}'"
                             )
 
                         total_tests += 1
                     else:
-                        print("   ❌ No results returned")
+                        print("   [FAIL] No results returned")
                         total_tests += 1
                 else:
-                    print(f"   ❌ Search failed: {response.status_code}")
+                    print(f"   [FAIL] Search failed: {response.status_code}")
                     total_tests += 1
 
             except Exception as e:
-                print(f"   ❌ Error processing image: {e}")
+                print(f"   [FAIL] Error processing image: {e}")
                 total_tests += 1
                 continue
 
@@ -299,24 +303,24 @@ def test_character_image_vector():
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"   [WARNING] Failed to delete temp file {temp_file}: {e}")
 
     # Summary
-    print("\n📊 Character Image Vector Results:")
+    print("\n[STATS] Character Image Vector Results:")
     if total_tests > 0:
         success_rate = (passed_tests / total_tests) * 100
-        print(f"   ✅ Passed: {passed_tests}/{total_tests}")
-        print(f"   📈 Success Rate: {success_rate:.1f}%")
+        print(f"   [PASS] Passed: {passed_tests}/{total_tests}")
+        print(f"   [ANALYSIS] Success Rate: {success_rate:.1f}%")
 
         if success_rate >= 80:
-            print("   🎉 Character image vector working excellently!")
+            print("   [SUCCESS] Character image vector working excellently!")
         elif success_rate >= 60:
-            print("   ✅ Character image vector working adequately!")
+            print("   [PASS] Character image vector working adequately!")
         else:
-            print("   ⚠️  Character image vector needs improvement")
+            print("   [WARNING]  Character image vector needs improvement")
     else:
-        print("   ❌ No character image tests completed")
+        print("   [FAIL] No character image tests completed")
 
 
 def find_anime_by_title(title, anime_database):
@@ -383,11 +387,11 @@ def create_character_query_patterns():
 
 def test_multimodal_character_search():
     """Enhanced multimodal character search testing with comprehensive field coverage."""
-    print("\n🎭 Enhanced Multimodal Character Search Validation")
+    print("\n[CHARACTER] Enhanced Multimodal Character Search Validation")
     print(
-        "📋 Testing character search with diverse query patterns across all character fields"
+        "[INFO] Testing character search with diverse query patterns across all character fields"
     )
-    print("🔍 Random testing with cross-reference validation and pattern analysis")
+    print("[TEST] Random testing with cross-reference validation and pattern analysis")
 
     settings = get_settings()
 
@@ -403,26 +407,28 @@ def test_multimodal_character_search():
     anime_with_images = load_character_data()
 
     # Load full database for validation
-    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
+    with open(
+        "./data/qdrant_storage/enriched_anime_database.json", encoding="utf-8"
+    ) as f:
         full_anime_database = json.load(f)
 
     if not anime_with_images:
-        print("   ❌ No character images found for multimodal testing")
+        print("   [FAIL] No character images found for multimodal testing")
         return
 
-    print(f"   📊 Found {len(anime_with_images)} anime with character images")
+    print(f"   [STATS] Found {len(anime_with_images)} anime with character images")
 
     # True randomization with timestamp seed
     import time
 
     random.seed(int(time.time() * 1000) % 2**32)
-    print(f"   🎲 Random seed: {int(time.time() * 1000) % 2**32}")
+    print(f"   [RANDOM] Random seed: {int(time.time() * 1000) % 2**32}")
 
     # Randomly select 5 anime for comprehensive testing
     test_anime = random.sample(
         list(anime_with_images.keys()), min(5, len(anime_with_images))
     )
-    print(f"   🎯 Testing {len(test_anime)} randomly selected anime")
+    print(f"   [TARGET] Testing {len(test_anime)} randomly selected anime")
 
     # Create query patterns
     query_patterns = create_character_query_patterns()
@@ -444,10 +450,12 @@ def test_multimodal_character_search():
             image_urls = character.get("images", [])
 
             if not image_urls:
-                print(f"   ⚠️  Skipping {character_name}: No images")
+                print(f"   [WARNING]  Skipping {character_name}: No images")
                 continue
 
-            print(f"\n🎭 Testing Character: {character_name} from '{anime_title}'")
+            print(
+                f"\n[CHARACTER] Testing Character: {character_name} from '{anime_title}'"
+            )
 
             # Display available character fields for transparency
             available_fields = []
@@ -465,12 +473,12 @@ def test_multimodal_character_search():
                 )
 
             print(
-                f"   📋 Available fields: {' | '.join(available_fields) if available_fields else 'Name only'}"
+                f"   [INFO] Available fields: {' | '.join(available_fields) if available_fields else 'Name only'}"
             )
 
             # Download character image
             image_url = image_urls[0]
-            print(f"   📥 Downloading: {image_url}")
+            print(f"   [DOWNLOAD] Downloading: {image_url}")
 
             temp_image_path = download_character_image(image_url)
             if not temp_image_path:
@@ -493,12 +501,12 @@ def test_multimodal_character_search():
                 if not text_query:
                     text_query = character_name  # Fallback
 
-                print(f"   🎲 Query Pattern: {selected_pattern['name']}")
+                print(f"   [RANDOM] Query Pattern: {selected_pattern['name']}")
                 print(
-                    f'   📝 Generated Query: "{text_query[:80]}{"..." if len(text_query) > 80 else ""}"'
+                    f'   [INFO] Generated Query: "{text_query[:80]}{"..." if len(text_query) > 80 else ""}"'
                 )
 
-                print("   🔍 Multimodal search: text + image")
+                print("   [TEST] Multimodal search: text + image")
 
                 # Perform multimodal character search
                 import asyncio
@@ -514,7 +522,7 @@ def test_multimodal_character_search():
                     top_title = top_result.get("title", "Unknown")
                     top_score = top_result.get("score", 0.0)
 
-                    print(f"   📊 Found {len(results)} results")
+                    print(f"   [STATS] Found {len(results)} results")
                     print(f"      1. {top_title} (score: {top_score:.4f})")
 
                     # Comparative analysis: Text-only vs Image-only vs Multimodal
@@ -540,7 +548,7 @@ def test_multimodal_character_search():
                         else 0.0
                     )
 
-                    print("   📈 Score Analysis:")
+                    print("   [ANALYSIS] Score Analysis:")
                     print(
                         f"      Text-only ({selected_pattern['name']}): {text_only_score:.4f}"
                     )
@@ -550,20 +558,20 @@ def test_multimodal_character_search():
                     # Enhanced validation with pattern tracking
                     test_passed = False
                     if top_title == anime_title:
-                        print("   ✅ PASS - Exact source anime match!")
+                        print("   [PASS] PASS - Exact source anime match!")
                         test_passed = True
                         passed_tests += 1
                     elif verify_character_in_anime(
                         character_name, top_title, full_anime_database
                     ):
                         print(
-                            f"   ✅ PASS - Character '{character_name}' verified in returned anime '{top_title}' (cross-reference)!"
+                            f"   [PASS] PASS - Character '{character_name}' verified in returned anime '{top_title}' (cross-reference)!"
                         )
                         test_passed = True
                         passed_tests += 1
                     else:
                         print(
-                            f"   ❌ FAIL - Character '{character_name}' not found in returned anime '{top_title}'"
+                            f"   [FAIL] FAIL - Character '{character_name}' not found in returned anime '{top_title}'"
                         )
                         # Debug info
                         returned_anime = find_anime_by_title(
@@ -589,21 +597,23 @@ def test_multimodal_character_search():
                         top_score >= max(text_only_score, image_only_score) * 1.1
                     ):  # 10% improvement threshold
                         print(
-                            "   🎯 FUSION BOOST - Multimodal significantly improved results!"
+                            "   [TARGET] FUSION BOOST - Multimodal significantly improved results!"
                         )
                     elif top_score >= max(text_only_score, image_only_score):
-                        print("   🎯 FUSION BENEFIT - Multimodal improved results")
+                        print(
+                            "   [TARGET] FUSION BENEFIT - Multimodal improved results"
+                        )
                     else:
-                        print("   ⚠️  Individual modalities performed better")
+                        print("   [WARNING]  Individual modalities performed better")
 
                     total_tests += 1
                 else:
-                    print("   ❌ No results returned")
+                    print("   [FAIL] No results returned")
                     pattern_stats[selected_pattern["name"]]["tests"] += 1
                     total_tests += 1
 
             except Exception as e:
-                print(f"   ❌ Error processing character: {e}")
+                print(f"   [FAIL] Error processing character: {e}")
                 total_tests += 1
                 continue
 
@@ -612,8 +622,8 @@ def test_multimodal_character_search():
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"   [WARNING] Failed to delete temp file {temp_file}: {e}")
 
     # Calculate pattern effectiveness
     for pattern_name in pattern_stats:
@@ -623,18 +633,18 @@ def test_multimodal_character_search():
             ]
 
     # Comprehensive Results Summary
-    print("\n📊 Enhanced Multimodal Character Search Results:")
-    print(f"   🎲 Random seed used: {int(time.time() * 1000) % 2**32}")
-    print(f"   🎯 Tested {len(test_anime)} randomly selected anime")
+    print("\n[STATS] Enhanced Multimodal Character Search Results:")
+    print(f"   [RANDOM] Random seed used: {int(time.time() * 1000) % 2**32}")
+    print(f"   [TARGET] Tested {len(test_anime)} randomly selected anime")
 
     if total_tests > 0:
         success_rate = (passed_tests / total_tests) * 100
-        print("\n   📈 Overall Results:")
-        print(f"   ✅ Passed: {passed_tests}/{total_tests}")
-        print(f"   📊 Success Rate: {success_rate:.1f}%")
+        print("\n   [ANALYSIS] Overall Results:")
+        print(f"   [PASS] Passed: {passed_tests}/{total_tests}")
+        print(f"   [STATS] Success Rate: {success_rate:.1f}%")
 
         # Pattern Effectiveness Analysis
-        print("\n   🎯 Query Pattern Analysis:")
+        print("\n   [TARGET] Query Pattern Analysis:")
         for pattern_name, stats in pattern_stats.items():
             if stats["tests"] > 0:
                 pattern_success_rate = (stats["passes"] / stats["tests"]) * 100
@@ -654,25 +664,31 @@ def test_multimodal_character_search():
         if best_pattern:
             best_name, best_stats = best_pattern
             best_rate = (best_stats["passes"] / best_stats["tests"]) * 100
-            print(f"   🏆 Best Pattern: {best_name} ({best_rate:.1f}% success rate)")
+            print(
+                f"   [BEST] Best Pattern: {best_name} ({best_rate:.1f}% success rate)"
+            )
 
         # Overall Assessment
-        print("\n   🔬 Assessment:")
+        print("\n   [ASSESSMENT] Assessment:")
         if success_rate >= 80:
-            print("   🎉 Enhanced multimodal character search working excellently!")
             print(
-                "   ✨ Multiple query patterns validated across diverse character fields"
+                "   [SUCCESS] Enhanced multimodal character search working excellently!"
+            )
+            print(
+                "   [NOTE] Multiple query patterns validated across diverse character fields"
             )
         elif success_rate >= 60:
-            print("   ✅ Enhanced multimodal character search working adequately!")
-            print("   📚 Some query patterns more effective than others")
+            print("   [PASS] Enhanced multimodal character search working adequately!")
+            print("   [INFO] Some query patterns more effective than others")
         else:
-            print("   ⚠️  Enhanced multimodal character search needs improvement")
             print(
-                "   🔍 Consider optimizing character_vector indexing or fusion parameters"
+                "   [WARNING]  Enhanced multimodal character search needs improvement"
+            )
+            print(
+                "   [TEST] Consider optimizing character_vector indexing or fusion parameters"
             )
 
-        print("\n   🎯 Key Insights:")
+        print("\n   [TARGET] Key Insights:")
         print("   • True randomization ensures comprehensive testing coverage")
         print("   • Pattern diversity validates all character field combinations")
         print("   • Cross-reference validation accounts for franchise characters")
@@ -681,7 +697,7 @@ def test_multimodal_character_search():
         )
 
     else:
-        print("   ❌ No enhanced multimodal character tests completed")
+        print("   [FAIL] No enhanced multimodal character tests completed")
 
 
 if __name__ == "__main__":

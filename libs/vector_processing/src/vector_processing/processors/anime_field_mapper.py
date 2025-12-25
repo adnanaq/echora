@@ -10,9 +10,7 @@ defined in Phase 2.5 architecture with character image semantic separation.
 import logging
 from typing import Any
 
-from common.models.anime import (
-    AnimeEntry,
-)  # TODO: Update to models package after models lib created
+from common.models.anime import AnimeEntry
 
 logger = logging.getLogger(__name__)
 

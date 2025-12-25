@@ -54,8 +54,8 @@ class FastEmbedModel(TextEmbeddingModel):
             embeddings = list(self.model.embed(texts))
             return [cast(list[float], e.tolist()) for e in embeddings]
 
-        except Exception as e:
-            logger.error(f"FastEmbed encoding failed: {e}")
+        except Exception:
+            logger.exception("FastEmbed encoding failed")
             # Return empty list or raise? Base class contract implies returning list of lists.
             # If batch fails, we might want to raise to let caller handle it,
             # or return empty list if that's the expected behavior for failure.

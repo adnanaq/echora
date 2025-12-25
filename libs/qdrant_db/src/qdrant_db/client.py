@@ -760,10 +760,8 @@ class QdrantClient(VectorDBClient):
             logger.debug(f"Updated {vector_name} for anime {anime_id}")
             return True
 
-        except Exception as e:
-            logger.exception(
-                f"Failed to update vector {vector_name} for {anime_id}: {e}"
-            )
+        except Exception:
+            logger.exception(f"Failed to update vector {vector_name} for {anime_id}")
             return False
 
     async def update_batch_vectors(
@@ -946,7 +944,7 @@ class QdrantClient(VectorDBClient):
 
                 except Exception as e:
                     # Retry failed - mark all as failed
-                    logger.error(f"Batch update failed after retries: {e}")
+                    logger.exception("Batch update failed after retries")
                     for anime_id in grouped_updates.keys():
                         for vector_name in grouped_updates[anime_id].keys():
                             results.append(
@@ -954,7 +952,7 @@ class QdrantClient(VectorDBClient):
                                     "anime_id": anime_id,
                                     "vector_name": vector_name,
                                     "success": False,
-                                    "error": f"Update failed after {max_retries} retries: {str(e)}",
+                                    "error": f"Update failed after {max_retries} retries: {e!s}",
                                 }
                             )
 

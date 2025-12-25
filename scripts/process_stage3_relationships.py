@@ -241,7 +241,7 @@ def process_anilist_relations(
     return related_anime, relations
 
 
-def process_anidb_relations(anidb_data: dict[str, Any]) -> list[dict]:
+def process_anidb_relations(_anidb_data: dict[str, Any]) -> list[dict]:
     """
     Process AniDB relations data (if available).
     Note: AniDB doesn't typically have explicit relations in the API response.
@@ -305,8 +305,6 @@ def process_offline_urls(
 
         # Additional check for MAL base URL duplication
         if not is_duplicate and "myanimelist.net/anime/" in url.lower():
-            import re
-
             match = re.search(r"(myanimelist\.net/anime/\d+)", url.lower())
             if match:
                 mal_base_url = f"https://{match.group(1)}"
@@ -540,8 +538,6 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
             # Create MAL base URL if it's a MyAnimeList URL
             if "myanimelist.net/anime/" in url.lower():
-                import re
-
                 match = re.search(r"(myanimelist\.net/anime/\d+)", url.lower())
                 if match:
                     mal_base_url = f"https://{match.group(1)}"
@@ -564,8 +560,6 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
         # Additional check for MAL base URL duplication
         if not is_duplicate and "myanimelist.net/anime/" in url.lower():
-            import re
-
             match = re.search(r"(myanimelist\.net/anime/\d+)", url.lower())
             if match:
                 mal_base_url = f"https://{match.group(1)}"
