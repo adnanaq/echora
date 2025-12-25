@@ -116,7 +116,7 @@ def _compute_schema_hash(func: Callable[..., Any]) -> str:
         return hashlib.sha256(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.sha256(func.__name__.encode()).hexdigest()[:16]
+        return hashlib.sha256(func.__name__.encode()).hexdigest()[:16]  # ty: ignore[unresolved-attribute]
 
 
 def _generate_cache_key(
@@ -241,7 +241,7 @@ def cached_result(
                 return await func(*args, **kwargs)
 
             # Generate cache key with schema hash
-            prefix = key_prefix or func.__name__
+            prefix = key_prefix or func.__name__  # ty: ignore[unresolved-attribute]
             cache_key = _generate_cache_key(prefix, schema_hash, *args, **kwargs)
 
             try:
@@ -250,7 +250,7 @@ def cached_result(
                 cached_data = await redis_client.get(cache_key)
             except RedisError as e:
                 # On cache-read errors, fall back to direct call
-                logging.warning(f"Cache read error in {func.__name__}: {e}")
+                logging.warning(f"Cache read error in {func.__name__}: {e}")  # ty: ignore[unresolved-attribute]
                 return await func(*args, **kwargs)
 
             if cached_data:
@@ -260,7 +260,7 @@ def cached_result(
                 except json.JSONDecodeError as e:
                     # Corrupted cache entry - treat as cache miss
                     logging.warning(
-                        f"Cache decode error in {func.__name__} for key {cache_key}: {e}"
+                        f"Cache decode error in {func.__name__} for key {cache_key}: {e}"  # ty: ignore[unresolved-attribute]
                     )
                     # Fall through to execute function (cache miss)
 
@@ -279,7 +279,7 @@ def cached_result(
             except (RedisError, TypeError) as e:
                 # RedisError: Redis connection/operation failures
                 # TypeError: JSON serialization fails for non-serializable objects
-                logging.warning(f"Cache write error in {func.__name__}: {e}")
+                logging.warning(f"Cache write error in {func.__name__}: {e}")  # ty: ignore[unresolved-attribute]
 
             return result
 

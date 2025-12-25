@@ -22,7 +22,7 @@ class OpenClipModel(VisionEmbeddingModel):
             batch_size: Default batch size for encoding
         """
         try:
-            import open_clip  # type: ignore[import-untyped]
+            import open_clip
             import torch
 
             self._model_name = model_name
@@ -136,7 +136,7 @@ class OpenClipModel(VisionEmbeddingModel):
                         if loaded_img.mode != "RGB":
                             pil_img = loaded_img.convert("RGB")
                         else:
-                            pil_img = loaded_img  # type: ignore[assignment]  # ImageFile is compatible with Image
+                            pil_img = loaded_img  # ImageFile is compatible with Image
                     except Exception as e:
                         logger.error(f"Failed to load image from path {img}: {e}")
                         # Skip failed images or raise?

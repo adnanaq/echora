@@ -322,7 +322,7 @@ class CachedAiohttpSession:
                                 headers_dict[key] = value
                     except (ValueError, TypeError):
                         # Fallback: headers might be already a dict
-                        headers_dict = dict(entry.response.headers._headers)  # type: ignore[arg-type]  # _headers is private multidict format
+                        headers_dict = dict(entry.response.headers._headers)  # _headers is private multidict format
                 else:
                     headers_dict = entry.response.headers
 
@@ -453,7 +453,7 @@ class CachedAiohttpSession:
             method=method,
             url=str(response.url),
             headers=Headers(dict(response.request_info.headers)),
-            stream=None,  # type: ignore[arg-type]  # Request body not needed for caching
+            stream=None,  # Request body not needed for caching
             metadata=request_kwargs.get("metadata", {}),
         )
 
@@ -488,7 +488,7 @@ class CachedAiohttpSession:
         if entry.response and entry.response.stream:
             stream = entry.response.stream
             if hasattr(stream, "__aiter__"):
-                async for _ in stream:
+                async for _ in stream:  # ty: ignore[not-iterable]
                     pass  # Just consume, data already yielded from body_stream()
             else:
                 for _ in stream:

@@ -22,16 +22,16 @@ from typing import Any
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder that handles datetime objects"""
 
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, datetime):
+    def default(self, o: object) -> str | list[Any] | dict[str, Any] | int | float | bool | None:
+        if isinstance(o, datetime):
             # Convert to UTC and force Z format for consistency
-            if obj.tzinfo is not None:
+            if o.tzinfo is not None:
                 # Convert timezone-aware datetime to UTC
 
-                obj = obj.astimezone(UTC).replace(tzinfo=None)
+                o = o.astimezone(UTC).replace(tzinfo=None)
             # Always append Z for UTC timestamps
-            return obj.isoformat() + "Z"
-        return super().default(obj)
+            return o.isoformat() + "Z"
+        return super().default(o)
 
 
 try:

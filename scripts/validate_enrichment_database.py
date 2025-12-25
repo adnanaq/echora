@@ -21,19 +21,28 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Type
 
 try:
-    from common.models.anime import AnimeEntry, CharacterEntry, SimpleVoiceActor
-    from pydantic import ValidationError
+    from common.models.anime import (
+        AnimeEntry as _AnimeEntry,
+        CharacterEntry as _CharacterEntry,
+        SimpleVoiceActor as _SimpleVoiceActor,
+    )
+    from pydantic import ValidationError as _ValidationError
+
+    AnimeEntry: Type[_AnimeEntry] | None = _AnimeEntry
+    CharacterEntry: Type[_CharacterEntry] | None = _CharacterEntry
+    SimpleVoiceActor: Type[_SimpleVoiceActor] | None = _SimpleVoiceActor
+    ValidationError: Type[_ValidationError] | Type[Exception] = _ValidationError
 except ImportError:
     print(
         "Warning: Could not import Pydantic models. Schema validation will be limited."
     )
-    AnimeEntry = None  # type: ignore
-    CharacterEntry = None  # type: ignore
-    SimpleVoiceActor = None  # type: ignore
-    ValidationError = Exception  # type: ignore
+    AnimeEntry = None
+    CharacterEntry = None
+    SimpleVoiceActor = None
+    ValidationError = Exception
 
 # Configure logging
 logging.basicConfig(
@@ -494,6 +503,10 @@ class EnrichmentValidator:
     ) -> list[ValidationIssue]:
         """Validate entry against Pydantic schema"""
         issues = []
+
+        # Skip schema validation if Pydantic models are not available
+        if AnimeEntry is None or ValidationError is Exception:
+            return issues
 
         try:
             # Attempt to validate with AnimeEntry model

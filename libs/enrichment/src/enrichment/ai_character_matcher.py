@@ -41,23 +41,23 @@ try:
 
     VISION_AVAILABLE = True
 except ImportError:
+    VisionProcessor = None  # ty: ignore[invalid-assignment]
+    CCIP = None  # ty: ignore[invalid-assignment]
+    Settings = None  # ty: ignore[invalid-assignment]
     VISION_AVAILABLE = False
-    VisionProcessor = None  # type: ignore[misc,assignment]
-    CCIP = None  # type: ignore[misc,assignment]
-    Settings = None  # type: ignore[misc,assignment]
 
 try:
     from sklearn.metrics.pairwise import cosine_similarity
 except ImportError:
-    cosine_similarity = None  # type: ignore[assignment]
+    cosine_similarity = None  # ty: ignore[invalid-assignment]
 
 # Language detection and processing
 try:
     import jaconv  # Japanese character conversion (has type stubs since v0.4.0)
     import pykakasi  # Kanji to romaji conversion
 except ImportError:
-    jaconv = None  # type: ignore[assignment]
-    pykakasi = None  # type: ignore[assignment]
+    jaconv = None  # ty: ignore[invalid-assignment]
+    pykakasi = None  # ty: ignore[invalid-assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class ProcessedCharacter:
     favorites: int | None
     match_confidence: MatchConfidence
     source_count: int
-    match_scores: dict[str, float] = None  # type: ignore[assignment]  # Match scores for stage5 to use
+    match_scores: dict[str, float] | None = None  # Match scores for stage5 to use
 
 
 class LanguageDetector:
@@ -116,7 +116,7 @@ class LanguageDetector:
             self.kks = None
             self.conv = None
         else:
-            self.kks = pykakasi.kakasi()  # type: ignore[no-untyped-call]
+            self.kks = pykakasi.kakasi()
             self.kks.setMode("H", "a")  # Hiragana to ASCII
             self.kks.setMode("K", "a")  # Katakana to ASCII
             self.kks.setMode("J", "a")  # Kanji to ASCII
@@ -145,7 +145,7 @@ class CharacterNamePreprocessor:
     """Advanced preprocessing for anime character names"""
 
     def __init__(self) -> None:
-        self.kks = pykakasi.kakasi()  # type: ignore[no-untyped-call]
+        self.kks = pykakasi.kakasi()
         self.kks.setMode("H", "a")
         self.kks.setMode("K", "a")
         self.kks.setMode("J", "a")
@@ -410,7 +410,7 @@ class EnsembleFuzzyMatcher:
             logger.warning(
                 f"Failed to load BGE-M3 {model_name}, falling back to basic matching: {e}"
             )
-            self.embedding_model = None  # type: ignore[assignment]
+            self.embedding_model = None
 
         # Initialize vision model for character image similarity
         self.enable_visual = enable_visual and VISION_AVAILABLE
@@ -420,7 +420,7 @@ class EnsembleFuzzyMatcher:
             try:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
-                    self.vision_processor = VisionProcessor(settings)  # type: ignore[call-arg,arg-type]  # TODO: Fix - VisionProcessor requires model and downloader
+                    self.vision_processor = VisionProcessor(settings)  # ty: ignore[missing-argument,invalid-argument-type] TODO: Fix - VisionProcessor requires model and downloader
                     self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
@@ -655,7 +655,7 @@ class EnsembleFuzzyMatcher:
             norm2 = self._standardize_for_embedding(text2)
 
             embeddings = self.embedding_model.encode([norm1, norm2])
-            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # ty: ignore[call-non-callable]
             return float(max(0.0, similarity))
         except Exception as e:
             logger.warning(f"Semantic similarity failed: {e}")

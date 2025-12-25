@@ -8,7 +8,7 @@ import argparse
 import asyncio
 import json
 import sys
-from typing import Any
+from typing import Any, cast
 
 from enrichment.programmatic.enrichment_pipeline import (
     ProgrammaticEnrichmentPipeline,
@@ -157,18 +157,20 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
     if anime_entry is None:
         sys.exit(1)
 
-    anime_title = anime_entry.get("title", "Unknown")
+    # Cast needed because ty doesn't narrow dict | None after None check (beta limitation)
+    anime_data = cast(dict[str, Any], anime_entry)
+    anime_title = anime_data.get("title", "Unknown")
     print(f"\n{'=' * 60}")
     print(f"Processing: {anime_title}")
-    print(f"Type: {anime_entry.get('type', 'Unknown')}")
-    print(f"Episodes: {anime_entry.get('episodes', 'Unknown')}")
-    print(f"Status: {anime_entry.get('status', 'Unknown')}")
+    print(f"Type: {anime_data.get('type', 'Unknown')}")
+    print(f"Episodes: {anime_data.get('episodes', 'Unknown')}")
+    print(f"Status: {anime_data.get('status', 'Unknown')}")
     print(f"{'=' * 60}\n")
 
     async with ProgrammaticEnrichmentPipeline() as pipeline:
         # Run enrichment with optional service filtering and agent directory
         result = await pipeline.enrich_anime(
-            anime_entry,
+            anime_data,
             agent_dir=args.agent,
             skip_services=args.skip,
             only_services=args.only,

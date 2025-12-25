@@ -1092,7 +1092,7 @@ class QdrantClient(VectorDBClient):
                         FieldCondition(key=key, match=MatchValue(value=value))
                     )
 
-        return Filter(must=conditions) if conditions else None  # type: ignore[arg-type]
+        return Filter(must=conditions) if conditions else None
 
     async def get_by_id(
         self, point_id: str, with_vectors: bool = False

@@ -52,7 +52,7 @@ class ProgrammaticEnrichmentPipeline:
 
     async def enrich_anime(
         self,
-        offline_data: dict,
+        offline_data: dict[str, Any],
         agent_dir: str | None = None,
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,

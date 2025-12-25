@@ -1,11 +1,11 @@
-"""Type stubs for hishel._core._storages._sync_base module."""
+"""Type stubs for hishel._core/_storages/_sync_base module."""
 
 import abc
 import uuid
 from collections.abc import Callable
 
-# Import from parent module
-from hishel import Entry, Request, Response
+# Import from core models (internal API used by storage implementations)
+from hishel._core.models import Entry, Request, Response
 
 class SyncBaseStorage(abc.ABC):
     """Base class for synchronous storage backends."""
@@ -45,24 +45,24 @@ class SyncBaseStorage(abc.ABC):
     @abc.abstractmethod
     def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
         Update an existing cache entry identified by its UUID.
 
         Parameters:
-            id_ (uuid.UUID): UUID of the entry to update.
+            id (uuid.UUID): UUID of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an Entry to replace the existing one,
                 or a callable that receives the current Entry and returns the updated Entry.
 
         Returns:
-            Optional[Entry]: The updated Entry if an entry with `id_` existed and was updated, `None` otherwise.
+            Optional[Entry]: The updated Entry if an entry with `id` existed and was updated, `None` otherwise.
         """
         ...
 
     @abc.abstractmethod
-    def remove_entry(self, id_: uuid.UUID) -> None:
+    def remove_entry(self, id: uuid.UUID) -> None:
         """Remove (soft delete) an entry."""
         ...
 

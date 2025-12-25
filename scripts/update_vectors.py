@@ -280,7 +280,7 @@ async def update_vectors(
         combined_results.extend(batch_result.get("results", []))
 
     # Create aggregated result
-    result = {
+    result: dict[str, Any] = {
         "success": total_successful,
         "failed": total_failed,
         "results": combined_results,
@@ -291,7 +291,7 @@ async def update_vectors(
 
     # Calculate per-vector statistics from results
     vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
-    for update_result in result["results"]:
+    for update_result in combined_results:
         vector_name = update_result["vector_name"]
         if vector_name in vector_stats:
             if update_result["success"]:
@@ -301,7 +301,7 @@ async def update_vectors(
 
     # Calculate per-anime success (all vectors must succeed)
     anime_success_map: dict[str, dict[str, int]] = {}
-    for update_result in result["results"]:
+    for update_result in combined_results:
         anime_id = update_result["anime_id"]
         if anime_id not in anime_success_map:
             anime_success_map[anime_id] = {"total": 0, "success": 0}
@@ -333,9 +333,9 @@ async def update_vectors(
             f"  {vector_name}: {stats['success']}/{total} ({success_rate:.1f}%)"
         )
 
-    if result["generation_failures"] > 0:
+    if len(all_generation_failures) > 0:
         logger.warning(
-            f"Generation Failures: {result['generation_failures']} vectors failed to generate"
+            f"Generation Failures: {len(all_generation_failures)} vectors failed to generate"
         )
 
     return {

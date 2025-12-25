@@ -47,7 +47,7 @@ dev = [
     "pytest-mock==3.14.1",
 
     # Development dependencies
-    "mypy>=1.18.1",
+    "ty>=0.0.7",
     "ruff==0.14.10",
     "types-requests>=2.32.0",
 
@@ -89,7 +89,6 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
-    "mypy>=1.18.1",
     "ruff==0.14.10",
     "scikit-learn-stubs>=0.0.3",
     "scipy-stubs>=1.16.2.0",
@@ -99,8 +98,27 @@ dev = [
     "types-setuptools>=80.9.0.20250822",
 ]
 
-[tool.mypy]
-mypy_path = "stubs"
+[tool.ty.environment]
+# Python version must match project requirement (>=3.12)
+python-version = "3.12"
+
+# Additional search paths for module resolution
+# Includes both first-party monorepo libs and custom third-party stubs
+extra-paths = [
+    "libs/common/src",
+    "libs/enrichment/src",
+    "libs/http_cache/src",
+    "libs/qdrant_db/src",
+    "libs/vector_db_interface/src",
+    "libs/vector_processing/src",
+    "apps/service/src",
+    "stubs",  # Custom third-party type stubs (crawl4ai, fastembed, etc.)
+]
+
+[tool.ty.analysis]
+# Only respect ty: ignore comments, not type: ignore (stricter checking)
+# This helps during migration to ensure we're not inheriting mypy suppressions
+respect-type-ignore-comments = false
 
 [tool.ruff]
 # Same as Black

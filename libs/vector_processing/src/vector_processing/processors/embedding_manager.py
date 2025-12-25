@@ -413,7 +413,7 @@ class MultiVectorEmbeddingManager:
                     processed_results.append(error_result)
                 else:
                     # result is not an Exception, it's a Dict[str, Any]
-                    processed_results.append(result)  # type: ignore[arg-type]
+                    processed_results.append(result)
 
             # Log batch statistics
             successful = sum(

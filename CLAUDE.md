@@ -168,32 +168,6 @@ Loading required context per BP-2:
 "fix all issues" → 🛑 ANTI-PATTERN: Need issue prioritization and scope
 ```
 
-### **⚠️ ERROR CONTEXT MANDATORY CHECK**
-
-**ANY mention of**: "error", "failure", "broken", "not working", "failing"
-**REQUIRED FIRST ACTION**:
-
-```
-Checking @ERRORS per CLAUDE.md rules...
-From rules/error-documentation.md: [list relevant known issues]
-Applying known solutions before new investigation...
-```
-
-### **📚 LESSONS AUTO-APPLICATION**
-
-**MUST apply patterns** from rules/lessons-learned.md for:
-
-- Performance requests → async-first, config-driven patterns
-- Architecture changes → graceful degradation principles
-- Implementation → multi-vector design philosophy
-- Error handling → context-rich error messages
-
-### **🔄 SELF-UPDATE TRIGGERS**
-
-- Pattern violations detected → Update rules
-- New successful patterns → Document in lessons-learned
-- Error resolutions → Update error-documentation
-
 ### Execution Pattern (WITH VALIDATION GATES)
 
 ```
@@ -295,7 +269,7 @@ This is a specialized microservice for semantic search over anime content using 
 # Install dependencies
 uv sync
 
-# Install with dev dependencies (includes pytest, mypy, etc.)
+# Install with dev dependencies (includes pytest, ty, etc.)
 uv sync --extra dev
 
 # Start Qdrant database only
@@ -331,7 +305,7 @@ uv run pytest test_filename.py
 uv run pytest --cov=src
 
 # Type checking (MANDATORY before commits)
-uv run mypy --strict src/
+ty check scripts/ libs/ apps/
 
 # Code formatting
 uv run ruff format src/
@@ -343,20 +317,20 @@ uv run ruff check --select I --fix src/
 
 ### Type Safety Protocol
 
-**MANDATORY**: All code must pass strict mypy type checking before commits.
+**MANDATORY**: All code must pass ty type checking before commits.
 
 **Code Quality Tools**:
-- Type checking: mypy with strict mode
+- Type checking: ty
 - Formatting: ruff format (replaces black)
 - Import sorting: ruff (replaces isort)
 - Linting: ruff check (replaces autoflake and flake8)
 
 ```bash
-# Check all source files with strict typing
-uv run mypy --strict src/ --show-error-codes
+# Check all source files with type checking
+ty check scripts/ libs/ apps/
 
-# Check specific file
-uv run mypy --strict src/vector/text_processor.py --show-error-codes
+# Check specific library
+ty check libs/http_cache/
 
 # Format and lint code
 uv run ruff format src/

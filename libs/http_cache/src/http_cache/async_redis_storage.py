@@ -360,7 +360,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_data = pack(complete_entry, kind="pair")
 
         pipe = self.client.pipeline()
-        pipe.hset(entry_key, b"data", entry_data)  # type: ignore[arg-type]
+        pipe.hset(entry_key, b"data", entry_data)
 
         # Update cache key index if changed
         if current_entry.cache_key != complete_entry.cache_key:
@@ -369,7 +369,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             pipe.srem(old_index_key, str(id).encode("utf-8"))
             pipe.sadd(new_index_key, str(id).encode("utf-8"))
-            pipe.hset(entry_key, b"cache_key", complete_entry.cache_key)  # type: ignore[arg-type]
+            pipe.hset(entry_key, b"cache_key", complete_entry.cache_key)
 
         await pipe.execute()
 

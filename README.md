@@ -137,8 +137,8 @@ This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, 
 # Lint code
 ./pants lint ::
 
-# Type check with mypy
-./pants check ::
+# Type check with ty
+ty check scripts/ libs/ apps/
 
 # Count lines of code
 ./pants count-loc ::
@@ -302,7 +302,7 @@ pip install -e ".[dev]"
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)
 - **Package Manager**: UV
 - **Testing**: pytest, pytest-asyncio
-- **Type Checking**: mypy
+- **Type Checking**: ty
 - **Formatting**: ruff format, ruff check
 
 ## 🤝 Contributing

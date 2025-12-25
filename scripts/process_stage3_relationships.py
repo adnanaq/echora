@@ -38,7 +38,7 @@ def clean_animeplanet_title(title: str) -> str:
 
 
 def map_animeplanet_relationship(
-    relation_type: str, relation_subtype: str = None
+    relation_type: str, relation_subtype: str | None = None
 ) -> str:
     """
     Map AnimePlanet relationship types to standardized types.

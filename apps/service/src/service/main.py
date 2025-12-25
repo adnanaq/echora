@@ -156,8 +156,10 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Known FastAPI/Starlette typing issue with _MiddlewareFactory
+# See: https://github.com/fastapi/fastapi/discussions/10968
 app.add_middleware(
-    CORSMiddleware,
+    CORSMiddleware,  # ty: ignore[invalid-argument-type]
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=settings.allowed_methods,

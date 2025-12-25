@@ -4,8 +4,8 @@ import abc
 import uuid
 from collections.abc import Callable
 
-# Import from parent module
-from hishel import Entry, Request, Response
+# Import from core models (internal API used by storage implementations)
+from hishel._core.models import Entry, Request, Response
 
 class AsyncBaseStorage(abc.ABC):
     """Base class for asynchronous storage backends."""
@@ -45,30 +45,30 @@ class AsyncBaseStorage(abc.ABC):
     @abc.abstractmethod
     async def update_entry(
         self,
-        id_: uuid.UUID,
+        id: uuid.UUID,
         new_entry: Entry | Callable[[Entry], Entry],
     ) -> Entry | None:
         """
-        Update an existing cache entry identified by `id_`.
+        Update an existing cache entry identified by `id`.
 
-        If `new_entry` is an Entry instance it replaces the stored entry; if it is a callable, it is invoked with the current Entry and the returned Entry is stored. If no entry with `id_` exists, nothing is changed.
+        If `new_entry` is an Entry instance it replaces the stored entry; if it is a callable, it is invoked with the current Entry and the returned Entry is stored. If no entry with `id` exists, nothing is changed.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to update.
+            id (uuid.UUID): Identifier of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Replacement Entry or a function that transforms the existing Entry into a new Entry.
 
         Returns:
-            Optional[Entry]: The updated Entry if the entry was found and updated, `None` if no entry with `id_` exists.
+            Optional[Entry]: The updated Entry if the entry was found and updated, `None` if no entry with `id` exists.
         """
         ...
 
     @abc.abstractmethod
-    async def remove_entry(self, id_: uuid.UUID) -> None:
+    async def remove_entry(self, id: uuid.UUID) -> None:
         """
-        Mark the cache entry identified by `id_` as removed (soft delete) in the storage backend.
+        Mark the cache entry identified by `id` as removed (soft delete) in the storage backend.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to mark as deleted.
+            id (uuid.UUID): Identifier of the entry to mark as deleted.
         """
         ...
 

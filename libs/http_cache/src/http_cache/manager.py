@@ -30,7 +30,7 @@ class HTTPCacheManager:
             config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.enabled` is true, storage backend initialization is attempted.
         """
         self.config = config
-        self._async_redis_client: AsyncRedis | None = None  # type: ignore[type-arg]
+        self._async_redis_client: AsyncRedis | None = None
         self._redis_event_loop: Any | None = None
 
         if self.config.enabled:
@@ -70,7 +70,7 @@ class HTTPCacheManager:
                 "Async (aiohttp) requests will not be cached on Redis."
             )
 
-    def _get_or_create_redis_client(self) -> AsyncRedis | None:  # type: ignore[type-arg]
+    def _get_or_create_redis_client(self) -> AsyncRedis | None:
         """
         Obtain an AsyncRedis client bound to the current event loop, creating one if necessary.
 
