@@ -1,6 +1,5 @@
-from typing import Any, List
+from typing import Any
 
 def cosine_similarity(
-    X: List[List[float]], 
-    Y: List[List[float]] | None = None
+    X: list[list[float]], Y: list[list[float]] | None = None
 ) -> Any: ...

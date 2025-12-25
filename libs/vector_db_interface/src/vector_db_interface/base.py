@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 @dataclass
@@ -14,9 +14,10 @@ class VectorDocument:
         vectors: Named vectors for multi-vector search (e.g., {"text": [...], "image": [...]})
         payload: Metadata and searchable fields
     """
+
     id: str
-    vectors: Dict[str, List[float]]
-    payload: Dict[str, Any]
+    vectors: dict[str, list[float]]
+    payload: dict[str, Any]
 
 
 class VectorDBClient(ABC):
@@ -48,9 +49,9 @@ class VectorDBClient(ABC):
     @abstractmethod
     async def add_documents(
         self,
-        documents: List[VectorDocument],
+        documents: list[VectorDocument],
         batch_size: int = 100,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Add documents to the collection in batches."""
         pass
 
@@ -59,7 +60,7 @@ class VectorDBClient(ABC):
         self,
         point_id: str,
         with_vectors: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Retrieve a document by its ID."""
         pass
 
@@ -71,6 +72,6 @@ class VectorDBClient(ABC):
         pass
 
     @abstractmethod
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Get database statistics."""
         pass

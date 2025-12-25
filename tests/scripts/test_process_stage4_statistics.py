@@ -10,12 +10,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
-
 from process_stage4_statistics import (
     extract_all_statistics,
     extract_anidb_statistics,
@@ -29,6 +23,11 @@ from process_stage4_statistics import (
     normalize_score,
     safe_get,
 )
+
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 @pytest.fixture
@@ -723,7 +722,7 @@ class TestMainExecution:
         assert (agent_dir / "stage4_statistics.json").exists()
 
         # Verify output
-        with open(agent_dir / "stage4_statistics.json", "r") as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         assert "statistics" in output
@@ -757,7 +756,7 @@ class TestMainExecution:
         assert result.returncode == 0
 
         # Verify output
-        with open(agent_dir / "stage4_statistics.json", "r") as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         # Only mal should be present
@@ -819,7 +818,7 @@ class TestMainExecution:
         )
 
         # Verify structure
-        with open(agent_dir / "stage4_statistics.json", "r") as f:
+        with open(agent_dir / "stage4_statistics.json") as f:
             output = json.load(f)
 
         assert isinstance(output, dict)
@@ -851,7 +850,7 @@ class TestMainExecution:
         )
 
         # Verify file encoding
-        with open(agent_dir / "stage4_statistics.json", "r", encoding="utf-8") as f:
+        with open(agent_dir / "stage4_statistics.json", encoding="utf-8") as f:
             content = f.read()
             # Should be valid UTF-8
             assert content is not None

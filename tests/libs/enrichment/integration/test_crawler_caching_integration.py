@@ -1,16 +1,15 @@
-from http_cache import result_cache
+import time
+from collections.abc import AsyncGenerator
+from unittest.mock import patch
+
+import pytest
+import pytest_asyncio
 from enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from enrichment.crawlers.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
 from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
-
-import time
-from typing import AsyncGenerator
-from unittest.mock import patch
-
-import pytest
-import pytest_asyncio
+from http_cache import result_cache
 from redis import exceptions
 from redis.asyncio import Redis
 
@@ -79,9 +78,13 @@ async def test_crawler_cache_and_singleton_client(redis_client):
         assert anime_data_2 is not None
 
         # Sort screenshots to ensure consistent comparison
-        if "screenshots" in anime_data_1 and isinstance(anime_data_1["screenshots"], list):
+        if "screenshots" in anime_data_1 and isinstance(
+            anime_data_1["screenshots"], list
+        ):
             anime_data_1["screenshots"].sort()
-        if "screenshots" in anime_data_2 and isinstance(anime_data_2["screenshots"], list):
+        if "screenshots" in anime_data_2 and isinstance(
+            anime_data_2["screenshots"], list
+        ):
             anime_data_2["screenshots"].sort()
 
         assert anime_data_2 == anime_data_1

@@ -26,25 +26,24 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
-
 from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 
 
 async def fetch_animeschedule_data(
-    search_term: str, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    search_term: str, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Fetch AnimSchedule data for the first matching anime title.
-    
+
     Parameters:
         search_term (str): Anime title to search for.
         output_path (Optional[str]): If provided, write the fetched anime data as pretty-printed JSON to this path.
-    
+
     Returns:
         dict: The first matching anime's data if found.
         None: If no results are found or an HTTP/JSON error occurs.
@@ -69,7 +68,7 @@ async def fetch_animeschedule_data(
             return None
 
         # Take the first result (most relevant)
-        anime_data: Dict[str, Any] = search_results["anime"][0]
+        anime_data: dict[str, Any] = search_results["anime"][0]
 
         # Conditionally write to file (matches crawler pattern)
         if output_path:
@@ -94,9 +93,9 @@ async def fetch_animeschedule_data(
 async def main() -> int:
     """
     Entry point for the CLI that fetches anime data from AnimSchedule using provided arguments.
-    
+
     Parses command-line arguments `search_term` and optional `--output`, invokes `fetch_animeschedule_data`, and maps the outcome to an exit code.
-    
+
     Returns:
         int: 0 if data was fetched successfully, 1 on failure.
     """

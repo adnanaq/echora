@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-
 from common.config import get_settings
 from qdrant_db import QdrantClient
 
@@ -26,7 +25,7 @@ class TestUpdateSingleVectorRetry:
         mock_async_client = AsyncMock()
 
         # Mock _initialize_collection to avoid DB calls in unit tests
-        with patch.object(QdrantClient, '_initialize_collection', new=AsyncMock()):
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             # Create client instance using async factory
             client = await QdrantClient.create(
                 settings=settings,
@@ -114,7 +113,9 @@ class TestUpdateSingleVectorRetry:
 
         # Verify - should fail after max_retries + 1 attempts
         assert result is False
-        assert mock_client.client.update_vectors.call_count == 3  # 1 initial + 2 retries
+        assert (
+            mock_client.client.update_vectors.call_count == 3
+        )  # 1 initial + 2 retries
 
     @pytest.mark.asyncio
     async def test_update_single_vector_validation_fails_no_retry(self, mock_client):
@@ -141,7 +142,7 @@ class TestUpdateBatchVectorsRetry:
         mock_async_client = AsyncMock()
 
         # Mock _initialize_collection to avoid DB calls in unit tests
-        with patch.object(QdrantClient, '_initialize_collection', new=AsyncMock()):
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             client = await QdrantClient.create(
                 settings=settings,
                 async_qdrant_client=mock_async_client,

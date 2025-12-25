@@ -23,23 +23,23 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 # Project root for resolving paths (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def load_offline_database(current_anime_file: str) -> Dict[str, Any]:
+def load_offline_database(current_anime_file: str) -> dict[str, Any]:
     """Load offline database entry as foundation."""
     try:
-        with open(current_anime_file, "r") as f:
+        with open(current_anime_file) as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading offline database: {e}")
         return {}
 
 
-def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
+def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     """Load all external source data files."""
     sources = {}
 
@@ -55,7 +55,7 @@ def load_source_data(temp_dir: str) -> Dict[str, Dict[str, Any]]:
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 sources[source_name] = json.load(f)
                 print(f"Loaded {source_name} data")
         except Exception as e:
@@ -73,8 +73,8 @@ def normalize_string_for_comparison(text: str) -> str:
 
 
 def deduplicate_array_field(
-    offline_values: List[str], external_values: List[str]
-) -> List[str]:
+    offline_values: list[str], external_values: list[str]
+) -> list[str]:
     """
     Deduplicate array field values with offline database as foundation.
 
@@ -108,8 +108,8 @@ def deduplicate_array_field(
 
 
 def merge_themes_intelligently(
-    offline_themes: List[Dict], external_themes: List[Dict], existing_genres: Set[str]
-) -> List[Dict]:
+    offline_themes: list[dict], external_themes: list[dict], existing_genres: set[str]
+) -> list[dict]:
     """
     Merge themes from multiple sources with intelligent conflict resolution.
 
@@ -165,7 +165,7 @@ def merge_themes_intelligently(
     return list(themes_by_name.values())
 
 
-def organize_images_by_type(sources: Dict[str, Dict]) -> Dict[str, List[str]]:
+def organize_images_by_type(sources: dict[str, dict]) -> dict[str, list[str]]:
     """
     Organize images by type from all sources with URL preprocessing.
 
@@ -268,7 +268,7 @@ def organize_images_by_type(sources: Dict[str, Dict]) -> Dict[str, List[str]]:
     return images
 
 
-def normalize_external_links(sources: Dict[str, Dict]) -> Dict[str, str]:
+def normalize_external_links(sources: dict[str, dict]) -> dict[str, str]:
     """
     Extract and normalize external links from all sources.
 
@@ -310,7 +310,7 @@ def normalize_external_links(sources: Dict[str, Dict]) -> Dict[str, str]:
     return external_links
 
 
-def extract_synopsis_with_hierarchy(sources: Dict[str, Dict]) -> Optional[str]:
+def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
     """
     Extract synopsis using 6-level source hierarchy with cleanup.
 
@@ -372,7 +372,7 @@ def extract_synopsis_with_hierarchy(sources: Dict[str, Dict]) -> Optional[str]:
     return None
 
 
-def extract_trailers_with_deduplication(sources: Dict[str, Dict]) -> List[Dict]:
+def extract_trailers_with_deduplication(sources: dict[str, dict]) -> list[dict]:
     """
     Extract trailers from multiple sources with YouTube URL deduplication.
     """
@@ -423,7 +423,7 @@ def extract_trailers_with_deduplication(sources: Dict[str, Dict]) -> List[Dict]:
     return trailers
 
 
-def extract_genres_from_sources(sources: Dict[str, Dict]) -> List[str]:
+def extract_genres_from_sources(sources: dict[str, dict]) -> list[str]:
     """Extract genres from Jikan + AnimSchedule + Anime-Planet + AniList."""
     all_genres = []
 
@@ -458,7 +458,7 @@ def extract_genres_from_sources(sources: Dict[str, Dict]) -> List[str]:
     return all_genres
 
 
-def extract_themes_from_sources(sources: Dict[str, Dict]) -> List[Dict]:
+def extract_themes_from_sources(sources: dict[str, dict]) -> list[dict]:
     """Extract themes from all sources with proper priority ordering."""
     all_themes = []
 
@@ -505,7 +505,7 @@ def extract_themes_from_sources(sources: Dict[str, Dict]) -> List[Dict]:
     return all_themes
 
 
-def extract_synonyms_from_sources(sources: Dict[str, Dict]) -> List[str]:
+def extract_synonyms_from_sources(sources: dict[str, dict]) -> list[str]:
     """Extract synonyms from all sources following priority order."""
     all_synonyms = []
 
@@ -546,14 +546,14 @@ def extract_synonyms_from_sources(sources: Dict[str, Dict]) -> List[str]:
     return all_synonyms
 
 
-def extract_tags_from_sources(sources: Dict[str, Dict]) -> List[str]:
+def extract_tags_from_sources(sources: dict[str, dict]) -> list[str]:
     """Extract tags from external sources (currently none have simple string tags)."""
     # Tags are only available from offline database as simple strings
     # External sources have 'tags' that go into themes field with descriptions
     return []
 
 
-def parse_theme_song_string(theme_string: str) -> Dict[str, Optional[str]]:
+def parse_theme_song_string(theme_string: str) -> dict[str, str | None]:
     """Parse Jikan theme song string into ThemeSong components."""
     import re
 
@@ -597,7 +597,7 @@ def parse_theme_song_string(theme_string: str) -> Dict[str, Optional[str]]:
     return {"title": theme_string.strip(), "artist": None, "episodes": None}
 
 
-def extract_opening_themes(sources: Dict[str, Dict]) -> List[Dict[str, Optional[str]]]:
+def extract_opening_themes(sources: dict[str, dict]) -> list[dict[str, str | None]]:
     """Extract opening themes from Jikan theme.openings array."""
     opening_themes = []
 
@@ -612,7 +612,7 @@ def extract_opening_themes(sources: Dict[str, Dict]) -> List[Dict[str, Optional[
     return opening_themes
 
 
-def extract_ending_themes(sources: Dict[str, Dict]) -> List[Dict[str, Optional[str]]]:
+def extract_ending_themes(sources: dict[str, dict]) -> list[dict[str, str | None]]:
     """Extract ending themes from Jikan theme.endings array."""
     ending_themes = []
 
@@ -628,7 +628,7 @@ def extract_ending_themes(sources: Dict[str, Dict]) -> List[Dict[str, Optional[s
 
 
 def cross_validate_with_offline(
-    offline_data: Dict, sources: Dict[str, Dict], field: str
+    offline_data: dict, sources: dict[str, dict], field: str
 ) -> Any:
     """
     Cross-validate field with offline database using source hierarchy.
@@ -678,7 +678,7 @@ def cross_validate_with_offline(
                             aired["from"].replace("Z", "+00:00")
                         ).year
                         value = year
-                    except:
+                    except Exception:
                         pass
             elif field == "season":
                 value = data.get("season")
@@ -708,7 +708,7 @@ def cross_validate_with_offline(
     return offline_value
 
 
-def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> Dict[str, Any]:
+def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str, Any]:
     """
     Main function to process Stage 1 metadata extraction with comprehensive multi-source integration.
     """
@@ -1073,7 +1073,7 @@ Examples:
     else:
         current_anime_file = auto_detect_current_anime_file(temp_dir)
 
-    print(f"Processing with:")
+    print("Processing with:")
     print(f"  Current anime file: {current_anime_file}")
     print(f"  Temp directory: {temp_dir}")
 
@@ -1086,9 +1086,9 @@ Examples:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
 
-        print(f"\nStage 1 metadata extraction complete!")
+        print("\nStage 1 metadata extraction complete!")
         print(f"Output saved: {output_file}")
-        print(f"Summary:")
+        print("Summary:")
         print(f"   - Title: {result.get('title', 'N/A')}")
         print(f"   - Genres: {len(result.get('genres', []))} entries")
         print(f"   - Synonyms: {len(result.get('synonyms', []))} entries")

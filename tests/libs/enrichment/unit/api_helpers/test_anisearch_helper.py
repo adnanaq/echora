@@ -4,7 +4,7 @@ Comprehensive tests for AniSearchEnrichmentHelper with 100% coverage.
 Tests all methods, edge cases, and error scenarios using mocks.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -22,10 +22,10 @@ class TestAniSearchEnrichmentHelper:
         return AniSearchEnrichmentHelper()
 
     @pytest.fixture
-    def sample_anime_data(self) -> Dict[str, Any]:
+    def sample_anime_data(self) -> dict[str, Any]:
         """
         Provide a representative sample anime data dictionary that matches the structure returned by the AniSearch crawler.
-        
+
         Returns:
             sample (Dict[str, Any]): Dictionary containing example fields used in tests, including:
                 - `japanese_title`, `japanese_title_alt`: title strings
@@ -63,7 +63,7 @@ class TestAniSearchEnrichmentHelper:
         }
 
     @pytest.fixture
-    def sample_episode_data(self) -> List[Dict[str, Any]]:
+    def sample_episode_data(self) -> list[dict[str, Any]]:
         """Sample episode data matching crawler output format."""
         return [
             {
@@ -81,7 +81,7 @@ class TestAniSearchEnrichmentHelper:
         ]
 
     @pytest.fixture
-    def sample_character_data(self) -> Dict[str, Any]:
+    def sample_character_data(self) -> dict[str, Any]:
         """Sample character data matching crawler output format."""
         return {
             "characters": [
@@ -104,10 +104,10 @@ class TestAniSearchEnrichmentHelper:
         }
 
     @pytest.fixture
-    def sample_offline_data(self) -> Dict[str, Any]:
+    def sample_offline_data(self) -> dict[str, Any]:
         """
         Provide sample offline anime data containing a title and a list of source URLs.
-        
+
         Returns:
             dict: A dictionary with keys:
                 - "title" (str): The anime title.
@@ -548,7 +548,7 @@ class TestAniSearchEnrichmentHelper:
     ):
         """
         Verify fetch_all_data returns anime information and omits characters if fetch_character_data raises an exception.
-        
+
         Patches the AniSearch anime fetch to return sample data and forces helper.fetch_character_data to raise; asserts the combined result is not None, contains anime fields (e.g., "japanese_title"), and does not include a "characters" key.
         """
         with patch(
@@ -570,9 +570,7 @@ class TestAniSearchEnrichmentHelper:
                 assert "characters" not in result
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_outer_exception_handler(
-        self, helper
-    ):
+    async def test_fetch_all_data_outer_exception_handler(self, helper):
         """Test outer exception handler when exception occurs outside inner try-except blocks."""
         with patch.object(
             helper,

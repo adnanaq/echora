@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -52,10 +53,10 @@ async def retry_with_backoff(
     operation: Callable[..., Awaitable[T]],
     max_retries: int = 3,
     retry_delay: float = 1.0,
-    operation_args: Optional[Tuple[Any, ...]] = None,
-    operation_kwargs: Optional[Dict[str, Any]] = None,
-    is_transient_error: Optional[Callable[[Exception], bool]] = None,
-    on_retry: Optional[Callable[..., None]] = None,
+    operation_args: tuple[Any, ...] | None = None,
+    operation_kwargs: dict[str, Any] | None = None,
+    is_transient_error: Callable[[Exception], bool] | None = None,
+    on_retry: Callable[..., None] | None = None,
 ) -> T:
     """Execute an async operation with retry logic and exponential backoff.
 

@@ -4,7 +4,7 @@ Cache configuration for HTTP requests in enrichment pipeline.
 Supports Redis backend for production and multi-agent concurrent processing.
 """
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ class CacheConfig(BaseModel):
     )
 
     # Redis configuration
-    redis_url: Optional[str] = Field(
+    redis_url: str | None = Field(
         default="redis://localhost:6379/0",
         description="Redis connection URL",
     )
@@ -92,7 +92,7 @@ class CacheConfig(BaseModel):
 def get_cache_config() -> CacheConfig:
     """
     Builds a CacheConfig populated from environment variables.
-    
+
     Environment variables read (with defaults):
         ENABLE_HTTP_CACHE (default: "true")
         REDIS_CACHE_URL (default: "redis://localhost:6379/0")
@@ -102,7 +102,7 @@ def get_cache_config() -> CacheConfig:
         REDIS_SOCKET_TIMEOUT (default: "10")
         REDIS_RETRY_ON_TIMEOUT (default: "true")
         REDIS_HEALTH_CHECK_INTERVAL (default: "30")
-    
+
     Returns:
         CacheConfig: Configuration populated from the environment; missing or invalid environment values fall back to the model's defaults or the listed fallback strings above.
     """
@@ -111,11 +111,11 @@ def get_cache_config() -> CacheConfig:
     def parse_bool(value: str, default: bool) -> bool:
         """
         Interpret a string as a boolean with a default fallback.
-        
+
         Parameters:
             value (str): Input string to interpret; accepts "true", "1", "yes" (case-insensitive) as True and "false", "0", "no" as False.
             default (bool): Value to return when the input is not a recognized boolean token.
-        
+
         Returns:
             bool: `True` if `value` represents truth, `False` if it represents falsehood, otherwise `default`.
         """
@@ -128,11 +128,11 @@ def get_cache_config() -> CacheConfig:
     def parse_int(value: str, default: int) -> int:
         """
         Parse an integer from a string, falling back to a default when parsing fails.
-        
+
         Parameters:
             value (str): String to parse as an integer.
             default (int): Value to return if `value` cannot be parsed as an integer.
-        
+
         Returns:
             int: The parsed integer, or `default` if parsing raises a ValueError or TypeError.
         """
@@ -144,18 +144,14 @@ def get_cache_config() -> CacheConfig:
     return CacheConfig(
         enabled=os.getenv("ENABLE_HTTP_CACHE", "true").lower() == "true",
         redis_url=os.getenv("REDIS_CACHE_URL", "redis://localhost:6379/0"),
-        redis_max_connections=parse_int(
-            os.getenv("REDIS_MAX_CONNECTIONS", "100"), 100
-        ),
+        redis_max_connections=parse_int(os.getenv("REDIS_MAX_CONNECTIONS", "100"), 100),
         redis_socket_keepalive=parse_bool(
             os.getenv("REDIS_SOCKET_KEEPALIVE", "true"), True
         ),
         redis_socket_connect_timeout=parse_int(
             os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"), 5
         ),
-        redis_socket_timeout=parse_int(
-            os.getenv("REDIS_SOCKET_TIMEOUT", "10"), 10
-        ),
+        redis_socket_timeout=parse_int(os.getenv("REDIS_SOCKET_TIMEOUT", "10"), 10),
         redis_retry_on_timeout=parse_bool(
             os.getenv("REDIS_RETRY_ON_TIMEOUT", "true"), True
         ),

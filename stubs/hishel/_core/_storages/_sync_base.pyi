@@ -2,7 +2,7 @@
 
 import abc
 import uuid
-from typing import Callable, List, Optional, Union
+from collections.abc import Callable
 
 # Import from parent module
 from hishel import Entry, Request, Response
@@ -16,7 +16,7 @@ class SyncBaseStorage(abc.ABC):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create and store a cache entry for the given request/response under the provided key.
@@ -33,10 +33,10 @@ class SyncBaseStorage(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_entries(self, key: str) -> List[Entry]:
+    def get_entries(self, key: str) -> list[Entry]:
         """
         Return all stored Entry objects associated with the given cache key.
-        
+
         Returns:
             List[Entry]: A list of Entry objects for `key`; empty list if no entries exist.
         """
@@ -46,8 +46,8 @@ class SyncBaseStorage(abc.ABC):
     def update_entry(
         self,
         id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry identified by its UUID.
 
@@ -97,10 +97,10 @@ class SyncBaseStorage(abc.ABC):
     def mark_pair_as_deleted(self, entry: Entry) -> Entry:
         """
         Mark a cache entry as soft deleted and return the modified entry.
-        
+
         Parameters:
             entry (Entry): The cache entry to mark as soft deleted.
-        
+
         Returns:
             Entry: The entry instance marked as soft deleted (may be the same object or a modified copy).
         """

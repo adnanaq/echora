@@ -8,15 +8,8 @@ Achieves 100% code coverage including all edge cases.
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
-
 from process_stage2_episodes import (
     auto_detect_temp_dir,
     convert_jst_to_utc,
@@ -24,6 +17,11 @@ from process_stage2_episodes import (
     load_kitsu_episode_data,
     process_all_episodes,
 )
+
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 class TestTimezoneConversion:
@@ -451,7 +449,7 @@ class TestEpisodeProcessing:
         assert output_file.exists()
 
         # Load and verify output
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert "episode_details" in output
@@ -507,7 +505,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -526,7 +524,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -546,7 +544,7 @@ class TestEpisodeProcessing:
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         episodes = output["episode_details"]
@@ -581,7 +579,7 @@ class TestEpisodeProcessing:
         output_file = tmp_path / "stage2_episodes.json"
         assert output_file.exists()
 
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert len(output["episode_details"]) == 1
@@ -597,7 +595,7 @@ class TestEpisodeProcessing:
         assert output_file.exists()
 
         # Verify file is valid JSON
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         # Verify structure
@@ -611,7 +609,7 @@ class TestEpisodeProcessing:
             {
                 "episode_number": i,
                 "title": f"Ep {i}",
-                "aired": f"1999-10-{20+i}T00:00:00+09:00",
+                "aired": f"1999-10-{20 + i}T00:00:00+09:00",
                 "filler": False,
                 "recap": False,
             }
@@ -626,7 +624,7 @@ class TestEpisodeProcessing:
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert len(output["episode_details"]) == 4
@@ -700,7 +698,7 @@ class TestEdgeCases:
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         assert output["episode_details"] == []
@@ -732,7 +730,7 @@ class TestEdgeCases:
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         ep = output["episode_details"][0]
@@ -763,7 +761,7 @@ class TestEdgeCases:
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         ep = output["episode_details"][0]
@@ -789,7 +787,7 @@ class TestEdgeCases:
         output_file = tmp_path / "stage2_episodes.json"
 
         # Read raw file content
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, encoding="utf-8") as f:
             content = f.read()
             # Should contain actual Japanese characters, not unicode escapes
             assert "テスト" in content
@@ -821,7 +819,7 @@ class TestEdgeCases:
         process_all_episodes(str(tmp_path))
 
         output_file = tmp_path / "stage2_episodes.json"
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             output = json.load(f)
 
         # Empty string is falsy, should fallback to Kitsu

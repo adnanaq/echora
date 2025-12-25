@@ -6,14 +6,12 @@ http_cache unit test files to reduce code duplication and ensure consistency.
 
 from __future__ import annotations
 
-import pytest
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from hishel._core.models import Headers, Request, Response
-
 from http_cache.async_redis_storage import AsyncRedisStorage
-
 
 # ============================================================================
 # Mock Redis Client Fixtures

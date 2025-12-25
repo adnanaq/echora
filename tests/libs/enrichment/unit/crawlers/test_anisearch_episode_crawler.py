@@ -3,13 +3,11 @@ Tests for anisearch_episode_crawler.py main() function.
 """
 
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
-
 from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
 
 # --- Tests for fetch_anisearch_episodes() function ---
@@ -27,8 +25,18 @@ async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
 
     # Expected cached data
     cached_data = [
-        {"episodeNumber": 1, "runtime": "24 min", "releaseDate": "01.01.2024", "title": "Episode 1"},
-        {"episodeNumber": 2, "runtime": "24 min", "releaseDate": "08.01.2024", "title": "Episode 2"},
+        {
+            "episodeNumber": 1,
+            "runtime": "24 min",
+            "releaseDate": "01.01.2024",
+            "title": "Episode 1",
+        },
+        {
+            "episodeNumber": 2,
+            "runtime": "24 min",
+            "releaseDate": "08.01.2024",
+            "title": "Episode 2",
+        },
     ]
 
     # Mock Redis client to track cache key generation
@@ -38,8 +46,7 @@ async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
     mock_redis.setex = AsyncMock()
 
     with patch(
-        "http_cache.result_cache.get_result_cache_redis_client",
-        return_value=mock_redis
+        "http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis
     ):
         with patch(
             "enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
@@ -47,10 +54,22 @@ async def test_cache_key_only_depends_on_url(tmp_path: Path) -> None:
             mock_result = MagicMock(spec=CrawlResult)
             mock_result.success = True
             mock_result.url = "https://www.anisearch.com/anime/test/episodes"
-            mock_result.extracted_content = json.dumps([
-                {"episodeNumber": "01", "runtime": "24 min", "releaseDate": "01.01.2024", "title": "Episode 1"},
-                {"episodeNumber": "02", "runtime": "24 min", "releaseDate": "08.01.2024", "title": "Episode 2"},
-            ])
+            mock_result.extracted_content = json.dumps(
+                [
+                    {
+                        "episodeNumber": "01",
+                        "runtime": "24 min",
+                        "releaseDate": "01.01.2024",
+                        "title": "Episode 1",
+                    },
+                    {
+                        "episodeNumber": "02",
+                        "runtime": "24 min",
+                        "releaseDate": "08.01.2024",
+                        "title": "Episode 2",
+                    },
+                ]
+            )
 
             mock_crawler = AsyncMock()
             mock_crawler.arun = AsyncMock(return_value=[mock_result])
@@ -203,7 +222,9 @@ async def test_main_function_handles_unexpected_exception(mock_fetch):
     # Simulate truly unexpected exception
     mock_fetch.side_effect = RuntimeError("Unexpected internal error")
 
-    with patch("sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes"]):
+    with patch(
+        "sys.argv", ["script.py", "https://www.anisearch.com/anime/18878/episodes"]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -224,7 +245,6 @@ async def test_main_function_no_episodes_found(mock_fetch):
 
     # Should still return 0 even with empty list
     assert exit_code == 0
-
 
 
 def test_normalize_episode_url_appends_suffix():
@@ -267,12 +287,17 @@ def test_url_helpers_reject_invalid_urls():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_returns_none_when_no_results():
-    with patch("enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
             mock_crawler.arun = AsyncMock(return_value=[])
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -284,12 +309,17 @@ async def test_fetch_episodes_returns_none_when_no_results():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_raises_on_wrong_result_type():
-    with patch("enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
             mock_crawler.arun = AsyncMock(return_value=["not a CrawlResult"])
             MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -301,15 +331,21 @@ async def test_fetch_episodes_raises_on_wrong_result_type():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_returns_none_on_extraction_failure():
-    from crawl4ai import CrawlResult
     from unittest.mock import MagicMock
 
-    with patch("enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler") as MockCrawler:
+    from crawl4ai import CrawlResult
+
+    with patch(
+        "enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_result = MagicMock(spec=CrawlResult)
             mock_result.success = False
             mock_result.error_message = "Failed to extract"
@@ -325,7 +361,9 @@ async def test_fetch_episodes_returns_none_on_extraction_failure():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_wrapper_returns_none_when_data_is_none():
-    with patch("enrichment.crawlers.anisearch_episode_crawler._fetch_anisearch_episodes_data") as mock_fetch:
+    with patch(
+        "enrichment.crawlers.anisearch_episode_crawler._fetch_anisearch_episodes_data"
+    ) as mock_fetch:
         mock_fetch.return_value = None
         result = await fetch_anisearch_episodes("18878,dan-da-dan")
         assert result is None

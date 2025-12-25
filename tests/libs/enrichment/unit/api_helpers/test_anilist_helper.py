@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
 
@@ -1313,8 +1312,8 @@ class TestAniListEnrichmentHelperCacheIntegration:
     @pytest.mark.asyncio
     async def test_anilist_helper_uses_cache_manager(self, mocker):
         """Test that AniListEnrichmentHelper uses centralized cache manager."""
-        from http_cache.instance import http_cache_manager
         from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from http_cache.instance import http_cache_manager
 
         # Create proper mock response
         mock_response = AsyncMock()
@@ -1446,7 +1445,7 @@ class TestAniListEnrichmentHelperCLI:
     async def test_main_with_no_data_found(self, tmp_path):
         """
         Verify CLI main closes the helper and does not create an output file when no data is found.
-        
+
         Asserts that AniListEnrichmentHelper.fetch_all_data_by_anilist_id returning None causes helper.close() to be awaited and prevents creation of the specified output file.
         """
         import sys
@@ -1561,7 +1560,7 @@ class TestAniListEnrichmentHelperCLI:
                 MockHelper.return_value = mock_helper_instance
 
                 # Mock open() to raise exception during file writing
-                with patch("builtins.open", side_effect=IOError("Disk full")):
+                with patch("builtins.open", side_effect=OSError("Disk full")):
                     from enrichment.api_helpers.anilist_helper import main
 
                     exit_code = await main()

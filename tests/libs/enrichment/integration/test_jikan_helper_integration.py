@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 import redis
-
 from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
 # Mark all tests in this module as integration tests
@@ -36,9 +35,9 @@ if not os.getenv("ENABLE_LIVE_API_TESTS"):
 def redis_client():
     """
     Provide a Redis client connected to redis://localhost:6379/0 for module-scoped tests.
-    
+
     Flushes the database at module setup and teardown. If Redis is unreachable, the fixture skips the tests in this module.
-    
+
     Returns:
         redis.Redis: A Redis client connected to redis://localhost:6379/0 with decode_responses=True.
     """
@@ -74,11 +73,11 @@ async def clean_cache_manager():
     if http_cache_manager._async_redis_client:
         try:
             await http_cache_manager._async_redis_client.aclose()
-            logger.info(f"[clean_cache_manager] Closed old client with aclose()")
-        except:
+            logger.info("[clean_cache_manager] Closed old client with aclose()")
+        except Exception:
             try:
                 await http_cache_manager._async_redis_client.close()
-                logger.info(f"[clean_cache_manager] Closed old client with close()")
+                logger.info("[clean_cache_manager] Closed old client with close()")
             except Exception as e:
                 logger.warning(f"[clean_cache_manager] Failed to close: {e}")
 
@@ -90,7 +89,7 @@ async def clean_cache_manager():
 
     yield http_cache_manager
 
-    logger.info(f"[clean_cache_manager] TEARDOWN")
+    logger.info("[clean_cache_manager] TEARDOWN")
     # NOTE: Don't close the client here - let the test close its sessions first
     # The Redis client will be closed by the next test's setup or module teardown
 
@@ -166,7 +165,7 @@ async def test_empty_input_handling(redis_client, clean_cache_manager):
 
         # Verify output file exists with empty list
         assert output_file.exists()
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             data = json.load(f)
         assert data == []
 
@@ -191,7 +190,7 @@ async def test_zero_episodes_handling(redis_client, clean_cache_manager):
 
         # Verify output file exists with empty list
         assert output_file.exists()
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             data = json.load(f)
         assert data == []
 
@@ -235,9 +234,9 @@ async def test_cache_miss_increments_counter(redis_client, clean_cache_manager):
     count_after_hit = fetcher.request_count
 
     assert result2 is not None
-    assert (
-        count_after_hit == count_after_miss
-    ), "Cache hit should NOT increment request count"
+    assert count_after_hit == count_after_miss, (
+        "Cache hit should NOT increment request count"
+    )
 
     await fetcher.session.close()
 
@@ -280,7 +279,7 @@ async def test_all_items_fail_gracefully(redis_client, clean_cache_manager):
 
         # Output file should exist (may be empty or have partial results)
         assert output_file.exists()
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             data = json.load(f)
         # Should be a list (empty or with failed items filtered out)
         assert isinstance(data, list)
@@ -292,7 +291,7 @@ async def test_all_items_fail_gracefully(redis_client, clean_cache_manager):
 async def test_main_entrypoint(redis_client, clean_cache_manager):
     """
     Exercise the module's __main__ entrypoint by running it as a subprocess.
-    
+
     Creates a temporary input JSON file containing a minimal entry, invokes the package as a script
     (via `python -m enrichment.api_helpers.jikan_helper ...`) with a 30-second timeout, and
     asserts that the process exited with code 0 or 1 to confirm the main path was executed.
@@ -328,12 +327,13 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
         # Success (0) or error exit (1) both mean the line was executed
         assert result.returncode in [0, 1]
 
-
     @pytest.mark.asyncio
-    async def test_failed_request_increments_rate_limit_counter(redis_client, clean_cache_manager):
+    async def test_failed_request_increments_rate_limit_counter(
+        redis_client, clean_cache_manager
+    ):
         """
         Verifies that failed Jikan API requests increment the fetcher's rate-limit request counter.
-        
+
         Checks two failure scenarios:
         - Episode fetch for a non-existent episode returns a dict with `episode_number` equal to the requested id, an empty `title`, and `aired` set to `None`, and increments the fetcher's `request_count` by 1.
         - Character fetch for a non-existent character returns `None` (404 handling) and increments the fetcher's `request_count` by 1.
@@ -345,7 +345,9 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
         fetcher_episode = JikanDetailedFetcher(anime_id=anime_id, data_type="episodes")
         initial_request_count_episode = fetcher_episode.request_count
 
-        result_episode = await fetcher_episode.fetch_episode_detail(non_existent_episode_id)
+        result_episode = await fetcher_episode.fetch_episode_detail(
+            non_existent_episode_id
+        )
 
         # For non-existent episodes, Jikan API returns 200 OK with empty data, not None
         assert result_episode is not None
@@ -363,10 +365,14 @@ async def test_main_entrypoint(redis_client, clean_cache_manager):
         non_existent_character_id = 999999  # Guaranteed to not exist
         character_data = {"character": {"mal_id": non_existent_character_id}}
 
-        fetcher_character = JikanDetailedFetcher(anime_id=anime_id, data_type="characters")
+        fetcher_character = JikanDetailedFetcher(
+            anime_id=anime_id, data_type="characters"
+        )
         initial_request_count_character = fetcher_character.request_count
 
-        result_character = await fetcher_character.fetch_character_detail(character_data)
+        result_character = await fetcher_character.fetch_character_detail(
+            character_data
+        )
 
         # For non-existent characters, Jikan API returns None (due to 404 handling)
         assert result_character is None

@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
-
 from enrichment.crawlers.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
@@ -39,13 +38,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[])
@@ -81,13 +76,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = False
@@ -120,13 +111,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -159,13 +146,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -222,13 +205,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -288,13 +267,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -360,13 +335,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -418,13 +389,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -476,13 +443,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -523,13 +486,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -571,13 +530,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -626,13 +581,9 @@ class TestFetchAnisearchCharacters:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 # Multiple results but all failed
                 mock_result1 = MagicMock(spec=CrawlResult)
@@ -674,13 +625,9 @@ class TestEdgeCases:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -714,7 +661,9 @@ class TestEdgeCases:
                 assert result["characters"][1]["name"] == "モンキー・D・ルフィ"
 
     def test_normalize_character_url_appends_characters_suffix(self):
-        from enrichment.crawlers.anisearch_character_crawler import _normalize_character_url
+        from enrichment.crawlers.anisearch_character_crawler import (
+            _normalize_character_url,
+        )
 
         url = "https://www.anisearch.com/anime/18878,dan-da-dan"
         result = _normalize_character_url(url)
@@ -722,7 +671,9 @@ class TestEdgeCases:
         assert result == "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
 
     def test_extract_anime_id_raises_on_invalid_url(self):
-        from enrichment.crawlers.anisearch_character_crawler import _extract_anime_id_from_character_url
+        from enrichment.crawlers.anisearch_character_crawler import (
+            _extract_anime_id_from_character_url,
+        )
 
         with pytest.raises(ValueError, match="Invalid character URL"):
             _extract_anime_id_from_character_url("https://example.com/anime/123")
@@ -738,22 +689,28 @@ class TestEdgeCases:
 
             with patch(
                 "http_cache.result_cache.get_result_cache_redis_client",
-                return_value=mock_redis
+                return_value=mock_redis,
             ):
                 # Return multiple failed results
                 mock_result1 = MagicMock(spec=CrawlResult)
                 mock_result1.success = False
-                mock_result1.url = "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                mock_result1.url = (
+                    "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                )
                 mock_result1.error_message = "Error 1"
 
                 mock_result2 = MagicMock(spec=CrawlResult)
                 mock_result2.success = False
-                mock_result2.url = "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                mock_result2.url = (
+                    "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
+                )
                 mock_result2.error_message = "Error 2"
 
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[mock_result1, mock_result2])
-                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_crawler
+                )
                 MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 result = await fetch_anisearch_characters("18878,dan-da-dan")
@@ -778,13 +735,9 @@ class TestCLI:
 
             mock_redis.setex = AsyncMock()
 
-
             with patch(
-
                 "http_cache.result_cache.get_result_cache_redis_client",
-
-                return_value=mock_redis
-
+                return_value=mock_redis,
             ):
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
@@ -825,9 +778,7 @@ class TestCLI:
                     parser.add_argument("--output", type=str, default="test.json")
                     args = parser.parse_args(test_args[1:])
 
-                    await fetch_anisearch_characters(
-                        args.url, output_path=args.output
-                    )
+                    await fetch_anisearch_characters(args.url, output_path=args.output)
 
                 assert output_file.exists()
 
@@ -849,7 +800,15 @@ class TestCLI:
         output_file2 = tmp_path / "output2.json"
 
         # Expected cached data
-        cached_data = {"characters": [{"name": "Test", "url": "https://www.anisearch.com//character/1", "role": "Main"}]}
+        cached_data = {
+            "characters": [
+                {
+                    "name": "Test",
+                    "url": "https://www.anisearch.com//character/1",
+                    "role": "Main",
+                }
+            ]
+        }
 
         # Mock Redis client to track cache key generation
         mock_redis = AsyncMock()
@@ -859,7 +818,7 @@ class TestCLI:
 
         with patch(
             "http_cache.result_cache.get_result_cache_redis_client",
-            return_value=mock_redis
+            return_value=mock_redis,
         ):
             with patch(
                 "enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler"
@@ -867,16 +826,20 @@ class TestCLI:
                 mock_result = MagicMock(spec=CrawlResult)
                 mock_result.success = True
                 mock_result.url = "https://www.anisearch.com/anime/test/characters"
-                mock_result.extracted_content = json.dumps([
-                    {
-                        "role": "Main",
-                        "characters": [{"name": "Test", "url": "/character/1"}],
-                    }
-                ])
+                mock_result.extracted_content = json.dumps(
+                    [
+                        {
+                            "role": "Main",
+                            "characters": [{"name": "Test", "url": "/character/1"}],
+                        }
+                    ]
+                )
 
                 mock_crawler = AsyncMock()
                 mock_crawler.arun = AsyncMock(return_value=[mock_result])
-                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_crawler
+                )
                 MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
 
                 # First call with output_file1
@@ -897,11 +860,15 @@ class TestCLI:
 
                 # Both calls should return data
                 assert result1 is not None, "First call should return data"
-                assert result2 is not None, "Second call should return data (from cache)"
+                assert result2 is not None, (
+                    "Second call should return data (from cache)"
+                )
 
                 # Verify cache behavior: should only create ONE cache entry
                 assert mock_redis.get.call_count == 2, "Should query cache twice"
-                assert mock_redis.setex.call_count == 1, "Should create only 1 cache entry"
+                assert mock_redis.setex.call_count == 1, (
+                    "Should create only 1 cache entry"
+                )
 
                 # Extract cache key from setex call
                 cache_key = mock_redis.setex.call_args[0][0]
@@ -930,7 +897,7 @@ class TestTypeErrorCoverage:
 
         with patch(
             "http_cache.result_cache.get_result_cache_redis_client",
-            return_value=mock_redis
+            return_value=mock_redis,
         ):
             with patch(
                 "enrichment.crawlers.anisearch_character_crawler.AsyncWebCrawler"
@@ -943,7 +910,9 @@ class TestTypeErrorCoverage:
                 bad_container = CrawlResultContainer(["not a CrawlResult object"])
 
                 mock_crawler.arun = AsyncMock(return_value=bad_container)
-                MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+                MockCrawler.return_value.__aenter__ = AsyncMock(
+                    return_value=mock_crawler
+                )
                 MockCrawler.return_value.__aexit__ = AsyncMock(
                     return_value=None
                 )  # Critical: return None!

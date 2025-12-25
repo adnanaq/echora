@@ -4,7 +4,7 @@ Defines the contract that all vision embedding model implementations must follow
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from PIL import Image
 
@@ -16,7 +16,7 @@ class VisionEmbeddingModel(ABC):
     """
 
     @abstractmethod
-    def encode_image(self, images: List[Union[Image.Image, str]]) -> List[List[float]]:
+    def encode_image(self, images: list[Image.Image | str]) -> list[list[float]]:
         """Encode a list of images into embeddings.
 
         Args:
@@ -56,7 +56,7 @@ class VisionEmbeddingModel(ABC):
         """
         return 224
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get comprehensive information about this vision embedding model.
 
         Returns:

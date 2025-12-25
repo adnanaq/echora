@@ -1,9 +1,8 @@
-import asyncio
 import hashlib
 import io
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 from PIL import Image
@@ -14,20 +13,18 @@ logger = logging.getLogger(__name__)
 class ImageDownloader:
     """Utility for downloading and caching images."""
 
-    def __init__(self, cache_dir: Optional[str] = None):
+    def __init__(self, cache_dir: str | None = None):
         """Initialize image downloader.
 
         Args:
             cache_dir: Directory to store cached images
         """
         self.image_cache_dir = (
-            Path("cache/images")
-            if not cache_dir
-            else Path(cache_dir) / "images"
+            Path("cache/images") if not cache_dir else Path(cache_dir) / "images"
         )
         self.image_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    async def download_and_cache_image(self, image_url: str) -> Optional[str]:
+    async def download_and_cache_image(self, image_url: str) -> str | None:
         """Download image from URL and cache locally.
 
         Args:
@@ -74,17 +71,19 @@ class ImageDownloader:
                             logger.error(f"Invalid image data from {image_url}: {e}")
                             return None
                     else:
-                        logger.warning(f"Failed to download image {image_url}: status {response.status}")
+                        logger.warning(
+                            f"Failed to download image {image_url}: status {response.status}"
+                        )
                         return None
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout downloading image from {image_url}")
             return None
         except Exception as e:
             logger.error(f"Error downloading image from {image_url}: {e}")
             return None
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get image cache statistics.
 
         Returns:
@@ -104,7 +103,7 @@ class ImageDownloader:
             logger.error(f"Error getting cache stats: {e}")
             return {"cache_enabled": False, "error": str(e)}
 
-    def clear_cache(self, max_age_days: Optional[int] = None) -> Dict[str, Any]:
+    def clear_cache(self, max_age_days: int | None = None) -> dict[str, Any]:
         """Clear image cache.
 
         Args:

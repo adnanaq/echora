@@ -12,24 +12,27 @@ from contextlib import asynccontextmanager
 # Disable CUDA to force CPU usage
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-
-from .routes import admin
 from common.config import get_settings
-from qdrant_db import QdrantClient
-from vector_processing import MultiVectorEmbeddingManager
-from vector_processing import TextProcessor
-from vector_processing import VisionProcessor
-from vector_processing.embedding_models.factory import EmbeddingModelFactory
-from vector_processing.utils.image_downloader import ImageDownloader
-from qdrant_client import AsyncQdrantClient
-from .dependencies import get_qdrant_client
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from http_cache.instance import http_cache_manager
 from http_cache.result_cache import close_result_cache_redis_client
+from qdrant_client import AsyncQdrantClient
+from qdrant_db import QdrantClient
+from vector_processing import (
+    MultiVectorEmbeddingManager,
+    TextProcessor,
+    VisionProcessor,
+)
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
+
+from .dependencies import get_qdrant_client
+from .routes import admin
 
 # Get application settings
 settings = get_settings()
@@ -41,8 +44,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 # No more global qdrant_client
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -68,7 +71,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         # Initialize AsyncQdrantClient from qdrant-client library
         if settings.qdrant_api_key:
-            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+            async_qdrant_client = AsyncQdrantClient(
+                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            )
         else:
             async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
@@ -114,7 +119,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error("Qdrant health check failed!")
             raise RuntimeError("Vector database is not available")
 
-        logger.info("Vector service initialized successfully with embedding models ready")
+        logger.info(
+            "Vector service initialized successfully with embedding models ready"
+        )
         yield
 
     finally:
@@ -160,13 +167,15 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/health")
-async def health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
+async def health_check(
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+) -> dict[str, Any]:
     """Health check endpoint."""
     try:
         qdrant_status = await qdrant_client.health_check()
         return {
             "status": "healthy" if qdrant_status else "unhealthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "service": "anime-vector-service",
             "version": settings.api_version,
             "qdrant_status": qdrant_status,
@@ -182,7 +191,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 # Root endpoint
 @app.get("/")
-async def root() -> Dict[str, Any]:
+async def root() -> dict[str, Any]:
     """Root endpoint with service information."""
     return {
         "service": "Anime Vector Service",
@@ -194,7 +203,7 @@ async def root() -> Dict[str, Any]:
             "stats": "/api/v1/admin/stats",
             "collection_info": "/api/v1/admin/collection/info",
             "docs": "/docs",
-        }
+        },
     }
 
 

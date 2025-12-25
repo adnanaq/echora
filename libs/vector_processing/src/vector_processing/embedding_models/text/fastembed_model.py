@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from .base import TextEmbeddingModel
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class FastEmbedModel(TextEmbeddingModel):
     """FastEmbed implementation of TextEmbeddingModel."""
 
-    def __init__(self, model_name: str, cache_dir: Optional[str] = None, **kwargs):
+    def __init__(self, model_name: str, cache_dir: str | None = None, **kwargs):
         """Initialize FastEmbed model.
 
         Args:
@@ -21,25 +21,25 @@ class FastEmbedModel(TextEmbeddingModel):
             from fastembed import TextEmbedding
 
             self._model_name = model_name
-            
+
             # Initialize FastEmbed model
-            init_kwargs: Dict[str, Any] = {"model_name": model_name}
+            init_kwargs: dict[str, Any] = {"model_name": model_name}
             if cache_dir:
                 init_kwargs["cache_dir"] = cache_dir
             init_kwargs.update(kwargs)
 
             self.model = TextEmbedding(**init_kwargs)
-            
+
             # Determine embedding size
             self._embedding_size = self._get_fastembed_embedding_size(model_name)
-            
+
             logger.info(f"Initialized FastEmbed model: {model_name}")
 
         except ImportError as e:
             logger.error("FastEmbed not installed. Install with: pip install fastembed")
             raise ImportError("FastEmbed dependencies missing") from e
 
-    def encode(self, texts: List[str]) -> List[List[float]]:
+    def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode a list of texts into embeddings.
 
         Args:
@@ -52,14 +52,14 @@ class FastEmbedModel(TextEmbeddingModel):
             # Generate embeddings
             # FastEmbed returns a generator, convert to list
             embeddings = list(self.model.embed(texts))
-            return [cast(List[float], e.tolist()) for e in embeddings]
+            return [cast(list[float], e.tolist()) for e in embeddings]
 
         except Exception as e:
             logger.error(f"FastEmbed encoding failed: {e}")
             # Return empty list or raise? Base class contract implies returning list of lists.
-            # If batch fails, we might want to raise to let caller handle it, 
+            # If batch fails, we might want to raise to let caller handle it,
             # or return empty list if that's the expected behavior for failure.
-            # Given the original code returned None for single text failure, 
+            # Given the original code returned None for single text failure,
             # but here we are processing a batch.
             # Let's raise to be safe, or return empty list.
             # The original encode_texts_batch returned [None] * len(texts) on failure.
@@ -81,7 +81,10 @@ class FastEmbedModel(TextEmbeddingModel):
 
     @property
     def supports_multilingual(self) -> bool:
-        return "multilingual" in self._model_name.lower() or "m3" in self._model_name.lower()
+        return (
+            "multilingual" in self._model_name.lower()
+            or "m3" in self._model_name.lower()
+        )
 
     def _get_fastembed_embedding_size(self, model_name: str) -> int:
         """Get embedding size for FastEmbed model."""

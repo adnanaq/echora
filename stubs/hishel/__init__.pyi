@@ -1,7 +1,8 @@
 """Type stubs for hishel HTTP caching library (v1.0)."""
 
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 # Core data models (public API)
 class Request:
@@ -9,17 +10,17 @@ class Request:
 
     url: str
     method: str
-    headers: Dict[str, str]
+    headers: dict[str, str]
     content: bytes
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
     def __init__(
         self,
         url: str,
         method: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         content: bytes,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize an HTTP request for caching.
@@ -37,16 +38,16 @@ class Response:
     """HTTP response representation for cache operations."""
 
     status: int
-    headers: Dict[str, str]
+    headers: dict[str, str]
     content: bytes
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
     def __init__(
         self,
         status: int,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         content: bytes,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize an HTTP response for caching.
@@ -63,12 +64,12 @@ class EntryMeta:
     """Metadata for cache entry."""
 
     created_at: float
-    expires_at: Optional[float]
+    expires_at: float | None
 
     def __init__(
         self,
         created_at: float,
-        expires_at: Optional[float] = None,
+        expires_at: float | None = None,
     ) -> None:
         """
         Initialize entry metadata.
@@ -114,7 +115,7 @@ class SyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry.
@@ -130,7 +131,7 @@ class SyncBaseStorage:
         """
         ...
 
-    def get_entries(self, key: str) -> List[Entry]:
+    def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve cache entries for a given key.
 
@@ -145,8 +146,8 @@ class SyncBaseStorage:
     def update_entry(
         self,
         id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry.
 
@@ -176,7 +177,7 @@ class AsyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry asynchronously.
@@ -192,7 +193,7 @@ class AsyncBaseStorage:
         """
         ...
 
-    async def get_entries(self, key: str) -> List[Entry]:
+    async def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve cache entries for a given key asynchronously.
 
@@ -207,8 +208,8 @@ class AsyncBaseStorage:
     async def update_entry(
         self,
         id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry asynchronously.
 
@@ -247,9 +248,9 @@ class SyncSqliteStorage(SyncBaseStorage):
     def __init__(
         self,
         *,
-        connection: Optional[Any] = None,
+        connection: Any | None = None,
         database_path: str = "hishel_cache.db",
-        default_ttl: Optional[float] = None,
+        default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
     ) -> None:
         """
@@ -267,7 +268,7 @@ class SyncSqliteStorage(SyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry for the given request and response under the specified cache key.
@@ -282,7 +283,7 @@ class SyncSqliteStorage(SyncBaseStorage):
             Entry: The created cache entry.
         """
         ...
-    def get_entries(self, key: str) -> List[Entry]:
+    def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve all cache entries associated with the given cache key.
 
@@ -296,8 +297,8 @@ class SyncSqliteStorage(SyncBaseStorage):
     def update_entry(
         self,
         id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry identified by its UUID.
 
@@ -324,9 +325,9 @@ class AsyncSqliteStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        connection: Optional[Any] = None,
+        connection: Any | None = None,
         database_path: str = "hishel_cache.db",
-        default_ttl: Optional[float] = None,
+        default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
     ) -> None:
         """
@@ -344,7 +345,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry for the given request/response pair under the specified key.
@@ -359,7 +360,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
             Entry: The created cache entry.
         """
         ...
-    async def get_entries(self, key: str) -> List[Entry]:
+    async def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve all cache entries associated with the given cache key.
 
@@ -373,8 +374,8 @@ class AsyncSqliteStorage(AsyncBaseStorage):
     async def update_entry(
         self,
         id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry identified by `id_` with new content.
 
@@ -406,8 +407,8 @@ class SyncCacheProxy:
     def __init__(
         self,
         request_sender: Any,
-        storage: Optional[SyncBaseStorage] = None,
-        policy: Optional[CachePolicy] = None,
+        storage: SyncBaseStorage | None = None,
+        policy: CachePolicy | None = None,
     ) -> None:
         """
         Create a synchronous cache proxy that wraps a request sender with optional storage and cache policy.
@@ -440,7 +441,7 @@ class AsyncCacheProxy:
         self,
         client: Any,
         storage: AsyncBaseStorage,
-        options: Optional[CacheOptions] = None,
+        options: CacheOptions | None = None,
     ) -> None:
         """
         Initialize an asynchronous cache proxy for an HTTP client.

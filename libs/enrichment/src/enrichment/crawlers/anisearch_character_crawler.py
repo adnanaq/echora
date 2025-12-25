@@ -18,7 +18,7 @@ import json
 import logging
 import re
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -27,10 +27,9 @@ from crawl4ai import (
     JsonCssExtractionStrategy,
 )
 from crawl4ai.types import RunManyReturn
-
+from enrichment.crawlers.utils import sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
-from enrichment.crawlers.utils import sanitize_output_path
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ BASE_CHARACTER_URL = "https://www.anisearch.com/anime/"
 def _normalize_character_url(anime_identifier: str) -> str:
     """
     Normalize an anime identifier into a full Anisearch characters page URL.
-    
+
     Parameters:
         anime_identifier (str): A full Anisearch anime URL, a path, or a canonical anime id.
             Accepted forms:
@@ -52,12 +51,15 @@ def _normalize_character_url(anime_identifier: str) -> str:
             - Full URL without characters: "https://www.anisearch.com/anime/18878,dan-da-dan"
             - Path with or without leading slash: "/18878,dan-da-dan/characters" or "18878,dan-da-dan/characters"
             - Canonical anime id: "18878,dan-da-dan"
-    
+
     Returns:
         str: A complete characters page URL, e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/characters"
     """
     # If already full URL with /characters, return as-is
-    if anime_identifier.startswith("https://www.anisearch.com/anime/") and "/characters" in anime_identifier:
+    if (
+        anime_identifier.startswith("https://www.anisearch.com/anime/")
+        and "/characters" in anime_identifier
+    ):
         return anime_identifier
 
     # If full URL without /characters, append it
@@ -77,19 +79,19 @@ def _normalize_character_url(anime_identifier: str) -> str:
 def _extract_anime_id_from_character_url(url: str) -> str:
     """
     Extract the canonical anime identifier from an AniSearch character page URL.
-    
+
     Parameters:
         url (str): Full character URL under BASE_CHARACTER_URL (e.g. "https://www.anisearch.com/anime/18878,dan-da-dan/characters").
-    
+
     Returns:
         str: Canonical anime ID (e.g., "18878,dan-da-dan").
-    
+
     Raises:
         ValueError: If the URL does not start with the expected base character URL.
     """
     # Remove base URL and /characters suffix
     if url.startswith(BASE_CHARACTER_URL):
-        path = url[len(BASE_CHARACTER_URL):]
+        path = url[len(BASE_CHARACTER_URL) :]
         # Remove /characters suffix
         return path.replace("/characters", "").rstrip("/")
 
@@ -97,15 +99,17 @@ def _extract_anime_id_from_character_url(url: str) -> str:
 
 
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_characters")
-async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[Dict[str, Any]]:
+async def _fetch_anisearch_characters_data(
+    canonical_anime_id: str,
+) -> dict[str, Any] | None:
     """
     Crawl anisearch.com and return normalized, enriched character data for the given canonical anime ID.
-    
+
     Results are cached in Redis for 24 hours using the canonical anime ID as the cache key; this function performs no side effects.
-    
+
     Parameters:
         canonical_anime_id (str): Canonical anime identifier already normalized (e.g., "18878,dan-da-dan").
-    
+
     Returns:
         dict: A dictionary with a "characters" key containing a list of character objects enriched with
         `role`, absolute `url`, optional integer `favorites`, and `image` URL; or `None` if fetching or extraction failed.
@@ -212,8 +216,8 @@ async def _fetch_anisearch_characters_data(canonical_anime_id: str) -> Optional[
 
 
 async def fetch_anisearch_characters(
-    anime_id: str, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    anime_id: str, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Fetch character data for an anime from AniSearch, optionally save it to a file, and return the processed data.
 
@@ -247,9 +251,9 @@ async def fetch_anisearch_characters(
 async def main() -> int:
     """
     Run the CLI for crawling character data from anisearch.com and handle exit codes.
-    
+
     Parses command-line arguments, invokes the crawler with the provided anime identifier, optionally writes output to a file, and returns an exit code.
-    
+
     Returns:
         int: Exit code `0` on success, `1` if a parsing or runtime error occurred.
     """

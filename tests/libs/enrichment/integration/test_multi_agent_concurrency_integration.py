@@ -29,7 +29,7 @@ pytestmark = pytest.mark.integration
 ENABLE_LIVE_TESTS = os.getenv("ENABLE_LIVE_CONCURRENCY_TESTS")
 skip_live_tests = pytest.mark.skipif(
     not ENABLE_LIVE_TESTS,
-    reason="Live API/Redis tests disabled. Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to enable."
+    reason="Live API/Redis tests disabled. Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to enable.",
 )
 
 
@@ -86,9 +86,9 @@ class TestConcurrentAgentDirectoryCreation:
         created_dirs = await asyncio.gather(*tasks)
 
         # Verify all directories created
-        assert (
-            len(created_dirs) == num_agents
-        ), f"Expected {num_agents} dirs, got {len(created_dirs)}"
+        assert len(created_dirs) == num_agents, (
+            f"Expected {num_agents} dirs, got {len(created_dirs)}"
+        )
 
         # Verify all directories are unique (no collisions)
         unique_dirs = set(created_dirs)
@@ -110,9 +110,9 @@ class TestConcurrentAgentDirectoryCreation:
             agent_ids.append(int(agent_id_str))
 
         agent_ids.sort()
-        assert agent_ids == list(
-            range(1, num_agents + 1)
-        ), f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
+        assert agent_ids == list(range(1, num_agents + 1)), (
+            f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
+        )
 
 
 class TestConcurrentRedisAccess:
@@ -325,9 +325,9 @@ class TestAgentIDRaceConditions:
 
         # Verify no duplicate IDs across all agents
         all_agent_ids = [1, 2, 4] + new_agent_ids
-        assert len(all_agent_ids) == len(
-            set(all_agent_ids)
-        ), f"Duplicate agent IDs detected: {all_agent_ids}"
+        assert len(all_agent_ids) == len(set(all_agent_ids)), (
+            f"Duplicate agent IDs detected: {all_agent_ids}"
+        )
 
 
 class TestConcurrentPipelineExecution:

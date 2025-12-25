@@ -3,25 +3,22 @@ Tests for anime_planet_character_crawler.py
 """
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from crawl4ai import CrawlResult
 from crawl4ai.models import CrawlResultContainer
-
 from enrichment.crawlers.anime_planet_character_crawler import (
-    _normalize_characters_url,
     _extract_slug_from_characters_url,
-    _get_character_detail_schema,
-    _process_character_list,
     _extract_voice_actors,
+    _get_character_detail_schema,
+    _normalize_characters_url,
     _normalize_value,
     _process_character_details,
+    _process_character_list,
     fetch_animeplanet_characters,
     main,
 )
-
 
 # --- Tests for _normalize_characters_url ---
 
@@ -58,7 +55,9 @@ def test_normalize_characters_url_with_full_url():
 
 def test_normalize_characters_url_with_full_url_with_characters():
     """Test URL normalization with full URL already having /characters."""
-    url = _normalize_characters_url("https://www.anime-planet.com/anime/dandadan/characters")
+    url = _normalize_characters_url(
+        "https://www.anime-planet.com/anime/dandadan/characters"
+    )
     assert url == "https://www.anime-planet.com/anime/dandadan/characters"
 
 
@@ -135,15 +134,11 @@ def test_process_character_list_with_main_characters():
 def test_process_character_list_with_all_roles():
     """Test processing character list with all role types."""
     list_data = {
-        "main_characters": [
-            {"name": "Main Char", "url": "/characters/main"}
-        ],
+        "main_characters": [{"name": "Main Char", "url": "/characters/main"}],
         "secondary_characters": [
             {"name": "Secondary Char", "url": "/characters/secondary"}
         ],
-        "minor_characters": [
-            {"name": "Minor Char", "url": "/characters/minor"}
-        ],
+        "minor_characters": [{"name": "Minor Char", "url": "/characters/minor"}],
     }
 
     characters = _process_character_list(list_data)
@@ -331,7 +326,9 @@ def test_process_character_details_description():
     detail_data = {
         "description_paragraphs": [
             {"text": "Short intro"},
-            {"text": "This is a long enough description that should be extracted and used as the character description."},
+            {
+                "text": "This is a long enough description that should be extracted and used as the character description."
+            },
             {"text": "Another paragraph"},
         ]
     }
@@ -450,13 +447,17 @@ async def test_fetch_animeplanet_characters_with_output_path():
     """Test character fetch writes to output file."""
     mock_data = {"characters": [], "total_count": 0}
 
-    with patch(
-        "enrichment.crawlers.anime_planet_character_crawler._fetch_animeplanet_characters_data",
-        new_callable=AsyncMock,
-        return_value=mock_data,
-    ), patch("builtins.open", mock_open()) as mock_file, patch(
-        "enrichment.crawlers.anime_planet_character_crawler.sanitize_output_path",
-        return_value="/safe/path.json"
+    with (
+        patch(
+            "enrichment.crawlers.anime_planet_character_crawler._fetch_animeplanet_characters_data",
+            new_callable=AsyncMock,
+            return_value=mock_data,
+        ),
+        patch("builtins.open", mock_open()) as mock_file,
+        patch(
+            "enrichment.crawlers.anime_planet_character_crawler.sanitize_output_path",
+            return_value="/safe/path.json",
+        ),
     ):
         await fetch_animeplanet_characters("test", output_path="/tmp/test.json")
 
@@ -488,26 +489,34 @@ async def test_fetch_animeplanet_characters_data_success():
     # Mock character list response
     list_result = MagicMock(spec=CrawlResult)
     list_result.success = True
-    list_result.extracted_content = json.dumps([{
-        "main_characters": [
+    list_result.extracted_content = json.dumps(
+        [
             {
-                "name": "Test Character",
-                "url": "/characters/test-character",
-                "image_src": "image.jpg",
-                "tags_raw": [],
+                "main_characters": [
+                    {
+                        "name": "Test Character",
+                        "url": "/characters/test-character",
+                        "image_src": "image.jpg",
+                        "tags_raw": [],
+                    }
+                ],
+                "secondary_characters": [],
+                "minor_characters": [],
             }
-        ],
-        "secondary_characters": [],
-        "minor_characters": [],
-    }])
+        ]
+    )
 
     # Mock character detail response
     detail_result = MagicMock(spec=CrawlResult)
     detail_result.success = True
-    detail_result.extracted_content = json.dumps([{
-        "name_h1": "Test Character",
-        "entry_bar_items": [{"text": "Gender: Male"}],
-    }])
+    detail_result.extracted_content = json.dumps(
+        [
+            {
+                "name_h1": "Test Character",
+                "entry_bar_items": [{"text": "Gender: Male"}],
+            }
+        ]
+    )
 
     # Wrap in CrawlResultContainer
     detail_container = MagicMock(spec=CrawlResultContainer)
@@ -537,37 +546,50 @@ async def test_fetch_animeplanet_characters_data_success():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_character_name_mismatch():
     """Test when detail character name doesn't match list character name."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             # Character list response
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
-                        "image_src": "image.jpg",
-                        "tags_raw": [],
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                                "image_src": "image.jpg",
+                                "tags_raw": [],
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             # Detail response with different name
             detail_result = MagicMock(spec=CrawlResult)
             detail_result.success = True
-            detail_result.extracted_content = json.dumps([{
-                "name_h1": "Different Character Name",
-                "entry_bar_items": [{"text": "Gender: Male"}],
-            }])
+            detail_result.extracted_content = json.dumps(
+                [
+                    {
+                        "name_h1": "Different Character Name",
+                        "entry_bar_items": [{"text": "Gender: Male"}],
+                    }
+                ]
+            )
 
             # Wrap in CrawlResultContainer
             detail_container = MagicMock(spec=CrawlResultContainer)
@@ -594,12 +616,17 @@ async def test_fetch_animeplanet_characters_data_character_name_mismatch():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_list_fetch_fails():
     """Test when character list fetch fails."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
             mock_crawler.arun = AsyncMock(return_value=None)
             mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -618,12 +645,17 @@ async def test_fetch_animeplanet_characters_data_list_fetch_fails():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_invalid_result_type():
     """Test handling of unexpected result type."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
             mock_crawler.arun = AsyncMock(return_value=["not a CrawlResult"])
             mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -641,12 +673,17 @@ async def test_fetch_animeplanet_characters_data_invalid_result_type():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_empty_extraction():
     """Test when extraction returns empty data."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
@@ -670,21 +707,30 @@ async def test_fetch_animeplanet_characters_data_empty_extraction():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_no_characters_found():
     """Test when no characters are found after processing."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+            list_result.extracted_content = json.dumps(
+                [
+                    {
+                        "main_characters": [],
+                        "secondary_characters": [],
+                        "minor_characters": [],
+                    }
+                ]
+            )
 
             mock_crawler.arun = AsyncMock(return_value=[list_result])
             mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -703,23 +749,32 @@ async def test_fetch_animeplanet_characters_data_no_characters_found():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_no_valid_urls():
     """Test when no valid character URLs are found."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
-                    {"name": "Test", "url": "/invalid/url"},
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+            list_result.extracted_content = json.dumps(
+                [
+                    {
+                        "main_characters": [
+                            {"name": "Test", "url": "/invalid/url"},
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
+                    }
+                ]
+            )
 
             mock_crawler.arun = AsyncMock(return_value=[list_result])
             mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
@@ -738,26 +793,35 @@ async def test_fetch_animeplanet_characters_data_no_valid_urls():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_batch_enrichment_none():
     """Test when batch enrichment returns None."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             mock_crawler.arun = AsyncMock(return_value=[list_result])
             mock_crawler.arun_many = AsyncMock(return_value=None)
@@ -777,26 +841,35 @@ async def test_fetch_animeplanet_characters_data_batch_enrichment_none():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_batch_enrichment_invalid_type():
     """Test when batch enrichment returns invalid type."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             mock_crawler.arun = AsyncMock(return_value=[list_result])
             mock_crawler.arun_many = AsyncMock(return_value="not a list")
@@ -816,26 +889,35 @@ async def test_fetch_animeplanet_characters_data_batch_enrichment_invalid_type()
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_no_unwrapped_results():
     """Test when no valid CrawlResult objects are found after unwrapping."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             # Create a container that yields no results
             detail_container = MagicMock(spec=CrawlResultContainer)
@@ -859,26 +941,35 @@ async def test_fetch_animeplanet_characters_data_no_unwrapped_results():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_enrichment_json_error():
     """Test handling of JSON decode errors during enrichment."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             detail_result = MagicMock(spec=CrawlResult)
             detail_result.success = True
@@ -907,26 +998,35 @@ async def test_fetch_animeplanet_characters_data_enrichment_json_error():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_enrichment_failed():
     """Test when detail page fetch fails."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             detail_result = MagicMock(spec=CrawlResult)
             detail_result.success = False
@@ -954,12 +1054,17 @@ async def test_fetch_animeplanet_characters_data_enrichment_failed():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_list_extraction_failed():
     """Test when list extraction fails."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
@@ -983,32 +1088,45 @@ async def test_fetch_animeplanet_characters_data_list_extraction_failed():
 @pytest.mark.asyncio
 async def test_fetch_animeplanet_characters_data_direct_crawl_result():
     """Test handling direct CrawlResult in batch results."""
-    with patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler") as MockCrawler:
+    with patch(
+        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    ) as MockCrawler:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.setex = AsyncMock()
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client", return_value=mock_redis):
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
             mock_crawler = AsyncMock()
 
             list_result = MagicMock(spec=CrawlResult)
             list_result.success = True
-            list_result.extracted_content = json.dumps([{
-                "main_characters": [
+            list_result.extracted_content = json.dumps(
+                [
                     {
-                        "name": "Test Character",
-                        "url": "/characters/test-character",
+                        "main_characters": [
+                            {
+                                "name": "Test Character",
+                                "url": "/characters/test-character",
+                            }
+                        ],
+                        "secondary_characters": [],
+                        "minor_characters": [],
                     }
-                ],
-                "secondary_characters": [],
-                "minor_characters": [],
-            }])
+                ]
+            )
 
             detail_result = MagicMock(spec=CrawlResult)
             detail_result.success = True
-            detail_result.extracted_content = json.dumps([{
-                "name_h1": "Test Character",
-            }])
+            detail_result.extracted_content = json.dumps(
+                [
+                    {
+                        "name_h1": "Test Character",
+                    }
+                ]
+            )
 
             # Return direct CrawlResult instead of container
             mock_crawler.arun = AsyncMock(return_value=[list_result])
@@ -1167,13 +1285,13 @@ async def test_cache_key_only_depends_on_slug():
     mock_cache_config.storage_type = "redis"
     mock_cache_config.max_cache_key_length = 200
 
-    with patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mock_cache_config,
-    ), patch(
-        "http_cache.result_cache.get_result_cache_redis_client"
-    ) as mock_redis, patch(
-        "enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"
+    with (
+        patch(
+            "http_cache.result_cache.get_cache_config",
+            return_value=mock_cache_config,
+        ),
+        patch("http_cache.result_cache.get_result_cache_redis_client") as mock_redis,
+        patch("enrichment.crawlers.anime_planet_character_crawler.AsyncWebCrawler"),
     ):
         redis_client = AsyncMock()
 
@@ -1200,8 +1318,12 @@ async def test_cache_key_only_depends_on_slug():
             return_value=mock_crawler_instance,
         ):
             await fetch_animeplanet_characters("test-slug", output_path=None)
-            await fetch_animeplanet_characters("test-slug", output_path="/tmp/test.json")
-            await fetch_animeplanet_characters("test-slug", output_path="/tmp/other.json")
+            await fetch_animeplanet_characters(
+                "test-slug", output_path="/tmp/test.json"
+            )
+            await fetch_animeplanet_characters(
+                "test-slug", output_path="/tmp/other.json"
+            )
 
     assert len(cache_keys_used) == 3
     assert cache_keys_used[0] == cache_keys_used[1]

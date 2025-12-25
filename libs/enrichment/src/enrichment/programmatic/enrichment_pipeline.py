@@ -11,7 +11,7 @@ import os
 import sys
 import time
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Type, cast
+from typing import Any, cast
 
 from .api_fetcher import ParallelAPIFetcher
 from .config import EnrichmentConfig
@@ -26,14 +26,14 @@ class ProgrammaticEnrichmentPipeline:
     Implements Steps 1-3 of enrichment process programmatically.
     """
 
-    def __init__(self, config: Optional[EnrichmentConfig] = None):
+    def __init__(self, config: EnrichmentConfig | None = None):
         """
         Create a ProgrammaticEnrichmentPipeline configured for enrichment runs.
-        
+
         Initializes internal components used by the pipeline (ID extractor, parallel API fetcher)
         and a timing breakdown store. When `config` is omitted, a default EnrichmentConfig is used;
         if `config.verbose_logging` is true the configuration will be logged.
-        
+
         Parameters:
             config (Optional[EnrichmentConfig]): Pipeline configuration; defaults to a new EnrichmentConfig().
         """
@@ -44,7 +44,7 @@ class ProgrammaticEnrichmentPipeline:
         self.api_fetcher = ParallelAPIFetcher(config)
 
         # Performance tracking
-        self.timing_breakdown: Dict[str, float] = {}
+        self.timing_breakdown: dict[str, float] = {}
 
         # Log configuration if verbose
         if self.config.verbose_logging:
@@ -52,20 +52,20 @@ class ProgrammaticEnrichmentPipeline:
 
     async def enrich_anime(
         self,
-        offline_data: Dict,
-        agent_dir: Optional[str] = None,
-        skip_services: Optional[List[str]] = None,
-        only_services: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        offline_data: dict,
+        agent_dir: str | None = None,
+        skip_services: list[str] | None = None,
+        only_services: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Enrich a single anime record with data fetched from configured APIs.
-        
+
         Parameters:
             offline_data (Dict): Existing anime data used as the basis for enrichment.
             agent_dir (Optional[str]): Optional agent directory name to use for temporary processing (e.g., "Dandadan_agent1"). If omitted, a new directory is created with gap-filled agent ID.
             skip_services (Optional[List[str]]): Optional list of service names to skip when fetching API data.
             only_services (Optional[List[str]]): Optional list of service names to fetch exclusively; if provided, other services are ignored.
-        
+
         Returns:
             Dict[str, Any]: A dictionary with the following keys:
                 - offline_data: The original input `offline_data`.
@@ -78,7 +78,7 @@ class ProgrammaticEnrichmentPipeline:
                     - timing_breakdown: Per-step timing information.
                     - successful_apis: Count of successful API responses.
                     - temp_directory: Path to the temporary agent directory used.
-        
+
         Notes:
             If an error occurs during enrichment and the pipeline is configured to skip failed APIs, the function returns a partial result containing `offline_data`, an `error` string, and `partial_data: True`.
         """
@@ -167,7 +167,7 @@ class ProgrammaticEnrichmentPipeline:
                 }
             raise
 
-    async def enrich_batch(self, anime_list: List[Dict]) -> List[Dict]:
+    async def enrich_batch(self, anime_list: list[dict]) -> list[dict]:
         """
         Enrich multiple anime in parallel.
 
@@ -193,7 +193,7 @@ class ProgrammaticEnrichmentPipeline:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle results and exceptions
-        successful: List[Dict[str, Any]] = []
+        successful: list[dict[str, Any]] = []
         failed = []
 
         for anime, result in zip(anime_list, results):
@@ -202,7 +202,7 @@ class ProgrammaticEnrichmentPipeline:
                 failed.append(anime)
             else:
                 # result is guaranteed to be Dict[str, Any] here due to the isinstance check above
-                successful.append(cast(Dict[str, Any], result))
+                successful.append(cast(dict[str, Any], result))
 
         logger.info(
             f"Batch complete: {len(successful)} successful, {len(failed)} failed"
@@ -213,10 +213,10 @@ class ProgrammaticEnrichmentPipeline:
     def _find_next_agent_id(self, anime_name: str) -> int:
         """
         Determine the next available global agent ID, preferring the lowest missing positive integer.
-        
+
         Parameters:
             anime_name (str): Unused; retained for backward compatibility.
-        
+
         Returns:
             int: The next available agent ID (fills gaps first, otherwise returns one greater than the current maximum).
         """
@@ -274,13 +274,13 @@ class ProgrammaticEnrichmentPipeline:
     def _create_temp_dir(self, anime_title: str) -> str:
         """
         Create a temporary processing directory for an anime and return its path.
-        
+
         The directory is created under the configured temp_dir and named "<FirstWord>_agent<N>",
         where FirstWord is the sanitized first token of `anime_title` and N is the next available agent ID.
-        
+
         Parameters:
             anime_title (str): Anime title from offline data; the first word is used for the directory name.
-        
+
         Returns:
             str: Full path to the created temporary directory.
         """
@@ -300,10 +300,10 @@ class ProgrammaticEnrichmentPipeline:
 
         return temp_dir
 
-    def _process_episodes(self, api_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _process_episodes(self, api_data: dict[str, Any]) -> list[dict[str, Any]]:
         """
         Extract episode entries from the Jikan response present in `api_data`.
-        
+
         Returns:
             A list of episode dictionaries from Jikan's `episodes` field (each typically includes title, synopsis, aired date, etc.); returns an empty list if no Jikan data or episodes are present.
         """
@@ -319,7 +319,7 @@ class ProgrammaticEnrichmentPipeline:
     async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
         """
         Enter the asynchronous context for the pipeline.
-        
+
         Returns:
             ProgrammaticEnrichmentPipeline: The pipeline instance.
         """
@@ -327,15 +327,15 @@ class ProgrammaticEnrichmentPipeline:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
         """
         Async context manager exit that delegates cleanup to the pipeline's API fetcher.
-        
+
         Delegates async cleanup to the internal `api_fetcher` and does not suppress exceptions raised in the context.
-        
+
         Returns:
             bool: `False` to indicate exceptions should be propagated.
         """
@@ -345,9 +345,9 @@ class ProgrammaticEnrichmentPipeline:
     def get_performance_report(self) -> str:
         """
         Produce a human-readable performance report for the pipeline.
-        
+
         The report includes the configured maximum concurrent APIs and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
-        
+
         Returns:
             report (str): A multi-line string containing the assembled performance report.
         """
@@ -371,9 +371,9 @@ class ProgrammaticEnrichmentPipeline:
 async def main() -> int:
     """
     Run a test enrichment of the pipeline using sample anime data and save the results.
-    
+
     Performs a single enrichment with a built-in sample anime, prints a short summary and a performance report to stdout, writes the full enrichment result to "programmatic_enrichment_test.json", and returns an exit code.
-    
+
     Returns:
         int: 0 on success.
     """
@@ -416,6 +416,5 @@ async def main() -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-
     logging.basicConfig(level=logging.INFO)
     sys.exit(asyncio.run(main()))

@@ -6,13 +6,12 @@ with commercial-friendly licensing.
 
 import hashlib
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PIL import Image
-
 from common.config import Settings
 from common.models.anime import AnimeEntry
+
 from ..embedding_models.vision.base import VisionEmbeddingModel
 from ..utils.image_downloader import ImageDownloader
 
@@ -29,7 +28,7 @@ class VisionProcessor:
         self,
         model: VisionEmbeddingModel,
         downloader: ImageDownloader,
-        settings: Optional[Settings] = None,
+        settings: Settings | None = None,
     ):
         """Initialize modern vision processor with injected dependencies.
 
@@ -44,13 +43,13 @@ class VisionProcessor:
         self.settings = settings
         self.model = model
         self.downloader = downloader
-        
+
         # Field mapper for anime data extraction
-        self._field_mapper: Optional["AnimeFieldMapper"] = None
-        
+        self._field_mapper: AnimeFieldMapper | None = None
+
         logger.info(f"Initialized VisionProcessor with model: {model.model_name}")
 
-    def encode_image(self, image_path: str) -> Optional[List[float]]:
+    def encode_image(self, image_path: str) -> list[float] | None:
         """Encode image to embedding vector.
 
         Args:
@@ -70,7 +69,7 @@ class VisionProcessor:
             logger.exception(f"Image encoding failed: {e}")
             return None
 
-    def _hash_embedding(self, embedding: List[float], precision: int = 4) -> str:
+    def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:
         """Create hash of embedding vector to detect duplicates.
 
         Args:
@@ -98,9 +97,7 @@ class VisionProcessor:
             self._field_mapper = AnimeFieldMapper()
         return self._field_mapper
 
-    async def process_anime_image_vector(
-        self, anime: AnimeEntry
-    ) -> Optional[List[float]]:
+    async def process_anime_image_vector(self, anime: AnimeEntry) -> list[float] | None:
         """Process general anime images (covers, posters, banners, trailers) excluding character images.
 
         Args:
@@ -129,11 +126,15 @@ class VisionProcessor:
 
             for i, image_url in enumerate(image_urls):
                 try:
-                    logger.debug(f"Processing image {i+1}/{len(image_urls)}: {image_url}")
+                    logger.debug(
+                        f"Processing image {i + 1}/{len(image_urls)}: {image_url}"
+                    )
 
                     # Download and cache image using injected downloader
                     # Returns path to cached file
-                    image_path = await self.downloader.download_and_cache_image(image_url)
+                    image_path = await self.downloader.download_and_cache_image(
+                        image_url
+                    )
 
                     logger.debug(f"Downloader returned path: {image_path}")
 
@@ -141,7 +142,9 @@ class VisionProcessor:
                         # Encode using path
                         logger.debug(f"Encoding image from path: {image_path}")
                         embedding = self.encode_image(image_path)
-                        logger.debug(f"Encoding result: {embedding is not None}, length: {len(embedding) if embedding else 0}")
+                        logger.debug(
+                            f"Encoding result: {embedding is not None}, length: {len(embedding) if embedding else 0}"
+                        )
 
                         if embedding:
                             # Create hash of embedding to check for duplicates
@@ -151,18 +154,20 @@ class VisionProcessor:
                                 successful_embeddings.append(embedding)
                                 processed_vectors.add(embedding_hash)
                                 logger.debug(
-                                    f"Successfully encoded unique image {i+1}/{len(image_urls)}"
+                                    f"Successfully encoded unique image {i + 1}/{len(image_urls)}"
                                 )
                             else:
                                 logger.debug(
-                                    f"Skipped duplicate image {i+1}/{len(image_urls)}"
+                                    f"Skipped duplicate image {i + 1}/{len(image_urls)}"
                                 )
                         else:
-                            logger.warning(f"Encoding returned None for image {i+1}")
+                            logger.warning(f"Encoding returned None for image {i + 1}")
                     else:
-                        logger.warning(f"Downloader returned None for image {i+1}: {image_url}")
+                        logger.warning(
+                            f"Downloader returned None for image {i + 1}: {image_url}"
+                        )
                 except Exception as e:
-                    logger.error(f"Failed to process image {i+1}: {e}", exc_info=True)
+                    logger.error(f"Failed to process image {i + 1}: {e}", exc_info=True)
                     continue
 
             if successful_embeddings:
@@ -172,7 +177,7 @@ class VisionProcessor:
                     return successful_embeddings[0]
                 else:
                     # Average multiple embeddings for comprehensive visual representation
-                    combined_embedding: List[float] = np.mean(
+                    combined_embedding: list[float] = np.mean(
                         successful_embeddings, axis=0
                     ).tolist()
                     logger.debug(
@@ -192,7 +197,7 @@ class VisionProcessor:
 
     async def process_anime_character_image_vector(
         self, anime: AnimeEntry
-    ) -> Optional[List[float]]:
+    ) -> list[float] | None:
         """Process character images from anime data for character identification and recommendations.
 
         Args:
@@ -222,8 +227,10 @@ class VisionProcessor:
             for i, image_url in enumerate(character_image_urls):
                 try:
                     # Download and cache image using injected downloader
-                    image_path = await self.downloader.download_and_cache_image(image_url)
-                    
+                    image_path = await self.downloader.download_and_cache_image(
+                        image_url
+                    )
+
                     if image_path:
                         embedding = self.encode_image(image_path)
                         if embedding:
@@ -234,14 +241,14 @@ class VisionProcessor:
                                 successful_embeddings.append(embedding)
                                 processed_vectors.add(embedding_hash)
                                 logger.debug(
-                                    f"Successfully encoded unique character image {i+1}/{len(character_image_urls)}"
+                                    f"Successfully encoded unique character image {i + 1}/{len(character_image_urls)}"
                                 )
                             else:
                                 logger.debug(
-                                    f"Skipped duplicate character image {i+1}/{len(character_image_urls)}"
+                                    f"Skipped duplicate character image {i + 1}/{len(character_image_urls)}"
                                 )
                 except Exception as e:
-                    logger.warning(f"Failed to process character image {i+1}: {e}")
+                    logger.warning(f"Failed to process character image {i + 1}: {e}")
                     continue
 
             if successful_embeddings:
@@ -251,7 +258,7 @@ class VisionProcessor:
                     return successful_embeddings[0]
                 else:
                     # Average multiple embeddings for comprehensive character visual representation
-                    combined_embedding: List[float] = np.mean(
+                    combined_embedding: list[float] = np.mean(
                         successful_embeddings, axis=0
                     ).tolist()
                     logger.debug(
@@ -269,7 +276,7 @@ class VisionProcessor:
             logger.exception(f"Character image vector processing failed: {e}")
             return None
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get image cache statistics.
 
         Delegates to ImageDownloader for cache management.
@@ -279,7 +286,7 @@ class VisionProcessor:
         """
         return self.downloader.get_cache_stats()
 
-    def clear_cache(self, max_age_days: Optional[int] = None) -> Dict[str, Any]:
+    def clear_cache(self, max_age_days: int | None = None) -> dict[str, Any]:
         """Clear image cache.
 
         Delegates to ImageDownloader for cache management.
@@ -292,7 +299,7 @@ class VisionProcessor:
         """
         return self.downloader.clear_cache(max_age_days)
 
-    def get_supported_formats(self) -> List[str]:
+    def get_supported_formats(self) -> list[str]:
         """Get list of supported image formats.
 
         Returns:
@@ -300,7 +307,7 @@ class VisionProcessor:
         """
         return ["jpg", "jpeg", "png", "bmp", "tiff", "webp", "gif"]
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get information about the current vision embedding model.
 
         Returns:

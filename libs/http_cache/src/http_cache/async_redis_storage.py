@@ -14,15 +14,8 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import (
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Union,
     cast,
 )
 
@@ -54,9 +47,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        client: Optional[Redis] = None,
+        client: Redis | None = None,
         redis_url: str = "redis://localhost:6379/0",
-        default_ttl: Optional[float] = None,
+        default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
         key_prefix: str = "hishel_cache",
     ) -> None:
@@ -100,11 +93,11 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def _make_key(self, key_type: str, identifier: str) -> str:
         """
         Build a namespaced Redis key by joining the instance `key_prefix`, a key type, and an identifier.
-        
+
         Parameters:
             key_type (str): Segment indicating the key category (e.g., "entry", "stream", "index").
             identifier (str): Unique identifier to append to the key.
-        
+
         Returns:
             str: Redis key in the form "<key_prefix>:<key_type>:<identifier>".
         """
@@ -113,10 +106,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def _entry_key(self, entry_id: uuid.UUID) -> str:
         """
         Return the Redis key used to store an entry's metadata and data for the given entry UUID.
-        
+
         Parameters:
             entry_id (uuid.UUID): UUID of the entry.
-        
+
         Returns:
             str: Redis key for the entry.
         """
@@ -125,10 +118,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def _stream_key(self, entry_id: uuid.UUID) -> str:
         """
         Return the Redis key for the response stream associated with the given entry ID.
-        
+
         Parameters:
             entry_id (uuid.UUID): Entry identifier.
-        
+
         Returns:
             str: Redis key for the stream chunks for the specified entry.
         """
@@ -137,10 +130,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
     def _index_key(self, cache_key: str | bytes) -> str:
         """
         Redis key for the index that maps a cache key to its entry IDs.
-        
+
         Parameters:
             cache_key (str | bytes): Cache key to index; strings are UTF-8 encoded before hex-encoding.
-        
+
         Returns:
             str: Redis key for the set that contains entry UUIDs associated with the given cache key.
         """
@@ -251,24 +244,24 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         return complete_entry
 
-    async def get_entries(self, key: str) -> List[Entry]:
+    async def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve cached entries associated with the provided cache key.
-        
+
         Only entries that exist, are deserializable, have a response, and are not soft-deleted are returned. Each returned Entry has its Response.stream reconstructed to read stored chunks from Redis. If `refresh_ttl_on_access` is enabled and the entry has a TTL, the entry and its stream TTLs are refreshed.
-        
+
         Returns:
             List[Entry]: A list of matching entries with their response streams restored from cache.
         """
         index_key = self._index_key(key)
         entry_ids_bytes = await cast(
-            "Awaitable[Set[bytes]]", self.client.smembers(index_key)
+            "Awaitable[set[bytes]]", self.client.smembers(index_key)
         )
 
         if not entry_ids_bytes:
             return []
 
-        final_entries: List[Entry] = []
+        final_entries: list[Entry] = []
 
         for entry_id_bytes in entry_ids_bytes:
             entry_id = uuid.UUID(entry_id_bytes.decode("utf-8"))
@@ -276,7 +269,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             # Get entry data
             entry_hash = await cast(
-                "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+                "Awaitable[dict[bytes, bytes]]", self.client.hgetall(entry_key)
             )
             if not entry_hash or b"data" not in entry_hash:
                 continue
@@ -326,24 +319,24 @@ class AsyncRedisStorage(AsyncBaseStorage):
     async def update_entry(
         self,
         id: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry by replacing it or applying a transformer to the current entry.
-        
+
         Parameters:
             id (uuid.UUID): UUID of the entry to update.
             new_entry (Entry | Callable[[Entry], Entry]): Either a complete Entry to store or a callable that receives the current Entry and returns the updated Entry.
-        
+
         Returns:
             Optional[Entry]: The updated Entry if the entry existed and was stored, `None` if the entry was not found or could not be deserialized.
-        
+
         Raises:
             ValueError: If the provided update changes the entry's UUID.
         """
         entry_key = self._entry_key(id)
         entry_hash = await cast(
-            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+            "Awaitable[dict[bytes, bytes]]", self.client.hgetall(entry_key)
         )
 
         if not entry_hash or b"data" not in entry_hash:
@@ -385,15 +378,15 @@ class AsyncRedisStorage(AsyncBaseStorage):
     async def remove_entry(self, id: uuid.UUID) -> None:
         """
         Mark the cache entry identified by `id` as soft-deleted by setting its `deleted_at` timestamp.
-        
+
         This is a no-op if the entry does not exist or the stored data cannot be deserialized into an Entry.
-        
+
         Parameters:
             id (uuid.UUID): UUID of the entry to mark as deleted.
         """
         entry_key = self._entry_key(id)
         entry_hash = await cast(
-            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+            "Awaitable[dict[bytes, bytes]]", self.client.hgetall(entry_key)
         )
 
         if not entry_hash or b"data" not in entry_hash:
@@ -423,7 +416,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
     async def close(self) -> None:
         """
         Close the Redis client when this storage instance owns it.
-        
+
         If this storage created/owns the Redis client, attempts to asynchronously close it; on failure a warning is logged.
         """
         if not self._owns_client:
@@ -436,16 +429,16 @@ class AsyncRedisStorage(AsyncBaseStorage):
             logging.warning(f"Error closing Redis client: {e}")
 
     async def _save_stream(
-        self, stream: AsyncIterator[bytes], entry_id: uuid.UUID, ttl: Optional[float]
+        self, stream: AsyncIterator[bytes], entry_id: uuid.UUID, ttl: float | None
     ) -> AsyncIterator[bytes]:
         """
         Save each chunk from `stream` into Redis under the entry's stream key and yield the same chunks.
-        
+
         Parameters:
             stream (AsyncIterator[bytes]): Source async iterator of response body chunks.
             entry_id (uuid.UUID): UUID of the cache entry used to derive the Redis stream key.
             ttl (Optional[float]): Time-to-live in seconds to apply to the Redis stream key after the stream is completed; if None, no TTL is set.
-        
+
         Returns:
             AsyncIterator[bytes]: Yields each byte chunk produced by `stream`. The function also appends a completion marker to the Redis list for the stream and sets the TTL (if provided).
         """
@@ -470,10 +463,10 @@ class AsyncRedisStorage(AsyncBaseStorage):
     ) -> AsyncIterator[bytes]:
         """
         Yield stored response stream chunks for the given entry ID read from Redis.
-        
+
         Parameters:
             entry_id (uuid.UUID): Identifier of the cached entry whose stream is stored in Redis.
-        
+
         Returns:
             AsyncIterator[bytes]: An async iterator yielding each stored stream chunk; stops when the stream completion marker is encountered.
         """
@@ -481,7 +474,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Get all chunks at once (could optimize with cursor for large streams)
         chunks = await cast(
-            "Awaitable[List[bytes]]", self.client.lrange(stream_key, 0, -1)
+            "Awaitable[list[bytes]]", self.client.lrange(stream_key, 0, -1)
         )
 
         for chunk in chunks:
@@ -490,28 +483,26 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 break
             yield chunk
 
-    def _get_entry_ttl(self, request: Request) -> Optional[float]:
+    def _get_entry_ttl(self, request: Request) -> float | None:
         """
         Determine the time-to-live (TTL) for a cache entry by checking the request's metadata and falling back to the storage's default.
-        
+
         Parameters:
             request (Request): The HTTP request whose `metadata` may include a numeric `hishel_ttl` value (seconds).
-        
+
         Returns:
             Optional[float]: TTL in seconds as a float if configured, or `None` when no TTL is set.
-        
+
         Raises:
             ValueError: If `hishel_ttl` is present and is a negative number.
         """
         # Check for per-request TTL
         if "hishel_ttl" in request.metadata:
             ttl_value = request.metadata["hishel_ttl"]
-            if isinstance(ttl_value, (int, float)):
+            if isinstance(ttl_value, int | float):
                 ttl_float = float(ttl_value)
                 if ttl_float < 0:
-                    raise ValueError(
-                        f"TTL must be non-negative, got {ttl_float}"
-                    )
+                    raise ValueError(f"TTL must be non-negative, got {ttl_float}")
                 return ttl_float
 
         # Use default TTL
@@ -520,9 +511,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
     async def cleanup_expired(self) -> int:
         """
         Remove soft-deleted cache entries that are safe for permanent removal.
-        
+
         Scans stored entry records in Redis and hard-deletes entries that are marked as soft-deleted and considered safe to remove.
-        
+
         Returns:
             cleaned (int): Number of entries that were hard-deleted.
         """
@@ -537,7 +528,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             for key in keys:
                 entry_hash = await cast(
-                    "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(key)
+                    "Awaitable[dict[bytes, bytes]]", self.client.hgetall(key)
                 )
                 if not entry_hash or b"data" not in entry_hash:
                     continue
@@ -559,9 +550,9 @@ class AsyncRedisStorage(AsyncBaseStorage):
     async def _hard_delete_entry(self, entry_id: uuid.UUID) -> None:
         """
         Permanently remove an entry and its stream from Redis and unlink it from the cache-key index.
-        
+
         If the entry hash contains a `cache_key` field, the entry ID is removed from that index set; afterwards the entry metadata key and its stream key are deleted.
-        
+
         Parameters:
             entry_id (uuid.UUID): UUID of the entry to hard-delete.
         """
@@ -570,7 +561,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Get cache key before deleting
         entry_hash = await cast(
-            "Awaitable[Dict[bytes, bytes]]", self.client.hgetall(entry_key)
+            "Awaitable[dict[bytes, bytes]]", self.client.hgetall(entry_key)
         )
         if entry_hash and b"cache_key" in entry_hash:
             cache_key = entry_hash[b"cache_key"].decode("utf-8")
@@ -578,7 +569,8 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
             # Remove from index
             await cast(
-                "Awaitable[int]", self.client.srem(index_key, str(entry_id).encode("utf-8"))
+                "Awaitable[int]",
+                self.client.srem(index_key, str(entry_id).encode("utf-8")),
             )
 
         # Delete entry and stream

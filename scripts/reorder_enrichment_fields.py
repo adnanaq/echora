@@ -14,30 +14,33 @@ Usage:
 import argparse
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder that handles datetime objects"""
+
     def default(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
             # Convert to UTC and force Z format for consistency
             if obj.tzinfo is not None:
                 # Convert timezone-aware datetime to UTC
-                from datetime import timezone
-                obj = obj.astimezone(timezone.utc).replace(tzinfo=None)
+
+                obj = obj.astimezone(UTC).replace(tzinfo=None)
             # Always append Z for UTC timestamps
-            return obj.isoformat() + 'Z'
+            return obj.isoformat() + "Z"
         return super().default(obj)
 
-try:
-    from pydantic import ValidationError
 
+try:
     from common.models.anime import AnimeEntry
+    from pydantic import ValidationError
 except ImportError:
-    print("Error: Could not import AnimeEntry model. Ensure you're in the correct directory.")
+    print(
+        "Error: Could not import AnimeEntry model. Ensure you're in the correct directory."
+    )
     exit(1)
 
 # Configure logging
@@ -47,7 +50,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def reorder_entry_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
+def reorder_entry_fields(entry: dict[str, Any]) -> dict[str, Any]:
     """
     Reorder fields in a single anime entry to match AnimeEntry model structure.
 
@@ -61,7 +64,9 @@ def reorder_entry_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
 
         # Serialize back to dict with proper field ordering, preserving JSON aliases
         # Use exclude_none=True to avoid adding empty fields that validation script would remove
-        reordered_entry = anime_entry.model_dump(exclude_unset=False, exclude_none=True, by_alias=True)
+        reordered_entry = anime_entry.model_dump(
+            exclude_unset=False, exclude_none=True, by_alias=True
+        )
 
         # Move enrichment_metadata to the very end if it exists
         if "enrichment_metadata" in reordered_entry:
@@ -71,31 +76,35 @@ def reorder_entry_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
         return reordered_entry
 
     except ValidationError as e:
-        logger.error(f"Validation error for entry '{entry.get('title', 'Unknown')}': {e}")
+        logger.error(
+            f"Validation error for entry '{entry.get('title', 'Unknown')}': {e}"
+        )
         # Return original entry if validation fails
         return entry
     except Exception as e:
-        logger.error(f"Unexpected error for entry '{entry.get('title', 'Unknown')}': {e}")
+        logger.error(
+            f"Unexpected error for entry '{entry.get('title', 'Unknown')}': {e}"
+        )
         # Return original entry if any other error
         return entry
 
 
-def reorder_database(input_file: str, backup: bool = True) -> Dict[str, Any]:
+def reorder_database(input_file: str, backup: bool = True) -> dict[str, Any]:
     """
     Reorder all entries in the enrichment database.
     """
     logger.info(f"Starting field reordering for {input_file}")
 
-    backup_path: Optional[str] = None
+    backup_path: str | None = None
     if backup:
         backup_path = f"{input_file}.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        with open(input_file, "r") as original, open(backup_path, "w") as backup_file:
+        with open(input_file) as original, open(backup_path, "w") as backup_file:
             backup_file.write(original.read())
         logger.info(f"Created backup: {backup_path}")
 
     # Load database
     try:
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load database: {e}")
@@ -202,10 +211,12 @@ def main() -> int:
     if result.get("backup_created"):
         print(f"  Backup created: {result['backup_created']}")
 
-    if result['reordered_entries'] > 0:
-        print(f"\n✅ Successfully reordered {result['reordered_entries']} entries to match AnimeEntry model structure")
+    if result["reordered_entries"] > 0:
+        print(
+            f"\n✅ Successfully reordered {result['reordered_entries']} entries to match AnimeEntry model structure"
+        )
     else:
-        print(f"\n✅ All entries already in correct field order")
+        print("\n✅ All entries already in correct field order")
 
     return 0
 

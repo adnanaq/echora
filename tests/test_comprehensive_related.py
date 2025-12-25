@@ -15,29 +15,28 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
+import requests
+from common.config import get_settings
+from vector_processing import TextProcessor
+
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 os.chdir(str(project_root))
 
-import requests
 
-from common.config import get_settings
-from vector_processing import TextProcessor
-from qdrant_db import QdrantClient
-
-def load_related_content_data() -> Dict[str, Any]:
+def load_related_content_data() -> dict[str, Any]:
     """Load anime data and categorize by related content types."""
     db_path = Path("data/qdrant_storage/enriched_anime_database.json")
 
-    with open(db_path, "r") as f:
+    with open(db_path) as f:
         data = json.load(f)
 
     anime_data = data["data"]
@@ -124,7 +123,7 @@ def create_related_query_patterns():
     ]
 
 
-def generate_sequel_prequel_query(anime_data: Dict) -> str:
+def generate_sequel_prequel_query(anime_data: dict) -> str:
     """Generate query for sequel/prequel relationships."""
     queries = []
 
@@ -148,7 +147,7 @@ def generate_sequel_prequel_query(anime_data: Dict) -> str:
     )
 
 
-def generate_character_connection_query(anime_data: Dict) -> str:
+def generate_character_connection_query(anime_data: dict) -> str:
     """Generate query for character connection relationships."""
     queries = []
 
@@ -162,11 +161,11 @@ def generate_character_connection_query(anime_data: Dict) -> str:
                 queries.append(f"character crossover with {rel_title}")
 
     return (
-        random.choice(queries) if queries else f"character connection shared characters"
+        random.choice(queries) if queries else "character connection shared characters"
     )
 
 
-def generate_special_content_query(anime_data: Dict) -> str:
+def generate_special_content_query(anime_data: dict) -> str:
     """Generate query for special content relationships."""
     queries = []
 
@@ -185,7 +184,7 @@ def generate_special_content_query(anime_data: Dict) -> str:
     return random.choice(queries) if queries else "special episode bonus OVA content"
 
 
-def generate_source_material_query(anime_data: Dict) -> str:
+def generate_source_material_query(anime_data: dict) -> str:
     """Generate query for source material relationships."""
     queries = []
 
@@ -209,7 +208,7 @@ def generate_source_material_query(anime_data: Dict) -> str:
     )
 
 
-def generate_side_story_query(anime_data: Dict) -> str:
+def generate_side_story_query(anime_data: dict) -> str:
     """Generate query for side story relationships."""
     queries = []
 
@@ -228,7 +227,7 @@ def generate_side_story_query(anime_data: Dict) -> str:
     return random.choice(queries) if queries else "side story spin-off related branch"
 
 
-def generate_music_media_query(anime_data: Dict) -> str:
+def generate_music_media_query(anime_data: dict) -> str:
     """Generate query for music/media relationships."""
     queries = []
 
@@ -300,7 +299,7 @@ def test_related_vector_realistic():
 
     passed = 0
     for i, test_case in enumerate(test_cases):
-        print(f"\n🔍 Test {i+1}: '{test_case['query']}'")
+        print(f"\n🔍 Test {i + 1}: '{test_case['query']}'")
         print(f"   💭 Expected: {test_case['reason']}")
 
         # Generate embedding
@@ -329,7 +328,7 @@ def test_related_vector_realistic():
             for j, result in enumerate(results):
                 title = result["payload"]["title"]
                 score = result["score"]
-                print(f"      {j+1}. {title} (score: {score:.4f})")
+                print(f"      {j + 1}. {title} (score: {score:.4f})")
 
             # Validate results
             found_expected = False
@@ -352,13 +351,13 @@ def test_related_vector_realistic():
             if found_expected:
                 passed += 1
             else:
-                print(f"   ❌ FAIL - Expected content not clearly identified")
+                print("   ❌ FAIL - Expected content not clearly identified")
         else:
             print(f"   ❌ Search failed: {response.status_code}")
 
-    print(f"\n📊 Final Related Vector Validation:")
+    print("\n📊 Final Related Vector Validation:")
     print(f"   ✅ Passed: {passed}/{len(test_cases)}")
-    print(f"   📈 Success Rate: {(passed/len(test_cases)*100):.1f}%")
+    print(f"   📈 Success Rate: {(passed / len(test_cases) * 100):.1f}%")
 
     success_threshold = 3  # 60% success rate
     if passed >= success_threshold:
@@ -375,16 +374,14 @@ def create_comprehensive_related_query_patterns():
         # Pattern 1: Single Relation Direct (current approach)
         {
             "name": "Single Relation",
-            "generator": lambda anime_data, all_relations: generate_single_relation_query(
-                all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_single_relation_query(all_relations),
         },
         # Pattern 2: Multiple Relations Combined
         {
             "name": "Multi-Relation",
-            "generator": lambda anime_data, all_relations: generate_multi_relation_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_multi_relation_query(anime_data, all_relations),
         },
         # Pattern 3: Franchise-Wide Search
         {
@@ -396,37 +393,34 @@ def create_comprehensive_related_query_patterns():
         # Pattern 4: Type-Specific Collection
         {
             "name": "Type Collection",
-            "generator": lambda anime_data, all_relations: generate_type_collection_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_type_collection_query(anime_data, all_relations),
         },
         # Pattern 5: Source Material Hunt
         {
             "name": "Source Hunt",
-            "generator": lambda anime_data, all_relations: generate_source_material_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_source_material_query(anime_data, all_relations),
         },
         # Pattern 6: Character Universe Connection
         {
             "name": "Universe Connection",
-            "generator": lambda anime_data, all_relations: generate_universe_connection_query(
+            "generator": lambda anime_data,
+            all_relations: generate_universe_connection_query(
                 anime_data, all_relations
             ),
         },
         # Pattern 7: Temporal Relationship (sequence-based)
         {
             "name": "Temporal Sequence",
-            "generator": lambda anime_data, all_relations: generate_temporal_sequence_query(
-                anime_data, all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_temporal_sequence_query(anime_data, all_relations),
         },
         # Pattern 8: Minimal Context (stress test)
         {
             "name": "Minimal Context",
-            "generator": lambda anime_data, all_relations: generate_minimal_context_query(
-                all_relations
-            ),
+            "generator": lambda anime_data,
+            all_relations: generate_minimal_context_query(all_relations),
         },
     ]
 
@@ -484,7 +478,7 @@ def generate_type_focused_query(rel_type: str) -> str:
 # Comprehensive Field Combination Generators (like character test)
 
 
-def generate_single_relation_query(all_relations: List[Dict]) -> str:
+def generate_single_relation_query(all_relations: list[dict]) -> str:
     """Generate query from single random relation (current approach)."""
     if not all_relations:
         return ""
@@ -499,7 +493,7 @@ def generate_single_relation_query(all_relations: List[Dict]) -> str:
     return random.choice(patterns)
 
 
-def generate_multi_relation_query(anime_data: Dict, all_relations: List[Dict]) -> str:
+def generate_multi_relation_query(anime_data: dict, all_relations: list[dict]) -> str:
     """Combine multiple relations for comprehensive queries."""
     if len(all_relations) < 2:
         return generate_single_relation_query(all_relations)
@@ -518,7 +512,7 @@ def generate_multi_relation_query(anime_data: Dict, all_relations: List[Dict]) -
     return random.choice(patterns)
 
 
-def generate_franchise_query(anime_data: Dict, all_relations: List[Dict]) -> str:
+def generate_franchise_query(anime_data: dict, all_relations: list[dict]) -> str:
     """Generate franchise-wide exploration queries."""
     anime_title = anime_data.get("title", "")
     base_title = extract_base_franchise_name(anime_title)
@@ -542,7 +536,7 @@ def generate_franchise_query(anime_data: Dict, all_relations: List[Dict]) -> str
     return random.choice(patterns)
 
 
-def generate_type_collection_query(anime_data: Dict, all_relations: List[Dict]) -> str:
+def generate_type_collection_query(anime_data: dict, all_relations: list[dict]) -> str:
     """Generate queries for collecting all of specific relation type."""
     if not all_relations:
         return f"all related content to {anime_data.get('title', '')}"
@@ -571,7 +565,7 @@ def generate_type_collection_query(anime_data: Dict, all_relations: List[Dict]) 
     return f"related content collection {anime_data.get('title', '')}"
 
 
-def generate_source_material_query(anime_data: Dict, all_relations: List[Dict]) -> str:
+def generate_source_material_query(anime_data: dict, all_relations: list[dict]) -> str:
     """Generate source material hunting queries."""
     # Look for adaptation/source relations
     source_relations = [
@@ -590,7 +584,7 @@ def generate_source_material_query(anime_data: Dict, all_relations: List[Dict]) 
     else:
         patterns = [
             f"source material adaptation {anime_data.get('title', '')}",
-            f"manga novel adapted into anime",
+            "manga novel adapted into anime",
             f"original work source {anime_data.get('title', '')}",
         ]
 
@@ -598,7 +592,7 @@ def generate_source_material_query(anime_data: Dict, all_relations: List[Dict]) 
 
 
 def generate_universe_connection_query(
-    anime_data: Dict, all_relations: List[Dict]
+    anime_data: dict, all_relations: list[dict]
 ) -> str:
     """Generate character universe connection queries."""
     # Look for character connections
@@ -616,15 +610,15 @@ def generate_universe_connection_query(
     else:
         patterns = [
             f"character crossover connections {anime_data.get('title', '')}",
-            f"shared universe character appearances",
-            f"character connections in anime universe",
+            "shared universe character appearances",
+            "character connections in anime universe",
         ]
 
     return random.choice(patterns)
 
 
 def generate_temporal_sequence_query(
-    anime_data: Dict, all_relations: List[Dict]
+    anime_data: dict, all_relations: list[dict]
 ) -> str:
     """Generate temporal sequence queries (watch order)."""
     # Look for sequel/prequel relations
@@ -644,14 +638,14 @@ def generate_temporal_sequence_query(
     else:
         patterns = [
             f"watch order {anime_data.get('title', '')} series",
-            f"chronological sequence viewing",
-            f"series timeline progression",
+            "chronological sequence viewing",
+            "series timeline progression",
         ]
 
     return random.choice(patterns)
 
 
-def generate_minimal_context_query(all_relations: List[Dict]) -> str:
+def generate_minimal_context_query(all_relations: list[dict]) -> str:
     """Generate minimal context queries (stress test)."""
     if not all_relations:
         return "related"
@@ -725,10 +719,10 @@ def test_random_related_entries():
 
     # Select 5 random entries
     random_entries = random.sample(list(all_related.keys()), 5)
-    print(f"Testing 5 random entries with comprehensive field-based queries")
+    print("Testing 5 random entries with comprehensive field-based queries")
 
     # Load full database for cross-validation
-    with open("data/qdrant_storage/enriched_anime_database.json", "r") as f:
+    with open("data/qdrant_storage/enriched_anime_database.json") as f:
         json.load(f)
 
     # Create comprehensive query patterns
@@ -791,10 +785,10 @@ def test_random_related_entries():
             print(
                 f"🎲 Using {len(all_relations)} available relations for query generation"
             )
-            print(f"📝 Query: \"{query[:80]}{'...' if len(query) > 80 else ''}\"")
+            print(f'📝 Query: "{query[:80]}{"..." if len(query) > 80 else ""}"')
 
             if not query.strip():
-                print(f"❌ No valid query generated")
+                print("❌ No valid query generated")
                 total_tests += 1
                 pattern_stats[selected_pattern["name"]]["tests"] += 1
                 continue
@@ -874,7 +868,7 @@ def test_random_related_entries():
                         passed_tests += 1
                         pattern_stats[selected_pattern["name"]]["passes"] += 1
                     else:
-                        print(f"❌ FAIL - No semantic match found")
+                        print("❌ FAIL - No semantic match found")
                         # Debug: show top 3 results
                         print("Top 3 results:")
                         for rank, result in enumerate(results[:3], 1):
@@ -884,7 +878,7 @@ def test_random_related_entries():
 
                     pattern_stats[selected_pattern["name"]]["avg_score"] += top_score
                 else:
-                    print(f"❌ No results returned")
+                    print("❌ No results returned")
 
                 pattern_stats[selected_pattern["name"]]["tests"] += 1
                 total_tests += 1
@@ -907,13 +901,13 @@ def test_random_related_entries():
 
     # Results
     success_rate = (passed_tests / total_tests) * 100 if total_tests > 0 else 0
-    print(f"\n📊 Comprehensive Random Related Test Results:")
+    print("\n📊 Comprehensive Random Related Test Results:")
     print(f"🎲 Random seed: {int(time.time() * 1000) % 2**32}")
     print(f"✅ Passed: {passed_tests}/{total_tests}")
     print(f"📈 Success Rate: {success_rate:.1f}%")
 
     # Pattern Analysis
-    print(f"\n🎯 Query Pattern Effectiveness:")
+    print("\n🎯 Query Pattern Effectiveness:")
     for pattern_name, stats in pattern_stats.items():
         if stats["tests"] > 0:
             pattern_success_rate = (stats["passes"] / stats["tests"]) * 100
@@ -937,7 +931,7 @@ def test_random_related_entries():
             f"🏆 Best Pattern: {best_name} ({best_rate:.1f}% success, avg score: {best_stats['avg_score']:.4f})"
         )
 
-    print(f"\n🔬 Testing Methodology:")
+    print("\n🔬 Testing Methodology:")
     print("  • True field randomization from actual relation data")
     print(
         "  • Multiple validation methods: direct match, related content, semantic relevance"
@@ -955,7 +949,7 @@ def test_comprehensive_related():
 
     # Load and display data summary
     related_data = load_related_content_data()
-    print(f"Data Summary:")
+    print("Data Summary:")
     print(f"- Anime with related_anime only: {len(related_data['related_only'])}")
     print(f"- Anime with relations only: {len(related_data['relations_only'])}")
     print(f"- Anime with both: {len(related_data['both'])}")
@@ -990,7 +984,7 @@ def test_comprehensive_related():
         print(f"{status} {test_name}")
 
     print(
-        f"\nOverall: {passed_tests}/{total_tests} tests passed ({passed_tests/total_tests*100:.1f}%)"
+        f"\nOverall: {passed_tests}/{total_tests} tests passed ({passed_tests / total_tests * 100:.1f}%)"
     )
 
     if passed_tests == total_tests:

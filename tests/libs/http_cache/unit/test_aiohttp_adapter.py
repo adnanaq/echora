@@ -7,14 +7,13 @@ Tests the CachedAiohttpSession wrapper that adds HTTP caching via Redis.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from multidict import CIMultiDictProxy
-from yarl import URL
-
 from http_cache.aiohttp_adapter import (
     CachedAiohttpSession,
     _CachedRequestContextManager,
     _CachedResponse,
 )
+from multidict import CIMultiDictProxy
+from yarl import URL
 
 
 class TestCachedResponse:
@@ -188,7 +187,7 @@ class TestCachedRequestContextManager:
         async def mock_coro():
             """
             Produce the predefined `mock_response` when awaited.
-            
+
             Returns:
                 mock_response: The mocked response object returned by the coroutine.
             """
@@ -215,7 +214,7 @@ class TestCachedRequestContextManager:
         async def mock_coro():
             """
             Produce the predefined `mock_response` when awaited.
-            
+
             Returns:
                 mock_response: The mocked response object returned by the coroutine.
             """
@@ -461,7 +460,7 @@ class TestCachedAiohttpSession:
         async def mock_stream():
             """
             Yield a single bytes chunk containing JSON-formatted cached data.
-            
+
             Yields:
                 bytes: A single chunk b'{"cached": "data"}' representing the cached response body.
             """
@@ -537,7 +536,7 @@ class TestCachedAiohttpSession:
         async def mock_stream():
             """
             Asynchronous generator that yields a single JSON-encoded byte chunk.
-            
+
             Returns:
                 An asynchronous iterator that yields one `bytes` object containing a JSON document (b'{"data": "test"}').
             """
@@ -585,7 +584,7 @@ class TestCachedAiohttpSession:
         def mock_sync_stream():
             """
             Yield a single bytes chunk representing a small JSON payload.
-            
+
             Yields:
                 bytes: A single bytes object containing the JSON b'{"sync": "data"}'.
             """
@@ -623,7 +622,7 @@ class TestCachedAiohttpSession:
         async def mock_stream():
             """
             Async generator that yields a single JSON-encoded bytes chunk representing a simple header-like object.
-            
+
             Returns:
                 An async iterator that yields one `bytes` value: the JSON-encoded representation of {"dict": "headers"}.
             """
@@ -662,7 +661,7 @@ class TestCachedAiohttpSession:
         def mock_sync_stream():
             """
             Yield a single bytes chunk "test" to simulate a synchronous response body stream.
-            
+
             Returns:
                 iterator (Iterator[bytes]): An iterator that yields a single `bytes` object `b"test"`.
             """
@@ -707,7 +706,7 @@ class TestCachedAiohttpSession:
         async def mock_stream():
             """
             Yield a single bytes payload representing a JSON-encoded exception object.
-            
+
             Yields:
                 bytes: The JSON-encoded byte string b'{"exception": "test"}'.
             """
@@ -819,7 +818,7 @@ class TestCachedAiohttpSession:
         async def mock_stream():
             """
             Yield a single bytes chunk containing a JSON-like payload.
-            
+
             Returns:
                 bytes: A bytes object containing the JSON payload b'{"headers": "list"}'.
             """
@@ -1015,10 +1014,10 @@ class TestCachedAiohttpSession:
         async def create_mock_stream(data: bytes):
             """
             Produce an async iterator that yields the provided bytes exactly once.
-            
+
             Parameters:
                 data (bytes): Byte sequence to be yielded by the async iterator.
-            
+
             Returns:
                 An async iterator that yields the provided `data` a single time.
             """

@@ -8,9 +8,11 @@ defined in Phase 2.5 architecture with character image semantic separation.
 """
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any
 
-from common.models.anime import AnimeEntry  # TODO: Update to models package after models lib created
+from common.models.anime import (
+    AnimeEntry,
+)  # TODO: Update to models package after models lib created
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,7 @@ class AnimeFieldMapper:
         """Initialize the anime field mapper."""
         self.logger = logger
 
-    def map_anime_to_vectors(
-        self, anime: AnimeEntry
-    ) -> Dict[str, Union[str, List[str]]]:
+    def map_anime_to_vectors(self, anime: AnimeEntry) -> dict[str, str | list[str]]:
         """
         Map complete anime entry to all 13 vectors.
 
@@ -42,7 +42,7 @@ class AnimeFieldMapper:
         Returns:
             Dict mapping vector names to their content for embedding
         """
-        vector_data: Dict[str, Union[str, List[str]]] = {}
+        vector_data: dict[str, str | list[str]] = {}
 
         # Text vectors (9)
         vector_data["title_vector"] = self._extract_title_content(anime)
@@ -392,7 +392,7 @@ class AnimeFieldMapper:
             return ""
 
         # Constants for chunking strategy
-        EPISODES_PER_CHUNK = 50  # Future-proof for rich episode data
+        episodes_per_chunk = 50  # Future-proof for rich episode data
 
         # Extract episode info with all available semantic fields
         episode_info = []
@@ -477,13 +477,13 @@ class AnimeFieldMapper:
             return ""
 
         # For small series (≤50 episodes), return directly
-        if len(episode_info) <= EPISODES_PER_CHUNK:
+        if len(episode_info) <= episodes_per_chunk:
             return " | ".join(episode_info)
 
         # For large series, chunk episodes for future hierarchical averaging
         chunks = []
-        for i in range(0, len(episode_info), EPISODES_PER_CHUNK):
-            chunk = episode_info[i : i + EPISODES_PER_CHUNK]
+        for i in range(0, len(episode_info), episodes_per_chunk):
+            chunk = episode_info[i : i + episodes_per_chunk]
             chunk_content = " | ".join(chunk)
             chunks.append(chunk_content)
 
@@ -494,7 +494,7 @@ class AnimeFieldMapper:
     # VISUAL VECTOR EXTRACTORS (OpenCLIP ViT-L/14, 768-dim)
     # ============================================================================
 
-    def _extract_image_content(self, anime: AnimeEntry) -> List[str]:
+    def _extract_image_content(self, anime: AnimeEntry) -> list[str]:
         """Extract general anime image URLs (covers, posters, banners, trailers) excluding character images."""
         image_urls = []
 
@@ -534,7 +534,7 @@ class AnimeFieldMapper:
         unique_urls = list(dict.fromkeys(image_urls))
         return unique_urls
 
-    def _extract_character_image_content(self, anime: AnimeEntry) -> List[str]:
+    def _extract_character_image_content(self, anime: AnimeEntry) -> list[str]:
         """Extract character image URLs for character-specific visual embedding."""
         character_image_urls = []
 
@@ -554,7 +554,7 @@ class AnimeFieldMapper:
     # UTILITY METHODS
     # ============================================================================
 
-    def get_vector_types(self) -> Dict[str, str]:
+    def get_vector_types(self) -> dict[str, str]:
         """Get mapping of vector names to their types (text/visual)."""
         return {
             # Text vectors (BGE-M3, 1024-dim)
@@ -572,7 +572,7 @@ class AnimeFieldMapper:
             "character_image_vector": "visual",
         }
 
-    def validate_mapping(self, vector_data: Dict[str, Any]) -> bool:
+    def validate_mapping(self, vector_data: dict[str, Any]) -> bool:
         """Validate that vector data contains all expected vectors."""
         expected_vectors = set(self.get_vector_types().keys())
         actual_vectors = set(vector_data.keys())

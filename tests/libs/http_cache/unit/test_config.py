@@ -13,9 +13,8 @@ Tests cover:
 """
 
 import pytest
-from pydantic import ValidationError
-
 from http_cache.config import CacheConfig, get_cache_config
+from pydantic import ValidationError
 
 
 class TestCacheConfigModel:
@@ -138,6 +137,7 @@ class TestCacheConfigModel:
         # Redis Sentinel
         config4 = CacheConfig(redis_url="redis+sentinel://localhost:26379/mymaster/0")
         assert config4.redis_url == "redis+sentinel://localhost:26379/mymaster/0"
+
 
 class TestGetCacheConfig:
     """Test get_cache_config() function with environment variables."""
@@ -328,9 +328,7 @@ class TestRedisConnectionPoolConfiguration:
         config = get_cache_config()
         assert config.redis_health_check_interval == 60
 
-    def test_all_redis_config_from_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_all_redis_config_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that all Redis configuration env vars are loaded together."""
         monkeypatch.setenv("REDIS_CACHE_URL", "redis://prod:6379/0")
         monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "200")

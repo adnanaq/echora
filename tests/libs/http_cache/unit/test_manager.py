@@ -13,7 +13,6 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from http_cache.config import CacheConfig
 from http_cache.manager import HTTPCacheManager
 
@@ -65,9 +64,7 @@ class TestGetAiohttpSession:
         config = CacheConfig(enabled=False)
         manager = HTTPCacheManager(config)
 
-        with patch(
-            "http_cache.manager.aiohttp.ClientSession"
-        ) as mock_session_class:
+        with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
@@ -377,7 +374,7 @@ class TestIntegrationScenarios:
     def test_multiple_services_session_creation(self) -> None:
         """
         Verify that HTTPCacheManager returns non-null aiohttp sessions for multiple service names when Redis caching is enabled.
-        
+
         Ensures that calling get_aiohttp_session for several distinct services (e.g., "jikan", "kitsu", "anidb") produces a session object for each.
         """
         config = CacheConfig(enabled=True, storage_type="redis")
@@ -411,7 +408,7 @@ class TestRedisClientEventLoopSwitching:
     def test_old_redis_client_closed_on_event_loop_switch(self) -> None:
         """
         Verify that when the asyncio event loop changes, the manager closes the previous Redis client and creates a new client for the new loop.
-        
+
         Asserts that the first and second Redis clients are distinct, the original client was closed, and at least one close call occurred to prevent resource leaks.
         """
         import asyncio
@@ -433,7 +430,7 @@ class TestRedisClientEventLoopSwitching:
             async def aclose(self):
                 """
                 Mark the client as closed and record the close call.
-                
+
                 If the client is not already marked closed, sets `self.closed = True` and appends `self` to the module-level `close_calls` list.
                 """
                 if not self.closed:
@@ -441,9 +438,7 @@ class TestRedisClientEventLoopSwitching:
                     close_calls.append(self)
 
         config = CacheConfig(
-            enabled=True,
-            storage_type="redis",
-            redis_url="redis://localhost:6379/0"
+            enabled=True, storage_type="redis", redis_url="redis://localhost:6379/0"
         )
 
         # Create new instances each time from_url is called
@@ -456,7 +451,7 @@ class TestRedisClientEventLoopSwitching:
             """
             return MockAsyncRedis()
 
-        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+        with patch("redis.asyncio.Redis.from_url", side_effect=mock_from_url):
             manager = HTTPCacheManager(config)
 
             clients = {}
@@ -465,7 +460,7 @@ class TestRedisClientEventLoopSwitching:
             def run_in_thread1():
                 """
                 Create and run a new asyncio event loop that obtains and closes an aiohttp session for "test_service" and records the manager's async Redis client.
-                
+
                 Runs a fresh event loop, calls manager.get_aiohttp_session("test_service"), awaits a short delay, closes the session if it exposes `close`, and stores the current `manager._async_redis_client` into `clients['client1']`.
                 """
                 loop = asyncio.new_event_loop()
@@ -474,14 +469,14 @@ class TestRedisClientEventLoopSwitching:
                 async def task():
                     """
                     Run a short-lived retrieval of an aiohttp session and record the manager's async Redis client in `clients['client1']`.
-                    
+
                     This coroutine obtains a session from `manager.get_aiohttp_session("test_service")`, yields briefly, closes the session if it provides an asynchronous `close` method, and stores the current value of `manager._async_redis_client` into `clients['client1']`.
                     """
                     session = manager.get_aiohttp_session("test_service")
                     await asyncio.sleep(0.01)
-                    if hasattr(session, 'close'):
+                    if hasattr(session, "close"):
                         await session.close()
-                    clients['client1'] = manager._async_redis_client
+                    clients["client1"] = manager._async_redis_client
 
                 loop.run_until_complete(task())
                 loop.close()
@@ -490,7 +485,7 @@ class TestRedisClientEventLoopSwitching:
             def run_in_thread2():
                 """
                 Run a short asyncio task on a new event loop that acquires and closes an aiohttp session for "test_service" and records the manager's async Redis client into clients['client2'].
-                
+
                 The function creates a fresh event loop, runs an asynchronous task which obtains a session from manager.get_aiohttp_session("test_service"), awaits a brief pause, closes the session if it has a close coroutine, stores manager._async_redis_client in clients['client2'], and then closes the loop.
                 """
                 loop = asyncio.new_event_loop()
@@ -499,14 +494,14 @@ class TestRedisClientEventLoopSwitching:
                 async def task():
                     """
                     Create and close an aiohttp session for the "test_service" and capture the manager's async Redis client.
-                    
+
                     This coroutine obtains a session from manager.get_aiohttp_session("test_service"), awaits a short delay, closes the session if it implements `close`, and stores the manager's current `_async_redis_client` into `clients['client2']`.
                     """
                     session = manager.get_aiohttp_session("test_service")
                     await asyncio.sleep(0.01)
-                    if hasattr(session, 'close'):
+                    if hasattr(session, "close"):
                         await session.close()
-                    clients['client2'] = manager._async_redis_client
+                    clients["client2"] = manager._async_redis_client
 
                 loop.run_until_complete(task())
                 loop.close()
@@ -521,14 +516,16 @@ class TestRedisClientEventLoopSwitching:
             thread2.start()
             thread2.join()
 
-            client1 = clients.get('client1')
-            client2 = clients.get('client2')
+            client1 = clients.get("client1")
+            client2 = clients.get("client2")
 
             # Verify old client was closed
             assert client1 is not None, "First client should have been created"
             assert client2 is not None, "Second client should have been created"
             assert client1 is not client2, "Should create new client for new loop"
-            assert client1.closed, "Old Redis client should be closed when loop switches"
+            assert client1.closed, (
+                "Old Redis client should be closed when loop switches"
+            )
             assert len(close_calls) >= 1, "At least one client should have been closed"
 
     @pytest.mark.asyncio
@@ -539,9 +536,7 @@ class TestRedisClientEventLoopSwitching:
         This covers line 97 where old_loop.is_running() returns True.
         """
         config = CacheConfig(
-            enabled=True,
-            storage_type="redis",
-            redis_url="redis://localhost:6379/0"
+            enabled=True, storage_type="redis", redis_url="redis://localhost:6379/0"
         )
 
         # Track how close was called
@@ -560,6 +555,7 @@ class TestRedisClientEventLoopSwitching:
         mock_client2 = MockAsyncRedis()
 
         call_count = [0]
+
         def mock_from_url(*_args: object, **_kwargs: object):
             """
             Return `mock_client1` on the first invocation and `mock_client2` on subsequent invocations.
@@ -575,8 +571,8 @@ class TestRedisClientEventLoopSwitching:
             else:
                 return mock_client2
 
-        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
-            with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+        with patch("redis.asyncio.Redis.from_url", side_effect=mock_from_url):
+            with patch("asyncio.run_coroutine_threadsafe") as mock_run_threadsafe:
                 manager = HTTPCacheManager(config)
 
                 # First call - creates client in current loop
@@ -585,28 +581,31 @@ class TestRedisClientEventLoopSwitching:
 
                 # Mock the old loop as still running
                 old_loop = manager._redis_event_loop
-                with patch.object(old_loop, 'is_running', return_value=True):
+                with patch.object(old_loop, "is_running", return_value=True):
                     # Second call in same event loop should trigger cleanup
                     # Force a new event loop scenario by patching get_running_loop
                     import asyncio
+
                     new_loop = asyncio.new_event_loop()
 
                     async def get_new_loop():
                         """
                         Create and return a newly created asyncio event loop.
-                        
+
                         Returns:
                             asyncio.AbstractEventLoop: The newly created event loop.
                         """
                         return new_loop
 
-                    with patch('asyncio.get_running_loop', return_value=new_loop):
+                    with patch("asyncio.get_running_loop", return_value=new_loop):
                         manager.get_aiohttp_session("test")
 
                         # Should have called run_coroutine_threadsafe for old client
                         assert mock_run_threadsafe.called
                         # Verify it was called with close() coroutine and old loop
-                        assert old_loop in mock_run_threadsafe.call_args[0] or old_loop == mock_run_threadsafe.call_args[1].get('loop')
+                        assert old_loop in mock_run_threadsafe.call_args[
+                            0
+                        ] or old_loop == mock_run_threadsafe.call_args[1].get("loop")
 
     @pytest.mark.asyncio
     async def test_exception_during_old_client_close_is_handled(self) -> None:
@@ -614,9 +613,7 @@ class TestRedisClientEventLoopSwitching:
         Ensure that exceptions raised when closing a previous Redis client are handled without propagating and that a new Redis client is created.
         """
         config = CacheConfig(
-            enabled=True,
-            storage_type="redis",
-            redis_url="redis://localhost:6379/0"
+            enabled=True, storage_type="redis", redis_url="redis://localhost:6379/0"
         )
 
         # Track close attempts
@@ -626,9 +623,9 @@ class TestRedisClientEventLoopSwitching:
             async def aclose(self):
                 """
                 Attempt to asynchronously close and signal an unexpected failure.
-                
+
                 Appends an Exception instance to the external `close_exception_caught` list and then raises it to indicate the close operation failed.
-                
+
                 Raises:
                     Exception: Raised with message "Close failed unexpectedly" when the close procedure fails.
                 """
@@ -640,6 +637,7 @@ class TestRedisClientEventLoopSwitching:
         mock_client2 = MockAsyncRedis()
 
         call_count = [0]
+
         def mock_from_url(*_args: object, **_kwargs: object):
             """
             Return `mock_client1` on the first invocation and `mock_client2` on subsequent invocations.
@@ -655,7 +653,7 @@ class TestRedisClientEventLoopSwitching:
             else:
                 return mock_client2
 
-        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
+        with patch("redis.asyncio.Redis.from_url", side_effect=mock_from_url):
             manager = HTTPCacheManager(config)
 
             # First call creates client in current loop
@@ -664,13 +662,18 @@ class TestRedisClientEventLoopSwitching:
 
             # Get the old loop reference
             import asyncio
+
             old_loop = manager._redis_event_loop
             new_loop = asyncio.new_event_loop()
 
             # Mock old loop as not running (to trigger create_task path)
-            with patch.object(old_loop, 'is_running', return_value=False):
-                with patch('asyncio.get_running_loop', return_value=new_loop):
-                    with patch.object(new_loop, 'create_task', side_effect=Exception("Task creation failed")):
+            with patch.object(old_loop, "is_running", return_value=False):
+                with patch("asyncio.get_running_loop", return_value=new_loop):
+                    with patch.object(
+                        new_loop,
+                        "create_task",
+                        side_effect=Exception("Task creation failed"),
+                    ):
                         # This should trigger exception in close handling (lines 95-97)
                         manager.get_aiohttp_session("test")
 
@@ -696,9 +699,7 @@ class TestRedisClientEventLoopSwitching:
         import asyncio
 
         config = CacheConfig(
-            enabled=True,
-            storage_type="redis",
-            redis_url="redis://localhost:6379/0"
+            enabled=True, storage_type="redis", redis_url="redis://localhost:6379/0"
         )
 
         # Track create_task calls
@@ -708,12 +709,12 @@ class TestRedisClientEventLoopSwitching:
         def track_create_task(self, coro, *args, **kwargs):
             """
             Wraps the event loop's task creation to record each created Task in the surrounding `created_tasks` list.
-            
+
             Parameters:
                 coro: Coroutine or awaitable to schedule as a Task.
                 *args: Positional arguments forwarded to the original `create_task`.
                 **kwargs: Keyword arguments forwarded to the original `create_task`.
-            
+
             Returns:
                 The newly created `asyncio.Task` instance. The task is also appended to `created_tasks`.
             """
@@ -725,7 +726,7 @@ class TestRedisClientEventLoopSwitching:
             async def aclose(self):
                 """
                 Perform any cleanup associated with closing the object.
-                
+
                 This implementation is a no-op and does not perform any actions.
                 """
                 pass  # No-op for this test
@@ -734,6 +735,7 @@ class TestRedisClientEventLoopSwitching:
         mock_client2 = MockAsyncRedis()
 
         call_count = [0]
+
         def mock_from_url(*_args: object, **_kwargs: object):
             """
             Return `mock_client1` on the first invocation and `mock_client2` on subsequent invocations.
@@ -749,8 +751,8 @@ class TestRedisClientEventLoopSwitching:
             else:
                 return mock_client2
 
-        with patch('redis.asyncio.Redis.from_url', side_effect=mock_from_url):
-            with patch.object(asyncio.BaseEventLoop, 'create_task', track_create_task):
+        with patch("redis.asyncio.Redis.from_url", side_effect=mock_from_url):
+            with patch.object(asyncio.BaseEventLoop, "create_task", track_create_task):
                 manager = HTTPCacheManager(config)
 
                 # First call creates client in current loop
@@ -764,8 +766,8 @@ class TestRedisClientEventLoopSwitching:
                 new_loop = asyncio.new_event_loop()
 
                 # Mock old loop as not running (triggers create_task path on line 94)
-                with patch.object(old_loop, 'is_running', return_value=False):
-                    with patch('asyncio.get_running_loop', return_value=new_loop):
+                with patch.object(old_loop, "is_running", return_value=False):
+                    with patch("asyncio.get_running_loop", return_value=new_loop):
                         # Second call should trigger cleanup of old client via create_task
                         manager.get_aiohttp_session("test")
 
@@ -773,18 +775,27 @@ class TestRedisClientEventLoopSwitching:
                         assert manager._async_redis_client is mock_client2
 
                         # Verify a cleanup task was created
-                        assert len(created_tasks) > 0, "Should create cleanup task for old Redis client"
+                        assert len(created_tasks) > 0, (
+                            "Should create cleanup task for old Redis client"
+                        )
 
                         # Verify the cleanup task has a done_callback attached
                         cleanup_task = created_tasks[-1]  # Most recent task
-                        assert hasattr(cleanup_task, '_callbacks'), "Task should support callbacks"
-                        assert cleanup_task._callbacks is not None and len(cleanup_task._callbacks) > 0, (
+                        assert hasattr(cleanup_task, "_callbacks"), (
+                            "Task should support callbacks"
+                        )
+                        assert (
+                            cleanup_task._callbacks is not None
+                            and len(cleanup_task._callbacks) > 0
+                        ), (
                             "Cleanup task MUST have done_callback attached to track exceptions. "
                             "Fire-and-forget tasks (without callbacks) silently lose exceptions."
                         )
 
     @pytest.mark.asyncio
-    async def test_get_or_create_redis_client_returns_none_when_redis_url_none(self) -> None:
+    async def test_get_or_create_redis_client_returns_none_when_redis_url_none(
+        self,
+    ) -> None:
         """
         Test that _get_or_create_redis_client returns None when redis_url is None.
 
@@ -793,7 +804,7 @@ class TestRedisClientEventLoopSwitching:
         config = CacheConfig(
             enabled=True,
             storage_type="redis",
-            redis_url="redis://localhost:6379/0"  # Start with valid URL
+            redis_url="redis://localhost:6379/0",  # Start with valid URL
         )
 
         manager = HTTPCacheManager(config)
@@ -807,9 +818,10 @@ class TestRedisClientEventLoopSwitching:
 
         # Force event loop switch to trigger _get_or_create_redis_client logic
         import asyncio
+
         new_loop = asyncio.new_event_loop()
 
-        with patch('asyncio.get_running_loop', return_value=new_loop):
+        with patch("asyncio.get_running_loop", return_value=new_loop):
             # This should return None because redis_url is None (line 107)
             client = manager._get_or_create_redis_client()
             assert client is None
@@ -825,12 +837,15 @@ class TestGetAiohttpSessionErrorHandling:
         """
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch('redis.asyncio.Redis.from_url') as mock_redis:
+        with patch("redis.asyncio.Redis.from_url") as mock_redis:
             mock_redis.return_value = MagicMock()
 
             # Mock ImportError when importing CachedAiohttpSession (within get_aiohttp_session)
-            with patch('http_cache.aiohttp_adapter.CachedAiohttpSession', side_effect=ImportError("Module not found")):
-                with patch('http_cache.manager.aiohttp.ClientSession') as mock_session:
+            with patch(
+                "http_cache.aiohttp_adapter.CachedAiohttpSession",
+                side_effect=ImportError("Module not found"),
+            ):
+                with patch("http_cache.manager.aiohttp.ClientSession") as mock_session:
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("test")
 
@@ -842,17 +857,20 @@ class TestGetAiohttpSessionErrorHandling:
     async def test_general_exception_in_async_storage_creation(self) -> None:
         """
         Verifies that HTTPCacheManager falls back to a regular aiohttp ClientSession when creating the async Redis storage raises a general exception.
-        
+
         Patches Redis client creation to succeed and forces AsyncRedisStorage to raise a RuntimeError, then asserts that get_aiohttp_session returns a normal ClientSession instead of a cached session.
         """
         config = CacheConfig(enabled=True, storage_type="redis")
 
-        with patch('redis.asyncio.Redis.from_url') as mock_redis:
+        with patch("redis.asyncio.Redis.from_url") as mock_redis:
             mock_redis.return_value = MagicMock()
 
             # Mock exception during AsyncRedisStorage creation
-            with patch('http_cache.async_redis_storage.AsyncRedisStorage', side_effect=RuntimeError("Storage init failed")):
-                with patch('http_cache.manager.aiohttp.ClientSession') as mock_session:
+            with patch(
+                "http_cache.async_redis_storage.AsyncRedisStorage",
+                side_effect=RuntimeError("Storage init failed"),
+            ):
+                with patch("http_cache.manager.aiohttp.ClientSession") as mock_session:
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("test")
 
@@ -875,9 +893,9 @@ class TestCloseErrorHandling:
         mock_redis = AsyncMock()
         mock_redis.aclose.side_effect = Exception("Redis close error")
 
-        with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
-            with patch('http_cache.async_redis_storage.AsyncRedisStorage'):
-                with patch('http_cache.aiohttp_adapter.CachedAiohttpSession'):
+        with patch("redis.asyncio.Redis.from_url", return_value=mock_redis):
+            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
+                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
 
                     # Trigger lazy initialization
@@ -896,12 +914,12 @@ class TestCloseErrorHandling:
     async def test_close_async_clears_cached_redis_client_references(self) -> None:
         """
         Test that close_async() clears cached Redis client and event loop references.
-        
+
         Bug scenario (from code review):
         - close_async() closes the Redis client but keeps the closed instance cached
         - Next get_aiohttp_session() on same loop returns the closed client
         - Redis operations fail with "Connection closed" errors
-        
+
         Expected behavior after fix:
         - close_async() should set self._async_redis_client = None
         - close_async() should set self._redis_event_loop = None
@@ -910,10 +928,10 @@ class TestCloseErrorHandling:
         config = CacheConfig(enabled=True, storage_type="redis")
 
         mock_redis = AsyncMock()
-        
-        with patch('redis.asyncio.Redis.from_url', return_value=mock_redis):
-            with patch('http_cache.async_redis_storage.AsyncRedisStorage'):
-                with patch('http_cache.aiohttp_adapter.CachedAiohttpSession'):
+
+        with patch("redis.asyncio.Redis.from_url", return_value=mock_redis):
+            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
+                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
 
                     # Step 1: Create first session (triggers lazy initialization)
@@ -935,6 +953,6 @@ class TestCloseErrorHandling:
                         "close_async() must clear _redis_event_loop to prevent "
                         "reusing closed client on same event loop"
                     )
-                    
+
                     # Step 4: Verify client was actually closed
                     mock_redis.aclose.assert_called_once()

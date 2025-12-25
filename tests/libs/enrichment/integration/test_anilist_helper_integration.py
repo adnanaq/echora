@@ -13,7 +13,6 @@ import logging
 import pytest
 import pytest_asyncio
 import redis
-
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
 # Mark all tests in this module as integration tests
@@ -231,7 +230,7 @@ async def test_anilist_unicode_handling(clean_helper):
 async def test_anilist_empty_results(clean_helper):
     """
     Verify fetch_all_data_by_anilist_id handles anime records with minimal or missing nested data.
-    
+
     If a result is returned it must include an "id"; the call must not raise unhandled exceptions when characters, staff, or episodes are absent.
     """
     helper = clean_helper

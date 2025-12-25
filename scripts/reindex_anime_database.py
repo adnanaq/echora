@@ -15,27 +15,31 @@ import hashlib
 import json
 import os
 import uuid
-from typing import Any, Dict, List, Tuple, Union, cast
+from typing import Any, cast
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 from common.config import get_settings
 from common.models.anime import AnimeEntry
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.models import Record
 from qdrant_db.client import QdrantClient
+from vector_db_interface import VectorDocument
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from vector_processing.processors.text_processor import TextProcessor
 from vector_processing.processors.vision_processor import VisionProcessor
 from vector_processing.utils.image_downloader import ImageDownloader
-from vector_processing.embedding_models.factory import EmbeddingModelFactory
-from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Record
-from vector_db_interface import VectorDocument
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Reindex anime database with vector embeddings")
+    parser = argparse.ArgumentParser(
+        description="Reindex anime database with vector embeddings"
+    )
     parser.add_argument(
         "--data-file",
         default="./data/qdrant_storage/enriched_anime_database.json",
-        help="Path to enriched anime database JSON file (default: ./data/qdrant_storage/enriched_anime_database.json)"
+        help="Path to enriched anime database JSON file (default: ./data/qdrant_storage/enriched_anime_database.json)",
     )
     return parser.parse_args()
 
@@ -51,7 +55,9 @@ async def main() -> None:
 
     # Initialize AsyncQdrantClient
     if settings.qdrant_api_key:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        async_qdrant_client = AsyncQdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+        )
     else:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
@@ -61,17 +67,17 @@ async def main() -> None:
         text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
-        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir or "cache")
+        image_downloader = ImageDownloader(
+            cache_dir=settings.model_cache_dir or "cache"
+        )
         vision_processor = VisionProcessor(
-            model=vision_model,
-            downloader=image_downloader,
-            settings=settings
+            model=vision_model, downloader=image_downloader, settings=settings
         )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            settings=settings
+            settings=settings,
         )
 
         # Initialize Qdrant client
@@ -95,7 +101,7 @@ async def main() -> None:
 
         # Load anime data
         print(f" Loading anime data from {args.data_file}...")
-        with open(args.data_file, "r", encoding="utf-8") as f:
+        with open(args.data_file, encoding="utf-8") as f:
             enrichment_data = json.load(f)
 
         anime_data = enrichment_data["data"]
@@ -103,7 +109,7 @@ async def main() -> None:
 
         # Convert to AnimeEntry objects
         print(" Converting to AnimeEntry objects...")
-        anime_entries: List[AnimeEntry] = []
+        anime_entries: list[AnimeEntry] = []
 
         for i, anime_dict in enumerate(anime_data):
             try:
@@ -114,10 +120,10 @@ async def main() -> None:
                 # Convert to AnimeEntry
                 anime_entry = AnimeEntry(**anime_dict)
                 anime_entries.append(anime_entry)
-                print(f"   {i+1}/{len(anime_data)}: {anime_entry.title}")
+                print(f"   {i + 1}/{len(anime_data)}: {anime_entry.title}")
 
             except Exception as e:  # noqa: BLE001 - Skip invalid entries, continue processing rest
-                print(f"   Failed to convert entry {i+1}: {e}")
+                print(f"   Failed to convert entry {i + 1}: {e}")
                 continue
 
         print(f" Successfully converted {len(anime_entries)} entries")
@@ -136,10 +142,10 @@ async def main() -> None:
 
         try:
             # Process batch to get vectors and payloads
-            print(f"\n Processing {len(anime_entries)} anime entries to generate vectors...")
-            processed_batch = await embedding_manager.process_anime_batch(
-                anime_entries
+            print(
+                f"\n Processing {len(anime_entries)} anime entries to generate vectors..."
             )
+            processed_batch = await embedding_manager.process_anime_batch(anime_entries)
 
             points = []
             for doc_data in processed_batch:
@@ -173,9 +179,11 @@ async def main() -> None:
             )
             if result["success"]:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
-        
+
                 # Save updated anime data with generated IDs
-                print(f"\nSaving updated anime data with generated IDs to {args.data_file}...")
+                print(
+                    f"\nSaving updated anime data with generated IDs to {args.data_file}..."
+                )
                 with open(args.data_file, "w", encoding="utf-8") as f:
                     json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
                 print("Updated data saved successfully")
@@ -189,7 +197,7 @@ async def main() -> None:
                 # Check vector completeness across sample points
                 try:
                     # scroll() returns tuple[list[Record], Union[int, str, PointId, None]]
-                    scroll_result: Tuple[List[Record], Any] = await client.scroll(
+                    scroll_result: tuple[list[Record], Any] = await client.scroll(
                         limit=5,
                         with_vectors=True,
                     )
@@ -200,7 +208,12 @@ async def main() -> None:
 
                     for sample_point in records:
                         # sample_point.vector can be various types, handle as dict for named vectors
-                        vectors_dict = cast(Dict[str, Any], sample_point.vector if isinstance(sample_point.vector, dict) else {})
+                        vectors_dict = cast(
+                            dict[str, Any],
+                            sample_point.vector
+                            if isinstance(sample_point.vector, dict)
+                            else {},
+                        )
                         vector_count = len(vectors_dict) if vectors_dict else 0
                         has_character_images = "character_image_vector" in vectors_dict
 
@@ -234,10 +247,9 @@ async def main() -> None:
 
             traceback.print_exc()
 
-
     finally:
         await async_qdrant_client.close()
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-

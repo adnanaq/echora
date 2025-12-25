@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import cast
 
 from .base import TextEmbeddingModel
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class HuggingFaceModel(TextEmbeddingModel):
     """HuggingFace implementation of TextEmbeddingModel."""
 
-    def __init__(self, model_name: str, cache_dir: Optional[str] = None):
+    def __init__(self, model_name: str, cache_dir: str | None = None):
         """Initialize HuggingFace model.
 
         Args:
@@ -21,10 +21,12 @@ class HuggingFaceModel(TextEmbeddingModel):
             from transformers import AutoModel, AutoTokenizer
 
             self._model_name = model_name
-            
+
             # Load model and tokenizer
             self.model = AutoModel.from_pretrained(model_name, cache_dir=cache_dir)
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name, cache_dir=cache_dir
+            )
 
             # Set device
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -36,7 +38,7 @@ class HuggingFaceModel(TextEmbeddingModel):
 
             # Get max length
             self._max_length = min(self.tokenizer.model_max_length, 512)
-            
+
             logger.info(f"Initialized HuggingFace model: {model_name} on {self.device}")
 
         except ImportError as e:
@@ -45,7 +47,7 @@ class HuggingFaceModel(TextEmbeddingModel):
             )
             raise ImportError("HuggingFace dependencies missing") from e
 
-    def encode(self, texts: List[str]) -> List[List[float]]:
+    def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode a list of texts into embeddings.
 
         Args:
@@ -77,9 +79,9 @@ class HuggingFaceModel(TextEmbeddingModel):
 
                 # Normalize
                 embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
-                
+
                 # Convert to list of lists
-                return cast(List[List[float]], embeddings.cpu().numpy().tolist())
+                return cast(list[list[float]], embeddings.cpu().numpy().tolist())
 
         except Exception as e:
             logger.error(f"HuggingFace encoding failed: {e}")

@@ -14,7 +14,7 @@ from vector_processing.utils.image_downloader import ImageDownloader
 async def text_processor(settings):
     """Create TextProcessor for integration tests."""
     from vector_processing import TextProcessor
-    
+
     # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings)
     return TextProcessor(model=text_model, settings=settings)
@@ -24,7 +24,7 @@ async def text_processor(settings):
 async def vision_processor(settings):
     """Create VisionProcessor for integration tests."""
     from vector_processing import VisionProcessor
-    
+
     # Create vision model and downloader using factory
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     downloader = ImageDownloader(settings.model_cache_dir)
