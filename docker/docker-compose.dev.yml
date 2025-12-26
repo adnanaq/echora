@@ -53,10 +53,12 @@ services:
     ports:
       - "8002:8002"
     environment:
+      # Environment (enables development mode: debug=True, log_level=DEBUG)
+      - APP_ENV=development
+
       # Vector Service Configuration
       - VECTOR_SERVICE_HOST=0.0.0.0
       - VECTOR_SERVICE_PORT=8002
-      - DEBUG=false
 
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
@@ -82,9 +84,6 @@ services:
       - API_VERSION=1.0.0
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
-
-      # Logging
-      - LOG_LEVEL=INFO
 
       # HTTP Cache Configuration
       - ENABLE_HTTP_CACHE=true
