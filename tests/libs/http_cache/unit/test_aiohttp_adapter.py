@@ -662,8 +662,8 @@ class TestCachedAiohttpSession:
             """
             Yield a single bytes chunk "test" to simulate a synchronous response body stream.
 
-            Returns:
-                iterator (Iterator[bytes]): An iterator that yields a single `bytes` object `b"test"`.
+            Yields:
+                bytes: A single bytes object b"test".
             """
             yield b"test"
 
@@ -1027,8 +1027,8 @@ class TestCachedAiohttpSession:
             Parameters:
                 data (bytes): Byte sequence to be yielded by the async iterator.
 
-            Returns:
-                An async iterator that yields the provided `data` a single time.
+            Yields:
+                bytes: The provided `data` byte sequence.
             """
             yield data
 

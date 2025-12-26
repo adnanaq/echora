@@ -4,7 +4,6 @@ import os
 from unittest.mock import patch
 
 import pytest
-
 from common.config.settings import Environment, Settings
 
 pytestmark = pytest.mark.integration

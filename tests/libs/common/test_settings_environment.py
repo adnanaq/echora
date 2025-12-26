@@ -3,9 +3,8 @@
 import os
 from unittest.mock import patch
 
-import pytest # Added import for pytest
-
-from common.config.settings import Environment, get_environment
+import pytest  # Added import for pytest
+from common.config.settings import Environment, Settings, get_environment
 
 
 class TestEnvironmentEnum:
@@ -51,9 +50,6 @@ class TestGetEnvironment:
     def test_case_insensitive(self):
         with patch.dict(os.environ, {"APP_ENV": "PRODUCTION"}):
             assert get_environment() == Environment.PRODUCTION
-
-
-from common.config.settings import Settings
 
 
 class TestSettingsEnvironmentField:
