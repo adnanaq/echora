@@ -699,30 +699,31 @@ class TestCachedAiohttpSession:
         mock_storage.create_entry.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_request_cache_hit_headers_exception_fallback(self, mock_storage):
-        """Test _request cache hit with Headers that trigger exception (lines 243-247)."""
+    async def test_request_cache_hit_with_hishel_headers(self, mock_storage):
+        """Test _request cache hit with real Hishel Headers object using public API."""
         from hishel import Headers
 
         async def mock_stream():
             """
-            Yield a single bytes payload representing a JSON-encoded exception object.
+            Yield a single bytes payload representing a JSON response.
 
             Yields:
-                bytes: The JSON-encoded byte string b'{"exception": "test"}'.
+                bytes: The JSON-encoded byte string b'{"test": "data"}'.
             """
-            yield b'{"exception": "test"}'
+            yield b'{"test": "data"}'
 
-        # Create Headers with _headers that will cause exception during iteration
-        mock_headers = Headers({"Content-Type": "application/json"})
-        # Mock _headers to raise exception during iteration
-        mock_headers._headers = MagicMock()
-        mock_headers._headers.__iter__ = MagicMock(
-            side_effect=ValueError("Test exception")
+        # Create real Hishel Headers object - test public API conversion
+        headers = Headers(
+            {
+                "Content-Type": "application/json",
+                "Cache-Control": "max-age=3600",
+                "X-Custom-Header": "test-value",
+            }
         )
 
         mock_hishel_response = MagicMock()
         mock_hishel_response.status_code = 200
-        mock_hishel_response.headers = mock_headers
+        mock_hishel_response.headers = headers
         mock_hishel_response.stream = mock_stream()
 
         mock_entry = MagicMock()
@@ -735,12 +736,15 @@ class TestCachedAiohttpSession:
             storage=mock_storage, session=mock_session
         )
 
-        # Execute request - should trigger exception fallback
+        # Execute request - should convert Headers using public API
         result = await cached_session._request("GET", "https://example.com/api")
 
-        # Verify fallback handled exception and returned response
+        # Verify Headers converted correctly via dict() public API
         assert result.status == 200
         assert result.from_cache is True
+        assert "content-type" in result.headers
+        assert "cache-control" in result.headers
+        assert "x-custom-header" in result.headers
 
     @pytest.mark.asyncio
     async def test_store_response_factory_yield(self, mock_storage):
@@ -811,8 +815,8 @@ class TestCachedAiohttpSession:
         assert b"".join(chunks) == body_data
 
     @pytest.mark.asyncio
-    async def test_request_cache_hit_headers_list_extraction(self, mock_storage):
-        """Test _request cache hit with Headers._headers as list (lines 243-244)."""
+    async def test_request_cache_hit_with_multi_value_headers(self, mock_storage):
+        """Test _request cache hit with Headers containing multi-value fields."""
         from hishel import Headers
 
         async def mock_stream():
@@ -820,22 +824,24 @@ class TestCachedAiohttpSession:
             Yield a single bytes chunk containing a JSON-like payload.
 
             Returns:
-                bytes: A bytes object containing the JSON payload b'{"headers": "list"}'.
+                bytes: A bytes object containing the JSON payload b'{"headers": "multivalue"}'.
             """
-            yield b'{"headers": "list"}'
+            yield b'{"headers": "multivalue"}'
 
-        # Create Headers and manually set _headers to a list structure
-        mock_headers = Headers({"Content-Type": "application/json"})
-        # Simulate Hishel's internal list-based structure
-        mock_headers._headers = [
-            ["Content-Type", "application/json"],
-            ["Content-Length", "123"],
-            ("Cache-Control", "max-age=3600"),  # Also test tuple format
-        ]
+        # Create Headers with multi-value fields (e.g., Set-Cookie)
+        # Hishel's public API handles this correctly
+        headers = Headers(
+            {
+                "Content-Type": "application/json",
+                "Content-Length": "123",
+                "Cache-Control": "max-age=3600",
+                "Set-Cookie": ["session=abc123", "user=john"],  # Multi-value header
+            }
+        )
 
         mock_hishel_response = MagicMock()
         mock_hishel_response.status_code = 200
-        mock_hishel_response.headers = mock_headers
+        mock_hishel_response.headers = headers
         mock_hishel_response.stream = mock_stream()
 
         mock_entry = MagicMock()
@@ -848,14 +854,17 @@ class TestCachedAiohttpSession:
             storage=mock_storage, session=mock_session
         )
 
-        # Execute request - should extract headers from list structure
+        # Execute request - should convert multi-value headers correctly
         result = await cached_session._request("GET", "https://example.com/api")
 
-        # Verify headers were extracted successfully
+        # Verify headers were converted successfully via public API
         assert result.status == 200
         assert result.from_cache is True
-        assert "Content-Type" in result.headers
-        assert "Cache-Control" in result.headers
+        assert "content-type" in result.headers
+        assert "cache-control" in result.headers
+        assert (
+            "set-cookie" in result.headers
+        )  # Multi-value converted to comma-separated
 
     @pytest.mark.asyncio
     async def test_get_requests_with_different_params_should_not_collide(
