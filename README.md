@@ -215,9 +215,52 @@ docker compose up -d qdrant
 
 ## 🔧 Configuration
 
+### Environment Detection
+
+The service supports environment-aware configuration with automatic production safety overrides:
+
+```bash
+# Development (default) - debug enabled, verbose logging
+APP_ENV=development
+
+# Staging - debug enabled, moderate logging, WAL enabled
+APP_ENV=staging  # or stage
+
+# Production - ENFORCED safety settings
+APP_ENV=production  # or prod
+```
+
+**Environment-Specific Overrides:**
+
+| Setting | Development | Staging | Production |
+|---------|------------|---------|------------|
+| `debug` | `True` | `True` | **`False` (enforced)** |
+| `log_level` | `DEBUG` | `INFO` | **`WARNING` (enforced)** |
+| `qdrant_enable_wal` | default | `True` | **`True` (enforced)** |
+| `model_warm_up` | default | default | **`True` (enforced)** |
+
+⚠️ **Production Safety**: Production mode **enforces** critical settings even if misconfigured in `.env` to prevent accidental debug mode or verbose logging in production.
+
+**Docker Deployment:**
+```dockerfile
+ENV APP_ENV=production
+```
+
+**Kubernetes Deployment:**
+```yaml
+env:
+  - name: APP_ENV
+    value: "production"
+```
+
+### Application Settings
+
 Create a `.env` file or set environment variables:
 
 ```env
+# Environment (optional, defaults to development)
+APP_ENV=development
+
 # Service
 VECTOR_SERVICE_HOST=0.0.0.0
 VECTOR_SERVICE_PORT=8002

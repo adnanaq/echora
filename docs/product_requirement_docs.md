@@ -274,7 +274,6 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 **Technical Requirements**:
 
-- LoRA (Low-Rank Adaptation) fine-tuning support
 - Model versioning and rollback capabilities
 - Distributed training infrastructure
 - Performance monitoring for custom models
