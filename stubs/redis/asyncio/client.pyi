@@ -143,7 +143,7 @@ class Redis:
         """Close the connection."""
         ...
 
-    async def __aenter__(self) -> Redis:
+    async def __aenter__(self) -> Self:
         """Enter async context manager."""
         ...
 

@@ -537,8 +537,8 @@ class TestCachedAiohttpSession:
             """
             Asynchronous generator that yields a single JSON-encoded byte chunk.
 
-            Returns:
-                An asynchronous iterator that yields one `bytes` object containing a JSON document (b'{"data": "test"}').
+            Yields:
+                bytes: A bytes object containing a JSON document (b'{"data": "test"}').
             """
             yield b'{"data": "test"}'
 
@@ -623,8 +623,8 @@ class TestCachedAiohttpSession:
             """
             Async generator that yields a single JSON-encoded bytes chunk representing a simple header-like object.
 
-            Returns:
-                An async iterator that yields one `bytes` value: the JSON-encoded representation of {"dict": "headers"}.
+            Yields:
+                bytes: The JSON-encoded representation of {"dict": "headers"}.
             """
             yield b'{"dict": "headers"}'
 
@@ -823,7 +823,7 @@ class TestCachedAiohttpSession:
             """
             Yield a single bytes chunk containing a JSON-like payload.
 
-            Returns:
+            Yields:
                 bytes: A bytes object containing the JSON payload b'{"headers": "multivalue"}'.
             """
             yield b'{"headers": "multivalue"}'
@@ -862,9 +862,9 @@ class TestCachedAiohttpSession:
         assert result.from_cache is True
         assert "content-type" in result.headers
         assert "cache-control" in result.headers
-        assert (
-            "set-cookie" in result.headers
-        )  # Multi-value converted to comma-separated
+        # Verify multi-value header is converted to comma-separated string
+        assert "set-cookie" in result.headers
+        assert result.headers["set-cookie"] == "session=abc123, user=john"
 
     @pytest.mark.asyncio
     async def test_get_requests_with_different_params_should_not_collide(
