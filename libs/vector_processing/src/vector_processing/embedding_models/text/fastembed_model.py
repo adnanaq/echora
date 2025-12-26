@@ -36,7 +36,9 @@ class FastEmbedModel(TextEmbeddingModel):
             logger.info(f"Initialized FastEmbed model: {model_name}")
 
         except ImportError as e:
-            logger.error("FastEmbed not installed. Install with: pip install fastembed")
+            logger.exception(
+                "FastEmbed not installed. Install with: pip install fastembed"
+            )
             raise ImportError("FastEmbed dependencies missing") from e
 
     def encode(self, texts: list[str]) -> list[list[float]]:
@@ -56,15 +58,7 @@ class FastEmbedModel(TextEmbeddingModel):
 
         except Exception:
             logger.exception("FastEmbed encoding failed")
-            # Return empty list or raise? Base class contract implies returning list of lists.
-            # If batch fails, we might want to raise to let caller handle it,
-            # or return empty list if that's the expected behavior for failure.
-            # Given the original code returned None for single text failure,
-            # but here we are processing a batch.
-            # Let's raise to be safe, or return empty list.
-            # The original encode_texts_batch returned [None] * len(texts) on failure.
-            # But the base class signature is List[List[float]].
-            # Let's raise for now as it's a fundamental failure.
+            # Re-raise to let caller handle encoding failures
             raise
 
     @property

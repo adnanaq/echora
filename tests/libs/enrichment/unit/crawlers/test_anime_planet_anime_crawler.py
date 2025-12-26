@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
+
 from enrichment.crawlers.anime_planet_anime_crawler import (
     _determine_season_from_date,
     _extract_json_ld,

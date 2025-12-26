@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 import pytest
 from crawl4ai import CrawlResult
 from crawl4ai.models import CrawlResultContainer
+
 from enrichment.crawlers.anime_planet_character_crawler import (
     _extract_slug_from_characters_url,
     _extract_voice_actors,

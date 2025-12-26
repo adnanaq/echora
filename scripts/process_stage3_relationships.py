@@ -107,7 +107,7 @@ def route_to_title(route: str) -> str:
 
 def process_jikan_relations(
     jikan_data: dict[str, Any],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Process Jikan relations data (primary source).
     Returns (related_anime, relations) tuples.
@@ -137,7 +137,9 @@ def process_jikan_relations(
     return related_anime, relations
 
 
-def process_animeplanet_relations(animeplanet_data: dict[str, Any]) -> list[dict]:
+def process_animeplanet_relations(
+    animeplanet_data: dict[str, Any],
+) -> list[dict[str, Any]]:
     """
     Process AnimePlanet relations (co-primary source).
     """
@@ -164,7 +166,9 @@ def process_animeplanet_relations(animeplanet_data: dict[str, Any]) -> list[dict
     return related_anime
 
 
-def process_animeschedule_relations(animeschedule_data: dict[str, Any]) -> list[dict]:
+def process_animeschedule_relations(
+    animeschedule_data: dict[str, Any],
+) -> list[dict[str, Any]]:
     """
     Process AnimSchedule relations (supplementary).
     """
@@ -207,7 +211,7 @@ def map_anilist_relationship(relation_type: str) -> str:
 
 def process_anilist_relations(
     anilist_data: dict[str, Any],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Process AniList relations data.
     Returns (related_anime, relations) tuples.
@@ -241,7 +245,7 @@ def process_anilist_relations(
     return related_anime, relations
 
 
-def process_anidb_relations(_anidb_data: dict[str, Any]) -> list[dict]:
+def process_anidb_relations(_anidb_data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Process AniDB relations data (if available).
     Note: AniDB doesn't typically have explicit relations in the API response.
@@ -277,7 +281,7 @@ def extract_current_anime_related_urls(current_anime_file: str) -> list[str]:
 
 def process_offline_urls(
     offline_urls: list[str], existing_urls: set[str], existing_mal_base_urls: set[str]
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Process offline URLs data according to Stage 3 prompt requirements.
 
@@ -413,7 +417,7 @@ def infer_relationship_from_url(url: str) -> str:
         return "Other"
 
 
-def deduplicate_by_url(all_relations: list[dict]) -> list[dict]:
+def deduplicate_by_url(all_relations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Deduplicate relations using URL-based strategy with priority hierarchy.
     Priority: Jikan > AnimePlanet > AnimSchedule > Offline URLs

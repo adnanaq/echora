@@ -318,8 +318,7 @@ class TestAgentIDRaceConditions:
         # Expected: [3, 5, 6] (fills gap 3, then continues from 4)
         expected_ids = [3, 5, 6]
         assert new_agent_ids == expected_ids, (
-            f"Gap-filling failed under concurrent load. "
-            f"Expected {expected_ids}, got {new_agent_ids}"
+            f"Gap-filling failed under concurrent load. Expected {expected_ids}, got {new_agent_ids}"
         )
 
         # Verify no duplicate IDs across all agents

@@ -32,10 +32,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 def load_offline_database(current_anime_file: str) -> dict[str, Any]:
     """Load offline database entry as foundation."""
     try:
-        with open(current_anime_file) as f:
+        with open(current_anime_file, encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
-        print(f"Error loading offline database: {e}")
+    except FileNotFoundError as e:
+        print(f"Error: Could not find offline database: {e}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"Error: Malformed JSON in offline database: {e}")
+        return {}
+    except OSError as e:
+        print(f"Error: Could not load offline database: {e}")
         return {}
 
 
@@ -55,11 +61,17 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path) as f:
+            with open(file_path, encoding="utf-8") as f:
                 sources[source_name] = json.load(f)
                 print(f"Loaded {source_name} data")
-        except Exception as e:
-            print(f"Warning: Could not load {source_name}: {e}")
+        except FileNotFoundError as e:
+            print(f"Warning: Could not find {source_name} data: {e}")
+            sources[source_name] = {}
+        except json.JSONDecodeError as e:
+            print(f"Warning: Malformed JSON in {source_name} data: {e}")
+            sources[source_name] = {}
+        except OSError as e:
+            print(f"Warning: Could not load {source_name} data: {e}")
             sources[source_name] = {}
 
     return sources

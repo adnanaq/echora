@@ -3,7 +3,7 @@
 Extended to accept bytes for hset method parameters, matching actual runtime behavior.
 """
 
-from typing import Any, Awaitable
+from typing import Any
 
 class Redis:
     """Redis async client with extended type hints for bytes support."""
@@ -13,7 +13,7 @@ class Redis:
         cls,
         url: str,
         **kwargs: Any,
-    ) -> "Redis":
+    ) -> Redis:
         """Create Redis client from URL."""
         ...
 

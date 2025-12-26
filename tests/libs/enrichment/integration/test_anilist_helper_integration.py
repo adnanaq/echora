@@ -13,6 +13,7 @@ import logging
 import pytest
 import pytest_asyncio
 import redis
+
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
 # Mark all tests in this module as integration tests

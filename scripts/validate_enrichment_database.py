@@ -35,18 +35,20 @@ try:
     )
     from pydantic import ValidationError as _ValidationError
 
+    PYDANTIC_AVAILABLE = True
     AnimeEntry: type[_AnimeEntry] | None = _AnimeEntry
     CharacterEntry: type[_CharacterEntry] | None = _CharacterEntry
     SimpleVoiceActor: type[_SimpleVoiceActor] | None = _SimpleVoiceActor
-    ValidationError: type[_ValidationError] | type[Exception] = _ValidationError
+    ValidationError: type[_ValidationError] | None = _ValidationError
 except ImportError:
     print(
         "Warning: Could not import Pydantic models. Schema validation will be limited."
     )
+    PYDANTIC_AVAILABLE = False
     AnimeEntry = None
     CharacterEntry = None
     SimpleVoiceActor = None
-    ValidationError = Exception
+    ValidationError = None
 
 # Configure logging
 logging.basicConfig(
@@ -509,7 +511,7 @@ class EnrichmentValidator:
         issues = []
 
         # Skip schema validation if Pydantic models are not available
-        if AnimeEntry is None or ValidationError is Exception:
+        if not PYDANTIC_AVAILABLE or AnimeEntry is None or ValidationError is None:
             return issues
 
         try:
@@ -748,12 +750,12 @@ class EnrichmentValidator:
                     )
 
                 # Remove empty collections
-                for field in [
+                for field in {
                     "name_variations",
                     "nicknames",
                     "images",
                     "character_traits",
-                ]:
+                }:
                     if (
                         field in char
                         and isinstance(char[field], list)

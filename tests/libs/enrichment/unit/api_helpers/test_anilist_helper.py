@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
 
@@ -1312,8 +1313,9 @@ class TestAniListEnrichmentHelperCacheIntegration:
     @pytest.mark.asyncio
     async def test_anilist_helper_uses_cache_manager(self, mocker):
         """Test that AniListEnrichmentHelper uses centralized cache manager."""
-        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
         from http_cache.instance import http_cache_manager
+
+        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 
         # Create proper mock response
         mock_response = AsyncMock()

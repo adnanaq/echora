@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
+
 from enrichment.crawlers.anisearch_anime_crawler import (
     BASE_ANIME_URL,
     _fetch_and_process_sub_page,

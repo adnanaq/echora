@@ -85,15 +85,17 @@ class Entry:
 
     id: uuid.UUID
     request: Request
-    response: Response
+    response: Response | None
     meta: EntryMeta
+    cache_key: bytes
 
     def __init__(
         self,
         id: uuid.UUID,
         request: Request,
-        response: Response,
+        response: Response | None,
         meta: EntryMeta,
+        cache_key: bytes,
     ) -> None:
         """
         Initialize a cache entry.
@@ -101,8 +103,9 @@ class Entry:
         Parameters:
             id (uuid.UUID): Unique identifier for the entry.
             request (Request): The cached request.
-            response (Response): The cached response.
+            response (Response | None): The cached response, or None if missing.
             meta (EntryMeta): Entry metadata including timestamps.
+            cache_key (bytes): Byte sequence used as the cache lookup key.
         """
         ...
 

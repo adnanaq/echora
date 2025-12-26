@@ -4,14 +4,15 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+from http_cache import result_cache
+from redis import exceptions
+from redis.asyncio import Redis
+
 from enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from enrichment.crawlers.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
 from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
-from http_cache import result_cache
-from redis import exceptions
-from redis.asyncio import Redis
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration

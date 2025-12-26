@@ -233,7 +233,7 @@ async def test_update_batch_vectors_mixed(
 
 
 @pytest.mark.asyncio
-async def test_update_batch_vectors_empty(client: QdrantClient, embedding_manager):
+async def test_update_batch_vectors_empty(client: QdrantClient):
     """Test batch update with empty list."""
     result = await client.update_batch_vectors([])
 
@@ -1194,9 +1194,7 @@ async def test_update_batch_anime_vectors_handles_generation_failures(
 
 
 @pytest.mark.asyncio
-async def test_update_batch_anime_vectors_empty_list(
-    client: QdrantClient, embedding_manager
-):
+async def test_update_batch_anime_vectors_empty_list(client: QdrantClient):
     """Test handling of empty updates list."""
     result = await client.update_batch_vectors([])
 
@@ -1266,7 +1264,7 @@ async def test_update_single_anime_vector_success(
 
 @pytest.mark.asyncio
 async def test_update_single_anime_vector_invalid_vector_name(
-    client: QdrantClient, embedding_manager, settings
+    client: QdrantClient, embedding_manager
 ):
     """Test that invalid vector name is rejected by validation."""
     anime = create_test_anime(anime_id="single-anime-2")

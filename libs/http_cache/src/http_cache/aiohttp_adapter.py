@@ -322,7 +322,9 @@ class CachedAiohttpSession:
                                 headers_dict[key] = value
                     except (ValueError, TypeError):
                         # Fallback: headers might be already a dict
-                        headers_dict = dict(entry.response.headers._headers)  # _headers is private multidict format
+                        headers_dict = dict(
+                            entry.response.headers._headers
+                        )  # _headers is private multidict format
                 else:
                     headers_dict = entry.response.headers
 

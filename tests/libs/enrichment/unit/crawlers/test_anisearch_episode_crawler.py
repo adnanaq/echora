@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
+
 from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
 
 # --- Tests for fetch_anisearch_episodes() function ---

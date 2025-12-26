@@ -14,7 +14,6 @@ Enhanced with AniDB-specific optimizations:
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,9 +22,7 @@ from enrichment.ai_character_matcher import (
     process_characters_with_ai_matching,
 )
 
-# Add project root to path for imports (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 # Configure logging
 logging.basicConfig(
@@ -223,8 +220,8 @@ def load_working_file(file_path: Path) -> list[dict[str, Any]]:
     try:
         with open(file_path, encoding="utf-8") as f:
             return json.load(f)
-    except (OSError, FileNotFoundError, json.JSONDecodeError):
-        logger.exception(f"Failed to load working file {file_path}")
+    except (OSError, json.JSONDecodeError):
+        logger.warning(f"Failed to load working file {file_path}")
         return []
 
 

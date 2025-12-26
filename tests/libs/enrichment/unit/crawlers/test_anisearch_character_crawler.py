@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
+
 from enrichment.crawlers.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
