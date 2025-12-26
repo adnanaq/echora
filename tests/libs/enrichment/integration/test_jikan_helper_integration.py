@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 import redis
+
 from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
 # Mark all tests in this module as integration tests
@@ -59,7 +60,7 @@ async def clean_cache_manager():
     import asyncio
     import logging
 
-    from http_cache.manager import http_cache_manager
+    from http_cache.instance import http_cache_manager
 
     logger = logging.getLogger(__name__)
     logger.info(
@@ -74,11 +75,11 @@ async def clean_cache_manager():
         try:
             await http_cache_manager._async_redis_client.aclose()
             logger.info("[clean_cache_manager] Closed old client with aclose()")
-        except Exception:
+        except (ConnectionError, RuntimeError, OSError, AttributeError):
             try:
                 await http_cache_manager._async_redis_client.close()
                 logger.info("[clean_cache_manager] Closed old client with close()")
-            except Exception as e:
+            except (ConnectionError, RuntimeError, OSError, AttributeError) as e:
                 logger.warning(f"[clean_cache_manager] Failed to close: {e}")
 
     # Reinitialize Redis storage for current event loop
