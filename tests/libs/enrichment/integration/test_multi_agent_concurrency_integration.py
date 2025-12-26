@@ -322,7 +322,7 @@ class TestAgentIDRaceConditions:
         )
 
         # Verify no duplicate IDs across all agents
-        all_agent_ids = [1, 2, 4] + new_agent_ids
+        all_agent_ids = [1, 2, 4, *new_agent_ids]
         assert len(all_agent_ids) == len(set(all_agent_ids)), (
             f"Duplicate agent IDs detected: {all_agent_ids}"
         )

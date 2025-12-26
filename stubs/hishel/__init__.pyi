@@ -4,110 +4,14 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-# Core data models (public API)
-class Request:
-    """HTTP request representation for cache operations."""
-
-    url: str
-    method: str
-    headers: dict[str, str]
-    content: bytes
-    metadata: dict[str, Any]
-
-    def __init__(
-        self,
-        url: str,
-        method: str,
-        headers: dict[str, str],
-        content: bytes,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Initialize an HTTP request for caching.
-
-        Parameters:
-            url (str): The request URL.
-            method (str): The HTTP method (GET, POST, etc.).
-            headers (Dict[str, str]): Request headers.
-            content (bytes): Request body content.
-            metadata (Optional[Dict[str, Any]]): Additional metadata (e.g., hishel_ttl).
-        """
-        ...
-
-class Response:
-    """HTTP response representation for cache operations."""
-
-    status: int
-    headers: dict[str, str]
-    content: bytes
-    metadata: dict[str, Any]
-
-    def __init__(
-        self,
-        status: int,
-        headers: dict[str, str],
-        content: bytes,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Initialize an HTTP response for caching.
-
-        Parameters:
-            status (int): HTTP status code.
-            headers (Dict[str, str]): Response headers.
-            content (bytes): Response body content.
-            metadata (Optional[Dict[str, Any]]): Additional metadata.
-        """
-        ...
-
-class EntryMeta:
-    """Metadata for cache entry."""
-
-    created_at: float
-    expires_at: float | None
-
-    def __init__(
-        self,
-        created_at: float,
-        expires_at: float | None = None,
-    ) -> None:
-        """
-        Initialize entry metadata.
-
-        Parameters:
-            created_at (float): Timestamp when entry was created.
-            expires_at (Optional[float]): Optional expiration timestamp.
-        """
-        ...
-
-class Entry:
-    """Cache entry containing request, response, and metadata."""
-
-    id: uuid.UUID
-    request: Request
-    response: Response | None
-    meta: EntryMeta
-    cache_key: bytes
-
-    def __init__(
-        self,
-        id: uuid.UUID,
-        request: Request,
-        response: Response | None,
-        meta: EntryMeta,
-        cache_key: bytes,
-    ) -> None:
-        """
-        Initialize a cache entry.
-
-        Parameters:
-            id (uuid.UUID): Unique identifier for the entry.
-            request (Request): The cached request.
-            response (Response | None): The cached response, or None if missing.
-            meta (EntryMeta): Entry metadata including timestamps.
-            cache_key (bytes): Byte sequence used as the cache lookup key.
-        """
-        ...
+# Re-export core data models from internal modules (matches hishel/__init__.py structure)
+from hishel._core._headers import Headers as Headers
+from hishel._core.models import (
+    Entry as Entry,
+    EntryMeta as EntryMeta,
+    Request as Request,
+    Response as Response,
+)
 
 # Storage base classes (public API)
 #

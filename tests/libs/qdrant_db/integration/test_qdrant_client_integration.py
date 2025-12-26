@@ -134,7 +134,7 @@ async def test_update_single_vector(
 
 @pytest.mark.asyncio
 async def test_update_single_vector_invalid_name(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeEntry]
 ):
     """Test updating with invalid vector name."""
     anime = seeded_test_data[0]
@@ -396,7 +396,7 @@ async def test_update_batch_vectors_with_failures(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_all_validation_failures(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeEntry]
 ):
     """Test batch update when all updates fail validation."""
     anime = seeded_test_data[0]
@@ -536,7 +536,7 @@ async def test_update_batch_vectors_multiple_anime_mixed_results(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_dimension_validation(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeEntry]
 ):
     """Test batch update validates vector dimensions correctly."""
     anime = seeded_test_data[0]
@@ -577,7 +577,7 @@ async def test_update_batch_vectors_dimension_validation(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_invalid_data_types(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeEntry]
 ):
     """Test batch update rejects invalid data types."""
     anime = seeded_test_data[0]

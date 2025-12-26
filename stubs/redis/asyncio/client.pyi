@@ -5,6 +5,40 @@ Extended to accept bytes for hset method parameters, matching actual runtime beh
 
 from typing import Any
 
+class Pipeline:
+    """Redis pipeline for batched operations."""
+
+    def hset(
+        self,
+        name: str | bytes,
+        key: str | bytes | None = None,
+        value: str | bytes | None = None,
+        mapping: dict[str | bytes, str | bytes] | None = None,
+        items: list[Any] | None = None,
+    ) -> Pipeline:
+        """Set field in hash to value. Returns self for chaining."""
+        ...
+
+    def sadd(self, name: str | bytes, *values: str | bytes) -> Pipeline:
+        """Add members to a set. Returns self for chaining."""
+        ...
+
+    def srem(self, name: str | bytes, *values: str | bytes) -> Pipeline:
+        """Remove members from a set. Returns self for chaining."""
+        ...
+
+    def expire(self, name: str | bytes, time: int) -> Pipeline:
+        """Set a timeout on key. Returns self for chaining."""
+        ...
+
+    def delete(self, *names: str | bytes) -> Pipeline:
+        """Delete one or more keys. Returns self for chaining."""
+        ...
+
+    async def execute(self) -> list[Any]:
+        """Execute all commands in the pipeline."""
+        ...
+
 class Redis:
     """Redis async client with extended type hints for bytes support."""
 
@@ -44,7 +78,7 @@ class Redis:
         """
         ...
 
-    def pipeline(self, transaction: bool = True, shard_hint: Any | None = None) -> Any:
+    def pipeline(self, transaction: bool = True, shard_hint: Any | None = None) -> Pipeline:
         """Create a pipeline for atomic operations."""
         ...
 

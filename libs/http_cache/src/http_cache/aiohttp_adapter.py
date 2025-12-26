@@ -370,7 +370,7 @@ class CachedAiohttpSession:
         Parameters:
             method (str): HTTP method (e.g., "GET", "POST").
             url (str): Request URL.
-            kwargs (Dict[str, Any]): Request keyword arguments; `json`, `params`, and `data`
+            kwargs (dict[str, Any]): Request keyword arguments; `json`, `params`, and `data`
                 values (when present) are included in a deterministic serialized form.
 
         Returns:

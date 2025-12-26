@@ -264,7 +264,7 @@ def extract_current_anime_related_urls(current_anime_file: str) -> list[str]:
     Following enrichment_instructions.md Step 3 requirements.
     """
     try:
-        with open(current_anime_file) as f:
+        with open(current_anime_file, encoding="utf-8") as f:
             current_anime = json.load(f)
 
         # Get related anime URLs from the current anime being processed
@@ -446,14 +446,14 @@ def deduplicate_by_url(all_relations: list[dict[str, Any]]) -> list[dict[str, An
 
             # Source priority: Jikan > AnimePlanet > AnimSchedule
             for entry in entries:
-                url = entry.get("url", "")
-                if "myanimelist.net" in url:  # Jikan source
+                entry_url = entry.get("url", "")
+                if "myanimelist.net" in entry_url:  # Jikan source
                     best_entry = entry
                     break
-                elif "anime-planet.com" in url:  # AnimePlanet source
+                elif "anime-planet.com" in entry_url:  # AnimePlanet source
                     best_entry = entry
                 elif (
-                    "animeschedule.net" in url
+                    "animeschedule.net" in entry_url
                     and "anime-planet.com" not in best_entry.get("url", "")
                 ):
                     best_entry = entry
@@ -473,19 +473,19 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
         temp_dir: Path to temp directory with data files (e.g., temp/One/)
     """
     # Load all data sources from the specified temp directory
-    with open(f"{temp_dir}/jikan.json") as f:
+    with open(f"{temp_dir}/jikan.json", encoding="utf-8") as f:
         jikan_data = json.load(f)
 
-    with open(f"{temp_dir}/anime_planet.json") as f:
+    with open(f"{temp_dir}/anime_planet.json", encoding="utf-8") as f:
         animeplanet_data = json.load(f)
 
-    with open(f"{temp_dir}/animeschedule.json") as f:
+    with open(f"{temp_dir}/animeschedule.json", encoding="utf-8") as f:
         animeschedule_data = json.load(f)
 
-    with open(f"{temp_dir}/anilist.json") as f:
+    with open(f"{temp_dir}/anilist.json", encoding="utf-8") as f:
         anilist_data = json.load(f)
 
-    with open(f"{temp_dir}/anidb.json") as f:
+    with open(f"{temp_dir}/anidb.json", encoding="utf-8") as f:
         anidb_data = json.load(f)
 
     print("Processing relationships from 6 sources...")
@@ -619,7 +619,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     # Write output
     output_file = f"{temp_dir}/stage3_relationships.json"
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
     print("Stage 3 processing complete:")

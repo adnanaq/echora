@@ -332,10 +332,6 @@ async def test_fetch_episodes_raises_on_wrong_result_type():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_returns_none_on_extraction_failure():
-    from unittest.mock import MagicMock
-
-    from crawl4ai import CrawlResult
-
     with patch(
         "enrichment.crawlers.anisearch_episode_crawler.AsyncWebCrawler"
     ) as MockCrawler:
