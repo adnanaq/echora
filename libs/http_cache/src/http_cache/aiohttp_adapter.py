@@ -477,6 +477,7 @@ class CachedAiohttpSession:
         if entry.response and entry.response.stream:
             stream = entry.response.stream
             if hasattr(stream, "__aiter__"):
+                # ty doesn't recognize Hishel's stream as AsyncIterable after hasattr check
                 async for _ in stream:  # ty: ignore[not-iterable]
                     pass  # Just consume, data already yielded from body_stream()
             else:
