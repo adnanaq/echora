@@ -3,6 +3,8 @@
 import os
 from unittest.mock import patch
 
+import pytest # Added import for pytest
+
 from common.config.settings import Environment, get_environment
 
 
@@ -25,11 +27,8 @@ class TestGetEnvironment:
     def test_raises_error_when_app_env_not_set(self):
         """Test that missing APP_ENV raises ValueError for production safety."""
         with patch.dict(os.environ, {}, clear=True):
-            try:
+            with pytest.raises(ValueError, match="APP_ENV environment variable must be set"):
                 get_environment()
-                assert False, "Expected ValueError to be raised"
-            except ValueError as e:
-                assert "APP_ENV environment variable must be set" in str(e)
 
     def test_detects_development(self):
         with patch.dict(os.environ, {"APP_ENV": "development"}):
@@ -46,11 +45,8 @@ class TestGetEnvironment:
     def test_raises_error_for_invalid_value(self):
         """Test that invalid APP_ENV values raise ValueError."""
         with patch.dict(os.environ, {"APP_ENV": "invalid"}):
-            try:
+            with pytest.raises(ValueError, match="Invalid APP_ENV value 'invalid'"):
                 get_environment()
-                assert False, "Expected ValueError to be raised"
-            except ValueError as e:
-                assert "Invalid APP_ENV value 'invalid'" in str(e)
 
     def test_case_insensitive(self):
         with patch.dict(os.environ, {"APP_ENV": "PRODUCTION"}):

@@ -742,9 +742,9 @@ class TestCachedAiohttpSession:
         # Verify Headers converted correctly via dict() public API
         assert result.status == 200
         assert result.from_cache is True
-        assert "content-type" in result.headers
-        assert "cache-control" in result.headers
-        assert "x-custom-header" in result.headers
+        assert result.headers["content-type"] == "application/json"
+        assert result.headers["cache-control"] == "max-age=3600"
+        assert result.headers["x-custom-header"] == "test-value"
 
     @pytest.mark.asyncio
     async def test_store_response_factory_yield(self, mock_storage):
