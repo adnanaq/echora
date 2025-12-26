@@ -18,7 +18,7 @@ from hishel._core.models import (
 # NOTE ON PARAMETER NAMING: id vs id_
 # - create_entry uses 'id_' (optional parameter, avoids shadowing Python builtin)
 # - update_entry and remove_entry use 'id' (required parameter, matches hishel runtime)
-# Verified via inspect.signature() against hishel 0.0.x library.
+# Verified against hishel v1.0 source code.
 # DO NOT change without verifying against actual hishel source.
 class SyncBaseStorage:
     """Base class for synchronous cache storage implementations."""

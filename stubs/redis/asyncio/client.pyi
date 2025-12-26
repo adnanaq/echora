@@ -3,7 +3,7 @@
 Extended to accept bytes for hset method parameters, matching actual runtime behavior.
 """
 
-from typing import Any
+from typing import Any, Self
 
 class Pipeline:
     """Redis pipeline for batched operations."""
@@ -47,7 +47,7 @@ class Redis:
         cls,
         url: str,
         **kwargs: Any,
-    ) -> Redis:
+    ) -> Self:
         """Create Redis client from URL."""
         ...
 
@@ -141,6 +141,19 @@ class Redis:
 
     async def close(self, close_connection_pool: bool = True) -> None:
         """Close the connection."""
+        ...
+
+    async def __aenter__(self) -> Redis:
+        """Enter async context manager."""
+        ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """Exit async context manager."""
         ...
 
     async def aclose(self) -> None:
