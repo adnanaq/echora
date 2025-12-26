@@ -290,9 +290,7 @@ class CachedAiohttpSession:
             # Redis SMEMBERS returns unordered results, so entries[0] may be stale
             entry = max(
                 entries,
-                key=lambda cached_entry: getattr(cached_entry.meta, "created_at", 0.0)
-                if cached_entry.meta
-                else 0.0,
+                key=lambda cached_entry: getattr(cached_entry.meta, "created_at", 0.0),
             )
             if entry.response:
                 # Read all chunks from cached stream
@@ -311,20 +309,9 @@ class CachedAiohttpSession:
 
                 # Extract headers - convert to simple dict
                 if isinstance(entry.response.headers, Headers):
-                    # Headers._headers is list-based with nested structure
-                    # Convert to dict (taking last value for duplicate keys)
-                    headers_dict: dict[str, str] = {}
-                    try:
-                        # Try direct iteration first
-                        for item in entry.response.headers._headers:
-                            if isinstance(item, list | tuple) and len(item) >= 2:
-                                key, value = item[0], item[1]
-                                headers_dict[key] = value
-                    except (ValueError, TypeError):
-                        # Fallback: headers might be already a dict
-                        headers_dict = dict(
-                            entry.response.headers._headers
-                        )  # _headers is private multidict format
+                    # Use public API: Headers implements MutableMapping
+                    # dict() constructor converts properly (handles multi-value headers)
+                    headers_dict: dict[str, str] = dict(entry.response.headers)
                 else:
                     headers_dict = entry.response.headers
 
