@@ -71,11 +71,8 @@ class TestSettingsEnvironmentField:
     def test_requires_app_env_to_be_set(self):
         """Test that Settings raises error when APP_ENV is not set."""
         with patch.dict(os.environ, {}, clear=True):
-            try:
+            with pytest.raises(ValueError, match="APP_ENV environment variable must be set"):
                 Settings()
-                assert False, "Expected ValueError to be raised"
-            except ValueError as e:
-                assert "APP_ENV environment variable must be set" in str(e)
 
     def test_respects_app_env(self):
         with patch.dict(os.environ, {"APP_ENV": "production"}):
