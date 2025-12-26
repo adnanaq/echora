@@ -83,17 +83,3 @@ class TestEnvironmentIntegration:
             with patch.dict(os.environ, {"APP_ENV": env_name}, clear=True):
                 settings = Settings()
                 assert settings.environment == expected_env
-
-    def test_environment_aliases(self):
-        """Verify prod and stage aliases work."""
-        # Test 'prod' alias
-        with patch.dict(os.environ, {"APP_ENV": "prod"}, clear=True):
-            settings = Settings()
-            assert settings.environment == Environment.PRODUCTION
-            assert settings.debug is False
-
-        # Test 'stage' alias
-        with patch.dict(os.environ, {"APP_ENV": "stage"}, clear=True):
-            settings = Settings()
-            assert settings.environment == Environment.STAGING
-            assert settings.log_level == "INFO"

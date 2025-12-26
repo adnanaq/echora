@@ -20,17 +20,32 @@ def get_environment() -> Environment:
     """Detect environment from APP_ENV variable.
 
     Returns:
-        Environment: Detected environment, defaults to DEVELOPMENT.
+        Environment: Detected environment based on APP_ENV.
+
+    Raises:
+        ValueError: If APP_ENV is not set or contains an invalid value.
     """
-    env_str = os.getenv("APP_ENV", "development").lower()
+    env_str = os.getenv("APP_ENV")
+    if not env_str:
+        raise ValueError(
+            "APP_ENV environment variable must be set to one of: "
+            "development, staging, production"
+        )
+
+    env_str = env_str.lower()
 
     match env_str:
-        case "production" | "prod":
+        case "production":
             return Environment.PRODUCTION
-        case "staging" | "stage":
+        case "staging":
             return Environment.STAGING
-        case _:
+        case "development":
             return Environment.DEVELOPMENT
+        case _:
+            raise ValueError(
+                f"Invalid APP_ENV value '{env_str}'. "
+                "Must be one of: development, staging, production"
+            )
 
 
 class Settings(BaseSettings):
@@ -391,29 +406,39 @@ class Settings(BaseSettings):
         self.apply_environment_settings()
 
     def apply_environment_settings(self) -> None:
-        """Enforce environment-specific settings.
+        """Apply environment-specific settings with smart defaults.
 
         DEVELOPMENT:
-            - debug=True, log_level=DEBUG
+            - Sets debug=True, log_level=DEBUG as defaults
+            - Respects user-provided values
 
         STAGING:
-            - debug=True, log_level=INFO, wal=True
+            - Sets debug=True, log_level=INFO, wal=True as defaults
+            - Respects user-provided values
 
         PRODUCTION (ENFORCED):
-            - debug=False, log_level=WARNING
-            - wal=True, model_warm_up=True
+            - ALWAYS enforces debug=False, log_level=WARNING
+            - ALWAYS enforces wal=True, model_warm_up=True
+            - Security: Cannot be bypassed by user configuration
         """
         if self.environment == Environment.DEVELOPMENT:
-            self.debug = True
-            self.log_level = "DEBUG"
+            # Apply defaults only if user didn't explicitly set values
+            if os.getenv("DEBUG") is None:
+                self.debug = True
+            if os.getenv("LOG_LEVEL") is None:
+                self.log_level = "DEBUG"
 
         elif self.environment == Environment.STAGING:
-            self.debug = True
-            self.log_level = "INFO"
-            self.qdrant_enable_wal = True
+            # Apply defaults only if user didn't explicitly set values
+            if os.getenv("DEBUG") is None:
+                self.debug = True
+            if os.getenv("LOG_LEVEL") is None:
+                self.log_level = "INFO"
+            if os.getenv("QDRANT_ENABLE_WAL") is None:
+                self.qdrant_enable_wal = True
 
         elif self.environment == Environment.PRODUCTION:
-            # ENFORCED - cannot be bypassed
+            # ENFORCED - cannot be bypassed (security feature)
             self.debug = False
             self.log_level = "WARNING"
             self.qdrant_enable_wal = True
