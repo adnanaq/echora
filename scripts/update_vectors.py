@@ -42,21 +42,21 @@ import logging
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.config import get_settings
 from common.models.anime import AnimeEntry
+from qdrant_client import AsyncQdrantClient
 from qdrant_db.client import QdrantClient
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from vector_processing.processors.text_processor import TextProcessor
 from vector_processing.processors.vision_processor import VisionProcessor
 from vector_processing.utils.image_downloader import ImageDownloader
-from vector_processing.embedding_models.factory import EmbeddingModelFactory
-from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Record
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -92,12 +92,12 @@ class VectorGenerationError(VectorUpdateError):
 async def update_vectors(
     client: QdrantClient,
     embedding_manager: MultiVectorEmbeddingManager,
-    vector_names: List[str],
-    anime_index: Optional[int] = None,
-    anime_title: Optional[str] = None,
+    vector_names: list[str],
+    anime_index: int | None = None,
+    anime_title: str | None = None,
     batch_size: int = 100,
     data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Update specific vectors for anime entries.
 
     This function now handles vector generation and calls the low-level
@@ -148,7 +148,7 @@ async def update_vectors(
         raise FileNotFoundError(f"Data file not found: {data_file}")
 
     logger.info(f"Loading anime data from {data_file}")
-    with open(data_file, "r") as f:
+    with open(data_file) as f:
         enrichment_data = json.load(f)
 
     anime_data = enrichment_data["data"]
@@ -186,7 +186,7 @@ async def update_vectors(
         logger.info(f"Processing all {len(target_anime)} anime")
 
     # Convert to AnimeEntry objects, adding UUIDs if missing
-    anime_entries: List[AnimeEntry] = []
+    anime_entries: list[AnimeEntry] = []
     for anime_dict in target_anime:
         if "id" not in anime_dict or not anime_dict["id"]:
             anime_dict["id"] = str(uuid.uuid4())
@@ -200,8 +200,8 @@ async def update_vectors(
     )
 
     # Process anime in batches to control memory usage
-    all_batch_results: List[Dict[str, Any]] = []
-    all_generation_failures: List[Dict[str, Any]] = []
+    all_batch_results: list[dict[str, Any]] = []
+    all_generation_failures: list[dict[str, Any]] = []
 
     for batch_num in range(num_batches):
         batch_start = batch_num * batch_size
@@ -224,8 +224,8 @@ async def update_vectors(
             )
 
         # Prepare updates for this batch
-        batch_updates: List[Dict[str, Any]] = []
-        batch_generation_failures: List[Dict[str, Any]] = []
+        batch_updates: list[dict[str, Any]] = []
+        batch_generation_failures: list[dict[str, Any]] = []
 
         for i, anime_entry in enumerate(batch_anime):
             gen_result = gen_results[i]
@@ -268,17 +268,19 @@ async def update_vectors(
 
     # Check if we got any results
     if not all_batch_results:
-        raise VectorGenerationError("No vectors were successfully generated for update.")
+        raise VectorGenerationError(
+            "No vectors were successfully generated for update."
+        )
 
     # Aggregate results from all batches
     total_successful = sum(r["success"] for r in all_batch_results)
     total_failed = sum(r["failed"] for r in all_batch_results)
-    combined_results: List[Dict[str, Any]] = []
+    combined_results: list[dict[str, Any]] = []
     for batch_result in all_batch_results:
         combined_results.extend(batch_result.get("results", []))
 
     # Create aggregated result
-    result = {
+    result: dict[str, Any] = {
         "success": total_successful,
         "failed": total_failed,
         "results": combined_results,
@@ -289,7 +291,7 @@ async def update_vectors(
 
     # Calculate per-vector statistics from results
     vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
-    for update_result in result["results"]:
+    for update_result in combined_results:
         vector_name = update_result["vector_name"]
         if vector_name in vector_stats:
             if update_result["success"]:
@@ -298,8 +300,8 @@ async def update_vectors(
                 vector_stats[vector_name]["failed"] += 1
 
     # Calculate per-anime success (all vectors must succeed)
-    anime_success_map: Dict[str, Dict[str, int]] = {}
-    for update_result in result["results"]:
+    anime_success_map: dict[str, dict[str, int]] = {}
+    for update_result in combined_results:
         anime_id = update_result["anime_id"]
         if anime_id not in anime_success_map:
             anime_success_map[anime_id] = {"total": 0, "success": 0}
@@ -308,9 +310,7 @@ async def update_vectors(
             anime_success_map[anime_id]["success"] += 1
 
     successful_anime = sum(
-        1
-        for stats in anime_success_map.values()
-        if stats["success"] == stats["total"]
+        1 for stats in anime_success_map.values() if stats["success"] == stats["total"]
     )
     failed_anime = total_anime - successful_anime
 
@@ -320,8 +320,8 @@ async def update_vectors(
     logger.info("=" * 80)
     logger.info(
         f"Anime Processing: {successful_anime}/{total_anime} successful "
-        f"({successful_anime/total_anime*100:.1f}%), "
-        f"{failed_anime} failed ({failed_anime/total_anime*100:.1f}%)"
+        f"({successful_anime / total_anime * 100:.1f}%), "
+        f"{failed_anime} failed ({failed_anime / total_anime * 100:.1f}%)"
     )
 
     logger.info(f"Vector Updates (Total: {result['total_requested_updates']}):")
@@ -333,9 +333,9 @@ async def update_vectors(
             f"  {vector_name}: {stats['success']}/{total} ({success_rate:.1f}%)"
         )
 
-    if result["generation_failures"] > 0:
+    if len(all_generation_failures) > 0:
         logger.warning(
-            f"Generation Failures: {result['generation_failures']} vectors failed to generate"
+            f"Generation Failures: {len(all_generation_failures)} vectors failed to generate"
         )
 
     return {
@@ -349,11 +349,14 @@ async def update_vectors(
         "vector_stats": vector_stats,
     }
 
+
 async def async_main(args, settings):
     """Async main function that initializes clients and runs updates."""
     # Initialize AsyncQdrantClient
     if settings.qdrant_api_key:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+        async_qdrant_client = AsyncQdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+        )
     else:
         async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
 
@@ -363,17 +366,17 @@ async def async_main(args, settings):
         text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
-        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir or "cache")
+        image_downloader = ImageDownloader(
+            cache_dir=settings.model_cache_dir or "cache"
+        )
         vision_processor = VisionProcessor(
-            model=vision_model,
-            downloader=image_downloader,
-            settings=settings
+            model=vision_model, downloader=image_downloader, settings=settings
         )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            settings=settings
+            settings=settings,
         )
 
         # Initialize Qdrant client using async factory
@@ -478,4 +481,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

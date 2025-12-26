@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image
@@ -25,16 +25,16 @@ class CCIP:
     - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
-    def __init__(self, settings: Optional["Settings"] = None):
+    def __init__(self, settings: "Settings | None" = None):
         """Initialize CCIP with optional settings.
 
         Args:
             settings: Configuration settings for fallback model creation
         """
         self.settings = settings
-        self._fallback_model: Optional["VisionEmbeddingModel"] = None
+        self._fallback_model: VisionEmbeddingModel | None = None
 
-    def _get_fallback_model(self) -> Optional["VisionEmbeddingModel"]:
+    def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
         """Lazy-load OpenCLIP model for fallback similarity calculation.
 
         Returns:
@@ -42,10 +42,13 @@ class CCIP:
         """
         if self._fallback_model is None:
             try:
-                from vector_processing.embedding_models.factory import EmbeddingModelFactory
+                from vector_processing.embedding_models.factory import (
+                    EmbeddingModelFactory,
+                )
 
                 if self.settings is None:
                     from common.config import Settings
+
                     self.settings = Settings()
 
                 self._fallback_model = EmbeddingModelFactory.create_vision_model(
@@ -57,7 +60,7 @@ class CCIP:
                 return None
         return self._fallback_model
 
-    def _load_image_for_ccip(self, url_or_path: str) -> Optional[Image.Image]:
+    def _load_image_for_ccip(self, url_or_path: str) -> Image.Image | None:
         """Load image for CCIP, handling both URLs and local paths."""
         try:
             if url_or_path.startswith("http"):

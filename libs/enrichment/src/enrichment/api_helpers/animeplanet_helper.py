@@ -12,7 +12,7 @@ import os
 import re
 import sys
 from types import TracebackType
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -29,7 +29,7 @@ class AnimePlanetEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
 
-    async def extract_slug_from_url(self, url: str) -> Optional[str]:
+    async def extract_slug_from_url(self, url: str) -> str | None:
         """Extract Anime-Planet slug from URL."""
         try:
             # Pattern: https://www.anime-planet.com/anime/SLUG
@@ -42,16 +42,16 @@ class AnimePlanetEnrichmentHelper:
             return None
 
     async def find_animeplanet_url(
-        self, offline_anime_data: Dict[str, Any]
-    ) -> Optional[str]:
+        self, offline_anime_data: dict[str, Any]
+    ) -> str | None:
         """
         Locate the first Anime-Planet URL in the provided offline anime record.
-        
+
         Searches the record's "sources" list for a string that contains "anime-planet.com" and returns the first match.
-        
+
         Parameters:
             offline_anime_data (Dict[str, Any]): Offline anime record; expected to include a "sources" sequence of source entries.
-        
+
         Returns:
             Optional[str]: The first source string containing "anime-planet.com", or `None` if no such source is found.
         """
@@ -65,13 +65,13 @@ class AnimePlanetEnrichmentHelper:
             logger.error(f"Error finding Anime-Planet URL: {e}")
             return None
 
-    async def fetch_character_data(self, slug: str) -> Optional[Dict[str, Any]]:
+    async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
         """
         Retrieve character data for an Anime-Planet anime slug.
-        
+
         Parameters:
             slug (str): Anime-Planet anime slug (for example, "dandadan").
-        
+
         Returns:
             dict or None: A dictionary containing:
                 - "characters": list of character dictionaries (each with keys such as "name", "role", "image_url", "url")
@@ -100,14 +100,14 @@ class AnimePlanetEnrichmentHelper:
 
     async def fetch_anime_data(
         self, slug: str, include_characters: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Fetch comprehensive Anime-Planet data for the given anime slug.
-        
+
         Parameters:
             slug (str): Anime-Planet anime slug (e.g., "dandadan").
             include_characters (bool): If True, attempt to fetch and include character data.
-        
+
         Returns:
             dict or None: A dictionary containing anime data (e.g., title, description, slug, url,
             metadata such as rank/studios/genres/episodes/year/season/status, related anime, images).
@@ -149,17 +149,17 @@ class AnimePlanetEnrichmentHelper:
             return None
 
     async def fetch_all_data(
-        self, offline_anime_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, offline_anime_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """
         Locate an Anime-Planet URL in offline data, extract its slug, and fetch the corresponding Anime-Planet data.
-        
+
         Parameters:
             offline_anime_data (Dict[str, Any]): Offline anime record expected to include a "sources" list and optionally a "title" for logging.
-        
+
         Returns:
             Dict[str, Any] or None: The assembled Anime-Planet data (possibly including characters) if a usable URL and slug are found, `None` otherwise.
-        
+
         Notes:
             This operation requires a direct Anime-Planet URL to be present in `offline_anime_data["sources"]`; title-based lookups are not performed.
         """
@@ -202,7 +202,7 @@ class AnimePlanetEnrichmentHelper:
     async def __aenter__(self) -> "AnimePlanetEnrichmentHelper":
         """
         Provide async context manager entry that yields the helper instance.
-        
+
         Returns:
             AnimePlanetEnrichmentHelper: The AnimePlanetEnrichmentHelper instance to be used within the async context.
         """
@@ -210,13 +210,13 @@ class AnimePlanetEnrichmentHelper:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
         """
         Exit the asynchronous context manager and perform any necessary cleanup.
-        
+
         Returns:
             bool: `False` to indicate that any exception raised in the context should not be suppressed.
         """
@@ -227,7 +227,7 @@ class AnimePlanetEnrichmentHelper:
 async def main() -> int:
     """
     Run the CLI that fetches Anime-Planet data for a given slug and writes it to the specified output file.
-    
+
     Returns:
         exit_code (int): 0 on success (data was fetched and written), 1 on failure (invalid usage, fetch/write error, or missing data).
     """

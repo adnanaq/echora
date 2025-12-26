@@ -1,12 +1,10 @@
 """Unit tests for retry utility function."""
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
-from qdrant_db.utils.retry import retry_with_backoff, default_is_transient_error
+from qdrant_db.utils.retry import default_is_transient_error, retry_with_backoff
 
 
 class TestRetryWithBackoff:
@@ -34,7 +32,7 @@ class TestRetryWithBackoff:
         mock_operation.side_effect = [
             Exception("Connection timeout"),
             Exception("Network error"),
-            "success"
+            "success",
         ]
 
         result = await retry_with_backoff(
@@ -83,7 +81,7 @@ class TestRetryWithBackoff:
         mock_operation.side_effect = [
             Exception("timeout"),
             Exception("timeout"),
-            "success"
+            "success",
         ]
 
         start_time = asyncio.get_running_loop().time()
@@ -139,19 +137,19 @@ class TestRetryWithBackoff:
         )
 
         assert result == "success"
-        mock_operation.assert_called_once_with("arg1", "arg2", key1="value1", key2="value2")
+        mock_operation.assert_called_once_with(
+            "arg1", "arg2", key1="value1", key2="value2"
+        )
 
     @pytest.mark.asyncio
     async def test_custom_error_checker(self):
         """Test that custom error checker can override default transient detection."""
+
         def is_retryable(error: Exception) -> bool:
             return "RETRY_ME" in str(error)
 
         mock_operation = AsyncMock()
-        mock_operation.side_effect = [
-            Exception("RETRY_ME please"),
-            "success"
-        ]
+        mock_operation.side_effect = [Exception("RETRY_ME please"), "success"]
 
         result = await retry_with_backoff(
             operation=mock_operation,
@@ -185,7 +183,7 @@ class TestRetryWithBackoff:
         mock_operation.side_effect = [
             Exception("timeout"),
             Exception("timeout"),
-            "success"
+            "success",
         ]
 
         await retry_with_backoff(
@@ -237,9 +235,9 @@ class TestRetryWithBackoff:
     @pytest.mark.asyncio
     async def test_type_based_transient_error_detection(self):
         """Test that common transient exception types are detected."""
-        # Test asyncio.TimeoutError
+        # Test TimeoutError
         mock_operation = AsyncMock()
-        mock_operation.side_effect = [asyncio.TimeoutError(), "success"]
+        mock_operation.side_effect = [TimeoutError(), "success"]
 
         result = await retry_with_backoff(
             operation=mock_operation,
@@ -296,9 +294,9 @@ class TestRetryWithBackoff:
 class TestDefaultIsTransientError:
     """Test suite for default_is_transient_error function."""
 
-    def test_type_based_detection_asyncio_timeout(self):
-        """Test that asyncio.TimeoutError is detected as transient."""
-        error = asyncio.TimeoutError()
+    def test_type_based_detection_timeout(self):
+        """Test that TimeoutError is detected as transient."""
+        error = TimeoutError()
         assert default_is_transient_error(error) is True
 
     def test_type_based_detection_connection_error(self):

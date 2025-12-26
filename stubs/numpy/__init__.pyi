@@ -1,8 +1,8 @@
 """Type stubs for numpy ndarray operations."""
 
-from typing import Any, TypeVar, Generic, Union, overload
+from typing import Any, Generic, TypeVar, overload
 
-_DType = TypeVar('_DType')
+_DType = TypeVar("_DType")
 
 class ndarray(Generic[_DType]):
     """Type stub for numpy.ndarray."""
@@ -16,13 +16,13 @@ class ndarray(Generic[_DType]):
 class linalg:
     """Linear algebra operations."""
     @staticmethod
-    def norm(x: Union[ndarray[Any], list[float], list[Any]], *args: Any, **kwargs: Any) -> float: ...
+    def norm(
+        x: ndarray[Any] | list[float] | list[Any], *args: Any, **kwargs: Any
+    ) -> float: ...
 
 def array(object: Any, dtype: Any = None) -> ndarray[Any]: ...
-
 @overload
 def mean(a: ndarray[Any], *args: Any, **kwargs: Any) -> ndarray[Any]: ...
 @overload
 def mean(a: list[list[float]], *args: Any, **kwargs: Any) -> ndarray[Any]: ...
-
-def dot(a: Union[ndarray[Any], list[float]], b: Union[ndarray[Any], list[float]]) -> float: ...
+def dot(a: ndarray[Any] | list[float], b: ndarray[Any] | list[float]) -> float: ...

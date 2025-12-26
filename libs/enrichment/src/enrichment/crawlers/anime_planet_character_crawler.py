@@ -15,10 +15,9 @@ Usage:
 import argparse
 import asyncio
 import json
-import sys
 import logging
-
-from typing import Any, Dict, List, Optional
+import sys
+from typing import Any
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -27,7 +26,6 @@ from crawl4ai import (
     JsonCssExtractionStrategy,
 )
 from crawl4ai.types import RunManyReturn
-
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -80,10 +78,10 @@ def _normalize_characters_url(anime_identifier: str) -> str:
 def _extract_slug_from_characters_url(url: str) -> str:
     """
     Extract the anime slug from an anime-planet characters URL.
-    
+
     Returns:
         The slug segment following `/anime/` in the URL (e.g., `"dandadan"`).
-    
+
     Raises:
         ValueError: If a slug cannot be found in the provided URL.
     """
@@ -97,18 +95,20 @@ def _extract_slug_from_characters_url(url: str) -> str:
 
 
 @cached_result(ttl=TTL_ANIME_PLANET, key_prefix="animeplanet_characters")
-async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Dict[str, Any]]:
+async def _fetch_animeplanet_characters_data(
+    canonical_slug: str,
+) -> dict[str, Any] | None:
     """
     Fetch and return enriched character data for a canonical anime slug from anime-planet.com.
-    
+
     Performs a multi-phase crawl: it fetches the characters list page, normalizes the list into basic character entries,
     concurrently fetches individual character detail pages to enrich those entries, and returns the combined result.
     Results are cached (TTL configured by the module) based solely on the provided canonical slug. This function has no
     side effects beyond network requests and returns None if fetching or extraction fails.
-    
+
     Parameters:
         canonical_slug (str): Canonical anime slug (e.g., "dandadan"); must already be normalized by the caller.
-    
+
     Returns:
         dict: A dictionary with keys:
             - "characters": List[dict] — enriched character dictionaries.
@@ -119,10 +119,10 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
     characters_url = f"{BASE_URL}/anime/{canonical_slug}/characters"
 
     # Helper function to get reusable character field schema
-    def _get_character_fields_schema() -> List[Dict[str, Any]]:
+    def _get_character_fields_schema() -> list[dict[str, Any]]:
         """
         Provide the CSS extraction schema for fields present in an anime-planet character list row.
-        
+
         Returns:
             list[dict]: A list of field-schema dictionaries describing how to extract values from a character row.
                 Each dictionary contains keys like `name`, `selector`, and `type`, and may include `attribute`
@@ -279,7 +279,8 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                     return None
 
                 # Phase 4: CONCURRENT BATCH ENRICHMENT using arun_many()
-                logger.info(f"Enriching {len(character_detail_urls)} characters concurrently..."
+                logger.info(
+                    f"Enriching {len(character_detail_urls)} characters concurrently..."
                 )
 
                 detail_schema = _get_character_detail_schema()
@@ -308,7 +309,7 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                 # arun_many() returns List[CrawlResultContainer], each wrapping a CrawlResult
                 from crawl4ai.models import CrawlResultContainer
 
-                unwrapped_results: List[CrawlResult] = []
+                unwrapped_results: list[CrawlResult] = []
                 for container in list_results:
                     # CrawlResultContainer is iterable and yields CrawlResult objects
                     if isinstance(container, CrawlResultContainer):
@@ -320,7 +321,9 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
                         unwrapped_results.append(container)
 
                 if not unwrapped_results:
-                    logger.warning("No valid CrawlResult objects found after unwrapping")
+                    logger.warning(
+                        "No valid CrawlResult objects found after unwrapping"
+                    )
                     return None
 
                 # Replace list_results with unwrapped results
@@ -334,7 +337,6 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
 
                 enriched_count = 0
                 for detail_result in list_results:
-
                     if detail_result.success and detail_result.extracted_content:
                         try:
                             detail_data = json.loads(detail_result.extracted_content)
@@ -384,8 +386,8 @@ async def _fetch_animeplanet_characters_data(canonical_slug: str) -> Optional[Di
 
 
 async def fetch_animeplanet_characters(
-    slug: str, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    slug: str, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Orchestrates retrieval of Anime-Planet character data, performs side effects (file output), and returns the result.
 
@@ -419,12 +421,12 @@ async def fetch_animeplanet_characters(
     return data
 
 
-def _get_character_detail_schema() -> Dict[str, Any]:
+def _get_character_detail_schema() -> dict[str, Any]:
     """
     Return a CSS-based extraction schema for an anime-planet character detail page.
-    
+
     The schema describes selectors and field shapes used by the crawler to extract name, image, entry bar items (gender, hair color, ranks), metadata items (eye color, age, birthday, etc.), description paragraphs, tags, alternative names, and raw anime/manga role table rows. Table content is selected here but full table parsing is performed separately after extraction.
-    
+
     Returns:
         Dict[str, Any]: Extraction schema mapping compatible with the crawler's CSS/JSON extraction engine.
     """
@@ -541,7 +543,7 @@ def _get_character_detail_schema() -> Dict[str, Any]:
     }
 
 
-def _process_character_list(list_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _process_character_list(list_data: dict[str, Any]) -> list[dict[str, Any]]:
     """Process character list data and assign roles based on section headers.
 
     Args:
@@ -597,7 +599,7 @@ def _process_character_list(list_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return characters
 
 
-def _extract_voice_actors(character: Dict[str, Any]) -> Dict[str, List[Dict[str, str]]]:
+def _extract_voice_actors(character: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
     """Extract voice actors by language from character data.
 
     Args:
@@ -606,7 +608,7 @@ def _extract_voice_actors(character: Dict[str, Any]) -> Dict[str, List[Dict[str,
     Returns:
         Dictionary mapping language codes to voice actor lists
     """
-    voice_actors: Dict[str, List[Dict[str, str]]] = {}
+    voice_actors: dict[str, list[dict[str, str]]] = {}
 
     for lang_code in ["jp", "us", "es", "fr"]:
         va_list = character.get(f"voice_actors_{lang_code}", [])
@@ -620,16 +622,16 @@ def _extract_voice_actors(character: Dict[str, Any]) -> Dict[str, List[Dict[str,
     return voice_actors
 
 
-def _normalize_value(value: str) -> Optional[str]:
+def _normalize_value(value: str) -> str | None:
     """Convert '?' to None, otherwise return stripped value."""
     stripped = value.strip()
     return None if stripped == "?" else stripped
 
 
-def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
+def _process_character_details(detail_data: dict[str, Any]) -> dict[str, Any]:
     """
     Convert extracted character detail page data into a flattened dictionary of enriched character attributes.
-    
+
     Parameters:
         detail_data (Dict[str, Any]): Mapping produced by the detail-page CSS extraction schema. Expected keys include:
             - entry_bar_items: list of {"text": ...} entries used to extract `gender` and `hair_color`.
@@ -638,7 +640,7 @@ def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
             - description_paragraphs: list of {"text": ...} entries; the first substantive paragraph is used for `description`.
             - alt_names_raw: list of alternative-name objects used to build `alternative_names`.
             - anime_roles_raw, manga_roles_raw: lists of role objects used to build `anime_roles` and `manga_roles`.
-    
+
     Returns:
         Dict[str, Any]: Enriched character fields, which may include:
             - gender, hair_color (str or None)
@@ -648,7 +650,7 @@ def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
             - alternative_names (List[str])
             - anime_roles, manga_roles (List[Dict] with title, url and optional role)
     """
-    enriched: Dict[str, Any] = {}
+    enriched: dict[str, Any] = {}
 
     # Extract gender and hair color from entry bar
     entry_bar_items = detail_data.get("entry_bar_items", [])
@@ -762,9 +764,9 @@ def _process_character_details(detail_data: Dict[str, Any]) -> Dict[str, Any]:
 async def main() -> int:
     """
     Parse command-line arguments and run the anime-planet character crawler, writing results to a file.
-    
+
     Runs the crawler with the provided anime identifier (slug, path, or full URL) and writes output to the specified file path. Logs errors and returns a non-zero exit code on failure.
-    
+
     Returns:
         int: 0 on success, 1 on failure.
     """
@@ -790,9 +792,7 @@ async def main() -> int:
             output_path=args.output,
         )
         if data is None:
-            logger.error(
-                "No character data was extracted; see logs above for details."
-            )
+            logger.error("No character data was extracted; see logs above for details.")
             return 1
     except (ValueError, OSError):
         logger.exception("Failed to fetch anime-planet character data")
@@ -801,6 +801,7 @@ async def main() -> int:
         logger.exception("Unexpected error during character fetch")
         return 1
     return 0
+
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(asyncio.run(main()))

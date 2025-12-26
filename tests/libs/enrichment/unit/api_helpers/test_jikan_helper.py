@@ -11,7 +11,6 @@ Tests all methods including:
 - Main data fetching workflow
 """
 
-import asyncio
 import json
 import os
 import tempfile
@@ -669,10 +668,10 @@ class TestFetchDetailedData:
             async def mock_fetch(ep_id):
                 """
                 Return a minimal episode detail mapping for a given episode identifier.
-                
+
                 Parameters:
                     ep_id (int | str): Episode identifier used to populate the returned mapping.
-                
+
                 Returns:
                     dict: Mapping with key "episode_number" set to the provided `ep_id`.
                 """
@@ -905,9 +904,7 @@ class TestEdgeCasesAndBoundaries:
     async def test_fetch_episode_timeout_error(self):
         """Test episode fetch with timeout."""
         mock_session = MagicMock()
-        mock_session.get = MagicMock(
-            side_effect=asyncio.TimeoutError("Request timeout")
-        )
+        mock_session.get = MagicMock(side_effect=TimeoutError("Request timeout"))
 
         fetcher = JikanDetailedFetcher("21", "episodes", session=mock_session)
 
@@ -1099,10 +1096,10 @@ class TestEdgeCasesAndBoundaries:
             async def mock_fetch(ep_id):
                 """
                 Return a minimal episode detail mapping for a given episode identifier.
-                
+
                 Parameters:
                     ep_id (int | str): Episode identifier used to populate the returned mapping.
-                
+
                 Returns:
                     dict: Mapping with key "episode_number" set to the provided `ep_id`.
                 """
@@ -1275,15 +1272,21 @@ class TestSessionOwnershipAndCleanup:
 
     def test_fetcher_tracks_session_ownership_when_creating_own(self):
         """Test that fetcher tracks ownership when it creates its own session."""
-        with patch('http_cache.instance.http_cache_manager.get_aiohttp_session') as mock_get_session:
+        with patch(
+            "http_cache.instance.http_cache_manager.get_aiohttp_session"
+        ) as mock_get_session:
             mock_session = MagicMock()
             mock_get_session.return_value = mock_session
 
             fetcher = JikanDetailedFetcher("21", "episodes")
 
             # Should have ownership tracking
-            assert hasattr(fetcher, '_owns_session'), "Fetcher should track session ownership"
-            assert fetcher._owns_session is True, "Fetcher should own session it creates"
+            assert hasattr(fetcher, "_owns_session"), (
+                "Fetcher should track session ownership"
+            )
+            assert fetcher._owns_session is True, (
+                "Fetcher should own session it creates"
+            )
 
     def test_fetcher_tracks_session_ownership_with_external_session(self):
         """Test that fetcher tracks non-ownership when using external session."""
@@ -1291,20 +1294,24 @@ class TestSessionOwnershipAndCleanup:
         fetcher = JikanDetailedFetcher("21", "episodes", session=external_session)
 
         # Should have ownership tracking
-        assert hasattr(fetcher, '_owns_session'), "Fetcher should track session ownership"
+        assert hasattr(fetcher, "_owns_session"), (
+            "Fetcher should track session ownership"
+        )
         assert fetcher._owns_session is False, "Fetcher should NOT own external session"
 
     @pytest.mark.asyncio
     async def test_close_method_closes_owned_session(self):
         """Test that close() closes the session if fetcher owns it."""
-        with patch('http_cache.instance.http_cache_manager.get_aiohttp_session') as mock_get_session:
+        with patch(
+            "http_cache.instance.http_cache_manager.get_aiohttp_session"
+        ) as mock_get_session:
             mock_session = AsyncMock()
             mock_get_session.return_value = mock_session
 
             fetcher = JikanDetailedFetcher("21", "episodes")
 
             # Should have close method
-            assert hasattr(fetcher, 'close'), "Fetcher should have close() method"
+            assert hasattr(fetcher, "close"), "Fetcher should have close() method"
             assert callable(fetcher.close), "close() should be callable"
 
             # Close the fetcher
@@ -1330,15 +1337,20 @@ class TestSessionOwnershipAndCleanup:
         """Test that main() calls close() in finally block to prevent leaks."""
         from enrichment.api_helpers.jikan_helper import main
 
-        with patch('os.path.exists', return_value=True):
-            with patch('os.makedirs'):
-                with patch('enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+        with patch("os.path.exists", return_value=True):
+            with patch("os.makedirs"):
+                with patch(
+                    "enrichment.api_helpers.jikan_helper.JikanDetailedFetcher"
+                ) as mock_fetcher_class:
                     mock_fetcher = AsyncMock()
                     mock_fetcher.fetch_detailed_data = AsyncMock()
                     mock_fetcher.close = AsyncMock()
                     mock_fetcher_class.return_value = mock_fetcher
 
-                    with patch('sys.argv', ['script.py', 'episodes', '21', 'input.json', 'output.json']):
+                    with patch(
+                        "sys.argv",
+                        ["script.py", "episodes", "21", "input.json", "output.json"],
+                    ):
                         exit_code = await main()
 
                     # close() should be called even on success
@@ -1350,15 +1362,22 @@ class TestSessionOwnershipAndCleanup:
         """Test that main() calls close() even when error occurs."""
         from enrichment.api_helpers.jikan_helper import main
 
-        with patch('os.path.exists', return_value=True):
-            with patch('os.makedirs'):
-                with patch('enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+        with patch("os.path.exists", return_value=True):
+            with patch("os.makedirs"):
+                with patch(
+                    "enrichment.api_helpers.jikan_helper.JikanDetailedFetcher"
+                ) as mock_fetcher_class:
                     mock_fetcher = AsyncMock()
-                    mock_fetcher.fetch_detailed_data = AsyncMock(side_effect=Exception("API error"))
+                    mock_fetcher.fetch_detailed_data = AsyncMock(
+                        side_effect=Exception("API error")
+                    )
                     mock_fetcher.close = AsyncMock()
                     mock_fetcher_class.return_value = mock_fetcher
 
-                    with patch('sys.argv', ['script.py', 'episodes', '21', 'input.json', 'output.json']):
+                    with patch(
+                        "sys.argv",
+                        ["script.py", "episodes", "21", "input.json", "output.json"],
+                    ):
                         exit_code = await main()
 
                     # close() should be called even on error (finally block)
@@ -1386,14 +1405,19 @@ class TestMainDirectoryCreation:
         try:
             os.chdir(tmp_path)
 
-            with patch('sys.argv', [
-                'script.py',
-                'episodes',
-                '21',
-                str(input_file),
-                'episodes_detailed.json'  # Current directory file
-            ]):
-                with patch('enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+            with patch(
+                "sys.argv",
+                [
+                    "script.py",
+                    "episodes",
+                    "21",
+                    str(input_file),
+                    "episodes_detailed.json",  # Current directory file
+                ],
+            ):
+                with patch(
+                    "enrichment.api_helpers.jikan_helper.JikanDetailedFetcher"
+                ) as mock_fetcher_class:
                     mock_fetcher = AsyncMock()
                     mock_fetcher.fetch_detailed_data = AsyncMock()
                     mock_fetcher.close = AsyncMock()
@@ -1423,14 +1447,19 @@ class TestMainDirectoryCreation:
         try:
             os.chdir(tmp_path)
 
-            with patch('sys.argv', [
-                'script.py',
-                'episodes',
-                '21',
-                str(input_file),
-                'output/episodes_detailed.json'  # Subdirectory file
-            ]):
-                with patch('enrichment.api_helpers.jikan_helper.JikanDetailedFetcher') as mock_fetcher_class:
+            with patch(
+                "sys.argv",
+                [
+                    "script.py",
+                    "episodes",
+                    "21",
+                    str(input_file),
+                    "output/episodes_detailed.json",  # Subdirectory file
+                ],
+            ):
+                with patch(
+                    "enrichment.api_helpers.jikan_helper.JikanDetailedFetcher"
+                ) as mock_fetcher_class:
                     mock_fetcher = AsyncMock()
                     mock_fetcher.fetch_detailed_data = AsyncMock()
                     mock_fetcher.close = AsyncMock()
@@ -1469,7 +1498,9 @@ async def test_context_manager_closes_owned_session():
     from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
     # Create fetcher without session (will create its own via cache manager)
-    with patch('enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session') as mock_get_session:
+    with patch(
+        "enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session"
+    ) as mock_get_session:
         mock_session = AsyncMock()
         mock_get_session.return_value = mock_session
 
@@ -1488,7 +1519,9 @@ async def test_context_manager_cleanup_on_exception():
     """Test that context manager cleans up even when exception occurs."""
     from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
-    with patch('enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session') as mock_get_session:
+    with patch(
+        "enrichment.api_helpers.jikan_helper._cache_manager.get_aiohttp_session"
+    ) as mock_get_session:
         mock_session = AsyncMock()
         mock_get_session.return_value = mock_session
 

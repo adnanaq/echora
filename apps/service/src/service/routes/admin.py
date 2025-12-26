@@ -5,16 +5,15 @@ Provides database statistics, health monitoring, and administrative operations.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
-
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
+from typing import Any
 
 from common.config import get_settings
-from ..dependencies import get_qdrant_client, get_text_processor, get_vision_processor
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor
-from vector_processing import VisionProcessor
+from vector_processing import TextProcessor, VisionProcessor
+
+from ..dependencies import get_qdrant_client, get_text_processor, get_vision_processor
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -30,13 +29,15 @@ class StatsResponse(BaseModel):
     vector_size: int = Field(..., description="Vector embedding size")
     distance_metric: str = Field(..., description="Distance metric used")
     status: str = Field(..., description="Collection status")
-    additional_stats: Dict[str, Any] = Field(
+    additional_stats: dict[str, Any] = Field(
         default_factory=dict, description="Additional statistics"
     )
 
 
 @router.get("/stats", response_model=StatsResponse)
-async def get_database_stats(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> StatsResponse:
+async def get_database_stats(
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+) -> StatsResponse:
     """
     Get comprehensive database statistics.
 
@@ -75,7 +76,9 @@ async def get_database_stats(qdrant_client: QdrantClient = Depends(get_qdrant_cl
 
 
 @router.get("/health")
-async def admin_health_check(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
+async def admin_health_check(
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+) -> dict[str, Any]:
     """
     Detailed health check for admin purposes.
 
@@ -115,7 +118,9 @@ async def admin_health_check(qdrant_client: QdrantClient = Depends(get_qdrant_cl
 
 
 @router.delete("/vectors/{anime_id}")
-async def delete_vector(anime_id: str, qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
+async def delete_vector(
+    anime_id: str, qdrant_client: QdrantClient = Depends(get_qdrant_client)
+) -> dict[str, Any]:
     """
     Delete a vector from the database.
 
@@ -148,7 +153,9 @@ async def delete_vector(anime_id: str, qdrant_client: QdrantClient = Depends(get
 
 
 @router.post("/reindex")
-async def reindex_collection(qdrant_client: QdrantClient = Depends(get_qdrant_client)) -> Dict[str, Any]:
+async def reindex_collection(
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+) -> dict[str, Any]:
     """
     Rebuild the vector index.
 
@@ -182,7 +189,7 @@ async def get_collection_info(
     qdrant_client: QdrantClient = Depends(get_qdrant_client),
     text_processor: TextProcessor = Depends(get_text_processor),
     vision_processor: VisionProcessor = Depends(get_vision_processor),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get detailed collection information.
 

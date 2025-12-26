@@ -6,11 +6,9 @@ Provides fixtures for integration testing with real Qdrant and models.
 
 import pytest
 import pytest_asyncio
+from common.models.anime import AnimeEntry
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct
-from typing import List
-from common.models.anime import AnimeEntry
-
 from qdrant_db import QdrantClient
 from vector_processing import MultiVectorEmbeddingManager
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
@@ -21,7 +19,7 @@ from vector_processing.utils.image_downloader import ImageDownloader
 async def text_processor(settings):
     """Create TextProcessor for tests."""
     from vector_processing import TextProcessor
-    
+
     # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings)
     return TextProcessor(model=text_model, settings=settings)
@@ -31,7 +29,7 @@ async def text_processor(settings):
 async def vision_processor(settings):
     """Create VisionProcessor for tests."""
     from vector_processing import VisionProcessor
-    
+
     # Create vision model and downloader using factory
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     downloader = ImageDownloader(settings.model_cache_dir)
@@ -77,6 +75,7 @@ async def client(settings, embedding_manager):
     except Exception as e:
         print(f"\nCRITICAL ERROR: Failed to create test collection: {e}\n")
         import traceback
+
         traceback.print_exc()
         pytest.skip(f"Failed to create test collection: {e}")
 
@@ -101,25 +100,25 @@ async def client(settings, embedding_manager):
 @pytest_asyncio.fixture
 async def add_test_anime(client, embedding_manager):
     """Helper fixture to add anime entries to test collection.
-    
+
     Converts AnimeEntry objects to PointStruct and adds them to the collection.
     This matches the production pattern from reindex_anime_database.py.
-    
+
     Usage:
         await add_test_anime([anime1, anime2, ...])
     """
-    
-    async def _add_anime(anime_list: List[AnimeEntry]) -> bool:
+
+    async def _add_anime(anime_list: list[AnimeEntry]) -> bool:
         """Convert AnimeEntry to PointStruct and add to collection."""
         # Process anime to generate vectors
         processed_batch = await embedding_manager.process_anime_batch(anime_list)
-        
+
         # Convert to PointStruct
         points = []
         for doc_data in processed_batch:
             if doc_data["metadata"].get("processing_failed"):
                 continue
-            
+
             point_id = client._generate_point_id(doc_data["payload"]["id"])
             point = PointStruct(
                 id=point_id,
@@ -127,8 +126,8 @@ async def add_test_anime(client, embedding_manager):
                 payload=doc_data["payload"],
             )
             points.append(point)
-        
+
         # Add to collection
         return await client.add_documents(points, batch_size=len(points))
-    
+
     return _add_anime

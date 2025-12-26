@@ -1,10 +1,11 @@
 import logging
 
 from common.config import Settings
-from .text.sentence_transformer_model import SentenceTransformerModel
+
 from .text.base import TextEmbeddingModel
 from .text.fastembed_model import FastEmbedModel
 from .text.huggingface_model import HuggingFaceModel
+from .text.sentence_transformer_model import SentenceTransformerModel
 from .vision.base import VisionEmbeddingModel
 from .vision.openclip_model import OpenClipModel
 

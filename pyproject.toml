@@ -21,9 +21,6 @@ dependencies = [
     "pillow>=11.2.1",
     # HTTP client for external requests
     "aiohttp==3.12.13",
-    # Web scraping dependencies
-    "cloudscraper>=1.2.71",
-    "beautifulsoup4>=4.12.0",
     # Fine-tuning capabilities
     "peft==0.16.0",
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
@@ -50,33 +47,13 @@ dev = [
     "pytest-mock==3.14.1",
 
     # Development dependencies
-    "black>=24.0.0",
-    "isort>=5.13.0",
-    "autoflake>=2.3.0",
-    "mypy>=1.18.1",
+    "ty>=0.0.7",
+    "ruff==0.14.10",
     "types-requests>=2.32.0",
 
     # Pretty output formatting
     "rich>=13.0.0",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[tool.black]
-line-length = 88
-target-version = ["py312"]
-
-[tool.isort]
-profile = "black"
-line_length = 88
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -112,18 +89,77 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
-    "autoflake>=2.3.1",
-    "black>=25.1.0",
-    "isort>=6.0.1",
-    "mypy>=1.18.1",
+    "ruff==0.14.10",
     "scikit-learn-stubs>=0.0.3",
     "scipy-stubs>=1.16.2.0",
-    "types-beautifulsoup4>=4.12.0.20250516",
     "types-pillow>=10.2.0.20240822",
     "types-python-dateutil>=2.9.0.20250822",
     "types-requests>=2.32.4.20250913",
     "types-setuptools>=80.9.0.20250822",
 ]
 
-[tool.mypy]
-mypy_path = "stubs"
+[tool.ty.environment]
+# Python version must match project requirement (>=3.12)
+python-version = "3.12"
+
+# Additional search paths for module resolution
+# Includes both first-party monorepo libs and custom third-party stubs
+extra-paths = [
+    "libs/common/src",
+    "libs/enrichment/src",
+    "libs/http_cache/src",
+    "libs/qdrant_db/src",
+    "libs/vector_db_interface/src",
+    "libs/vector_processing/src",
+    "apps/service/src",
+    "stubs",  # Custom third-party type stubs (crawl4ai, fastembed, etc.)
+]
+
+[tool.ty.analysis]
+# Only respect ty: ignore comments, not type: ignore (stricter checking)
+# This helps during migration to ensure we're not inheriting mypy suppressions
+respect-type-ignore-comments = false
+
+[tool.ruff]
+# Same as Black
+line-length = 88
+target-version = "py312"
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "htmlcov",
+]
+
+[tool.ruff.lint]
+# Enable pycodestyle (E) and Pyflakes (F) codes by default
+# Plus isort (I) for import sorting
+select = ["E", "F", "I", "N", "UP", "W"]
+
+# Never enforce these rules
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "N805",   # First argument should be `self` (false positive for Pydantic validators using `cls`)
+    "UP047",  # Generic function type parameters (not needed for Python 3.12)
+]
+
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions
+"stubs/**/*.pyi" = ["N801", "N803", "UP046"]  # Stub files: allow non-CapWords names, uppercase args, Generic subclass patterns
+
+# Exclude directories
+
+[tool.ruff.format]
+# Use double quotes (Black default)
+quote-style = "double"
+
+# Indent with spaces (Black default)
+indent-style = "space"
+
+# Respect magic trailing commas (Black default)
+skip-magic-trailing-comma = false
+

@@ -6,9 +6,8 @@ QdrantClient is a database client - it works with raw vectors/points, not proces
 
 import pytest
 import pytest_asyncio
-from qdrant_client import AsyncQdrantClient
-
 from common.config.settings import get_settings
+from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 
 

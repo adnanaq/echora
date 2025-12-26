@@ -6,7 +6,9 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional, Tuple, TypeGuard, cast
+from typing import Any, TypeGuard, cast
+
+from common.config import Settings
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -36,15 +38,14 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
     VectorParams,
     WalConfigDiff,
 )
-
 from vector_db_interface import VectorDBClient, VectorDocument
-from common.config import Settings
+
 from qdrant_db.utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
 
-def is_float_vector(vector: Any) -> TypeGuard[List[float]]:
+def is_float_vector(vector: Any) -> TypeGuard[list[float]]:
     """Type guard to check if vector is a List[float].
 
     Args:
@@ -56,7 +57,7 @@ def is_float_vector(vector: Any) -> TypeGuard[List[float]]:
     return (
         isinstance(vector, list)
         and len(vector) > 0
-        and all(isinstance(x, (int, float)) for x in vector)
+        and all(isinstance(x, int | float) for x in vector)
     )
 
 
@@ -67,8 +68,8 @@ class QdrantClient(VectorDBClient):
         self,
         settings: Settings,
         async_qdrant_client: AsyncQdrantClient,
-        url: Optional[str] = None,
-        collection_name: Optional[str] = None,
+        url: str | None = None,
+        collection_name: str | None = None,
     ):
         """Initialize Qdrant client with injected dependencies and configuration.
 
@@ -110,8 +111,8 @@ class QdrantClient(VectorDBClient):
         cls,
         settings: Settings,
         async_qdrant_client: AsyncQdrantClient,
-        url: Optional[str] = None,
-        collection_name: Optional[str] = None,
+        url: str | None = None,
+        collection_name: str | None = None,
     ) -> "QdrantClient":
         """Create and initialize a QdrantClient instance.
 
@@ -134,8 +135,6 @@ class QdrantClient(VectorDBClient):
         client = cls(settings, async_qdrant_client, url, collection_name)
         await client._initialize_collection()
         return client
-
-
 
     async def _initialize_collection(self) -> None:
         """Initialize and validate anime collection with 11-vector architecture and performance optimization.
@@ -240,7 +239,7 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Failed to validate collection compatibility: {e}")
             return False
 
-    def _validate_vector_config(self, vectors_config: Dict[str, VectorParams]) -> None:
+    def _validate_vector_config(self, vectors_config: dict[str, VectorParams]) -> None:
         """Validate vector configuration before collection creation.
 
         Args:
@@ -279,7 +278,7 @@ class QdrantClient(VectorDBClient):
         "dot": Distance.DOT,
     }
 
-    def _create_multi_vector_config(self) -> Dict[str, VectorParams]:
+    def _create_multi_vector_config(self) -> dict[str, VectorParams]:
         """Create 11-vector configuration with priority-based optimization.
 
         Generates VectorParams for all vectors defined in settings with appropriate
@@ -308,7 +307,7 @@ class QdrantClient(VectorDBClient):
 
     # NEW: Priority-Based Configuration Methods for Million-Query Optimization
 
-    def _get_quantization_config(self, priority: str) -> Optional[QuantizationConfig]:
+    def _get_quantization_config(self, priority: str) -> QuantizationConfig | None:
         """Get quantization config based on vector priority.
 
         Args:
@@ -358,7 +357,7 @@ class QdrantClient(VectorDBClient):
                 return str(priority)
         return "medium"  # default
 
-    def _create_optimized_optimizers_config(self) -> Optional[OptimizersConfigDiff]:
+    def _create_optimized_optimizers_config(self) -> OptimizersConfigDiff | None:
         """Create optimized optimizers configuration for million-query scale.
 
         Returns:
@@ -376,7 +375,7 @@ class QdrantClient(VectorDBClient):
 
     def _create_quantization_config(
         self,
-    ) -> Optional[BinaryQuantization | ScalarQuantization | ProductQuantization]:
+    ) -> BinaryQuantization | ScalarQuantization | ProductQuantization | None:
         """Create quantization configuration for performance optimization.
 
         Returns:
@@ -418,7 +417,7 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Failed to create quantization config: {e}")
             return None
 
-    def _create_optimizers_config(self) -> Optional[OptimizersConfig]:
+    def _create_optimizers_config(self) -> OptimizersConfig | None:
         """Create optimizers configuration for indexing performance.
 
         Returns:
@@ -449,7 +448,7 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Failed to create optimizers config: {e}")
             return None
 
-    def _create_wal_config(self) -> Optional[WalConfigDiff]:
+    def _create_wal_config(self) -> WalConfigDiff | None:
         """Create Write-Ahead Logging configuration.
 
         Returns:
@@ -550,7 +549,7 @@ class QdrantClient(VectorDBClient):
             logger.exception(f"Health check failed: {e}")
             return False
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Get collection statistics.
 
         Returns:
@@ -593,8 +592,8 @@ class QdrantClient(VectorDBClient):
         self,
         limit: int = 10,
         with_vectors: bool = False,
-        offset: Optional[Any] = None,
-    ) -> Tuple[List[Any], Optional[Any]]:
+        offset: Any | None = None,
+    ) -> tuple[list[Any], Any | None]:
         """Scroll through collection points.
 
         Args:
@@ -625,9 +624,9 @@ class QdrantClient(VectorDBClient):
 
     async def add_documents(
         self,
-        documents: List[VectorDocument],
+        documents: list[VectorDocument],
         batch_size: int = 100,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Add documents (with pre-generated vectors) to the collection.
 
         Args:
@@ -642,26 +641,30 @@ class QdrantClient(VectorDBClient):
             qdrant_points = [
                 PointStruct(
                     id=doc.id,
-                    vector=cast(Dict[str, Any], doc.vectors),
+                    vector=cast(dict[str, Any], doc.vectors),
                     payload=doc.payload,
                 )
                 for doc in documents
             ]
 
             total_docs = len(qdrant_points)
-            logger.info(f"Adding {total_docs} pre-processed documents in batches of {batch_size}")
+            logger.info(
+                f"Adding {total_docs} pre-processed documents in batches of {batch_size}"
+            )
 
             for i in range(0, total_docs, batch_size):
                 batch_points = qdrant_points[i : i + batch_size]
 
                 if batch_points:
-                        # Upsert batch to Qdrant
-                        await self.client.upsert(
-                            collection_name=self.collection_name, points=batch_points, wait=True
-                        )
-                        logger.info(
-                            f"Uploaded batch {i//batch_size + 1}/{(total_docs-1)//batch_size + 1} ({len(batch_points)} points)"
-                        )
+                    # Upsert batch to Qdrant
+                    await self.client.upsert(
+                        collection_name=self.collection_name,
+                        points=batch_points,
+                        wait=True,
+                    )
+                    logger.info(
+                        f"Uploaded batch {i // batch_size + 1}/{(total_docs - 1) // batch_size + 1} ({len(batch_points)} points)"
+                    )
 
             logger.info(f"Successfully added {total_docs} documents")
             return {"success": True, "document_count": total_docs}
@@ -673,8 +676,8 @@ class QdrantClient(VectorDBClient):
     def _validate_vector_update(
         self,
         vector_name: str,
-        vector_data: List[float],
-    ) -> tuple[bool, Optional[str]]:
+        vector_data: list[float],
+    ) -> tuple[bool, str | None]:
         """Validate a vector update for correct name and dimensions.
 
         Args:
@@ -697,7 +700,10 @@ class QdrantClient(VectorDBClient):
 
         # Check dimension matches
         if len(vector_data) != expected_dim:
-            return False, f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}"
+            return (
+                False,
+                f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}",
+            )
 
         return True, None
 
@@ -705,7 +711,7 @@ class QdrantClient(VectorDBClient):
         self,
         anime_id: str,
         vector_name: str,
-        vector_data: List[float],
+        vector_data: list[float],
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> bool:
@@ -754,17 +760,17 @@ class QdrantClient(VectorDBClient):
             logger.debug(f"Updated {vector_name} for anime {anime_id}")
             return True
 
-        except Exception as e:
-            logger.exception(f"Failed to update vector {vector_name} for {anime_id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to update vector {vector_name} for {anime_id}")
             return False
 
     async def update_batch_vectors(
         self,
-        updates: List[Dict[str, Any]],
+        updates: list[dict[str, Any]],
         dedup_policy: str = "last-wins",
         max_retries: int = 3,
         retry_delay: float = 1.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update multiple vectors across multiple anime points in a single batch.
 
         More efficient than individual updates when updating many points.
@@ -799,12 +805,19 @@ class QdrantClient(VectorDBClient):
         """
         try:
             if not updates:
-                return {"success": 0, "failed": 0, "results": [], "duplicates_removed": 0}
+                return {
+                    "success": 0,
+                    "failed": 0,
+                    "results": [],
+                    "duplicates_removed": 0,
+                }
 
             # Check for duplicates and apply deduplication policy
-            seen_keys: Dict[Tuple[str, str], int] = {}  # (anime_id, vector_name) -> first index
-            duplicates: List[Tuple[str, str]] = []
-            deduplicated_updates: List[Dict[str, Any]] = []
+            seen_keys: dict[
+                tuple[str, str], int
+            ] = {}  # (anime_id, vector_name) -> first index
+            duplicates: list[tuple[str, str]] = []
+            deduplicated_updates: list[dict[str, Any]] = []
 
             for idx, update in enumerate(updates):
                 key = (update["anime_id"], update["vector_name"])
@@ -817,8 +830,12 @@ class QdrantClient(VectorDBClient):
                     elif dedup_policy == "last-wins":
                         # Remove previous occurrence, keep this one
                         deduplicated_updates = [
-                            u for u in deduplicated_updates
-                            if not (u["anime_id"] == update["anime_id"] and u["vector_name"] == update["vector_name"])
+                            u
+                            for u in deduplicated_updates
+                            if not (
+                                u["anime_id"] == update["anime_id"]
+                                and u["vector_name"] == update["vector_name"]
+                            )
                         ]
                     elif dedup_policy == "warn":
                         # Same as last-wins but log warning
@@ -827,8 +844,12 @@ class QdrantClient(VectorDBClient):
                             f"using last occurrence"
                         )
                         deduplicated_updates = [
-                            u for u in deduplicated_updates
-                            if not (u["anime_id"] == update["anime_id"] and u["vector_name"] == update["vector_name"])
+                            u
+                            for u in deduplicated_updates
+                            if not (
+                                u["anime_id"] == update["anime_id"]
+                                and u["vector_name"] == update["vector_name"]
+                            )
                         ]
                     elif dedup_policy == "fail":
                         raise ValueError(
@@ -848,12 +869,12 @@ class QdrantClient(VectorDBClient):
                 )
 
             # Track detailed results for each update
-            results: List[Dict[str, Any]] = []
+            results: list[dict[str, Any]] = []
 
             # Group updates by anime_id to batch multiple vector updates per point
-            grouped_updates: Dict[str, Dict[str, List[float]]] = {}
+            grouped_updates: dict[str, dict[str, list[float]]] = {}
             # Map to track which updates belong to which anime
-            update_mapping: Dict[str, List[int]] = {}
+            update_mapping: dict[str, list[int]] = {}
 
             for idx, update in enumerate(deduplicated_updates):
                 anime_id = update["anime_id"]
@@ -861,14 +882,18 @@ class QdrantClient(VectorDBClient):
                 vector_data = update["vector_data"]
 
                 # Validate update using shared helper
-                is_valid, error_msg = self._validate_vector_update(vector_name, vector_data)
+                is_valid, error_msg = self._validate_vector_update(
+                    vector_name, vector_data
+                )
                 if not is_valid:
-                    results.append({
-                        "anime_id": anime_id,
-                        "vector_name": vector_name,
-                        "success": False,
-                        "error": error_msg
-                    })
+                    results.append(
+                        {
+                            "anime_id": anime_id,
+                            "vector_name": vector_name,
+                            "success": False,
+                            "error": error_msg,
+                        }
+                    )
                     continue
 
                 # Valid update - add to batch
@@ -884,7 +909,9 @@ class QdrantClient(VectorDBClient):
             for anime_id, vectors_dict in grouped_updates.items():
                 point_id = self._generate_point_id(anime_id)
                 # Cast needed due to dict invariance: Dict[str, List[float]] -> Dict[str, Union[List[float], ...]]
-                point_updates.append(PointVectors(id=point_id, vector=cast(Dict[str, Any], vectors_dict)))
+                point_updates.append(
+                    PointVectors(id=point_id, vector=cast(dict[str, Any], vectors_dict))
+                )
 
             # Only execute if we have valid updates
             if point_updates:
@@ -907,23 +934,27 @@ class QdrantClient(VectorDBClient):
                     # Success - mark all grouped updates as successful
                     for anime_id in grouped_updates.keys():
                         for vector_name in grouped_updates[anime_id].keys():
-                            results.append({
-                                "anime_id": anime_id,
-                                "vector_name": vector_name,
-                                "success": True
-                            })
+                            results.append(
+                                {
+                                    "anime_id": anime_id,
+                                    "vector_name": vector_name,
+                                    "success": True,
+                                }
+                            )
 
                 except Exception as e:
                     # Retry failed - mark all as failed
-                    logger.error(f"Batch update failed after retries: {e}")
+                    logger.exception("Batch update failed after retries")
                     for anime_id in grouped_updates.keys():
                         for vector_name in grouped_updates[anime_id].keys():
-                            results.append({
-                                "anime_id": anime_id,
-                                "vector_name": vector_name,
-                                "success": False,
-                                "error": f"Update failed after {max_retries} retries: {str(e)}"
-                            })
+                            results.append(
+                                {
+                                    "anime_id": anime_id,
+                                    "vector_name": vector_name,
+                                    "success": False,
+                                    "error": f"Update failed after {max_retries} retries: {e!s}",
+                                }
+                            )
 
             logger.info(
                 f"Batch updated {len(point_updates)} points with {len(deduplicated_updates)} vector updates"
@@ -952,7 +983,7 @@ class QdrantClient(VectorDBClient):
                     "anime_id": update.get("anime_id", "unknown"),
                     "vector_name": update.get("vector_name", "unknown"),
                     "success": False,
-                    "error": f"Batch update failed: {str(e)}"
+                    "error": f"Batch update failed: {str(e)}",
                 }
                 for update in updates
             ]
@@ -965,11 +996,11 @@ class QdrantClient(VectorDBClient):
 
     def _aggregate_batch_results(
         self,
-        batch_results: List[Dict[str, Any]],
-        generation_failures: List[Dict[str, Any]],
+        batch_results: list[dict[str, Any]],
+        generation_failures: list[dict[str, Any]],
         total_anime: int,
         num_vectors: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Aggregate results from multiple batches.
 
         Args:
@@ -984,7 +1015,7 @@ class QdrantClient(VectorDBClient):
         try:
             total_successful = sum(r["success"] for r in batch_results)
             total_failed = sum(r["failed"] for r in batch_results)
-            combined_results: List[Dict[str, Any]] = []
+            combined_results: list[dict[str, Any]] = []
 
             for batch_result in batch_results:
                 combined_results.extend(batch_result.get("results", []))
@@ -1011,7 +1042,7 @@ class QdrantClient(VectorDBClient):
                 "generation_failures_detail": generation_failures,
             }
 
-    def _build_filter(self, filters: Dict[str, Any]) -> Optional[Filter]:
+    def _build_filter(self, filters: dict[str, Any]) -> Filter | None:
         """Build Qdrant filter from filter dictionary.
 
         Args:
@@ -1029,7 +1060,7 @@ class QdrantClient(VectorDBClient):
             # Skip None values and empty collections
             if value is None:
                 continue
-            if isinstance(value, (list, tuple)) and len(value) == 0:
+            if isinstance(value, list | tuple) and len(value) == 0:
                 continue
             if isinstance(value, dict) and len(value) == 0:
                 continue
@@ -1054,16 +1085,16 @@ class QdrantClient(VectorDBClient):
                     )
             else:
                 # Exact match - only add if value is not None and is a valid type
-                if value is not None and isinstance(value, (str, int, bool)):
+                if value is not None and isinstance(value, str | int | bool):
                     conditions.append(
                         FieldCondition(key=key, match=MatchValue(value=value))
                     )
 
-        return Filter(must=conditions) if conditions else None  # type: ignore[arg-type]
+        return Filter(must=conditions) if conditions else None
 
     async def get_by_id(
         self, point_id: str, with_vectors: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get anime by ID.
 
         Args:
@@ -1092,7 +1123,7 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Failed to get anime by ID {point_id}: {e}")
             return None
 
-    async def get_point(self, point_id: str) -> Optional[Dict[str, Any]]:
+    async def get_point(self, point_id: str) -> dict[str, Any] | None:
         """Get point by Qdrant point ID including vectors and payload.
 
         Args:
@@ -1161,7 +1192,7 @@ class QdrantClient(VectorDBClient):
 
     async def collection_exists(self) -> bool:
         """Check if the collection exists.
-        
+
         Returns:
             True if collection exists, False otherwise
         """
@@ -1188,10 +1219,10 @@ class QdrantClient(VectorDBClient):
     async def search_single_vector(
         self,
         vector_name: str,
-        vector_data: List[float],
+        vector_data: list[float],
         limit: int = 10,
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search a single vector with raw similarity scores.
 
         Args:
@@ -1238,11 +1269,11 @@ class QdrantClient(VectorDBClient):
 
     async def search_multi_vector(
         self,
-        vector_queries: List[Dict[str, Any]],
+        vector_queries: list[dict[str, Any]],
         limit: int = 10,
         fusion_method: str = "rrf",
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search across multiple vectors using Qdrant's native multi-vector API.
 
         Args:
@@ -1322,11 +1353,11 @@ class QdrantClient(VectorDBClient):
 
     async def search_text_comprehensive(
         self,
-        query_embedding: List[float],
+        query_embedding: list[float],
         limit: int = 10,
         fusion_method: str = "rrf",
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search across all 12 text vectors using native Qdrant fusion with a pre-computed query embedding.
 
         Args:
@@ -1378,11 +1409,11 @@ class QdrantClient(VectorDBClient):
 
     async def search_visual_comprehensive(
         self,
-        image_embedding: List[float],
+        image_embedding: list[float],
         limit: int = 10,
         fusion_method: str = "rrf",
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search across both image vectors using native Qdrant fusion with a pre-computed image embedding.
 
         Args:
@@ -1424,12 +1455,12 @@ class QdrantClient(VectorDBClient):
 
     async def search_complete(
         self,
-        query_embedding: Optional[List[float]] = None,
-        image_embedding: Optional[List[float]] = None,
+        query_embedding: list[float] | None = None,
+        image_embedding: list[float] | None = None,
         limit: int = 10,
         fusion_method: str = "rrf",
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search across all 11 vectors (9 text + 2 image) using native Qdrant fusion with pre-computed embeddings.
 
         Args:
@@ -1496,12 +1527,12 @@ class QdrantClient(VectorDBClient):
 
     async def search_characters(
         self,
-        query_embedding: List[float],
-        image_embedding: Optional[List[float]] = None,
+        query_embedding: list[float],
+        image_embedding: list[float] | None = None,
         limit: int = 10,
         fusion_method: str = "rrf",
-        filters: Optional[Filter] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Filter | None = None,
+    ) -> list[dict[str, Any]]:
         """Search specifically for character-related content using character vectors.
 
         Args:

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -447,7 +447,7 @@ async def test_fetch_animeplanet_anime_full_success(MockAsyncWebCrawler):
     [
         ("2024-01-01", "2024-03-31", "COMPLETED"),
         ("2023-10-01", None, "AIRING"),
-        (datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), None, "AIRING"),
+        (datetime.now(UTC).isoformat().replace("+00:00", "Z"), None, "AIRING"),
         # ("2099-01-01T00:00:00Z", None, "UPCOMING"), # This case is tested separately
         (None, None, "UNKNOWN"),
         ("invalid-date", None, "AIRING"),  # Fallback due to ValueError
@@ -688,9 +688,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
         mock_get_redis.return_value = mock_redis
 
         # Call 1: First fetch with output_path
-        result1 = await fetch_animeplanet_anime(
-            "cache-test", output_path=str(file1)
-        )
+        result1 = await fetch_animeplanet_anime("cache-test", output_path=str(file1))
 
         assert result1 is not None
         assert result1["title"] == "Cache Test Anime"
@@ -699,9 +697,7 @@ async def test_cache_reuse_with_different_output_paths(MockAsyncWebCrawler, tmp_
 
         # Call 2: Same slug, different output_path
         # After refactoring: Should hit cache, NOT crawl again
-        result2 = await fetch_animeplanet_anime(
-            "cache-test", output_path=str(file2)
-        )
+        result2 = await fetch_animeplanet_anime("cache-test", output_path=str(file2))
 
         assert result2 is not None
         assert result2["title"] == "Cache Test Anime"
@@ -729,9 +725,7 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
         "related_manga_raw": [],
     }
     json_ld_data = {"@type": "TVSeries", "name": "Test"}
-    html_content = '<html><meta property="og:image" content="http://example.com/poster.jpg"><script type="application/ld+json">{}</script></html>'.format(
-        json.dumps(json_ld_data)
-    )
+    html_content = f'<html><meta property="og:image" content="http://example.com/poster.jpg"><script type="application/ld+json">{json.dumps(json_ld_data)}</script></html>'
 
     mock_crawler_instance = MockAsyncWebCrawler.return_value
     mock_crawler_instance.__aenter__.return_value.arun = AsyncMock(
@@ -747,8 +741,6 @@ async def test_fetch_anime_poster_regex_fallback(MockAsyncWebCrawler):
 
     data = await fetch_animeplanet_anime("test")
     assert data["poster"] == "http://example.com/poster.jpg"
-
-
 
 
 def test_extract_rank_with_value_error():
@@ -781,9 +773,7 @@ async def test_main_function_success(mock_fetch):
         exit_code = await main()
 
     assert exit_code == 0
-    mock_fetch.assert_awaited_once_with(
-        "test-anime", output_path="output.json"
-    )
+    mock_fetch.assert_awaited_once_with("test-anime", output_path="output.json")
 
 
 @patch("enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")
@@ -813,9 +803,7 @@ async def test_main_function_error_handling(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch(
-    "enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
-)
+@patch("enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")
 async def test_main_function_handles_value_error(mock_fetch):
     """Test main() handles ValueError with specific error message."""
     from enrichment.crawlers.anime_planet_anime_crawler import main
@@ -829,9 +817,7 @@ async def test_main_function_handles_value_error(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch(
-    "enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
-)
+@patch("enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")
 async def test_main_function_handles_os_error(mock_fetch):
     """Test main() handles OSError (file write failures)."""
     from enrichment.crawlers.anime_planet_anime_crawler import main
@@ -848,9 +834,7 @@ async def test_main_function_handles_os_error(mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch(
-    "enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime"
-)
+@patch("enrichment.crawlers.anime_planet_anime_crawler.fetch_animeplanet_anime")
 async def test_main_function_handles_unexpected_exception(mock_fetch):
     """Test main() handles unexpected exceptions and logs full traceback."""
     from enrichment.crawlers.anime_planet_anime_crawler import main

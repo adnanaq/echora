@@ -14,18 +14,15 @@ Enhanced with AniDB-specific optimizations:
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
-# Add project root to path for imports (works from anywhere)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+from typing import Any
 
 from enrichment.ai_character_matcher import (
     AICharacterMatcher,
     process_characters_with_ai_matching,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Configure logging
 logging.basicConfig(
@@ -34,14 +31,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def extract_id_from_character_page(url: str, source: str) -> Optional[Union[int, str]]:
+def extract_id_from_character_page(url: str, source: str) -> int | str | None:
     """
     Extracts a character identifier from a character page URL for supported sources.
-    
+
     Parameters:
         url (str): Character page URL.
         source (str): Source identifier; expected values are "anilist" or "anidb".
-    
+
     Returns:
         int for Anilist IDs, str for AniDB IDs, or None if extraction fails.
     """
@@ -64,20 +61,20 @@ def extract_id_from_character_page(url: str, source: str) -> Optional[Union[int,
     return None
 
 
-def load_stage_data(stage_file: Path) -> List[Dict[str, Any]]:
+def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
     """
     Load and normalize character data from a stage JSON file.
-    
+
     Supports three input shapes and normalizes them to a list of dictionaries:
     - A JSON array -> returned as-is.
     - A JSON object with a top-level "data" key (Jikan format) -> returns the value of "data".
     - A single JSON object -> returned wrapped in a one-element list.
-    
+
     Returns:
         List[Dict[str, Any]]: Normalized list of character objects. Returns an empty list if the file is missing, contains invalid JSON, or an unexpected error occurs (errors are logged).
     """
     try:
-        with open(stage_file, "r", encoding="utf-8") as f:
+        with open(stage_file, encoding="utf-8") as f:
             data = json.load(f)
 
         if isinstance(data, list):
@@ -104,14 +101,14 @@ def load_stage_data(stage_file: Path) -> List[Dict[str, Any]]:
         return []
 
 
-def get_working_file_paths(anime_id: str, temp_dir: Path) -> Dict[str, Path]:
+def get_working_file_paths(anime_id: str, temp_dir: Path) -> dict[str, Path]:
     """
     Builds canonical file paths for per-anime progressive working files.
-    
+
     Parameters:
         anime_id (str): Identifier for the anime; used as the subdirectory name under `temp_dir`.
         temp_dir (Path): Base temporary directory where per-anime working directory is located.
-    
+
     Returns:
         Dict[str, Path]: Mapping of source keys to their working file Path objects:
             - "jikan": working_jikan.json
@@ -128,13 +125,13 @@ def get_working_file_paths(anime_id: str, temp_dir: Path) -> Dict[str, Path]:
     }
 
 
-def working_files_exist(working_paths: Dict[str, Path]) -> bool:
+def working_files_exist(working_paths: dict[str, Path]) -> bool:
     """
     Determine whether every path in the provided mapping exists on disk.
-    
+
     Parameters:
         working_paths (Dict[str, Path]): Mapping of source identifiers to file paths to verify.
-    
+
     Returns:
         true if every path exists, false otherwise.
     """
@@ -144,17 +141,17 @@ def working_files_exist(working_paths: Dict[str, Path]) -> bool:
 def create_working_files(
     anime_id: str,
     temp_dir: Path,
-    jikan_chars: List[Dict[str, Any]],
-    anilist_chars: List[Dict[str, Any]],
-    anidb_chars: List[Dict[str, Any]],
-    anime_planet_chars: List[Dict[str, Any]],
+    jikan_chars: list[dict[str, Any]],
+    anilist_chars: list[dict[str, Any]],
+    anidb_chars: list[dict[str, Any]],
+    anime_planet_chars: list[dict[str, Any]],
     force_restart: bool = False,
-) -> Dict[str, Path]:
+) -> dict[str, Path]:
     """
     Create or resume per-anime working files that contain only character arrays for progressive deletion.
-    
+
     If `force_restart` is False and all working files already exist, the function returns their paths without modifying them. If `force_restart` is True or any working file is missing, the function writes the provided character arrays to new working files under `temp_dir/<anime_id>/`.
-    
+
     Parameters:
         anime_id (str): Directory name for the anime under `temp_dir`.
         temp_dir (Path): Base temporary directory.
@@ -163,7 +160,7 @@ def create_working_files(
         anidb_chars (List[Dict[str, Any]]): Character array sourced from AniDB.
         anime_planet_chars (List[Dict[str, Any]]): Character array sourced from AnimePlanet.
         force_restart (bool): If True, overwrite existing working files; if False, attempt to resume from them.
-    
+
     Returns:
         Dict[str, Path]: Mapping of source keys ('jikan', 'anilist', 'anidb', 'animeplanet') to their corresponding working file Paths.
     """
@@ -210,28 +207,28 @@ def create_working_files(
     return working_paths
 
 
-def load_working_file(file_path: Path) -> List[Dict[str, Any]]:
+def load_working_file(file_path: Path) -> list[dict[str, Any]]:
     """
     Load and parse a working JSON file containing an array of character objects.
-    
+
     Parameters:
         file_path (Path): Path to a JSON file expected to contain a list of character dictionaries.
-    
+
     Returns:
         List[Dict[str, Any]]: Parsed list of character objects from the file, or an empty list if the file cannot be read or parsed.
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, IOError) as e:
-        logger.exception(f"Failed to load working file {file_path}: {e}")
+    except (OSError, json.JSONDecodeError):
+        logger.warning(f"Failed to load working file {file_path}")
         return []
 
 
-def save_working_file(file_path: Path, data: List[Dict[str, Any]]) -> None:
+def save_working_file(file_path: Path, data: list[dict[str, Any]]) -> None:
     """
     Write a list of character dictionaries to the given working file as pretty-printed JSON.
-    
+
     Parameters:
         file_path (Path): Destination file path to write; parent directories must exist.
         data (List[Dict[str, Any]]): List of character objects to serialize to JSON.
@@ -239,22 +236,22 @@ def save_working_file(file_path: Path, data: List[Dict[str, Any]]) -> None:
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except (IOError, OSError, TypeError) as e:
-        logger.exception(f"Failed to save working file {file_path}: {e}")
+    except (OSError, TypeError):
+        logger.exception(f"Failed to save working file {file_path}")
 
 
 def remove_matched_entry(
-    working_data: List[Dict[str, Any]], matched_id: Any, source_type: str
-) -> List[Dict[str, Any]]:
+    working_data: list[dict[str, Any]], matched_id: Any, source_type: str
+) -> list[dict[str, Any]]:
     """
     Remove the entry matching a source-specific identifier from a working character list.
-    
+
     Matches by source:
     - "jikan": compares against the entry's `character_id`.
     - "anilist": compares against the entry's `id` (numeric).
     - "anidb": compares against the entry's `id` using string comparison.
     - "animeplanet": compares against the entry's `name`.
-    
+
     Parameters:
         working_data: List of character dictionaries to filter.
         matched_id: Identifier to match and remove (type depends on source).
@@ -284,7 +281,7 @@ async def process_stage5_ai_characters(
 ) -> None:
     """
     Process characters for Stage 5 using AI-based matching with progressive pool deletion.
-    
+
     Parameters:
         anime_id (str): Directory/agent identifier for the anime to process.
         temp_dir (Path): Base temporary directory containing per-anime agent folders.
@@ -576,7 +573,7 @@ async def process_stage5_ai_characters(
         # Read all matched characters from JSONL
         matched_characters = []
         if output_jsonl.exists():
-            with open(output_jsonl, "r", encoding="utf-8") as f:
+            with open(output_jsonl, encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         matched_characters.append(json.loads(line))

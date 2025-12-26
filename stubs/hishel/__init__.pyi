@@ -1,111 +1,25 @@
 """Type stubs for hishel HTTP caching library (v1.0)."""
 
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
-# Core data models (public API)
-class Request:
-    """HTTP request representation for cache operations."""
-
-    url: str
-    method: str
-    headers: Dict[str, str]
-    content: bytes
-    metadata: Dict[str, Any]
-
-    def __init__(
-        self,
-        url: str,
-        method: str,
-        headers: Dict[str, str],
-        content: bytes,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """
-        Initialize an HTTP request for caching.
-
-        Parameters:
-            url (str): The request URL.
-            method (str): The HTTP method (GET, POST, etc.).
-            headers (Dict[str, str]): Request headers.
-            content (bytes): Request body content.
-            metadata (Optional[Dict[str, Any]]): Additional metadata (e.g., hishel_ttl).
-        """
-        ...
-
-class Response:
-    """HTTP response representation for cache operations."""
-
-    status: int
-    headers: Dict[str, str]
-    content: bytes
-    metadata: Dict[str, Any]
-
-    def __init__(
-        self,
-        status: int,
-        headers: Dict[str, str],
-        content: bytes,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """
-        Initialize an HTTP response for caching.
-
-        Parameters:
-            status (int): HTTP status code.
-            headers (Dict[str, str]): Response headers.
-            content (bytes): Response body content.
-            metadata (Optional[Dict[str, Any]]): Additional metadata.
-        """
-        ...
-
-class EntryMeta:
-    """Metadata for cache entry."""
-
-    created_at: float
-    expires_at: Optional[float]
-
-    def __init__(
-        self,
-        created_at: float,
-        expires_at: Optional[float] = None,
-    ) -> None:
-        """
-        Initialize entry metadata.
-
-        Parameters:
-            created_at (float): Timestamp when entry was created.
-            expires_at (Optional[float]): Optional expiration timestamp.
-        """
-        ...
-
-class Entry:
-    """Cache entry containing request, response, and metadata."""
-
-    id: uuid.UUID
-    request: Request
-    response: Response
-    meta: EntryMeta
-
-    def __init__(
-        self,
-        id_: uuid.UUID,
-        request: Request,
-        response: Response,
-        meta: EntryMeta,
-    ) -> None:
-        """
-        Initialize a cache entry.
-
-        Parameters:
-            id_ (uuid.UUID): Unique identifier for the entry.
-            request (Request): The cached request.
-            response (Response): The cached response.
-            meta (EntryMeta): Entry metadata including timestamps.
-        """
-        ...
+# Re-export core data models from internal modules (matches hishel/__init__.py structure)
+from hishel._core._headers import Headers as Headers
+from hishel._core.models import (
+    Entry as Entry,
+    EntryMeta as EntryMeta,
+    Request as Request,
+    Response as Response,
+)
 
 # Storage base classes (public API)
+#
+# NOTE ON PARAMETER NAMING: id vs id_
+# - create_entry uses 'id_' (optional parameter, avoids shadowing Python builtin)
+# - update_entry and remove_entry use 'id' (required parameter, matches hishel runtime)
+# Verified against hishel v1.0 source code.
+# DO NOT change without verifying against actual hishel source.
 class SyncBaseStorage:
     """Base class for synchronous cache storage implementations."""
 
@@ -114,7 +28,7 @@ class SyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry.
@@ -130,7 +44,7 @@ class SyncBaseStorage:
         """
         ...
 
-    def get_entries(self, key: str) -> List[Entry]:
+    def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve cache entries for a given key.
 
@@ -144,14 +58,14 @@ class SyncBaseStorage:
 
     def update_entry(
         self,
-        id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        id: uuid.UUID,
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier.
+            id (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -159,12 +73,12 @@ class SyncBaseStorage:
         """
         ...
 
-    def remove_entry(self, id_: uuid.UUID) -> None:
+    def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove a cache entry.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier to remove.
+            id (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -176,7 +90,7 @@ class AsyncBaseStorage:
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry asynchronously.
@@ -192,7 +106,7 @@ class AsyncBaseStorage:
         """
         ...
 
-    async def get_entries(self, key: str) -> List[Entry]:
+    async def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve cache entries for a given key asynchronously.
 
@@ -206,14 +120,14 @@ class AsyncBaseStorage:
 
     async def update_entry(
         self,
-        id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        id: uuid.UUID,
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry asynchronously.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier.
+            id (uuid.UUID): Entry identifier.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): New entry or update function.
 
         Returns:
@@ -221,12 +135,12 @@ class AsyncBaseStorage:
         """
         ...
 
-    async def remove_entry(self, id_: uuid.UUID) -> None:
+    async def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove a cache entry asynchronously.
 
         Parameters:
-            id_ (uuid.UUID): Entry identifier to remove.
+            id (uuid.UUID): Entry identifier to remove.
         """
         ...
 
@@ -247,9 +161,9 @@ class SyncSqliteStorage(SyncBaseStorage):
     def __init__(
         self,
         *,
-        connection: Optional[Any] = None,
+        connection: Any | None = None,
         database_path: str = "hishel_cache.db",
-        default_ttl: Optional[float] = None,
+        default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
     ) -> None:
         """
@@ -267,7 +181,7 @@ class SyncSqliteStorage(SyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry for the given request and response under the specified cache key.
@@ -282,7 +196,7 @@ class SyncSqliteStorage(SyncBaseStorage):
             Entry: The created cache entry.
         """
         ...
-    def get_entries(self, key: str) -> List[Entry]:
+    def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve all cache entries associated with the given cache key.
 
@@ -295,26 +209,26 @@ class SyncSqliteStorage(SyncBaseStorage):
         ...
     def update_entry(
         self,
-        id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        id: uuid.UUID,
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
         Update an existing cache entry identified by its UUID.
 
         Parameters:
-            id_ (uuid.UUID): UUID of the entry to update.
+            id (uuid.UUID): UUID of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either the replacement Entry or a callable that receives the current Entry and returns the updated Entry.
 
         Returns:
             Optional[Entry]: The updated Entry if the entry existed and was updated, `None` otherwise.
         """
         ...
-    def remove_entry(self, id_: uuid.UUID) -> None:
+    def remove_entry(self, id: uuid.UUID) -> None:
         """
         Remove the cache entry with the given identifier from storage.
 
         Parameters:
-            id_ (uuid.UUID): UUID of the entry to remove.
+            id (uuid.UUID): UUID of the entry to remove.
         """
         ...
 
@@ -324,9 +238,9 @@ class AsyncSqliteStorage(AsyncBaseStorage):
     def __init__(
         self,
         *,
-        connection: Optional[Any] = None,
+        connection: Any | None = None,
         database_path: str = "hishel_cache.db",
-        default_ttl: Optional[float] = None,
+        default_ttl: float | None = None,
         refresh_ttl_on_access: bool = True,
     ) -> None:
         """
@@ -344,7 +258,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         request: Request,
         response: Response,
         key: str,
-        id_: Optional[uuid.UUID] = None,
+        id_: uuid.UUID | None = None,
     ) -> Entry:
         """
         Create a cache entry for the given request/response pair under the specified key.
@@ -359,7 +273,7 @@ class AsyncSqliteStorage(AsyncBaseStorage):
             Entry: The created cache entry.
         """
         ...
-    async def get_entries(self, key: str) -> List[Entry]:
+    async def get_entries(self, key: str) -> list[Entry]:
         """
         Retrieve all cache entries associated with the given cache key.
 
@@ -372,26 +286,26 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         ...
     async def update_entry(
         self,
-        id_: uuid.UUID,
-        new_entry: Union[Entry, Callable[[Entry], Entry]],
-    ) -> Optional[Entry]:
+        id: uuid.UUID,
+        new_entry: Entry | Callable[[Entry], Entry],
+    ) -> Entry | None:
         """
-        Update an existing cache entry identified by `id_` with new content.
+        Update an existing cache entry identified by `id` with new content.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to update.
+            id (uuid.UUID): Identifier of the entry to update.
             new_entry (Union[Entry, Callable[[Entry], Entry]]): Either an `Entry` to replace the existing one, or a callable that receives the current `Entry` and returns the updated `Entry`.
 
         Returns:
-            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id_` existed and was updated, `None` otherwise.
+            updated_entry (Optional[Entry]): The updated `Entry` if an entry with `id` existed and was updated, `None` otherwise.
         """
         ...
-    async def remove_entry(self, id_: uuid.UUID) -> None:
+    async def remove_entry(self, id: uuid.UUID) -> None:
         """
-        Remove the cache entry identified by `id_`.
+        Remove the cache entry identified by `id`.
 
         Parameters:
-            id_ (uuid.UUID): Identifier of the entry to remove.
+            id (uuid.UUID): Identifier of the entry to remove.
         """
         ...
 
@@ -406,8 +320,8 @@ class SyncCacheProxy:
     def __init__(
         self,
         request_sender: Any,
-        storage: Optional[SyncBaseStorage] = None,
-        policy: Optional[CachePolicy] = None,
+        storage: SyncBaseStorage | None = None,
+        policy: CachePolicy | None = None,
     ) -> None:
         """
         Create a synchronous cache proxy that wraps a request sender with optional storage and cache policy.
@@ -440,7 +354,7 @@ class AsyncCacheProxy:
         self,
         client: Any,
         storage: AsyncBaseStorage,
-        options: Optional[CacheOptions] = None,
+        options: CacheOptions | None = None,
     ) -> None:
         """
         Initialize an asynchronous cache proxy for an HTTP client.

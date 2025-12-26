@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 from redis.asyncio import Redis as AsyncRedis
@@ -25,13 +25,13 @@ class HTTPCacheManager:
     def __init__(self, config: CacheConfig):
         """
         Initialize the HTTPCacheManager with the provided cache configuration.
-        
+
         Parameters:
             config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.enabled` is true, storage backend initialization is attempted.
         """
         self.config = config
-        self._async_redis_client: Optional[AsyncRedis] = None  # type: ignore[type-arg]
-        self._redis_event_loop: Optional[Any] = None
+        self._async_redis_client: AsyncRedis | None = None
+        self._redis_event_loop: Any | None = None
 
         if self.config.enabled:
             self._init_storage()
@@ -39,9 +39,9 @@ class HTTPCacheManager:
     def _init_storage(self) -> None:
         """
         Selects and initializes the configured cache storage backend.
-        
+
         If `storage_type` is "redis", initializes Redis storage; otherwise raises an error.
-        
+
         Raises:
             ValueError: If `config.storage_type` is not a recognized backend.
         """
@@ -53,7 +53,7 @@ class HTTPCacheManager:
     def _init_redis_storage(self) -> None:
         """
         Validate Redis configuration and record the resulting status in logs.
-        
+
         Checks that `redis_url` is present in the configured settings and logs an info message when valid. On validation failure logs a warning indicating Redis-based HTTP caching will not be used; the function does not re-raise exceptions.
         """
         try:
@@ -70,10 +70,10 @@ class HTTPCacheManager:
                 "Async (aiohttp) requests will not be cached on Redis."
             )
 
-    def _get_or_create_redis_client(self) -> Optional[AsyncRedis]:  # type: ignore[type-arg]
+    def _get_or_create_redis_client(self) -> AsyncRedis | None:
         """
         Obtain an AsyncRedis client bound to the current event loop, creating one if necessary.
-        
+
         Returns:
             AsyncRedis client bound to the current event loop, or `None` if no event loop is running or Redis URL is not configured.
         """
@@ -133,13 +133,13 @@ class HTTPCacheManager:
     ) -> Any:  # Returns aiohttp.ClientSession or CachedAiohttpSession
         """
         Return an aiohttp session configured for the given service, using Redis-backed body-aware caching when enabled.
-        
+
         When Redis caching is active and available, returns a CachedAiohttpSession that includes the request body in the cache key so distinct request bodies produce separate cache entries. Otherwise returns a standard aiohttp.ClientSession.
-        
+
         Parameters:
             service (str): Name of the service for which the session is created (used to determine TTL).
             **session_kwargs: Additional arguments forwarded to the session constructor.
-        
+
         Returns:
             aiohttp.ClientSession or CachedAiohttpSession: A session object suitable for making HTTP requests; a cached session when Redis-backed caching is available, otherwise a plain aiohttp.ClientSession.
         """
@@ -191,7 +191,7 @@ class HTTPCacheManager:
     def _get_service_ttl(self, service: str) -> int:
         """
         Retrieve TTL (time-to-live) in seconds for the given service.
-        
+
         Returns:
             ttl_seconds (int): TTL in seconds for the service; defaults to 86400 (24 hours) if not configured.
         """
@@ -201,7 +201,7 @@ class HTTPCacheManager:
     async def close_async(self) -> None:
         """
         Close and cleanup the asynchronous Redis client used for HTTP caching.
-        
+
         If an async Redis client exists, attempts to close it and logs any exception raised during closure.
         Afterward, clears internal references to the Redis client and its associated event loop.
         """
@@ -214,12 +214,12 @@ class HTTPCacheManager:
                 self._async_redis_client = None
                 self._redis_event_loop = None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Provide a summary of the cache manager's current configuration and status.
-        
+
         Returns:
-            stats (Dict[str, Any]): If caching is disabled, `{"enabled": False}`.
+            stats (dict[str, Any]): If caching is disabled, `{"enabled": False}`.
                 If enabled, a dictionary with keys:
                 - `"enabled"`: `True`
                 - `"storage_type"`: configured storage backend

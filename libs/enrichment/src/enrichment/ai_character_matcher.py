@@ -15,7 +15,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     # Only import for type checking to avoid runtime errors
@@ -36,27 +36,28 @@ from sentence_transformers import SentenceTransformer
 try:
     from common.config.settings import Settings
     from vector_processing.processors.vision_processor import VisionProcessor
+
     from enrichment.similarity.ccip import CCIP
 
     VISION_AVAILABLE = True
 except ImportError:
+    VisionProcessor = None  # ty: ignore[invalid-assignment]
+    CCIP = None  # ty: ignore[invalid-assignment]
+    Settings = None  # ty: ignore[invalid-assignment]
     VISION_AVAILABLE = False
-    VisionProcessor = None  # type: ignore[misc,assignment]
-    CCIP = None  # type: ignore[misc,assignment]
-    Settings = None  # type: ignore[misc,assignment]
 
 try:
     from sklearn.metrics.pairwise import cosine_similarity
 except ImportError:
-    cosine_similarity = None  # type: ignore[assignment]
+    cosine_similarity = None  # ty: ignore[invalid-assignment]
 
 # Language detection and processing
 try:
     import jaconv  # Japanese character conversion (has type stubs since v0.4.0)
     import pykakasi  # Kanji to romaji conversion
 except ImportError:
-    jaconv = None  # type: ignore[assignment]
-    pykakasi = None  # type: ignore[assignment]
+    jaconv = None  # ty: ignore[invalid-assignment]
+    pykakasi = None  # ty: ignore[invalid-assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,12 @@ class MatchConfidence(Enum):
 class CharacterMatch:
     """Result of character matching between sources"""
 
-    source_char: Dict[str, Any]
-    target_char: Dict[str, Any]
+    source_char: dict[str, Any]
+    target_char: dict[str, Any]
     confidence: MatchConfidence
     similarity_score: float
-    matching_evidence: Dict[str, float]
-    validation_notes: Optional[str] = None
+    matching_evidence: dict[str, float]
+    validation_notes: str | None = None
 
 
 @dataclass
@@ -86,22 +87,22 @@ class ProcessedCharacter:
 
     name: str
     role: str
-    name_variations: List[str]
-    name_native: Optional[str]
-    nicknames: List[str]
-    voice_actors: List[Dict[str, str]]
-    character_pages: Dict[str, str]
-    images: List[str]
-    age: Optional[str]
-    description: Optional[str]
-    gender: Optional[str]
-    hair_color: Optional[str]
-    eye_color: Optional[str]
-    character_traits: List[str]
-    favorites: Optional[int]
+    name_variations: list[str]
+    name_native: str | None
+    nicknames: list[str]
+    voice_actors: list[dict[str, str]]
+    character_pages: dict[str, str]
+    images: list[str]
+    age: str | None
+    description: str | None
+    gender: str | None
+    hair_color: str | None
+    eye_color: str | None
+    character_traits: list[str]
+    favorites: int | None
     match_confidence: MatchConfidence
     source_count: int
-    match_scores: Dict[str, float] = None  # type: ignore[assignment]  # Match scores for stage5 to use
+    match_scores: dict[str, float] | None = None  # Match scores for stage5 to use
 
 
 class LanguageDetector:
@@ -115,7 +116,7 @@ class LanguageDetector:
             self.kks = None
             self.conv = None
         else:
-            self.kks = pykakasi.kakasi()  # type: ignore[no-untyped-call]
+            self.kks = pykakasi.kakasi()
             self.kks.setMode("H", "a")  # Hiragana to ASCII
             self.kks.setMode("K", "a")  # Katakana to ASCII
             self.kks.setMode("J", "a")  # Kanji to ASCII
@@ -144,13 +145,13 @@ class CharacterNamePreprocessor:
     """Advanced preprocessing for anime character names"""
 
     def __init__(self) -> None:
-        self.kks = pykakasi.kakasi()  # type: ignore[no-untyped-call]
+        self.kks = pykakasi.kakasi()
         self.kks.setMode("H", "a")
         self.kks.setMode("K", "a")
         self.kks.setMode("J", "a")
         self.conv = self.kks.getConverter()
 
-    def preprocess_name(self, name: str, source_language: str) -> Dict[str, str]:
+    def preprocess_name(self, name: str, source_language: str) -> dict[str, str]:
         """Generate multiple normalized representations of a character name"""
         if not name:
             return self._empty_representations()
@@ -169,7 +170,7 @@ class CharacterNamePreprocessor:
         # NFD normalization + case folding for consistent comparison
         return unicodedata.normalize("NFD", text).casefold()
 
-    def _process_japanese_name(self, name: str) -> Dict[str, str]:
+    def _process_japanese_name(self, name: str) -> dict[str, str]:
         """Process Japanese character names with multiple script representations"""
         representations = {
             "original": name,
@@ -190,7 +191,7 @@ class CharacterNamePreprocessor:
         """Check if text contains hiragana characters"""
         return any("HIRAGANA" in unicodedata.name(c, "") for c in text)
 
-    def _process_english_name(self, name: str) -> Dict[str, str]:
+    def _process_english_name(self, name: str) -> dict[str, str]:
         """Process English character names with intelligent normalization"""
         # Handle common anime character name patterns
         normalized_name = name
@@ -231,7 +232,7 @@ class CharacterNamePreprocessor:
         try:
             result = self.conv.do(japanese_text)
             return str(result)
-        except:
+        except Exception:
             return japanese_text
 
     def _get_phonetic_key(self, text: str) -> str:
@@ -247,14 +248,14 @@ class CharacterNamePreprocessor:
         tokens = re.split(r"[\s\-_.,()]+", name)
         return " ".join([t.strip() for t in tokens if t.strip()])
 
-    def _empty_representations(self) -> Dict[str, str]:
+    def _empty_representations(self) -> dict[str, str]:
         """Return empty representations for null names"""
         return {"original": "", "normalized": "", "phonetic": "", "tokens": ""}
 
     @staticmethod
     def add_name_variation(
-        variations_dict: Dict[str, str], name: Optional[str]
-    ) -> Dict[str, str]:
+        variations_dict: dict[str, str], name: str | None
+    ) -> dict[str, str]:
         """
         Add name to variations dict with case-insensitive deduplication.
         For CJK characters, also normalizes spacing to prevent duplicates like "綾瀬 桃" vs "綾瀬桃".
@@ -294,10 +295,10 @@ class CharacterNamePreprocessor:
 
     @staticmethod
     def fill_missing_field(
-        current_value: Optional[Any],
-        source_value: Optional[Any],
+        current_value: Any | None,
+        source_value: Any | None,
         convert_to_str: bool = False,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """
         Fill missing field with fallback priority logic.
 
@@ -329,7 +330,7 @@ class CharacterNamePreprocessor:
         return current_value
 
     @staticmethod
-    def deduplicate_nicknames(nicknames: List[str], new_nickname: str) -> List[str]:
+    def deduplicate_nicknames(nicknames: list[str], new_nickname: str) -> list[str]:
         """
         Smart nickname deduplication that handles exact matches and parentheses patterns.
 
@@ -391,11 +392,11 @@ class EnsembleFuzzyMatcher:
     def __init__(self, model_name: str = "BAAI/bge-m3", enable_visual: bool = True):
         """
         Initialize the ensemble fuzzy matcher with optional multilingual embedding and vision processors.
-        
+
         Parameters:
             model_name (str): Name or path of the text embedding model to load.
             enable_visual (bool): If True, attempts to initialize a vision processor for image-based similarity.
-        
+
         Notes:
             - If the embedding model fails to load, `self.embedding_model` will be set to `None` and text-only fallback matching is used.
             - Visual matching is enabled only when `enable_visual` is True and the vision components are available; on failure `self.enable_visual` is set to False and `self.vision_processor` remains `None`.
@@ -409,17 +410,17 @@ class EnsembleFuzzyMatcher:
             logger.warning(
                 f"Failed to load BGE-M3 {model_name}, falling back to basic matching: {e}"
             )
-            self.embedding_model = None  # type: ignore[assignment]
+            self.embedding_model = None
 
         # Initialize vision model for character image similarity
         self.enable_visual = enable_visual and VISION_AVAILABLE
-        self.vision_processor: Optional[VisionProcessor] = None
+        self.vision_processor: VisionProcessor | None = None
 
         if self.enable_visual:
             try:
                 if Settings is not None and VisionProcessor is not None:
                     settings = Settings()
-                    self.vision_processor = VisionProcessor(settings)  # type: ignore[call-arg,arg-type]  # TODO: Fix - VisionProcessor requires model and downloader
+                    self.vision_processor = VisionProcessor(settings)  # ty: ignore[missing-argument,invalid-argument-type] TODO: Fix - VisionProcessor requires model and downloader
                     self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
@@ -431,7 +432,7 @@ class EnsembleFuzzyMatcher:
                 self.enable_visual = False
 
     async def calculate_visual_similarity(
-        self, image_url1: Optional[str], image_url2: Optional[str]
+        self, image_url1: str | None, image_url2: str | None
     ) -> float:
         """Calculate visual similarity between two character images using CCIP
 
@@ -468,12 +469,12 @@ class EnsembleFuzzyMatcher:
 
     async def calculate_similarity(
         self,
-        name1_repr: Dict[str, str],
-        name2_repr: Dict[str, str],
-        candidate_aliases: Optional[List[str]] = None,
+        name1_repr: dict[str, str],
+        name2_repr: dict[str, str],
+        candidate_aliases: list[str] | None = None,
         source: str = "generic",
-        jikan_image_url: Optional[str] = None,
-        candidate_image_url: Optional[str] = None,
+        jikan_image_url: str | None = None,
+        candidate_image_url: str | None = None,
     ) -> float:
         """
         Calculate ensemble similarity score between two character name representations
@@ -654,14 +655,14 @@ class EnsembleFuzzyMatcher:
             norm2 = self._standardize_for_embedding(text2)
 
             embeddings = self.embedding_model.encode([norm1, norm2])
-            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # ty: ignore[call-non-callable]
             return float(max(0.0, similarity))
         except Exception as e:
             logger.warning(f"Semantic similarity failed: {e}")
             return 0.0
 
     def _enhanced_semantic_similarity(
-        self, name1_repr: Dict[str, str], name2_repr: Dict[str, str]
+        self, name1_repr: dict[str, str], name2_repr: dict[str, str]
     ) -> float:
         """Enhanced semantic similarity testing all name variations and Japanese text.
 
@@ -788,8 +789,8 @@ class MatchValidationClassifier:
         self.llm_client = llm_client
 
     async def validate_match(
-        self, char1: Dict[str, Any], char2: Dict[str, Any], similarity_score: float
-    ) -> Tuple[bool, str]:
+        self, char1: dict[str, Any], char2: dict[str, Any], similarity_score: float
+    ) -> tuple[bool, str]:
         """Use LLM to validate character matches with context"""
 
         # For now, use rule-based validation
@@ -797,8 +798,8 @@ class MatchValidationClassifier:
         return self._rule_based_validation(char1, char2, similarity_score)
 
     def _rule_based_validation(
-        self, char1: Dict[str, Any], char2: Dict[str, Any], similarity_score: float
-    ) -> Tuple[bool, str]:
+        self, char1: dict[str, Any], char2: dict[str, Any], similarity_score: float
+    ) -> tuple[bool, str]:
         """Rule-based validation fallback"""
 
         validation_notes = []
@@ -888,11 +889,11 @@ class AICharacterMatcher:
 
     async def match_characters(
         self,
-        jikan_chars: List[Dict[str, Any]],
-        anilist_chars: List[Dict[str, Any]],
-        anidb_chars: List[Dict[str, Any]],
-        anime_planet_chars: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[ProcessedCharacter]:
+        jikan_chars: list[dict[str, Any]],
+        anilist_chars: list[dict[str, Any]],
+        anidb_chars: list[dict[str, Any]],
+        anime_planet_chars: list[dict[str, Any]] | None = None,
+    ) -> list[ProcessedCharacter]:
         """Main entry point for character matching across all sources"""
 
         # Handle optional anime_planet_chars
@@ -988,10 +989,10 @@ class AICharacterMatcher:
 
     async def _find_best_match(
         self,
-        primary_char: Dict[str, Any],
-        candidate_chars: List[Dict[str, Any]],
+        primary_char: dict[str, Any],
+        candidate_chars: list[dict[str, Any]],
         source: str,
-    ) -> Optional[CharacterMatch]:
+    ) -> CharacterMatch | None:
         """Find the best matching character from a source with visual verification"""
 
         if not candidate_chars:
@@ -1018,15 +1019,6 @@ class AICharacterMatcher:
             if not candidate_name:
                 continue
 
-            # Extract candidate ID for logging
-            candidate_id = (
-                candidate_char.get("mal_id")
-                or candidate_char.get("id")
-                or candidate_char.get("anilist_id")
-                or candidate_char.get("anidb_id")
-                or "N/A"
-            )
-
             # Preprocess candidate name
             candidate_language = self.language_detector.detect_language(candidate_name)
             candidate_repr = self.preprocessor.preprocess_name(
@@ -1051,18 +1043,6 @@ class AICharacterMatcher:
 
             # Early termination: If we find a very high confidence match, return immediately
             if similarity_score >= 0.9:
-                # Extract character IDs and names from both characters
-                primary_id = (
-                    primary_char.get("mal_id") or primary_char.get("id") or "N/A"
-                )
-                candidate_id = (
-                    candidate_char.get("mal_id")
-                    or candidate_char.get("id")
-                    or candidate_char.get("anilist_id")
-                    or candidate_char.get("anidb_id")
-                    or "N/A"
-                )
-
                 # Use the source parameter passed to this function
                 source_name = source.upper()
 
@@ -1122,10 +1102,10 @@ class AICharacterMatcher:
 
     def _extract_primary_name(
         self,
-        character: Dict[str, Any],
+        character: dict[str, Any],
         source: str,
-        target_source: Optional[str] = None,
-    ) -> Optional[str]:
+        target_source: str | None = None,
+    ) -> str | None:
         """Extract the primary name from a character based on source format
 
         Args:
@@ -1166,9 +1146,7 @@ class AICharacterMatcher:
 
         return None
 
-    def _extract_image_url(
-        self, character: Dict[str, Any], source: str
-    ) -> Optional[str]:
+    def _extract_image_url(self, character: dict[str, Any], source: str) -> str | None:
         """Extract primary image URL from character data based on source format
 
         Args:
@@ -1231,10 +1209,10 @@ class AICharacterMatcher:
 
     async def _integrate_character_data(
         self,
-        jikan_char: Dict[str, Any],
-        anilist_match: Optional[CharacterMatch],
-        anidb_match: Optional[CharacterMatch],
-        anime_planet_match: Optional[CharacterMatch] = None,
+        jikan_char: dict[str, Any],
+        anilist_match: CharacterMatch | None,
+        anidb_match: CharacterMatch | None,
+        anime_planet_match: CharacterMatch | None = None,
     ) -> ProcessedCharacter:
         """Integrate character data from multiple sources with hierarchical priority"""
 
@@ -1284,7 +1262,7 @@ class AICharacterMatcher:
 
         # Collect all name variations with case-insensitive deduplication
         # Use dict to preserve first occurrence while ignoring case duplicates
-        name_variations_dict: Dict[str, str] = {}
+        name_variations_dict: dict[str, str] = {}
         name_variations_dict = CharacterNamePreprocessor.add_name_variation(
             name_variations_dict, integrated.name
         )
@@ -1432,7 +1410,7 @@ class AICharacterMatcher:
 
         return integrated
 
-    def _extract_voice_actors(self, character: Dict[str, Any]) -> List[Dict[str, str]]:
+    def _extract_voice_actors(self, character: dict[str, Any]) -> list[dict[str, str]]:
         """Extract and simplify voice actor data"""
         voice_actors = []
 
@@ -1448,24 +1426,24 @@ class AICharacterMatcher:
 
 
 async def process_characters_with_ai_matching(
-    jikan_chars: List[Dict[str, Any]],
-    anilist_chars: List[Dict[str, Any]],
-    anidb_chars: List[Dict[str, Any]],
-    anime_planet_chars: Optional[List[Dict[str, Any]]] = None,
+    jikan_chars: list[dict[str, Any]],
+    anilist_chars: list[dict[str, Any]],
+    anidb_chars: list[dict[str, Any]],
+    anime_planet_chars: list[dict[str, Any]] | None = None,
     matcher: Optional["AICharacterMatcher"] = None,
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Process and integrate character data from multiple sources using AI-powered matching.
-    
+
     This function runs the ensemble matcher over Jikan, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. If a reusable AICharacterMatcher instance is supplied it will be reused; otherwise a new matcher is created.
-    
+
     Parameters:
         jikan_chars (List[Dict[str, Any]]): Character entries from Jikan (primary source).
         anilist_chars (List[Dict[str, Any]]): Character entries from AniList.
         anidb_chars (List[Dict[str, Any]]): Character entries from AniDB.
         anime_planet_chars (Optional[List[Dict[str, Any]]]): Character entries from AnimePlanet; may be omitted.
         matcher (Optional[AICharacterMatcher]): An existing AICharacterMatcher to reuse; a new one is created when omitted.
-    
+
     Returns:
         Dict[str, List[Dict[str, Any]]]: A dictionary with a "characters" list where each entry is a dict containing the integrated fields:
             - age, description, eye_color, favorites, gender, hair_color, name, name_native, role
@@ -1523,7 +1501,7 @@ async def process_characters_with_ai_matching(
     )
 
     # Log confidence statistics
-    confidence_stats: Dict[str, int] = {}
+    confidence_stats: dict[str, int] = {}
     for char in processed_chars:
         conf = char.match_confidence.value
         confidence_stats[conf] = confidence_stats.get(conf, 0) + 1
@@ -1561,7 +1539,10 @@ if __name__ == "__main__":  # pragma: no cover
             return 1
         except Exception:
             logger.exception("Unexpected error in character matcher CLI")
-            print("Error: An unexpected error occurred. Check logs for details.", file=sys.stderr)
+            print(
+                "Error: An unexpected error occurred. Check logs for details.",
+                file=sys.stderr,
+            )
             return 1
         else:
             return 0

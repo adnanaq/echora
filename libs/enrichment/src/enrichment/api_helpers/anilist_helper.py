@@ -11,10 +11,9 @@ import json
 import logging
 import sys
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 import aiohttp
-
 from http_cache.instance import http_cache_manager
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class AniListEnrichmentHelper:
     def __init__(self) -> None:
         """
         Create an AniListEnrichmentHelper and initialize its internal state.
-        
+
         Attributes:
             base_url (str): AniList GraphQL endpoint URL.
             session (Optional[aiohttp.ClientSession]): Per-event-loop HTTP session, created lazily.
@@ -35,14 +34,14 @@ class AniListEnrichmentHelper:
             _session_event_loop (Optional[asyncio.AbstractEventLoop]): Event loop associated with the current session.
         """
         self.base_url = "https://graphql.anilist.co"
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
         self.rate_limit_remaining = 90
-        self.rate_limit_reset: Optional[int] = None
-        self._session_event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.rate_limit_reset: int | None = None
+        self._session_event_loop: asyncio.AbstractEventLoop | None = None
 
     async def _make_request(
-        self, query: str, variables: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Send a GraphQL request to the AniList API and return the parsed response data with cache metadata.
 
@@ -73,7 +72,9 @@ class AniListEnrichmentHelper:
                 try:
                     await self.session.close()
                 except Exception:
-                    logger.debug("Ignoring error while closing old session", exc_info=True)
+                    logger.debug(
+                        "Ignoring error while closing old session", exc_info=True
+                    )
 
             # Get cached session from centralized cache manager
             # Each event loop gets its own session via the cache manager
@@ -135,14 +136,14 @@ class AniListEnrichmentHelper:
                     if "errors" in data:
                         logger.error(f"AniList GraphQL errors: {data['errors']}")
                         return {"_from_cache": from_cache}
-                    result: Dict[str, Any] = data.get("data", {})
+                    result: dict[str, Any] = data.get("data", {})
                     # Add cache metadata to result
                     result["_from_cache"] = from_cache
                     return result
             except (
+                TimeoutError,
                 aiohttp.ClientError,
                 aiohttp.ClientResponseError,
-                asyncio.TimeoutError,
                 json.JSONDecodeError,
             ):
                 # Network/JSON errors: log and return empty result
@@ -155,7 +156,7 @@ class AniListEnrichmentHelper:
     def _get_media_query_fields(self) -> str:
         """
         GraphQL selection set for requesting Media (ANIME) fields from the AniList API.
-        
+
         Returns:
             str: A multiline GraphQL field selection string that requests comprehensive Media fields
                  (titles, identifiers, images, stats, relations, studios, external links, tags,
@@ -290,9 +291,7 @@ class AniListEnrichmentHelper:
     #     response = await self._make_request(query, variables)
     #     return response.get("Media")
 
-    async def fetch_anime_by_anilist_id(
-        self, anilist_id: int
-    ) -> Optional[Dict[str, Any]]:
+    async def fetch_anime_by_anilist_id(self, anilist_id: int) -> dict[str, Any] | None:
         query = self._build_query_by_anilist_id()
         variables = {"id": anilist_id}
         response = await self._make_request(query, variables)
@@ -300,15 +299,15 @@ class AniListEnrichmentHelper:
 
     async def _fetch_paginated_data(
         self, anilist_id: int, query_template: str, data_key: str
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Fetches and accumulative list of paginated edges for a specific Media sub-resource by AniList ID.
-        
+
         Parameters:
             anilist_id (int): AniList numeric identifier for the Media node to query.
             query_template (str): GraphQL query string that accepts `id` and `page` variables and returns a pagination structure under `Media`.
             data_key (str): Key name under `Media` whose pagination container provides `edges` and `pageInfo` (e.g., "characters", "staff", "airingSchedule").
-        
+
         Returns:
             List[Dict[str, Any]]: Concatenated list of edge objects from all fetched pages. Paging stops when the container is missing, empty, or `pageInfo.hasNextPage` is false. If a response indicates it was served from cache via a `_from_cache` flag, the routine does not apply the inter-page throttle delay.
         """
@@ -336,15 +335,15 @@ class AniListEnrichmentHelper:
 
         return all_items
 
-    async def fetch_all_characters(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_characters(self, anilist_id: int) -> list[dict[str, Any]]:
         """
         Fetches all character edges for an anime from AniList by its AniList ID.
-        
+
         Parameters:
-        	anilist_id (int): AniList numeric ID of the anime to query.
-        
+                anilist_id (int): AniList numeric ID of the anime to query.
+
         Returns:
-        	characters (List[Dict[str, Any]]): A list of edge dictionaries from the GraphQL `characters` connection; each edge contains `node` (character data), `role`, and `voiceActors`.
+                characters (List[Dict[str, Any]]): A list of edge dictionaries from the GraphQL `characters` connection; each edge contains `node` (character data), `role`, and `voiceActors`.
         """
         query = """
         query ($id: Int!, $page: Int!) {
@@ -376,7 +375,7 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
-    async def fetch_all_staff(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_staff(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -389,7 +388,7 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "staff")
 
-    async def fetch_all_episodes(self, anilist_id: int) -> List[Dict[str, Any]]:
+    async def fetch_all_episodes(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
@@ -403,8 +402,8 @@ class AniListEnrichmentHelper:
         return await self._fetch_paginated_data(anilist_id, query, "airingSchedule")
 
     async def _fetch_and_populate_details(
-        self, anime_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, anime_data: dict[str, Any]
+    ) -> dict[str, Any]:
         anilist_id = anime_data.get("id")
         if not anilist_id:
             return anime_data
@@ -431,7 +430,7 @@ class AniListEnrichmentHelper:
 
     async def fetch_all_data_by_anilist_id(
         self, anilist_id: int
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         anime_data = await self.fetch_anime_by_anilist_id(anilist_id)
         if not anime_data:
             logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
@@ -453,9 +452,9 @@ class AniListEnrichmentHelper:
     async def __aenter__(self) -> "AniListEnrichmentHelper":
         """
         Enter the async context manager for this helper.
-        
+
         The underlying HTTP session is not created on enter; it will be created lazily on first request.
-        
+
         Returns:
             AniListEnrichmentHelper: The helper instance (`self`).
         """
@@ -463,13 +462,13 @@ class AniListEnrichmentHelper:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
         """
         Exit the asynchronous context and close the helper's HTTP session.
-        
+
         Returns:
             False to indicate exceptions are not suppressed.
         """
@@ -480,9 +479,9 @@ class AniListEnrichmentHelper:
 async def main() -> int:
     """
     CLI entry point that fetches AniList data for a provided ID and writes the result as JSON to a file.
-    
+
     Parses command-line arguments --anilist-id (required) and optional --output (defaults to "test_anilist_output.json"), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
-    
+
     Returns:
         int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
     """

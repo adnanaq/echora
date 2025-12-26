@@ -12,33 +12,31 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
+import requests
+from common.config import get_settings
+from qdrant_client import AsyncQdrantClient
+from qdrant_db import QdrantClient
+from vector_processing import TextProcessor, VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-import requests
-from qdrant_client import AsyncQdrantClient
 
-from common.config import get_settings
-from vector_processing import TextProcessor
-from vector_processing import VisionProcessor
-from vector_processing.embedding_models.factory import EmbeddingModelFactory
-from vector_processing.utils.image_downloader import ImageDownloader
-from qdrant_db import QdrantClient
-
-def load_anime_database() -> Dict:
+def load_anime_database() -> dict:
     """Load full anime database from enrichment file."""
-    with open("./data/qdrant_storage/enriched_anime_database.json", "r") as f:
+    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
         return json.load(f)
 
 
-def download_anime_image(image_url: str) -> Optional[str]:
+def download_anime_image(image_url: str) -> str | None:
     """Download anime image to temporary file and return path."""
     try:
         headers = {
@@ -82,7 +80,7 @@ def generate_all_field_combinations(fields):
     return all_combinations
 
 
-def create_field_combination_query(anime: Dict, field_combination: List[str]) -> str:
+def create_field_combination_query(anime: dict, field_combination: list[str]) -> str:
     """Create a query using specific field combination with actual anime data."""
     query_parts = []
 
@@ -110,7 +108,7 @@ def create_field_combination_query(anime: Dict, field_combination: List[str]) ->
     return " ".join(query_parts).strip()
 
 
-def extract_random_images(anime: Dict) -> List[str]:
+def extract_random_images(anime: dict) -> list[str]:
     """Extract random images from anime (covers, posters, banners)."""
     all_images = []
 
@@ -204,7 +202,13 @@ def test_title_vector_comprehensive():
 
         # Search title_vector using production method with raw similarity scores
         try:
-            qdrant_client = QdrantClient(settings=settings)
+            # Initialize Qdrant client with async factory pattern
+            async_qdrant_client = AsyncQdrantClient(
+                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            )
+            qdrant_client = asyncio.run(
+                QdrantClient.create(settings, async_qdrant_client)
+            )
 
             # Use search_single_vector to get real similarity scores
             results = asyncio.run(
@@ -283,9 +287,9 @@ def test_title_vector_comprehensive():
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key][
-                "avg_score"
-            ] /= field_combination_stats[combination_key]["tests"]
+            field_combination_stats[combination_key]["avg_score"] /= (
+                field_combination_stats[combination_key]["tests"]
+            )
 
     # Print field combination analysis
     if field_combination_stats:
@@ -316,7 +320,9 @@ def test_image_vector_comprehensive():
     settings = get_settings()
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
-    vision_processor = VisionProcessor(model=vision_model, downloader=image_downloader, settings=settings)
+    vision_processor = VisionProcessor(
+        model=vision_model, downloader=image_downloader, settings=settings
+    )
 
     # Load anime database
     anime_database = load_anime_database()
@@ -381,7 +387,13 @@ def test_image_vector_comprehensive():
                     continue
 
                 # Search image_vector using production method with raw similarity scores
-                qdrant_client = QdrantClient(settings=settings)
+                # Initialize Qdrant client with async factory pattern
+                async_qdrant_client = AsyncQdrantClient(
+                    url=settings.qdrant_url, api_key=settings.qdrant_api_key
+                )
+                qdrant_client = asyncio.run(
+                    QdrantClient.create(settings, async_qdrant_client)
+                )
 
                 # Use search_single_vector to get real similarity scores
                 results = asyncio.run(
@@ -428,7 +440,7 @@ def test_image_vector_comprehensive():
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
-            except:
+            except Exception:
                 pass
 
     # Results Summary using Rich formatter
@@ -471,9 +483,13 @@ def test_multimodal_title_search():
     settings = get_settings()
     async_qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url,
-        api_key=settings.qdrant_api_key if hasattr(settings, 'qdrant_api_key') else None,
+        api_key=settings.qdrant_api_key
+        if hasattr(settings, "qdrant_api_key")
+        else None,
     )
-    qdrant_client = QdrantClient(settings=settings, async_qdrant_client=async_qdrant_client)
+    qdrant_client = QdrantClient(
+        settings=settings, async_qdrant_client=async_qdrant_client
+    )
 
     # Load anime database
     anime_database = load_anime_database()
@@ -692,15 +708,15 @@ def test_multimodal_title_search():
         for temp_file in temp_files:
             try:
                 os.unlink(temp_file)
-            except:
+            except Exception:
                 pass
 
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
         if field_combination_stats[combination_key]["tests"] > 0:
-            field_combination_stats[combination_key][
-                "avg_score"
-            ] /= field_combination_stats[combination_key]["tests"]
+            field_combination_stats[combination_key]["avg_score"] /= (
+                field_combination_stats[combination_key]["tests"]
+            )
 
     # Results Summary using Rich formatter
     if total_tests > 0:

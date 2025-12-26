@@ -1,6 +1,8 @@
-from typing import Any, List
+from typing import Any
+
+import numpy
 
 def cosine_similarity(
-    X: List[List[float]], 
-    Y: List[List[float]] | None = None
-) -> Any: ...
+    X: numpy.ndarray[Any] | list[list[float]],
+    Y: numpy.ndarray[Any] | list[list[float]] | None = None,
+) -> numpy.ndarray[Any]: ...

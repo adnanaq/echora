@@ -9,9 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis.asyncio import Redis
-
 from http_cache.config import CacheConfig
+from redis.asyncio import Redis
 
 pytestmark = pytest.mark.integration
 
@@ -23,7 +22,7 @@ class TestResultCacheRaceConditions:
     async def test_race_condition_fix_with_instrumentation(self) -> None:
         """
         Validate that holding the internal initialization lock until the client is returned prevents a race where a concurrent closer can set the client to None during initialization.
-        
+
         Instruments get_result_cache_redis_client to introduce a short delay inside the critical section, runs an initialization getter and a concurrent closer, and asserts the getter still observes a non-None client even if the closer runs during the delay.
         """
         with (
@@ -56,9 +55,9 @@ class TestResultCacheRaceConditions:
             async def instrumented_get_with_delay():
                 """
                 Obtain the result cache Redis client while introducing a short delay inside the initialization lock to simulate a race window.
-                
+
                 This instrumented getter acquires the cache's internal lock, lazily initializes the Redis client if needed, awaits a brief sleep inside the critical section to allow concurrent operations to interleave, and then returns the client.
-                
+
                 Returns:
                     The initialized Redis client instance from the result cache.
                 """

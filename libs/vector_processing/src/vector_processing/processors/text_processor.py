@@ -5,12 +5,12 @@ for optimal performance.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
-
 from common.config import Settings
 from common.models.anime import AnimeEntry
+
 from ..embedding_models.text.base import TextEmbeddingModel
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class TextProcessor:
     """Text embedding processor supporting multiple models."""
 
-    def __init__(self, model: TextEmbeddingModel, settings: Optional[Settings] = None):
+    def __init__(self, model: TextEmbeddingModel, settings: Settings | None = None):
         """Initialize modern text processor with injected model.
 
         Args:
@@ -34,13 +34,13 @@ class TextProcessor:
 
         self.settings = settings
         self.model = model
-        
+
         # Initialize field mapper for multi-vector processing
-        self._field_mapper: Optional["AnimeFieldMapper"] = None
-        
+        self._field_mapper: AnimeFieldMapper | None = None
+
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 
-    def encode_text(self, text: str) -> Optional[List[float]]:
+    def encode_text(self, text: str) -> list[float] | None:
         """Encode text to embedding vector.
 
         Args:
@@ -65,8 +65,8 @@ class TextProcessor:
             return None
 
     def encode_texts_batch(
-        self, texts: List[str], batch_size: Optional[int] = None
-    ) -> List[Optional[List[float]]]:
+        self, texts: list[str], batch_size: int | None = None
+    ) -> list[list[float] | None]:
         """Encode multiple texts in batches.
 
         Args:
@@ -79,7 +79,7 @@ class TextProcessor:
         try:
             # Simple delegation to model which handles batching or list processing
             # The base model.encode takes a list and returns a list
-            return cast(List[Optional[List[float]]], self.model.encode(texts))
+            return cast(list[list[float] | None], self.model.encode(texts))
 
         except Exception as e:
             logger.error(f"Batch text encoding failed: {e}")
@@ -119,7 +119,7 @@ class TextProcessor:
             self._field_mapper = AnimeFieldMapper()
         return self._field_mapper
 
-    def process_anime_vectors(self, anime: AnimeEntry) -> Dict[str, List[float]]:
+    def process_anime_vectors(self, anime: AnimeEntry) -> dict[str, list[float]]:
         """
         Process anime data into multiple semantic text embeddings.
 
@@ -192,7 +192,7 @@ class TextProcessor:
 
     def _encode_with_hierarchical_averaging(
         self, chunked_text: str
-    ) -> Optional[List[float]]:
+    ) -> list[float] | None:
         """
         Encode text with hierarchical averaging for episode chunks.
 
@@ -228,7 +228,7 @@ class TextProcessor:
                     chunk_embeddings.append(chunk_embedding)
                 else:
                     logger.warning(
-                        f"Failed to encode episode chunk {i+1}/{len(chunks)}"
+                        f"Failed to encode episode chunk {i + 1}/{len(chunks)}"
                     )
 
             if not chunk_embeddings:
@@ -237,14 +237,14 @@ class TextProcessor:
 
             # Hierarchical averaging: equal weight for all chunks
             # This preserves semantic coherence better than weighted averaging for BGE-M3
-            
+
             # Convert to numpy for efficient averaging
             chunk_matrix = np.array(chunk_embeddings)
             averaged_embedding = np.mean(chunk_matrix, axis=0)
 
             # Convert back to list with proper typing
-            result_embedding: List[float] = cast(
-                List[float], averaged_embedding.tolist()
+            result_embedding: list[float] = cast(
+                list[float], averaged_embedding.tolist()
             )
 
             logger.debug(
@@ -294,11 +294,11 @@ class TextProcessor:
 
         return processed
 
-    def _get_zero_embedding(self) -> List[float]:
+    def _get_zero_embedding(self) -> list[float]:
         """Get zero embedding vector for empty/failed content."""
         return [0.0] * self.model.embedding_size
 
-    def get_text_vector_names(self) -> List[str]:
+    def get_text_vector_names(self) -> list[str]:
         """Get list of text vector names supported by this processor."""
         field_mapper = self._get_field_mapper()
         return [
@@ -307,7 +307,7 @@ class TextProcessor:
             if vec_type == "text"
         ]
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get information about the current text embedding model.
 
         Returns:

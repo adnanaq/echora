@@ -8,8 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common.config import get_settings
-from qdrant_db.client import QdrantClient
 from qdrant_client import AsyncQdrantClient
+from qdrant_db.client import QdrantClient
 
 
 async def test_search_methods():
@@ -54,9 +54,7 @@ async def test_search_methods():
             # Create a dummy vector for title_vector (1024 dimensions)
             dummy_vector = [0.1] * 1024
             results = await client.search_single_vector(
-                vector_name="title_vector",
-                vector_data=dummy_vector,
-                limit=3
+                vector_name="title_vector", vector_data=dummy_vector, limit=3
             )
             print(f"   ✓ search_single_vector returned {len(results)} results")
         except Exception as e:
@@ -71,9 +69,7 @@ async def test_search_methods():
                 {"vector_name": "synopsis_vector", "vector_data": [0.1] * 1024},
             ]
             results = await client.search_multi_vector(
-                vector_queries=vector_queries,
-                limit=3,
-                fusion_method="rrf"
+                vector_queries=vector_queries, limit=3, fusion_method="rrf"
             )
             print(f"   ✓ search_multi_vector returned {len(results)} results")
         except Exception as e:
@@ -83,9 +79,10 @@ async def test_search_methods():
         # Test 3: search_text_comprehensive
         print("3. Testing search_text_comprehensive()...")
         try:
+            # Create dummy text embedding (1024 dimensions for BGE-M3)
+            dummy_text_embedding = [0.1] * 1024
             results = await client.search_text_comprehensive(
-                query_text="action anime",
-                limit=3
+                query_embedding=dummy_text_embedding, limit=3
             )
             print(f"   ✓ search_text_comprehensive returned {len(results)} results")
         except Exception as e:
@@ -95,22 +92,26 @@ async def test_search_methods():
         # Test 4: search_visual_comprehensive
         print("4. Testing search_visual_comprehensive()...")
         try:
-            # This might fail if no images, so we'll catch that
+            # Create dummy image embedding (768 dimensions for OpenCLIP ViT-L/14)
+            dummy_image_embedding = [0.1] * 768
             results = await client.search_visual_comprehensive(
-                image_url="https://example.com/image.jpg",
-                limit=3
+                image_embedding=dummy_image_embedding, limit=3
             )
             print(f"   ✓ search_visual_comprehensive returned {len(results)} results")
         except Exception as e:
-            # Expected to fail with dummy URL, that's okay
-            print(f"   ⚠ search_visual_comprehensive (expected to fail with dummy URL): {str(e)[:100]}")
+            print(f"   ❌ search_visual_comprehensive failed: {e}")
+            return False
 
         # Test 5: search_complete
         print("5. Testing search_complete()...")
         try:
+            # Create dummy embeddings for both text and image
+            dummy_text_embedding = [0.1] * 1024
+            dummy_image_embedding = [0.1] * 768
             results = await client.search_complete(
-                query_text="anime",
-                limit=3
+                query_embedding=dummy_text_embedding,
+                image_embedding=dummy_image_embedding,
+                limit=3,
             )
             print(f"   ✓ search_complete returned {len(results)} results")
         except Exception as e:
@@ -120,9 +121,10 @@ async def test_search_methods():
         # Test 6: search_characters
         print("6. Testing search_characters()...")
         try:
+            # Create dummy text embedding for character search
+            dummy_text_embedding = [0.1] * 1024
             results = await client.search_characters(
-                character_name="protagonist",
-                limit=3
+                query_embedding=dummy_text_embedding, limit=3
             )
             print(f"   ✓ search_characters returned {len(results)} results")
         except Exception as e:

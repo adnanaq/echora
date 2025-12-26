@@ -17,11 +17,10 @@ import asyncio
 import html  # Import the html module for unescaping HTML entities
 import json
 import logging
-
 import re
 import sys
 import uuid
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -30,9 +29,9 @@ from crawl4ai import (
     JsonCssExtractionStrategy,
 )
 from crawl4ai.types import RunManyReturn
-
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
+
 from enrichment.crawlers.utils import sanitize_output_path
 
 logger = logging.getLogger(__name__)
@@ -42,13 +41,13 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 
-def _process_relation_tooltips(relations_list: List[Dict[str, Any]]) -> None:
+def _process_relation_tooltips(relations_list: list[dict[str, Any]]) -> None:
     """
     Normalize relation entries by extracting the first image URL from an HTML-escaped tooltip and replacing the `image` field with that URL.
-    
+
     Parameters:
         relations_list (List[Dict[str, Any]]): List of relation dictionaries. If a relation contains an HTML-escaped string under the `"image"` key, the first `<img src="...">` URL will be extracted and the `"image"` value replaced with that URL.
-    
+
     Notes:
         This function mutates the input list in place.
     """
@@ -67,9 +66,9 @@ async def _fetch_and_process_sub_page(
     session_id: str,
     js_code: str,
     wait_for: str,
-    css_schema: Optional[Dict[str, Any]],
+    css_schema: dict[str, Any] | None,
     use_js_only: bool = False,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Generic function to navigate via JS and fetch data from a sub-page.
 
@@ -108,7 +107,7 @@ async def _fetch_and_process_sub_page(
         if result.success and result.extracted_content:
             sub_page_data = json.loads(result.extracted_content)
             if isinstance(sub_page_data, list) and sub_page_data:
-                return cast(Dict[str, Any], sub_page_data[0])
+                return cast(dict[str, Any], sub_page_data[0])
             else:
                 logger.warning(
                     f"Unexpected sub-page data shape: expected non-empty list, got {type(sub_page_data).__name__}"
@@ -130,15 +129,15 @@ _ERR_MISSING_PATH = "URL does not contain anime path"
 def _normalize_anime_url(anime_identifier: str) -> str:
     """
     Convert an anime identifier into a canonical Anisearch anime URL.
-    
+
     Accepts a full anisearch URL, a site-relative path, or a bare path/ID and returns the equivalent full URL beginning with https://www.anisearch.com/anime/.
-    
+
     Parameters:
         anime_identifier (str): Full URL, a leading-slash relative path, or a bare path/ID (e.g. "18878,dan-da-dan", "/18878,dan-da-dan", or the full https://... URL).
-    
+
     Returns:
         str: Full anisearch anime URL starting with https://www.anisearch.com/anime/.
-    
+
     Raises:
         ValueError: If the resulting URL does not start with the anisearch anime base URL.
     """
@@ -174,7 +173,7 @@ def _extract_path_from_url(url: str) -> str:
         raise ValueError(_ERR_URL_PREFIX.format(base_url=BASE_ANIME_URL))
 
     # Extract and normalize path after BASE_ANIME_URL
-    path = url[len(BASE_ANIME_URL):].strip("/")
+    path = url[len(BASE_ANIME_URL) :].strip("/")
     if not path:
         raise ValueError(_ERR_MISSING_PATH)
 
@@ -182,13 +181,13 @@ def _extract_path_from_url(url: str) -> str:
 
 
 @cached_result(ttl=TTL_ANISEARCH, key_prefix="anisearch_anime")
-async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str, Any]]:
+async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """
     Fetches enriched anime metadata and related assets from anisearch.com for a given canonical anime path.
-    
+
     Parameters:
         canonical_path (str): Canonical anime path (e.g., "18878,dan-da-dan") normalized by the caller.
-    
+
     Returns:
         dict: Anime data dictionary containing metadata (titles, cover image, type, status), normalized dates (`start_date`, `end_date`), flattened `genres` and `tags`, `screenshots`, `anime_relations`, and `manga_relations`.
         None: If no valid data could be extracted.
@@ -316,7 +315,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                 )
 
             if result.success and result.extracted_content:
-                data = cast(List[Dict[str, Any]], json.loads(result.extracted_content))
+                data = cast(list[dict[str, Any]], json.loads(result.extracted_content))
 
                 if not data or not isinstance(data, list) or len(data) == 0:
                     logger.warning("Extraction returned empty data.")
@@ -463,7 +462,9 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
                         for item in screenshots_raw_data["screenshot_urls"]
                         if "url" in item
                     ]
-                    logger.info(f"Extracted {len(anime_data['screenshots'])} screenshots")
+                    logger.info(
+                        f"Extracted {len(anime_data['screenshots'])} screenshots"
+                    )
                 else:
                     anime_data["screenshots"] = []
 
@@ -548,8 +549,8 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> Optional[Dict[str,
 
 
 async def fetch_anisearch_anime(
-    anime_id: str, output_path: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    anime_id: str, output_path: str | None = None
+) -> dict[str, Any] | None:
     """
     Fetches anisearch anime data for the given identifier and optionally writes the result to a file.
 
@@ -585,9 +586,9 @@ async def fetch_anisearch_anime(
 async def main() -> int:
     """
     CLI entry point for the anisearch.com anime crawler.
-    
+
     Parses command-line arguments, invokes the crawler to fetch anime data, and handles expected errors.
-    
+
     Returns:
         int: Process exit code — `0` on success, `1` on failure.
     """

@@ -2,7 +2,7 @@
 
 A production-ready semantic search microservice for anime content using an 11-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
 
-## 🎯 Features
+## Features
 
 - **11-Vector Semantic Architecture**: 9 text vectors + 2 image vectors for comprehensive anime understanding
 - **Advanced Text Search**: BGE-M3 embeddings (1024-dim) across multiple semantic domains
@@ -12,14 +12,14 @@ A production-ready semantic search microservice for anime content using an 11-ve
 - **Modular Monorepo**: Clean separation of concerns with Pants build system
 - **Production Ready**: Health checks, monitoring, comprehensive test suite
 
-## 📊 Project Stats
+## Project Stats
 
 - **Lines of Code**: ~102k LOC
 - **Files**: 180 Python files
 - **Test Coverage**: 50%+ with unit and integration tests
 - **Libraries**: 3 core libraries (`common`, `qdrant_db`, `vector_processing`)
 
-## 🏗️ Monorepo Structure
+## Monorepo Structure
 
 ```text
 echora/
@@ -57,7 +57,7 @@ echora/
 └── data/                          # Data storage (Qdrant, anime databases)
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -106,7 +106,7 @@ uv run python -m src.main
 python -m src.main
 ```
 
-## 🛠️ Development with Pants
+## Development with Pants
 
 This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, dependency management, and testing in the monorepo.
 
@@ -137,8 +137,8 @@ This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, 
 # Lint code
 ./pants lint ::
 
-# Type check with mypy
-./pants check ::
+# Type check with ty
+ty check scripts/ libs/ apps/
 
 # Count lines of code
 ./pants count-loc ::
@@ -157,7 +157,7 @@ This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, 
 ./pants run scripts/validate_enrichment_database.py
 ```
 
-## 📚 Libraries
+## Libraries
 
 ### `libs/common`
 Shared models and configuration used across all libraries and the main application.
@@ -178,7 +178,7 @@ Vector embedding generation and processing.
 - **Processors**: Text and vision processing with caching
 - **Field Mapping**: Anime-specific field extraction and preprocessing
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests (unit + integration)
@@ -213,11 +213,58 @@ docker compose up -d qdrant
   - Marked with `@pytest.mark.integration` or `pytestmark = pytest.mark.integration`
   - Requires: Qdrant DB, ML models (BGE-M3, OpenCLIP), real embeddings
 
-## 🔧 Configuration
+## Configuration
+
+### Environment Detection
+
+**REQUIRED**: The service requires `APP_ENV` to be explicitly set for production safety. No default value is provided to prevent accidental deployment with development settings.
+
+```bash
+# Development - debug enabled, verbose logging (respects user overrides)
+APP_ENV=development
+
+# Staging - debug enabled, moderate logging, WAL enabled (respects user overrides)
+APP_ENV=staging
+
+# Production - ENFORCED safety settings (ignores user overrides)
+APP_ENV=production
+```
+
+**Environment-Specific Behavior:**
+
+| Setting | Development | Staging | Production |
+|---------|------------|---------|------------|
+| `debug` | `True` (default) | `True` (default) | **`False` (enforced)** |
+| `log_level` | `DEBUG` (default) | `INFO` (default) | **`WARNING` (enforced)** |
+| `qdrant_enable_wal` | user choice | `True` (default) | **`True` (enforced)** |
+| `model_warm_up` | user choice | user choice | **`True` (enforced)** |
+
+**Defaults**: "default" means the value is applied only if you don't explicitly set it in your `.env` file or environment variables.
+
+**Production Safety**: Production mode **always enforces** critical settings to prevent accidental debug mode or verbose logging in production. User-provided values are ignored for security.
+
+**Development/Staging**: These environments respect your custom configuration. Set `DEBUG=false` or `LOG_LEVEL=ERROR` in `.env` to override the defaults.
+
+**Docker Deployment:**
+```dockerfile
+ENV APP_ENV=production
+```
+
+**Kubernetes Deployment:**
+```yaml
+env:
+  - name: APP_ENV
+    value: "production"
+```
+
+### Application Settings
 
 Create a `.env` file or set environment variables:
 
 ```env
+# Environment (REQUIRED - must be explicitly set)
+APP_ENV=development
+
 # Service
 VECTOR_SERVICE_HOST=0.0.0.0
 VECTOR_SERVICE_PORT=8002
@@ -236,7 +283,7 @@ IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
 MODEL_CACHE_DIR=./cache
 ```
 
-## 📦 Dependency Management
+## Dependency Management
 
 ### Using UV (Recommended)
 
@@ -267,13 +314,13 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-## 🌐 API Endpoints
+## API Endpoints
 
 - `GET /health` - Service health status
 - `GET /api/v1/admin/stats` - Database statistics
 - `POST /api/v1/search` - Multi-vector semantic search (coming soon)
 
-## 🏛️ Architecture
+## Architecture
 
 ### Vector Architecture
 
@@ -302,10 +349,10 @@ pip install -e ".[dev]"
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)
 - **Package Manager**: UV
 - **Testing**: pytest, pytest-asyncio
-- **Type Checking**: mypy
-- **Formatting**: black, isort
+- **Type Checking**: ty
+- **Formatting**: ruff format, ruff check
 
-## 🤝 Contributing
+## Contributing
 
 1. Install dependencies: `uv sync`
 2. Make changes in appropriate library or application code
@@ -314,12 +361,14 @@ pip install -e ".[dev]"
 5. Format code: `./pants fmt ::`
 6. Submit PR
 
-## 📝 License
+## License
 
 [Add your license here]
 
-## 🔗 Related Documentation
+## Related Documentation
 
 - [Pants Documentation](https://www.pantsbuild.org/)
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Ruff Documentation](https://docs.astral.sh/ruff/)
+- [Ty Documentation](https://docs.astral.sh/ty/)

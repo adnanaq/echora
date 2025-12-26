@@ -11,28 +11,29 @@ import sys
 import time
 from itertools import combinations
 from pathlib import Path
-from typing import Dict, List
 
 import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
+from common.config import get_settings
+from qdrant_client import AsyncQdrantClient
+from qdrant_db import QdrantClient
+from vector_processing import TextProcessor
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent / "tests"))
 
-from common.config import get_settings
-from vector_processing import TextProcessor
-from qdrant_db import QdrantClient
 
-def load_anime_database() -> Dict:
+def load_anime_database() -> dict:
     """Load full anime database from enrichment file."""
-    with open("./data/qdrant_storage/enriched_anime_database.json", "r") as f:
+    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
         return json.load(f)
 
 
-def discover_all_staff_roles(anime_data: List[Dict]) -> List[str]:
+def discover_all_staff_roles(anime_data: list[dict]) -> list[str]:
     """Dynamically discover all available staff role fields from actual data."""
     all_roles = set()
 
@@ -49,13 +50,12 @@ def discover_all_staff_roles(anime_data: List[Dict]) -> List[str]:
     return sorted(list(all_roles))
 
 
-def get_anime_with_staff_data(anime_data: List[Dict]) -> List[Dict]:
+def get_anime_with_staff_data(anime_data: list[dict]) -> list[dict]:
     """Filter anime that have rich staff data."""
     anime_with_staff = []
 
     for anime in anime_data:
         if anime.get("staff_data") and anime["staff_data"].get("production_staff"):
-
             staff = anime["staff_data"]["production_staff"]
             # Count non-empty staff roles
             non_empty_roles = sum(
@@ -70,7 +70,7 @@ def get_anime_with_staff_data(anime_data: List[Dict]) -> List[Dict]:
     return anime_with_staff
 
 
-def generate_staff_field_combinations(staff_roles: List[str]) -> List[List[str]]:
+def generate_staff_field_combinations(staff_roles: list[str]) -> list[list[str]]:
     """Generate all possible combinations of staff role fields (1 to N roles)."""
     all_combinations = []
 
@@ -86,7 +86,7 @@ def generate_staff_field_combinations(staff_roles: List[str]) -> List[List[str]]
     return all_combinations
 
 
-def create_staff_query_patterns() -> List[Dict]:
+def create_staff_query_patterns() -> list[dict]:
     """Create diverse query patterns to test different staff field approaches."""
     return [
         # Pattern 1: Role-Specific (most common)
@@ -128,7 +128,7 @@ def create_staff_query_patterns() -> List[Dict]:
     ]
 
 
-def create_role_name_query(anime: Dict, roles: List[str]) -> str:
+def create_role_name_query(anime: dict, roles: list[str]) -> str:
     """Create query combining role title with staff member name."""
     query_parts = []
     staff_data = anime["staff_data"]["production_staff"]
@@ -150,7 +150,7 @@ def create_role_name_query(anime: Dict, roles: List[str]) -> str:
     return " ".join(query_parts).strip()
 
 
-def create_multi_role_query(anime: Dict, roles: List[str]) -> str:
+def create_multi_role_query(anime: dict, roles: list[str]) -> str:
     """Create query with multiple roles and names."""
     query_parts = []
     staff_data = anime["staff_data"]["production_staff"]
@@ -170,7 +170,7 @@ def create_multi_role_query(anime: Dict, roles: List[str]) -> str:
     return ", ".join(query_parts).strip()
 
 
-def create_position_query(anime: Dict, roles: List[str]) -> str:
+def create_position_query(anime: dict, roles: list[str]) -> str:
     """Create query focusing on positions/titles without names."""
     query_parts = []
 
@@ -181,7 +181,7 @@ def create_position_query(anime: Dict, roles: List[str]) -> str:
     return " ".join(query_parts).strip()
 
 
-def create_name_only_query(anime: Dict, roles: List[str]) -> str:
+def create_name_only_query(anime: dict, roles: list[str]) -> str:
     """Create query with only staff member names."""
     query_parts = []
     staff_data = anime["staff_data"]["production_staff"]
@@ -201,7 +201,7 @@ def create_name_only_query(anime: Dict, roles: List[str]) -> str:
     return " ".join(query_parts).strip()
 
 
-def create_full_context_query(anime: Dict, roles: List[str]) -> str:
+def create_full_context_query(anime: dict, roles: list[str]) -> str:
     """Create query with all available role and name information."""
     query_parts = []
     staff_data = anime["staff_data"]["production_staff"]
@@ -225,7 +225,7 @@ def create_full_context_query(anime: Dict, roles: List[str]) -> str:
     return " | ".join(query_parts).strip()
 
 
-def create_minimal_query(anime: Dict, roles: List[str]) -> str:
+def create_minimal_query(anime: dict, roles: list[str]) -> str:
     """Create minimal query with single role or name."""
     staff_data = anime["staff_data"]["production_staff"]
 
@@ -246,7 +246,7 @@ def create_minimal_query(anime: Dict, roles: List[str]) -> str:
 
 
 def verify_staff_in_anime(
-    staff_names: List[str], returned_anime_title: str, anime_database: Dict
+    staff_names: list[str], returned_anime_title: str, anime_database: dict
 ) -> bool:
     """Check if any of the staff names actually exist in the returned anime."""
     for anime in anime_database.get("data", []):
@@ -278,8 +278,8 @@ def verify_staff_in_anime(
 
 
 def extract_staff_names_from_query(
-    query: str, anime: Dict, roles: List[str]
-) -> List[str]:
+    query: str, anime: dict, roles: list[str]
+) -> list[str]:
     """Extract staff names that were used in the query for validation."""
     names = []
     staff_data = anime["staff_data"]["production_staff"]
@@ -420,7 +420,13 @@ def test_staff_vector_comprehensive():
 
         # Search staff_vector using production method
         try:
-            qdrant_client = QdrantClient(settings=settings)
+            # Initialize Qdrant client with async factory pattern
+            async_qdrant_client = AsyncQdrantClient(
+                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            )
+            qdrant_client = asyncio.run(
+                QdrantClient.create(settings, async_qdrant_client)
+            )
 
             results = asyncio.run(
                 qdrant_client.search_single_vector(
@@ -504,7 +510,7 @@ def test_staff_vector_comprehensive():
 
     # Print pattern analysis using rich formatter
     if pattern_stats:
-        print(f"\n🎯 Query Pattern Analysis:")
+        print("\n🎯 Query Pattern Analysis:")
         for pattern_name, stats in pattern_stats.items():
             if stats["tests"] > 0:
                 success_rate = (stats["passes"] / stats["tests"]) * 100

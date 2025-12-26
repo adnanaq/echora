@@ -18,10 +18,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Set, Type, Union, cast
+from typing import Any, cast
 
 import aiohttp
-
 from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
@@ -64,11 +63,11 @@ class AniDBEnrichmentHelper:
     """Enhanced AniDB XML API helper with production-level rate limiting and session management."""
 
     def __init__(
-        self, client_name: Optional[str] = None, client_version: Optional[str] = None
+        self, client_name: str | None = None, client_version: str | None = None
     ):
         """
         Initialize the AniDB enrichment helper and configure client metadata, session policy, rate limiting, retry behavior, circuit breaker, and request metrics.
-        
+
         Parameters:
             client_name (Optional[str]): Client identifier sent to AniDB; if None the value is taken from the `ANIDB_CLIENT` environment variable or defaults to `"animeenrichment"`.
             client_version (Optional[str]): Client version sent to AniDB; if None the value is taken from the `ANIDB_CLIENTVER` environment variable or defaults to `"1.0"`.
@@ -106,17 +105,17 @@ class AniDBEnrichmentHelper:
 
         # Request tracking and metrics
         self.metrics = AniDBRequestMetrics()
-        self.recent_requests: Set[str] = set()  # Track recent request fingerprints
+        self.recent_requests: set[str] = set()  # Track recent request fingerprints
         self._request_lock = asyncio.Lock()  # Ensure request serialization
 
-        logger.info(f"AniDB helper initialized with enhanced features:")
+        logger.info("AniDB helper initialized with enhanced features:")
         logger.info(
             f"  - Rate limiting: {self.min_request_interval}s-{self.max_request_interval}s"
         )
         logger.info(f"  - Circuit breaker: {self.circuit_breaker_threshold} failures")
         logger.info(f"  - Max retries: {self.max_retries}")
 
-    def _generate_request_fingerprint(self, params: Dict[str, Any]) -> str:
+    def _generate_request_fingerprint(self, params: dict[str, Any]) -> str:
         """Generate fingerprint for request deduplication."""
         # Create a consistent hash of request parameters
         param_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
@@ -198,7 +197,7 @@ class AniDBEnrichmentHelper:
     async def _ensure_session_health(self) -> None:
         """
         Ensure an active HTTP session for AniDB exists and recreate it if missing or expired.
-        
+
         If the current session is absent or older than the configured maximum age, create a new aiohttp session via the cache manager and update the session creation timestamp.
         """
         current_time = time.time()
@@ -208,7 +207,6 @@ class AniDBEnrichmentHelper:
             self.session is None
             or current_time - self._session_created_at > self._session_max_age
         ):
-
             if self.session:
                 logger.debug("Recreating AniDB session (max age reached)")
                 await self.session.close()
@@ -241,7 +239,7 @@ class AniDBEnrichmentHelper:
             self._session_created_at = current_time
             logger.debug("Created new AniDB session with enhanced settings")
 
-    async def _make_request_with_retry(self, params: Dict[str, Any]) -> Optional[str]:
+    async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
         """Make request with enhanced retry logic and error handling."""
         # Generate request fingerprint for deduplication
         fingerprint = self._generate_request_fingerprint(params)
@@ -333,8 +331,8 @@ class AniDBEnrichmentHelper:
         return None
 
     async def _make_single_request(
-        self, params: Dict[str, Any], attempt: int
-    ) -> Optional[str]:
+        self, params: dict[str, Any], attempt: int
+    ) -> str | None:
         """Make a single request attempt to the AniDB API."""
         # Add required client parameters
         request_params = params.copy()
@@ -410,7 +408,7 @@ class AniDBEnrichmentHelper:
                 self.metrics.last_error_time = time.time()
                 return None
 
-    def _decode_content(self, content: bytes) -> Optional[str]:
+    def _decode_content(self, content: bytes) -> str | None:
         """Decode response content with multiple encoding fallbacks."""
         encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
@@ -423,12 +421,12 @@ class AniDBEnrichmentHelper:
         logger.error(f"Failed to decode content with any encoding: {encodings}")
         return None
 
-    async def _make_request(self, params: Dict[str, Any]) -> Optional[str]:
+    async def _make_request(self, params: dict[str, Any]) -> str | None:
         """Thread-safe request method with serialization lock."""
         async with self._request_lock:
             return await self._make_request_with_retry(params)
 
-    def _parse_anime_xml(self, xml_content: str) -> Dict[str, Any]:
+    def _parse_anime_xml(self, xml_content: str) -> dict[str, Any]:
         """Parse anime XML response into structured data."""
         try:
             root = ET.fromstring(xml_content)
@@ -445,7 +443,7 @@ class AniDBEnrichmentHelper:
         url_elem = root.find("url")
         picture_elem = root.find("picture")
 
-        anime_data: Dict[str, Any] = {
+        anime_data: dict[str, Any] = {
             "anidb_id": root.get("id"),
             "type": type_elem.text if type_elem is not None else None,
             "episodecount": (
@@ -462,7 +460,7 @@ class AniDBEnrichmentHelper:
 
         # Extract titles
         titles_element = root.find("titles")
-        titles: Dict[str, Union[str, List[str], None]] = {}
+        titles: dict[str, str | list[str] | None] = {}
         if titles_element is not None:
             for title in titles_element.findall("title"):
                 title_type = title.get("type", "unknown")
@@ -479,7 +477,7 @@ class AniDBEnrichmentHelper:
                     if "synonyms" not in titles:
                         titles["synonyms"] = []
                     if title.text:
-                        synonyms = cast(List[str], titles["synonyms"])
+                        synonyms = cast(list[str], titles["synonyms"])
                         synonyms.append(title.text)
         anime_data["titles"] = titles
 
@@ -563,7 +561,7 @@ class AniDBEnrichmentHelper:
         characters = []
         if characters_element is not None:
             for character in characters_element.findall("character"):
-                char_data: Dict[str, Any] = {
+                char_data: dict[str, Any] = {
                     "id": character.get("id"),
                     "type": character.get("type"),
                     "update": character.get("update"),
@@ -615,7 +613,7 @@ class AniDBEnrichmentHelper:
 
         return anime_data
 
-    def _parse_episode_xml(self, xml_content: str) -> Dict[str, Any]:
+    def _parse_episode_xml(self, xml_content: str) -> dict[str, Any]:
         """Parse episode XML response into structured data."""
         try:
             root = ET.fromstring(xml_content)
@@ -630,7 +628,7 @@ class AniDBEnrichmentHelper:
         votes_elem = root.find("votes")
         summary_elem = root.find("summary")
 
-        episode_data: Dict[str, Any] = {
+        episode_data: dict[str, Any] = {
             "anidb_id": root.get("id"),
             "anime_id": root.get("aid"),
             "episode_number": epno_elem.text if epno_elem is not None else None,
@@ -654,7 +652,7 @@ class AniDBEnrichmentHelper:
         }
 
         # Extract episode titles
-        titles: Dict[str, Union[str, List[Dict[str, str]], None]] = {}
+        titles: dict[str, str | list[dict[str, str]] | None] = {}
         for title in root.findall("title"):
             lang = title.get("xml:lang") or title.get(
                 "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
@@ -669,7 +667,7 @@ class AniDBEnrichmentHelper:
                 if "other" not in titles:
                     titles["other"] = []
                 if title.text:
-                    other_titles = cast(List[Dict[str, str]], titles["other"])
+                    other_titles = cast(list[dict[str, str]], titles["other"])
                     other_titles.append(
                         {"lang": lang or "unknown", "title": title.text}
                     )
@@ -677,7 +675,7 @@ class AniDBEnrichmentHelper:
 
         return episode_data
 
-    async def get_anime_by_id(self, anidb_id: int) -> Optional[Dict[str, Any]]:
+    async def get_anime_by_id(self, anidb_id: int) -> dict[str, Any] | None:
         """Get anime information by AniDB ID."""
         try:
             params = {"request": "anime", "aid": anidb_id}
@@ -701,7 +699,7 @@ class AniDBEnrichmentHelper:
             logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
             return None
 
-    async def get_episode_by_id(self, episode_id: int) -> Optional[Dict[str, Any]]:
+    async def get_episode_by_id(self, episode_id: int) -> dict[str, Any] | None:
         """Get episode information by AniDB episode ID."""
         try:
             params = {"request": "episode", "eid": episode_id}
@@ -718,7 +716,7 @@ class AniDBEnrichmentHelper:
 
     async def search_anime_by_name(
         self, anime_name: str
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """Search anime by name using AniDB API."""
         try:
             params = {"request": "anime", "aname": anime_name}
@@ -735,7 +733,7 @@ class AniDBEnrichmentHelper:
             logger.error(f"Failed to search anime by name '{anime_name}': {e}")
             return None
 
-    async def fetch_all_data(self, anidb_id: int) -> Optional[Dict[str, Any]]:
+    async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
         """
         Fetch comprehensive AniDB data for an anime by AniDB ID.
 
@@ -758,7 +756,7 @@ class AniDBEnrichmentHelper:
             logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}: {e}")
             return None
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get comprehensive health and performance metrics."""
         current_time = time.time()
 
@@ -829,7 +827,7 @@ class AniDBEnrichmentHelper:
     async def close(self) -> None:
         """
         Close and clean up the helper's internal HTTP session.
-        
+
         If an active session exists, close it, clear the session reference, and reset the session creation timestamp.
         """
         if self.session:
@@ -845,7 +843,7 @@ class AniDBEnrichmentHelper:
     async def __aenter__(self) -> "AniDBEnrichmentHelper":
         """
         Enter asynchronous context and return the helper instance.
-        
+
         Returns:
             AniDBEnrichmentHelper: The helper instance to use within an `async with` block.
         """
@@ -853,15 +851,15 @@ class AniDBEnrichmentHelper:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
         """
         Ensure the helper's HTTP session is closed when exiting an async context.
-        
+
         This awaits close() to release network resources.
-        
+
         Returns:
             False: do not suppress exceptions raised within the context.
         """
@@ -872,9 +870,9 @@ class AniDBEnrichmentHelper:
 async def main() -> int:
     """
     Command-line test driver that fetches AniDB data and writes the result to a JSON file.
-    
+
     Parses command-line options (--anidb-id, --search-name, --output), performs the requested fetch or search using AniDBEnrichmentHelper, and saves the retrieved anime data to the specified output path.
-    
+
     Returns:
         int: Exit code where `0` indicates success and `1` indicates failure, no data found, or interruption.
     """

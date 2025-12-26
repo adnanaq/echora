@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import cast
 
 from PIL import Image
+
 from .base import VisionEmbeddingModel
 
 logger = logging.getLogger(__name__)
@@ -10,7 +11,9 @@ logger = logging.getLogger(__name__)
 class OpenClipModel(VisionEmbeddingModel):
     """OpenCLIP implementation of VisionEmbeddingModel."""
 
-    def __init__(self, model_name: str, cache_dir: Optional[str] = None, batch_size: int = 16):
+    def __init__(
+        self, model_name: str, cache_dir: str | None = None, batch_size: int = 16
+    ):
         """Initialize OpenCLIP model.
 
         Args:
@@ -19,12 +22,12 @@ class OpenClipModel(VisionEmbeddingModel):
             batch_size: Default batch size for encoding
         """
         try:
-            import open_clip  # type: ignore[import-untyped]
+            import open_clip
             import torch
 
             self._model_name = model_name
             self._batch_size = batch_size
-            
+
             # Set device
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -37,7 +40,9 @@ class OpenClipModel(VisionEmbeddingModel):
                 clip_model_name = model_name
                 # Get first available checkpoint for this model
                 available_models = open_clip.list_pretrained()
-                matching_checkpoints = [cp for m, cp in available_models if m == clip_model_name]
+                matching_checkpoints = [
+                    cp for m, cp in available_models if m == clip_model_name
+                ]
                 if not matching_checkpoints:
                     available_model_names = sorted(set(m for m, _ in available_models))
                     raise ValueError(
@@ -52,7 +57,9 @@ class OpenClipModel(VisionEmbeddingModel):
 
             # Validate model/checkpoint combination
             available_models = open_clip.list_pretrained()
-            valid_checkpoints = [cp for m, cp in available_models if m == clip_model_name]
+            valid_checkpoints = [
+                cp for m, cp in available_models if m == clip_model_name
+            ]
             if not valid_checkpoints:
                 available_model_names = sorted(set(m for m, _ in available_models))
                 raise ValueError(
@@ -69,7 +76,9 @@ class OpenClipModel(VisionEmbeddingModel):
 
             self._clip_model_name = clip_model_name
             self._pretrained = pretrained
-            logger.info(f"Using OpenCLIP model: {clip_model_name} with checkpoint: {pretrained}")
+            logger.info(
+                f"Using OpenCLIP model: {clip_model_name} with checkpoint: {pretrained}"
+            )
 
             # Load OpenCLIP model
             self.model, _, self.preprocess = open_clip.create_model_and_transforms(
@@ -81,7 +90,7 @@ class OpenClipModel(VisionEmbeddingModel):
 
             # Load tokenizer
             self.tokenizer = open_clip.get_tokenizer(clip_model_name)
-            
+
             self.model.eval()
 
             # Dynamically determine embedding size
@@ -92,7 +101,7 @@ class OpenClipModel(VisionEmbeddingModel):
 
             # Dynamically determine input resolution
             self._input_resolution = getattr(self.preprocess.transforms[0], "size", 224)
-            
+
             logger.info(f"Initialized OpenCLIP model: {model_name} on {self.device}")
 
         except ImportError as e:
@@ -104,7 +113,7 @@ class OpenClipModel(VisionEmbeddingModel):
             logger.exception(f"Failed to load OpenCLIP model {model_name}: {e}")
             raise
 
-    def encode_image(self, images: List[Union[Image.Image, str]]) -> List[List[float]]:
+    def encode_image(self, images: list[Image.Image | str]) -> list[list[float]]:
         """Encode a list of images into embeddings.
 
         Args:
@@ -115,7 +124,7 @@ class OpenClipModel(VisionEmbeddingModel):
         """
         try:
             import torch
-            
+
             # Preprocess images
             processed_images = []
             for img in images:
@@ -127,7 +136,7 @@ class OpenClipModel(VisionEmbeddingModel):
                         if loaded_img.mode != "RGB":
                             pil_img = loaded_img.convert("RGB")
                         else:
-                            pil_img = loaded_img  # type: ignore[assignment]  # ImageFile is compatible with Image
+                            pil_img = loaded_img  # ImageFile is compatible with Image
                     except Exception as e:
                         logger.error(f"Failed to load image from path {img}: {e}")
                         # Skip failed images or raise?
@@ -136,7 +145,7 @@ class OpenClipModel(VisionEmbeddingModel):
                         raise
                 else:
                     pil_img = img
-                
+
                 processed_images.append(self.preprocess(pil_img))
 
             if not processed_images:
@@ -149,9 +158,11 @@ class OpenClipModel(VisionEmbeddingModel):
             with torch.no_grad():
                 image_features = self.model.encode_image(image_tensor)
                 # Normalize features
-                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-                
-                return cast(List[List[float]], image_features.cpu().numpy().tolist())
+                image_features = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
+
+                return cast(list[list[float]], image_features.cpu().numpy().tolist())
 
         except Exception as e:
             logger.exception(f"OpenCLIP encoding failed: {e}")
@@ -168,7 +179,7 @@ class OpenClipModel(VisionEmbeddingModel):
     @property
     def input_size(self) -> int:
         return self._input_resolution
-    
+
     @property
     def batch_size(self) -> int:
         return self._batch_size

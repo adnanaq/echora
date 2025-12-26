@@ -4,7 +4,7 @@ Defines the contract that all text embedding model implementations must follow.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 
 class TextEmbeddingModel(ABC):
@@ -14,7 +14,7 @@ class TextEmbeddingModel(ABC):
     """
 
     @abstractmethod
-    def encode(self, texts: List[str]) -> List[List[float]]:
+    def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode a list of texts into embeddings.
 
         Args:
@@ -63,7 +63,7 @@ class TextEmbeddingModel(ABC):
         """
         return False
 
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """Get comprehensive information about this text embedding model.
 
         Returns:

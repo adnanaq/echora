@@ -1,10 +1,51 @@
 """Vector Service Configuration Settings."""
 
+import os
+from enum import Enum
 from functools import lru_cache
-from typing import Dict, List, Literal, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Environment(str, Enum):
+    """Application environment types."""
+
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+def get_environment() -> Environment:
+    """Detect environment from APP_ENV variable.
+
+    Returns:
+        Environment: Detected environment based on APP_ENV.
+
+    Raises:
+        ValueError: If APP_ENV is not set or contains an invalid value.
+    """
+    env_str = os.getenv("APP_ENV")
+    if not env_str:
+        raise ValueError(
+            "APP_ENV environment variable must be set to one of: "
+            "development, staging, production"
+        )
+
+    env_str = env_str.lower()
+
+    match env_str:
+        case "production":
+            return Environment.PRODUCTION
+        case "staging":
+            return Environment.STAGING
+        case "development":
+            return Environment.DEVELOPMENT
+        case _:
+            raise ValueError(
+                f"Invalid APP_ENV value '{env_str}'. "
+                "Must be one of: development, staging, production"
+            )
 
 
 class Settings(BaseSettings):
@@ -14,20 +55,35 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
-    # Vector Service Configuration
+    # ============================================================================
+    # ENVIRONMENT & APPLICATION
+    # ============================================================================
+
+    environment: Environment = Field(
+        default_factory=get_environment,
+        description="Application environment (development/staging/production)",
+    )
+    debug: bool = Field(default=True, description="Enable debug mode")
+
+    # ============================================================================
+    # SERVICE CONFIGURATION
+    # ============================================================================
+
     vector_service_host: str = Field(
         default="0.0.0.0", description="Vector service host address"
     )
     vector_service_port: int = Field(
         default=8002, ge=1, le=65535, description="Vector service port"
     )
-    debug: bool = Field(default=True, description="Enable debug mode")
 
-    # Qdrant Vector Database Configuration
+    # ============================================================================
+    # QDRANT DATABASE CONNECTION
+    # ============================================================================
+
     qdrant_url: str = Field(
         default="http://localhost:6333", description="Qdrant server URL"
     )
-    qdrant_api_key: Optional[str] = Field(
+    qdrant_api_key: str | None = Field(
         default=None, description="Qdrant API key for cloud authentication"
     )
     qdrant_collection_name: str = Field(
@@ -37,7 +93,10 @@ class Settings(BaseSettings):
         default="cosine", description="Distance metric for similarity"
     )
 
-    # Multi-Vector Configuration
+    # ============================================================================
+    # VECTOR ARCHITECTURE & DIMENSIONS
+    # ============================================================================
+
     text_vector_size: int = Field(
         default=1024,
         description="Vector embedding dimensions for text vectors (BGE-M3)",
@@ -48,7 +107,7 @@ class Settings(BaseSettings):
     )
 
     # 11-Vector Semantic Architecture Configuration
-    vector_names: Dict[str, int] = Field(
+    vector_names: dict[str, int] = Field(
         default={
             "title_vector": 1024,
             "character_vector": 1024,
@@ -66,7 +125,7 @@ class Settings(BaseSettings):
     )
 
     # Vector Priority Classification for Optimization
-    vector_priorities: Dict[str, List[str]] = Field(
+    vector_priorities: dict[str, list[str]] = Field(
         default={
             "high": [
                 "title_vector",
@@ -89,7 +148,10 @@ class Settings(BaseSettings):
         description="Vector priority classification for performance optimization",
     )
 
-    # Modern Embedding Configuration
+    # ============================================================================
+    # TEXT EMBEDDING MODELS
+    # ============================================================================
+
     text_embedding_provider: str = Field(
         default="huggingface",
         description="Text embedding provider: fastembed, huggingface, sentence-transformers",
@@ -98,15 +160,7 @@ class Settings(BaseSettings):
         default="BAAI/bge-m3", description="Modern text embedding model name"
     )
 
-    image_embedding_provider: str = Field(
-        default="openclip", description="Image embedding provider: openclip"
-    )
-    image_embedding_model: str = Field(
-        default="ViT-L-14/laion2b_s32b_b82k",
-        description="OpenCLIP ViT-L/14 model for high-quality image embeddings (768 dims)",
-    )
-
-    # Model-Specific Configuration
+    # BGE Model-Specific Configuration
     bge_model_version: str = Field(
         default="m3", description="BGE model version: v1.5, m3, reranker"
     )
@@ -117,62 +171,24 @@ class Settings(BaseSettings):
         default=8192, description="BGE maximum input sequence length"
     )
 
+    # ============================================================================
+    # IMAGE EMBEDDING MODELS
+    # ============================================================================
+
+    image_embedding_provider: str = Field(
+        default="openclip", description="Image embedding provider: openclip"
+    )
+    image_embedding_model: str = Field(
+        default="ViT-L-14/laion2b_s32b_b82k",
+        description="OpenCLIP ViT-L/14 model for high-quality image embeddings (768 dims)",
+    )
+
+    # OpenCLIP Model-Specific Configuration
     openclip_input_resolution: int = Field(
         default=224, description="OpenCLIP input image resolution"
     )
     openclip_text_max_length: int = Field(
         default=77, description="OpenCLIP maximum text sequence length"
-    )
-
-    model_cache_dir: Optional[str] = Field(
-        default=None, description="Custom cache directory for embedding models"
-    )
-    model_warm_up: bool = Field(
-        default=False, description="Pre-load and warm up models during initialization"
-    )
-
-    # LoRA Fine-tuning Configuration
-    lora_enabled: bool = Field(
-        default=False, description="Enable LoRA (Low-Rank Adaptation) fine-tuning"
-    )
-    lora_rank: int = Field(
-        default=16,
-        ge=1,
-        le=256,
-        description="LoRA rank (r) parameter - higher values = more parameters",
-    )
-    lora_alpha: int = Field(
-        default=32,
-        ge=1,
-        le=512,
-        description="LoRA alpha parameter - scaling factor (typically 2*rank)",
-    )
-    lora_dropout: float = Field(
-        default=0.1,
-        ge=0.0,
-        le=0.5,
-        description="LoRA dropout probability for regularization",
-    )
-    lora_target_modules: List[str] = Field(
-        default=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "out_proj",  # Attention layers
-            "fc1",
-            "fc2",  # MLP layers
-            "to_q",
-            "to_k",
-            "to_v",
-            "to_out",  # Alternative naming
-        ],
-        description="Target modules for LoRA adaptation in vision transformers",
-    )
-    lora_bias: Literal["none", "all", "lora_only"] = Field(
-        default="none", description="LoRA bias handling: none, all, lora_only"
-    )
-    lora_task_type: str = Field(
-        default="FEATURE_EXTRACTION", description="LoRA task type for vision models"
     )
 
     # Image Processing Configuration
@@ -183,19 +199,33 @@ class Settings(BaseSettings):
         description="Batch size for image embedding processing (adjust based on GPU VRAM: 4-8 for 8GB, 16+ for 16GB+)",
     )
 
-    # Qdrant Performance Optimization
+    # ============================================================================
+    # MODEL MANAGEMENT
+    # ============================================================================
+
+    model_cache_dir: str | None = Field(
+        default=None, description="Custom cache directory for embedding models"
+    )
+    model_warm_up: bool = Field(
+        default=False, description="Pre-load and warm up models during initialization"
+    )
+
+    # ============================================================================
+    # PERFORMANCE OPTIMIZATION - QUANTIZATION
+    # ============================================================================
+
     qdrant_enable_quantization: bool = Field(
         default=False, description="Enable quantization for performance"
     )
     qdrant_quantization_type: str = Field(
         default="scalar", description="Quantization type: binary, scalar, product"
     )
-    qdrant_quantization_always_ram: Optional[bool] = Field(
+    qdrant_quantization_always_ram: bool | None = Field(
         default=None, description="Keep quantized vectors in RAM"
     )
 
     # Advanced Quantization Configuration per Vector Priority
-    quantization_config: Dict[str, Dict[str, object]] = Field(
+    quantization_config: dict[str, dict[str, object]] = Field(
         default={
             "high": {"type": "scalar", "scalar_type": "int8", "always_ram": True},
             "medium": {"type": "scalar", "scalar_type": "int8", "always_ram": False},
@@ -204,17 +234,20 @@ class Settings(BaseSettings):
         description="Quantization configuration per vector priority for memory optimization",
     )
 
-    # HNSW Configuration
-    qdrant_hnsw_ef_construct: Optional[int] = Field(
+    # ============================================================================
+    # PERFORMANCE OPTIMIZATION - HNSW INDEX
+    # ============================================================================
+
+    qdrant_hnsw_ef_construct: int | None = Field(
         default=None, description="HNSW ef_construct parameter"
     )
-    qdrant_hnsw_m: Optional[int] = Field(default=None, description="HNSW M parameter")
-    qdrant_hnsw_max_indexing_threads: Optional[int] = Field(
+    qdrant_hnsw_m: int | None = Field(default=None, description="HNSW M parameter")
+    qdrant_hnsw_max_indexing_threads: int | None = Field(
         default=None, description="Maximum indexing threads"
     )
 
     # Anime-Optimized HNSW Parameters per Vector Priority
-    hnsw_config: Dict[str, Dict[str, int]] = Field(
+    hnsw_config: dict[str, dict[str, int]] = Field(
         default={
             "high": {"ef_construct": 256, "m": 64, "ef": 128},
             "medium": {"ef_construct": 200, "m": 48, "ef": 64},
@@ -223,25 +256,29 @@ class Settings(BaseSettings):
         description="Anime-optimized HNSW parameters per vector priority for similarity matching",
     )
 
-    # Memory and Storage Configuration
-    qdrant_memory_mapping_threshold: Optional[int] = Field(
+    # ============================================================================
+    # PERFORMANCE OPTIMIZATION - MEMORY & STORAGE
+    # ============================================================================
+
+    qdrant_memory_mapping_threshold: int | None = Field(
         default=None, description="Memory mapping threshold in KB"
     )
-
-    # Advanced Memory Management for Million-Query Optimization
     memory_mapping_threshold_mb: int = Field(
         default=50,
         description="Memory mapping threshold in MB for large collection optimization",
     )
-    qdrant_enable_wal: Optional[bool] = Field(
+    qdrant_enable_wal: bool | None = Field(
         default=None, description="Enable Write-Ahead Logging"
     )
 
-    # Payload Indexing
+    # ============================================================================
+    # INDEXING CONFIGURATION
+    # ============================================================================
+
     qdrant_enable_payload_indexing: bool = Field(
         default=True, description="Enable payload field indexing"
     )
-    qdrant_indexed_payload_fields: Dict[str, str] = Field(
+    qdrant_indexed_payload_fields: dict[str, str] = Field(
         default={
             # Core searchable fields
             "id": "keyword",
@@ -305,7 +342,10 @@ class Settings(BaseSettings):
         description="Payload fields with their types for optimized indexing (excludes operational metadata)",
     )
 
-    # API Configuration
+    # ============================================================================
+    # API CONFIGURATION
+    # ============================================================================
+
     api_title: str = Field(default="Anime Vector Service", description="API title")
     api_version: str = Field(default="1.0.0", description="API version")
     api_description: str = Field(
@@ -313,7 +353,11 @@ class Settings(BaseSettings):
         description="API description",
     )
 
-    # Batch Processing Configuration
+    # ============================================================================
+    # REQUEST PROCESSING & LIMITS
+    # ============================================================================
+
+    # Batch Processing
     default_batch_size: int = Field(
         default=100, ge=1, le=1000, description="Default batch size for operations"
     )
@@ -321,7 +365,7 @@ class Settings(BaseSettings):
         default=500, ge=1, le=2000, description="Maximum allowed batch size"
     )
 
-    # Request Limits
+    # Search & Request Limits
     max_search_limit: int = Field(
         default=100, ge=1, le=1000, description="Maximum search results limit"
     )
@@ -329,23 +373,76 @@ class Settings(BaseSettings):
         default=30, ge=1, le=300, description="Request timeout in seconds"
     )
 
-    # Logging Configuration
+    # ============================================================================
+    # LOGGING CONFIGURATION
+    # ============================================================================
+
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format string",
     )
 
-    # CORS Configuration
-    allowed_origins: List[str] = Field(
+    # ============================================================================
+    # CORS CONFIGURATION
+    # ============================================================================
+
+    allowed_origins: list[str] = Field(
         default=["*"], description="Allowed CORS origins"
     )
-    allowed_methods: List[str] = Field(
+    allowed_methods: list[str] = Field(
         default=["*"], description="Allowed HTTP methods"
     )
-    allowed_headers: List[str] = Field(
+    allowed_headers: list[str] = Field(
         default=["*"], description="Allowed HTTP headers"
     )
+
+    # ============================================================================
+    # LIFECYCLE & VALIDATION
+    # ============================================================================
+
+    def model_post_init(self, __context) -> None:
+        """Apply environment-specific overrides after initialization."""
+        self.apply_environment_settings()
+
+    def apply_environment_settings(self) -> None:
+        """Apply environment-specific settings with smart defaults.
+
+        DEVELOPMENT:
+            - Sets debug=True, log_level=DEBUG as defaults
+            - Respects user-provided values
+
+        STAGING:
+            - Sets debug=True, log_level=INFO, wal=True as defaults
+            - Respects user-provided values
+
+        PRODUCTION (ENFORCED):
+            - ALWAYS enforces debug=False, log_level=WARNING
+            - ALWAYS enforces wal=True, model_warm_up=True
+            - Security: Cannot be bypassed by user configuration
+        """
+        if self.environment == Environment.DEVELOPMENT:
+            # Apply defaults only if user didn't explicitly set values
+            if os.getenv("DEBUG") is None:
+                self.debug = True
+            if os.getenv("LOG_LEVEL") is None:
+                self.log_level = "DEBUG"
+
+        elif self.environment == Environment.STAGING:
+            # Apply defaults only if user didn't explicitly set values
+            if os.getenv("DEBUG") is None:
+                self.debug = True
+            if os.getenv("LOG_LEVEL") is None:
+                self.log_level = "INFO"
+            if os.getenv("QDRANT_ENABLE_WAL") is None:
+                self.qdrant_enable_wal = True
+
+        elif self.environment == Environment.PRODUCTION:
+            # ENFORCED - cannot be bypassed (security feature)
+            self.debug = False
+            self.log_level = "WARNING"
+            self.qdrant_enable_wal = True
+            self.model_warm_up = True
 
     @field_validator("qdrant_distance_metric")
     @classmethod
@@ -388,7 +485,7 @@ class Settings(BaseSettings):
         return v.upper()
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

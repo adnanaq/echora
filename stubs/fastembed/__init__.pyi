@@ -1,11 +1,8 @@
-from typing import Any, Generator, List
+from collections.abc import Generator
+from typing import Any
 
 class TextEmbedding:
     def __init__(
-        self,
-        model_name: str,
-        cache_dir: str | None = None,
-        **kwargs: Any
+        self, model_name: str, cache_dir: str | None = None, **kwargs: Any
     ) -> None: ...
-    
-    def embed(self, texts: List[str]) -> Generator[Any, None, None]: ...
+    def embed(self, texts: list[str]) -> Generator[Any, None, None]: ...

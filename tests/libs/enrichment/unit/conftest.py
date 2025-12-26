@@ -1,6 +1,6 @@
 """Shared test fixtures for enrichment unit tests."""
 
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
 import pytest

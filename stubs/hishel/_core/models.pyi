@@ -1,68 +1,70 @@
 """Type stubs for hishel._core.models module."""
 
 import uuid
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Union
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 from hishel._core._headers import Headers
 
 class EntryMeta:
     """Cache entry metadata."""
-    created_at: float
-    deleted_at: Optional[float]
 
-    def __init__(
-        self, created_at: float, deleted_at: Optional[float] = None
-    ) -> None:
+    created_at: float
+    deleted_at: float | None
+
+    def __init__(self, created_at: float, deleted_at: float | None = None) -> None:
         """
         Initialize an EntryMeta containing creation and optional deletion timestamps.
 
         Parameters:
-        	created_at (float): Unix timestamp when the entry was created.
-        	deleted_at (Optional[float]): Unix timestamp when the entry was deleted, or `None` if not deleted.
+                created_at (float): Unix timestamp when the entry was created.
+                deleted_at (Optional[float]): Unix timestamp when the entry was deleted, or `None` if not deleted.
         """
         ...
 
 class Request:
     """HTTP request model."""
+
     method: str
     url: str
-    headers: Union[Dict[str, str], Headers]
-    stream: Optional[Iterator[bytes]]
-    metadata: Dict[str, Any]
+    headers: dict[str, str] | Headers
+    stream: Iterator[bytes] | None
+    metadata: dict[str, Any]
 
     def __init__(
         self,
         method: str,
         url: str,
-        headers: Union[Dict[str, str], Headers],
-        stream: Optional[Iterator[bytes]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        headers: dict[str, str] | Headers,
+        stream: Iterator[bytes] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize a Request model representing an HTTP request used by the cache/system.
 
         Parameters:
-        	method (str): HTTP method (e.g., "GET", "POST").
-        	url (str): Request URL.
-        	headers (Union[Dict[str, str], Headers]): Header mapping or Headers instance for the request.
-        	stream (Optional[Iterator[bytes]]): Optional iterator of raw bytes providing the request body.
-        	metadata (Optional[Dict[str, Any]]): Optional ancillary metadata associated with the request.
+                method (str): HTTP method (e.g., "GET", "POST").
+                url (str): Request URL.
+                headers (Union[Dict[str, str], Headers]): Header mapping or Headers instance for the request.
+                stream (Optional[Iterator[bytes]]): Optional iterator of raw bytes providing the request body.
+                metadata (Optional[Dict[str, Any]]): Optional ancillary metadata associated with the request.
         """
         ...
 
 class Response:
     """HTTP response model."""
+
     status_code: int
-    headers: Union[Dict[str, str], Headers]
-    stream: Optional[Union[Iterator[bytes], AsyncIterator[bytes]]]
-    metadata: Dict[str, Any]
+    headers: dict[str, str] | Headers
+    stream: Iterator[bytes] | AsyncIterator[bytes] | None
+    metadata: dict[str, Any]
 
     def __init__(
         self,
         status_code: int,
-        headers: Union[Dict[str, str], Headers],
-        stream: Optional[Union[Iterator[bytes], AsyncIterator[bytes]]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        headers: dict[str, str] | Headers,
+        stream: Iterator[bytes] | AsyncIterator[bytes] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize a Response model representing an HTTP response for the cache system.
@@ -77,9 +79,10 @@ class Response:
 
 class Entry:
     """Cache entry model."""
+
     id: uuid.UUID
     request: Request
-    response: Optional[Response]
+    response: Response | None
     meta: EntryMeta
     cache_key: bytes
 
@@ -87,7 +90,7 @@ class Entry:
         self,
         id: uuid.UUID,
         request: Request,
-        response: Optional[Response],
+        response: Response | None,
         meta: EntryMeta,
         cache_key: bytes,
     ) -> None:

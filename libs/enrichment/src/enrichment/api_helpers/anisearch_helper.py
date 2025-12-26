@@ -3,7 +3,7 @@
 import logging
 import re
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
@@ -18,7 +18,7 @@ class AniSearchEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize AniSearch helper (crawlers are stateless)."""
 
-    async def extract_anisearch_id_from_url(self, url: str) -> Optional[int]:
+    async def extract_anisearch_id_from_url(self, url: str) -> int | None:
         """Extract AniSearch ID from URL.
 
         Args:
@@ -39,8 +39,8 @@ class AniSearchEnrichmentHelper:
             return None
 
     async def find_anisearch_url(
-        self, offline_anime_data: Dict[str, Any]
-    ) -> Optional[str]:
+        self, offline_anime_data: dict[str, Any]
+    ) -> str | None:
         """Find AniSearch URL from offline anime data sources.
 
         Args:
@@ -59,13 +59,13 @@ class AniSearchEnrichmentHelper:
             logger.error(f"Error finding AniSearch URL: {e}")
             return None
 
-    async def fetch_anime_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
+    async def fetch_anime_data(self, anisearch_id: int) -> dict[str, Any] | None:
         """
         Fetches anime metadata from AniSearch for the given AniSearch numeric ID.
-        
+
         Parameters:
             anisearch_id (int): AniSearch anime ID (for example, 18878 for Dandadan).
-        
+
         Returns:
             dict: Anime data dictionary if available, `None` otherwise.
         """
@@ -94,13 +94,13 @@ class AniSearchEnrichmentHelper:
 
     async def fetch_episode_data(
         self, anisearch_id: int
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """
         Fetch episode data for a given AniSearch anime ID.
-        
+
         Parameters:
             anisearch_id (int): AniSearch numeric anime ID.
-        
+
         Returns:
             Optional[List[Dict[str, Any]]]: List of episode dictionaries if found, `None` otherwise.
         """
@@ -126,7 +126,7 @@ class AniSearchEnrichmentHelper:
             logger.exception(f"Error fetching episode data for ID {anisearch_id}")
             return None
 
-    async def fetch_character_data(self, anisearch_id: int) -> Optional[Dict[str, Any]]:
+    async def fetch_character_data(self, anisearch_id: int) -> dict[str, Any] | None:
         """
         Retrieve character information for a given AniSearch anime ID.
 
@@ -164,15 +164,15 @@ class AniSearchEnrichmentHelper:
         anisearch_id: int,
         include_episodes: bool = True,
         include_characters: bool = True,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Fetches anime data from AniSearch and enriches it with optional episodes and characters.
-        
+
         Parameters:
             anisearch_id (int): AniSearch numeric anime ID (e.g., 18878 for Dandadan).
             include_episodes (bool): If True, attempt to attach an "episodes" list to the returned data.
             include_characters (bool): If True, attempt to attach a "characters" list to the returned data.
-        
+
         Returns:
             The anime data dictionary enriched with optional "episodes" and "characters" keys, or `None` if the primary anime data could not be fetched.
         """
@@ -237,7 +237,7 @@ class AniSearchEnrichmentHelper:
     async def __aenter__(self) -> "AniSearchEnrichmentHelper":
         """
         Enter the asynchronous context and make the helper available as the context value.
-        
+
         Returns:
             AniSearchEnrichmentHelper: The same helper instance.
         """
@@ -245,15 +245,15 @@ class AniSearchEnrichmentHelper:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
         """
         Perform cleanup when exiting the async context.
-        
+
         Calls the helper's cleanup routine and returns `False` to indicate any exception raised in the context should not be suppressed.
-        
+
         Returns:
             `False` to indicate exceptions are not suppressed.
         """

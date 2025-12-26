@@ -3,7 +3,7 @@
 Beautiful test result formatting using Rich library.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from rich import box
 from rich.console import Console
@@ -59,10 +59,10 @@ class TestResultFormatter:
     def print_detailed_test_result(
         self,
         test_num: int,
-        anime_data: Dict[str, Any],
-        field_combo: List[str],
+        anime_data: dict[str, Any],
+        field_combo: list[str],
         query_text: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         test_passed: bool,
         synonym_match: bool = False,
     ):
@@ -75,7 +75,7 @@ class TestResultFormatter:
         self.console.print(f"\n[bold bright_blue]{header}[/bold bright_blue]")
 
         # Anime Title Section
-        self.console.print(f"\n[bold bright_cyan]📽️ Anime Title[/bold bright_cyan]")
+        self.console.print("\n[bold bright_cyan]📽️ Anime Title[/bold bright_cyan]")
         self.console.print(f"   {anime_title}")
 
         # Available Fields Panel (matching multimodal style)
@@ -162,7 +162,7 @@ class TestResultFormatter:
         self.console.print(query_panel)
 
         # Search Results Section
-        self.console.print(f"\n[bold green]📊 Search Results[/bold green]")
+        self.console.print("\n[bold green]📊 Search Results[/bold green]")
 
         # Create a simple results table
         results_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
@@ -179,7 +179,9 @@ class TestResultFormatter:
             score_style = (
                 "bright_green"
                 if result_score >= 0.8
-                else "yellow" if result_score >= 0.6 else "white"
+                else "yellow"
+                if result_score >= 0.6
+                else "white"
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
 
@@ -224,11 +226,11 @@ class TestResultFormatter:
     def print_detailed_image_test_result(
         self,
         test_num: int,
-        anime_data: Dict[str, Any],
+        anime_data: dict[str, Any],
         image_url: str,
         available_images: int,
         embedding_dim: int,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         test_passed: bool,
     ):
         """Print detailed image test result using stacked information panels."""
@@ -242,7 +244,7 @@ class TestResultFormatter:
         self.console.print(f"\n[bold bright_magenta]{header}[/bold bright_magenta]")
 
         # Target Anime Panel
-        self.console.print(f"\n[bold green]🖼️ Target Anime[/bold green]")
+        self.console.print("\n[bold green]🖼️ Target Anime[/bold green]")
         self.console.print(f"   {anime_title}")
 
         # Image Details Panel (matching multimodal style)
@@ -277,7 +279,7 @@ class TestResultFormatter:
         self.console.print(image_panel)
 
         # Search Results Section
-        self.console.print(f"\n[bold green]📊 Visual Similarity Results[/bold green]")
+        self.console.print("\n[bold green]📊 Visual Similarity Results[/bold green]")
 
         # Create results table
         results_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
@@ -297,7 +299,9 @@ class TestResultFormatter:
                 else (
                     "yellow"
                     if result_score >= 0.7
-                    else "red" if result_score >= 0.5 else "dim"
+                    else "red"
+                    if result_score >= 0.5
+                    else "dim"
                 )
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
@@ -362,7 +366,7 @@ class TestResultFormatter:
         separator = "═" * 75
         self.console.print(f"[dim]{separator}[/dim]")
 
-    def print_field_combination_analysis(self, field_stats: Dict[str, Dict[str, Any]]):
+    def print_field_combination_analysis(self, field_stats: dict[str, dict[str, Any]]):
         """Print field combination effectiveness analysis."""
         if not field_stats:
             return
@@ -403,7 +407,9 @@ class TestResultFormatter:
                 rate_style = (
                     "bright_green"
                     if success_rate >= 80
-                    else "yellow" if success_rate >= 60 else "red"
+                    else "yellow"
+                    if success_rate >= 60
+                    else "red"
                 )
                 rate_display = f"[{rate_style}]{success_rate:.0f}%[/{rate_style}]"
 
@@ -411,7 +417,9 @@ class TestResultFormatter:
                 score_style = (
                     "bright_green"
                     if avg_score >= 0.7
-                    else "yellow" if avg_score >= 0.4 else "red"
+                    else "yellow"
+                    if avg_score >= 0.4
+                    else "red"
                 )
                 score_display = f"[{score_style}]{avg_score:.3f}[/{score_style}]"
 
@@ -426,7 +434,9 @@ class TestResultFormatter:
                     fusion_style = (
                         "bright_green"
                         if fusion_rate >= 70
-                        else "yellow" if fusion_rate >= 40 else "dim"
+                        else "yellow"
+                        if fusion_rate >= 40
+                        else "dim"
                     )
                     fusion_display = (
                         f"[{fusion_style}]{fusion_rate:.0f}%[/{fusion_style}]"
@@ -449,7 +459,7 @@ class TestResultFormatter:
         passed_tests: int,
         total_tests: int,
         random_seed: int,
-        insights: List[str] = None,
+        insights: list[str] = None,
     ):
         """Print beautiful final results summary."""
         if total_tests == 0:
@@ -491,7 +501,9 @@ class TestResultFormatter:
         border_style = (
             "bright_green"
             if success_rate >= 80
-            else "yellow" if success_rate >= 60 else "red"
+            else "yellow"
+            if success_rate >= 60
+            else "red"
         )
 
         self.console.print(
@@ -549,17 +561,23 @@ class TestResultFormatter:
         text_style = (
             "bright_green"
             if text_score >= 0.7
-            else "yellow" if text_score >= 0.4 else "red"
+            else "yellow"
+            if text_score >= 0.4
+            else "red"
         )
         image_style = (
             "bright_green"
             if image_score >= 0.7
-            else "yellow" if image_score >= 0.4 else "red"
+            else "yellow"
+            if image_score >= 0.4
+            else "red"
         )
         multi_style = (
             "bright_green"
             if multimodal_score >= 0.7
-            else "yellow" if multimodal_score >= 0.4 else "red"
+            else "yellow"
+            if multimodal_score >= 0.4
+            else "red"
         )
 
         details += (
@@ -595,7 +613,9 @@ class TestResultFormatter:
             border_style=(
                 "green"
                 if success_rate >= 80
-                else "yellow" if success_rate >= 60 else "red"
+                else "yellow"
+                if success_rate >= 60
+                else "red"
             ),
             padding=(1, 2),
         )
@@ -614,15 +634,15 @@ class TestResultFormatter:
     def print_detailed_multimodal_test_result(
         self,
         test_num: int,
-        anime_data: Dict[str, Any],
-        selected_combination: List[str],
+        anime_data: dict[str, Any],
+        selected_combination: list[str],
         text_query: str,
         image_url: str,
         available_images: int,
         text_score: float,
         image_score: float,
         multimodal_score: float,
-        multimodal_results: List[Dict[str, Any]],
+        multimodal_results: list[dict[str, Any]],
         test_passed: bool,
         fusion_boost: bool,
     ):
@@ -638,7 +658,7 @@ class TestResultFormatter:
         self.console.print(f"\n[bold]{header}[/bold]")
 
         # Target Anime Panel
-        self.console.print(f"\n[bold green]🎬 Target Anime[/bold green]")
+        self.console.print("\n[bold green]🎬 Target Anime[/bold green]")
         self.console.print(f"   {anime_title}")
 
         # Field Combination Panel
@@ -688,7 +708,7 @@ class TestResultFormatter:
 
         # Image Details Panel
         image_panel_content = f"[blue]Selected image:[/blue] {image_url}\n"
-        image_panel_content += f"[green]Download status:[/green] ✅ Success"
+        image_panel_content += "[green]Download status:[/green] ✅ Success"
 
         image_panel = Panel(
             image_panel_content,
@@ -703,17 +723,23 @@ class TestResultFormatter:
         text_style = (
             "bright_green"
             if text_score >= 0.7
-            else "yellow" if text_score >= 0.4 else "red"
+            else "yellow"
+            if text_score >= 0.4
+            else "red"
         )
         image_style = (
             "bright_green"
             if image_score >= 0.7
-            else "yellow" if image_score >= 0.4 else "red"
+            else "yellow"
+            if image_score >= 0.4
+            else "red"
         )
         multi_style = (
             "bright_green"
             if multimodal_score >= 0.7
-            else "yellow" if multimodal_score >= 0.4 else "red"
+            else "yellow"
+            if multimodal_score >= 0.4
+            else "red"
         )
 
         score_content = f"[{text_style}]Text-only ({combination_key}):[/{text_style}] {text_score:.4f}\n"
@@ -777,7 +803,7 @@ class TestResultFormatter:
                     status,
                 )
 
-            self.console.print(f"\n[bold]📊 Multimodal Search Results[/bold]")
+            self.console.print("\n[bold]📊 Multimodal Search Results[/bold]")
             self.console.print(table)
 
         # Fusion Analysis and Results
@@ -818,7 +844,7 @@ class TestResultFormatter:
         separator = "═" * 75
         self.console.print(f"[dim]{separator}[/dim]")
 
-    def print_config_summary(self, config_data: Dict[str, str]):
+    def print_config_summary(self, config_data: dict[str, str]):
         """Print configuration summary table."""
         table = Table(show_header=False, box=box.SIMPLE, expand=False, padding=(0, 1))
 
@@ -836,13 +862,13 @@ class TestResultFormatter:
     def print_detailed_staff_test_result(
         self,
         test_num: int,
-        anime_data: Dict[str, Any],
-        field_combo: List[str],
-        selected_pattern: Dict,
+        anime_data: dict[str, Any],
+        field_combo: list[str],
+        selected_pattern: dict,
         text_query: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         test_passed: bool,
-        staff_names: List[str],
+        staff_names: list[str],
     ):
         """Print detailed staff test result using stacked information panels."""
 
@@ -855,7 +881,7 @@ class TestResultFormatter:
         self.console.print(f"\n[bold bright_cyan]{header}[/bold bright_cyan]")
 
         # Anime Title Section
-        self.console.print(f"\n[bold bright_cyan]🎭 Anime Title[/bold bright_cyan]")
+        self.console.print("\n[bold bright_cyan]🎭 Anime Title[/bold bright_cyan]")
         self.console.print(f"   {anime_title}")
 
         # Staff Roles Panel
@@ -921,7 +947,7 @@ class TestResultFormatter:
         self.console.print(query_panel)
 
         # Search Results Section
-        self.console.print(f"\n[bold green]📊 Staff Vector Search Results[/bold green]")
+        self.console.print("\n[bold green]📊 Staff Vector Search Results[/bold green]")
 
         # Create a simple results table
         results_table = Table(show_header=True, box=box.SIMPLE, padding=(0, 1))
@@ -938,7 +964,9 @@ class TestResultFormatter:
             score_style = (
                 "bright_green"
                 if result_score >= 0.8
-                else "yellow" if result_score >= 0.6 else "white"
+                else "yellow"
+                if result_score >= 0.6
+                else "white"
             )
             score_display = f"[{score_style}]{result_score:.4f}[/{score_style}]"
 
@@ -976,16 +1004,16 @@ class TestResultFormatter:
             # Additional staff-specific insights
             if test_passed and top_score >= 0.9:
                 self.console.print(
-                    f"   [dim]Excellent staff vector quality - very high confidence match[/dim]"
+                    "   [dim]Excellent staff vector quality - very high confidence match[/dim]"
                 )
             elif test_passed and top_score >= 0.7:
                 self.console.print(
-                    f"   [dim]Good staff vector quality - strong semantic similarity[/dim]"
+                    "   [dim]Good staff vector quality - strong semantic similarity[/dim]"
                 )
 
         else:
             self.console.print(
-                f"\n[bold red]🎯 Analysis[/bold red]: No results returned from staff vector search."
+                "\n[bold red]🎯 Analysis[/bold red]: No results returned from staff vector search."
             )
 
         # Bottom separator

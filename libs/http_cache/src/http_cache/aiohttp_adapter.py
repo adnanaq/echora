@@ -11,9 +11,9 @@ the cached session which wraps the original aiohttp.ClientSession.
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from types import TracebackType
-from typing import Any, AsyncIterator, Dict, Optional, Type, cast
+from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientResponseError, RequestInfo
@@ -34,16 +34,16 @@ class _CachedResponse:
     def __init__(
         self,
         status: int,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         body: bytes,
         url: str,
         method: str,
-        request_headers: Dict[str, str],
+        request_headers: dict[str, str],
         from_cache: bool = False,
     ) -> None:
         """
         Initialize a lightweight cached response that mimics the minimal aiohttp.ClientResponse interface.
-        
+
         Parameters:
             status (int): HTTP status code of the response.
             headers (Dict[str, str]): Response headers; stored case-insensitively.
@@ -67,7 +67,7 @@ class _CachedResponse:
     async def read(self) -> bytes:
         """
         Retrieve the cached response body.
-        
+
         Returns:
             bytes: Raw response body bytes.
         """
@@ -76,10 +76,10 @@ class _CachedResponse:
     async def text(self, encoding: str = "utf-8") -> str:
         """
         Decode the cached response body to a text string.
-        
+
         Parameters:
             encoding (str): Character encoding used to decode the response body. Defaults to "utf-8".
-        
+
         Returns:
             str: The response body decoded as text.
         """
@@ -90,7 +90,7 @@ class _CachedResponse:
     ) -> Any:
         """
         Parse the response body as JSON.
-        
+
         Returns:
             The Python object produced by decoding the response body with JSON.
         """
@@ -100,7 +100,7 @@ class _CachedResponse:
     def release(self) -> None:
         """
         Mark the cached response as released.
-        
+
         Sets the internal released flag so the response is treated as closed; this does not affect network resources or perform I/O.
         """
         self._released = True
@@ -108,7 +108,7 @@ class _CachedResponse:
     def raise_for_status(self) -> None:
         """
         Raise a ClientResponseError if the response status indicates a client or server error.
-        
+
         Raises:
             aiohttp.ClientResponseError: when the response status is between 400 and 599 inclusive,
             populated with request URL, method, headers, status, message, and response headers.
@@ -131,7 +131,7 @@ class _CachedResponse:
     async def __aenter__(self) -> "_CachedResponse":
         """
         Enter the async context and yield the cached response instance.
-        
+
         Returns:
             _CachedResponse: the context-managed cached response object.
         """
@@ -139,13 +139,13 @@ class _CachedResponse:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         """
         Exit the async context for the response and release held resources.
-        
+
         Called when leaving an `async with` block; invokes `release()` to free the underlying response and does not suppress exceptions raised within the context.
         """
         self.release()
@@ -165,11 +165,11 @@ class _CachedRequestContextManager:
         session: "CachedAiohttpSession",
         method: str,
         url: str,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
     ) -> None:
         """
         Initialize the async context manager for a pending HTTP request.
-        
+
         Parameters:
             coro: Coroutine that yields an aiohttp.ClientResponse when awaited.
             session: Parent CachedAiohttpSession that created this context manager.
@@ -187,9 +187,9 @@ class _CachedRequestContextManager:
     async def __aenter__(self) -> "_CachedResponse":
         """
         Execute the pending request and return the resulting cached or live response.
-        
+
         Also stores the obtained response on the context manager instance.
-        
+
         Returns:
             _CachedResponse: The response object produced by the request.
         """
@@ -198,13 +198,13 @@ class _CachedRequestContextManager:
 
     async def __aexit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         """
         Exit the async context and release the underlying response if present.
-        
+
         If a response was obtained during __aenter__, calls its `release()` method to free resources.
         """
         if self._response is not None:
@@ -221,12 +221,12 @@ class CachedAiohttpSession:
     def __init__(
         self,
         storage: AsyncBaseStorage,
-        session: Optional[aiohttp.ClientSession] = None,
+        session: aiohttp.ClientSession | None = None,
         **session_kwargs: Any,
     ) -> None:
         """
         Create a CachedAiohttpSession backed by the provided AsyncBaseStorage, optionally wrapping an existing aiohttp.ClientSession.
-        
+
         Parameters:
             storage (AsyncBaseStorage): Storage backend used to persist and retrieve cached HTTP entries.
             session (Optional[aiohttp.ClientSession]): Optional existing aiohttp session to wrap; if omitted a new session is created.
@@ -238,11 +238,11 @@ class CachedAiohttpSession:
     def get(self, url: str, **kwargs: Any) -> _CachedRequestContextManager:
         """
         Create an async context manager that performs a GET request and serves cached responses when available.
-        
+
         Parameters:
             url (str): Request URL.
             **kwargs: Additional aiohttp request keyword arguments (e.g., params, headers, json).
-        
+
         Returns:
             _CachedRequestContextManager: Async context manager that yields a `_CachedResponse` for the GET request.
         """
@@ -252,11 +252,11 @@ class CachedAiohttpSession:
     def post(self, url: str, **kwargs: Any) -> _CachedRequestContextManager:
         """
         Create an async context manager for a cached POST request to the given URL.
-        
+
         Parameters:
             url (str): The request URL.
             **kwargs: Additional aiohttp request arguments that may affect the request or cache key (for example `json`, `params`, `data`, `headers`).
-        
+
         Returns:
             _CachedRequestContextManager: An async context manager that yields a cached `_CachedResponse` when available or performs the POST and returns a live `_CachedResponse` on cache miss.
         """
@@ -266,15 +266,15 @@ class CachedAiohttpSession:
     async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
         """
         Perform an HTTP request using the wrapped session and return a cached-friendly response, serving from Redis-backed storage when a matching cache entry exists.
-        
+
         Parameters:
             method (str): HTTP method (e.g., "GET", "POST").
             url (str): Request URL.
             **kwargs: Additional arguments forwarded to the underlying aiohttp session request (headers, params, json, data, etc.).
-        
+
         Returns:
             _CachedResponse: A response wrapper containing status, headers, body, url, method, and request headers. The wrapper's `from_cache` flag is `True` when the response was served from storage and `False` when it was fetched live.
-        
+
         Notes:
             - On a cache hit this function reconstructs the response body and headers from the most recently created cache entry and does not perform a network request.
             - On a cache miss it performs the network request, reads the full body, and stores the response in storage only if the HTTP status is less than 400.
@@ -290,9 +290,7 @@ class CachedAiohttpSession:
             # Redis SMEMBERS returns unordered results, so entries[0] may be stale
             entry = max(
                 entries,
-                key=lambda cached_entry: getattr(
-                    cached_entry.meta, "created_at", 0.0
-                ) if cached_entry.meta else 0.0,
+                key=lambda cached_entry: getattr(cached_entry.meta, "created_at", 0.0),
             )
             if entry.response:
                 # Read all chunks from cached stream
@@ -311,18 +309,9 @@ class CachedAiohttpSession:
 
                 # Extract headers - convert to simple dict
                 if isinstance(entry.response.headers, Headers):
-                    # Headers._headers is list-based with nested structure
-                    # Convert to dict (taking last value for duplicate keys)
-                    headers_dict: Dict[str, str] = {}
-                    try:
-                        # Try direct iteration first
-                        for item in entry.response.headers._headers:
-                            if isinstance(item, (list, tuple)) and len(item) >= 2:
-                                key, value = item[0], item[1]
-                                headers_dict[key] = value
-                    except (ValueError, TypeError):
-                        # Fallback: headers might be already a dict
-                        headers_dict = dict(entry.response.headers._headers)  # type: ignore[arg-type]  # _headers is private multidict format
+                    # Use public API: Headers implements MutableMapping
+                    # dict() constructor converts properly (handles multi-value headers)
+                    headers_dict: dict[str, str] = dict(entry.response.headers)
                 else:
                     headers_dict = entry.response.headers
 
@@ -361,16 +350,16 @@ class CachedAiohttpSession:
             from_cache=False,
         )
 
-    def _generate_cache_key(self, method: str, url: str, kwargs: Dict[str, Any]) -> str:
+    def _generate_cache_key(self, method: str, url: str, kwargs: dict[str, Any]) -> str:
         """
         Create a deterministic cache key for an HTTP request.
-        
+
         Parameters:
             method (str): HTTP method (e.g., "GET", "POST").
             url (str): Request URL.
-            kwargs (Dict[str, Any]): Request keyword arguments; `json`, `params`, and `data`
+            kwargs (dict[str, Any]): Request keyword arguments; `json`, `params`, and `data`
                 values (when present) are included in a deterministic serialized form.
-        
+
         Returns:
             str: Cache key in the form "<METHOD>:<sha256 hex>", derived from the method,
                  URL, and serialized payloads to ensure stable, comparable keys.
@@ -381,14 +370,14 @@ class CachedAiohttpSession:
         def serialize_payload(value: Any) -> str:
             """
             Create a deterministic string representation of arbitrary payloads suitable for cache key generation.
-            
+
             Parameters:
                 value (Any): The payload to serialize; may be bytes, str, mappings, sequences, sets, or other objects.
-            
+
             Returns:
                 serialized (str): A stable string form of `value`. Bytes/bytearray are decoded as UTF-8 (ignoring errors); mappings are converted to a JSON-encoded list of key/value pairs with keys sorted and values recursively serialized; sequences and sets are JSON-encoded lists of recursively serialized items; all other values use `str(value)`.
             """
-            if isinstance(value, (bytes, bytearray)):
+            if isinstance(value, bytes | bytearray):
                 return value.decode("utf-8", errors="ignore")
             if isinstance(value, str):
                 return value
@@ -398,8 +387,8 @@ class CachedAiohttpSession:
                     for key, item_value in value.items()
                 )
                 return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
-            if isinstance(value, (Sequence, set)) and not isinstance(
-                value, (bytes, bytearray, str)
+            if isinstance(value, Sequence | set) and not isinstance(
+                value, bytes | bytearray | str
             ):
                 serialized = [serialize_payload(item) for item in value]
                 return json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
@@ -431,7 +420,7 @@ class CachedAiohttpSession:
         method: str,
         response: aiohttp.ClientResponse,
         cache_key: str,
-        request_kwargs: Dict[str, Any],
+        request_kwargs: dict[str, Any],
         body: bytes,
     ) -> None:
         """
@@ -453,7 +442,7 @@ class CachedAiohttpSession:
             method=method,
             url=str(response.url),
             headers=Headers(dict(response.request_info.headers)),
-            stream=None,  # type: ignore[arg-type]  # Request body not needed for caching
+            stream=None,  # Request body not needed for caching
             metadata=request_kwargs.get("metadata", {}),
         )
 
@@ -461,10 +450,11 @@ class CachedAiohttpSession:
         def body_stream_factory() -> AsyncIterator[bytes]:
             """
             Create an async iterator that yields the captured response body as a single bytes chunk.
-            
+
             Returns:
                 AsyncIterator[bytes]: An async iterator which yields one `bytes` value containing the full body.
             """
+
             async def body_stream() -> AsyncIterator[bytes]:
                 yield body
 
@@ -487,7 +477,8 @@ class CachedAiohttpSession:
         if entry.response and entry.response.stream:
             stream = entry.response.stream
             if hasattr(stream, "__aiter__"):
-                async for _ in stream:
+                # ty doesn't recognize Hishel's stream as AsyncIterable after hasattr check
+                async for _ in stream:  # ty: ignore[not-iterable]
                     pass  # Just consume, data already yielded from body_stream()
             else:
                 for _ in stream:
@@ -501,7 +492,7 @@ class CachedAiohttpSession:
     async def __aenter__(self) -> "CachedAiohttpSession":
         """
         Enter the async context for the cached aiohttp session.
-        
+
         Returns:
             CachedAiohttpSession: The same session instance to be used within the async with block.
         """
@@ -510,7 +501,7 @@ class CachedAiohttpSession:
     async def __aexit__(self, *args: Any) -> None:
         """
         Exit the async context manager and close managed resources.
-        
+
         Called when leaving an `async with` block; ensures the session and associated storage are closed.
         """
         await self.close()

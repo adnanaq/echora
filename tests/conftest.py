@@ -4,18 +4,19 @@ Root test configuration for all tests.
 Provides isolated test collection to avoid touching production data.
 """
 
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from qdrant_client import AsyncQdrantClient
-
 from common.config.settings import Settings, get_settings
+from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from vector_processing import MultiVectorEmbeddingManager
-from vector_processing import TextProcessor
-from vector_processing import VisionProcessor
+from vector_processing import (
+    MultiVectorEmbeddingManager,
+    TextProcessor,
+    VisionProcessor,
+)
 
 
 @pytest.fixture

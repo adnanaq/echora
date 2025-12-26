@@ -29,7 +29,7 @@ pytestmark = pytest.mark.integration
 ENABLE_LIVE_TESTS = os.getenv("ENABLE_LIVE_CONCURRENCY_TESTS")
 skip_live_tests = pytest.mark.skipif(
     not ENABLE_LIVE_TESTS,
-    reason="Live API/Redis tests disabled. Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to enable."
+    reason="Live API/Redis tests disabled. Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to enable.",
 )
 
 
@@ -86,15 +86,14 @@ class TestConcurrentAgentDirectoryCreation:
         created_dirs = await asyncio.gather(*tasks)
 
         # Verify all directories created
-        assert (
-            len(created_dirs) == num_agents
-        ), f"Expected {num_agents} dirs, got {len(created_dirs)}"
+        assert len(created_dirs) == num_agents, (
+            f"Expected {num_agents} dirs, got {len(created_dirs)}"
+        )
 
         # Verify all directories are unique (no collisions)
         unique_dirs = set(created_dirs)
         assert len(unique_dirs) == num_agents, (
-            f"Directory collision detected! Expected {num_agents} unique dirs, got {len(unique_dirs)}. "
-            f"Dirs: {created_dirs}"
+            f"Directory collision detected! Expected {num_agents} unique dirs, got {len(unique_dirs)}. Dirs: {created_dirs}"
         )
 
         # Verify all directories actually exist
@@ -110,9 +109,9 @@ class TestConcurrentAgentDirectoryCreation:
             agent_ids.append(int(agent_id_str))
 
         agent_ids.sort()
-        assert agent_ids == list(
-            range(1, num_agents + 1)
-        ), f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
+        assert agent_ids == list(range(1, num_agents + 1)), (
+            f"Expected agent IDs 1-{num_agents}, got {agent_ids}"
+        )
 
 
 class TestConcurrentRedisAccess:
@@ -319,15 +318,14 @@ class TestAgentIDRaceConditions:
         # Expected: [3, 5, 6] (fills gap 3, then continues from 4)
         expected_ids = [3, 5, 6]
         assert new_agent_ids == expected_ids, (
-            f"Gap-filling failed under concurrent load. "
-            f"Expected {expected_ids}, got {new_agent_ids}"
+            f"Gap-filling failed under concurrent load. Expected {expected_ids}, got {new_agent_ids}"
         )
 
         # Verify no duplicate IDs across all agents
-        all_agent_ids = [1, 2, 4] + new_agent_ids
-        assert len(all_agent_ids) == len(
-            set(all_agent_ids)
-        ), f"Duplicate agent IDs detected: {all_agent_ids}"
+        all_agent_ids = [1, 2, 4, *new_agent_ids]
+        assert len(all_agent_ids) == len(set(all_agent_ids)), (
+            f"Duplicate agent IDs detected: {all_agent_ids}"
+        )
 
 
 class TestConcurrentPipelineExecution:
@@ -397,9 +395,6 @@ class TestConcurrentPipelineExecution:
             f"Only {success_count}/{len(anime_configs)} pipelines succeeded. "
             f"Results: {results}"
         )
-
-        # Verify cache was used (at least one cache hit expected)
-        sum(1 for r in results if r["from_cache"])
 
         # Performance check: concurrent execution should be faster than sequential
         # (This is optional - just validating concurrency works)

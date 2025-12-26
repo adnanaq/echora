@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import AsyncIterator, List
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from hishel._core.models import Entry, EntryMeta, Headers, Request, Response
-
+from hishel._core.models import Entry, EntryMeta, Request, Response
 from http_cache.async_redis_storage import AsyncRedisStorage
-
 
 # ============================================================================
 # Test Class: Initialization and Client Ownership
@@ -417,9 +415,9 @@ class TestCreateEntry:
             # Verify it was the entry_key, not the index_key
             called_key = expire_calls[0][0][0]
             assert "entry:" in called_key, "Should only expire entry_key"
-            assert (
-                "key_index:" not in called_key
-            ), "Should NOT expire persistent index_key"
+            assert "key_index:" not in called_key, (
+                "Should NOT expire persistent index_key"
+            )
 
     @pytest.mark.asyncio
     async def test_create_entry_extends_shorter_index_ttl(
@@ -467,12 +465,12 @@ class TestCreateEntry:
 
             # Verify both keys got expire called
             called_keys = [call[0][0] for call in expire_calls]
-            assert any(
-                "entry:" in key for key in called_keys
-            ), "Should expire entry_key"
-            assert any(
-                "key_index:" in key for key in called_keys
-            ), "Should extend index_key TTL"
+            assert any("entry:" in key for key in called_keys), (
+                "Should expire entry_key"
+            )
+            assert any("key_index:" in key for key in called_keys), (
+                "Should extend index_key TTL"
+            )
 
     @pytest.mark.asyncio
     async def test_create_entry_preserves_longer_index_ttl(
@@ -521,9 +519,9 @@ class TestCreateEntry:
             # Verify it was the entry_key, not the index_key
             called_key = expire_calls[0][0][0]
             assert "entry:" in called_key, "Should only expire entry_key"
-            assert (
-                "key_index:" not in called_key
-            ), "Should NOT shrink index_key with longer TTL"
+            assert "key_index:" not in called_key, (
+                "Should NOT shrink index_key with longer TTL"
+            )
 
     @pytest.mark.asyncio
     async def test_create_entry_creates_missing_index_with_ttl(
@@ -571,12 +569,12 @@ class TestCreateEntry:
 
             # Verify both keys got expire called
             called_keys = [call[0][0] for call in expire_calls]
-            assert any(
-                "entry:" in key for key in called_keys
-            ), "Should expire entry_key"
-            assert any(
-                "key_index:" in key for key in called_keys
-            ), "Should create index_key with TTL"
+            assert any("entry:" in key for key in called_keys), (
+                "Should expire entry_key"
+            )
+            assert any("key_index:" in key for key in called_keys), (
+                "Should create index_key with TTL"
+            )
 
     @pytest.mark.asyncio
     async def test_create_entry_raises_on_invalid_stream_type(
@@ -953,10 +951,10 @@ class TestUpdateEntry:
         def transform_entry(entry: Entry) -> Entry:
             """
             Create a copy of an Entry with its response replaced by a 304 Response containing an ETag of "transformed".
-            
+
             Parameters:
                 entry (Entry): The source entry to transform.
-            
+
             Returns:
                 Entry: A new Entry with the same `id`, `request`, `meta`, and `cache_key` as `entry`, and a `response` set to a `Response` with `status_code` 304, `headers` {'ETag': 'transformed'}, `stream` None, and empty `metadata`.
             """
@@ -1005,7 +1003,7 @@ class TestUpdateEntry:
     ) -> None:
         """
         Verify update_entry leaves storage unchanged when the specified entry ID does not exist.
-        
+
         Simulates missing stored data for the given ID and asserts that update_entry returns None.
         """
         entry_id = uuid.uuid4()
@@ -1253,7 +1251,7 @@ class TestStreamOperations:
         async def mock_stream() -> AsyncIterator[bytes]:
             """
             Asynchronous test stream that yields three byte chunks.
-            
+
             Returns:
                 An async iterator yielding three byte chunks in order: b'chunk1', b'chunk2', b'chunk3'.
             """
@@ -1265,7 +1263,7 @@ class TestStreamOperations:
         stream_key = storage_with_mock_client._stream_key(entry_id)
 
         # Consume the wrapped stream
-        chunks: List[bytes] = []
+        chunks: list[bytes] = []
         async for chunk in storage_with_mock_client._save_stream(
             mock_stream(), entry_id, ttl=None
         ):
@@ -1294,7 +1292,7 @@ class TestStreamOperations:
         async def mock_stream() -> AsyncIterator[bytes]:
             """
             Provide an async iterator that yields a single bytes chunk for tests.
-            
+
             Returns:
                 AsyncIterator[bytes]: An async iterator that yields b'chunk1' once.
             """
@@ -1330,7 +1328,7 @@ class TestStreamOperations:
         ]
 
         # Consume the stream
-        chunks: List[bytes] = []
+        chunks: list[bytes] = []
         async for chunk in storage_with_mock_client._stream_data_from_cache(entry_id):
             chunks.append(chunk)
 
@@ -1354,7 +1352,7 @@ class TestStreamOperations:
         ]
 
         # Consume the stream
-        chunks: List[bytes] = []
+        chunks: list[bytes] = []
         async for chunk in storage_with_mock_client._stream_data_from_cache(entry_id):
             chunks.append(chunk)
 

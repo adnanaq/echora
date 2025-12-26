@@ -5,9 +5,8 @@ Tests for ParallelAPIFetcher context manager protocol.
 import json
 import os
 import tempfile
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import AsyncMock, Mock, patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -119,7 +118,7 @@ class TestFetchJikanComplete:
     """Test _fetch_jikan_complete method with various scenarios."""
 
     @pytest.fixture
-    def mock_anime_response(self) -> Dict[str, Any]:
+    def mock_anime_response(self) -> dict[str, Any]:
         """Mock Jikan anime full response."""
         return {
             "data": {
@@ -131,7 +130,7 @@ class TestFetchJikanComplete:
         }
 
     @pytest.fixture
-    def mock_characters_response(self) -> Dict[str, Any]:
+    def mock_characters_response(self) -> dict[str, Any]:
         """Mock Jikan characters response."""
         return {
             "data": [
@@ -146,7 +145,7 @@ class TestFetchJikanComplete:
         }
 
     @pytest.fixture
-    def offline_data(self) -> Dict[str, Any]:
+    def offline_data(self) -> dict[str, Any]:
         """Mock offline data for fallback."""
         return {
             "title": "Test Anime",
@@ -155,7 +154,10 @@ class TestFetchJikanComplete:
 
     @pytest.mark.asyncio
     async def test_fetch_jikan_complete_without_temp_dir(
-        self, mock_anime_response: Dict[str, Any], mock_characters_response: Dict[str, Any], offline_data: Dict[str, Any]
+        self,
+        mock_anime_response: dict[str, Any],
+        mock_characters_response: dict[str, Any],
+        offline_data: dict[str, Any],
     ):
         """Test _fetch_jikan_complete with temp_dir=None (bug scenario)."""
         fetcher = ParallelAPIFetcher()
@@ -171,7 +173,9 @@ class TestFetchJikanComplete:
 
         with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
             # This should NOT raise UnboundLocalError anymore
-            result = await fetcher._fetch_jikan_complete("1", offline_data, temp_dir=None)
+            result = await fetcher._fetch_jikan_complete(
+                "1", offline_data, temp_dir=None
+            )
 
         # Verify result structure
         assert result is not None
@@ -188,7 +192,10 @@ class TestFetchJikanComplete:
 
     @pytest.mark.asyncio
     async def test_fetch_jikan_complete_with_temp_dir(
-        self, mock_anime_response: Dict[str, Any], mock_characters_response: Dict[str, Any], offline_data: Dict[str, Any]
+        self,
+        mock_anime_response: dict[str, Any],
+        mock_characters_response: dict[str, Any],
+        offline_data: dict[str, Any],
     ):
         """Test _fetch_jikan_complete with temp_dir provided (normal scenario)."""
         fetcher = ParallelAPIFetcher()
@@ -205,7 +212,9 @@ class TestFetchJikanComplete:
 
             # Mock JikanDetailedFetcher to avoid actual API calls
             with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
-                with patch("enrichment.programmatic.api_fetcher.JikanDetailedFetcher") as mock_fetcher_class:
+                with patch(
+                    "enrichment.programmatic.api_fetcher.JikanDetailedFetcher"
+                ) as mock_fetcher_class:
                     # Mock the fetch_detailed_data method to create output files
                     async def mock_fetch_detailed(input_file: str, output_file: str):
                         # Create mock output files
@@ -214,13 +223,19 @@ class TestFetchJikanComplete:
                                 json.dump([{"mal_id": 1, "title": "Episode 1"}], f)
                         elif "characters" in output_file:
                             with open(output_file, "w") as f:
-                                json.dump([{"mal_id": 1, "name": "Detailed Character"}], f)
+                                json.dump(
+                                    [{"mal_id": 1, "name": "Detailed Character"}], f
+                                )
 
                     mock_instance = AsyncMock()
-                    mock_instance.fetch_detailed_data = AsyncMock(side_effect=mock_fetch_detailed)
+                    mock_instance.fetch_detailed_data = AsyncMock(
+                        side_effect=mock_fetch_detailed
+                    )
                     mock_fetcher_class.return_value = mock_instance
 
-                    result = await fetcher._fetch_jikan_complete("1", offline_data, temp_dir=temp_dir)
+                    result = await fetcher._fetch_jikan_complete(
+                        "1", offline_data, temp_dir=temp_dir
+                    )
 
             # Verify result structure
             assert result is not None
@@ -244,7 +259,7 @@ class TestFetchJikanComplete:
 
     @pytest.mark.asyncio
     async def test_fetch_jikan_complete_with_no_episodes(
-        self, mock_characters_response: Dict[str, Any], offline_data: Dict[str, Any]
+        self, mock_characters_response: dict[str, Any], offline_data: dict[str, Any]
     ):
         """Test _fetch_jikan_complete with anime that has no episodes."""
         fetcher = ParallelAPIFetcher()
@@ -267,7 +282,9 @@ class TestFetchJikanComplete:
             return None
 
         with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
-            result = await fetcher._fetch_jikan_complete("2", offline_data, temp_dir=None)
+            result = await fetcher._fetch_jikan_complete(
+                "2", offline_data, temp_dir=None
+            )
 
         # Should use offline_data for episode count
         assert result is not None
@@ -276,14 +293,16 @@ class TestFetchJikanComplete:
         assert result["episodes"] == []
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_api_failure(self, offline_data: Dict[str, Any]):
+    async def test_fetch_jikan_complete_api_failure(self, offline_data: dict[str, Any]):
         """Test _fetch_jikan_complete when API request fails (returns None)."""
         fetcher = ParallelAPIFetcher()
         fetcher.jikan_session = AsyncMock()
 
         # Mock API failure (returns None)
         with patch.object(fetcher, "_fetch_jikan_async", return_value=None):
-            result = await fetcher._fetch_jikan_complete("999", offline_data, temp_dir=None)
+            result = await fetcher._fetch_jikan_complete(
+                "999", offline_data, temp_dir=None
+            )
 
         # Should return None on failure
         assert result is None
@@ -291,14 +310,20 @@ class TestFetchJikanComplete:
         assert "jikan" not in fetcher.api_errors
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_exception_handling(self, offline_data: Dict[str, Any]):
+    async def test_fetch_jikan_complete_exception_handling(
+        self, offline_data: dict[str, Any]
+    ):
         """Test _fetch_jikan_complete exception handling."""
         fetcher = ParallelAPIFetcher()
         fetcher.jikan_session = AsyncMock()
 
         # Mock exception during fetch
-        with patch.object(fetcher, "_fetch_jikan_async", side_effect=Exception("Network error")):
-            result = await fetcher._fetch_jikan_complete("1", offline_data, temp_dir=None)
+        with patch.object(
+            fetcher, "_fetch_jikan_async", side_effect=Exception("Network error")
+        ):
+            result = await fetcher._fetch_jikan_complete(
+                "1", offline_data, temp_dir=None
+            )
 
         # Should return None on exception
         assert result is None

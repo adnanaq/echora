@@ -15,10 +15,10 @@ import pytest
 def create_mock_session_with_response(mock_response):
     """
     Create an aiohttp-style async session mock whose `.get()` returns an async context manager that yields the provided response.
-    
+
     Parameters:
         mock_response: The value to be returned from the async context manager's `__aenter__` (typically a mocked response object).
-    
+
     Returns:
         AsyncMock: A mock session whose `get()` method returns an async context manager that yields `mock_response`.
     """
@@ -95,7 +95,7 @@ async def test_fetch_animeschedule_data_with_output_path(mock_cache_manager):
 
         # Verify file written
         assert os.path.exists(tmp_path)
-        with open(tmp_path, "r", encoding="utf-8") as f:
+        with open(tmp_path, encoding="utf-8") as f:
             file_data = json.load(f)
         assert file_data == {"id": 1, "title": "Test Anime"}
 
