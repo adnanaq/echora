@@ -15,7 +15,7 @@ Create a pull request based on Linear issue $ARGUMENTS.
 9. Show the user the complete `gh pr create` command with all generated content
 
 Example:
-Issue AVS-10: "Add AniSearch crawler", label "Feature"
-Branch: `feat/AVS-10-add-anisearch-crawler`
-Title: `feat(AVS-10): Add AniSearch crawler`
+Issue ECHO-10: "Add AniSearch crawler", label "Feature"
+Branch: `feat/ECHO-10-add-anisearch-crawler`
+Title: `feat(ECHO-10): Add AniSearch crawler`
 Body: Generated from git diff and changes analysis

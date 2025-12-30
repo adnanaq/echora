@@ -1,0 +1,12 @@
+python_sources(
+    name="embedding_models",
+    sources=["**/*.py"],
+    dependencies=[
+        "libs/common/src/common:common",
+        "//:reqs0#sentence-transformers",
+        "//:reqs0#transformers",
+        "//:reqs0#torch",
+        "//:reqs0#open-clip-torch",
+        "//:reqs0#pillow",
+    ],
+)

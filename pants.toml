@@ -1,0 +1,32 @@
+[GLOBAL]
+pants_version = "2.29.1"
+backend_packages = [
+  "pants.backend.python",
+  "pants.backend.experimental.python.lint.ruff.check",
+  "pants.backend.experimental.python.lint.ruff.format",
+]
+
+[source]
+root_patterns = [
+  "/",
+  "/libs/*/src",
+  "/libs/*/tests",
+  "/apps/*/src",
+  "/stubs",
+]
+
+[python]
+interpreter_constraints = ["CPython==3.12.*"]
+
+[python-infer]
+# Enable dependency inference for Python imports
+imports = true
+# Infer dependencies from string imports
+string_imports = true
+
+[pytest]
+args = ["-v", "--tb=short"]
+config_discovery = true
+
+[ruff]
+config_discovery = true

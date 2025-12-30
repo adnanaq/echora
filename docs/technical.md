@@ -27,7 +27,7 @@
 - **BGE-M3 (BAAI/bge-m3)**: State-of-the-art multilingual embedding model with 1024 dimensions, supporting 8192 token context
 - **OpenCLIP ViT-L/14**: Vision transformer for 768-dimensional image embeddings with commercial-friendly licensing
 - **Multi-Provider Support**: FastEmbed, HuggingFace, Sentence Transformers for dynamic model selection
-- **PyTorch 2.0+**: Backend ML framework with optimized inference and LoRA fine-tuning support
+- **PyTorch 2.0+**: Backend ML framework with optimized inference
 
 ### Development Setup
 
@@ -419,7 +419,6 @@ Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
 
 #### Phase 5 Advanced AI Features
 
-- **Model Fine-tuning**: LoRA adaptation for anime-specific improvements
 - **Global Distribution**: CDN integration and multi-region deployment
 - **Advanced Search**: Context-aware search and intelligent query understanding
 - **Enterprise Analytics**: Business intelligence integration and predictive analytics

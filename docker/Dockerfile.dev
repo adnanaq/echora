@@ -23,12 +23,14 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
 # Copy source code
-COPY src/ ./src/
+COPY apps/ ./apps/
+COPY libs/ ./libs/
 COPY README.md .
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=development
 
 # Expose port for dev server
 EXPOSE 8002
@@ -40,6 +42,8 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8002/health || exit 1
 
-# Run application
-CMD ["python", "-m", "src.main"]
+# Run application using uv to activate virtual environment
+# Add apps/service/src to Python path so we can import service module
+ENV PYTHONPATH=/app/apps/service/src:/app
+CMD ["uv", "run", "python", "-m", "service.main"]
 

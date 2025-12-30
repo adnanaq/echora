@@ -1,0 +1,3 @@
+from PIL import Image
+
+def ccip_difference(image1: Image.Image, image2: Image.Image) -> float: ...

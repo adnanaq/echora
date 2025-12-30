@@ -36,5 +36,7 @@ N/A
 
 - [ ] Code follows conventional commit format
 - [ ] Type checks pass (`uv run mypy --strict src/`)
+- [ ] Code formatted with ruff (`uv run ruff format --check .`)
+- [ ] Linting passes (`uv run ruff check .`)
 - [ ] Tests pass (`uv run pytest`)
 - [ ] Documentation updated (if needed)

@@ -12,11 +12,30 @@ services:
     networks:
       - vector-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    restart: unless-stopped
+
+  # Redis Cache (for HTTP caching in enrichment pipeline)
+  redis:
+    image: redis:7-alpine
+    container_name: anime-vector-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - vector-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # Anime Vector Service
@@ -36,15 +55,17 @@ services:
           cpus: '1'
           memory: 2G
     environment:
+      # Environment (enforces production safety)
+      - APP_ENV=production
+
       - VECTOR_SERVICE_HOST=0.0.0.0
       - VECTOR_SERVICE_PORT=8002
-      - DEBUG=false
 
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION_NAME=anime_database
-      - QDRANT_VECTOR_SIZE=1024
       - QDRANT_DISTANCE_METRIC=cosine
 
+      - TEXT_VECTOR_SIZE=1024
       - IMAGE_VECTOR_SIZE=768
 
       - TEXT_EMBEDDING_PROVIDER=huggingface
@@ -61,13 +82,18 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      - LOG_LEVEL=INFO
+      # HTTP Cache Configuration
+      - ENABLE_HTTP_CACHE=false
+      - HTTP_CACHE_STORAGE=redis
+      - REDIS_CACHE_URL=redis://redis:6379/0
     networks:
       - vector-network
     volumes:
       - model_cache:/app/cache
     depends_on:
       qdrant:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -81,5 +107,7 @@ networks:
   vector-network:
     driver: bridge
 volumes:
+  redis-data:
+    driver: local
   model_cache:
     driver: local

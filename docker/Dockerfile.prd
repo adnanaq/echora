@@ -21,7 +21,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --frozen
 
 # Copy source code
-COPY src/ ./src/
+COPY apps/ ./apps/
+COPY libs/ ./libs/
 COPY README.md .
 
 # ---- Production stage ----
@@ -32,13 +33,15 @@ WORKDIR /app
 # Copy installed dependencies from builder
 COPY --from=builder /root/.local /root/.local
 # Copy source code and README
-COPY --from=builder /app/src ./src
+COPY --from=builder /app/apps ./apps
+COPY --from=builder /app/libs ./libs
 COPY --from=builder /app/README.md ./README.md
 
 # Set PATH and environment variables
 ENV PATH="/root/.local/bin:$PATH"
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/apps/service/src:/app
 ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=production
 
 # Expose port
 EXPOSE 8002
@@ -48,5 +51,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8002/health || exit 1
 
 # Run the application
-CMD ["python", "-m", "src.main"]
+CMD ["python", "-m", "service.main"]
 
