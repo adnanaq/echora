@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""
-AniDB Helper for AI Enrichment Integration
+"""AniDB Helper for AI Enrichment Integration.
 
-Helper function to fetch AniDB data using XML API for AI enrichment pipeline.
+Provides helper functions to fetch AniDB data using XML API for AI
+enrichment pipeline with production-level rate limiting and error handling.
 """
 
 import argparse
+import asyncio
 import gzip
 import hashlib
 import json
@@ -20,9 +21,8 @@ from types import TracebackType
 from typing import Any
 
 import aiohttp
-from http_cache.instance import http_cache_manager as _cache_manager
-
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,17 @@ class CircuitBreakerState(Enum):
 
 @dataclass
 class AniDBRequestMetrics:
-    """Metrics for tracking AniDB API health and compliance."""
+    """Metrics for tracking AniDB API health and compliance.
+
+    Attributes:
+        total_requests: Total number of requests made.
+        successful_requests: Number of successful requests.
+        failed_requests: Number of failed requests.
+        consecutive_failures: Current streak of consecutive failures.
+        last_request_time: Unix timestamp of last request.
+        last_error_time: Unix timestamp of last error.
+        current_interval: Current adaptive request interval in seconds.
+    """
 
     total_requests: int = 0
     successful_requests: int = 0
@@ -49,29 +59,55 @@ class AniDBRequestMetrics:
 
     @property
     def success_rate(self) -> float:
-        """Calculate success rate as percentage."""
+        """Calculate success rate as percentage.
+
+        Returns:
+            float: Success rate from 0.0 to 100.0.
+        """
         if self.total_requests == 0:
             return 100.0
         return (self.successful_requests / self.total_requests) * 100.0
 
     @property
     def error_rate(self) -> float:
-        """Calculate error rate as percentage."""
+        """Calculate error rate as percentage.
+
+        Returns:
+            float: Error rate from 0.0 to 100.0.
+        """
         return 100.0 - self.success_rate
 
 
 class AniDBEnrichmentHelper:
-    """Enhanced AniDB XML API helper with production-level rate limiting and session management."""
+    """Enhanced AniDB XML API helper with production-level features.
+
+    Provides rate limiting, session management, circuit breaker pattern,
+    and comprehensive request metrics for robust AniDB API integration.
+
+    Attributes:
+        base_url: AniDB HTTP API endpoint URL.
+        client_name: Client identifier sent to AniDB.
+        client_version: Client version sent to AniDB.
+        session: Active aiohttp session for requests.
+        metrics: Request metrics for health monitoring.
+        circuit_breaker_state: Current circuit breaker state.
+    """
 
     def __init__(
         self, client_name: str | None = None, client_version: str | None = None
     ):
-        """
-        Initialize the AniDB enrichment helper and configure client metadata, session policy, rate limiting, retry behavior, circuit breaker, and request metrics.
+        """Initialize the AniDB enrichment helper.
 
-        Parameters:
-            client_name (Optional[str]): Client identifier sent to AniDB; if None the value is taken from the `ANIDB_CLIENT` environment variable or defaults to `"animeenrichment"`.
-            client_version (Optional[str]): Client version sent to AniDB; if None the value is taken from the `ANIDB_CLIENTVER` environment variable or defaults to `"1.0"`.
+        Configures client metadata, session policy, rate limiting, retry
+        behavior, circuit breaker, and request metrics.
+
+        Args:
+            client_name: Client identifier sent to AniDB. If None, uses
+                the ANIDB_CLIENT environment variable or defaults to
+                "animeenrichment".
+            client_version: Client version sent to AniDB. If None, uses
+                the ANIDB_CLIENTVER environment variable or defaults to
+                "1.0".
         """
         self.base_url = "http://api.anidb.net:9001/httpapi"
 
@@ -117,13 +153,26 @@ class AniDBEnrichmentHelper:
         logger.info(f"  - Max retries: {self.max_retries}")
 
     def _generate_request_fingerprint(self, params: dict[str, Any]) -> str:
-        """Generate fingerprint for request deduplication."""
+        """Generate fingerprint for request deduplication.
+
+        Args:
+            params: Request parameters dictionary.
+
+        Returns:
+            str: MD5 hash of sorted parameter string.
+        """
         # Create a consistent hash of request parameters
         param_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
         return hashlib.md5(param_str.encode()).hexdigest()
 
     async def _check_circuit_breaker(self) -> bool:
-        """Check if circuit breaker allows requests."""
+        """Check if circuit breaker allows requests.
+
+        Transitions from OPEN to HALF_OPEN state after timeout expires.
+
+        Returns:
+            bool: True if requests are allowed, False if blocked.
+        """
         current_time = time.time()
 
         if self.circuit_breaker_state == CircuitBreakerState.OPEN:
@@ -147,7 +196,14 @@ class AniDBEnrichmentHelper:
         return True  # CLOSED or HALF_OPEN allows requests
 
     def _update_circuit_breaker(self, success: bool) -> None:
-        """Update circuit breaker state based on request result."""
+        """Update circuit breaker state based on request result.
+
+        On success, transitions HALF_OPEN to CLOSED and resets failure count.
+        On failure, increments failure count and may open the circuit.
+
+        Args:
+            success: Whether the request succeeded.
+        """
         if success:
             if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
                 self.circuit_breaker_state = CircuitBreakerState.CLOSED
@@ -173,7 +229,14 @@ class AniDBEnrichmentHelper:
                 )
 
     async def _adaptive_rate_limit(self, is_retry: bool = False) -> None:
-        """Enhanced rate limiting with adaptive delays and error recovery."""
+        """Apply adaptive rate limiting with error-aware delays.
+
+        Calculates delay based on consecutive failures using exponential
+        backoff. Adds extra delay for retry attempts.
+
+        Args:
+            is_retry: Whether this is a retry attempt. Defaults to False.
+        """
         current_time = time.time()
         time_since_last = current_time - self.metrics.last_request_time
 
@@ -202,10 +265,10 @@ class AniDBEnrichmentHelper:
         self.metrics.current_interval = adaptive_interval
 
     async def _ensure_session_health(self) -> None:
-        """
-        Ensure an active HTTP session for AniDB exists and recreate it if missing or expired.
+        """Ensure an active HTTP session exists and recreate if expired.
 
-        If the current session is absent or older than the configured maximum age, create a new aiohttp session via the cache manager and update the session creation timestamp.
+        Creates a new aiohttp session via the cache manager if the current
+        session is absent or older than the configured maximum age.
         """
         current_time = time.time()
 
@@ -247,7 +310,17 @@ class AniDBEnrichmentHelper:
             logger.debug("Created new AniDB session with enhanced settings")
 
     async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
-        """Make request with enhanced retry logic and error handling."""
+        """Make request with enhanced retry logic and error handling.
+
+        Implements exponential backoff with jitter, circuit breaker checks,
+        and request deduplication.
+
+        Args:
+            params: Request parameters dictionary.
+
+        Returns:
+            str | None: Response content if successful, None otherwise.
+        """
         # Generate request fingerprint for deduplication
         fingerprint = self._generate_request_fingerprint(params)
 
@@ -340,7 +413,21 @@ class AniDBEnrichmentHelper:
     async def _make_single_request(
         self, params: dict[str, Any], attempt: int
     ) -> str | None:
-        """Make a single request attempt to the AniDB API."""
+        """Make a single request attempt to the AniDB API.
+
+        Handles gzip decompression and various HTTP error codes including
+        503 (service unavailable) and 555 (banned).
+
+        Args:
+            params: Request parameters dictionary.
+            attempt: Current attempt number (0-indexed).
+
+        Returns:
+            str | None: Decoded response content if successful, None otherwise.
+
+        Raises:
+            RuntimeError: If session is not initialized.
+        """
         # Add required client parameters
         request_params = params.copy()
         request_params.update(
@@ -416,7 +503,17 @@ class AniDBEnrichmentHelper:
                 return None
 
     def _decode_content(self, content: bytes) -> str | None:
-        """Decode response content with multiple encoding fallbacks."""
+        """Decode response content with multiple encoding fallbacks.
+
+        Tries utf-8, latin-1, cp1252, and iso-8859-1 encodings in order.
+
+        Args:
+            content: Raw bytes to decode.
+
+        Returns:
+            str | None: Decoded string if successful, None if all
+                encodings fail.
+        """
         encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
         for encoding in encodings:
@@ -429,16 +526,30 @@ class AniDBEnrichmentHelper:
         return None
 
     async def _make_request(self, params: dict[str, Any]) -> str | None:
-        """Thread-safe request method with serialization lock."""
+        """Make a thread-safe request with serialization lock.
+
+        Args:
+            params: Request parameters dictionary.
+
+        Returns:
+            str | None: Response content if successful, None otherwise.
+        """
         async with self._request_lock:
             return await self._make_request_with_retry(params)
 
     def _validate_anime_xml(self, root: ET.Element) -> bool:
-        """
-        Validate anime XML structure for critical fields.
+        """Validate anime XML structure for critical fields.
+
+        Checks for required root element, id attribute, and critical
+        elements (type, episodecount, titles). Logs warnings for
+        missing optional elements.
+
+        Args:
+            root: Root XML element to validate.
 
         Returns:
-            True if structure is valid, False otherwise
+            bool: True if structure is valid, False if root element
+                or id attribute is invalid.
         """
         # Check root element
         if root.tag != "anime":
@@ -482,7 +593,18 @@ class AniDBEnrichmentHelper:
         return True
 
     async def _parse_anime_xml(self, xml_content: str) -> dict[str, Any]:
-        """Parse anime XML response into structured data."""
+        """Parse anime XML response into structured data.
+
+        Extracts all anime metadata including titles, tags, ratings,
+        categories, creators, characters, episodes, and related anime.
+
+        Args:
+            xml_content: Raw XML string from AniDB API.
+
+        Returns:
+            dict[str, Any]: Structured anime data dictionary. Returns
+                empty dict if parsing fails.
+        """
         try:
             root = ET.fromstring(xml_content)
         except ET.ParseError as e:
@@ -542,23 +664,14 @@ class AniDBEnrichmentHelper:
                     if title.text:
                         anime_data["synonyms"].append(title.text)
 
-        # Extract tags
+        # Extract tags (simple list of names)
         tags_element = root.find("tags")
         tags = []
         if tags_element is not None:
             for tag in tags_element.findall("tag"):
                 name_element = tag.find("name")
-                description_element = tag.find("description")
-                if name_element is not None:
-                    tag_data = {
-                        "id": tag.get("id"),
-                        "name": name_element.text,
-                        "count": int(tag.get("count", 0)),
-                        "weight": int(tag.get("weight", 0)),
-                    }
-                    if description_element is not None:
-                        tag_data["description"] = description_element.text
-                    tags.append(tag_data)
+                if name_element is not None and name_element.text:
+                    tags.append(name_element.text)
         anime_data["tags"] = tags
 
         # Extract ratings
@@ -654,7 +767,19 @@ class AniDBEnrichmentHelper:
         return anime_data
 
     def _parse_episode_element(self, episode_element: ET.Element) -> dict[str, Any]:
-        """Parse episode XML element into structured data (from embedded anime response)."""
+        """Parse episode XML element into structured data.
+
+        Extracts episode metadata from embedded anime response including
+        episode number, type, length, air date, rating, titles, and
+        streaming links.
+
+        Args:
+            episode_element: Episode XML element from anime response.
+
+        Returns:
+            dict[str, Any]: Structured episode data with id, episode_number,
+                episode_type, length, air_date, rating, titles, and streaming.
+        """
         epno_elem = episode_element.find("epno")
         length_elem = episode_element.find("length")
         airdate_elem = episode_element.find("airdate")
@@ -745,7 +870,18 @@ class AniDBEnrichmentHelper:
         return episode_data
 
     def _parse_episode_xml(self, episode_element: ET.Element) -> dict[str, Any]:
-        """Parse episode XML element into structured data."""
+        """Parse episode XML element into structured data.
+
+        Extracts episode metadata including episode number, type, length,
+        air date, rating, titles, and streaming links.
+
+        Args:
+            episode_element: Episode XML element to parse.
+
+        Returns:
+            dict[str, Any]: Structured episode data with id, episode_number,
+                episode_type, length, air_date, rating, titles, and streaming.
+        """
         epno_elem = episode_element.find("epno")
         length_elem = episode_element.find("length")
         airdate_elem = episode_element.find("airdate")
@@ -836,7 +972,19 @@ class AniDBEnrichmentHelper:
         return episode_data
 
     async def _parse_character_xml(self, character: ET.Element) -> dict[str, Any]:
-        """Parse character XML element into structured data with web-scraped details."""
+        """Parse character XML element into structured data.
+
+        Extracts character metadata and enriches with web-scraped details
+        from AniDB character pages. Normalizes character type values.
+
+        Args:
+            character: Character XML element to parse.
+
+        Returns:
+            dict[str, Any]: Structured character data including id, type,
+                name, gender, description, rating, picture, voice_actor,
+                and enriched details from web scraping.
+        """
         # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
         raw_type = character.get("type")
         char_type = None
@@ -859,7 +1007,7 @@ class AniDBEnrichmentHelper:
         # Get character details from XML
         name_element = character.find("name")
         if name_element is not None:
-            char_data["name"] = name_element.text
+            char_data["name_main"] = name_element.text
 
         gender_element = character.find("gender")
         if gender_element is not None:
@@ -900,9 +1048,7 @@ class AniDBEnrichmentHelper:
         character_id = character.get("id")
         if character_id:
             try:
-                detailed_char_data = await fetch_anidb_character(
-                    int(character_id), return_data=True
-                )
+                detailed_char_data = await fetch_anidb_character(int(character_id))
                 if detailed_char_data:
                     # Merge detailed data into char_data
                     char_data.update(detailed_char_data)
@@ -915,7 +1061,15 @@ class AniDBEnrichmentHelper:
         return char_data
 
     async def get_anime_by_id(self, anidb_id: int) -> dict[str, Any] | None:
-        """Get anime information by AniDB ID."""
+        """Get anime information by AniDB ID.
+
+        Args:
+            anidb_id: AniDB anime ID.
+
+        Returns:
+            dict[str, Any] | None: Parsed anime data if successful,
+                None if not found or on error.
+        """
         try:
             params = {"request": "anime", "aid": anidb_id}
             xml_response = await self._make_request(params)
@@ -941,7 +1095,15 @@ class AniDBEnrichmentHelper:
     async def search_anime_by_name(
         self, anime_name: str
     ) -> list[dict[str, Any]] | None:
-        """Search anime by name using AniDB API."""
+        """Search anime by name using AniDB API.
+
+        Args:
+            anime_name: Anime name to search for.
+
+        Returns:
+            list[dict[str, Any]] | None: List containing single anime
+                data dict if found, None otherwise.
+        """
         try:
             params = {"request": "anime", "aname": anime_name}
             xml_response = await self._make_request(params)
@@ -958,14 +1120,15 @@ class AniDBEnrichmentHelper:
             return None
 
     async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
-        """
-        Fetch comprehensive AniDB data for an anime by AniDB ID.
+        """Fetch comprehensive AniDB data for an anime by ID.
 
         Args:
-            anidb_id: The AniDB anime ID
+            anidb_id: The AniDB anime ID.
 
         Returns:
-            Dict containing comprehensive AniDB data or None if not found
+            dict[str, Any] | None: Comprehensive AniDB data including
+                metadata, characters, episodes, and related anime.
+                None if not found.
         """
         try:
             anime_data = await self.get_anime_by_id(anidb_id)
@@ -981,7 +1144,13 @@ class AniDBEnrichmentHelper:
             return None
 
     def get_health_status(self) -> dict[str, Any]:
-        """Get comprehensive health and performance metrics."""
+        """Get comprehensive health and performance metrics.
+
+        Returns:
+            dict[str, Any]: Health status containing session_health,
+                circuit_breaker, rate_limiting, request_metrics,
+                deduplication, and configuration sections.
+        """
         current_time = time.time()
 
         return {
@@ -1037,7 +1206,13 @@ class AniDBEnrichmentHelper:
         }
 
     async def reset_circuit_breaker(self) -> bool:
-        """Manually reset circuit breaker (admin function)."""
+        """Manually reset circuit breaker to CLOSED state.
+
+        Admin function to force recovery after issues are resolved.
+
+        Returns:
+            bool: True if state was changed, False if already CLOSED.
+        """
         if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
             old_state = self.circuit_breaker_state
             self.circuit_breaker_state = CircuitBreakerState.CLOSED
@@ -1049,10 +1224,10 @@ class AniDBEnrichmentHelper:
         return False
 
     async def close(self) -> None:
-        """
-        Close and clean up the helper's internal HTTP session.
+        """Close and clean up the helper's internal HTTP session.
 
-        If an active session exists, close it, clear the session reference, and reset the session creation timestamp.
+        Closes the active session if it exists, clears the session
+        reference, and resets the session creation timestamp.
         """
         if self.session:
             try:
@@ -1065,11 +1240,11 @@ class AniDBEnrichmentHelper:
                 self._session_created_at = 0
 
     async def __aenter__(self) -> "AniDBEnrichmentHelper":
-        """
-        Enter asynchronous context and return the helper instance.
+        """Enter asynchronous context and return the helper instance.
 
         Returns:
-            AniDBEnrichmentHelper: The helper instance to use within an `async with` block.
+            AniDBEnrichmentHelper: The helper instance for use within
+                an async with block.
         """
         return self
 
@@ -1079,26 +1254,32 @@ class AniDBEnrichmentHelper:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        """
-        Ensure the helper's HTTP session is closed when exiting an async context.
+        """Close the HTTP session when exiting async context.
 
-        This awaits close() to release network resources.
+        Awaits close() to release network resources.
+
+        Args:
+            exc_type: Exception type if an exception was raised.
+            exc_val: Exception value if an exception was raised.
+            exc_tb: Exception traceback if an exception was raised.
 
         Returns:
-            False: do not suppress exceptions raised within the context.
+            bool: False to not suppress exceptions raised within the context.
         """
         await self.close()
         return False
 
 
 async def main() -> int:
-    """
-    Command-line test driver that fetches AniDB data and writes the result to a JSON file.
+    """Command-line test driver for AniDB data fetching.
 
-    Parses command-line options (--anidb-id, --search-name, --output), performs the requested fetch or search using AniDBEnrichmentHelper, and saves the retrieved anime data to the specified output path.
+    Parses command-line options (--anidb-id, --search-name, --output),
+    performs the requested fetch or search using AniDBEnrichmentHelper,
+    and saves the retrieved anime data to the specified output path.
 
     Returns:
-        int: Exit code where `0` indicates success and `1` indicates failure, no data found, or interruption.
+        int: Exit code where 0 indicates success and 1 indicates failure,
+            no data found, or interruption.
     """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
     parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
