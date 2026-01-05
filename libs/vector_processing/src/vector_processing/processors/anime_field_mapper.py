@@ -1,6 +1,6 @@
 # src/vector/anime_field_mapper.py
 """
-AnimeFieldMapper - Extract and map anime data fields to 13-vector semantic architecture
+AnimeFieldMapper - Extract and map anime data fields to 11-vector semantic architecture
 
 Maps anime data from AnimeEntry models to appropriate text/visual embeddings
 for each vector type. Implements the comprehensive field mapping strategy
