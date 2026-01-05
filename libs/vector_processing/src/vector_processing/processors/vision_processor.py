@@ -198,7 +198,9 @@ class VisionProcessor:
         """
         try:
             # Extract character image URLs from anime data (separate from general images)
-            character_image_urls = self.field_mapper._extract_character_image_content(anime)
+            character_image_urls = self.field_mapper._extract_character_image_content(
+                anime
+            )
 
             if not character_image_urls:
                 logger.debug("No character image URLs found for anime")
