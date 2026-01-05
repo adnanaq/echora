@@ -1,55 +1,61 @@
-"""
-AniDB Character Crawler
+"""AniDB Character Crawler for extracting character metadata.
 
 This crawler fetches detailed character information from AniDB character pages.
-It extracts comprehensive character metadata including names, abilities, personality,
-appearance, roles, and ratings.
+It extracts comprehensive character metadata including names, abilities,
+personality, appearance, roles, and ratings.
 
 Uses crawl4ai with UndetectedAdapter to bypass AniDB's anti-leech protection.
 
-Usage:
-    from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
-
-    # Fetch character by ID
-    data = await fetch_anidb_character(491)  # Brook from One Piece
-
-    # Save to file
-    data = await fetch_anidb_character(491, output_path="brook.json")
+Example:
+    >>> from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+    >>> data = await fetch_anidb_character(491)  # Brook from One Piece
+    >>> data = await fetch_anidb_character(491, output_path="brook.json")
 """
 
 import argparse
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Optional
+import sys
+from typing import Any
 
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
-    CrawlResult,
     CrawlerRunConfig,
+    CrawlResult,
     JsonCssExtractionStrategy,
-    UndetectedAdapter,
 )
-from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai.types import RunManyReturn
+from enrichment.crawlers.utils import sanitize_output_path
+from http_cache.config import get_cache_config
+from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
+
+# Get TTL from centralized config
+_CACHE_CONFIG = get_cache_config()
+TTL_ANIDB_CHARACTER = _CACHE_CONFIG.ttl_anidb
 
 BASE_URL = "https://anidb.net/character"
 
 
-def _get_character_schema() -> Dict[str, Any]:
-    """
-    Get the CSS extraction schema for AniDB character pages.
+def _get_character_schema() -> dict[str, Any]:
+    """Get the CSS extraction schema for AniDB character pages.
 
     Returns:
-        Schema dictionary for JsonCssExtractionStrategy
+        dict[str, Any]: Schema dictionary for JsonCssExtractionStrategy
+            containing field definitions for character data extraction.
     """
     return {
         "description": "CSS extraction schema for AniDB character pages",
         "baseSelector": "body",
         "fields": [
+            {
+                "name": "name_main",
+                "selector": "#tab_1_pane tr.mainname td.value span[itemprop='name']",
+                "type": "text",
+            },
             {
                 "name": "name_kanji",
                 "selector": "#tab_1_pane tr.official.verified.yes td.value label[itemprop='alternateName']",
@@ -57,7 +63,7 @@ def _get_character_schema() -> Dict[str, Any]:
             },
             {
                 "name": "nicknames",
-                "selector": "#tab_2_pane tr.alias td.value",
+                "selector": "#tab_2_pane tr.nick td.value",
                 "type": "list",
                 "fields": [{"name": "text", "type": "text"}],
             },
@@ -106,17 +112,19 @@ def _get_character_schema() -> Dict[str, Any]:
     }
 
 
-def _flatten_character_data(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Flatten nested list fields from crawl4ai output.
+def _flatten_character_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Flatten nested list fields from crawl4ai output.
 
     Converts [{"text": "value1"}, {"text": "value2"}] to ["value1", "value2"]
+    for all list fields in the character data.
 
     Args:
-        data: Raw character data from crawler
+        data: Raw character data dictionary from crawler with nested
+            list structures.
 
     Returns:
-        Flattened character data with simple arrays
+        dict[str, Any]: Flattened character data with simple string arrays
+            instead of nested dictionaries.
     """
     list_fields = [
         "nicknames",
@@ -135,44 +143,32 @@ def _flatten_character_data(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-async def fetch_anidb_character(
-    character_id: int,
-    return_data: bool = True,
-    output_path: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """
-    Fetch character information from AniDB by character ID.
+@cached_result(ttl=TTL_ANIDB_CHARACTER, key_prefix="anidb_character")
+async def _fetch_anidb_character_data(
+    canonical_character_id: int,
+) -> dict[str, Any] | None:
+    """Perform actual AniDB character crawling with caching.
 
-    Uses UndetectedAdapter to bypass AniDB's anti-leech protection.
+    Pure function with no side effects - cached by character_id in Redis.
+    Schema hash auto-invalidates cache on code changes.
 
     Args:
-        character_id: AniDB character ID (e.g., 491 for Brook)
-        return_data: Whether to return the data dict (default: True)
-        output_path: Optional file path to save JSON (default: None)
+        canonical_character_id: AniDB character ID (e.g., 491 for Brook).
 
     Returns:
-        Character data dictionary (if return_data=True), otherwise None
-
-    Example:
-        >>> data = await fetch_anidb_character(491)
-        >>> print(data['name_kanji'])
-        ブルック
+        dict[str, Any] | None: Character data dictionary containing name,
+            gender, abilities, looks, personality, and role information
+            if successful, None otherwise.
     """
-    url = f"{BASE_URL}/{character_id}"
+    url = f"{BASE_URL}/{canonical_character_id}"
 
     logger.info(f"Fetching AniDB character: {url}")
 
-    # Configure browser with advanced anti-bot bypass
+    # Configure browser with stealth but NO UndetectedAdapter (which causes DNS issues)
     browser_config = BrowserConfig(
         enable_stealth=True,
         headless=True,
         verbose=True,
-    )
-
-    undetected_adapter = UndetectedAdapter()
-    crawler_strategy = AsyncPlaywrightCrawlerStrategy(
-        browser_config=browser_config,
-        browser_adapter=undetected_adapter,
     )
 
     # Configure extraction with anti-detection features
@@ -188,16 +184,13 @@ async def fetch_anidb_character(
         max_range=1.0,
     )
 
-    async with AsyncWebCrawler(
-        crawler_strategy=crawler_strategy,
-        config=browser_config,
-    ) as crawler:
-        logger.info(f"Starting crawl for character {character_id}...")
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        logger.info(f"Starting crawl for character {canonical_character_id}...")
 
         results: RunManyReturn = await crawler.arun(url, config=config)
 
         if not results:
-            logger.error(f"No results returned for character {character_id}")
+            logger.error(f"No results returned for character {canonical_character_id}")
             return None
 
         for result in results:
@@ -213,7 +206,9 @@ async def fetch_anidb_character(
                 data_list = json.loads(result.extracted_content)
 
                 if not data_list or len(data_list) == 0:
-                    logger.warning(f"No character data extracted for ID {character_id}")
+                    logger.warning(
+                        f"No character data extracted for ID {canonical_character_id}"
+                    )
                     return None
 
                 # Get first item (should only be one)
@@ -222,17 +217,14 @@ async def fetch_anidb_character(
                 # Flatten nested list fields
                 character_data = _flatten_character_data(character_data)
 
-                logger.info(f"Successfully extracted character data for {character_id}")
+                logger.info(
+                    f"Successfully extracted character data for {canonical_character_id}"
+                )
                 logger.info(f"Name: {character_data.get('name_kanji')}")
                 logger.info(f"Gender: {character_data.get('gender')}")
 
-                # Save to file if requested
-                if output_path:
-                    with open(output_path, "w", encoding="utf-8") as f:
-                        json.dump(character_data, f, indent=2, ensure_ascii=False)
-                    logger.info(f"Character data saved to {output_path}")
-
-                return character_data if return_data else None
+                # Return pure data (no side effects)
+                return character_data
 
             else:
                 error_msg = (
@@ -240,7 +232,9 @@ async def fetch_anidb_character(
                     if hasattr(result, "error_message")
                     else "Unknown error"
                 )
-                logger.error(f"Failed to fetch character {character_id}: {error_msg}")
+                logger.error(
+                    f"Failed to fetch character {canonical_character_id}: {error_msg}"
+                )
 
                 # Check if we hit anti-leech
                 if result.html and "AntiLeech" in result.html:
@@ -254,44 +248,88 @@ async def fetch_anidb_character(
     return None
 
 
-async def main() -> None:
-    """CLI entry point for testing the crawler."""
-    parser = argparse.ArgumentParser(
-        description="Fetch character data from AniDB by character ID"
+async def fetch_anidb_character(
+    character_id: int,
+    output_path: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch AniDB character data by character ID.
+
+    Public API to fetch character information from AniDB character pages.
+    Optionally saves the result to a JSON file.
+
+    Args:
+        character_id: AniDB character ID (e.g., 491 for Brook).
+        output_path: Optional file path to save JSON output. If provided,
+            the character data will be written to this path.
+
+    Returns:
+        dict[str, Any] | None: Character data dictionary if successful,
+            None otherwise.
+
+    Example:
+        >>> data = await fetch_anidb_character(491)
+        >>> print(data['name_kanji'])
+        ブルック
+    """
+    # Call cached function
+    data = await _fetch_anidb_character_data(character_id)
+
+    if data is None:
+        return None
+
+    # Side effect: write to file
+    if output_path:
+        safe_path = sanitize_output_path(output_path)
+        with open(safe_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Data written to {safe_path}")
+
+    return data
+
+
+async def main() -> int:
+    """Run CLI to crawl AniDB character page.
+
+    Parses command-line arguments for character ID and output path,
+    then fetches and saves character data.
+
+    Returns:
+        int: Exit code where 0 indicates success and 1 indicates failure.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    parser = argparse.ArgumentParser(description="Crawl character data from AniDB")
     parser.add_argument(
         "character_id",
         type=int,
         help="AniDB character ID (e.g., 491 for Brook)",
     )
     parser.add_argument(
-        "-o",
         "--output",
         type=str,
-        help="Output JSON file path (optional)",
+        default="anidb_character.json",
+        help="Output file path (default: anidb_character.json)",
     )
-
     args = parser.parse_args()
 
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    # Fetch character data
-    data = await fetch_anidb_character(
-        character_id=args.character_id,
-        output_path=args.output,
-    )
-
-    if data:
-        print("\n=== CHARACTER DATA ===")
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print(f"Failed to fetch character {args.character_id}")
-        exit(1)
+    try:
+        data = await fetch_anidb_character(
+            args.character_id,
+            output_path=args.output,
+        )
+        if data is None:
+            logger.error("No data was extracted; see logs above for details.")
+            return 1
+    except (ValueError, OSError):
+        logger.exception("Failed to fetch AniDB character data")
+        return 1
+    except Exception:
+        logger.exception("Unexpected error during character fetch")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))
