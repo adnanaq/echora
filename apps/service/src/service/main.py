@@ -24,6 +24,7 @@ from http_cache.result_cache import close_result_cache_redis_client
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from vector_processing import (
+    AnimeFieldMapper,
     MultiVectorEmbeddingManager,
     TextProcessor,
     VisionProcessor,
@@ -86,14 +87,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Create utilities
         image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
+        field_mapper = AnimeFieldMapper()
 
         # Initialize processors with injected dependencies
-        text_processor = TextProcessor(text_model, settings)
-        vision_processor = VisionProcessor(vision_model, image_downloader, settings)
+        text_processor = TextProcessor(text_model, field_mapper, settings)
+        vision_processor = VisionProcessor(
+            vision_model, image_downloader, field_mapper, settings
+        )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
+            field_mapper=field_mapper,
             settings=settings,
         )
         logger.info("Embedding models loaded successfully")
@@ -112,6 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.embedding_manager = embedding_manager
         app.state.text_processor = text_processor
         app.state.vision_processor = vision_processor
+        app.state.field_mapper = field_mapper
 
         # Health check
         healthy = await app.state.qdrant_client.health_check()

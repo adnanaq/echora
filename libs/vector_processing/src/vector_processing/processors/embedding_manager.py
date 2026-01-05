@@ -25,6 +25,7 @@ class MultiVectorEmbeddingManager:
         self,
         text_processor: TextProcessor,
         vision_processor: VisionProcessor,
+        field_mapper: AnimeFieldMapper,
         settings: Settings | None = None,
     ):
         """Initialize the multi-vector embedding manager with injected processors.
@@ -32,6 +33,7 @@ class MultiVectorEmbeddingManager:
         Args:
             text_processor: An initialized TextProcessor instance.
             vision_processor: An initialized VisionProcessor instance.
+            field_mapper: Shared AnimeFieldMapper instance.
             settings: Configuration settings instance.
         """
         if settings is None:
@@ -44,7 +46,7 @@ class MultiVectorEmbeddingManager:
         self.vision_processor = vision_processor
 
         # Initialize field mapper
-        self.field_mapper = AnimeFieldMapper()
+        self.field_mapper = field_mapper
 
         # Get vector configuration
         self.vector_names = list(settings.vector_names.keys())

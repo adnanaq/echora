@@ -52,6 +52,7 @@ from common.models.anime import AnimeEntry
 from qdrant_client import AsyncQdrantClient
 from qdrant_db.client import QdrantClient
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from vector_processing.processors.text_processor import TextProcessor
 from vector_processing.processors.vision_processor import VisionProcessor
@@ -362,20 +363,27 @@ async def async_main(args, settings):
 
     try:
         # Initialize embedding manager and processors using factory pattern
+        field_mapper = AnimeFieldMapper()
         text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(model=text_model, settings=settings)
+        text_processor = TextProcessor(
+            model=text_model, field_mapper=field_mapper, settings=settings
+        )
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
         image_downloader = ImageDownloader(
             cache_dir=settings.model_cache_dir or "cache"
         )
         vision_processor = VisionProcessor(
-            model=vision_model, downloader=image_downloader, settings=settings
+            model=vision_model,
+            downloader=image_downloader,
+            field_mapper=field_mapper,
+            settings=settings,
         )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
+            field_mapper=field_mapper,
             settings=settings,
         )
 

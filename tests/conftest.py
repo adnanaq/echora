@@ -13,10 +13,17 @@ from common.config.settings import Settings, get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from vector_processing import (
+    AnimeFieldMapper,
     MultiVectorEmbeddingManager,
     TextProcessor,
     VisionProcessor,
 )
+
+
+@pytest.fixture(scope="session")
+def field_mapper() -> AnimeFieldMapper:
+    """Create shared AnimeFieldMapper for tests."""
+    return AnimeFieldMapper()
 
 
 @pytest.fixture
@@ -55,17 +62,23 @@ def settings() -> Settings:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def text_processor(settings: Settings) -> TextProcessor:
+async def text_processor(
+    settings: Settings, field_mapper: AnimeFieldMapper
+) -> TextProcessor:
     """Create TextProcessor for tests."""
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
     # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings)
-    return TextProcessor(model=text_model, settings=settings)
+    return TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
 
 @pytest_asyncio.fixture(scope="session")
-async def vision_processor(settings: Settings) -> VisionProcessor:
+async def vision_processor(
+    settings: Settings, field_mapper: AnimeFieldMapper
+) -> VisionProcessor:
     """Create VisionProcessor for tests."""
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.utils.image_downloader import ImageDownloader
@@ -73,17 +86,26 @@ async def vision_processor(settings: Settings) -> VisionProcessor:
     # Create vision model and downloader using factory
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     downloader = ImageDownloader(settings.model_cache_dir)
-    return VisionProcessor(model=vision_model, downloader=downloader, settings=settings)
+    return VisionProcessor(
+        model=vision_model,
+        downloader=downloader,
+        field_mapper=field_mapper,
+        settings=settings,
+    )
 
 
 @pytest_asyncio.fixture(scope="session")
 async def embedding_manager(
-    text_processor: TextProcessor, vision_processor: VisionProcessor, settings: Settings
+    text_processor: TextProcessor,
+    vision_processor: VisionProcessor,
+    field_mapper: AnimeFieldMapper,
+    settings: Settings,
 ) -> MultiVectorEmbeddingManager:
     """Create MultiVectorEmbeddingManager for tests."""
     return MultiVectorEmbeddingManager(
         text_processor=text_processor,
         vision_processor=vision_processor,
+        field_mapper=field_mapper,
         settings=settings,
     )
 
