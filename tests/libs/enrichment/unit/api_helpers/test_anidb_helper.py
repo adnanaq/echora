@@ -38,9 +38,11 @@ def mock_session():
 @patch("enrichment.api_helpers.anidb_helper.os.getenv")
 def test_helper_initialization(mock_getenv):
     """Test that the helper initializes correctly."""
+
     # Mock os.getenv to return the default value provided in the call
     def getenv_side_effect(key, default=None):
         return default
+
     mock_getenv.side_effect = getenv_side_effect
 
     h = AniDBEnrichmentHelper()
@@ -198,7 +200,10 @@ async def test_make_request_with_retry_permanent_failure(mock_sleep, helper):
         ("<foo id='1'></foo>", False),
         ("<anime></anime>", False),
         ("<anime id='1'><episodecount>1</episodecount></anime>", True),
-        ("<anime id='1'><titles><title type='official'>Title</title></titles></anime>", True),
+        (
+            "<anime id='1'><titles><title type='official'>Title</title></titles></anime>",
+            True,
+        ),
         ("<anime id='1'><episodes><episode id='2'></episode></episodes></anime>", True),
     ],
 )
@@ -286,8 +291,12 @@ def maximal_anime_xml():
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock)
-async def test_parse_anime_xml_comprehensive(mock_fetch_char, helper, maximal_anime_xml):
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_comprehensive(
+    mock_fetch_char, helper, maximal_anime_xml
+):
     """Test parsing of a comprehensive anime XML including all optional fields."""
     mock_fetch_char.return_value = {"name": "Detailed Spike"}
     data = await helper._parse_anime_xml(maximal_anime_xml)
@@ -326,7 +335,9 @@ async def test_parse_anime_xml_comprehensive(mock_fetch_char, helper, maximal_an
 async def test_get_anime_by_id_workflow(helper):
     """Test the complete workflow of fetching anime by ID, including error paths."""
     # Success case
-    xml_response = "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
+    xml_response = (
+        "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
+    )
     helper._make_request = AsyncMock(return_value=xml_response)
     helper._parse_anime_xml = AsyncMock(return_value={"anidb_id": "1", "title": "Test"})
     result = await helper.get_anime_by_id(1)
@@ -349,7 +360,9 @@ async def test_get_anime_by_id_workflow(helper):
 async def test_search_anime_by_name_workflow(helper):
     """Test searching for an anime by name, including error paths."""
     # Success case
-    xml_response = "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
+    xml_response = (
+        "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
+    )
     helper._make_request = AsyncMock(return_value=xml_response)
     helper._parse_anime_xml = AsyncMock(return_value={"anidb_id": "1", "title": "Test"})
     result = await helper.search_anime_by_name("Test")
@@ -368,7 +381,7 @@ def test_decode_content(helper):
 
     assert helper._decode_content(utf8_bytes) == "你好"
     assert helper._decode_content(latin1_bytes) == "é"
-    assert helper._decode_content(invalid_bytes) == 'ÿþ'
+    assert helper._decode_content(invalid_bytes) == "ÿþ"
 
 
 @pytest.mark.asyncio
@@ -385,7 +398,9 @@ async def test_session_management(helper, mock_session):
 @patch("enrichment.api_helpers.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
 async def test_adaptive_rate_limit_logic(mock_sleep, helper):
     """Test the logic of the adaptive rate limiter across different scenarios."""
-    helper._adaptive_rate_limit = AniDBEnrichmentHelper._adaptive_rate_limit.__get__(helper)
+    helper._adaptive_rate_limit = AniDBEnrichmentHelper._adaptive_rate_limit.__get__(
+        helper
+    )
 
     # Case 1: Normal operation (no wait)
     helper.metrics.last_request_time = time.time() - 5
@@ -410,7 +425,9 @@ async def test_adaptive_rate_limit_logic(mock_sleep, helper):
 @patch("enrichment.api_helpers.anidb_helper.aiohttp.ClientSession")
 async def test_ensure_session_health(MockClientSession, helper):
     """Test session creation and expiration logic."""
-    helper._ensure_session_health = AniDBEnrichmentHelper._ensure_session_health.__get__(helper)
+    helper._ensure_session_health = (
+        AniDBEnrichmentHelper._ensure_session_health.__get__(helper)
+    )
 
     # 1. Create session
     helper.session = None
@@ -430,8 +447,10 @@ async def test_request_deduplication_and_cleanup(helper):
     params = {"request": "anime", "aid": 999}
     fingerprint = helper._generate_request_fingerprint(params)
     helper.recent_requests.add(fingerprint)
-    
-    with patch.object(helper, "_make_single_request", new_callable=AsyncMock) as mock_single:
+
+    with patch.object(
+        helper, "_make_single_request", new_callable=AsyncMock
+    ) as mock_single:
         # Should skip due to fingerprint
         result = await AniDBEnrichmentHelper._make_request_with_retry(helper, params)
         assert result is None
@@ -441,8 +460,10 @@ async def test_request_deduplication_and_cleanup(helper):
     for i in range(1001):
         helper.recent_requests.add(str(i))
     assert len(helper.recent_requests) > 1000
-    
-    with patch.object(helper, "_make_single_request", new_callable=AsyncMock, return_value="<xml/>"):
+
+    with patch.object(
+        helper, "_make_single_request", new_callable=AsyncMock, return_value="<xml/>"
+    ):
         await AniDBEnrichmentHelper._make_request_with_retry(helper, {"aid": "new"})
     assert len(helper.recent_requests) < 1000
 
@@ -453,14 +474,20 @@ async def test_circuit_breaker_blocking(helper):
     helper.circuit_breaker_state = CircuitBreakerState.OPEN
     helper.circuit_breaker_opened_at = time.time()
 
-    with patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock) as mock_rate:
-        result = await AniDBEnrichmentHelper._make_request_with_retry(helper, {"aid": 123})
+    with patch.object(
+        helper, "_adaptive_rate_limit", new_callable=AsyncMock
+    ) as mock_rate:
+        result = await AniDBEnrichmentHelper._make_request_with_retry(
+            helper, {"aid": 123}
+        )
         assert result is None
         mock_rate.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock)
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
 async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
     """Test _parse_character_xml handles fetch failures and missing fields."""
     # Case 1: Fetch failure
@@ -478,7 +505,9 @@ async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
 def test_internal_parsers_granular(helper):
     """Granular tests for existing internal parsing methods and inlined logic."""
     # Test _parse_episode_xml (which actually exists)
-    ep_xml = ET.fromstring("<episode id='10'><epno type='1'>5</epno><length>24</length></episode>")
+    ep_xml = ET.fromstring(
+        "<episode id='10'><epno type='1'>5</epno><length>24</length></episode>"
+    )
     ep_data = helper._parse_episode_xml(ep_xml)
     assert ep_data["episode_number"] == 5
     assert ep_data["episode_type"] == 1
@@ -502,13 +531,18 @@ def test_internal_parsers_granular(helper):
     assert cat_data["categories"][0]["name"] == "Sci-Fi"
 
     # Test inlined ratings parsing via main parser
-    rat_xml = "<anime id='1'><ratings><permanent count='10'>8.5</permanent></ratings></anime>"
+    rat_xml = (
+        "<anime id='1'><ratings><permanent count='10'>8.5</permanent></ratings></anime>"
+    )
     rat_data = asyncio.run(helper._parse_anime_xml(rat_xml))
     assert rat_data["ratings"]["permanent"]["value"] == 8.5
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper.fetch_all_data", new_callable=AsyncMock)
+@patch(
+    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper.fetch_all_data",
+    new_callable=AsyncMock,
+)
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     """Consolidated test for various CLI entry point scenarios."""
@@ -516,7 +550,9 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     from enrichment.api_helpers import anidb_helper
 
     # Case 1: Fetch by ID (Success)
-    mock_parse_args.return_value = MagicMock(anidb_id=1, search_name=None, output=str(output_path))
+    mock_parse_args.return_value = MagicMock(
+        anidb_id=1, search_name=None, output=str(output_path)
+    )
     mock_fetch.return_value = {"anidb_id": "1"}
     await anidb_helper.main()
     assert output_path.exists()
@@ -536,7 +572,7 @@ async def test_get_health_status_consolidated(helper):
     helper.circuit_breaker_state = CircuitBreakerState.OPEN
     status = helper.get_health_status()
     assert status["circuit_breaker"]["state"] == "open"
-    
+
     helper.session = None
     status = helper.get_health_status()
     assert status["session_health"]["session_active"] is False
@@ -551,5 +587,5 @@ async def test_context_manager_protocol(helper):
     async with AniDBEnrichmentHelper() as helper:
         helper.session = mock_session
         assert isinstance(helper, AniDBEnrichmentHelper)
-    
+
     mock_session.close.assert_awaited_once()

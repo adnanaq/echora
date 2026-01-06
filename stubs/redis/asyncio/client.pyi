@@ -78,7 +78,9 @@ class Redis:
         """
         ...
 
-    def pipeline(self, transaction: bool = True, shard_hint: Any | None = None) -> Pipeline:
+    def pipeline(
+        self, transaction: bool = True, shard_hint: Any | None = None
+    ) -> Pipeline:
         """Create a pipeline for atomic operations."""
         ...
 
@@ -110,9 +112,7 @@ class Redis:
         """Append one or multiple values to a list."""
         ...
 
-    async def lrange(
-        self, name: str | bytes, start: int, end: int
-    ) -> list[bytes]:
+    async def lrange(self, name: str | bytes, start: int, end: int) -> list[bytes]:
         """Return a range of elements from a list."""
         ...
 
@@ -129,9 +129,7 @@ class Redis:
         """Get the value of a key."""
         ...
 
-    async def setex(
-        self, name: str | bytes, time: int, value: str | bytes
-    ) -> bool:
+    async def setex(self, name: str | bytes, time: int, value: str | bytes) -> bool:
         """Set the value and expiration of a key."""
         ...
 

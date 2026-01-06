@@ -21,8 +21,8 @@ class TestDeduplicateSynonymsLanguageAware:
         synonyms = [
             "ONE PIECE",  # English
             "tek parça",  # Turkish
-            "원피스",      # Korean
-            "ワンピース",   # Japanese
+            "원피스",  # Korean
+            "ワンピース",  # Japanese
         ]
 
         result = deduplicate_synonyms_language_aware(synonyms)
@@ -37,9 +37,9 @@ class TestDeduplicateSynonymsLanguageAware:
     def test_removes_same_language_case_variants(self):
         """Case/punctuation variants in same language should be deduplicated."""
         synonyms = [
-            "All'arrembaggio!",   # Original
-            "all'arrembaggio!",   # Lowercase
-            "all`arrembaggio!",   # Different apostrophe
+            "All'arrembaggio!",  # Original
+            "all'arrembaggio!",  # Lowercase
+            "all`arrembaggio!",  # Different apostrophe
         ]
 
         result = deduplicate_synonyms_language_aware(synonyms)
@@ -75,8 +75,8 @@ class TestDeduplicateSynonymsLanguageAware:
     def test_preserves_different_meanings_same_language(self):
         """Different meanings in same language should be preserved."""
         synonyms = [
-            "海贼",   # Pirates (Chinese)
-            "海贼王", # Pirate King (Chinese)
+            "海贼",  # Pirates (Chinese)
+            "海贼王",  # Pirate King (Chinese)
         ]
 
         result = deduplicate_synonyms_language_aware(synonyms)
@@ -189,5 +189,3 @@ class TestExistingFunctions:
         assert normalize_string_for_comparison("Test String") == "test string"
         assert normalize_string_for_comparison("  TRIM  ") == "trim"
         assert normalize_string_for_comparison("") == ""
-
-

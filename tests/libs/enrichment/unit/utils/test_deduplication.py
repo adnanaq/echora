@@ -81,11 +81,13 @@ class TestSemanticDeduplication:
         """Test with mocked model returning low similarity."""
         # Mock embedding model
         mock_model = Mock()
-        mock_model.encode = Mock(return_value=[
-            [0.1, 0.2, 0.3],  # First value
-            [0.9, 0.8, 0.7],  # Second value (very different)
-            [0.5, 0.4, 0.6],  # Third value (different from both)
-        ])
+        mock_model.encode = Mock(
+            return_value=[
+                [0.1, 0.2, 0.3],  # First value
+                [0.9, 0.8, 0.7],  # Second value (very different)
+                [0.5, 0.4, 0.6],  # Third value (different from both)
+            ]
+        )
 
         values = ["value1", "value2", "value3"]
         result = deduplicate_semantic_array_field(values, embedding_model=mock_model)
@@ -141,18 +143,18 @@ class TestLanguageAwareDeduplication:
         # Mock embedding model
         mock_model = Mock()
         # Return different embeddings for each call
-        mock_model.encode = Mock(side_effect=[
-            [[0.1, 0.2]],  # English
-            [[0.5, 0.6]],  # Turkish
-            [[0.9, 0.8]],  # Korean
-        ])
+        mock_model.encode = Mock(
+            side_effect=[
+                [[0.1, 0.2]],  # English
+                [[0.5, 0.6]],  # Turkish
+                [[0.9, 0.8]],  # Korean
+            ]
+        )
 
         # Simplified test with known languages
         values = ["ONE PIECE", "tek parça", "원피스"]
 
-        result = deduplicate_synonyms_language_aware(
-            values, embedding_model=mock_model
-        )
+        result = deduplicate_synonyms_language_aware(values, embedding_model=mock_model)
 
         # All different languages should be kept
         # Note: Actual behavior depends on langdetect being able to detect these

@@ -238,7 +238,10 @@ async def test_fetch_anidb_character_no_results_returned(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
-@patch("enrichment.crawlers.anidb_character_crawler.fetch_anidb_character", new_callable=AsyncMock)
+@patch(
+    "enrichment.crawlers.anidb_character_crawler.fetch_anidb_character",
+    new_callable=AsyncMock,
+)
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_success(mock_parse_args, mock_fetch):
     """Test the main function successfully fetching data."""
@@ -255,12 +258,15 @@ async def test_main_success(mock_parse_args, mock_fetch):
 
 
 @pytest.mark.asyncio
-@patch("enrichment.crawlers.anidb_character_crawler.fetch_anidb_character", new_callable=AsyncMock)
+@patch(
+    "enrichment.crawlers.anidb_character_crawler.fetch_anidb_character",
+    new_callable=AsyncMock,
+)
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_failure(mock_parse_args, mock_fetch):
     """Test the main function when fetching data fails."""
     mock_parse_args.return_value = MagicMock(character_id=999, output=None)
-    mock_fetch.return_value = None # Simulate failure
+    mock_fetch.return_value = None  # Simulate failure
 
     from enrichment.crawlers import anidb_character_crawler
 
@@ -275,15 +281,21 @@ def test_dunder_main(mock_run):
     """Test the `if __name__ == '__main__'` block."""
     import runpy
     import asyncio
-    runpy.run_path("src/enrichment/crawlers/anidb_character_crawler.py", run_name="__main__")
+
+    runpy.run_path(
+        "src/enrichment/crawlers/anidb_character_crawler.py", run_name="__main__"
+    )
     mock_run.assert_called_once()
     call_arg = mock_run.call_args[0][0]
     assert asyncio.iscoroutine(call_arg)
-    assert call_arg.__name__ == 'main'
+    assert call_arg.__name__ == "main"
 
 
 @pytest.mark.asyncio
-@patch("enrichment.crawlers.anidb_character_crawler.fetch_anidb_character", new_callable=AsyncMock)
+@patch(
+    "enrichment.crawlers.anidb_character_crawler.fetch_anidb_character",
+    new_callable=AsyncMock,
+)
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_failure_exit_code(mock_parse_args, mock_fetch, monkeypatch):
     """Test the main function's exit code on failure using monkeypatch."""
@@ -292,6 +304,7 @@ async def test_main_failure_exit_code(mock_parse_args, mock_fetch, monkeypatch):
 
     exited = False
     exit_code = 0
+
     def mock_exit(code):
         nonlocal exited, exit_code
         exited = True
@@ -300,6 +313,7 @@ async def test_main_failure_exit_code(mock_parse_args, mock_fetch, monkeypatch):
     monkeypatch.setattr("builtins.exit", mock_exit)
 
     from enrichment.crawlers import anidb_character_crawler
+
     await anidb_character_crawler.main()
 
     assert exited is True

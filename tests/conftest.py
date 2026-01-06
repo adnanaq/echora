@@ -70,9 +70,7 @@ async def text_processor(
 
     # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings)
-    return TextProcessor(
-        model=text_model, field_mapper=field_mapper, settings=settings
-    )
+    return TextProcessor(model=text_model, field_mapper=field_mapper, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")
