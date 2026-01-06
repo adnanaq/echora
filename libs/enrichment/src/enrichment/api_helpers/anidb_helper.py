@@ -21,7 +21,6 @@ from types import TracebackType
 from typing import Any
 
 import aiohttp
-from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
@@ -628,16 +627,24 @@ class AniDBEnrichmentHelper:
         anime_data: dict[str, Any] = {
             "anidb_id": root.get("id"),
             "type": type_elem.text if type_elem is not None else None,
-            "episode_count": (
-                episodecount_elem.text if episodecount_elem is not None else None
+            "episodes": (
+                int(episodecount_elem.text)
+                if episodecount_elem is not None
+                and episodecount_elem.text
+                and episodecount_elem.text.isdigit()
+                else 0
             ),
             "start_date": startdate_elem.text if startdate_elem is not None else None,
             "end_date": enddate_elem.text if enddate_elem is not None else None,
-            "description": (
+            "synopsis": (
                 description_elem.text if description_elem is not None else None
             ),
             "url": url_elem.text if url_elem is not None else None,
-            "picture": picture_elem.text if picture_elem is not None else None,
+            "cover": (
+                f"https://cdn-eu.anidb.net/images/main/{picture_elem.text}"
+                if picture_elem is not None and picture_elem.text
+                else None
+            ),
             "title": None,
             "title_english": None,
             "title_japanese": None,
@@ -674,30 +681,15 @@ class AniDBEnrichmentHelper:
                     tags.append(name_element.text)
         anime_data["tags"] = tags
 
-        # Extract ratings
+        # Extract ratings (map permanent to statistics)
         ratings_element = root.find("ratings")
-        ratings = {}
+        statistics = {}
         if ratings_element is not None:
             permanent = ratings_element.find("permanent")
-            temporary = ratings_element.find("temporary")
-            review = ratings_element.find("review")
-
             if permanent is not None:
-                ratings["permanent"] = {
-                    "value": float(permanent.text) if permanent.text else None,
-                    "count": int(permanent.get("count", 0)),
-                }
-            if temporary is not None:
-                ratings["temporary"] = {
-                    "value": float(temporary.text) if temporary.text else None,
-                    "count": int(temporary.get("count", 0)),
-                }
-            if review is not None:
-                ratings["review"] = {
-                    "value": float(review.text) if review.text else None,
-                    "count": int(review.get("count", 0)),
-                }
-        anime_data["ratings"] = ratings
+                statistics["score"] = float(permanent.text) if permanent.text else None
+                statistics["scored_by"] = int(permanent.get("count", 0))
+        anime_data["statistics"] = statistics
 
         # Extract categories/genres
         categories_element = root.find("categories")
@@ -755,10 +747,11 @@ class AniDBEnrichmentHelper:
             for related_elem in related_anime_element.findall(
                 "anime"
             ):  # Iterate through 'anime' tags
+                anime_id = related_elem.get("id")
                 related_anime_list.append(
                     {
-                        "id": related_elem.get("id"),
-                        "type": related_elem.get("type"),
+                        "url": f"https://anidb.net/anime/{anime_id}",
+                        "relation": related_elem.get("type"),
                         "title": related_elem.text,  # Get text content as title
                     }
                 )
@@ -1045,18 +1038,19 @@ class AniDBEnrichmentHelper:
             }
 
         # Fetch detailed character information from AniDB website
-        character_id = character.get("id")
-        if character_id:
-            try:
-                detailed_char_data = await fetch_anidb_character(int(character_id))
-                if detailed_char_data:
-                    # Merge detailed data into char_data
-                    char_data.update(detailed_char_data)
-                    logger.info(f"Enriched character {character_id} with detailed data")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to fetch detailed data for character {character_id}: {e}"
-                )
+        # COMMENTED OUT - Character crawler disabled for now
+        # character_id = character.get("id")
+        # if character_id:
+        #     try:
+        #         detailed_char_data = await fetch_anidb_character(int(character_id))
+        #         if detailed_char_data:
+        #             # Merge detailed data into char_data
+        #             char_data.update(detailed_char_data)
+        #             logger.info(f"Enriched character {character_id} with detailed data")
+        #     except Exception as e:
+        #         logger.warning(
+        #             f"Failed to fetch detailed data for character {character_id}: {e}"
+        #         )
 
         return char_data
 
