@@ -149,19 +149,19 @@ pytest
 deactivate
 ```
 
-## Development with Pants
+## Development Workflow
 
-This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, dependency management, and testing in the monorepo.
+This project supports both UV and Pants for development:
+- **UV**: Faster (~200ms) for code quality checks (formatting, linting) during iteration
+- **Pants**: Hermetic builds for tests, scripts, validation, and CI/CD (handles monorepo dependencies)
 
-### Common Pants Commands
+**Recommendation**: Use UV for quick formatting/linting iteration, Pants for running tests/scripts and pre-commit validation.
+
+### Testing
+
+**Note**: Use Pants for running tests as it handles monorepo dependencies automatically. UV requires PYTHONPATH setup for imports from `libs/`.
 
 ```bash
-# List all targets
-./pants list ::
-
-# List targets in a specific directory
-./pants list libs/qdrant_db::
-
 # Run all tests
 ./pants test ::
 
@@ -174,30 +174,69 @@ This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, 
 # Run integration tests only
 ./pants test tests/integration::
 
+# Run with coverage
+./pants test --coverage ::
+
+# Run tests matching keyword
+./pants test :: -- -k test_client
+
+# Verbose output with short traceback
+./pants test :: -- -v --tb=short
+```
+
+### Code Quality
+
+```bash
 # Format code
+uv run ruff format .
 ./pants fmt ::
 
 # Lint code
+uv run ruff check --fix .
 ./pants lint ::
 
-# Type check with ty
+# Type check (ty works standalone)
 ty check scripts/ libs/ apps/
 
-# Count lines of code
-./pants count-loc ::
+# Format, lint, and check (Pants-only, recommended before commits)
+./pants fmt lint check ::
 ```
 
 ### Running Scripts
+
+**Note**: Use Pants for running scripts as it handles monorepo dependencies automatically. UV requires PYTHONPATH setup for imports from `libs/`.
 
 ```bash
 # Reindex anime database
 ./pants run scripts/reindex_anime_database.py
 
 # Update vectors
-./pants run scripts/update_vectors.py
+./pants run scripts/update_vectors.py -- --vectors title_vector
 
 # Validate enrichment database
 ./pants run scripts/validate_enrichment_database.py
+
+# View script help
+./pants run scripts/update_vectors.py -- --help
+```
+
+### Pants-Only Commands
+
+```bash
+# List all targets
+./pants list ::
+
+# List targets in a specific directory
+./pants list libs/qdrant_db::
+
+# Show dependencies
+./pants dependencies scripts/reindex_anime_database.py
+
+# Show dependents
+./pants dependents libs/common::
+
+# Count lines of code
+./pants count-loc ::
 ```
 
 ## Libraries
