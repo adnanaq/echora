@@ -291,18 +291,30 @@ async def _fetch_animeplanet_anime_data(
                         anime_data["episodes"] = json_ld["numberOfEpisodes"]
                     if json_ld.get("genre"):
                         anime_data["genres"] = json_ld["genre"]
-                    if json_ld.get("aggregateRating"):
-                        anime_data["aggregate_rating"] = json_ld["aggregateRating"]
 
                 # Add slug (passed as canonical_slug parameter)
                 anime_data["slug"] = canonical_slug
 
-                # Process rank
+                # Process statistics
                 rank = _extract_rank(
                     cast(list[dict[str, str]], anime_data.get("rank_text", []))
                 )
-                if rank:
-                    anime_data["rank"] = rank
+
+                score = None
+                scored_by = 0
+                if json_ld and json_ld.get("aggregateRating"):
+                    ar = json_ld["aggregateRating"]
+                    score = ar.get("ratingValue")
+                    scored_by = ar.get("ratingCount", 0)
+
+                anime_data["statistics"] = {
+                    "score": score,
+                    "scored_by": scored_by,
+                    "rank": rank,
+                    "popularity": None,  # Anime-Planet doesn't distinguish between rank and popularity
+                    "favorites": None,
+                }
+
                 if "rank_text" in anime_data:
                     del anime_data["rank_text"]
 

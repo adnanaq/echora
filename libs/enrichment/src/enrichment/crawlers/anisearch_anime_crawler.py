@@ -292,6 +292,32 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
                 "type": "list",
                 "fields": [{"name": "tag", "type": "text"}],
             },
+            {
+                "name": "rating_score",
+                "selector": "#ratingstats tr:nth-child(2) td:nth-child(1) b",
+                "type": "text",
+            },
+            {
+                "name": "rank_toplist",
+                "selector": "#ratingstats tr:nth-child(2) td:nth-child(2) b",
+                "type": "text",
+            },
+            {
+                "name": "rank_popularity",
+                "selector": "#ratingstats tr:nth-child(3) td:nth-child(1) b",
+                "type": "text",
+            },
+            {
+                "name": "rank_trending",
+                "selector": "#ratingstats tr:nth-child(3) td:nth-child(2) b",
+                "type": "text",
+            },
+            {
+                "name": "vote_counts",
+                "selector": "#rating-stats div.value",
+                "type": "list",
+                "fields": [{"name": "count", "type": "text"}],
+            },
         ],
     }
 
@@ -358,6 +384,34 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
                 if "published" in anime_data:
                     del anime_data["published"]
+
+                # Process statistics
+                voters = 0
+                for vote in anime_data.get("vote_counts", []):
+                    try:
+                        voters += int(vote.get("count", "0").replace(".", ""))
+                    except ValueError:
+                        continue
+
+                score = None
+                if anime_data.get("rating_score"):
+                    score_match = re.search(r"(\d+\.\d+)", anime_data["rating_score"])
+                    if score_match:
+                        score = float(score_match.group(1))
+
+                def _clean_rank(rank_str: str | None) -> int | None:
+                    if not rank_str:
+                        return None
+                    match = re.search(r"(\d+)", rank_str.replace(".", ""))
+                    return int(match.group(1)) if match else None
+
+                anime_data["statistics"] = {
+                    "score": score,
+                    "scored_by": voters,
+                    "rank": _clean_rank(anime_data.get("rank_toplist")),
+                    "popularity": _clean_rank(anime_data.get("rank_popularity")),
+                    "trending": _clean_rank(anime_data.get("rank_trending")),
+                }
 
                 # Flatten genres and tags
                 for field in ["genres", "tags"]:

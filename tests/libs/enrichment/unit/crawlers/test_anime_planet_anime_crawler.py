@@ -428,7 +428,7 @@ async def test_fetch_animeplanet_anime_full_success(MockAsyncWebCrawler):
     assert data is not None
     assert data["slug"] == slug
     assert data["title"] == "Dandadan"
-    assert data["rank"] == 123
+    assert data["statistics"]["rank"] == 123
     assert data["studios"] == ["Science SARU"]
     assert data["title_japanese"] == "ダンダダン"
     assert data["poster"] == "http://example.com/poster.jpg"  # CSS has priority
