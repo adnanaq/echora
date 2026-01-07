@@ -162,13 +162,24 @@ async def _fetch_anidb_character_data(
     """
     url = f"{BASE_URL}/{canonical_character_id}"
 
-    logger.info(f"Fetching AniDB character: {url}")
-
-    # Configure browser with stealth but NO UndetectedAdapter (which causes DNS issues)
+    # Configure browser with stealth + realistic headers to bypass bot detection
+    # Note: UndetectedAdapter is NOT required - headers alone are sufficient
+    # headless=True works with our header config (no browser popup)
     browser_config = BrowserConfig(
         enable_stealth=True,
         headless=True,
         verbose=True,
+        headers={
+            # Critical: Realistic browser headers bypass AniDB's 403 bot detection
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        },
+        viewport_width=1920,
+        viewport_height=1080,
     )
 
     # Configure extraction with anti-detection features
@@ -182,11 +193,10 @@ async def _fetch_anidb_character_data(
         override_navigator=True,  # Override navigator properties for stealth
         mean_delay=2.0,  # Random delays
         max_range=1.0,
+        wait_until="domcontentloaded"
     )
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
-        logger.info(f"Starting crawl for character {canonical_character_id}...")
-
         results: RunManyReturn = await crawler.arun(url, config=config)
 
         if not results:
@@ -199,9 +209,42 @@ async def _fetch_anidb_character_data(
                     f"Unexpected result type: {type(result)}, expected CrawlResult."
                 )
 
-            logger.info(f"Crawl status: {result.success}")
+            # Check both success flag AND status code (success can be True even with 403)
+            status_code = result.status_code if hasattr(result, "status_code") else None
 
-            if result.success and result.extracted_content:
+            # Validate we got a successful HTTP response
+            if not result.success:
+                error_msg = (
+                    result.error_message
+                    if hasattr(result, "error_message")
+                    else "Unknown error"
+                )
+                logger.error(
+                    f"Failed to fetch character {canonical_character_id}: {error_msg}"
+                )
+                return None
+
+            if status_code and status_code != 200:
+                logger.error(
+                    f"HTTP error {status_code} for character {canonical_character_id}"
+                )
+
+                # Check for specific bot detection responses
+                if status_code == 403:
+                    if result.html and "AntiLeech" in result.html:
+                        logger.error(
+                            "Hit AniDB AntiLeech protection. You may be temporarily banned. "
+                            "Wait 15 minutes to 24 hours before retrying."
+                        )
+                    else:
+                        logger.error(
+                            "403 Forbidden - Bot detection triggered. "
+                            "Check browser headers and anti-detection settings."
+                        )
+
+                return None
+
+            if result.extracted_content:
                 # Parse JSON response
                 data_list = json.loads(result.extracted_content)
 
@@ -217,33 +260,15 @@ async def _fetch_anidb_character_data(
                 # Flatten nested list fields
                 character_data = _flatten_character_data(character_data)
 
-                logger.info(
-                    f"Successfully extracted character data for {canonical_character_id}"
-                )
-                logger.info(f"Name: {character_data.get('name_kanji')}")
-                logger.info(f"Gender: {character_data.get('gender')}")
-
                 # Return pure data (no side effects)
                 return character_data
 
-            else:
-                error_msg = (
-                    result.error_message
-                    if hasattr(result, "error_message")
-                    else "Unknown error"
-                )
-                logger.error(
-                    f"Failed to fetch character {canonical_character_id}: {error_msg}"
-                )
-
-                # Check if we hit anti-leech
-                if result.html and "AntiLeech" in result.html:
-                    logger.error(
-                        "Hit AniDB AntiLeech protection. You may be temporarily banned. "
-                        "Wait 15 minutes to 24 hours before retrying."
-                    )
-
-                return None
+            # If we reach here, success=True and status=200 but no extracted content
+            logger.warning(
+                f"No content extracted for character {canonical_character_id} "
+                "despite successful crawl. Check CSS selectors."
+            )
+            return None
 
     return None
 
