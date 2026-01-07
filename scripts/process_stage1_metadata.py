@@ -221,8 +221,8 @@ def organize_images_by_type(sources: dict[str, dict]) -> dict[str, list[str]]:
 
     # AniDB images (covers)
     anidb = sources.get("anidb", {})
-    if anidb.get("picture"):
-        url = f"https://cdn.anidb.net/images/main/{anidb['picture']}"
+    if anidb.get("cover"):
+        url = anidb["cover"]  # Already a full URL from AniDB helper
         if url not in all_urls["covers"]:
             images["covers"].append(url)
             all_urls["covers"].add(url)
@@ -295,8 +295,8 @@ def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
 
     # 1. AniDB (highest priority)
     anidb = sources.get("anidb", {})
-    if anidb.get("description"):
-        synopsis = anidb["description"]
+    if anidb.get("synopsis"):
+        synopsis = anidb["synopsis"]
         # Remove hyperlinks and clean markup
         synopsis = re.sub(r"\[([^\]]+)\]", r"\1", synopsis)  # [link text] → link text
         synopsis = re.sub(r"\[i\]([^\[]*)\[/i\]", r"\1", synopsis)  # [i]text[/i] → text
