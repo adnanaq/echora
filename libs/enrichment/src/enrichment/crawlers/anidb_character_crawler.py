@@ -4,7 +4,8 @@ This crawler fetches detailed character information from AniDB character pages.
 It extracts comprehensive character metadata including names, abilities,
 personality, appearance, roles, and ratings.
 
-Uses crawl4ai with UndetectedAdapter to bypass AniDB's anti-leech protection.
+Uses crawl4ai with realistic browser headers and stealth configuration to bypass
+AniDB's anti-leech protection. No UndetectedAdapter required.
 
 Example:
     >>> from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
@@ -44,8 +45,8 @@ def _get_character_schema() -> dict[str, Any]:
     """Get the CSS extraction schema for AniDB character pages.
 
     Returns:
-        dict[str, Any]: Schema dictionary for JsonCssExtractionStrategy
-            containing field definitions for character data extraction.
+        Schema dictionary for JsonCssExtractionStrategy containing field
+            definitions for character data extraction.
     """
     return {
         "description": "CSS extraction schema for AniDB character pages",
@@ -119,12 +120,12 @@ def _flatten_character_data(data: dict[str, Any]) -> dict[str, Any]:
     for all list fields in the character data.
 
     Args:
-        data: Raw character data dictionary from crawler with nested
-            list structures.
+        data: Raw character data dictionary from crawler with nested list
+            structures.
 
     Returns:
-        dict[str, Any]: Flattened character data with simple string arrays
-            instead of nested dictionaries.
+        Flattened character data with simple string arrays instead of nested
+            dictionaries.
     """
     list_fields = [
         "nicknames",
@@ -156,9 +157,8 @@ async def _fetch_anidb_character_data(
         canonical_character_id: AniDB character ID (e.g., 491 for Brook).
 
     Returns:
-        dict[str, Any] | None: Character data dictionary containing name,
-            gender, abilities, looks, personality, and role information
-            if successful, None otherwise.
+        Character data dictionary containing name, gender, abilities, looks,
+            personality, and role information if successful, None otherwise.
     """
     url = f"{BASE_URL}/{canonical_character_id}"
 
@@ -284,12 +284,11 @@ async def fetch_anidb_character(
 
     Args:
         character_id: AniDB character ID (e.g., 491 for Brook).
-        output_path: Optional file path to save JSON output. If provided,
-            the character data will be written to this path.
+        output_path: Optional file path to save JSON output. If provided, the
+            character data will be written to this path.
 
     Returns:
-        dict[str, Any] | None: Character data dictionary if successful,
-            None otherwise.
+        Character data dictionary if successful, None otherwise.
 
     Example:
         >>> data = await fetch_anidb_character(491)
@@ -319,7 +318,7 @@ async def main() -> int:
     then fetches and saves character data.
 
     Returns:
-        int: Exit code where 0 indicates success and 1 indicates failure.
+        Exit code where 0 indicates success and 1 indicates failure.
     """
     logging.basicConfig(
         level=logging.INFO,

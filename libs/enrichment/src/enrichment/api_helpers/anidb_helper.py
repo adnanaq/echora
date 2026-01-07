@@ -63,7 +63,7 @@ class AniDBRequestMetrics:
         """Calculate success rate as percentage.
 
         Returns:
-            float: Success rate from 0.0 to 100.0.
+            Success rate from 0.0 to 100.0.
         """
         if self.total_requests == 0:
             return 100.0
@@ -74,7 +74,7 @@ class AniDBRequestMetrics:
         """Calculate error rate as percentage.
 
         Returns:
-            float: Error rate from 0.0 to 100.0.
+            Error rate from 0.0 to 100.0.
         """
         return 100.0 - self.success_rate
 
@@ -166,7 +166,7 @@ class AniDBEnrichmentHelper:
             params: Request parameters dictionary.
 
         Returns:
-            str: MD5 hash of sorted parameter string.
+            MD5 hash of sorted parameter string.
         """
         # Create a consistent hash of request parameters
         param_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
@@ -178,7 +178,7 @@ class AniDBEnrichmentHelper:
         Transitions from OPEN to HALF_OPEN state after timeout expires.
 
         Returns:
-            bool: True if requests are allowed, False if blocked.
+            True if requests are allowed, False if blocked.
         """
         current_time = time.time()
 
@@ -326,7 +326,7 @@ class AniDBEnrichmentHelper:
             params: Request parameters dictionary.
 
         Returns:
-            str | None: Response content if successful, None otherwise.
+            Response content if successful, None otherwise.
         """
         # Generate request fingerprint for deduplication
         fingerprint = self._generate_request_fingerprint(params)
@@ -430,7 +430,7 @@ class AniDBEnrichmentHelper:
             attempt: Current attempt number (0-indexed).
 
         Returns:
-            str | None: Decoded response content if successful, None otherwise.
+            Decoded response content if successful, None otherwise.
 
         Raises:
             RuntimeError: If session is not initialized.
@@ -518,8 +518,7 @@ class AniDBEnrichmentHelper:
             content: Raw bytes to decode.
 
         Returns:
-            str | None: Decoded string if successful, None if all
-                encodings fail.
+            Decoded string if successful, None if all encodings fail.
         """
         encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
@@ -539,7 +538,7 @@ class AniDBEnrichmentHelper:
             params: Request parameters dictionary.
 
         Returns:
-            str | None: Response content if successful, None otherwise.
+            Response content if successful, None otherwise.
         """
         async with self._request_lock:
             return await self._make_request_with_retry(params)
@@ -555,8 +554,8 @@ class AniDBEnrichmentHelper:
             root: Root XML element to validate.
 
         Returns:
-            bool: True if structure is valid, False if root element
-                or id attribute is invalid.
+            True if structure is valid, False if root element or id attribute
+                is invalid.
         """
         # Check root element
         if root.tag != "anime":
@@ -609,8 +608,8 @@ class AniDBEnrichmentHelper:
             xml_content: Raw XML string from AniDB API.
 
         Returns:
-            dict[str, Any]: Structured anime data dictionary. Returns
-                empty dict if parsing fails.
+            Structured anime data dictionary. Returns empty dict if parsing
+                fails.
         """
         try:
             root = ET.fromstring(xml_content)
@@ -803,8 +802,8 @@ class AniDBEnrichmentHelper:
             episode_element: Episode XML element from anime response.
 
         Returns:
-            dict[str, Any]: Structured episode data with id, episode_number,
-                episode_type, length, air_date, rating, titles, and streaming.
+            Structured episode data with id, episode_number, episode_type,
+                length, air_date, rating, titles, and streaming.
         """
         epno_elem = episode_element.find("epno")
         length_elem = episode_element.find("length")
@@ -903,9 +902,9 @@ class AniDBEnrichmentHelper:
             character: Character XML element to parse.
 
         Returns:
-            dict[str, Any]: Structured character data including id, type,
-                name, gender, description, rating, picture, voice_actor,
-                and enriched details from web scraping.
+            Structured character data including id, type, name, gender,
+                description, rating, picture, voice_actor, and enriched details
+                from web scraping.
         """
         # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
         raw_type = character.get("type")
@@ -989,8 +988,7 @@ class AniDBEnrichmentHelper:
             anidb_id: AniDB anime ID.
 
         Returns:
-            dict[str, Any] | None: Parsed anime data if successful,
-                None if not found or on error.
+            Parsed anime data if successful, None if not found or on error.
         """
         try:
             params = {"request": "anime", "aid": anidb_id}
@@ -1023,8 +1021,7 @@ class AniDBEnrichmentHelper:
             anime_name: Anime name to search for.
 
         Returns:
-            list[dict[str, Any]] | None: List containing single anime
-                data dict if found, None otherwise.
+            List containing single anime data dict if found, None otherwise.
         """
         try:
             params = {"request": "anime", "aname": anime_name}
@@ -1048,9 +1045,8 @@ class AniDBEnrichmentHelper:
             anidb_id: The AniDB anime ID.
 
         Returns:
-            dict[str, Any] | None: Comprehensive AniDB data including
-                metadata, characters, episodes, and related anime.
-                None if not found.
+            Comprehensive AniDB data including metadata, characters, episodes,
+                and related anime. None if not found.
         """
         try:
             anime_data = await self.get_anime_by_id(anidb_id)
@@ -1069,9 +1065,9 @@ class AniDBEnrichmentHelper:
         """Get comprehensive health and performance metrics.
 
         Returns:
-            dict[str, Any]: Health status containing session_health,
-                circuit_breaker, rate_limiting, request_metrics,
-                deduplication, and configuration sections.
+            Health status containing session_health, circuit_breaker,
+                rate_limiting, request_metrics, deduplication, and configuration
+                sections.
         """
         current_time = time.time()
 
@@ -1133,7 +1129,7 @@ class AniDBEnrichmentHelper:
         Admin function to force recovery after issues are resolved.
 
         Returns:
-            bool: True if state was changed, False if already CLOSED.
+            True if state was changed, False if already CLOSED.
         """
         if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
             old_state = self.circuit_breaker_state
@@ -1165,8 +1161,7 @@ class AniDBEnrichmentHelper:
         """Enter asynchronous context and return the helper instance.
 
         Returns:
-            AniDBEnrichmentHelper: The helper instance for use within
-                an async with block.
+            The helper instance for use within an async with block.
         """
         return self
 
@@ -1186,7 +1181,7 @@ class AniDBEnrichmentHelper:
             exc_tb: Exception traceback if an exception was raised.
 
         Returns:
-            bool: False to not suppress exceptions raised within the context.
+            False to not suppress exceptions raised within the context.
         """
         await self.close()
         return False
@@ -1200,8 +1195,8 @@ async def main() -> int:
     and saves the retrieved anime data to the specified output path.
 
     Returns:
-        int: Exit code where 0 indicates success and 1 indicates failure,
-            no data found, or interruption.
+        Exit code where 0 indicates success and 1 indicates failure, no data
+            found, or interruption.
     """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
     parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
