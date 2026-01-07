@@ -757,6 +757,37 @@ class AniDBEnrichmentHelper:
                 )
         anime_data["related_anime"] = related_anime_list
 
+        # Extract external links from resources
+        external_links: dict[str, str | None] = {
+            "official_website": None,
+            "wikipedia_en": None,
+            "wikipedia_jp": None,
+        }
+        resources_element = root.find("resources")
+        if resources_element is not None:
+            # Use dict for O(1) type lookup instead of if-elif chain
+            resource_handlers: dict[str, tuple[str, str, str | None]] = {
+                "4": ("official_website", "url", None),
+                "6": ("wikipedia_en", "identifier", "https://en.wikipedia.org/wiki/"),
+                "7": ("wikipedia_jp", "identifier", "https://ja.wikipedia.org/wiki/"),
+            }
+            for resource in resources_element.findall("resource"):
+                resource_type = resource.get("type")
+                if resource_type not in resource_handlers:
+                    continue
+                key, tag, url_prefix = resource_handlers[resource_type]
+                # Get first externalentity's value
+                entity = resource.find("externalentity")
+                if entity is not None:
+                    value_elem = entity.find(tag)
+                    if value_elem is not None and value_elem.text:
+                        external_links[key] = (
+                            f"{url_prefix}{value_elem.text}"
+                            if url_prefix
+                            else value_elem.text
+                        )
+        anime_data["external_links"] = external_links
+
         return anime_data
 
     def _parse_episode_element(self, episode_element: ET.Element) -> dict[str, Any]:
