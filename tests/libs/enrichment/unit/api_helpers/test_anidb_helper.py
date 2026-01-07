@@ -62,20 +62,6 @@ def test_request_metrics():
     assert metrics.error_rate == 30.0
 
 
-def test_generate_request_fingerprint(helper):
-    """Test request fingerprint generation."""
-    params1 = {"request": "anime", "aid": 123}
-    params2 = {"aid": 123, "request": "anime"}
-    params3 = {"request": "anime", "aid": 456}
-
-    fp1 = helper._generate_request_fingerprint(params1)
-    fp2 = helper._generate_request_fingerprint(params2)
-    fp3 = helper._generate_request_fingerprint(params3)
-
-    assert fp1 == fp2
-    assert fp1 != fp3
-
-
 @pytest.mark.asyncio
 async def test_circuit_breaker_logic(helper):
     """Test the circuit breaker state transitions."""
@@ -422,33 +408,6 @@ async def test_ensure_session_health(MockClientSession, helper):
 
 
 @pytest.mark.asyncio
-async def test_request_deduplication_and_cleanup(helper):
-    """Test that duplicate requests are skipped and cache is capped."""
-    params = {"request": "anime", "aid": 999}
-    fingerprint = helper._generate_request_fingerprint(params)
-    helper.recent_requests.add(fingerprint)
-
-    with patch.object(
-        helper, "_make_single_request", new_callable=AsyncMock
-    ) as mock_single:
-        # Should skip due to fingerprint
-        result = await AniDBEnrichmentHelper._make_request_with_retry(helper, params)
-        assert result is None
-        mock_single.assert_not_called()
-
-    # Test cache cleanup logic
-    for i in range(1001):
-        helper.recent_requests.add(str(i))
-    assert len(helper.recent_requests) > 1000
-
-    with patch.object(
-        helper, "_make_single_request", new_callable=AsyncMock, return_value="<xml/>"
-    ):
-        await AniDBEnrichmentHelper._make_request_with_retry(helper, {"aid": "new"})
-    assert len(helper.recent_requests) < 1000
-
-
-@pytest.mark.asyncio
 async def test_circuit_breaker_blocking(helper):
     """Test that requests are blocked when the circuit breaker is open."""
     helper.circuit_breaker_state = CircuitBreakerState.OPEN
@@ -531,7 +490,7 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
 
     # Case 1: Fetch by ID (Success)
     mock_parse_args.return_value = MagicMock(
-        anidb_id=1, search_name=None, output=str(output_path)
+        anidb_id=1, search_name=None, output=str(output_path), save_xml=None
     )
     mock_fetch.return_value = {"anidb_id": "1"}
     await anidb_helper.main()
@@ -544,18 +503,6 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     # Case 3: Generic Exception
     mock_fetch.side_effect = Exception("Generic error")
     assert await anidb_helper.main() == 1
-
-
-@pytest.mark.asyncio
-async def test_get_health_status_consolidated(helper):
-    """Test health status reporting with and without active session."""
-    helper.circuit_breaker_state = CircuitBreakerState.OPEN
-    status = helper.get_health_status()
-    assert status["circuit_breaker"]["state"] == "open"
-
-    helper.session = None
-    status = helper.get_health_status()
-    assert status["session_health"]["session_active"] is False
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,6 @@ enrichment pipeline with production-level rate limiting and error handling.
 import argparse
 import asyncio
 import gzip
-import hashlib
 import json
 import logging
 import os
@@ -24,6 +23,7 @@ import aiohttp
 from http_cache.instance import http_cache_manager as _cache_manager
 
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+from enrichment.crawlers.utils import sanitize_output_path
 
 logger = logging.getLogger(__name__)
 
@@ -145,11 +145,10 @@ class AniDBEnrichmentHelper:
             os.getenv("ANIDB_CIRCUIT_BREAKER_TIMEOUT", "300")
         )
         self.circuit_breaker_state = CircuitBreakerState.CLOSED
-        self.circuit_breaker_opened_at = 0
+        self.circuit_breaker_opened_at = 0.0
 
         # Request tracking and metrics
         self.metrics = AniDBRequestMetrics()
-        self.recent_requests: set[str] = set()  # Track recent request fingerprints
         self._request_lock = asyncio.Lock()  # Ensure request serialization
 
         logger.info("AniDB helper initialized with enhanced features:")
@@ -158,19 +157,6 @@ class AniDBEnrichmentHelper:
         )
         logger.info(f"  - Circuit breaker: {self.circuit_breaker_threshold} failures")
         logger.info(f"  - Max retries: {self.max_retries}")
-
-    def _generate_request_fingerprint(self, params: dict[str, Any]) -> str:
-        """Generate fingerprint for request deduplication.
-
-        Args:
-            params: Request parameters dictionary.
-
-        Returns:
-            MD5 hash of sorted parameter string.
-        """
-        # Create a consistent hash of request parameters
-        param_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-        return hashlib.md5(param_str.encode()).hexdigest()
 
     async def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows requests.
@@ -221,7 +207,7 @@ class AniDBEnrichmentHelper:
 
             if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = int(time.time())
+                self.circuit_breaker_opened_at = time.time()
                 logger.warning(
                     "Circuit breaker moved back to OPEN state from HALF_OPEN"
                 )
@@ -230,7 +216,7 @@ class AniDBEnrichmentHelper:
                 and self.metrics.consecutive_failures >= self.circuit_breaker_threshold
             ):
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = int(time.time())
+                self.circuit_breaker_opened_at = time.time()
                 logger.error(
                     f"Circuit breaker OPENED after {self.metrics.consecutive_failures} consecutive failures"
                 )
@@ -319,8 +305,7 @@ class AniDBEnrichmentHelper:
     async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
         """Make request with enhanced retry logic and error handling.
 
-        Implements exponential backoff with jitter, circuit breaker checks,
-        and request deduplication.
+        Implements exponential backoff with jitter and circuit breaker checks.
 
         Args:
             params: Request parameters dictionary.
@@ -328,23 +313,6 @@ class AniDBEnrichmentHelper:
         Returns:
             Response content if successful, None otherwise.
         """
-        # Generate request fingerprint for deduplication
-        fingerprint = self._generate_request_fingerprint(params)
-
-        # Check for recent duplicate requests
-        if fingerprint in self.recent_requests:
-            logger.warning(
-                f"Skipping duplicate request (fingerprint: {fingerprint[:8]}...)"
-            )
-            return None
-
-        # Add to recent requests (with cleanup of old entries)
-        self.recent_requests.add(fingerprint)
-        if len(self.recent_requests) > 1000:  # Prevent memory growth
-            # Remove oldest half of entries (simple cleanup)
-            old_requests = list(self.recent_requests)[:500]
-            self.recent_requests -= set(old_requests)
-
         # Try request with retries
         last_exception = None
 
@@ -499,7 +467,7 @@ class AniDBEnrichmentHelper:
                 self.metrics.last_error_time = time.time()
                 # Force circuit breaker open for ban scenarios
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = int(time.time())
+                self.circuit_breaker_opened_at = time.time()
                 return None
 
             else:
@@ -1035,68 +1003,6 @@ class AniDBEnrichmentHelper:
             logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}: {e}")
             return None
 
-    def get_health_status(self) -> dict[str, Any]:
-        """Get comprehensive health and performance metrics.
-
-        Returns:
-            Health status containing session_health, circuit_breaker,
-                rate_limiting, request_metrics, deduplication, and configuration
-                sections.
-        """
-        current_time = time.time()
-
-        return {
-            "session_health": {
-                "session_active": self.session is not None,
-                "session_age": (
-                    current_time - self._session_created_at if self.session else 0
-                ),
-                "session_max_age": self._session_max_age,
-            },
-            "circuit_breaker": {
-                "state": self.circuit_breaker_state.value,
-                "consecutive_failures": self.metrics.consecutive_failures,
-                "threshold": self.circuit_breaker_threshold,
-                "opened_at": self.circuit_breaker_opened_at,
-                "time_until_retry": (
-                    max(
-                        0,
-                        self.circuit_breaker_timeout
-                        - (current_time - self.circuit_breaker_opened_at),
-                    )
-                    if self.circuit_breaker_state == CircuitBreakerState.OPEN
-                    else 0
-                ),
-            },
-            "rate_limiting": {
-                "current_interval": self.metrics.current_interval,
-                "min_interval": self.min_request_interval,
-                "max_interval": self.max_request_interval,
-                "time_since_last_request": current_time
-                - self.metrics.last_request_time,
-                "ready_for_request": (current_time - self.metrics.last_request_time)
-                >= self.metrics.current_interval,
-            },
-            "request_metrics": {
-                "total_requests": self.metrics.total_requests,
-                "successful_requests": self.metrics.successful_requests,
-                "failed_requests": self.metrics.failed_requests,
-                "success_rate": self.metrics.success_rate,
-                "error_rate": self.metrics.error_rate,
-                "last_error_time": self.metrics.last_error_time,
-            },
-            "deduplication": {
-                "recent_requests_tracked": len(self.recent_requests),
-                "max_tracked_requests": 1000,
-            },
-            "configuration": {
-                "client_name": self.client_name,
-                "client_version": self.client_version,
-                "max_retries": self.max_retries,
-                "error_cooldown_base": self.error_cooldown_base,
-            },
-        }
-
     async def reset_circuit_breaker(self) -> bool:
         """Manually reset circuit breaker to CLOSED state.
 
@@ -1179,6 +1085,14 @@ async def main() -> int:
     parser.add_argument(
         "--output", type=str, default="test_anidb_output.json", help="Output file path"
     )
+    parser.add_argument(
+        "--save-xml",
+        type=str,
+        nargs="?",
+        const="",  # Use empty string to trigger default naming
+        default=None,  # None when flag not provided
+        help="Save raw XML response (default: anidb_{id}_raw.xml in repo root, or specify custom path)",
+    )
 
     args = parser.parse_args()
 
@@ -1188,12 +1102,34 @@ async def main() -> int:
     helper = AniDBEnrichmentHelper()
 
     try:
+        # Fetch raw XML if requested (optional, non-blocking)
+        if args.save_xml is not None:
+            try:
+                params = {"request": "anime", "aid": args.anidb_id}
+                xml_response = await helper._make_request(params)
+                if xml_response:
+                    # Use default filename if flag provided without path
+                    xml_path = (
+                        args.save_xml
+                        if args.save_xml
+                        else f"anidb_{args.anidb_id}_raw.xml"
+                    )
+                    safe_xml_path = sanitize_output_path(xml_path)
+                    with open(safe_xml_path, "w", encoding="utf-8") as f:
+                        f.write(xml_response)
+                    logger.info(f"Raw XML saved to {safe_xml_path}")
+                else:
+                    logger.warning("Failed to fetch XML for --save-xml (continuing anyway)")
+            except Exception as e:
+                logger.warning(f"Failed to save XML: {e} (continuing anyway)")
+
         # Fetch data by ID
         anime_data = await helper.fetch_all_data(args.anidb_id)
 
         if anime_data:
-            # Save to file
-            with open(args.output, "w", encoding="utf-8") as f:
+            # Save to file (sanitize path to prevent traversal attacks)
+            safe_path = sanitize_output_path(args.output)
+            with open(safe_path, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
             return 0
         else:
