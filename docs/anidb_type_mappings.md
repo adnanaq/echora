@@ -1,12 +1,12 @@
-# AniDB Resource Type Mappings
+# AniDB Type Mappings
 
-This document outlines the mapping of numerical `type` attributes found in AniDB XML data to their corresponding external websites, services, and domains. 
+This document outlines the various numerical `type` or `id` attributes found in AniDB XML data and their corresponding meanings. These mappings are essential for correctly interpreting and transforming AniDB's raw data.
 
 ---
 
-## Anime-Level External Resources
+## External Resource Types (Anime-Level)
 
-This information is crucial for interpreting the `<resources>` tag for an entire anime series. The `identifier` found within each resource tag is the unique key used to locate the specific anime on that external service. It is typically used as part of the URL path or as a query string parameter.
+Found in the `<resources>` tag for an entire anime series. The `identifier` is the unique key used on the external service.
 
 | Type ID | Domain / Service      | Example URL Structure                                       | Verified |
 |:--------|:----------------------|:------------------------------------------------------------|:---------|
@@ -30,9 +30,22 @@ This information is crucial for interpreting the `<resources>` tag for an entire
 
 ---
 
+## Character Types
+
+Found in the `<character>` tag's `charactertype` attribute (or `character_type_id` in parsed JSON).
+
+| Type ID | Category     | Description                                               |
+|:--------|:-------------|:----------------------------------------------------------|
+| 1       | Character    | Standard individual personas (e.g., Luffy, Zoro).         |
+| 2       | Mecha        | Robots or mechanical entities.                            |
+| 3       | Organization | Groups, crews, or collectives (e.g., Straw Hat Pirates).  |
+| 4       | Vessel       | Ships or primary transportation (e.g., Going Merry).      |
+
+---
+
 ## Episode Number (`<epno>`) Types
 
-Within each `<episode>` tag, the `<epno>` tag contains a `type` attribute that specifies the category of that episode.
+Found in the `<episode>` tag's `<epno>` element `type` attribute.
 
 | Type ID | Category            |
 |:--------|:--------------------|
