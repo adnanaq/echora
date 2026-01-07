@@ -5,8 +5,6 @@ import xml.etree.ElementTree as ET
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import ClientError
-
 from enrichment.api_helpers.anidb_helper import (
     AniDBEnrichmentHelper,
     AniDBRequestMetrics,
@@ -311,15 +309,14 @@ async def test_parse_anime_xml_comprehensive(
     assert data["related_anime"][0]["title"] == "Cowboy Bebop: The Movie"
     assert len(data["creators"]) == 1
     assert data["creators"][0]["name"] == "Watanabe Shinichirou"
-    assert data["ratings"]["permanent"]["value"] == 8.5
-    assert data["ratings"]["temporary"]["count"] == 10
-    assert data["ratings"]["review"]["value"] == 9.0
+    assert data["statistics"]["score"] == 8.5
+    assert data["statistics"]["scored_by"] == 100
     assert len(data["categories"]) == 1
     assert data["categories"][0]["name"] == "Sci-Fi"
     assert len(data["tags"]) == 1
     assert data["tags"][0] == "space"
     assert data["url"] == "http://anidb.net/a1"
-    assert data["picture"] == "anime.jpg"
+    assert data["cover"] == "https://cdn-eu.anidb.net/images/main/anime.jpg"
     assert data["episode_details"][0]["episode_number"] == 1
     assert data["episode_details"][0]["streaming"]["crunchyroll"] is not None
     assert data["episode_details"][1]["episode_number"] == "S1"
@@ -375,7 +372,7 @@ async def test_search_anime_by_name_workflow(helper):
 
 def test_decode_content(helper):
     """Test content decoding with fallbacks."""
-    utf8_bytes = "你好".encode("utf-8")
+    utf8_bytes = "你好".encode()
     latin1_bytes = "é".encode("latin-1")
     invalid_bytes = b"\xff\xfe"
 
@@ -504,7 +501,7 @@ async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
 
 def test_internal_parsers_granular(helper):
     """Granular tests for existing internal parsing methods and inlined logic."""
-    # Test _parse_episode_xml (which actually exists)
+    # Test _parse_episode_xml
     ep_xml = ET.fromstring(
         "<episode id='10'><epno type='1'>5</epno><length>24</length></episode>"
     )
@@ -515,8 +512,8 @@ def test_internal_parsers_granular(helper):
     # Test inlined related anime parsing via main parser
     rel_xml = "<anime id='1'><relatedanime><anime id='2' type='Sequel'>Movie</anime></relatedanime></anime>"
     rel_data = asyncio.run(helper._parse_anime_xml(rel_xml))
-    assert rel_data["related_anime"][0]["id"] == "2"
-    assert rel_data["related_anime"][0]["type"] == "Sequel"
+    assert rel_data["related_anime"][0]["url"] == "https://anidb.net/anime/2"
+    assert rel_data["related_anime"][0]["relation"] == "Sequel"
 
     # Test inlined creator parsing via main parser
     creator_xml = "<anime id='1'><creators><name id='1' type='Director'>Watanabe</name></creators></anime>"
@@ -535,7 +532,7 @@ def test_internal_parsers_granular(helper):
         "<anime id='1'><ratings><permanent count='10'>8.5</permanent></ratings></anime>"
     )
     rat_data = asyncio.run(helper._parse_anime_xml(rat_xml))
-    assert rat_data["ratings"]["permanent"]["value"] == 8.5
+    assert rat_data["statistics"]["score"] == 8.5
 
 
 @pytest.mark.asyncio
@@ -589,3 +586,101 @@ async def test_context_manager_protocol(helper):
         assert isinstance(helper, AniDBEnrichmentHelper)
 
     mock_session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_tags_extraction_format():
+    """Test tags extraction produces correct format and filters empty values."""
+    from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <anime id="1">
+        <tags>
+            <tag id="1" count="10" weight="100">
+                <name>action</name>
+            </tag>
+            <tag id="2" count="5" weight="50">
+                <name>adventure</name>
+            </tag>
+            <tag id="3" count="0" weight="0">
+                <name></name>
+            </tag>
+        </tags>
+    </anime>
+    """
+
+    helper = AniDBEnrichmentHelper()
+    result = await helper._parse_anime_xml(xml_content)
+
+    assert result["tags"] == ["action", "adventure"]
+    assert "" not in result["tags"], "Empty tags should be filtered"
+    assert None not in result["tags"], "None tags should be filtered"
+
+
+@pytest.mark.asyncio
+async def test_categories_extraction_format():
+    """Test categories extraction produces correct format with all fields."""
+    from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <anime id="1">
+        <categories>
+            <category id="1" parentid="0" weight="600" hentai="false">
+                <name>Action</name>
+                <description>Action category</description>
+            </category>
+            <category id="2" parentid="1" weight="400" hentai="true">
+                <name>Ecchi</name>
+                <description>Ecchi category</description>
+            </category>
+        </categories>
+    </anime>
+    """
+
+    helper = AniDBEnrichmentHelper()
+    result = await helper._parse_anime_xml(xml_content)
+
+    assert len(result["categories"]) == 2
+
+    # Verify first category structure
+    assert result["categories"][0] == {
+        "id": "1",
+        "name": "Action",
+        "weight": 600,
+        "hentai": False,
+    }
+
+    # Verify second category structure
+    assert result["categories"][1]["id"] == "2"
+    assert result["categories"][1]["hentai"] is True
+    assert result["categories"][1]["weight"] == 400
+
+
+@pytest.mark.asyncio
+async def test_creators_extraction_format():
+    """Test creators extraction produces correct format with all fields."""
+    from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
+
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+    <anime id="1">
+        <creators>
+            <name id="123" type="Director">John Doe</name>
+            <name id="456" type="Music">Jane Smith</name>
+            <name id="789" type="Animation Work">Studio A</name>
+        </creators>
+    </anime>
+    """
+
+    helper = AniDBEnrichmentHelper()
+    result = await helper._parse_anime_xml(xml_content)
+
+    assert len(result["creators"]) == 3
+
+    # Verify structure of each creator
+    assert result["creators"][0] == {"id": "123", "name": "John Doe", "type": "Director"}
+    assert result["creators"][1] == {"id": "456", "name": "Jane Smith", "type": "Music"}
+    assert result["creators"][2] == {
+        "id": "789",
+        "name": "Studio A",
+        "type": "Animation Work",
+    }

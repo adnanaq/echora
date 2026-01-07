@@ -63,6 +63,7 @@ def test_flatten_character_data(input_data, expected_data):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_success(MockAsyncWebCrawler):
     """Test successful character fetch."""
@@ -93,6 +94,7 @@ async def test_fetch_anidb_character_success(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_save_to_file(MockAsyncWebCrawler, tmp_path):
     """Test successful fetch and save to file."""
@@ -111,10 +113,9 @@ async def test_fetch_anidb_character_save_to_file(MockAsyncWebCrawler, tmp_path)
     mock_crawler_instance.arun.return_value = [mock_result]
 
     output_file = tmp_path / "character.json"
-    result_data = await fetch_anidb_character(
-        491, output_path=str(output_file), return_data=True
-    )
+    result_data = await fetch_anidb_character(491, output_path=str(output_file))
 
+    # Function always returns data and writes to file if output_path provided
     assert output_file.exists()
     with open(output_file, "r", encoding="utf-8") as f:
         saved_data = json.load(f)
@@ -125,9 +126,10 @@ async def test_fetch_anidb_character_save_to_file(MockAsyncWebCrawler, tmp_path)
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
-async def test_fetch_anidb_character_no_return_data(MockAsyncWebCrawler, tmp_path):
-    """Test fetch with return_data=False."""
+async def test_fetch_anidb_character_without_output_path(MockAsyncWebCrawler):
+    """Test fetch without output_path - only returns data, no file written."""
     mock_crawler_instance = MockAsyncWebCrawler.return_value.__aenter__.return_value
     character_data = {"name_kanji": "ブルック"}
     mock_result = CrawlResult(
@@ -138,16 +140,15 @@ async def test_fetch_anidb_character_no_return_data(MockAsyncWebCrawler, tmp_pat
     )
     mock_crawler_instance.arun.return_value = [mock_result]
 
-    output_file = tmp_path / "character.json"
-    result_data = await fetch_anidb_character(
-        491, output_path=str(output_file), return_data=False
-    )
+    result_data = await fetch_anidb_character(491)
 
-    assert result_data is None
-    assert output_file.exists()
+    # Function always returns data when successful
+    assert result_data is not None
+    assert result_data["name_kanji"] == "ブルック"
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_crawl_failure(MockAsyncWebCrawler):
     """Test when the crawl itself fails."""
@@ -165,6 +166,7 @@ async def test_fetch_anidb_character_crawl_failure(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_anti_leech(MockAsyncWebCrawler):
     """Test detection of AntiLeech protection."""
@@ -182,6 +184,7 @@ async def test_fetch_anidb_character_anti_leech(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_no_extracted_content(MockAsyncWebCrawler):
     """Test when crawl succeeds but no content is extracted."""
@@ -199,6 +202,7 @@ async def test_fetch_anidb_character_no_extracted_content(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_empty_json_list(MockAsyncWebCrawler):
     """Test when extracted content is an empty JSON list."""
@@ -216,6 +220,7 @@ async def test_fetch_anidb_character_empty_json_list(MockAsyncWebCrawler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_unexpected_result_type(MockAsyncWebCrawler):
     """Test when crawler returns an unexpected result type."""
@@ -227,6 +232,7 @@ async def test_fetch_anidb_character_unexpected_result_type(MockAsyncWebCrawler)
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler")
 async def test_fetch_anidb_character_no_results_returned(MockAsyncWebCrawler):
     """Test when the crawler returns an empty list of results."""
@@ -246,15 +252,14 @@ async def test_fetch_anidb_character_no_results_returned(MockAsyncWebCrawler):
 async def test_main_success(mock_parse_args, mock_fetch):
     """Test the main function successfully fetching data."""
     # Simulate CLI arguments
-    mock_parse_args.return_value = MagicMock(character_id=491, output=None)
+    mock_parse_args.return_value = MagicMock(character_id=491, output="output.json")
     mock_fetch.return_value = {"name_kanji": "ブルック"}
 
     from enrichment.crawlers import anidb_character_crawler
 
-    with patch("builtins.print") as mock_print:
-        await anidb_character_crawler.main()
-        mock_fetch.assert_called_once_with(character_id=491, output_path=None)
-        mock_print.assert_called()
+    exit_code = await anidb_character_crawler.main()
+    assert exit_code == 0
+    mock_fetch.assert_called_once_with(491, output_path="output.json")
 
 
 @pytest.mark.asyncio
@@ -265,30 +270,48 @@ async def test_main_success(mock_parse_args, mock_fetch):
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_failure(mock_parse_args, mock_fetch):
     """Test the main function when fetching data fails."""
-    mock_parse_args.return_value = MagicMock(character_id=999, output=None)
+    mock_parse_args.return_value = MagicMock(
+        character_id=999, output="anidb_character.json"
+    )
     mock_fetch.return_value = None  # Simulate failure
 
     from enrichment.crawlers import anidb_character_crawler
 
-    with patch("builtins.print") as mock_print, pytest.raises(SystemExit) as e:
-        await anidb_character_crawler.main()
-        assert e.type == SystemExit
-        assert e.value.code == 1
+    exit_code = await anidb_character_crawler.main()
+    assert exit_code == 1
 
 
-@patch("asyncio.run")
-def test_dunder_main(mock_run):
-    """Test the `if __name__ == '__main__'` block."""
-    import runpy
-    import asyncio
+@pytest.mark.asyncio
+async def test_http_status_code_403_detection():
+    """Test detection of HTTP 403 status code even with success=True."""
+    with patch("enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler"):
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
 
-    runpy.run_path(
-        "src/enrichment/crawlers/anidb_character_crawler.py", run_name="__main__"
-    )
-    mock_run.assert_called_once()
-    call_arg = mock_run.call_args[0][0]
-    assert asyncio.iscoroutine(call_arg)
-    assert call_arg.__name__ == "main"
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client",
+            return_value=mock_redis,
+        ):
+            with patch(
+                "enrichment.crawlers.anidb_character_crawler.AsyncWebCrawler"
+            ) as MockCrawler:
+                mock_crawler = AsyncMock()
+
+                # Create result with success=True but status_code=403
+                mock_result = MagicMock(spec=CrawlResult)
+                mock_result.success = True
+                mock_result.status_code = 403
+                mock_result.html = "<html>AntiLeech detected</html>"
+                mock_result.extracted_content = None
+
+                mock_crawler.arun = AsyncMock(return_value=[mock_result])
+                mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+                mock_crawler.__aexit__ = AsyncMock(return_value=None)
+                MockCrawler.return_value = mock_crawler
+
+                data = await fetch_anidb_character(491)
+                assert data is None
 
 
 @pytest.mark.asyncio
@@ -297,24 +320,14 @@ def test_dunder_main(mock_run):
     new_callable=AsyncMock,
 )
 @patch("argparse.ArgumentParser.parse_args")
-async def test_main_failure_exit_code(mock_parse_args, mock_fetch, monkeypatch):
-    """Test the main function's exit code on failure using monkeypatch."""
-    mock_parse_args.return_value = MagicMock(character_id=999, output=None)
-    mock_fetch.return_value = None  # Simulate failure
-
-    exited = False
-    exit_code = 0
-
-    def mock_exit(code):
-        nonlocal exited, exit_code
-        exited = True
-        exit_code = code
-
-    monkeypatch.setattr("builtins.exit", mock_exit)
+async def test_main_exception_handling(mock_parse_args, mock_fetch):
+    """Test the main function handles exceptions properly."""
+    mock_parse_args.return_value = MagicMock(
+        character_id=999, output="anidb_character.json"
+    )
+    mock_fetch.side_effect = ValueError("Invalid character ID")
 
     from enrichment.crawlers import anidb_character_crawler
 
-    await anidb_character_crawler.main()
-
-    assert exited is True
+    exit_code = await anidb_character_crawler.main()
     assert exit_code == 1
