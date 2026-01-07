@@ -1012,32 +1012,6 @@ class AniDBEnrichmentHelper:
             logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
             return None
 
-    async def search_anime_by_name(
-        self, anime_name: str
-    ) -> list[dict[str, Any]] | None:
-        """Search anime by name using AniDB API.
-
-        Args:
-            anime_name: Anime name to search for.
-
-        Returns:
-            List containing single anime data dict if found, None otherwise.
-        """
-        try:
-            params = {"request": "anime", "aname": anime_name}
-            xml_response = await self._make_request(params)
-
-            if not xml_response or "<error" in xml_response:
-                logger.warning(f"No search results for: {anime_name}")
-                return None
-
-            # AniDB search returns single anime, not a list
-            anime_data = await self._parse_anime_xml(xml_response)
-            return [anime_data] if anime_data else None
-        except Exception as e:
-            logger.error(f"Failed to search anime by name '{anime_name}': {e}")
-            return None
-
     async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
         """Fetch comprehensive AniDB data for an anime by ID.
 
@@ -1190,17 +1164,18 @@ class AniDBEnrichmentHelper:
 async def main() -> int:
     """Command-line test driver for AniDB data fetching.
 
-    Parses command-line options (--anidb-id, --search-name, --output),
-    performs the requested fetch or search using AniDBEnrichmentHelper,
-    and saves the retrieved anime data to the specified output path.
+    Parses command-line options (--anidb-id, --output), fetches anime data
+    by ID using AniDBEnrichmentHelper, and saves the result to the specified
+    output path.
 
     Returns:
         Exit code where 0 indicates success and 1 indicates failure, no data
             found, or interruption.
     """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
-    parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
-    parser.add_argument("--search-name", type=str, help="Search anime by name")
+    parser.add_argument(
+        "--anidb-id", type=int, required=True, help="AniDB ID to fetch"
+    )
     parser.add_argument(
         "--output", type=str, default="test_anidb_output.json", help="Output file path"
     )
@@ -1213,16 +1188,8 @@ async def main() -> int:
     helper = AniDBEnrichmentHelper()
 
     try:
-        if args.anidb_id:
-            # Fetch data by ID
-            anime_data = await helper.fetch_all_data(args.anidb_id)
-        elif args.search_name:
-            # Search by name
-            search_results = await helper.search_anime_by_name(args.search_name)
-            anime_data = search_results[0] if search_results else None
-        else:
-            logger.error("Must provide either --anidb-id or --search-name")
-            return 1
+        # Fetch data by ID
+        anime_data = await helper.fetch_all_data(args.anidb_id)
 
         if anime_data:
             # Save to file

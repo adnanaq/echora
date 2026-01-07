@@ -353,23 +353,6 @@ async def test_get_anime_by_id_workflow(helper):
     assert await helper.get_anime_by_id(999) is None
 
 
-@pytest.mark.asyncio
-async def test_search_anime_by_name_workflow(helper):
-    """Test searching for an anime by name, including error paths."""
-    # Success case
-    xml_response = (
-        "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
-    )
-    helper._make_request = AsyncMock(return_value=xml_response)
-    helper._parse_anime_xml = AsyncMock(return_value={"anidb_id": "1", "title": "Test"})
-    result = await helper.search_anime_by_name("Test")
-    assert result[0]["title"] == "Test"
-
-    # Error case
-    helper._make_request = AsyncMock(return_value="<error>Not found</error>")
-    assert await helper.search_anime_by_name("Nonexistent") is None
-
-
 def test_decode_content(helper):
     """Test content decoding with fallbacks."""
     utf8_bytes = "你好".encode()
