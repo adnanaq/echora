@@ -22,6 +22,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from common.utils.datetime_utils import (
+    determine_anime_season,
+    determine_anime_status,
+    determine_anime_year,
+)
 from crawl4ai import (
     AsyncWebCrawler,
     CrawlerRunConfig,
@@ -360,42 +365,25 @@ async def _fetch_animeplanet_anime_data(
                     del anime_data["related_manga_raw"]
 
                 # Derive year, season, status from dates
+                start_date = None
+                end_date = None
+
                 if json_ld and json_ld.get("startDate"):
                     start_date = json_ld["startDate"]
                     end_date = json_ld.get("endDate")
 
-                    # Extract year
-                    year_match = re.search(r"(\d{4})", start_date)
-                    if year_match:
-                        anime_data["year"] = int(year_match.group(1))
+                    # Extract year using utility function
+                    year = determine_anime_year(start_date)
+                    if year:
+                        anime_data["year"] = year
 
-                    # Determine season
-                    season = _determine_season_from_date(start_date)
+                    # Determine season using utility function
+                    season = determine_anime_season(start_date)
                     if season:
                         anime_data["season"] = season
 
-                    # Determine status
-                    if start_date and end_date:
-                        anime_data["status"] = "COMPLETED"
-                    elif start_date and not end_date:
-                        try:
-                            start_dt = datetime.fromisoformat(
-                                start_date.replace("Z", "+00:00")
-                            )
-                            # If the parsed date is naive, make it aware (assume UTC)
-                            if start_dt.tzinfo is None:
-                                start_dt = start_dt.replace(tzinfo=UTC)
-
-                            now = datetime.now(UTC)
-
-                            if start_dt > now:
-                                anime_data["status"] = "UPCOMING"
-                            else:
-                                anime_data["status"] = "AIRING"
-                        except (ValueError, TypeError):
-                            anime_data["status"] = "AIRING"
-                else:
-                    anime_data["status"] = "UNKNOWN"
+                # Determine status using utility function
+                anime_data["status"] = determine_anime_status(start_date, end_date).value
 
                 # Return pure data (no side effects)
                 return anime_data
@@ -517,42 +505,6 @@ def _extract_studios(studios_raw: list[dict[str, str]]) -> list[str]:
     return studios[:5]  # Limit to 5 main studios
 
 
-def _determine_season_from_date(date_str: str) -> str | None:
-    """
-    Infer the anime season (WINTER, SPRING, SUMMER, or FALL) from a date string.
-
-    Parameters:
-        date_str (str): A date string containing a two-digit month segment in the form "-MM-" (for example "2023-04-15").
-
-    Returns:
-        Optional[str]: "WINTER", "SPRING", "SUMMER", or "FALL" when the month maps to a season; `None` if the input is empty or no month segment can be found.
-    """
-    if not date_str:
-        return None
-
-    # Extract month from date
-    month_match = re.search(r"-(\d{2})-", date_str)
-    if not month_match:
-        return None
-
-    month = int(month_match.group(1))
-    season_map = {
-        12: "WINTER",
-        1: "WINTER",
-        2: "WINTER",
-        3: "SPRING",
-        4: "SPRING",
-        5: "SPRING",
-        6: "SUMMER",
-        7: "SUMMER",
-        8: "SUMMER",
-        9: "FALL",
-        10: "FALL",
-        11: "FALL",
-    }
-    return season_map.get(month)
-
-
 def _parse_anime_metadata(metadata_text: str, related_item: dict[str, Any]) -> None:
     """
     Parse anime-specific metadata and populate the related item with `type` and `episodes` when present.
@@ -664,18 +616,18 @@ def _process_related_items(
 
         if start_date:
             related_item["start_date"] = start_date
-            # Extract year from start date
-            year_match = re.search(r"(\d{4})", start_date)
-            if year_match:
-                related_item["year"] = int(year_match.group(1))
+            # Extract year from start date using utility function
+            year = determine_anime_year(start_date)
+            if year:
+                related_item["year"] = year
 
         if end_date:
             related_item["end_date"] = end_date
-            # Extract year from end date if no start date
+            # Extract year from end date if no start date using utility function
             if not start_date:
-                year_match = re.search(r"(\d{4})", end_date)
-                if year_match:
-                    related_item["year"] = int(year_match.group(1))
+                year = determine_anime_year(end_date)
+                if year:
+                    related_item["year"] = year
 
         # Parse type-specific metadata
         metadata_text = item.get("metadata_text", "")
