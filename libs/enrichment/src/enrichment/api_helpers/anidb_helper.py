@@ -20,6 +20,7 @@ from types import TracebackType
 from typing import Any
 
 import aiohttp
+from common.utils.datetime_utils import determine_anime_status
 from http_cache.instance import http_cache_manager as _cache_manager
 
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
@@ -599,6 +600,10 @@ class AniDBEnrichmentHelper:
         url_elem = root.find("url")
         picture_elem = root.find("picture")
 
+        # Extract date fields for status determination
+        start_date = startdate_elem.text if startdate_elem is not None else None
+        end_date = enddate_elem.text if enddate_elem is not None else None
+
         anime_data: dict[str, Any] = {
             "anidb_id": root.get("id"),
             "type": type_elem.text if type_elem is not None else None,
@@ -609,8 +614,8 @@ class AniDBEnrichmentHelper:
                 and episodecount_elem.text.isdigit()
                 else 0
             ),
-            "start_date": startdate_elem.text if startdate_elem is not None else None,
-            "end_date": enddate_elem.text if enddate_elem is not None else None,
+            "start_date": start_date,
+            "end_date": end_date,
             "synopsis": (
                 description_elem.text if description_elem is not None else None
             ),
@@ -624,6 +629,7 @@ class AniDBEnrichmentHelper:
             "title_english": None,
             "title_japanese": None,
             "synonyms": [],
+            "status": determine_anime_status(start_date, end_date).value,
         }
 
         # Extract titles
