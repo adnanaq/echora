@@ -19,7 +19,6 @@ import logging
 import re
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any, cast
 
 from common.utils.datetime_utils import (

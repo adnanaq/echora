@@ -285,7 +285,7 @@ async def test_parse_anime_xml_comprehensive(
     mock_fetch_char.return_value = {"name": "Detailed Spike"}
     data = await helper._parse_anime_xml(maximal_anime_xml)
 
-    assert data["anidb_id"] == "1"
+    assert data["id"] == 1
     assert data["title"] == "Cowboy Bebop"
     assert data["title_english"] == "Cowboy Bebop EN"
     assert data["title_japanese"] == "カウボーイビバップ"
@@ -310,7 +310,7 @@ async def test_parse_anime_xml_comprehensive(
     assert data["character_details"][0]["name_main"] == "Spike Spiegel"
     assert data["character_details"][0]["type"] == "Secondary"
     assert data["character_details"][0]["rating"] == 9.5
-    assert data["character_details"][0]["voice_actor"]["id"] == "201"
+    assert data["character_details"][0]["voice_actor"]["id"] == 201
     mock_fetch_char.assert_called_once_with(101)
 
 
@@ -322,7 +322,7 @@ async def test_get_anime_by_id_workflow(helper):
         "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
     )
     helper._make_request = AsyncMock(return_value=xml_response)
-    helper._parse_anime_xml = AsyncMock(return_value={"anidb_id": "1", "title": "Test"})
+    helper._parse_anime_xml = AsyncMock(return_value={"id": 1, "title": "Test"})
     result = await helper.get_anime_by_id(1)
     assert result["title"] == "Test"
 
@@ -460,7 +460,7 @@ def test_internal_parsers_granular(helper):
     # Test inlined creator parsing via main parser
     creator_xml = "<anime id='1'><creators><name id='1' type='Director'>Watanabe</name></creators></anime>"
     creator_data = asyncio.run(helper._parse_anime_xml(creator_xml))
-    assert creator_data["creators"][0]["id"] == "1"
+    assert creator_data["creators"][0]["id"] == 1
     assert creator_data["creators"][0]["name"] == "Watanabe"
 
     # Test inlined category parsing via main parser
@@ -492,7 +492,7 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     mock_parse_args.return_value = MagicMock(
         anidb_id=1, search_name=None, output=str(output_path), save_xml=None
     )
-    mock_fetch.return_value = {"anidb_id": "1"}
+    mock_fetch.return_value = {"id": 1}
     await anidb_helper.main()
     assert output_path.exists()
 
@@ -607,10 +607,10 @@ async def test_creators_extraction_format():
     assert len(result["creators"]) == 3
 
     # Verify structure of each creator
-    assert result["creators"][0] == {"id": "123", "name": "John Doe", "type": "Director"}
-    assert result["creators"][1] == {"id": "456", "name": "Jane Smith", "type": "Music"}
+    assert result["creators"][0] == {"id": 123, "name": "John Doe", "role": "Director"}
+    assert result["creators"][1] == {"id": 456, "name": "Jane Smith", "role": "Music"}
     assert result["creators"][2] == {
-        "id": "789",
+        "id": 789,
         "name": "Studio A",
-        "type": "Animation Work",
+        "role": "Animation Work",
     }
