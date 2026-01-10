@@ -11,15 +11,6 @@ import pykakasi
 
 logger = logging.getLogger(__name__)
 
-# Setup pykakasi for Japanese text normalization
-_kakasi = pykakasi.kakasi()
-_kakasi.setMode("H", "a")  # Hiragana to ascii
-_kakasi.setMode("K", "a")  # Katakana to ascii
-_kakasi.setMode("J", "a")  # Kanji to ascii
-_kakasi.setMode("r", "Hepburn")  # Romanization system
-
-_kakasi_converter = _kakasi.getConverter()
-
 __all__ = ["normalize_japanese_text"]
 
 
@@ -54,10 +45,16 @@ def normalize_japanese_text(text: str) -> str:
         try:
             # Convert Katakana to Hiragana first for consistent romaji conversion
             hiragana = jaconv.kata2hira(text)
-            romaji = _kakasi_converter.do(hiragana)
+            # Use modern pykakasi API (convert returns list of dicts with 'hepburn' key)
+            kks = pykakasi.kakasi()
+            result = kks.convert(hiragana)
+            romaji = "".join(item["hepburn"] for item in result)
+            # Replace Japanese punctuation with ASCII equivalents
+            romaji = romaji.replace("・", " ")  # Middle dot to space
+            romaji = romaji.replace("　", " ")  # Full-width space to regular space
             return romaji.lower().strip()
-        except Exception as e:
-            logger.warning(f"Japanese normalization failed for '{text[:50]}': {e}")
+        except Exception:  # noqa: BLE001 - normalization must be best-effort, never fail caller
+            logger.exception("Japanese normalization failed for %r", text[:50])
             return text.lower().strip()
 
     return text.lower().strip()

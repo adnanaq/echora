@@ -15,10 +15,10 @@ from enrichment.utils.deduplication import (
 from enrichment.utils.text_utils import normalize_japanese_text
 
 __all__ = [
-    "normalize_string_for_comparison",
-    "deduplicate_simple_array_field",
+    "SEMANTIC_SIMILARITY_THRESHOLD",
     "deduplicate_semantic_array_field",
+    "deduplicate_simple_array_field",
     "deduplicate_synonyms_language_aware",
     "normalize_japanese_text",
-    "SEMANTIC_SIMILARITY_THRESHOLD",
+    "normalize_string_for_comparison",
 ]

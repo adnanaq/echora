@@ -160,68 +160,51 @@ class TestDetermineAnimeStatus:
 class TestDetermineAnimeSeason:
     """Test suite for determine_anime_season function."""
 
-    def test_returns_winter_for_december(self):
-        """Returns WINTER for December dates."""
-        assert determine_anime_season("2024-12-01") == AnimeSeason.WINTER
-        assert determine_anime_season("2024-12-31") == AnimeSeason.WINTER
+    @pytest.mark.parametrize(
+        "date_str, expected_season",
+        [
+            # Winter: Dec, Jan, Feb
+            ("2024-12-01", AnimeSeason.WINTER),
+            ("2024-12-31", AnimeSeason.WINTER),
+            ("2024-01-01", AnimeSeason.WINTER),
+            ("2024-01-15", AnimeSeason.WINTER),
+            ("2024-02-14", AnimeSeason.WINTER),
+            # Spring: Mar, Apr, May
+            ("2024-03-01", AnimeSeason.SPRING),
+            ("2024-04-20", AnimeSeason.SPRING),
+            ("2024-05-31", AnimeSeason.SPRING),
+            # Summer: Jun, Jul, Aug
+            ("2024-06-01", AnimeSeason.SUMMER),
+            ("2024-07-15", AnimeSeason.SUMMER),
+            ("2024-08-01", AnimeSeason.SUMMER),
+            # Fall: Sep, Oct, Nov
+            ("2024-09-01", AnimeSeason.FALL),
+            ("2024-10-15", AnimeSeason.FALL),
+            ("2024-11-30", AnimeSeason.FALL),
+            # ISO and timezone formats
+            ("2024-04-20T00:00:00Z", AnimeSeason.SPRING),
+            ("2024-10-04T12:30:00+00:00", AnimeSeason.FALL),
+            ("2024-01-15T00:00:00+09:00", AnimeSeason.WINTER),
+        ],
+    )
+    def test_determine_anime_season_mapping(self, date_str, expected_season):
+        """Returns correct season for various date formats and months."""
+        assert determine_anime_season(date_str) == expected_season
 
-    def test_returns_winter_for_january(self):
-        """Returns WINTER for January dates."""
-        assert determine_anime_season("2024-01-01") == AnimeSeason.WINTER
-        assert determine_anime_season("2024-01-15") == AnimeSeason.WINTER
-
-    def test_returns_winter_for_february(self):
-        """Returns WINTER for February dates."""
-        assert determine_anime_season("2024-02-14") == AnimeSeason.WINTER
-
-    def test_returns_spring_for_march_to_may(self):
-        """Returns SPRING for March, April, May dates."""
-        assert determine_anime_season("2024-03-01") == AnimeSeason.SPRING
-        assert determine_anime_season("2024-04-20") == AnimeSeason.SPRING
-        assert determine_anime_season("2024-05-31") == AnimeSeason.SPRING
-
-    def test_returns_summer_for_june_to_august(self):
-        """Returns SUMMER for June, July, August dates."""
-        assert determine_anime_season("2024-06-01") == AnimeSeason.SUMMER
-        assert determine_anime_season("2024-07-15") == AnimeSeason.SUMMER
-        assert determine_anime_season("2024-08-01") == AnimeSeason.SUMMER
-
-    def test_returns_fall_for_september_to_november(self):
-        """Returns FALL for September, October, November dates."""
-        assert determine_anime_season("2024-09-01") == AnimeSeason.FALL
-        assert determine_anime_season("2024-10-15") == AnimeSeason.FALL
-        assert determine_anime_season("2024-11-30") == AnimeSeason.FALL
-
-    def test_returns_none_for_empty_string(self):
-        """Returns None for empty string."""
-        assert determine_anime_season("") is None
-
-    def test_returns_none_for_none(self):
-        """Returns None for None input."""
-        assert determine_anime_season(None) is None
-
-    def test_returns_none_for_invalid_date_format(self):
-        """Returns None for invalid date format."""
-        assert determine_anime_season("invalid-date") is None
-        assert determine_anime_season("2024/12/01") is None  # Wrong separator
-        # Note: "20241201" is actually valid for fromisoformat() and returns WINTER
-
-    def test_returns_none_for_invalid_month_zero(self):
-        """Returns None for month 00."""
-        assert determine_anime_season("2024-00-15") is None
-
-    def test_returns_none_for_invalid_month_thirteen(self):
-        """Returns None for month 13."""
-        assert determine_anime_season("2024-13-01") is None
-
-    def test_handles_iso_datetime_format(self):
-        """Handles full ISO datetime format."""
-        assert determine_anime_season("2024-04-20T00:00:00Z") == AnimeSeason.SPRING
-        assert determine_anime_season("2024-10-04T12:30:00+00:00") == AnimeSeason.FALL
-
-    def test_handles_datetime_with_timezone(self):
-        """Handles datetime strings with timezone info."""
-        assert determine_anime_season("2024-01-15T00:00:00+09:00") == AnimeSeason.WINTER
+    @pytest.mark.parametrize(
+        "invalid_input",
+        [
+            "",
+            None,
+            "invalid-date",
+            "2024/12/01",
+            "2024-00-15",
+            "2024-13-01",
+        ],
+    )
+    def test_returns_none_for_invalid_inputs(self, invalid_input):
+        """Returns None for invalid, empty, or None inputs."""
+        assert determine_anime_season(invalid_input) is None
 
 
 class TestDetermineAnimeYear:

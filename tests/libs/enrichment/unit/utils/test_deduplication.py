@@ -19,6 +19,13 @@ from enrichment.utils.deduplication import (
     normalize_string_for_comparison,
 )
 
+try:
+    from langdetect import DetectorFactory
+    # Set seed for deterministic language detection in tests
+    DetectorFactory.seed = 0
+except ImportError:
+    DetectorFactory = None
+
 
 class TestNormalizationAndSimpleDeduplication:
     """Test functions that don't require embedding models."""
@@ -81,11 +88,13 @@ class TestSemanticDeduplication:
         """Test with mocked model returning low similarity."""
         # Mock embedding model
         mock_model = Mock()
+        # Side effect to return different embeddings for each call
+        # Using orthogonal vectors to ensure zero similarity
         mock_model.encode = Mock(
-            return_value=[
-                [0.1, 0.2, 0.3],  # First value
-                [0.9, 0.8, 0.7],  # Second value (very different)
-                [0.5, 0.4, 0.6],  # Third value (different from both)
+            side_effect=[
+                [[1.0, 0.0, 0.0]],  # First value
+                [[0.0, 1.0, 0.0]],  # Second value
+                [[0.0, 0.0, 1.0]],  # Third value
             ]
         )
 
@@ -139,26 +148,32 @@ class TestLanguageAwareDeduplication:
         assert "Comedy" in result
 
     def test_language_aware_with_mock_model_preserves_cross_language(self):
-        """Test that different language variants are preserved."""
-        # Mock embedding model
+        """Test that different language variants are preserved.
+
+        Uses real langdetect with seed=0 for deterministic results.
+        DetectorFactory.seed is set at module import time.
+        """
+        # Mock embedding model - return orthogonal embeddings for each language
         mock_model = Mock()
-        # Return different embeddings for each call
+        # Each language gets a distinct embedding (orthogonal vectors)
         mock_model.encode = Mock(
             side_effect=[
-                [[0.1, 0.2]],  # English
-                [[0.5, 0.6]],  # Turkish
-                [[0.9, 0.8]],  # Korean
+                [[1.0, 0.0, 0.0]],  # English: "ONE PIECE"
+                [[0.0, 1.0, 0.0]],  # Turkish: "tek parça"
+                [[0.0, 0.0, 1.0]],  # Korean: "원피스"
             ]
         )
 
-        # Simplified test with known languages
+        # Test with known language variants (seed=0 ensures deterministic detection)
         values = ["ONE PIECE", "tek parça", "원피스"]
 
         result = deduplicate_synonyms_language_aware(values, embedding_model=mock_model)
 
-        # All different languages should be kept
-        # Note: Actual behavior depends on langdetect being able to detect these
-        assert len(result) >= 2  # At least 2 should be preserved
+        # All 3 different languages should be preserved (no cross-language deduplication)
+        assert len(result) == 3
+        assert "ONE PIECE" in result
+        assert "tek parça" in result
+        assert "원피스" in result
 
     def test_language_aware_empty_input(self):
         """Test with empty input."""

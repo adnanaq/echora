@@ -123,12 +123,7 @@ def _parse_date(date_str: str) -> datetime:
     # Handle Z timezone indicator
     normalized = date_str.replace("Z", "+00:00")
 
-    # Try parsing as datetime first
-    try:
-        dt = datetime.fromisoformat(normalized)
-    except ValueError:
-        # If that fails, might be date-only format, let it raise
-        raise
+    dt = datetime.fromisoformat(normalized)
 
     # Ensure timezone-aware (assume UTC for naive)
     if dt.tzinfo is None:

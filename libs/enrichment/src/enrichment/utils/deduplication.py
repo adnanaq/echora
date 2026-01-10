@@ -7,7 +7,7 @@ deduplication using embedding models with dependency injection.
 
 import logging
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 SEMANTIC_SIMILARITY_THRESHOLD = 0.85
 
 __all__ = [
-    "normalize_string_for_comparison",
-    "deduplicate_simple_array_field",
-    "deduplicate_semantic_array_field",
-    "deduplicate_synonyms_language_aware",
     "SEMANTIC_SIMILARITY_THRESHOLD",
+    "deduplicate_semantic_array_field",
+    "deduplicate_simple_array_field",
+    "deduplicate_synonyms_language_aware",
+    "normalize_string_for_comparison",
 ]
 
 
@@ -44,6 +44,27 @@ def normalize_string_for_comparison(text: str) -> str:
     if not text:
         return ""
     return text.lower().strip()
+
+
+def _is_semantically_duplicate(
+    new_embedding: list[float],
+    existing_embeddings: list[list[float]],
+    threshold: float = SEMANTIC_SIMILARITY_THRESHOLD,
+) -> bool:
+    """Check if new embedding is semantically similar to existing ones.
+
+    Args:
+        new_embedding: Embedding of the new value
+        existing_embeddings: List of embeddings for already accepted values
+        threshold: Similarity threshold (default: SEMANTIC_SIMILARITY_THRESHOLD)
+
+    Returns:
+        True if similar to any existing embedding above threshold
+    """
+    if not existing_embeddings:
+        return False
+    similarities = cosine_similarity([new_embedding], existing_embeddings)[0]
+    return float(np.max(similarities)) > threshold
 
 
 def deduplicate_simple_array_field(
@@ -81,7 +102,7 @@ def deduplicate_simple_array_field(
 
 
 def deduplicate_semantic_array_field(
-    values: list[str], embedding_model: Optional[Any] = None
+    values: list[str], embedding_model: Any | None = None
 ) -> list[str]:
     """Deduplicate array field values using semantic similarity for cross-language support.
 
@@ -104,15 +125,6 @@ def deduplicate_semantic_array_field(
     result_values = []
     result_embeddings = []
 
-    def is_semantically_duplicate(
-        new_embedding: list[float], existing_embeddings: list[list[float]]
-    ) -> bool:
-        """Check if new embedding is semantically similar to existing ones."""
-        if not existing_embeddings:
-            return False
-        similarities = cosine_similarity([new_embedding], existing_embeddings)[0]
-        return np.max(similarities) > SEMANTIC_SIMILARITY_THRESHOLD
-
     for value in values:
         if not value or not value.strip():
             continue
@@ -128,7 +140,7 @@ def deduplicate_semantic_array_field(
 
             embedding = embeddings[0]
 
-            if not is_semantically_duplicate(embedding, result_embeddings):
+            if not _is_semantically_duplicate(embedding, result_embeddings):
                 result_values.append(value.strip())
                 result_embeddings.append(embedding)
 
@@ -143,7 +155,7 @@ def deduplicate_semantic_array_field(
 
 def deduplicate_synonyms_language_aware(
     values: list[str],
-    embedding_model: Optional[Any] = None,
+    embedding_model: Any | None = None,
     similarity_threshold: float = 0.85,
 ) -> list[str]:
     """Deduplicate synonyms preserving all language variants while deduplicating within each language.
@@ -229,19 +241,15 @@ def deduplicate_synonyms_language_aware(
                 embedding = embeddings[0]
 
                 # Check semantic similarity against existing embeddings in this language
-                is_duplicate = False
-                if deduped_embeddings:
-                    similarities = cosine_similarity([embedding], deduped_embeddings)[0]
-                    max_sim = np.max(similarities)
-                    if max_sim > similarity_threshold:
-                        is_duplicate = True
-                        logger.debug(
-                            f"Removing duplicate within {lang}: '{value}' (similarity: {max_sim:.3f})"
-                        )
-
-                if not is_duplicate:
+                if not _is_semantically_duplicate(
+                    embedding, deduped_embeddings, similarity_threshold
+                ):
                     deduped_lang_values.append(value)
                     deduped_embeddings.append(embedding)
+                else:
+                    logger.debug(
+                        f"Removing duplicate within {lang}: '{value}'"
+                    )
 
             except Exception as e:
                 logger.warning(
