@@ -1,10 +1,8 @@
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from crawl4ai import CrawlResult
-
 from enrichment.crawlers.anidb_character_crawler import (
     _flatten_character_data,
     _get_character_schema,
@@ -58,8 +56,16 @@ def test_get_character_schema():
 )
 def test_flatten_character_data(input_data, expected_data):
     """Test flattening of character data."""
+    # Create a copy to verify no mutation after fix
+    import copy
+
+    input_copy = copy.deepcopy(input_data)
+
     flattened = _flatten_character_data(input_data)
     assert flattened == expected_data
+
+    # Verify input was not mutated (function should return new dict)
+    assert input_data == input_copy, "Input should not be mutated"
 
 
 @pytest.mark.asyncio
@@ -117,7 +123,7 @@ async def test_fetch_anidb_character_save_to_file(MockAsyncWebCrawler, tmp_path)
 
     # Function always returns data and writes to file if output_path provided
     assert output_file.exists()
-    with open(output_file, "r", encoding="utf-8") as f:
+    with open(output_file, encoding="utf-8") as f:
         saved_data = json.load(f)
 
     assert saved_data["name_kanji"] == "ブルック"

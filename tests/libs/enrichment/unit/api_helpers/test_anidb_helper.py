@@ -1,10 +1,10 @@
 import asyncio
 import gzip
 import time
-import xml.etree.ElementTree as ET
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from defusedxml import ElementTree
 from enrichment.api_helpers.anidb_helper import (
     AniDBEnrichmentHelper,
     AniDBRequestMetrics,
@@ -38,7 +38,7 @@ def test_helper_initialization(mock_getenv):
     """Test that the helper initializes correctly."""
 
     # Mock os.getenv to return the default value provided in the call
-    def getenv_side_effect(key, default=None):
+    def getenv_side_effect(_key, default=None):
         return default
 
     mock_getenv.side_effect = getenv_side_effect
@@ -193,7 +193,7 @@ async def test_make_request_with_retry_permanent_failure(mock_sleep, helper):
 )
 def test_validate_anime_xml_consolidated(helper, xml_str, expected):
     """Consolidated test for XML validation logic with various edge cases."""
-    assert helper._validate_anime_xml(ET.fromstring(xml_str)) == expected
+    assert helper._validate_anime_xml(ElementTree.fromstring(xml_str)) == expected
 
 
 @pytest.fixture
@@ -389,7 +389,7 @@ async def test_adaptive_rate_limit_logic(mock_sleep, helper):
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.anidb_helper.aiohttp.ClientSession")
-async def test_ensure_session_health(MockClientSession, helper):
+async def test_ensure_session_health(_MockClientSession, helper):
     """Test session creation and expiration logic."""
     helper._ensure_session_health = (
         AniDBEnrichmentHelper._ensure_session_health.__get__(helper)
@@ -428,23 +428,30 @@ async def test_circuit_breaker_blocking(helper):
     "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
 )
 async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
-    """Test _parse_character_xml handles fetch failures and missing fields."""
-    # Case 1: Fetch failure
-    mock_fetch_char.side_effect = Exception("Network Error")
-    char_xml = ET.fromstring("<character id='101'><name>Spike</name></character>")
-    char_data = await helper._parse_character_xml(char_xml)
+    """Test _parse_character_xml_basic and batch enrichment handle failures."""
+    # Case 1: Basic parsing (no network calls)
+    char_xml = ElementTree.fromstring(
+        "<character id='101'><name>Spike</name></character>"
+    )
+    char_data = helper._parse_character_xml_basic(char_xml)
     assert char_data["name_main"] == "Spike"
+    assert char_data["id"] == 101
 
-    # Case 2: Missing non-critical episode fields in parsing
+    # Case 2: Batch enrichment with fetch failure
+    mock_fetch_char.side_effect = Exception("Network Error")
+    enriched_data = await helper._batch_fetch_character_details([101])
+    assert 101 not in enriched_data  # Should gracefully handle failure
+
+    # Case 3: Missing non-critical episode fields in parsing
     xml_missing_ep = "<anime id='1'><episodes><episode id='201'><length>24</length></episode></episodes></anime>"
-    data = await helper._parse_anime_xml(xml_missing_ep)
+    data = await helper._parse_anime_xml(xml_missing_ep, enrich_characters=False)
     assert data["episode_details"][0]["id"] == 201
 
 
 def test_internal_parsers_granular(helper):
     """Granular tests for existing internal parsing methods and inlined logic."""
     # Test _parse_episode_xml
-    ep_xml = ET.fromstring(
+    ep_xml = ElementTree.fromstring(
         "<episode id='10'><epno type='1'>5</epno><length>24</length></episode>"
     )
     ep_data = helper._parse_episode_xml(ep_xml)
@@ -516,6 +523,68 @@ async def test_context_manager_protocol(helper):
         assert isinstance(helper, AniDBEnrichmentHelper)
 
     mock_session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_batch_fetch_character_details(mock_fetch_char, helper):
+    """Test batch character enrichment with controlled concurrency."""
+
+    # Mock successful fetches for 3 characters
+    async def mock_fetch(char_id):
+        return {"id": char_id, "detailed_info": f"Details for {char_id}"}
+
+    mock_fetch_char.side_effect = mock_fetch
+
+    # Test batch fetch
+    enriched = await helper._batch_fetch_character_details(
+        [101, 102, 103], max_concurrent=2
+    )
+
+    assert len(enriched) == 3
+    assert 101 in enriched
+    assert enriched[101]["detailed_info"] == "Details for 101"
+    assert mock_fetch_char.call_count == 3
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_with_enrich_characters_flag(mock_fetch_char, helper):
+    """Test that enrich_characters flag controls character enrichment."""
+    xml_with_chars = """
+    <anime id="1">
+        <characters>
+            <character id="101"><name>Spike</name></character>
+            <character id="102"><name>Jet</name></character>
+        </characters>
+    </anime>
+    """
+
+    # Mock character enrichment
+    async def mock_fetch(char_id):
+        return {"enriched": True, "character_id": char_id}
+
+    mock_fetch_char.side_effect = mock_fetch
+
+    # Test with enrichment enabled (default)
+    data_enriched = await helper._parse_anime_xml(
+        xml_with_chars, enrich_characters=True
+    )
+    assert mock_fetch_char.call_count == 2
+    assert len(data_enriched["character_details"]) == 2
+
+    # Reset mock
+    mock_fetch_char.reset_mock()
+
+    # Test with enrichment disabled
+    data_basic = await helper._parse_anime_xml(xml_with_chars, enrich_characters=False)
+    assert mock_fetch_char.call_count == 0  # No enrichment calls
+    assert len(data_basic["character_details"]) == 2
+    assert data_basic["character_details"][0]["name_main"] == "Spike"
 
 
 @pytest.mark.asyncio
@@ -614,3 +683,36 @@ async def test_creators_extraction_format():
         "name": "Studio A",
         "role": "Animation Work",
     }
+
+
+@pytest.mark.asyncio
+async def test_parse_anime_xml_logging_exception(helper):
+    """Test that logging.exception is called when XML parsing fails."""
+    with patch("enrichment.api_helpers.anidb_helper.logger") as mock_logger:
+        # We need to force ET.fromstring to raise ET.ParseError
+        # Since the module imports ET as `import defusedxml.ElementTree as ET`
+        # We need to patch that specific object in the module namespace
+        with patch(
+            "enrichment.api_helpers.anidb_helper.ET.fromstring"
+        ) as mock_fromstring:
+            # We need to import the exact error class used in the except block
+            from defusedxml.ElementTree import ParseError
+
+            mock_fromstring.side_effect = ParseError("Test parsing error")
+
+            await helper._parse_anime_xml("bad xml")
+
+            mock_logger.exception.assert_called_once_with("XML parsing error")
+
+
+@pytest.mark.asyncio
+async def test_get_anime_by_id_logging_exception(helper):
+    """Test that logging.exception is called when get_anime_by_id fails."""
+    with patch("enrichment.api_helpers.anidb_helper.logger") as mock_logger:
+        helper._make_request = AsyncMock(side_effect=Exception("Network failure"))
+
+        await helper.get_anime_by_id(123)
+
+        mock_logger.exception.assert_called_once_with(
+            "Failed to fetch anime by AniDB ID 123"
+        )

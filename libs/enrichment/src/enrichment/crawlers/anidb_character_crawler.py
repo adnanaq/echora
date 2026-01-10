@@ -7,6 +7,12 @@ personality, appearance, roles, and ratings.
 Uses crawl4ai with realistic browser headers and stealth configuration to bypass
 AniDB's anti-leech protection. No UndetectedAdapter required.
 
+Usage:
+    ./pants run libs/enrichment/src/enrichment/crawlers/anidb_character_crawler.py -- <character_id> [--output PATH]
+
+    <character_id>  AniDB character ID (e.g., 491 for Brook)
+    --output PATH   optional output file path (default: anidb_character.json)
+
 Example:
     >>> from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
     >>> data = await fetch_anidb_character(491)  # Brook from One Piece
@@ -124,9 +130,12 @@ def _flatten_character_data(data: dict[str, Any]) -> dict[str, Any]:
             structures.
 
     Returns:
-        Flattened character data with simple string arrays instead of nested
-            dictionaries.
+        New dictionary with flattened character data with simple string arrays
+            instead of nested dictionaries. Input dictionary is not modified.
     """
+    # Create a shallow copy to avoid mutating the input
+    flattened = data.copy()
+
     list_fields = [
         "nicknames",
         "official_names",
@@ -138,10 +147,12 @@ def _flatten_character_data(data: dict[str, Any]) -> dict[str, Any]:
     ]
 
     for field in list_fields:
-        if field in data and isinstance(data[field], list):
-            data[field] = [obj["text"] for obj in data[field] if "text" in obj]
+        if field in flattened and isinstance(flattened[field], list):
+            flattened[field] = [
+                obj["text"] for obj in flattened[field] if "text" in obj
+            ]
 
-    return data
+    return flattened
 
 
 @cached_result(ttl=TTL_ANIDB_CHARACTER, key_prefix="anidb_character")
@@ -193,7 +204,7 @@ async def _fetch_anidb_character_data(
         override_navigator=True,  # Override navigator properties for stealth
         mean_delay=2.0,  # Random delays
         max_range=1.0,
-        wait_until="domcontentloaded"
+        wait_until="domcontentloaded",
     )
 
     async with AsyncWebCrawler(config=browser_config) as crawler:

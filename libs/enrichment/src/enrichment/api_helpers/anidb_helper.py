@@ -16,16 +16,15 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from types import TracebackType
-from typing import Any
+from typing import Any, ClassVar
 from xml.etree.ElementTree import Element  # For type annotations only
 
 import aiohttp
 import defusedxml.ElementTree as ET
 from common.utils.datetime_utils import determine_anime_status
-from http_cache.instance import http_cache_manager as _cache_manager
-
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from enrichment.crawlers.utils import sanitize_output_path
+from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class AniDBEnrichmentHelper:
     XML_LANG_NAMESPACE = "{http://www.w3.org/XML/1998/namespace}lang"
 
     # Language code normalization mapping
-    LANG_NORMALIZATION = {"x-jat": "romaji"}
+    LANG_NORMALIZATION: ClassVar[dict[str, str]] = {"x-jat": "romaji"}
 
     def __init__(
         self, client_name: str | None = None, client_version: str | None = None
@@ -571,7 +570,9 @@ class AniDBEnrichmentHelper:
 
         return True
 
-    async def _parse_anime_xml(self, xml_content: str) -> dict[str, Any]:
+    async def _parse_anime_xml(
+        self, xml_content: str, enrich_characters: bool = True
+    ) -> dict[str, Any]:
         """Parse anime XML response into structured data.
 
         Extracts all anime metadata including titles, tags, ratings,
@@ -579,6 +580,9 @@ class AniDBEnrichmentHelper:
 
         Args:
             xml_content: Raw XML string from AniDB API.
+            enrich_characters: If True, fetch detailed character data from web
+                in parallel batches. If False, return only XML character data.
+                Defaults to True.
 
         Returns:
             Structured anime data dictionary. Returns empty dict if parsing
@@ -586,8 +590,8 @@ class AniDBEnrichmentHelper:
         """
         try:
             root = ET.fromstring(xml_content)
-        except ET.ParseError as e:
-            logger.error(f"XML parsing error: {str(e)}")
+        except ET.ParseError:
+            logger.exception("XML parsing error")
             return {}
 
         # Validate XML structure
@@ -626,7 +630,7 @@ class AniDBEnrichmentHelper:
 
         start_date = startdate_elem.text if startdate_elem is not None else None
 
-        status = determine_anime_status(start_date, end_date).value
+        status = determine_anime_status(start_date, end_date)
 
         description_elem = root.find("description")
         synopsis = description_elem.text if description_elem is not None else None
@@ -676,13 +680,37 @@ class AniDBEnrichmentHelper:
             if (name := cat.find("name")) is not None
         ]
 
-        # Extract characters
+        # Extract characters - basic parsing first (no network calls)
         characters_element = root.find("characters")
         character_details = []
+        character_ids_to_enrich = []
         if characters_element is not None:
             for character in characters_element.findall("character"):
-                char_data = await self._parse_character_xml(character)
+                # Parse basic character data from XML (synchronous, fast)
+                char_data = self._parse_character_xml_basic(character)
                 character_details.append(char_data)
+                # Collect IDs for batch enrichment
+                if enrich_characters and char_data.get("id"):
+                    character_ids_to_enrich.append(char_data["id"])
+
+        # Batch fetch character details in parallel if enrichment enabled
+        if enrich_characters and character_ids_to_enrich:
+            logger.info(
+                f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
+            )
+            enriched_char_data = await self._batch_fetch_character_details(
+                character_ids_to_enrich
+            )
+            # Merge enriched data back into character_details
+            for char_data in character_details:
+                char_id = char_data.get("id")
+                if char_id and char_id in enriched_char_data:
+                    # Merge: crawler provides supplementary data (official_names, abilities, etc.)
+                    # Then XML overwrites with authoritative data (name, gender, description, etc.)
+                    # This preserves XML's comprehensive data while adding crawler's unique fields
+                    enriched_char_data[char_id].update(char_data)
+                    char_data.clear()
+                    char_data.update(enriched_char_data[char_id])
 
         # Extract creator information
         creators_element = root.find("creators")
@@ -908,19 +936,18 @@ class AniDBEnrichmentHelper:
 
         return episode_data
 
-    async def _parse_character_xml(self, character: Element) -> dict[str, Any]:
-        """Parse character XML element into structured data.
+    def _parse_character_xml_basic(self, character: Element) -> dict[str, Any]:
+        """Parse character XML element into basic structured data.
 
-        Extracts character metadata and enriches with web-scraped details
-        from AniDB character pages. Normalizes character type values.
+        Extracts character metadata from XML without network enrichment.
+        For performance, character detail enrichment is done separately in batch.
 
         Args:
             character: Character XML element to parse.
 
         Returns:
-            Structured character data including id, type, name, gender,
-                description, rating, picture, voice_actor, and enriched details
-                from web scraping.
+            Basic character data including id, type, name, gender,
+                description, rating, picture, and voice_actor from XML only.
         """
         # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
         raw_type = character.get("type")
@@ -986,29 +1013,67 @@ class AniDBEnrichmentHelper:
                 "name": seiyuu_element.text,
                 "id": int(seiyuu_id) if seiyuu_id else None,
                 "picture": (
-                    f"{ANIDB_CDN_BASE}/{seiyuu_picture}"
-                    if seiyuu_picture
-                    else None
+                    f"{ANIDB_CDN_BASE}/{seiyuu_picture}" if seiyuu_picture else None
                 ),
             }
 
-        # Fetch detailed character information from AniDB website
-        if character_id_int:
-            try:
-                detailed_char_data = await fetch_anidb_character(character_id_int)
-                if detailed_char_data:
-                    # Merge: crawler provides supplementary data (official_names, abilities, etc.)
-                    # Then XML overwrites with authoritative data (name, gender, description, etc.)
-                    # This preserves XML's comprehensive data while adding crawler's unique fields
-                    detailed_char_data.update(char_data)
-                    char_data = detailed_char_data
-                    logger.info(f"Enriched character {character_id_int} with detailed data")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to fetch detailed data for character {character_id_int}: {e}"
-                )
-
         return char_data
+
+    async def _batch_fetch_character_details(
+        self, character_ids: list[int], max_concurrent: int = 3
+    ) -> dict[int, dict[str, Any]]:
+        """Fetch detailed character data in parallel batches.
+
+        Fetches character details from AniDB character pages with controlled
+        concurrency to respect rate limits. Uses semaphore to limit parallel
+        requests.
+
+        Args:
+            character_ids: List of character IDs to fetch details for.
+            max_concurrent: Maximum number of concurrent requests (default: 3).
+
+        Returns:
+            Dictionary mapping character ID to enriched character data.
+        """
+        if not character_ids:
+            return {}
+
+        enriched_data: dict[int, dict[str, Any]] = {}
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def fetch_with_semaphore(
+            char_id: int,
+        ) -> tuple[int, dict[str, Any] | None]:
+            """Fetch character data with semaphore control."""
+            async with semaphore:
+                try:
+                    detailed_data = await fetch_anidb_character(char_id)
+                    if detailed_data:
+                        logger.info(f"Enriched character {char_id} with detailed data")
+                        return (char_id, detailed_data)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch detailed data for character {char_id}: {e}"
+                    )
+                return (char_id, None)
+
+        # Fetch all character details in parallel with controlled concurrency
+        tasks = [fetch_with_semaphore(char_id) for char_id in character_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Build enriched data dictionary
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Character fetch task failed: {result}")
+                continue
+            char_id, char_data = result
+            if char_data:
+                enriched_data[char_id] = char_data
+
+        logger.info(
+            f"Batch character enrichment: {len(enriched_data)}/{len(character_ids)} succeeded"
+        )
+        return enriched_data
 
     async def get_anime_by_id(self, anidb_id: int) -> dict[str, Any] | None:
         """Get anime information by AniDB ID.
@@ -1037,8 +1102,8 @@ class AniDBEnrichmentHelper:
             logger.info(f"AniDB response preview: {xml_response[:200]}")
 
             return await self._parse_anime_xml(xml_response)
-        except Exception as e:
-            logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to fetch anime by AniDB ID {anidb_id}")
             return None
 
     async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
@@ -1060,8 +1125,8 @@ class AniDBEnrichmentHelper:
             logger.info(f"Successfully fetched AniDB data for ID: {anidb_id}")
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}: {e}")
+        except Exception:
+            logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}")
             return None
 
     async def reset_circuit_breaker(self) -> bool:
@@ -1140,9 +1205,7 @@ async def main() -> int:
             found, or interruption.
     """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
-    parser.add_argument(
-        "--anidb-id", type=int, required=True, help="AniDB ID to fetch"
-    )
+    parser.add_argument("--anidb-id", type=int, required=True, help="AniDB ID to fetch")
     parser.add_argument(
         "--output", type=str, default="test_anidb_output.json", help="Output file path"
     )
@@ -1180,7 +1243,9 @@ async def main() -> int:
                         f.write(xml_response)
                     logger.info(f"Raw XML saved to {safe_xml_path}")
                 else:
-                    logger.warning("Failed to fetch XML for --save-xml (continuing anyway)")
+                    logger.warning(
+                        "Failed to fetch XML for --save-xml (continuing anyway)"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to save XML: {e} (continuing anyway)")
 
