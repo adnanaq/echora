@@ -33,12 +33,12 @@ Extracts comprehensive anime information from Anime-Planet anime pages.
 **CLI Usage:**
 ```bash
 # Flexible input formats (all equivalent)
-python -m enrichment.crawlers.anime_planet_anime_crawler dandadan
-python -m enrichment.crawlers.anime_planet_anime_crawler /anime/dandadan
-python -m enrichment.crawlers.anime_planet_anime_crawler https://www.anime-planet.com/anime/dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_anime_crawler.py -- dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_anime_crawler.py -- /anime/dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_anime_crawler.py -- https://www.anime-planet.com/anime/dandadan
 
 # Custom output file
-python -m enrichment.crawlers.anime_planet_anime_crawler dandadan --output /path/to/output.json
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_anime_crawler.py -- dandadan --output /path/to/output.json
 ```
 
 **Arguments:**
@@ -75,13 +75,13 @@ Extracts character information from Anime-Planet anime character pages.
 **CLI Usage:**
 ```bash
 # Flexible input formats (all equivalent)
-python -m enrichment.crawlers.anime_planet_character_crawler dandadan
-python -m enrichment.crawlers.anime_planet_character_crawler /anime/dandadan
-python -m enrichment.crawlers.anime_planet_character_crawler /anime/dandadan/characters
-python -m enrichment.crawlers.anime_planet_character_crawler https://www.anime-planet.com/anime/dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- /anime/dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- /anime/dandadan/characters
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- https://www.anime-planet.com/anime/dandadan
 
 # Custom output file
-python -m enrichment.crawlers.anime_planet_character_crawler dandadan --output /path/to/output.json
+./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- dandadan --output /path/to/output.json
 ```
 
 **Arguments:**
@@ -117,11 +117,14 @@ character_data = await fetch_animeplanet_characters(
 #### `anisearch_anime_crawler.py`
 Extracts anime information from AniSearch anime pages.
 
-**Usage:**
+**CLI Usage:**
 ```bash
-python -m enrichment.crawlers.anisearch_anime_crawler <slug>
-python -m enrichment.crawlers.anisearch_anime_crawler dandadan
+./pants run libs/enrichment/src/enrichment/crawlers/anisearch_anime_crawler.py -- dandadan
 ```
+
+**Arguments:**
+- `anime_id`: Anime slug, path, or full URL
+- `--output` (optional): Custom output file path (default: `anisearch_anime.json`)
 
 **Data Extracted:**
 - Title, description, images
@@ -132,10 +135,14 @@ python -m enrichment.crawlers.anisearch_anime_crawler dandadan
 #### `anisearch_character_crawler.py`
 Extracts character information from AniSearch character pages.
 
-**Usage:**
+**CLI Usage:**
 ```bash
-python -m enrichment.crawlers.anisearch_character_crawler <slug>
+./pants run libs/enrichment/src/enrichment/crawlers/anisearch_character_crawler.py -- dandadan
 ```
+
+**Arguments:**
+- `anime_id`: Anime slug, path, or full URL
+- `--output` (optional): Custom output file path (default: `anisearch_characters.json`)
 
 **Data Extracted:**
 - Name, description, images
@@ -145,10 +152,14 @@ python -m enrichment.crawlers.anisearch_character_crawler <slug>
 #### `anisearch_episode_crawler.py`
 Extracts episode information from AniSearch.
 
-**Usage:**
+**CLI Usage:**
 ```bash
-python -m enrichment.crawlers.anisearch_episode_crawler <anime_id>
+./pants run libs/enrichment/src/enrichment/crawlers/anisearch_episode_crawler.py -- 18878
 ```
+
+**Arguments:**
+- `anime_id`: Anime slug, path, or full URL
+- `--output` (optional): Custom output file path (default: `anisearch_episodes.json`)
 
 **Data Extracted:**
 - Episode numbers, titles
@@ -163,15 +174,15 @@ Extracts detailed character information from AniDB character pages using advance
 **CLI Usage:**
 ```bash
 # Fetch character by ID
-python -m enrichment.crawlers.anidb_character_crawler 491
+./pants run libs/enrichment/src/enrichment/crawlers/anidb_character_crawler.py -- 491
 
 # Custom output file
-python -m enrichment.crawlers.anidb_character_crawler 491 --output brook.json
+./pants run libs/enrichment/src/enrichment/crawlers/anidb_character_crawler.py -- 491 --output brook.json
 ```
 
 **Arguments:**
 - `character_id` (required): AniDB character ID (e.g., 491 for Brook)
-- `--output` (optional): Custom output file path
+- `--output` (optional): Custom output file path (default: `anidb_character.json`)
 
 **Programmatic Usage:**
 ```python
@@ -229,9 +240,9 @@ uv pip install crawl4ai
 
 ## Notes
 
-- Crawlers output to JSON files in the project root
-- Each run overwrites the previous output file
-- Includes Cloudflare bypass for sites with protection
+- Crawlers output to JSON files in the project root by default.
+- **Overwrite Behavior**: Each run overwrites the previous output file at the specified (or default) path.
+- Includes Cloudflare bypass for sites with protection.
 - Uses structured CSS extraction strategies for reliable data extraction
 - Slower than scrapers due to browser automation overhead
 
