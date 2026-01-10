@@ -13,8 +13,8 @@ class BrowserConfig:
         enable_stealth: bool = False,
         viewport_width: int = 1920,
         viewport_height: int = 1080,
-        user_agent: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
+        user_agent: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None: ...
 
 class UndetectedAdapter:
@@ -23,8 +23,8 @@ class UndetectedAdapter:
 class AsyncWebCrawler:
     def __init__(
         self,
-        crawler_strategy: Optional[Any] = None,
-        config: Optional["BrowserConfig"] = None,
+        crawler_strategy: Any | None = None,
+        config: BrowserConfig | None = None,
     ) -> None: ...
     async def __aenter__(self) -> AsyncWebCrawler: ...
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None: ...
@@ -82,6 +82,18 @@ class CrawlResult:
     error_message: str | None
     url: str
     html: str | None
+    status_code: int | None
+
+    def __init__(
+        self,
+        url: str,
+        success: bool,
+        extracted_content: str | None = None,
+        html: str | None = None,
+        error_message: str | None = None,
+        status_code: int | None = None,
+        **kwargs: Any,
+    ) -> None: ...
 
 class CrawlResultContainer(Generic[CrawlResultT]):
     def __init__(self, results: CrawlResultT | list[CrawlResultT]) -> None: ...

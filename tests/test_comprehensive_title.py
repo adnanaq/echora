@@ -22,7 +22,7 @@ import requests
 from common.config import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor, VisionProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor, VisionProcessor
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.utils.image_downloader import ImageDownloader
 
@@ -132,8 +132,11 @@ def test_title_vector_comprehensive():
     )
 
     settings = get_settings()
+    field_mapper = AnimeFieldMapper()
     text_model = EmbeddingModelFactory.create_text_model(settings)
-    text_processor = TextProcessor(model=text_model, settings=settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Load anime database
     anime_database = load_anime_database()
@@ -318,10 +321,14 @@ def test_image_vector_comprehensive():
     )
 
     settings = get_settings()
+    field_mapper = AnimeFieldMapper()
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
     vision_processor = VisionProcessor(
-        model=vision_model, downloader=image_downloader, settings=settings
+        model=vision_model,
+        downloader=image_downloader,
+        field_mapper=field_mapper,
+        settings=settings,
     )
 
     # Load anime database
@@ -572,8 +579,19 @@ def test_multimodal_title_search():
                     image_b64 = f"data:image/jpeg;base64,{image_data}"
 
                 # Generate embeddings
-                text_processor = TextProcessor(settings=settings)
-                vision_processor = VisionProcessor(settings=settings)
+                field_mapper = AnimeFieldMapper()
+                text_model = EmbeddingModelFactory.create_text_model(settings)
+                vision_model = EmbeddingModelFactory.create_vision_model(settings)
+                downloader = ImageDownloader(settings.model_cache_dir)
+                text_processor = TextProcessor(
+                    model=text_model, field_mapper=field_mapper, settings=settings
+                )
+                vision_processor = VisionProcessor(
+                    model=vision_model,
+                    downloader=downloader,
+                    field_mapper=field_mapper,
+                    settings=settings,
+                )
 
                 text_embedding = text_processor.encode_text(text_query)
                 image_embedding = vision_processor.encode_image(image_b64)

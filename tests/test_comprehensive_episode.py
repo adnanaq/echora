@@ -21,7 +21,8 @@ pytestmark = pytest.mark.integration
 from common.config import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
 
 def load_episode_data() -> dict[str, list[dict]]:
@@ -195,7 +196,11 @@ async def test_comprehensive_episode_vector():
         url=settings.qdrant_url, api_key=settings.qdrant_api_key
     )
     qdrant_client = await QdrantClient.create(settings, async_qdrant_client)
-    text_processor = TextProcessor(settings=settings)
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Load episode data
     anime_with_episodes = load_episode_data()

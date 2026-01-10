@@ -523,7 +523,7 @@ class MultiVectorEmbeddingManager:
                 "vector_configuration": {
                     "total_vectors": len(self.vector_names),
                     "text_vectors": len(self.text_vector_names),
-                    "image_vectors": 1,
+                    "image_vectors": len(self.image_vector_names),
                     "vector_names": self.vector_names,
                     "vector_dimensions": dict(self.settings.vector_names),
                     "vector_priorities": dict(self.settings.vector_priorities),

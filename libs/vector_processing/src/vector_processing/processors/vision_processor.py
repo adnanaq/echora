@@ -100,7 +100,7 @@ class VisionProcessor:
         """
         try:
             # Extract all image URLs from anime data
-            image_urls = self.field_mapper._extract_image_content(anime)
+            image_urls = self.field_mapper.extract_image_urls(anime)
 
             if not image_urls:
                 logger.warning("No image URLs found for anime")
@@ -198,9 +198,7 @@ class VisionProcessor:
         """
         try:
             # Extract character image URLs from anime data (separate from general images)
-            character_image_urls = self.field_mapper._extract_character_image_content(
-                anime
-            )
+            character_image_urls = self.field_mapper.extract_character_image_urls(anime)
 
             if not character_image_urls:
                 logger.debug("No character image URLs found for anime")

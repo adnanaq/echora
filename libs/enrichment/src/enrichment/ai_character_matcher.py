@@ -35,7 +35,10 @@ from sentence_transformers import SentenceTransformer
 # Vision processing for character image similarity
 try:
     from common.config.settings import Settings
+    from vector_processing.field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
+    from vector_processing.embedding_models.factory import EmbeddingModelFactory
+    from vector_processing.utils.image_downloader import ImageDownloader
 
     from enrichment.similarity.ccip import CCIP
 
@@ -44,6 +47,9 @@ except ImportError:
     VisionProcessor = None  # ty: ignore[invalid-assignment]
     CCIP = None  # ty: ignore[invalid-assignment]
     Settings = None  # ty: ignore[invalid-assignment]
+    AnimeFieldMapper = None  # ty: ignore[invalid-assignment]
+    EmbeddingModelFactory = None  # ty: ignore[invalid-assignment]
+    ImageDownloader = None  # ty: ignore[invalid-assignment]
     VISION_AVAILABLE = False
 
 try:
@@ -116,6 +122,9 @@ class LanguageDetector:
             self.kks = None
             self.conv = None
         else:
+            # TODO: Migrate to modern pykakasi API (convert() method instead of setMode/getConverter/do)
+            # Deprecated API will be removed in pykakasi v3.0
+            # See: https://pykakasi.readthedocs.io/en/latest/api.html
             self.kks = pykakasi.kakasi()
             self.kks.setMode("H", "a")  # Hiragana to ASCII
             self.kks.setMode("K", "a")  # Katakana to ASCII
@@ -145,6 +154,9 @@ class CharacterNamePreprocessor:
     """Advanced preprocessing for anime character names"""
 
     def __init__(self) -> None:
+        # TODO: Migrate to modern pykakasi API (convert() method instead of setMode/getConverter/do)
+        # Deprecated API will be removed in pykakasi v3.0
+        # See: https://pykakasi.readthedocs.io/en/latest/api.html
         self.kks = pykakasi.kakasi()
         self.kks.setMode("H", "a")
         self.kks.setMode("K", "a")
@@ -418,9 +430,23 @@ class EnsembleFuzzyMatcher:
 
         if self.enable_visual:
             try:
-                if Settings is not None and VisionProcessor is not None:
+                if (
+                    Settings is not None
+                    and VisionProcessor is not None
+                    and EmbeddingModelFactory is not None
+                    and ImageDownloader is not None
+                    and AnimeFieldMapper is not None
+                ):
                     settings = Settings()
-                    self.vision_processor = VisionProcessor(settings)  # ty: ignore[missing-argument,invalid-argument-type] TODO: Fix - VisionProcessor requires model and downloader
+                    field_mapper = AnimeFieldMapper()
+                    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+                    downloader = ImageDownloader(settings.model_cache_dir)
+                    self.vision_processor = VisionProcessor(
+                        model=vision_model,
+                        downloader=downloader,
+                        field_mapper=field_mapper,
+                        settings=settings,
+                    )
                     self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"

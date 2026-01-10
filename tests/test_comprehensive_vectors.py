@@ -2,7 +2,7 @@
 """
 Comprehensive Vector Database Test Suite
 
-A comprehensive testing framework for the 13-vector anime database that covers:
+A comprehensive testing framework for the anime database vectors that covers:
 - Individual vector queries (simple to complex)
 - Payload filtering and hybrid search
 - Multi-vector queries and combinations
@@ -31,7 +31,9 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from common.config import get_settings
-from vector_processing import TextProcessor, VisionProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor, VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
 
 
 @dataclass
@@ -60,7 +62,7 @@ class TestSuite:
 
 
 class ComprehensiveVectorTester:
-    """Comprehensive testing framework for the 13-vector anime database."""
+    """Comprehensive testing framework for the anime database vectors."""
 
     def __init__(
         self, qdrant_url: str, api_key: str, collection_name: str = "anime_database"
@@ -74,8 +76,19 @@ class ComprehensiveVectorTester:
 
         # Initialize processors
         settings = get_settings()
-        self.text_processor = TextProcessor(settings)
-        self.vision_processor = VisionProcessor(settings)
+        field_mapper = AnimeFieldMapper()
+        text_model = EmbeddingModelFactory.create_text_model(settings)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        downloader = ImageDownloader(settings.model_cache_dir)
+        self.text_processor = TextProcessor(
+            model=text_model, field_mapper=field_mapper, settings=settings
+        )
+        self.vision_processor = VisionProcessor(
+            model=vision_model,
+            downloader=downloader,
+            field_mapper=field_mapper,
+            settings=settings,
+        )
 
         # Initialize QdrantClient for multi-vector operations (async, will be set later)
         self.qdrant_client = None
@@ -414,7 +427,7 @@ class ComprehensiveVectorTester:
                     "query": "high school romance comedy with beautiful animation",
                     "limit": 5,
                     "fusion_method": "rrf",
-                    "description": "Test search across all 13 vectors (12 text + 2 image)",
+                    "description": "Test search across all vectors (text + image)",
                 },
                 {
                     "name": "Visual Comprehensive Search",
@@ -1148,7 +1161,7 @@ class ComprehensiveVectorTester:
                     result = {"result": search_results}
 
                 elif test_config.get("test_type") == "search_complete":
-                    # Complete search across all 13 vectors
+                    # Complete search across all vectors
                     query = test_config["query"]
                     limit = test_config.get("limit", 5)
                     fusion_method = test_config.get("fusion_method", "rrf")

@@ -145,6 +145,7 @@ select = ["E", "F", "I", "N", "UP", "W"]
 ignore = [
     "E501",   # Line too long (handled by formatter)
     "N805",   # First argument should be `self` (false positive for Pydantic validators using `cls`)
+    "N817",   # CamelCase imported as acronym (e.g., ElementTree as ET)
     "UP047",  # Generic function type parameters (not needed for Python 3.12)
 ]
 
