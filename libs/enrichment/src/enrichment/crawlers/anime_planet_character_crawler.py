@@ -6,7 +6,7 @@ character pages using concurrent batch processing. Results are cached in Redis f
 24 hours to avoid repeated crawling.
 
 Usage:
-    python -m enrichment.crawlers.anime_planet_character_crawler <identifier> [--output PATH]
+    ./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_character_crawler.py -- <identifier> [--output PATH]
 
     <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
     --output PATH   optional output file path (default: animeplanet_characters.json)

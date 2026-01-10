@@ -6,7 +6,7 @@ and all metadata from JSON-LD. Results are cached in Redis for 24 hours to avoid
 repeated crawling.
 
 Usage:
-    python -m enrichment.crawlers.anime_planet_anime_crawler <identifier> [--output PATH]
+    ./pants run libs/enrichment/src/enrichment/crawlers/anime_planet_anime_crawler.py -- <identifier> [--output PATH]
 
     <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
     --output PATH   optional output file path (default: animeplanet_anime.json)
@@ -382,7 +382,7 @@ async def _fetch_animeplanet_anime_data(
                         anime_data["season"] = season
 
                 # Determine status using utility function
-                anime_data["status"] = determine_anime_status(start_date, end_date).value
+                anime_data["status"] = determine_anime_status(start_date, end_date)
 
                 # Return pure data (no side effects)
                 return anime_data

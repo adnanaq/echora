@@ -6,7 +6,7 @@ using crawl4ai with CSS selectors and JavaScript navigation. Results are cached
 in Redis for 24 hours to avoid repeated crawling.
 
 Usage:
-    python -m enrichment.crawlers.anisearch_anime_crawler <url> [--output PATH]
+    ./pants run libs/enrichment/src/enrichment/crawlers/anisearch_anime_crawler.py -- <url> [--output PATH]
 
     <url>           anisearch.com anime page URL (full or relative path)
     --output PATH   optional output file path (default: anisearch_anime.json)
@@ -412,6 +412,16 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
                     "popularity": _clean_rank(anime_data.get("rank_popularity")),
                     "trending": _clean_rank(anime_data.get("rank_trending")),
                 }
+
+                # Clean up intermediate statistics fields (consistent with published field cleanup)
+                for field in [
+                    "rating_score",
+                    "rank_toplist",
+                    "rank_popularity",
+                    "rank_trending",
+                    "vote_counts",
+                ]:
+                    anime_data.pop(field, None)
 
                 # Flatten genres and tags
                 for field in ["genres", "tags"]:
