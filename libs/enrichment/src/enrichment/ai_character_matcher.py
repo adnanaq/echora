@@ -238,9 +238,10 @@ class CharacterNamePreprocessor:
             # Modern API: convert() returns list of dicts with 'hepburn' key
             result = self.kks.convert(japanese_text)
             romaji = "".join(item["hepburn"] for item in result)
-            return romaji
         except Exception:
             return japanese_text
+        else:
+            return romaji
 
     def _get_phonetic_key(self, text: str) -> str:
         """Generate phonetic representation"""

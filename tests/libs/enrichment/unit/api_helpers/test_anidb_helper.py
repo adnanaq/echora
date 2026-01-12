@@ -817,14 +817,15 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_context_manager_protocol(helper):
+async def test_context_manager_protocol():
     """Test AniDBEnrichmentHelper implements async context manager protocol."""
     from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 
     mock_session = AsyncMock()
-    async with AniDBEnrichmentHelper() as helper:
-        helper.session = mock_session
-        assert isinstance(helper, AniDBEnrichmentHelper)
+    # Instantiate directly to verify __aenter__ and __aexit__ protocol
+    async with AniDBEnrichmentHelper() as ctx_helper:
+        ctx_helper.session = mock_session
+        assert isinstance(ctx_helper, AniDBEnrichmentHelper)
 
     mock_session.close.assert_awaited_once()
 

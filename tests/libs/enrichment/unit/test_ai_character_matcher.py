@@ -1,6 +1,7 @@
 """Unit tests for ai_character_matcher, particularly CharacterNamePreprocessor romaji conversion with modern pykakasi API."""
 
 import pytest
+from unittest.mock import MagicMock
 from enrichment.ai_character_matcher import CharacterNamePreprocessor
 
 # Skip all tests in this module if pykakasi is not installed
@@ -54,6 +55,19 @@ class TestCharacterNamePreprocessorRomaji:
         result = preprocessor._to_romaji("English")
         assert result is not None
         assert isinstance(result, str)
+
+    def test_romaji_exception_handling_explicit(self, preprocessor):
+        """Test that _to_romaji returns original text when conversion raises an exception."""
+        # Mock kks.convert to raise an exception
+        preprocessor.kks = MagicMock()
+        preprocessor.kks.convert.side_effect = Exception("Simulated conversion failure")
+        
+        japanese_text = "テスト"
+        result = preprocessor._to_romaji(japanese_text)
+        
+        # Should return original text on exception
+        assert result == japanese_text
+        preprocessor.kks.convert.assert_called_once_with(japanese_text)
 
     def test_process_japanese_name_includes_romaji(self, preprocessor):
         """Test that Japanese name processing includes romaji field."""
