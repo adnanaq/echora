@@ -13,20 +13,25 @@ from enrichment.api_helpers.anidb_helper import (
 
 @pytest.fixture
 def helper():
-    """Fixture for AniDBEnrichmentHelper."""
-    helper = AniDBEnrichmentHelper()
-    with patch.object(
-        helper,
-        "_adaptive_rate_limit",
-        new_callable=AsyncMock,
-    ):
-        yield helper
+    """Fixture for AniDBEnrichmentHelper with deterministic config."""
+    # Mock os.getenv to return default values for deterministic behavior
+    with patch("enrichment.api_helpers.anidb_helper.os.getenv") as mock_getenv:
+        mock_getenv.side_effect = lambda key, default=None: default
+
+        helper = AniDBEnrichmentHelper()
+        with patch.object(
+            helper,
+            "_adaptive_rate_limit",
+            new_callable=AsyncMock,
+        ):
+            yield helper
 
 
 @pytest.fixture
 def mock_session():
-    """Fixture for mocking aiohttp.ClientSession."""
+    """Fixture for mocking aiohttp.ClientSession with proper async context manager."""
     session = MagicMock()
+    session.close = AsyncMock()  # Explicitly mock close as awaitable
     cm = AsyncMock()
     response = AsyncMock()
     cm.__aenter__.return_value = response
@@ -655,12 +660,19 @@ async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
     helper.metrics.consecutive_failures = 3
     helper.metrics.last_request_time = 1020.0  # Just happened
     await helper._adaptive_rate_limit()
-    assert mock_sleep.call_args[0][0] == pytest.approx(10, abs=0.1)
+    # Exponential backoff: min(error_cooldown_base * 2^failures, max_request_interval)
+    # With 3 failures: min(5.0 * 8, 10.0) = 10.0
+    expected_interval = min(
+        helper.error_cooldown_base * (2 ** helper.metrics.consecutive_failures),
+        helper.max_request_interval
+    )
+    assert mock_sleep.call_args[0][0] == pytest.approx(expected_interval, abs=0.1)
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.anidb_helper._cache_manager.get_aiohttp_session")
-async def test_ensure_session_health(mock_get_session, helper):
+@patch("enrichment.api_helpers.anidb_helper.time.time")
+async def test_ensure_session_health(mock_time, mock_get_session, helper):
     """Test session creation and expiration logic."""
     helper._ensure_session_health = (
         AniDBEnrichmentHelper._ensure_session_health.__get__(helper)
@@ -671,6 +683,7 @@ async def test_ensure_session_health(mock_get_session, helper):
     mock_get_session.return_value = mock_session
 
     # 1. Create session
+    mock_time.return_value = 1000.0
     helper.session = None
     await helper._ensure_session_health()
     assert helper.session is not None
@@ -679,7 +692,9 @@ async def test_ensure_session_health(mock_get_session, helper):
 
     # 2. Recreate expired session
     mock_get_session.reset_mock()
-    helper._session_created_at = time.time() - (helper._session_max_age + 1)
+    mock_time.return_value = 2000.0
+    helper._session_created_at = 1000.0  # Created 1000s ago
+    # Session is expired: 2000.0 - 1000.0 = 1000s > session_max_age (300s)
     old_session_close = helper.session.close = AsyncMock()
     await helper._ensure_session_health()
     old_session_close.assert_called_once()
@@ -800,32 +815,46 @@ async def test_internal_parsers_granular(helper):
 @patch("argparse.ArgumentParser.parse_args")
 async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     """Consolidated test for various CLI entry point scenarios."""
-    output_path = tmp_path / "output.json"
     from enrichment.api_helpers import anidb_helper
 
     # Case 1: Fetch by ID (Success)
+    output_path_1 = tmp_path / "output1.json"
     mock_parse_args.return_value = MagicMock(
-        anidb_id=1, search_name=None, output=str(output_path), save_xml=None
+        anidb_id=1, search_name=None, output=str(output_path_1), save_xml=None
     )
     mock_fetch.return_value = {"id": 1}
+    mock_fetch.side_effect = None  # Clear any previous side effects
     await anidb_helper.main()
-    assert output_path.exists()
+    assert output_path_1.exists()
 
     # Case 2: KeyboardInterrupt
+    output_path_2 = tmp_path / "output2.json"
+    mock_parse_args.return_value = MagicMock(
+        anidb_id=2, search_name=None, output=str(output_path_2), save_xml=None
+    )
     mock_fetch.side_effect = KeyboardInterrupt
     assert await anidb_helper.main() == 1
 
     # Case 3: Generic Exception
+    output_path_3 = tmp_path / "output3.json"
+    mock_parse_args.return_value = MagicMock(
+        anidb_id=3, search_name=None, output=str(output_path_3), save_xml=None
+    )
     mock_fetch.side_effect = Exception("Generic error")
     assert await anidb_helper.main() == 1
 
 
 @pytest.mark.asyncio
-async def test_context_manager_protocol():
+@patch("enrichment.api_helpers.anidb_helper.os.getenv")
+async def test_context_manager_protocol(mock_getenv):
     """Test AniDBEnrichmentHelper implements async context manager protocol."""
     from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 
+    # Mock os.getenv for deterministic behavior
+    mock_getenv.side_effect = lambda key, default=None: default
+
     mock_session = AsyncMock()
+    mock_session.close = AsyncMock()  # Explicitly mock close as awaitable
     # Instantiate directly to verify __aenter__ and __aexit__ protocol
     async with AniDBEnrichmentHelper() as ctx_helper:
         ctx_helper.session = mock_session
