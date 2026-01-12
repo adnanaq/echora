@@ -139,7 +139,10 @@ class LanguageDetector:
 
     def _is_english(self, text: str) -> bool:
         """Check if text is primarily English/Latin"""
-        return bool(re.fullmatch(r"[A-Za-z\s.,'-]+", text))
+        return (
+            bool(re.search(r"[A-Za-z]", text)) and
+            bool(re.fullmatch(r"[A-Za-z\s.,'-]+", text))
+        )
 
 
 class CharacterNamePreprocessor:
