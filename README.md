@@ -122,7 +122,8 @@ docker compose up -d qdrant
 
 #### 5. Run the Service
 
-**Option A: Using `uv run` (Recommended)**
+## Option A: Using `uv run` (Recommended)
+
 ```bash
 # Run service
 uv run python -m apps.service.src.service.main
@@ -134,7 +135,8 @@ uv run pytest
 uv run python scripts/reindex_anime_database.py
 ```
 
-**Option B: Activate virtual environment**
+## Option B: Activate virtual environment
+
 ```bash
 # Activate venv
 source .venv/bin/activate
@@ -152,6 +154,7 @@ deactivate
 ## Development Workflow
 
 This project supports both UV and Pants for development:
+
 - **UV**: Faster (~200ms) for code quality checks (formatting, linting) during iteration
 - **Pants**: Hermetic builds for tests, scripts, validation, and CI/CD (handles monorepo dependencies)
 
@@ -242,19 +245,25 @@ ty check scripts/ libs/ apps/
 ## Libraries
 
 ### `libs/common`
+
 Shared models and configuration used across all libraries and the main application.
+
 - **Models**: `AnimeEntry` and related data structures
 - **Config**: Settings management with pydantic-settings
 
 ### `libs/qdrant_db`
+
 Qdrant vector database client with retry logic and batch operations.
+
 - Async operations with connection pooling
 - Automatic retry with exponential backoff
 - Multi-vector search support
 - Comprehensive test suite (55 tests)
 
 ### `libs/vector_processing`
+
 Vector embedding generation and processing.
+
 - **Text Models**: FastEmbed, HuggingFace Transformers, Sentence Transformers
 - **Vision Models**: OpenCLIP
 - **Processors**: Text and vision processing with caching
@@ -314,12 +323,12 @@ APP_ENV=production
 
 **Environment-Specific Behavior:**
 
-| Setting | Development | Staging | Production |
-|---------|------------|---------|------------|
-| `debug` | `True` (default) | `True` (default) | **`False` (enforced)** |
-| `log_level` | `DEBUG` (default) | `INFO` (default) | **`WARNING` (enforced)** |
-| `qdrant_enable_wal` | user choice | `True` (default) | **`True` (enforced)** |
-| `model_warm_up` | user choice | user choice | **`True` (enforced)** |
+| Setting             | Development       | Staging          | Production               |
+| ------------------- | ----------------- | ---------------- | ------------------------ |
+| `debug`             | `True` (default)  | `True` (default) | **`False` (enforced)**   |
+| `log_level`         | `DEBUG` (default) | `INFO` (default) | **`WARNING` (enforced)** |
+| `qdrant_enable_wal` | user choice       | `True` (default) | **`True` (enforced)**    |
+| `model_warm_up`     | user choice       | user choice      | **`True` (enforced)**    |
 
 **Defaults**: "default" means the value is applied only if you don't explicitly set it in your `.env` file or environment variables.
 
@@ -328,11 +337,13 @@ APP_ENV=production
 **Development/Staging**: These environments respect your custom configuration. Set `DEBUG=false` or `LOG_LEVEL=ERROR` in `.env` to override the defaults.
 
 **Docker Deployment:**
+
 ```dockerfile
 ENV APP_ENV=production
 ```
 
 **Kubernetes Deployment:**
+
 ```yaml
 env:
   - name: APP_ENV
@@ -414,6 +425,7 @@ pip install -e ".[dev]"
 ### Vector Architecture
 
 **Text Vectors**:
+
 1. `title_vector` - Title, synopsis, background
 2. `character_vector` - Character descriptions and roles
 3. `genre_vector` - Genres and themes
@@ -425,6 +437,7 @@ pip install -e ".[dev]"
 9. `episode_vector` - Episode summaries (hierarchical averaging)
 
 **Image Vectors**:
+
 1. `image_vector` - Cover art similarity
 2. `character_image_vector` - Character visual similarity
 

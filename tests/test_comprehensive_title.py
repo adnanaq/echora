@@ -174,6 +174,14 @@ def test_title_vector_comprehensive():
     # Initialize for stacked panels instead of table
     formatter.create_anime_test_panels()
 
+    # Initialize Qdrant client once before the loop
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
+    )
+
     for i, anime in enumerate(test_anime):
         anime_title = anime.get("title", "Unknown")
 
@@ -205,14 +213,6 @@ def test_title_vector_comprehensive():
 
         # Search title_vector using production method with raw similarity scores
         try:
-            # Initialize Qdrant client with async factory pattern
-            async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant_url, api_key=settings.qdrant_api_key
-            )
-            qdrant_client = asyncio.run(
-                QdrantClient.create(settings, async_qdrant_client)
-            )
-
             # Use search_single_vector to get real similarity scores
             results = asyncio.run(
                 qdrant_client.search_single_vector(
@@ -366,6 +366,14 @@ def test_image_vector_comprehensive():
     total_tests = 0
     temp_files = []
 
+    # Initialize Qdrant client once before the loop
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
+    )
+
     try:
         for i, (anime, available_images) in enumerate(test_anime):
             anime_title = anime.get("title", "Unknown")
@@ -394,14 +402,6 @@ def test_image_vector_comprehensive():
                     continue
 
                 # Search image_vector using production method with raw similarity scores
-                # Initialize Qdrant client with async factory pattern
-                async_qdrant_client = AsyncQdrantClient(
-                    url=settings.qdrant_url, api_key=settings.qdrant_api_key
-                )
-                qdrant_client = asyncio.run(
-                    QdrantClient.create(settings, async_qdrant_client)
-                )
-
                 # Use search_single_vector to get real similarity scores
                 results = asyncio.run(
                     qdrant_client.search_single_vector(
@@ -494,8 +494,8 @@ def test_multimodal_title_search():
         if hasattr(settings, "qdrant_api_key")
         else None,
     )
-    qdrant_client = QdrantClient(
-        settings=settings, async_qdrant_client=async_qdrant_client
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
     )
 
     # Initialize processors once before the loop

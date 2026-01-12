@@ -1,4 +1,3 @@
-import asyncio
 import gzip
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,8 +15,12 @@ from enrichment.api_helpers.anidb_helper import (
 def helper():
     """Fixture for AniDBEnrichmentHelper."""
     helper = AniDBEnrichmentHelper()
-    setattr(helper, "_adaptive_rate_limit", AsyncMock())
-    yield helper
+    with patch.object(
+        helper,
+        "_adaptive_rate_limit",
+        new_callable=AsyncMock,
+    ):
+        yield helper
 
 
 @pytest.fixture
@@ -35,7 +38,6 @@ def mock_session():
     return session
 
 
-@pytest.mark.asyncio
 @patch("enrichment.api_helpers.anidb_helper.os.getenv")
 def test_helper_initialization(mock_getenv):
     """Test that the helper initializes correctly."""
@@ -736,7 +738,7 @@ async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
     assert data["episode_details"][0]["id"] == 201
 
 
-def test_internal_parsers_granular(helper):
+async def test_internal_parsers_granular(helper):
     """Granular tests for existing internal parsing methods and inlined logic."""
     # Test _parse_episode_xml
     ep_xml = ElementTree.fromstring(
@@ -748,19 +750,19 @@ def test_internal_parsers_granular(helper):
 
     # Test inlined related anime parsing via main parser
     rel_xml = "<anime id='1'><relatedanime><anime id='2' type='Sequel'>Movie</anime></relatedanime></anime>"
-    rel_data = asyncio.run(helper._parse_anime_xml(rel_xml))
+    rel_data = await helper._parse_anime_xml(rel_xml)
     assert rel_data["related_anime"][0]["url"] == "https://anidb.net/anime/2"
     assert rel_data["related_anime"][0]["relation"] == "Sequel"
 
     # Test inlined creator parsing via main parser
     creator_xml = "<anime id='1'><creators><name id='1' type='Director'>Watanabe</name></creators></anime>"
-    creator_data = asyncio.run(helper._parse_anime_xml(creator_xml))
+    creator_data = await helper._parse_anime_xml(creator_xml)
     assert creator_data["creators"][0]["id"] == 1
     assert creator_data["creators"][0]["name"] == "Watanabe"
 
     # Test inlined category parsing via main parser
     cat_xml = "<anime id='1'><categories><category id='1' weight='100'><name>Sci-Fi</name></category></categories></anime>"
-    cat_data = asyncio.run(helper._parse_anime_xml(cat_xml))
+    cat_data = await helper._parse_anime_xml(cat_xml)
     assert cat_data["categories"][0]["id"] == "1"
     assert cat_data["categories"][0]["name"] == "Sci-Fi"
 
@@ -768,7 +770,7 @@ def test_internal_parsers_granular(helper):
     rat_xml = (
         "<anime id='1'><ratings><permanent count='10'>8.5</permanent></ratings></anime>"
     )
-    rat_data = asyncio.run(helper._parse_anime_xml(rat_xml))
+    rat_data = await helper._parse_anime_xml(rat_xml)
     assert rat_data["statistics"]["score"] == 8.5
 
 

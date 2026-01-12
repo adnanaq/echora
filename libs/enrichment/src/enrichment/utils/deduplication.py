@@ -252,7 +252,7 @@ def deduplicate_synonyms_language_aware(
                         seen_normalized.add(normalized)
             else:
                 # Process each value with its corresponding embedding
-                for value, embedding in zip(lang_values, batch_embeddings):
+                for value, embedding in zip(lang_values, batch_embeddings, strict=True):
                     if embedding is None:
                         # If individual embedding is None, check for exact match
                         if value not in deduped_lang_values:

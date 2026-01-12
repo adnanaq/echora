@@ -1,7 +1,6 @@
-"""Unit tests for ai_character_matcher, particularly CharacterNamePreprocessor romaji conversion with modern pykakaki API."""
+"""Unit tests for ai_character_matcher, particularly CharacterNamePreprocessor romaji conversion with modern pykakasi API."""
 
 import pytest
-
 from enrichment.ai_character_matcher import CharacterNamePreprocessor
 
 

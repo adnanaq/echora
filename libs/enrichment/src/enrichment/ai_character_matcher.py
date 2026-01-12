@@ -35,9 +35,9 @@ from sentence_transformers import SentenceTransformer
 # Vision processing for character image similarity
 try:
     from common.config.settings import Settings
+    from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
-    from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.utils.image_downloader import ImageDownloader
 
     from enrichment.similarity.ccip import CCIP
@@ -120,16 +120,8 @@ class LanguageDetector:
     def __init__(self) -> None:
         if pykakasi is None:
             self.kks = None
-            self.conv = None
         else:
-            # TODO: Migrate to modern pykakasi API (convert() method instead of setMode/getConverter/do)
-            # Deprecated API will be removed in pykakasi v3.0
-            # See: https://pykakasi.readthedocs.io/en/latest/api.html
             self.kks = pykakasi.kakasi()
-            self.kks.setMode("H", "a")  # Hiragana to ASCII
-            self.kks.setMode("K", "a")  # Katakana to ASCII
-            self.kks.setMode("J", "a")  # Kanji to ASCII
-            self.conv = self.kks.getConverter()
 
     def detect_language(self, name: str) -> str:
         """Detect if name is Japanese, English, or mixed"""
@@ -147,7 +139,7 @@ class LanguageDetector:
 
     def _is_english(self, text: str) -> bool:
         """Check if text is primarily English/Latin"""
-        return text.isascii()
+        return bool(re.fullmatch(r"[A-Za-z\s.,'-]+", text))
 
 
 class CharacterNamePreprocessor:
@@ -155,7 +147,6 @@ class CharacterNamePreprocessor:
 
     def __init__(self) -> None:
         # Modern pykakasi API (v2.x+) - uses kakasi().convert() method
-        # Migrated from deprecated setMode/getConverter/do API
         # See: https://pykakasi.readthedocs.io/en/latest/api.html
         self.kks = pykakasi.kakasi()
 

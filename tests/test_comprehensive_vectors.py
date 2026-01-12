@@ -887,7 +887,7 @@ class ComprehensiveVectorTester:
 
         # Build multi-vector query configs
         query_configs = []
-        for vector_name, weight in zip(vector_names, weights):
+        for vector_name, weight in zip(vector_names, weights, strict=True):
             if vector_name in image_vectors and image_vectors[vector_name]:
                 query_configs.append(
                     {
