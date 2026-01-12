@@ -16,8 +16,7 @@ from enrichment.api_helpers.anidb_helper import (
 def helper():
     """Fixture for AniDBEnrichmentHelper."""
     helper = AniDBEnrichmentHelper()
-    # Prevent actual sleeping
-    helper._adaptive_rate_limit = AsyncMock()
+    setattr(helper, "_adaptive_rate_limit", AsyncMock())
     yield helper
 
 
@@ -25,7 +24,11 @@ def helper():
 def mock_session():
     """Fixture for mocking aiohttp.ClientSession."""
     session = MagicMock()
-    response = session.get.return_value.__aenter__.return_value
+    cm = AsyncMock()
+    response = AsyncMock()
+    cm.__aenter__.return_value = response
+    cm.__aexit__.return_value = False
+    session.get.return_value = cm
     response.status = 200
     response.read = AsyncMock(return_value=b"<anime id='1'></anime>")
     response.text = AsyncMock(return_value="<anime id='1'></anime>")
@@ -315,6 +318,255 @@ async def test_parse_anime_xml_comprehensive(
 
 
 @pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_multilang_official_titles(mock_fetch_char, helper):
+    """Test that non-en/ja official titles are added to synonyms.
+
+    AniDB provides official titles in many languages (German, French, Italian,
+    Spanish, Korean, Portuguese, etc.), but we only have dedicated fields for
+    English and Japanese. Non-en/ja official titles should be added to synonyms
+    to preserve this data.
+    """
+    mock_fetch_char.return_value = None  # No character enrichment needed
+    xml_with_multilang_titles = """
+    <anime id="18290">
+        <titles>
+            <title xml:lang="x-jat" type="main">Dan Da Dan</title>
+            <title xml:lang="en" type="synonym">Dandadan</title>
+            <title xml:lang="ja" type="official">ダンダダン</title>
+            <title xml:lang="en" type="official">Dan Da Dan</title>
+            <title xml:lang="de" type="official">Dandadan</title>
+            <title xml:lang="fr" type="official">DAN DA DAN</title>
+            <title xml:lang="it" type="official">DAN DA DAN</title>
+            <title xml:lang="es" type="official">DAN DA DAN</title>
+            <title xml:lang="ko" type="official">단다단</title>
+            <title xml:lang="pl" type="official">DAN DA DAN</title>
+            <title xml:lang="ar" type="official">داندادان</title>
+            <title xml:lang="pt-BR" type="official">DAN DA DAN</title>
+            <title xml:lang="he" type="official">דן דה דן</title>
+            <title xml:lang="th" type="official">ดันดาดัน</title>
+            <title xml:lang="tr" type="official">Dandadan</title>
+            <title xml:lang="zh-Hant" type="official">膽大黨</title>
+            <title xml:lang="en" type="short">DDD</title>
+        </titles>
+    </anime>
+    """
+
+    data = await helper._parse_anime_xml(xml_with_multilang_titles)
+
+    # Check dedicated fields
+    assert data["title"] == "Dan Da Dan"
+    assert data["title_english"] == "Dan Da Dan"
+    assert data["title_japanese"] == "ダンダダン"
+
+    # Verify synonyms include synonym/short types
+    synonyms = data["synonyms"]
+    assert "Dandadan" in synonyms  # type="synonym"
+    assert "DDD" in synonyms  # type="short"
+
+    # Verify title_others is a dict mapping lang codes to titles
+    title_others = data["title_others"]
+    assert isinstance(title_others, dict)
+    assert title_others["de"] == "Dandadan"  # German
+    assert title_others["fr"] == "DAN DA DAN"  # French
+    assert title_others["it"] == "DAN DA DAN"  # Italian
+    assert title_others["es"] == "DAN DA DAN"  # Spanish
+    assert title_others["ko"] == "단다단"  # Korean
+    assert title_others["pl"] == "DAN DA DAN"  # Polish
+    assert title_others["ar"] == "داندادان"  # Arabic
+    assert title_others["pt-BR"] == "DAN DA DAN"  # Portuguese (Brazil)
+    assert title_others["he"] == "דן דה דן"  # Hebrew
+    assert title_others["th"] == "ดันดาดัน"  # Thai
+    assert title_others["tr"] == "Dandadan"  # Turkish
+    assert title_others["zh-Hant"] == "膽大黨"  # Chinese Traditional
+
+    # Ensure en/ja are NOT in title_others (they have dedicated fields)
+    assert "en" not in title_others
+    assert "ja" not in title_others
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_creator_missing_id(mock_fetch_char, helper):
+    """Test that creators with missing IDs don't crash the parser.
+
+    Edge case: Creator element without id attribute should be handled gracefully.
+    """
+    mock_fetch_char.return_value = None
+    xml_with_missing_creator_id = """
+    <anime id="12345">
+        <titles>
+            <title xml:lang="x-jat" type="main">Test Anime</title>
+        </titles>
+        <creators>
+            <name type="Director">John Doe</name>
+            <name id="123" type="Writer">Jane Smith</name>
+        </creators>
+    </anime>
+    """
+
+    data = await helper._parse_anime_xml(xml_with_missing_creator_id)
+
+    # Should not crash and should include creators with valid IDs
+    creators = data["creators"]
+    assert len(creators) == 2
+    # First creator has None id (missing attribute)
+    assert creators[0]["id"] is None
+    assert creators[0]["name"] == "John Doe"
+    assert creators[0]["role"] == "Director"
+    # Second creator has valid id
+    assert creators[1]["id"] == 123
+    assert creators[1]["name"] == "Jane Smith"
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_creator_non_numeric_id(mock_fetch_char, helper):
+    """Test that creators with non-numeric IDs are handled safely.
+
+    Edge case: Creator id="abc" should result in None, not ValueError.
+    """
+    mock_fetch_char.return_value = None
+    xml_with_invalid_creator_id = """
+    <anime id="12345">
+        <titles>
+            <title xml:lang="x-jat" type="main">Test Anime</title>
+        </titles>
+        <creators>
+            <name id="abc" type="Director">Invalid ID</name>
+            <name id="456" type="Writer">Valid ID</name>
+        </creators>
+    </anime>
+    """
+
+    data = await helper._parse_anime_xml(xml_with_invalid_creator_id)
+
+    creators = data["creators"]
+    assert len(creators) == 2
+    # First creator has None id (non-numeric)
+    assert creators[0]["id"] is None
+    assert creators[0]["name"] == "Invalid ID"
+    # Second creator has valid id
+    assert creators[1]["id"] == 456
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_related_anime_whitespace_handling(
+    mock_fetch_char, helper
+):
+    """Test that related anime titles have whitespace stripped.
+
+    XML text nodes can have leading/trailing whitespace.
+    """
+    mock_fetch_char.return_value = None
+    xml_with_whitespace = """
+    <anime id="18290">
+        <titles>
+            <title xml:lang="x-jat" type="main">Dan Da Dan</title>
+        </titles>
+        <relatedanime>
+            <anime id="19060" type="Sequel">  Dan Da Dan (2025)  </anime>
+            <anime id="12345" type="Prequel">
+                Dan Da Dan Origins
+            </anime>
+        </relatedanime>
+    </anime>
+    """
+
+    data = await helper._parse_anime_xml(xml_with_whitespace)
+
+    related = data["related_anime"]
+    assert len(related) == 2
+    # Titles should have whitespace stripped
+    assert related[0]["title"] == "Dan Da Dan (2025)"
+    assert related[1]["title"] == "Dan Da Dan Origins"
+
+
+@pytest.mark.asyncio
+@patch(
+    "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+)
+async def test_parse_anime_xml_episode_defensive_int_conversions(
+    mock_fetch_char, helper
+):
+    """Test defensive error handling for episode int conversions.
+
+    Tests that malformed episode data (non-numeric type, id, length, votes)
+    doesn't crash the parser. Each episode tests a different edge case.
+    """
+    mock_fetch_char.return_value = None
+    xml_malformed_episodes = """
+    <anime id="12345">
+        <titles>
+            <title xml:lang="x-jat" type="main">Test Anime</title>
+        </titles>
+        <episodes>
+            <episode id="bad_id">
+                <epno type="1">1</epno>
+                <length>25</length>
+            </episode>
+            <episode id="100">
+                <epno type="xyz">2</epno>
+                <length>25</length>
+            </episode>
+            <episode id="101">
+                <epno type="1">3</epno>
+                <length>TBA</length>
+            </episode>
+            <episode id="102">
+                <epno type="1">4</epno>
+                <length>24</length>
+                <rating votes="N/A">8.5</rating>
+            </episode>
+            <episode id="103">
+                <epno type="1">5</epno>
+                <length>25</length>
+                <rating votes="42">9.0</rating>
+            </episode>
+        </episodes>
+    </anime>
+    """
+
+    data = await helper._parse_anime_xml(xml_malformed_episodes)
+
+    episodes = data["episode_details"]
+    assert len(episodes) == 5
+
+    # Episode 1: Malformed id="bad_id" → None
+    assert episodes[0]["id"] is None
+    assert episodes[0]["episode_number"] == 1
+
+    # Episode 2: Malformed type="xyz" → None, falls back to string episode_number
+    assert episodes[1]["episode_type"] is None
+    assert episodes[1]["episode_number"] == "2"
+
+    # Episode 3: Malformed length="TBA" → None
+    assert episodes[2]["length"] is None
+    assert episodes[2]["episode_number"] == 3
+
+    # Episode 4: Malformed votes="N/A" → 0
+    assert episodes[3]["rating_votes"] == 0
+    assert episodes[3]["rating"] == 8.5
+
+    # Episode 5: All valid data
+    assert episodes[4]["id"] == 103
+    assert episodes[4]["episode_type"] == 1
+    assert episodes[4]["episode_number"] == 5
+    assert episodes[4]["length"] == 25
+    assert episodes[4]["rating_votes"] == 42
+    assert episodes[4]["rating"] == 9.0
+
+
+@pytest.mark.asyncio
 async def test_get_anime_by_id_workflow(helper):
     """Test the complete workflow of fetching anime by ID, including error paths."""
     # Success case
@@ -388,23 +640,31 @@ async def test_adaptive_rate_limit_logic(mock_sleep, helper):
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.anidb_helper.aiohttp.ClientSession")
-async def test_ensure_session_health(_MockClientSession, helper):
+@patch("enrichment.api_helpers.anidb_helper._cache_manager.get_aiohttp_session")
+async def test_ensure_session_health(mock_get_session, helper):
     """Test session creation and expiration logic."""
     helper._ensure_session_health = (
         AniDBEnrichmentHelper._ensure_session_health.__get__(helper)
     )
 
+    # Mock session returned by cache manager
+    mock_session = AsyncMock()
+    mock_get_session.return_value = mock_session
+
     # 1. Create session
     helper.session = None
     await helper._ensure_session_health()
     assert helper.session is not None
+    assert helper.session is mock_session
+    mock_get_session.assert_called_once()
 
     # 2. Recreate expired session
+    mock_get_session.reset_mock()
     helper._session_created_at = time.time() - (helper._session_max_age + 1)
     old_session_close = helper.session.close = AsyncMock()
     await helper._ensure_session_health()
     old_session_close.assert_called_once()
+    mock_get_session.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -421,6 +681,34 @@ async def test_circuit_breaker_blocking(helper):
         )
         assert result is None
         mock_rate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reset_circuit_breaker_complete(helper):
+    """Test that reset_circuit_breaker fully resets all circuit breaker fields.
+
+    Verifies that manual reset clears:
+    - circuit_breaker_state → CLOSED
+    - circuit_breaker_opened_at → 0.0
+    - metrics.consecutive_failures → 0
+    """
+    # Simulate circuit breaker in OPEN state with all fields set
+    helper.circuit_breaker_state = CircuitBreakerState.OPEN
+    helper.circuit_breaker_opened_at = time.time()
+    helper.metrics.consecutive_failures = 5
+
+    # Reset the circuit breaker
+    result = await helper.reset_circuit_breaker()
+
+    # Verify all fields are reset
+    assert result is True  # State was changed
+    assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
+    assert helper.circuit_breaker_opened_at == 0.0  # Should be reset to 0.0
+    assert helper.metrics.consecutive_failures == 0
+
+    # Reset again when already CLOSED should return False
+    result2 = await helper.reset_circuit_breaker()
+    assert result2 is False
 
 
 @pytest.mark.asyncio

@@ -52,22 +52,19 @@ from enrichment.crawlers.anime_planet_anime_crawler import fetch_animeplanet_ani
 # Return data without writing file
 anime_data = await fetch_animeplanet_anime(
     slug="dandadan",
-    return_data=True,
     output_path=None
 )
 
-# Write to specific file
+# Return data and write to specific file
 anime_data = await fetch_animeplanet_anime(
     slug="dandadan",
-    return_data=True,
     output_path="/path/to/output.json"
 )
 ```
 
 **Parameters:**
 - `slug` (required): Anime slug, path, or full URL
-- `return_data` (optional): Return data dict (default: `True`)
-- `output_path` (optional): File path to save JSON (default: `None`)
+- `output_path` (optional): File path to save JSON (default: `None`). Function always returns data dict or `None`.
 
 #### `anime_planet_character_crawler.py`
 Extracts character information from Anime-Planet anime character pages.
@@ -95,22 +92,19 @@ from enrichment.crawlers.anime_planet_character_crawler import fetch_animeplanet
 # Return data without writing file
 character_data = await fetch_animeplanet_characters(
     slug="dandadan",
-    return_data=True,
     output_path=None
 )
 
-# Write to specific file
+# Return data and write to specific file
 character_data = await fetch_animeplanet_characters(
     slug="dandadan",
-    return_data=True,
     output_path="/path/to/output.json"
 )
 ```
 
 **Parameters:**
 - `slug` (required): Anime slug, path, or full URL
-- `return_data` (optional): Return data dict (default: `True`)
-- `output_path` (optional): File path to save JSON (default: `None`)
+- `output_path` (optional): File path to save JSON (default: `None`). Function always returns data dict or `None`.
 
 ### AniSearch Crawlers
 
@@ -191,22 +185,19 @@ from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 # Return data without writing file
 character_data = await fetch_anidb_character(
     character_id=491,
-    return_data=True,
     output_path=None
 )
 
-# Write to specific file
+# Return data and write to specific file
 character_data = await fetch_anidb_character(
     character_id=491,
-    return_data=True,
     output_path="brook.json"
 )
 ```
 
 **Parameters:**
 - `character_id` (required): AniDB character ID
-- `return_data` (optional): Return data dict (default: `True`)
-- `output_path` (optional): File path to save JSON (default: `None`)
+- `output_path` (optional): File path to save JSON (default: `None`). Function always returns data dict or `None`.
 
 **Data Extracted:**
 - Character names (kanji, romaji, aliases)

@@ -5,6 +5,7 @@ to Romaji for consistent text processing and comparison.
 """
 
 import logging
+from functools import cache
 
 import jaconv
 import pykakasi
@@ -12,6 +13,15 @@ import pykakasi
 logger = logging.getLogger(__name__)
 
 __all__ = ["normalize_japanese_text"]
+
+
+@cache
+def _get_kakasi() -> pykakasi.kakasi:
+    """Get cached pykakasi instance (lazy singleton).
+
+    Thread-safe, lazy initialization - instance created on first call.
+    """
+    return pykakasi.kakasi()
 
 
 def normalize_japanese_text(text: str) -> str:
@@ -46,14 +56,15 @@ def normalize_japanese_text(text: str) -> str:
             # Convert Katakana to Hiragana first for consistent romaji conversion
             hiragana = jaconv.kata2hira(text)
             # Use modern pykakasi API (convert returns list of dicts with 'hepburn' key)
-            kks = pykakasi.kakasi()
+            # Use cached instance for performance (dictionary loads once)
+            kks = _get_kakasi()
             result = kks.convert(hiragana)
             romaji = "".join(item["hepburn"] for item in result)
             # Replace Japanese punctuation with ASCII equivalents
             romaji = romaji.replace("・", " ")  # Middle dot to space
             romaji = romaji.replace("　", " ")  # Full-width space to regular space
             return romaji.lower().strip()
-        except Exception:  # noqa: BLE001 - normalization must be best-effort, never fail caller
+        except Exception:  # normalization must be best-effort, never fail caller
             logger.exception("Japanese normalization failed for %r", text[:50])
             return text.lower().strip()
 

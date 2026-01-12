@@ -317,7 +317,7 @@ uv run python scripts/update_vectors.py --vectors image_vector --batch-size 50
 
 #### Full Database Reindexing (`scripts/reindex_anime_database.py`)
 
-Complete reindexing with all 11 vectors. Deletes and recreates collection.
+Complete reindexing with all vectors. Deletes and recreates collection.
 
 ```bash
 uv run python scripts/reindex_anime_database.py

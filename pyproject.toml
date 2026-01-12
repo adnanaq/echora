@@ -154,10 +154,6 @@ ignore = [
 "tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions
 "stubs/**/*.pyi" = ["N801", "N803", "UP046"]  # Stub files: allow non-CapWords names, uppercase args, Generic subclass patterns
 
-[tool.ruff.lint.isort]
-
-# Exclude directories
-
 [tool.ruff.format]
 # Use double quotes (Black default)
 quote-style = "double"

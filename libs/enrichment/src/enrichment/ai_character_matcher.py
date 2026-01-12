@@ -154,14 +154,10 @@ class CharacterNamePreprocessor:
     """Advanced preprocessing for anime character names"""
 
     def __init__(self) -> None:
-        # TODO: Migrate to modern pykakasi API (convert() method instead of setMode/getConverter/do)
-        # Deprecated API will be removed in pykakasi v3.0
+        # Modern pykakasi API (v2.x+) - uses kakasi().convert() method
+        # Migrated from deprecated setMode/getConverter/do API
         # See: https://pykakasi.readthedocs.io/en/latest/api.html
         self.kks = pykakasi.kakasi()
-        self.kks.setMode("H", "a")
-        self.kks.setMode("K", "a")
-        self.kks.setMode("J", "a")
-        self.conv = self.kks.getConverter()
 
     def preprocess_name(self, name: str, source_language: str) -> dict[str, str]:
         """Generate multiple normalized representations of a character name"""
@@ -240,10 +236,12 @@ class CharacterNamePreprocessor:
         return representations
 
     def _to_romaji(self, japanese_text: str) -> str:
-        """Convert Japanese text to romaji"""
+        """Convert Japanese text to romaji using modern pykakasi API."""
         try:
-            result = self.conv.do(japanese_text)
-            return str(result)
+            # Modern API: convert() returns list of dicts with 'hepburn' key
+            result = self.kks.convert(japanese_text)
+            romaji = "".join(item["hepburn"] for item in result)
+            return romaji
         except Exception:
             return japanese_text
 

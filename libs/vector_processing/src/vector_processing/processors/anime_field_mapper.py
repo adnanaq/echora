@@ -579,34 +579,3 @@ class AnimeFieldMapper:
             return False
 
         return True
-
-    def _extract_image_url(self, anime: AnimeEntry) -> str:
-        """Extract the primary image URL for visual embedding using unified images field.
-
-        Args:
-            anime: AnimeEntry instance
-
-        Returns:
-            Primary image URL or empty string if not available
-        """
-        # Use unified images field with priority: covers -> posters -> banners
-        if hasattr(anime, "images") and anime.images:
-            # Priority 1: covers (best quality cover images)
-            if "covers" in anime.images and anime.images["covers"]:
-                for cover_url in anime.images["covers"]:
-                    if cover_url:  # Simple URL string check
-                        return cover_url
-
-            # Priority 2: posters (good quality poster images)
-            if "posters" in anime.images and anime.images["posters"]:
-                for poster_url in anime.images["posters"]:
-                    if poster_url:  # Simple URL string check
-                        return poster_url
-
-            # Priority 3: banners (fallback option)
-            if "banners" in anime.images and anime.images["banners"]:
-                for banner_url in anime.images["banners"]:
-                    if banner_url:  # Simple URL string check
-                        return banner_url
-
-        return ""

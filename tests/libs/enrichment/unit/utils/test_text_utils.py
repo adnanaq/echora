@@ -11,11 +11,11 @@ Tests validate:
 - Non-Japanese text handling
 - Empty string handling
 - Edge cases with special characters
+- Caching behavior with functools.cache
 """
 
 import pytest
-
-from enrichment.utils.text_utils import normalize_japanese_text
+from enrichment.utils.text_utils import _get_kakasi, normalize_japanese_text
 
 
 class TestNormalizeJapaneseText:
@@ -211,7 +211,7 @@ class TestRealCharacterData:
             ("クロコダイル", "kurokodairu"),  # Crocodile
         ]
 
-        for japanese_name, expected_contains in test_cases:
+        for japanese_name, _expected_contains in test_cases:
             result = normalize_japanese_text(japanese_name)
             assert isinstance(result, str)
             assert result.isascii()
@@ -308,3 +308,66 @@ class TestEdgeCases:
         result = normalize_japanese_text("Test\nText")
         # Should preserve or handle newlines appropriately
         assert isinstance(result, str)
+
+
+class TestCachingBehavior:
+    """Test pykakasi instance caching with functools.cache."""
+
+    def test_get_kakasi_returns_same_instance(self):
+        """Test that _get_kakasi returns the same cached instance."""
+        # Clear cache to start fresh
+        _get_kakasi.cache_clear()
+
+        # Get instance twice
+        instance1 = _get_kakasi()
+        instance2 = _get_kakasi()
+
+        # Should be the exact same object (singleton)
+        assert instance1 is instance2, "Should return cached instance"
+
+    def test_cache_info_shows_hits(self):
+        """Test that cache_info shows cache hits after repeated calls."""
+        # Clear cache to start fresh
+        _get_kakasi.cache_clear()
+
+        # First call should be a cache miss
+        _get_kakasi()
+        info1 = _get_kakasi.cache_info()
+        assert info1.hits == 0
+        assert info1.misses == 1
+
+        # Second call should be a cache hit
+        _get_kakasi()
+        info2 = _get_kakasi.cache_info()
+        assert info2.hits == 1
+        assert info2.misses == 1
+
+    def test_normalize_uses_cached_instance(self):
+        """Test that normalize_japanese_text benefits from cached instance."""
+        # Clear cache to start fresh
+        _get_kakasi.cache_clear()
+
+        # Multiple normalizations should reuse same instance
+        normalize_japanese_text("ワンピース")
+        normalize_japanese_text("ナルト")
+        normalize_japanese_text("テスト")
+
+        # Should have 1 miss (first call) and 2 hits (subsequent calls)
+        info = _get_kakasi.cache_info()
+        assert info.hits >= 2, f"Expected at least 2 cache hits, got {info.hits}"
+        assert info.misses == 1, f"Expected 1 cache miss, got {info.misses}"
+
+    def test_cache_clear_works(self):
+        """Test that cache_clear resets the cache."""
+        # Get instance
+        _get_kakasi()
+        info_before = _get_kakasi.cache_info()
+        assert info_before.hits > 0 or info_before.misses > 0
+
+        # Clear cache
+        _get_kakasi.cache_clear()
+        info_after = _get_kakasi.cache_info()
+
+        # Should be reset
+        assert info_after.hits == 0
+        assert info_after.misses == 0

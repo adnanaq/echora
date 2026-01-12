@@ -403,7 +403,7 @@ class ComprehensiveVectorTester:
                     "query": "magical girl transformation anime with friendship themes",
                     "limit": 5,
                     "fusion_method": "rrf",
-                    "description": "Test search across all 12 text vectors using RRF fusion",
+                    "description": "Test search across all text vectors using RRF fusion",
                 },
                 {
                     "name": "Text Comprehensive with DBSF",
@@ -411,7 +411,7 @@ class ComprehensiveVectorTester:
                     "query": "dark psychological thriller with complex characters",
                     "limit": 5,
                     "fusion_method": "dbsf",
-                    "description": "Test search across all 12 text vectors using DBSF fusion",
+                    "description": "Test search across all text vectors using DBSF fusion",
                 },
                 {
                     "name": "Character-Focused Search",

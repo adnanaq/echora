@@ -9,14 +9,13 @@ import logging
 from collections import defaultdict
 from typing import Any
 
-import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 try:
     from langdetect import LangDetectException, detect
 except ImportError:
-    detect = None
-    LangDetectException = Exception
+    detect = None  # ty: ignore[invalid-assignment]
+    LangDetectException = Exception  # ty: ignore[invalid-assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ def _is_semantically_duplicate(
     if not existing_embeddings:
         return False
     similarities = cosine_similarity([new_embedding], existing_embeddings)[0]
-    return float(np.max(similarities)) > threshold
+    return float(similarities.max()) > threshold
 
 
 def deduplicate_simple_array_field(
@@ -124,6 +123,7 @@ def deduplicate_semantic_array_field(
 
     result_values = []
     result_embeddings = []
+    seen_normalized = set()
 
     for value in values:
         if not value or not value.strip():
@@ -133,9 +133,11 @@ def deduplicate_semantic_array_field(
             # Generate embedding using the injected model
             embeddings = embedding_model.encode([value.strip()])
             if not embeddings or embeddings[0] is None:
-                # Fallback to simple string deduplication if embedding fails
-                if value.strip() not in result_values:
+                # Fallback: use normalized comparison to avoid case/whitespace duplicates
+                normalized = normalize_string_for_comparison(value)
+                if normalized and normalized not in seen_normalized:
                     result_values.append(value.strip())
+                    seen_normalized.add(normalized)
                 continue
 
             embedding = embeddings[0]
@@ -143,12 +145,19 @@ def deduplicate_semantic_array_field(
             if not _is_semantically_duplicate(embedding, result_embeddings):
                 result_values.append(value.strip())
                 result_embeddings.append(embedding)
+                # Track normalized value to prevent fallback duplicates
+                normalized = normalize_string_for_comparison(value)
+                if normalized:
+                    seen_normalized.add(normalized)
 
-        except Exception as e:
+        except (RuntimeError, ValueError, OSError, MemoryError, TypeError) as e:
+            # Catch common ML library exceptions: model execution, invalid inputs, device/memory issues
             logger.warning(f"Embedding generation failed for '{value[:50]}': {e}")
-            # Fallback: add if not already present by exact match
-            if value.strip() not in result_values:
+            # Fallback: use normalized comparison to avoid case/whitespace duplicates
+            normalized = normalize_string_for_comparison(value)
+            if normalized and normalized not in seen_normalized:
                 result_values.append(value.strip())
+                seen_normalized.add(normalized)
 
     return result_values
 
@@ -210,7 +219,7 @@ def deduplicate_synonyms_language_aware(
         try:
             lang = detect(value)
             language_groups[lang].append(value)
-        except (LangDetectException, Exception) as e:
+        except LangDetectException as e:
             # If language detection fails, keep the value in unknown group
             logger.debug(f"Language detection failed for '{value}': {e}")
             unknown_language.append(value)
@@ -225,44 +234,65 @@ def deduplicate_synonyms_language_aware(
             continue
 
         # Apply semantic deduplication within this language group
+        # Use batch encoding for efficiency
         deduped_lang_values: list[str] = []
         deduped_embeddings: list[list[float]] = []
 
-        for value in lang_values:
-            try:
-                # Generate embedding using the injected model
-                embeddings = embedding_model.encode([value])
-                if not embeddings or embeddings[0] is None:
-                    # Fallback: if embedding fails, check for exact match
-                    if value not in deduped_lang_values:
+        try:
+            # Batch encode all values in this language group at once
+            batch_embeddings = embedding_model.encode(lang_values)
+
+            if not batch_embeddings:
+                # If batch encoding fails entirely, fall back to keeping unique values
+                seen_normalized = set()
+                for value in lang_values:
+                    normalized = normalize_string_for_comparison(value)
+                    if normalized and normalized not in seen_normalized:
                         deduped_lang_values.append(value)
-                    continue
+                        seen_normalized.add(normalized)
+            else:
+                # Process each value with its corresponding embedding
+                for value, embedding in zip(lang_values, batch_embeddings):
+                    if embedding is None:
+                        # If individual embedding is None, check for exact match
+                        if value not in deduped_lang_values:
+                            deduped_lang_values.append(value)
+                        continue
 
-                embedding = embeddings[0]
+                    # Check semantic similarity against existing embeddings in this language
+                    if not _is_semantically_duplicate(
+                        embedding, deduped_embeddings, similarity_threshold
+                    ):
+                        deduped_lang_values.append(value)
+                        deduped_embeddings.append(embedding)
+                    else:
+                        logger.debug(
+                            f"Removing duplicate within {lang}: '{value}'"
+                        )
 
-                # Check semantic similarity against existing embeddings in this language
-                if not _is_semantically_duplicate(
-                    embedding, deduped_embeddings, similarity_threshold
-                ):
+        except (RuntimeError, ValueError, OSError, MemoryError, TypeError) as e:
+            # Catch common ML library exceptions: model execution, invalid inputs, device/memory issues
+            logger.warning(
+                f"Error batch processing language '{lang}': {e}"
+            )
+            # Fallback: add all values using normalized comparison
+            seen_normalized = set()
+            for value in lang_values:
+                normalized = normalize_string_for_comparison(value)
+                if normalized and normalized not in seen_normalized:
                     deduped_lang_values.append(value)
-                    deduped_embeddings.append(embedding)
-                else:
-                    logger.debug(
-                        f"Removing duplicate within {lang}: '{value}'"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Error processing value '{value[:50]}' in language '{lang}': {e}"
-                )
-                # Fallback: add if not already present
-                if value not in deduped_lang_values:
-                    deduped_lang_values.append(value)
+                    seen_normalized.add(normalized)
 
         result_values.extend(deduped_lang_values)
 
-    # Step 4: Add unknown language values (keep as-is, no deduplication)
+    # Step 4: Add unknown language values with deduplication
     # These are typically special characters, numbers, or mixed-language strings
-    result_values.extend(unknown_language)
+    # Deduplicate by normalized string to avoid duplicate "unknown" entries
+    seen_normalized = set()
+    for value in unknown_language:
+        normalized = normalize_string_for_comparison(value)
+        if normalized and normalized not in seen_normalized:
+            result_values.append(value)
+            seen_normalized.add(normalized)
 
     return result_values

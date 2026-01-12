@@ -1,10 +1,10 @@
 # Echora
 
-A production-ready semantic search microservice for anime content using an 11-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
+A production-ready semantic search microservice for anime content using a multi-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
 
 ## Features
 
-- **11-Vector Semantic Architecture**: 9 text vectors + 2 image vectors for comprehensive anime understanding
+- **Multi-Vector Semantic Architecture**: Comprehensive anime understanding through text and image vectors
 - **Advanced Text Search**: BGE-M3 embeddings (1024-dim) across multiple semantic domains
 - **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for cover art and character similarity
 - **Character-Focused Search**: Specialized character vector + character image vector search
@@ -413,7 +413,7 @@ pip install -e ".[dev]"
 
 ### Vector Architecture
 
-**Text Vectors (9)**:
+**Text Vectors**:
 1. `title_vector` - Title, synopsis, background
 2. `character_vector` - Character descriptions and roles
 3. `genre_vector` - Genres and themes
@@ -424,7 +424,7 @@ pip install -e ".[dev]"
 8. `franchise_vector` - Franchise information
 9. `episode_vector` - Episode summaries (hierarchical averaging)
 
-**Image Vectors (2)**:
+**Image Vectors**:
 1. `image_vector` - Cover art similarity
 2. `character_image_vector` - Character visual similarity
 

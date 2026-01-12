@@ -498,6 +498,21 @@ def test_multimodal_title_search():
         settings=settings, async_qdrant_client=async_qdrant_client
     )
 
+    # Initialize processors once before the loop
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    downloader = ImageDownloader(settings.model_cache_dir)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
+    vision_processor = VisionProcessor(
+        model=vision_model,
+        downloader=downloader,
+        field_mapper=field_mapper,
+        settings=settings,
+    )
+
     # Load anime database
     anime_database = load_anime_database()
     anime_data = anime_database.get("data", [])
@@ -578,21 +593,7 @@ def test_multimodal_title_search():
                     image_data = base64.b64encode(f.read()).decode("utf-8")
                     image_b64 = f"data:image/jpeg;base64,{image_data}"
 
-                # Generate embeddings
-                field_mapper = AnimeFieldMapper()
-                text_model = EmbeddingModelFactory.create_text_model(settings)
-                vision_model = EmbeddingModelFactory.create_vision_model(settings)
-                downloader = ImageDownloader(settings.model_cache_dir)
-                text_processor = TextProcessor(
-                    model=text_model, field_mapper=field_mapper, settings=settings
-                )
-                vision_processor = VisionProcessor(
-                    model=vision_model,
-                    downloader=downloader,
-                    field_mapper=field_mapper,
-                    settings=settings,
-                )
-
+                # Generate embeddings (processors initialized before loop)
                 text_embedding = text_processor.encode_text(text_query)
                 image_embedding = vision_processor.encode_image(image_b64)
 

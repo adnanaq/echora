@@ -1,6 +1,6 @@
 """Multi-Vector Embedding Manager for coordinated embedding generation.
 
-This module coordinates the generation of all 11 vectors (9 text + 2 visual)
+This module coordinates the generation of all vectors (text and visual)
 for the comprehensive anime search system with error handling and validation.
 """
 

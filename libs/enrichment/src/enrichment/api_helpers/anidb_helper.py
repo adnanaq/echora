@@ -639,6 +639,9 @@ class AniDBEnrichmentHelper:
         title = None
         title_english = None
         title_japanese = None
+        title_others: dict[
+            str, str
+        ] = {}  # Official titles in other languages {lang: title}
         titles_element = root.find("titles")
         if titles_element is not None:
             for title_elem in titles_element.findall("title"):
@@ -652,6 +655,10 @@ class AniDBEnrichmentHelper:
                         title_english = title_elem.text
                     elif lang == "ja":
                         title_japanese = title_elem.text
+                    else:
+                        # Preserve official titles in other languages with lang code as key
+                        if title_elem.text:
+                            title_others[lang] = title_elem.text
 
         type_elem = root.find("type")
         anime_type = type_elem.text if type_elem is not None else None
@@ -716,7 +723,9 @@ class AniDBEnrichmentHelper:
         creators_element = root.find("creators")
         creators = [
             {
-                "id": int(creator.get("id")),
+                "id": int(id_str)
+                if (id_str := creator.get("id")) and id_str.isdigit()
+                else None,
                 "name": creator.text,
                 "role": creator.get("type"),
             }
@@ -739,7 +748,7 @@ class AniDBEnrichmentHelper:
                 {
                     "url": f"https://anidb.net/anime/{elem.get('id')}",
                     "relation": elem.get("type"),
-                    "title": elem.text,
+                    "title": elem.text.strip() if elem.text else None,
                 }
                 for elem in related_anime_element.findall("anime")
             ]
@@ -833,6 +842,7 @@ class AniDBEnrichmentHelper:
             # OBJECT/DICT FIELDS (alphabetical)
             "external_links": external_links,
             "statistics": statistics,
+            "title_others": title_others,
         }
 
         return anime_data
@@ -861,7 +871,7 @@ class AniDBEnrichmentHelper:
         episode_type: int | None = None
         if epno_elem is not None:
             type_str = epno_elem.get("type")
-            if type_str is not None:
+            if type_str and type_str.isdigit():
                 episode_type = int(type_str)
 
         # Parse episode_number: convert to int if episode_type is 1 (regular episodes)
@@ -881,27 +891,39 @@ class AniDBEnrichmentHelper:
 
         # Parse episode ID safely
         ep_id_str = episode_element.get("id")
-        ep_id: int | None = int(ep_id_str) if ep_id_str else None
+        ep_id: int | None = (
+            int(ep_id_str) if ep_id_str and ep_id_str.isdigit() else None
+        )
+
+        # Parse episode length safely
+        length: int | None = (
+            int(length_elem.text)
+            if length_elem is not None
+            and length_elem.text
+            and length_elem.text.isdigit()
+            else None
+        )
+
+        # Parse rating votes safely
+        rating_votes = (
+            int(rating_elem.get("votes", "0"))
+            if rating_elem is not None and (rating_elem.get("votes") or "").isdigit()
+            else 0
+        )
 
         episode_data: dict[str, Any] = {
             "id": ep_id,
             "update": episode_element.get("update"),
             "episode_number": episode_number,
             "episode_type": episode_type,
-            "length": (
-                int(length_elem.text)
-                if length_elem is not None and length_elem.text
-                else None
-            ),
+            "length": length,
             "air_date": airdate_elem.text if airdate_elem is not None else None,
             "rating": (
                 float(rating_elem.text)
                 if rating_elem is not None and rating_elem.text
                 else None
             ),
-            "rating_votes": (
-                int(rating_elem.get("votes", 0)) if rating_elem is not None else 0
-            ),
+            "rating_votes": rating_votes,
             "summary": summary_elem.text if summary_elem is not None else None,
         }
 
@@ -1063,7 +1085,7 @@ class AniDBEnrichmentHelper:
 
         # Build enriched data dictionary
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Character fetch task failed: {result}")
                 continue
             char_id, char_data = result
@@ -1126,7 +1148,7 @@ class AniDBEnrichmentHelper:
             return anime_data
 
         except Exception:
-            logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}")
+            logger.exception(f"Error in fetch_all_data for AniDB ID {anidb_id}")
             return None
 
     async def reset_circuit_breaker(self) -> bool:
@@ -1140,6 +1162,7 @@ class AniDBEnrichmentHelper:
         if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
             old_state = self.circuit_breaker_state
             self.circuit_breaker_state = CircuitBreakerState.CLOSED
+            self.circuit_breaker_opened_at = 0.0
             self.metrics.consecutive_failures = 0
             logger.info(
                 f"Circuit breaker manually reset from {old_state.value} to CLOSED"

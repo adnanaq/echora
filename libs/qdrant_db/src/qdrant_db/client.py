@@ -137,7 +137,7 @@ class QdrantClient(VectorDBClient):
         return client
 
     async def _initialize_collection(self) -> None:
-        """Initialize and validate anime collection with 11-vector architecture and performance optimization.
+        """Initialize and validate anime collection with multi-vector architecture and performance optimization.
 
         Creates collection if it doesn't exist with optimized configuration including
         quantization, HNSW parameters, and payload indexing. Validates existing collections
@@ -279,7 +279,7 @@ class QdrantClient(VectorDBClient):
     }
 
     def _create_multi_vector_config(self) -> dict[str, VectorParams]:
-        """Create 11-vector configuration with priority-based optimization.
+        """Create multi-vector configuration with priority-based optimization.
 
         Generates VectorParams for all vectors defined in settings with appropriate
         HNSW and quantization configurations based on priority levels.
@@ -289,7 +289,7 @@ class QdrantClient(VectorDBClient):
         """
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
-        # Use new 11-vector architecture from settings
+        # Use multi-vector architecture from settings
         vector_params = {}
         for vector_name, dimension in self.settings.vector_names.items():
             priority = self._get_vector_priority(vector_name)
@@ -301,7 +301,7 @@ class QdrantClient(VectorDBClient):
             )
 
         logger.info(
-            f"Created 11-vector configuration with {len(vector_params)} vectors"
+            f"Created multi-vector configuration with {len(vector_params)} vectors"
         )
         return vector_params
 
@@ -1358,7 +1358,7 @@ class QdrantClient(VectorDBClient):
         fusion_method: str = "rrf",
         filters: Filter | None = None,
     ) -> list[dict[str, Any]]:
-        """Search across all 12 text vectors using native Qdrant fusion with a pre-computed query embedding.
+        """Search across all text vectors using native Qdrant fusion with a pre-computed query embedding.
 
         Args:
             query_embedding: Pre-computed text embedding for the query.
@@ -1370,7 +1370,7 @@ class QdrantClient(VectorDBClient):
             List of search results with comprehensive text similarity scores
         """
         try:
-            # All 11 text vectors for comprehensive search
+            # All text vectors for comprehensive search
             text_vector_names = [
                 "title_vector",
                 "character_vector",
@@ -1461,7 +1461,7 @@ class QdrantClient(VectorDBClient):
         fusion_method: str = "rrf",
         filters: Filter | None = None,
     ) -> list[dict[str, Any]]:
-        """Search across all 11 vectors (9 text + 2 image) using native Qdrant fusion with pre-computed embeddings.
+        """Search across all vectors (text + image) using native Qdrant fusion with pre-computed embeddings.
 
         Args:
             query_embedding: Optional pre-computed text embedding for the query.
@@ -1477,7 +1477,7 @@ class QdrantClient(VectorDBClient):
             vector_queries = []
 
             if query_embedding:
-                # All 11 text vectors
+                # All text vectors
                 text_vector_names = [
                     "title_vector",
                     "character_vector",

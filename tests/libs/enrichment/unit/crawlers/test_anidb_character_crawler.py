@@ -1,3 +1,4 @@
+import copy
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -57,7 +58,6 @@ def test_get_character_schema():
 def test_flatten_character_data(input_data, expected_data):
     """Test flattening of character data."""
     # Create a copy to verify no mutation after fix
-    import copy
 
     input_copy = copy.deepcopy(input_data)
 
