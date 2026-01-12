@@ -70,7 +70,7 @@ def test_request_metrics():
 @pytest.mark.asyncio
 async def test_circuit_breaker_logic(helper):
     """Test the circuit breaker state transitions."""
-    with patch("time.time") as mock_time:
+    with patch("enrichment.api_helpers.anidb_helper.time.time") as mock_time:
         mock_time.return_value = 1000.0
 
         # Test opening the circuit
@@ -337,12 +337,12 @@ async def test_parse_anime_xml_comprehensive(
     "enrichment.api_helpers.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
 )
 async def test_parse_anime_xml_multilang_official_titles(mock_fetch_char, helper):
-    """Test that non-en/ja official titles are added to synonyms.
+    """Test that non-en/ja official titles are preserved in title_others.
 
     AniDB provides official titles in many languages (German, French, Italian,
     Spanish, Korean, Portuguese, etc.), but we only have dedicated fields for
-    English and Japanese. Non-en/ja official titles should be added to synonyms
-    to preserve this data.
+    English and Japanese. Non-en/ja official titles should be preserved in
+    title_others to avoid losing them.
     """
     mock_fetch_char.return_value = None  # No character enrichment needed
     xml_with_multilang_titles = """
@@ -629,27 +629,31 @@ async def test_session_management(helper, mock_session):
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
-async def test_adaptive_rate_limit_logic(mock_sleep, helper):
+@patch("enrichment.api_helpers.anidb_helper.time.time")
+async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
     """Test the logic of the adaptive rate limiter across different scenarios."""
     helper._adaptive_rate_limit = AniDBEnrichmentHelper._adaptive_rate_limit.__get__(
         helper
     )
 
     # Case 1: Normal operation (no wait)
-    helper.metrics.last_request_time = time.time() - 5
+    mock_time.return_value = 1000.0
+    helper.metrics.last_request_time = 995.0  # 5 seconds ago
     helper.metrics.current_interval = 2.0
     await helper._adaptive_rate_limit()
     mock_sleep.assert_not_called()
 
     # Case 2: Needs to wait
-    helper.metrics.last_request_time = time.time()
+    mock_time.return_value = 1010.0
+    helper.metrics.last_request_time = 1010.0  # Just happened
     await helper._adaptive_rate_limit()
     mock_sleep.assert_called_once()
     mock_sleep.reset_mock()
 
     # Case 3: Exponential backoff on error
+    mock_time.return_value = 1020.0
     helper.metrics.consecutive_failures = 3
-    helper.metrics.last_request_time = time.time()
+    helper.metrics.last_request_time = 1020.0  # Just happened
     await helper._adaptive_rate_limit()
     assert mock_sleep.call_args[0][0] == pytest.approx(10, abs=0.1)
 
