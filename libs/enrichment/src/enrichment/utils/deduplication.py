@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Any
 
 from sklearn.metrics.pairwise import cosine_similarity
+from vector_processing.embedding_models.text.base import TextEmbeddingModel
 
 try:
     from langdetect import LangDetectException, detect
@@ -101,7 +102,7 @@ def deduplicate_simple_array_field(
 
 
 def deduplicate_semantic_array_field(
-    values: list[str], embedding_model: Any | None = None
+    values: list[str], embedding_model: TextEmbeddingModel | None = None
 ) -> list[str]:
     """Deduplicate array field values using semantic similarity for cross-language support.
 
@@ -164,7 +165,7 @@ def deduplicate_semantic_array_field(
 
 def deduplicate_synonyms_language_aware(
     values: list[str],
-    embedding_model: Any | None = None,
+    embedding_model: TextEmbeddingModel | None = None,
     similarity_threshold: float = 0.85,
 ) -> list[str]:
     """Deduplicate synonyms preserving all language variants while deduplicating within each language.
