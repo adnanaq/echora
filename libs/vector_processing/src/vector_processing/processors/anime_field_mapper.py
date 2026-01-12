@@ -1,6 +1,6 @@
 # src/vector/anime_field_mapper.py
 """
-AnimeFieldMapper - Extract and map anime data fields to 13-vector semantic architecture
+AnimeFieldMapper - Extract and map anime data fields to semantic vector architecture
 
 Maps anime data from AnimeEntry models to appropriate text/visual embeddings
 for each vector type. Implements the comprehensive field mapping strategy
@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 
 class AnimeFieldMapper:
     """
-    Maps anime data fields to 11-vector semantic architecture.
+    Maps anime data fields to semantic vector architecture.
 
     Extracts and processes anime data for embedding into:
-    - 9 text vectors (BGE-M3, 1024-dim each) for semantic search
-    - 2 visual vectors (OpenCLIP ViT-L/14, 768-dim each) for image search
+    - Text vectors (BGE-M3, 1024-dim each) for semantic search
+    - Visual vectors (OpenCLIP ViT-L/14, 768-dim each) for image search
       * image_vector: covers, posters, banners, trailer thumbnails
       * character_image_vector: character images for character identification
     """
@@ -32,7 +32,7 @@ class AnimeFieldMapper:
 
     def map_anime_to_vectors(self, anime: AnimeEntry) -> dict[str, str | list[str]]:
         """
-        Map complete anime entry to all 13 vectors.
+        Map complete anime entry to all vectors.
 
         Args:
             anime: AnimeEntry model with comprehensive anime data
@@ -54,10 +54,8 @@ class AnimeFieldMapper:
         vector_data["episode_vector"] = self._extract_episode_content(anime)
 
         # Visual vectors (2)
-        vector_data["image_vector"] = self._extract_image_content(anime)
-        vector_data["character_image_vector"] = self._extract_character_image_content(
-            anime
-        )
+        vector_data["image_vector"] = self.extract_image_urls(anime)
+        vector_data["character_image_vector"] = self.extract_character_image_urls(anime)
 
         return vector_data
 
@@ -492,7 +490,7 @@ class AnimeFieldMapper:
     # VISUAL VECTOR EXTRACTORS (OpenCLIP ViT-L/14, 768-dim)
     # ============================================================================
 
-    def _extract_image_content(self, anime: AnimeEntry) -> list[str]:
+    def extract_image_urls(self, anime: AnimeEntry) -> list[str]:
         """Extract general anime image URLs (covers, posters, banners, trailers) excluding character images."""
         image_urls = []
 
@@ -532,7 +530,7 @@ class AnimeFieldMapper:
         unique_urls = list(dict.fromkeys(image_urls))
         return unique_urls
 
-    def _extract_character_image_content(self, anime: AnimeEntry) -> list[str]:
+    def extract_character_image_urls(self, anime: AnimeEntry) -> list[str]:
         """Extract character image URLs for character-specific visual embedding."""
         character_image_urls = []
 
@@ -581,34 +579,3 @@ class AnimeFieldMapper:
             return False
 
         return True
-
-    def _extract_image_url(self, anime: AnimeEntry) -> str:
-        """Extract the primary image URL for visual embedding using unified images field.
-
-        Args:
-            anime: AnimeEntry instance
-
-        Returns:
-            Primary image URL or empty string if not available
-        """
-        # Use unified images field with priority: covers -> posters -> banners
-        if hasattr(anime, "images") and anime.images:
-            # Priority 1: covers (best quality cover images)
-            if "covers" in anime.images and anime.images["covers"]:
-                for cover_url in anime.images["covers"]:
-                    if cover_url:  # Simple URL string check
-                        return cover_url
-
-            # Priority 2: posters (good quality poster images)
-            if "posters" in anime.images and anime.images["posters"]:
-                for poster_url in anime.images["posters"]:
-                    if poster_url:  # Simple URL string check
-                        return poster_url
-
-            # Priority 3: banners (fallback option)
-            if "banners" in anime.images and anime.images["banners"]:
-                for banner_url in anime.images["banners"]:
-                    if banner_url:  # Simple URL string check
-                        return banner_url
-
-        return ""

@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from crawl4ai import CrawlResult
 
+from common.models.anime import AnimeSeason
+from common.utils.datetime_utils import determine_anime_season
 from enrichment.crawlers.anime_planet_anime_crawler import (
-    _determine_season_from_date,
     _extract_json_ld,
     _extract_rank,
     _extract_slug_from_url,
@@ -161,11 +162,11 @@ def test_extract_studios():
 @pytest.mark.parametrize(
     "date_str, expected_season",
     [
-        ("2024-01-15", "WINTER"),
-        ("2024-04-20", "SPRING"),
-        ("2024-08-01", "SUMMER"),
-        ("2024-11-30", "FALL"),
-        ("2024-12-01", "WINTER"),
+        ("2024-01-15", AnimeSeason.WINTER),
+        ("2024-04-20", AnimeSeason.SPRING),
+        ("2024-08-01", AnimeSeason.SUMMER),
+        ("2024-11-30", AnimeSeason.FALL),
+        ("2024-12-01", AnimeSeason.WINTER),
         ("invalid-date", None),
         ("", None),
         ("2024-00-15", None),  # Invalid month: 00
@@ -173,7 +174,7 @@ def test_extract_studios():
     ],
 )
 def test_determine_season_from_date(date_str, expected_season):
-    assert _determine_season_from_date(date_str) == expected_season
+    assert determine_anime_season(date_str) == expected_season
 
 
 def test_process_related_anime():
@@ -428,13 +429,13 @@ async def test_fetch_animeplanet_anime_full_success(MockAsyncWebCrawler):
     assert data is not None
     assert data["slug"] == slug
     assert data["title"] == "Dandadan"
-    assert data["rank"] == 123
+    assert data["statistics"]["rank"] == 123
     assert data["studios"] == ["Science SARU"]
     assert data["title_japanese"] == "ダンダダン"
     assert data["poster"] == "http://example.com/poster.jpg"  # CSS has priority
     assert data["year"] == 2024
     assert data["season"] == "FALL"
-    assert data["status"] == "COMPLETED"
+    assert data["status"] == "FINISHED"
     assert data["genres"] == ["Action", "Comedy"]
     assert "related_anime" in data
     assert "related_count" in data
@@ -445,12 +446,12 @@ async def test_fetch_animeplanet_anime_full_success(MockAsyncWebCrawler):
 @pytest.mark.parametrize(
     "start_date, end_date, expected_status",
     [
-        ("2024-01-01", "2024-03-31", "COMPLETED"),
-        ("2023-10-01", None, "AIRING"),
-        (datetime.now(UTC).isoformat().replace("+00:00", "Z"), None, "AIRING"),
+        ("2024-01-01", "2024-03-31", "FINISHED"),
+        ("2023-10-01", None, "ONGOING"),
+        (datetime.now(UTC).isoformat().replace("+00:00", "Z"), None, "ONGOING"),
         # ("2099-01-01T00:00:00Z", None, "UPCOMING"), # This case is tested separately
         (None, None, "UNKNOWN"),
-        ("invalid-date", None, "AIRING"),  # Fallback due to ValueError
+        ("invalid-date", None, "UNKNOWN"),  # Now returns UNKNOWN due to parse error
     ],
 )
 @pytest.mark.usefixtures("mock_redis_cache_miss")

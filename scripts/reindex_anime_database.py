@@ -25,6 +25,7 @@ from qdrant_client.models import Record
 from qdrant_db.client import QdrantClient
 from vector_db_interface import VectorDocument
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from vector_processing.processors.text_processor import TextProcessor
 from vector_processing.processors.vision_processor import VisionProcessor
@@ -63,20 +64,27 @@ async def main() -> None:
 
     try:
         # Initialize embedding manager and processors using factory pattern
+        field_mapper = AnimeFieldMapper()
         text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(model=text_model, settings=settings)
+        text_processor = TextProcessor(
+            model=text_model, field_mapper=field_mapper, settings=settings
+        )
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
         image_downloader = ImageDownloader(
             cache_dir=settings.model_cache_dir or "cache"
         )
         vision_processor = VisionProcessor(
-            model=vision_model, downloader=image_downloader, settings=settings
+            model=vision_model,
+            downloader=image_downloader,
+            field_mapper=field_mapper,
+            settings=settings,
         )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
+            field_mapper=field_mapper,
             settings=settings,
         )
 
@@ -97,7 +105,7 @@ async def main() -> None:
 
         # Create fresh collection
         await client.create_collection()
-        print(" Created fresh collection with 11-vector configuration")
+        print(" Created fresh collection with multi-vector configuration")
 
         # Load anime data
         print(f" Loading anime data from {args.data_file}...")
@@ -134,10 +142,13 @@ async def main() -> None:
 
         # Start indexing with existing infrastructure
         print("\n Starting vector indexing using existing infrastructure...")
+        # Count text and image vectors dynamically
+        text_vectors = [v for v in settings.vector_names.keys() if "image" not in v]
+        image_vectors = [v for v in settings.vector_names.keys() if "image" in v]
         print(" This will generate:")
-        print("   - 9 text vectors (BGE-M3 1024D)")
-        print("   - 2 image vectors (OpenCLIP 768D)")
-        print("   - Total: 11 named vectors per entry")
+        print(f"   - {len(text_vectors)} text vectors (BGE-M3 1024D)")
+        print(f"   - {len(image_vectors)} image vectors (OpenCLIP 768D)")
+        print(f"   - Total: {len(settings.vector_names)} named vectors per entry")
         print("   - Comprehensive payload indexing")
 
         try:
@@ -203,7 +214,8 @@ async def main() -> None:
                     )
                     records, _ = scroll_result
 
-                    points_with_11_vectors = 0
+                    expected_vector_count = len(settings.vector_names)
+                    points_with_all_vectors = 0
                     points_with_character_images = 0
 
                     for sample_point in records:
@@ -217,20 +229,20 @@ async def main() -> None:
                         vector_count = len(vectors_dict) if vectors_dict else 0
                         has_character_images = "character_image_vector" in vectors_dict
 
-                        if vector_count == 11:
-                            points_with_11_vectors += 1
+                        if vector_count == expected_vector_count:
+                            points_with_all_vectors += 1
                         if has_character_images:
                             points_with_character_images += 1
 
                     print(
-                        f"   Points with 11 vectors: {points_with_11_vectors}/{len(records)}"
+                        f"   Points with all {expected_vector_count} vectors: {points_with_all_vectors}/{len(records)}"
                     )
                     print(
                         f"   Points with character images: {points_with_character_images}/{len(records)}"
                     )
 
-                    if points_with_11_vectors > 0:
-                        print(" 11-vector architecture working successfully!")
+                    if points_with_all_vectors > 0:
+                        print(" Multi-vector architecture working successfully!")
                         print(" Character image vectors being generated!")
                     else:
                         print("  Warning: Not all vectors being generated")

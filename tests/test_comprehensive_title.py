@@ -22,7 +22,7 @@ import requests
 from common.config import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor, VisionProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor, VisionProcessor
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.utils.image_downloader import ImageDownloader
 
@@ -132,8 +132,11 @@ def test_title_vector_comprehensive():
     )
 
     settings = get_settings()
+    field_mapper = AnimeFieldMapper()
     text_model = EmbeddingModelFactory.create_text_model(settings)
-    text_processor = TextProcessor(model=text_model, settings=settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Load anime database
     anime_database = load_anime_database()
@@ -144,8 +147,8 @@ def test_title_vector_comprehensive():
         return
 
     # True randomization with timestamp seed
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Get all title-related fields
     title_fields = get_title_related_fields()
@@ -171,118 +174,121 @@ def test_title_vector_comprehensive():
     # Initialize for stacked panels instead of table
     formatter.create_anime_test_panels()
 
-    for i, anime in enumerate(test_anime):
-        anime_title = anime.get("title", "Unknown")
+    # Initialize Qdrant client once before the loop
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
+    )
 
-        # Filter combinations to only those with available fields
-        valid_combinations = []
-        for combination in all_field_combinations:
-            # Check if all fields in this combination have values
-            if all(anime.get(field) for field in combination):
-                valid_combinations.append(combination)
+    try:
+        for i, anime in enumerate(test_anime):
+            anime_title = anime.get("title", "Unknown")
 
-        if not valid_combinations:
-            continue
+            # Filter combinations to only those with available fields
+            valid_combinations = []
+            for combination in all_field_combinations:
+                # Check if all fields in this combination have values
+                if all(anime.get(field) for field in combination):
+                    valid_combinations.append(combination)
 
-        # Randomly select a field combination for this anime
-        selected_combination = random.choice(valid_combinations)
-        combination_key = "+".join(selected_combination)
+            if not valid_combinations:
+                continue
 
-        # Create query using the selected field combination
-        text_query = create_field_combination_query(anime, selected_combination)
+            # Randomly select a field combination for this anime
+            selected_combination = random.choice(valid_combinations)
+            combination_key = "+".join(selected_combination)
 
-        if not text_query:
-            continue
+            # Create query using the selected field combination
+            text_query = create_field_combination_query(anime, selected_combination)
 
-        # Generate embedding
-        embedding = text_processor.encode_text(text_query)
+            if not text_query:
+                continue
 
-        if not embedding:
-            continue
+            # Generate embedding
+            embedding = text_processor.encode_text(text_query)
 
-        # Search title_vector using production method with raw similarity scores
-        try:
-            # Initialize Qdrant client with async factory pattern
-            async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant_url, api_key=settings.qdrant_api_key
-            )
-            qdrant_client = asyncio.run(
-                QdrantClient.create(settings, async_qdrant_client)
-            )
+            if not embedding:
+                continue
 
-            # Use search_single_vector to get real similarity scores
-            results = asyncio.run(
-                qdrant_client.search_single_vector(
-                    vector_name="title_vector", vector_data=embedding, limit=5
+            # Search title_vector using production method with raw similarity scores
+            try:
+                # Use search_single_vector to get real similarity scores
+                results = asyncio.run(
+                    qdrant_client.search_single_vector(
+                        vector_name="title_vector", vector_data=embedding, limit=5
+                    )
                 )
-            )
 
-            if results:
-                top_result = results[0]
-                top_title = top_result.get("title", "Unknown")
-                top_score = top_result.get("score", 0.0)
+                if results:
+                    top_result = results[0]
+                    top_title = top_result.get("title", "Unknown")
+                    top_score = top_result.get("score", 0.0)
 
-                # Enhanced validation
-                test_passed = False
-                synonym_match = False
-                if top_title == anime_title:
-                    test_passed = True
-                    passed_tests += 1
-                elif any(r.get("title") == anime_title for r in results[:3]):
-                    test_passed = True
-                    passed_tests += 1
+                    # Enhanced validation
+                    test_passed = False
+                    synonym_match = False
+                    if top_title == anime_title:
+                        test_passed = True
+                        passed_tests += 1
+                    elif any(r.get("title") == anime_title for r in results[:3]):
+                        test_passed = True
+                        passed_tests += 1
+                    else:
+                        # Check if any synonyms match
+                        anime_synonyms = anime.get("synonyms", [])
+                        for synonym in anime_synonyms:
+                            if any(
+                                synonym.lower() in r.get("title", "").lower()
+                                for r in results[:3]
+                            ):
+                                test_passed = True
+                                synonym_match = True
+                                passed_tests += 1
+                                break
+
+                    # Print detailed test result using stacked panels
+                    formatter.print_detailed_test_result(
+                        i + 1,
+                        anime,
+                        selected_combination,
+                        text_query,
+                        results,
+                        test_passed,
+                        synonym_match,
+                    )
+
+                    # Track field combination effectiveness
+                    if combination_key not in field_combination_stats:
+                        field_combination_stats[combination_key] = {
+                            "tests": 0,
+                            "passes": 0,
+                            "avg_score": 0.0,
+                        }
+
+                    field_combination_stats[combination_key]["tests"] += 1
+                    if test_passed:
+                        field_combination_stats[combination_key]["passes"] += 1
+                    field_combination_stats[combination_key]["avg_score"] += top_score
+
+                    total_tests += 1
                 else:
-                    # Check if any synonyms match
-                    anime_synonyms = anime.get("synonyms", [])
-                    for synonym in anime_synonyms:
-                        if any(
-                            synonym.lower() in r.get("title", "").lower()
-                            for r in results[:3]
-                        ):
-                            test_passed = True
-                            synonym_match = True
-                            passed_tests += 1
-                            break
+                    # Print detailed result for no results case
+                    formatter.print_detailed_test_result(
+                        i + 1, anime, selected_combination, text_query, [], False
+                    )
+                    total_tests += 1
 
-                # Print detailed test result using stacked panels
+            except Exception as e:
+                # Print error case
+                error_results = [{"title": f"Error: {str(e)}", "score": 0.0}]
                 formatter.print_detailed_test_result(
-                    i + 1,
-                    anime,
-                    selected_combination,
-                    text_query,
-                    results,
-                    test_passed,
-                    synonym_match,
-                )
-
-                # Track field combination effectiveness
-                if combination_key not in field_combination_stats:
-                    field_combination_stats[combination_key] = {
-                        "tests": 0,
-                        "passes": 0,
-                        "avg_score": 0.0,
-                    }
-
-                field_combination_stats[combination_key]["tests"] += 1
-                if test_passed:
-                    field_combination_stats[combination_key]["passes"] += 1
-                field_combination_stats[combination_key]["avg_score"] += top_score
-
-                total_tests += 1
-            else:
-                # Print detailed result for no results case
-                formatter.print_detailed_test_result(
-                    i + 1, anime, selected_combination, text_query, [], False
+                    i + 1, anime, selected_combination, text_query, error_results, False
                 )
                 total_tests += 1
-
-        except Exception as e:
-            # Print error case
-            error_results = [{"title": f"Error: {str(e)}", "score": 0.0}]
-            formatter.print_detailed_test_result(
-                i + 1, anime, selected_combination, text_query, error_results, False
-            )
-            total_tests += 1
+    finally:
+        asyncio.run(async_qdrant_client.close())
 
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
@@ -318,10 +324,14 @@ def test_image_vector_comprehensive():
     )
 
     settings = get_settings()
+    field_mapper = AnimeFieldMapper()
     vision_model = EmbeddingModelFactory.create_vision_model(settings)
     image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
     vision_processor = VisionProcessor(
-        model=vision_model, downloader=image_downloader, settings=settings
+        model=vision_model,
+        downloader=image_downloader,
+        field_mapper=field_mapper,
+        settings=settings,
     )
 
     # Load anime database
@@ -340,8 +350,8 @@ def test_image_vector_comprehensive():
         return
 
     # True randomization
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Randomly select 5 anime for testing
     test_anime = random.sample(anime_with_images, min(5, len(anime_with_images)))
@@ -358,6 +368,14 @@ def test_image_vector_comprehensive():
     passed_tests = 0
     total_tests = 0
     temp_files = []
+
+    # Initialize Qdrant client once before the loop
+    async_qdrant_client = AsyncQdrantClient(
+        url=settings.qdrant_url, api_key=settings.qdrant_api_key
+    )
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
+    )
 
     try:
         for i, (anime, available_images) in enumerate(test_anime):
@@ -387,14 +405,6 @@ def test_image_vector_comprehensive():
                     continue
 
                 # Search image_vector using production method with raw similarity scores
-                # Initialize Qdrant client with async factory pattern
-                async_qdrant_client = AsyncQdrantClient(
-                    url=settings.qdrant_url, api_key=settings.qdrant_api_key
-                )
-                qdrant_client = asyncio.run(
-                    QdrantClient.create(settings, async_qdrant_client)
-                )
-
                 # Use search_single_vector to get real similarity scores
                 results = asyncio.run(
                     qdrant_client.search_single_vector(
@@ -436,6 +446,9 @@ def test_image_vector_comprehensive():
                 continue
 
     finally:
+        # Close Qdrant client
+        asyncio.run(async_qdrant_client.close())
+
         # Clean up temporary files
         for temp_file in temp_files:
             try:
@@ -487,8 +500,23 @@ def test_multimodal_title_search():
         if hasattr(settings, "qdrant_api_key")
         else None,
     )
-    qdrant_client = QdrantClient(
-        settings=settings, async_qdrant_client=async_qdrant_client
+    qdrant_client = asyncio.run(
+        QdrantClient.create(settings, async_qdrant_client)
+    )
+
+    # Initialize processors once before the loop
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    downloader = ImageDownloader(settings.model_cache_dir)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
+    vision_processor = VisionProcessor(
+        model=vision_model,
+        downloader=downloader,
+        field_mapper=field_mapper,
+        settings=settings,
     )
 
     # Load anime database
@@ -509,8 +537,8 @@ def test_multimodal_title_search():
         return
 
     # True randomization
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Get all title-related fields
     title_fields = get_title_related_fields()
@@ -571,10 +599,7 @@ def test_multimodal_title_search():
                     image_data = base64.b64encode(f.read()).decode("utf-8")
                     image_b64 = f"data:image/jpeg;base64,{image_data}"
 
-                # Generate embeddings
-                text_processor = TextProcessor(settings=settings)
-                vision_processor = VisionProcessor(settings=settings)
-
+                # Generate embeddings (processors initialized before loop)
                 text_embedding = text_processor.encode_text(text_query)
                 image_embedding = vision_processor.encode_image(image_b64)
 
@@ -704,6 +729,9 @@ def test_multimodal_title_search():
                 continue
 
     finally:
+        # Close Qdrant client
+        asyncio.run(async_qdrant_client.close())
+
         # Clean up temporary files
         for temp_file in temp_files:
             try:

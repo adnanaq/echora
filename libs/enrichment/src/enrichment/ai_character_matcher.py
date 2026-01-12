@@ -35,7 +35,10 @@ from sentence_transformers import SentenceTransformer
 # Vision processing for character image similarity
 try:
     from common.config.settings import Settings
+    from vector_processing.embedding_models.factory import EmbeddingModelFactory
+    from vector_processing.field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
+    from vector_processing.utils.image_downloader import ImageDownloader
 
     from enrichment.similarity.ccip import CCIP
 
@@ -44,6 +47,9 @@ except ImportError:
     VisionProcessor = None  # ty: ignore[invalid-assignment]
     CCIP = None  # ty: ignore[invalid-assignment]
     Settings = None  # ty: ignore[invalid-assignment]
+    AnimeFieldMapper = None  # ty: ignore[invalid-assignment]
+    EmbeddingModelFactory = None  # ty: ignore[invalid-assignment]
+    ImageDownloader = None  # ty: ignore[invalid-assignment]
     VISION_AVAILABLE = False
 
 try:
@@ -114,13 +120,8 @@ class LanguageDetector:
     def __init__(self) -> None:
         if pykakasi is None:
             self.kks = None
-            self.conv = None
         else:
             self.kks = pykakasi.kakasi()
-            self.kks.setMode("H", "a")  # Hiragana to ASCII
-            self.kks.setMode("K", "a")  # Katakana to ASCII
-            self.kks.setMode("J", "a")  # Kanji to ASCII
-            self.conv = self.kks.getConverter()
 
     def detect_language(self, name: str) -> str:
         """Detect if name is Japanese, English, or mixed"""
@@ -145,11 +146,12 @@ class CharacterNamePreprocessor:
     """Advanced preprocessing for anime character names"""
 
     def __init__(self) -> None:
-        self.kks = pykakasi.kakasi()
-        self.kks.setMode("H", "a")
-        self.kks.setMode("K", "a")
-        self.kks.setMode("J", "a")
-        self.conv = self.kks.getConverter()
+        # Modern pykakasi API (v2.x+) - uses kakasi().convert() method
+        # See: https://pykakasi.readthedocs.io/en/latest/api.html
+        if pykakasi is not None:
+            self.kks = pykakasi.kakasi()
+        else:
+            self.kks = None
 
     def preprocess_name(self, name: str, source_language: str) -> dict[str, str]:
         """Generate multiple normalized representations of a character name"""
@@ -175,8 +177,8 @@ class CharacterNamePreprocessor:
         representations = {
             "original": name,
             "normalized": self._normalize_unicode(name),
-            "hiragana": jaconv.kata2hira(name) if self._is_katakana(name) else name,
-            "katakana": jaconv.hira2kata(name) if self._is_hiragana(name) else name,
+            "hiragana": jaconv.kata2hira(name) if jaconv is not None and self._is_katakana(name) else name,
+            "katakana": jaconv.hira2kata(name) if jaconv is not None and self._is_hiragana(name) else name,
             "romaji": self._to_romaji(name),
             "phonetic": self._get_phonetic_key(self._to_romaji(name)),
             "tokens": self._tokenize_name(name),
@@ -228,12 +230,18 @@ class CharacterNamePreprocessor:
         return representations
 
     def _to_romaji(self, japanese_text: str) -> str:
-        """Convert Japanese text to romaji"""
+        """Convert Japanese text to romaji using modern pykakasi API."""
+        if self.kks is None:
+            return japanese_text
+
         try:
-            result = self.conv.do(japanese_text)
-            return str(result)
+            # Modern API: convert() returns list of dicts with 'hepburn' key
+            result = self.kks.convert(japanese_text)
+            romaji = "".join(item["hepburn"] for item in result)
         except Exception:
             return japanese_text
+        else:
+            return romaji
 
     def _get_phonetic_key(self, text: str) -> str:
         """Generate phonetic representation"""
@@ -418,9 +426,23 @@ class EnsembleFuzzyMatcher:
 
         if self.enable_visual:
             try:
-                if Settings is not None and VisionProcessor is not None:
+                if (
+                    Settings is not None
+                    and VisionProcessor is not None
+                    and EmbeddingModelFactory is not None
+                    and ImageDownloader is not None
+                    and AnimeFieldMapper is not None
+                ):
                     settings = Settings()
-                    self.vision_processor = VisionProcessor(settings)  # ty: ignore[missing-argument,invalid-argument-type] TODO: Fix - VisionProcessor requires model and downloader
+                    field_mapper = AnimeFieldMapper()
+                    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+                    downloader = ImageDownloader(settings.model_cache_dir)
+                    self.vision_processor = VisionProcessor(
+                        model=vision_model,
+                        downloader=downloader,
+                        field_mapper=field_mapper,
+                        settings=settings,
+                    )
                     self.ccips = CCIP(settings)
                     logger.info(
                         f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"

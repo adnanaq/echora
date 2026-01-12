@@ -1,29 +1,35 @@
 #!/usr/bin/env python3
-"""
-AniDB Helper for AI Enrichment Integration
+"""AniDB Helper for AI Enrichment Integration.
 
-Helper function to fetch AniDB data using XML API for AI enrichment pipeline.
+Provides helper functions to fetch AniDB data using XML API for AI
+enrichment pipeline with production-level rate limiting and error handling.
 """
 
 import argparse
 import asyncio
 import gzip
-import hashlib
 import json
 import logging
 import os
 import sys
 import time
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, ClassVar
+from xml.etree.ElementTree import Element  # For type annotations only
 
 import aiohttp
+import defusedxml.ElementTree as ET
+from common.utils.datetime_utils import determine_anime_status
+from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+from enrichment.crawlers.utils import sanitize_output_path
 from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
+
+# AniDB CDN base URL for images
+ANIDB_CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 
 
 class CircuitBreakerState(Enum):
@@ -36,7 +42,17 @@ class CircuitBreakerState(Enum):
 
 @dataclass
 class AniDBRequestMetrics:
-    """Metrics for tracking AniDB API health and compliance."""
+    """Metrics for tracking AniDB API health and compliance.
+
+    Attributes:
+        total_requests: Total number of requests made.
+        successful_requests: Number of successful requests.
+        failed_requests: Number of failed requests.
+        consecutive_failures: Current streak of consecutive failures.
+        last_request_time: Unix timestamp of last request.
+        last_error_time: Unix timestamp of last error.
+        current_interval: Current adaptive request interval in seconds.
+    """
 
     total_requests: int = 0
     successful_requests: int = 0
@@ -48,29 +64,61 @@ class AniDBRequestMetrics:
 
     @property
     def success_rate(self) -> float:
-        """Calculate success rate as percentage."""
+        """Calculate success rate as percentage.
+
+        Returns:
+            Success rate from 0.0 to 100.0.
+        """
         if self.total_requests == 0:
             return 100.0
         return (self.successful_requests / self.total_requests) * 100.0
 
     @property
     def error_rate(self) -> float:
-        """Calculate error rate as percentage."""
+        """Calculate error rate as percentage.
+
+        Returns:
+            Error rate from 0.0 to 100.0.
+        """
         return 100.0 - self.success_rate
 
 
 class AniDBEnrichmentHelper:
-    """Enhanced AniDB XML API helper with production-level rate limiting and session management."""
+    """Enhanced AniDB XML API helper with production-level features.
+
+    Provides rate limiting, session management, circuit breaker pattern,
+    and comprehensive request metrics for robust AniDB API integration.
+
+    Attributes:
+        base_url: AniDB HTTP API endpoint URL.
+        client_name: Client identifier sent to AniDB.
+        client_version: Client version sent to AniDB.
+        session: Active aiohttp session for requests.
+        metrics: Request metrics for health monitoring.
+        circuit_breaker_state: Current circuit breaker state.
+    """
+
+    # XML namespace constants
+    XML_LANG_NAMESPACE = "{http://www.w3.org/XML/1998/namespace}lang"
+
+    # Language code normalization mapping
+    LANG_NORMALIZATION: ClassVar[dict[str, str]] = {"x-jat": "romaji"}
 
     def __init__(
         self, client_name: str | None = None, client_version: str | None = None
     ):
-        """
-        Initialize the AniDB enrichment helper and configure client metadata, session policy, rate limiting, retry behavior, circuit breaker, and request metrics.
+        """Initialize the AniDB enrichment helper.
 
-        Parameters:
-            client_name (Optional[str]): Client identifier sent to AniDB; if None the value is taken from the `ANIDB_CLIENT` environment variable or defaults to `"animeenrichment"`.
-            client_version (Optional[str]): Client version sent to AniDB; if None the value is taken from the `ANIDB_CLIENTVER` environment variable or defaults to `"1.0"`.
+        Configures client metadata, session policy, rate limiting, retry
+        behavior, circuit breaker, and request metrics.
+
+        Args:
+            client_name: Client identifier sent to AniDB. If None, uses
+                the ANIDB_CLIENT environment variable or defaults to
+                "animeenrichment".
+            client_version: Client version sent to AniDB. If None, uses
+                the ANIDB_CLIENTVER environment variable or defaults to
+                "1.0".
         """
         self.base_url = "http://api.anidb.net:9001/httpapi"
 
@@ -101,11 +149,10 @@ class AniDBEnrichmentHelper:
             os.getenv("ANIDB_CIRCUIT_BREAKER_TIMEOUT", "300")
         )
         self.circuit_breaker_state = CircuitBreakerState.CLOSED
-        self.circuit_breaker_opened_at = 0
+        self.circuit_breaker_opened_at = 0.0
 
         # Request tracking and metrics
         self.metrics = AniDBRequestMetrics()
-        self.recent_requests: set[str] = set()  # Track recent request fingerprints
         self._request_lock = asyncio.Lock()  # Ensure request serialization
 
         logger.info("AniDB helper initialized with enhanced features:")
@@ -115,14 +162,14 @@ class AniDBEnrichmentHelper:
         logger.info(f"  - Circuit breaker: {self.circuit_breaker_threshold} failures")
         logger.info(f"  - Max retries: {self.max_retries}")
 
-    def _generate_request_fingerprint(self, params: dict[str, Any]) -> str:
-        """Generate fingerprint for request deduplication."""
-        # Create a consistent hash of request parameters
-        param_str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-        return hashlib.md5(param_str.encode()).hexdigest()
-
     async def _check_circuit_breaker(self) -> bool:
-        """Check if circuit breaker allows requests."""
+        """Check if circuit breaker allows requests.
+
+        Transitions from OPEN to HALF_OPEN state after timeout expires.
+
+        Returns:
+            True if requests are allowed, False if blocked.
+        """
         current_time = time.time()
 
         if self.circuit_breaker_state == CircuitBreakerState.OPEN:
@@ -146,7 +193,14 @@ class AniDBEnrichmentHelper:
         return True  # CLOSED or HALF_OPEN allows requests
 
     def _update_circuit_breaker(self, success: bool) -> None:
-        """Update circuit breaker state based on request result."""
+        """Update circuit breaker state based on request result.
+
+        On success, transitions HALF_OPEN to CLOSED and resets failure count.
+        On failure, increments failure count and may open the circuit.
+
+        Args:
+            success: Whether the request succeeded.
+        """
         if success:
             if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
                 self.circuit_breaker_state = CircuitBreakerState.CLOSED
@@ -155,18 +209,31 @@ class AniDBEnrichmentHelper:
         else:
             self.metrics.consecutive_failures += 1
 
-            if (
+            if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
+                self.circuit_breaker_state = CircuitBreakerState.OPEN
+                self.circuit_breaker_opened_at = time.time()
+                logger.warning(
+                    "Circuit breaker moved back to OPEN state from HALF_OPEN"
+                )
+            elif (
                 self.circuit_breaker_state == CircuitBreakerState.CLOSED
                 and self.metrics.consecutive_failures >= self.circuit_breaker_threshold
             ):
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = int(time.time())
+                self.circuit_breaker_opened_at = time.time()
                 logger.error(
                     f"Circuit breaker OPENED after {self.metrics.consecutive_failures} consecutive failures"
                 )
 
     async def _adaptive_rate_limit(self, is_retry: bool = False) -> None:
-        """Enhanced rate limiting with adaptive delays and error recovery."""
+        """Apply adaptive rate limiting with error-aware delays.
+
+        Calculates delay based on consecutive failures using exponential
+        backoff. Adds extra delay for retry attempts.
+
+        Args:
+            is_retry: Whether this is a retry attempt. Defaults to False.
+        """
         current_time = time.time()
         time_since_last = current_time - self.metrics.last_request_time
 
@@ -195,10 +262,10 @@ class AniDBEnrichmentHelper:
         self.metrics.current_interval = adaptive_interval
 
     async def _ensure_session_health(self) -> None:
-        """
-        Ensure an active HTTP session for AniDB exists and recreate it if missing or expired.
+        """Ensure an active HTTP session exists and recreate if expired.
 
-        If the current session is absent or older than the configured maximum age, create a new aiohttp session via the cache manager and update the session creation timestamp.
+        Creates a new aiohttp session via the cache manager if the current
+        session is absent or older than the configured maximum age.
         """
         current_time = time.time()
 
@@ -240,24 +307,16 @@ class AniDBEnrichmentHelper:
             logger.debug("Created new AniDB session with enhanced settings")
 
     async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
-        """Make request with enhanced retry logic and error handling."""
-        # Generate request fingerprint for deduplication
-        fingerprint = self._generate_request_fingerprint(params)
+        """Make request with enhanced retry logic and error handling.
 
-        # Check for recent duplicate requests
-        if fingerprint in self.recent_requests:
-            logger.warning(
-                f"Skipping duplicate request (fingerprint: {fingerprint[:8]}...)"
-            )
-            return None
+        Implements exponential backoff with jitter and circuit breaker checks.
 
-        # Add to recent requests (with cleanup of old entries)
-        self.recent_requests.add(fingerprint)
-        if len(self.recent_requests) > 1000:  # Prevent memory growth
-            # Remove oldest half of entries (simple cleanup)
-            old_requests = list(self.recent_requests)[:500]
-            self.recent_requests -= set(old_requests)
+        Args:
+            params: Request parameters dictionary.
 
+        Returns:
+            Response content if successful, None otherwise.
+        """
         # Try request with retries
         last_exception = None
 
@@ -333,7 +392,21 @@ class AniDBEnrichmentHelper:
     async def _make_single_request(
         self, params: dict[str, Any], attempt: int
     ) -> str | None:
-        """Make a single request attempt to the AniDB API."""
+        """Make a single request attempt to the AniDB API.
+
+        Handles gzip decompression and various HTTP error codes including
+        503 (service unavailable) and 555 (banned).
+
+        Args:
+            params: Request parameters dictionary.
+            attempt: Current attempt number (0-indexed).
+
+        Returns:
+            Decoded response content if successful, None otherwise.
+
+        Raises:
+            RuntimeError: If session is not initialized.
+        """
         # Add required client parameters
         request_params = params.copy()
         request_params.update(
@@ -398,7 +471,7 @@ class AniDBEnrichmentHelper:
                 self.metrics.last_error_time = time.time()
                 # Force circuit breaker open for ban scenarios
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = int(time.time())
+                self.circuit_breaker_opened_at = time.time()
                 return None
 
             else:
@@ -409,7 +482,16 @@ class AniDBEnrichmentHelper:
                 return None
 
     def _decode_content(self, content: bytes) -> str | None:
-        """Decode response content with multiple encoding fallbacks."""
+        """Decode response content with multiple encoding fallbacks.
+
+        Tries utf-8, latin-1, cp1252, and iso-8859-1 encodings in order.
+
+        Args:
+            content: Raw bytes to decode.
+
+        Returns:
+            Decoded string if successful, None if all encodings fail.
+        """
         encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
         for encoding in encodings:
@@ -422,261 +504,608 @@ class AniDBEnrichmentHelper:
         return None
 
     async def _make_request(self, params: dict[str, Any]) -> str | None:
-        """Thread-safe request method with serialization lock."""
+        """Make a thread-safe request with serialization lock.
+
+        Args:
+            params: Request parameters dictionary.
+
+        Returns:
+            Response content if successful, None otherwise.
+        """
         async with self._request_lock:
             return await self._make_request_with_retry(params)
 
-    def _parse_anime_xml(self, xml_content: str) -> dict[str, Any]:
-        """Parse anime XML response into structured data."""
+    def _validate_anime_xml(self, root: Element) -> bool:
+        """Validate anime XML structure for critical fields.
+
+        Checks for required root element, id attribute, and critical
+        elements (type, episodecount, titles). Logs warnings for
+        missing optional elements.
+
+        Args:
+            root: Root XML element to validate.
+
+        Returns:
+            True if structure is valid, False if root element or id attribute
+                is invalid.
+        """
+        # Check root element
+        if root.tag != "anime":
+            logger.error(f"Invalid root element: expected 'anime', got '{root.tag}'")
+            return False
+
+        # Check required attribute
+        if root.get("id") is None:
+            logger.error("Missing required 'id' attribute on <anime> element")
+            return False
+
+        # Check critical elements exist
+        critical_elements = ["type", "episodecount", "titles"]
+        for elem_name in critical_elements:
+            if root.find(elem_name) is None:
+                logger.warning(f"Missing critical element: <{elem_name}>")
+
+        # Validate titles structure
+        titles_elem = root.find("titles")
+        if titles_elem is not None:
+            title_elements = titles_elem.findall("title")
+            if not title_elements:
+                logger.warning("No <title> elements found in <titles>")
+
+            # Check for at least one main title
+            main_titles = [t for t in title_elements if t.get("type") == "main"]
+            if not main_titles:
+                logger.warning("No main title found in <titles>")
+
+        # Validate episodes structure if present
+        episodes_elem = root.find("episodes")
+        if episodes_elem is not None:
+            for episode in episodes_elem.findall("episode"):
+                if episode.get("id") is None:
+                    logger.warning("Episode missing 'id' attribute")
+                if episode.find("epno") is None:
+                    logger.warning(
+                        f"Episode {episode.get('id', 'unknown')} missing <epno>"
+                    )
+
+        return True
+
+    async def _parse_anime_xml(
+        self, xml_content: str, enrich_characters: bool = True
+    ) -> dict[str, Any]:
+        """Parse anime XML response into structured data.
+
+        Extracts all anime metadata including titles, tags, ratings,
+        categories, creators, characters, episodes, and related anime.
+
+        Args:
+            xml_content: Raw XML string from AniDB API.
+            enrich_characters: If True, fetch detailed character data from web
+                in parallel batches. If False, return only XML character data.
+                Defaults to True.
+
+        Returns:
+            Structured anime data dictionary. Returns empty dict if parsing
+                fails.
+        """
         try:
             root = ET.fromstring(xml_content)
-        except ET.ParseError as e:
-            logger.error(f"XML parsing error: {str(e)}")
+        except ET.ParseError:
+            logger.exception("XML parsing error")
             return {}
 
-        # Extract basic anime information
-        type_elem = root.find("type")
-        episodecount_elem = root.find("episodecount")
+        # Validate XML structure
+        if not self._validate_anime_xml(root):
+            logger.error("XML validation failed - structure may have changed")
+            # Continue parsing but log the issue
+
+        # =====================================================================
+        # SCALAR FIELDS (alphabetical)
+        # =====================================================================
+
+        # Convert anime ID to int
+        anime_id_str = root.get("id")
+        anime_id = int(anime_id_str) if anime_id_str else None
+
+        # Extract basic elements
+        picture_elem = root.find("picture")
+        cover = (
+            f"{ANIDB_CDN_BASE}/{picture_elem.text}"
+            if picture_elem is not None and picture_elem.text
+            else None
+        )
+
         startdate_elem = root.find("startdate")
         enddate_elem = root.find("enddate")
-        description_elem = root.find("description")
-        url_elem = root.find("url")
-        picture_elem = root.find("picture")
+        end_date = enddate_elem.text if enddate_elem is not None else None
 
-        anime_data: dict[str, Any] = {
-            "anidb_id": root.get("id"),
-            "type": type_elem.text if type_elem is not None else None,
-            "episodecount": (
-                episodecount_elem.text if episodecount_elem is not None else None
-            ),
-            "startdate": startdate_elem.text if startdate_elem is not None else None,
-            "enddate": enddate_elem.text if enddate_elem is not None else None,
-            "description": (
-                description_elem.text if description_elem is not None else None
-            ),
-            "url": url_elem.text if url_elem is not None else None,
-            "picture": picture_elem.text if picture_elem is not None else None,
-        }
+        episodecount_elem = root.find("episodecount")
+        episodes_count = (
+            int(episodecount_elem.text)
+            if episodecount_elem is not None
+            and episodecount_elem.text
+            and episodecount_elem.text.isdigit()
+            else 0
+        )
+
+        start_date = startdate_elem.text if startdate_elem is not None else None
+
+        status = determine_anime_status(start_date, end_date)
+
+        description_elem = root.find("description")
+        synopsis = description_elem.text if description_elem is not None else None
 
         # Extract titles
+        title = None
+        title_english = None
+        title_japanese = None
+        title_others: dict[
+            str, str
+        ] = {}  # Official titles in other languages {lang: title}
         titles_element = root.find("titles")
-        titles: dict[str, str | list[str] | None] = {}
         if titles_element is not None:
-            for title in titles_element.findall("title"):
-                title_type = title.get("type", "unknown")
-                lang = title.get("xml:lang", "unknown")
+            for title_elem in titles_element.findall("title"):
+                title_type = title_elem.get("type", "unknown")
+                lang = title_elem.get(self.XML_LANG_NAMESPACE, "unknown")
 
                 if title_type == "main":
-                    titles["main"] = title.text
+                    title = title_elem.text
                 elif title_type == "official":
                     if lang == "en":
-                        titles["english"] = title.text
+                        title_english = title_elem.text
                     elif lang == "ja":
-                        titles["japanese"] = title.text
-                elif title_type == "synonym":
-                    if "synonyms" not in titles:
-                        titles["synonyms"] = []
-                    if title.text:
-                        synonyms = cast(list[str], titles["synonyms"])
-                        synonyms.append(title.text)
-        anime_data["titles"] = titles
+                        title_japanese = title_elem.text
+                    else:
+                        # Preserve official titles in other languages with lang code as key
+                        if title_elem.text:
+                            title_others[lang] = title_elem.text
 
-        # Extract tags
-        tags_element = root.find("tags")
-        tags = []
-        if tags_element is not None:
-            for tag in tags_element.findall("tag"):
-                name_element = tag.find("name")
-                description_element = tag.find("description")
-                if name_element is not None:
-                    tag_data = {
-                        "id": tag.get("id"),
-                        "name": name_element.text,
-                        "count": int(tag.get("count", 0)),
-                        "weight": int(tag.get("weight", 0)),
-                    }
-                    if description_element is not None:
-                        tag_data["description"] = description_element.text
-                    tags.append(tag_data)
-        anime_data["tags"] = tags
+        type_elem = root.find("type")
+        anime_type = type_elem.text if type_elem is not None else None
 
-        # Extract ratings
-        ratings_element = root.find("ratings")
-        ratings = {}
-        if ratings_element is not None:
-            permanent = ratings_element.find("permanent")
-            temporary = ratings_element.find("temporary")
-            review = ratings_element.find("review")
+        url_elem = root.find("url")
+        url = url_elem.text if url_elem is not None else None
 
-            if permanent is not None:
-                ratings["permanent"] = {
-                    "value": float(permanent.text) if permanent.text else None,
-                    "count": int(permanent.get("count", 0)),
-                }
-            if temporary is not None:
-                ratings["temporary"] = {
-                    "value": float(temporary.text) if temporary.text else None,
-                    "count": int(temporary.get("count", 0)),
-                }
-            if review is not None:
-                ratings["review"] = {
-                    "value": float(review.text) if review.text else None,
-                    "count": int(review.get("count", 0)),
-                }
-        anime_data["ratings"] = ratings
+        # =====================================================================
+        # ARRAY FIELDS (alphabetical)
+        # =====================================================================
 
         # Extract categories/genres
         categories_element = root.find("categories")
-        categories = []
-        if categories_element is not None:
-            for category in categories_element.findall("category"):
-                name_element = category.find("name")
-                if name_element is not None:
-                    categories.append(
-                        {
-                            "id": category.get("id"),
-                            "name": name_element.text,
-                            "weight": int(category.get("weight", 0)),
-                            "hentai": category.get("hentai") == "true",
-                        }
-                    )
-        anime_data["categories"] = categories
+        categories = [
+            {
+                "id": cat.get("id"),
+                "name": name.text,
+                "weight": int(cat.get("weight", 0)),
+                "hentai": cat.get("hentai") == "true",
+            }
+            for cat in (
+                categories_element.findall("category")
+                if categories_element is not None
+                else []
+            )
+            if (name := cat.find("name")) is not None
+        ]
+
+        # Extract characters - basic parsing first (no network calls)
+        characters_element = root.find("characters")
+        character_details = []
+        character_ids_to_enrich = []
+        if characters_element is not None:
+            for character in characters_element.findall("character"):
+                # Parse basic character data from XML (synchronous, fast)
+                char_data = self._parse_character_xml_basic(character)
+                character_details.append(char_data)
+                # Collect IDs for batch enrichment
+                if enrich_characters and char_data.get("id"):
+                    character_ids_to_enrich.append(char_data["id"])
+
+        # Batch fetch character details in parallel if enrichment enabled
+        if enrich_characters and character_ids_to_enrich:
+            logger.info(
+                f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
+            )
+            enriched_char_data = await self._batch_fetch_character_details(
+                character_ids_to_enrich
+            )
+            # Merge enriched data back into character_details
+            for char_data in character_details:
+                char_id = char_data.get("id")
+                if char_id and char_id in enriched_char_data:
+                    # Merge: crawler provides supplementary data (official_names, abilities, etc.)
+                    # Then XML overwrites with authoritative data (name, gender, description, etc.)
+                    # This preserves XML's comprehensive data while adding crawler's unique fields
+                    enriched_char_data[char_id].update(char_data)
+                    char_data.clear()
+                    char_data.update(enriched_char_data[char_id])
 
         # Extract creator information
         creators_element = root.find("creators")
-        creators = []
-        if creators_element is not None:
-            for creator in creators_element.findall("name"):
-                creators.append(
-                    {
-                        "id": creator.get("id"),
-                        "name": creator.text,
-                        "type": creator.get("type"),
-                    }
-                )
-        anime_data["creators"] = creators
+        creators = [
+            {
+                "id": int(id_str)
+                if (id_str := creator.get("id")) and id_str.isdigit()
+                else None,
+                "name": creator.text,
+                "role": creator.get("type"),
+            }
+            for creator in (
+                creators_element.findall("name") if creators_element is not None else []
+            )
+        ]
 
-        # Extract characters
-        characters_element = root.find("characters")
-        characters = []
-        if characters_element is not None:
-            for character in characters_element.findall("character"):
-                char_data: dict[str, Any] = {
-                    "id": character.get("id"),
-                    "type": character.get("type"),
-                    "update": character.get("update"),
+        # Extract episodes
+        episodes_element = root.find("episodes")
+        episode_details: list[dict[str, Any]] = []
+        if episodes_element is not None:
+            for episode_elem in episodes_element.findall("episode"):
+                episode_details.append(self._parse_episode_xml(episode_elem))
+
+        # Extract related anime
+        related_anime_element = root.find("relatedanime")
+        related_anime = (
+            [
+                {
+                    "url": f"https://anidb.net/anime/{elem.get('id')}",
+                    "relation": elem.get("type"),
+                    "title": elem.text.strip() if elem.text else None,
                 }
+                for elem in related_anime_element.findall("anime")
+            ]
+            if related_anime_element is not None
+            else []
+        )
 
-                # Get character details
-                name_element = character.find("name")
-                if name_element is not None:
-                    char_data["name"] = name_element.text
+        # Extract synonyms from titles
+        synonyms = []
+        if titles_element is not None:
+            for title_elem in titles_element.findall("title"):
+                title_type = title_elem.get("type", "unknown")
+                if title_type in ["synonym", "short"]:
+                    if title_elem.text:
+                        synonyms.append(title_elem.text)
 
-                gender_element = character.find("gender")
-                if gender_element is not None:
-                    char_data["gender"] = gender_element.text
+        # Extract tags (simple list of names)
+        tags_element = root.find("tags")
+        tags = [
+            name.text
+            for tag in (tags_element.findall("tag") if tags_element is not None else [])
+            if (name := tag.find("name")) is not None and name.text
+        ]
 
-                char_type_element = character.find("charactertype")
-                if char_type_element is not None:
-                    char_data["character_type"] = char_type_element.text
-                    char_data["character_type_id"] = char_type_element.get("id")
+        # =====================================================================
+        # OBJECT/DICT FIELDS (alphabetical)
+        # =====================================================================
 
-                description_element = character.find("description")
-                if description_element is not None:
-                    char_data["description"] = description_element.text
+        # Extract external links from resources
+        external_links: dict[str, str | None] = {
+            "official_website": None,
+            "wikipedia_en": None,
+            "wikipedia_jp": None,
+        }
+        resources_element = root.find("resources")
+        if resources_element is not None:
+            # Use dict for O(1) type lookup instead of if-elif chain
+            resource_handlers: dict[str, tuple[str, str, str | None]] = {
+                "4": ("official_website", "url", None),
+                "6": ("wikipedia_en", "identifier", "https://en.wikipedia.org/wiki/"),
+                "7": ("wikipedia_jp", "identifier", "https://ja.wikipedia.org/wiki/"),
+            }
+            for resource in resources_element.findall("resource"):
+                resource_type = resource.get("type")
+                if resource_type not in resource_handlers:
+                    continue
+                key, tag, url_prefix = resource_handlers[resource_type]
+                # Get first externalentity's value
+                entity = resource.find("externalentity")
+                if entity is not None:
+                    value_elem = entity.find(tag)
+                    if value_elem is not None and value_elem.text:
+                        external_links[key] = (
+                            f"{url_prefix}{value_elem.text}"
+                            if url_prefix
+                            else value_elem.text
+                        )
 
-                    # Character rating
-                rating_element = character.find("rating")
-                if rating_element is not None:
-                    char_data["rating"] = (
-                        float(rating_element.text) if rating_element.text else None
-                    )
-                    char_data["rating_votes"] = int(rating_element.get("votes", 0))
+        # Extract ratings (map permanent to statistics)
+        ratings_element = root.find("ratings")
+        statistics = {}
+        if ratings_element is not None:
+            permanent = ratings_element.find("permanent")
+            if permanent is not None:
+                statistics["score"] = float(permanent.text) if permanent.text else None
+                statistics["scored_by"] = int(permanent.get("count", 0))
 
-                # Character picture
-                picture_element = character.find("picture")
-                if picture_element is not None:
-                    char_data["picture"] = picture_element.text
-
-                # Voice actor (seiyuu)
-                seiyuu_element = character.find("seiyuu")
-                if seiyuu_element is not None:
-                    char_data["seiyuu"] = {
-                        "name": seiyuu_element.text,
-                        "id": seiyuu_element.get("id"),
-                        "picture": seiyuu_element.get("picture"),
-                    }
-
-                characters.append(char_data)
-
-        anime_data["characters"] = characters
+        # Construct final anime_data dict with organized structure
+        anime_data: dict[str, Any] = {
+            # SCALAR FIELDS (alphabetical)
+            "cover": cover,
+            "end_date": end_date,
+            "episodes": episodes_count,
+            "id": anime_id,
+            "start_date": start_date,
+            "status": status,
+            "synopsis": synopsis,
+            "title": title,
+            "title_english": title_english,
+            "title_japanese": title_japanese,
+            "type": anime_type,
+            "url": url,
+            # ARRAY FIELDS (alphabetical)
+            "categories": categories,
+            "character_details": character_details,
+            "creators": creators,
+            "episode_details": episode_details,
+            "related_anime": related_anime,
+            "synonyms": synonyms,
+            "tags": tags,
+            # OBJECT/DICT FIELDS (alphabetical)
+            "external_links": external_links,
+            "statistics": statistics,
+            "title_others": title_others,
+        }
 
         return anime_data
 
-    def _parse_episode_xml(self, xml_content: str) -> dict[str, Any]:
-        """Parse episode XML response into structured data."""
-        try:
-            root = ET.fromstring(xml_content)
-        except ET.ParseError as e:
-            logger.error(f"XML parsing error: {str(e)}")
-            return {}
+    def _parse_episode_xml(self, episode_element: Element) -> dict[str, Any]:
+        """Parse episode XML element into structured data.
 
-        epno_elem = root.find("epno")
-        length_elem = root.find("length")
-        airdate_elem = root.find("airdate")
-        rating_elem = root.find("rating")
-        votes_elem = root.find("votes")
-        summary_elem = root.find("summary")
+        Extracts episode metadata from embedded anime response including
+        episode number, type, length, air date, rating, titles, and
+        streaming links.
+
+        Args:
+            episode_element: Episode XML element from anime response.
+
+        Returns:
+            Structured episode data with id, episode_number, episode_type,
+                length, air_date, rating, titles, and streaming.
+        """
+        epno_elem = episode_element.find("epno")
+        length_elem = episode_element.find("length")
+        airdate_elem = episode_element.find("airdate")
+        rating_elem = episode_element.find("rating")
+        summary_elem = episode_element.find("summary")
+
+        # Parse episode type first to determine episode_number parsing
+        episode_type: int | None = None
+        if epno_elem is not None:
+            type_str = epno_elem.get("type")
+            if type_str and type_str.isdigit():
+                episode_type = int(type_str)
+
+        # Parse episode_number: convert to int if episode_type is 1 (regular episodes)
+        episode_number: int | str | None = None
+        if epno_elem is not None and epno_elem.text:
+            if episode_type == 1:
+                # Regular episode - parse as int
+                try:
+                    episode_number = int(epno_elem.text)
+                except ValueError:
+                    episode_number = (
+                        epno_elem.text
+                    )  # Keep as string if conversion fails
+            else:
+                # Special, OP, ED, etc. - keep as string
+                episode_number = epno_elem.text
+
+        # Parse episode ID safely
+        ep_id_str = episode_element.get("id")
+        ep_id: int | None = (
+            int(ep_id_str) if ep_id_str and ep_id_str.isdigit() else None
+        )
+
+        # Parse episode length safely
+        length: int | None = (
+            int(length_elem.text)
+            if length_elem is not None
+            and length_elem.text
+            and length_elem.text.isdigit()
+            else None
+        )
+
+        # Parse rating votes safely
+        rating_votes = (
+            int(rating_elem.get("votes", "0"))
+            if rating_elem is not None and (rating_elem.get("votes") or "").isdigit()
+            else 0
+        )
 
         episode_data: dict[str, Any] = {
-            "anidb_id": root.get("id"),
-            "anime_id": root.get("aid"),
-            "episode_number": epno_elem.text if epno_elem is not None else None,
-            "length": (
-                int(length_elem.text)
-                if length_elem is not None and length_elem.text
-                else None
-            ),
-            "airdate": airdate_elem.text if airdate_elem is not None else None,
+            "id": ep_id,
+            "update": episode_element.get("update"),
+            "episode_number": episode_number,
+            "episode_type": episode_type,
+            "length": length,
+            "air_date": airdate_elem.text if airdate_elem is not None else None,
             "rating": (
                 float(rating_elem.text)
                 if rating_elem is not None and rating_elem.text
                 else None
             ),
-            "votes": (
-                int(votes_elem.text)
-                if votes_elem is not None and votes_elem.text
-                else None
-            ),
+            "rating_votes": rating_votes,
             "summary": summary_elem.text if summary_elem is not None else None,
         }
 
         # Extract episode titles
-        titles: dict[str, str | list[dict[str, str]] | None] = {}
-        for title in root.findall("title"):
-            lang = title.get("xml:lang") or title.get(
-                "{http://www.w3.org/XML/1998/namespace}lang", "unknown"
-            )
-            if lang == "en":
-                titles["english"] = title.text
-            elif lang == "ja":
-                titles["japanese"] = title.text
-            elif lang == "x-jat":
-                titles["romaji"] = title.text
-            else:
-                if "other" not in titles:
-                    titles["other"] = []
-                if title.text:
-                    other_titles = cast(list[dict[str, str]], titles["other"])
-                    other_titles.append(
-                        {"lang": lang or "unknown", "title": title.text}
-                    )
-        episode_data["titles"] = titles
+        ep_titles: dict[str, str | None] = {}
+        for ep_title in episode_element.findall("title"):
+            ep_lang = ep_title.get(self.XML_LANG_NAMESPACE, "unknown")
+            if ep_title.text:
+                # Normalize language codes (e.g., x-jat → romaji)
+                normalized_lang = self.LANG_NORMALIZATION.get(ep_lang, ep_lang)
+                ep_titles[normalized_lang] = ep_title.text
+        episode_data["titles"] = ep_titles
+
+        # Extract episode streaming links from resources
+        streaming: dict[str, str] = {}
+        ep_resources_element = episode_element.find("resources")
+        if ep_resources_element is not None:
+            for ep_resource_elem in ep_resources_element.findall("resource"):
+                resource_type = ep_resource_elem.get("type")
+
+                # Type 28 = Crunchyroll
+                if resource_type == "28":
+                    external_entity_elem = ep_resource_elem.find("externalentity")
+                    if external_entity_elem is not None:
+                        identifier_elem = external_entity_elem.find("identifier")
+                        if identifier_elem is not None and identifier_elem.text:
+                            streaming["crunchyroll"] = (
+                                f"https://www.crunchyroll.com/watch/{identifier_elem.text}"
+                            )
+
+        episode_data["streaming"] = streaming
 
         return episode_data
 
+    def _parse_character_xml_basic(self, character: Element) -> dict[str, Any]:
+        """Parse character XML element into basic structured data.
+
+        Extracts character metadata from XML without network enrichment.
+        For performance, character detail enrichment is done separately in batch.
+
+        Args:
+            character: Character XML element to parse.
+
+        Returns:
+            Basic character data including id, type, name, gender,
+                description, rating, picture, and voice_actor from XML only.
+        """
+        # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
+        raw_type = character.get("type")
+        char_type = None
+        if raw_type:
+            if "main character" in raw_type.lower():
+                char_type = "Main"
+            elif "secondary character" in raw_type.lower():
+                char_type = "Secondary"
+            elif "appears in" in raw_type.lower():
+                char_type = "Minor"
+            else:
+                char_type = raw_type  # Keep original if unknown pattern
+
+        # Convert character ID to int
+        character_id_str = character.get("id")
+        character_id_int = int(character_id_str) if character_id_str else None
+
+        char_data: dict[str, Any] = {
+            "id": character_id_int,
+            "type": char_type,
+            "update": character.get("update"),
+        }
+
+        # Get character details from XML
+        name_element = character.find("name")
+        if name_element is not None:
+            char_data["name_main"] = name_element.text
+
+        gender_element = character.find("gender")
+        if gender_element is not None:
+            char_data["gender"] = gender_element.text
+
+        char_type_element = character.find("charactertype")
+        if char_type_element is not None:
+            char_data["character_type"] = char_type_element.text
+            char_type_id = char_type_element.get("id")
+            char_data["character_type_id"] = int(char_type_id) if char_type_id else None
+
+        description_element = character.find("description")
+        if description_element is not None:
+            char_data["description"] = description_element.text
+
+        # Character rating
+        rating_element = character.find("rating")
+        if rating_element is not None:
+            char_data["rating"] = (
+                float(rating_element.text) if rating_element.text else None
+            )
+            char_data["rating_votes"] = int(rating_element.get("votes", 0))
+
+        # Character picture - convert to full CDN URL
+        picture_element = character.find("picture")
+        if picture_element is not None and picture_element.text:
+            char_data["picture"] = f"{ANIDB_CDN_BASE}/{picture_element.text}"
+
+        # Voice actor
+        seiyuu_element = character.find("seiyuu")
+        if seiyuu_element is not None:
+            seiyuu_id = seiyuu_element.get("id")
+            seiyuu_picture = seiyuu_element.get("picture")
+            char_data["voice_actor"] = {
+                "name": seiyuu_element.text,
+                "id": int(seiyuu_id) if seiyuu_id else None,
+                "picture": (
+                    f"{ANIDB_CDN_BASE}/{seiyuu_picture}" if seiyuu_picture else None
+                ),
+            }
+
+        return char_data
+
+    async def _batch_fetch_character_details(
+        self, character_ids: list[int], max_concurrent: int = 3
+    ) -> dict[int, dict[str, Any]]:
+        """Fetch detailed character data in parallel batches.
+
+        Fetches character details from AniDB character pages with controlled
+        concurrency to respect rate limits. Uses semaphore to limit parallel
+        requests.
+
+        Args:
+            character_ids: List of character IDs to fetch details for.
+            max_concurrent: Maximum number of concurrent requests (default: 3).
+
+        Returns:
+            Dictionary mapping character ID to enriched character data.
+        """
+        if not character_ids:
+            return {}
+
+        enriched_data: dict[int, dict[str, Any]] = {}
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def fetch_with_semaphore(
+            char_id: int,
+        ) -> tuple[int, dict[str, Any] | None]:
+            """Fetch character data with semaphore control."""
+            async with semaphore:
+                try:
+                    detailed_data = await fetch_anidb_character(char_id)
+                    if detailed_data:
+                        logger.info(f"Enriched character {char_id} with detailed data")
+                        return (char_id, detailed_data)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to fetch detailed data for character {char_id}: {e}"
+                    )
+                return (char_id, None)
+
+        # Fetch all character details in parallel with controlled concurrency
+        tasks = [fetch_with_semaphore(char_id) for char_id in character_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Build enriched data dictionary
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.error(f"Character fetch task failed: {result}")
+                continue
+            char_id, char_data = result
+            if char_data:
+                enriched_data[char_id] = char_data
+
+        logger.info(
+            f"Batch character enrichment: {len(enriched_data)}/{len(character_ids)} succeeded"
+        )
+        return enriched_data
+
     async def get_anime_by_id(self, anidb_id: int) -> dict[str, Any] | None:
-        """Get anime information by AniDB ID."""
+        """Get anime information by AniDB ID.
+
+        Args:
+            anidb_id: AniDB anime ID.
+
+        Returns:
+            Parsed anime data if successful, None if not found or on error.
+        """
         try:
             params = {"request": "anime", "aid": anidb_id}
             xml_response = await self._make_request(params)
@@ -694,54 +1123,20 @@ class AniDBEnrichmentHelper:
             # Log first 200 chars of response for debugging
             logger.info(f"AniDB response preview: {xml_response[:200]}")
 
-            return self._parse_anime_xml(xml_response)
-        except Exception as e:
-            logger.error(f"Failed to fetch anime by AniDB ID {anidb_id}: {e}")
-            return None
-
-    async def get_episode_by_id(self, episode_id: int) -> dict[str, Any] | None:
-        """Get episode information by AniDB episode ID."""
-        try:
-            params = {"request": "episode", "eid": episode_id}
-            xml_response = await self._make_request(params)
-
-            if not xml_response or "<error" in xml_response:
-                logger.warning(f"No data or error for AniDB episode ID: {episode_id}")
-                return None
-
-            return self._parse_episode_xml(xml_response)
-        except Exception as e:
-            logger.error(f"Failed to fetch episode by AniDB ID {episode_id}: {e}")
-            return None
-
-    async def search_anime_by_name(
-        self, anime_name: str
-    ) -> list[dict[str, Any]] | None:
-        """Search anime by name using AniDB API."""
-        try:
-            params = {"request": "anime", "aname": anime_name}
-            xml_response = await self._make_request(params)
-
-            if not xml_response or "<error" in xml_response:
-                logger.warning(f"No search results for: {anime_name}")
-                return None
-
-            # AniDB search returns single anime, not a list
-            anime_data = self._parse_anime_xml(xml_response)
-            return [anime_data] if anime_data else None
-        except Exception as e:
-            logger.error(f"Failed to search anime by name '{anime_name}': {e}")
+            return await self._parse_anime_xml(xml_response)
+        except Exception:
+            logger.exception(f"Failed to fetch anime by AniDB ID {anidb_id}")
             return None
 
     async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
-        """
-        Fetch comprehensive AniDB data for an anime by AniDB ID.
+        """Fetch comprehensive AniDB data for an anime by ID.
 
         Args:
-            anidb_id: The AniDB anime ID
+            anidb_id: The AniDB anime ID.
 
         Returns:
-            Dict containing comprehensive AniDB data or None if not found
+            Comprehensive AniDB data including metadata, characters, episodes,
+                and related anime. None if not found.
         """
         try:
             anime_data = await self.get_anime_by_id(anidb_id)
@@ -752,71 +1147,22 @@ class AniDBEnrichmentHelper:
             logger.info(f"Successfully fetched AniDB data for ID: {anidb_id}")
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error in fetch_all_data for AniDB ID {anidb_id}: {e}")
+        except Exception:
+            logger.exception(f"Error in fetch_all_data for AniDB ID {anidb_id}")
             return None
 
-    def get_health_status(self) -> dict[str, Any]:
-        """Get comprehensive health and performance metrics."""
-        current_time = time.time()
-
-        return {
-            "session_health": {
-                "session_active": self.session is not None,
-                "session_age": (
-                    current_time - self._session_created_at if self.session else 0
-                ),
-                "session_max_age": self._session_max_age,
-            },
-            "circuit_breaker": {
-                "state": self.circuit_breaker_state.value,
-                "consecutive_failures": self.metrics.consecutive_failures,
-                "threshold": self.circuit_breaker_threshold,
-                "opened_at": self.circuit_breaker_opened_at,
-                "time_until_retry": (
-                    max(
-                        0,
-                        self.circuit_breaker_timeout
-                        - (current_time - self.circuit_breaker_opened_at),
-                    )
-                    if self.circuit_breaker_state == CircuitBreakerState.OPEN
-                    else 0
-                ),
-            },
-            "rate_limiting": {
-                "current_interval": self.metrics.current_interval,
-                "min_interval": self.min_request_interval,
-                "max_interval": self.max_request_interval,
-                "time_since_last_request": current_time
-                - self.metrics.last_request_time,
-                "ready_for_request": (current_time - self.metrics.last_request_time)
-                >= self.metrics.current_interval,
-            },
-            "request_metrics": {
-                "total_requests": self.metrics.total_requests,
-                "successful_requests": self.metrics.successful_requests,
-                "failed_requests": self.metrics.failed_requests,
-                "success_rate": self.metrics.success_rate,
-                "error_rate": self.metrics.error_rate,
-                "last_error_time": self.metrics.last_error_time,
-            },
-            "deduplication": {
-                "recent_requests_tracked": len(self.recent_requests),
-                "max_tracked_requests": 1000,
-            },
-            "configuration": {
-                "client_name": self.client_name,
-                "client_version": self.client_version,
-                "max_retries": self.max_retries,
-                "error_cooldown_base": self.error_cooldown_base,
-            },
-        }
-
     async def reset_circuit_breaker(self) -> bool:
-        """Manually reset circuit breaker (admin function)."""
+        """Manually reset circuit breaker to CLOSED state.
+
+        Admin function to force recovery after issues are resolved.
+
+        Returns:
+            True if state was changed, False if already CLOSED.
+        """
         if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
             old_state = self.circuit_breaker_state
             self.circuit_breaker_state = CircuitBreakerState.CLOSED
+            self.circuit_breaker_opened_at = 0.0
             self.metrics.consecutive_failures = 0
             logger.info(
                 f"Circuit breaker manually reset from {old_state.value} to CLOSED"
@@ -825,10 +1171,10 @@ class AniDBEnrichmentHelper:
         return False
 
     async def close(self) -> None:
-        """
-        Close and clean up the helper's internal HTTP session.
+        """Close and clean up the helper's internal HTTP session.
 
-        If an active session exists, close it, clear the session reference, and reset the session creation timestamp.
+        Closes the active session if it exists, clears the session
+        reference, and resets the session creation timestamp.
         """
         if self.session:
             try:
@@ -841,11 +1187,10 @@ class AniDBEnrichmentHelper:
                 self._session_created_at = 0
 
     async def __aenter__(self) -> "AniDBEnrichmentHelper":
-        """
-        Enter asynchronous context and return the helper instance.
+        """Enter asynchronous context and return the helper instance.
 
         Returns:
-            AniDBEnrichmentHelper: The helper instance to use within an `async with` block.
+            The helper instance for use within an async with block.
         """
         return self
 
@@ -855,32 +1200,45 @@ class AniDBEnrichmentHelper:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        """
-        Ensure the helper's HTTP session is closed when exiting an async context.
+        """Close the HTTP session when exiting async context.
 
-        This awaits close() to release network resources.
+        Awaits close() to release network resources.
+
+        Args:
+            exc_type: Exception type if an exception was raised.
+            exc_val: Exception value if an exception was raised.
+            exc_tb: Exception traceback if an exception was raised.
 
         Returns:
-            False: do not suppress exceptions raised within the context.
+            False to not suppress exceptions raised within the context.
         """
         await self.close()
         return False
 
 
 async def main() -> int:
-    """
-    Command-line test driver that fetches AniDB data and writes the result to a JSON file.
+    """Command-line test driver for AniDB data fetching.
 
-    Parses command-line options (--anidb-id, --search-name, --output), performs the requested fetch or search using AniDBEnrichmentHelper, and saves the retrieved anime data to the specified output path.
+    Parses command-line options (--anidb-id, --output), fetches anime data
+    by ID using AniDBEnrichmentHelper, and saves the result to the specified
+    output path.
 
     Returns:
-        int: Exit code where `0` indicates success and `1` indicates failure, no data found, or interruption.
+        Exit code where 0 indicates success and 1 indicates failure, no data
+            found, or interruption.
     """
     parser = argparse.ArgumentParser(description="Test AniDB data fetching")
-    parser.add_argument("--anidb-id", type=int, help="AniDB ID to fetch")
-    parser.add_argument("--search-name", type=str, help="Search anime by name")
+    parser.add_argument("--anidb-id", type=int, required=True, help="AniDB ID to fetch")
     parser.add_argument(
         "--output", type=str, default="test_anidb_output.json", help="Output file path"
+    )
+    parser.add_argument(
+        "--save-xml",
+        type=str,
+        nargs="?",
+        const="",  # Use empty string to trigger default naming
+        default=None,  # None when flag not provided
+        help="Save raw XML response (default: anidb_{id}_raw.xml in repo root, or specify custom path)",
     )
 
     args = parser.parse_args()
@@ -891,20 +1249,36 @@ async def main() -> int:
     helper = AniDBEnrichmentHelper()
 
     try:
-        if args.anidb_id:
-            # Fetch data by ID
-            anime_data = await helper.fetch_all_data(args.anidb_id)
-        elif args.search_name:
-            # Search by name
-            search_results = await helper.search_anime_by_name(args.search_name)
-            anime_data = search_results[0] if search_results else None
-        else:
-            logger.error("Must provide either --anidb-id or --search-name")
-            return 1
+        # Fetch raw XML if requested (optional, non-blocking)
+        if args.save_xml is not None:
+            try:
+                params = {"request": "anime", "aid": args.anidb_id}
+                xml_response = await helper._make_request(params)
+                if xml_response:
+                    # Use default filename if flag provided without path
+                    xml_path = (
+                        args.save_xml
+                        if args.save_xml
+                        else f"anidb_{args.anidb_id}_raw.xml"
+                    )
+                    safe_xml_path = sanitize_output_path(xml_path)
+                    with open(safe_xml_path, "w", encoding="utf-8") as f:
+                        f.write(xml_response)
+                    logger.info(f"Raw XML saved to {safe_xml_path}")
+                else:
+                    logger.warning(
+                        "Failed to fetch XML for --save-xml (continuing anyway)"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to save XML: {e} (continuing anyway)")
+
+        # Fetch data by ID
+        anime_data = await helper.fetch_all_data(args.anidb_id)
 
         if anime_data:
-            # Save to file
-            with open(args.output, "w", encoding="utf-8") as f:
+            # Save to file (sanitize path to prevent traversal attacks)
+            safe_path = sanitize_output_path(args.output)
+            with open(safe_path, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
             return 0
         else:

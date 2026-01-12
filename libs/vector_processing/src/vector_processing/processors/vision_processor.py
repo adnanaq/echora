@@ -28,6 +28,7 @@ class VisionProcessor:
         self,
         model: VisionEmbeddingModel,
         downloader: ImageDownloader,
+        field_mapper: "AnimeFieldMapper",
         settings: Settings | None = None,
     ):
         """Initialize modern vision processor with injected dependencies.
@@ -35,6 +36,7 @@ class VisionProcessor:
         Args:
             model: Initialized VisionEmbeddingModel instance
             downloader: Initialized ImageDownloader instance
+            field_mapper: Initialized AnimeFieldMapper instance
             settings: Configuration settings instance
         """
         if settings is None:
@@ -43,9 +45,7 @@ class VisionProcessor:
         self.settings = settings
         self.model = model
         self.downloader = downloader
-
-        # Field mapper for anime data extraction
-        self._field_mapper: AnimeFieldMapper | None = None
+        self.field_mapper = field_mapper
 
         logger.info(f"Initialized VisionProcessor with model: {model.model_name}")
 
@@ -89,14 +89,6 @@ class VisionProcessor:
             # Fallback to string representation
             return str(hash(tuple(embedding)))
 
-    def _get_field_mapper(self) -> "AnimeFieldMapper":
-        """Get field mapper instance for anime data extraction."""
-        if self._field_mapper is None:
-            from .anime_field_mapper import AnimeFieldMapper
-
-            self._field_mapper = AnimeFieldMapper()
-        return self._field_mapper
-
     async def process_anime_image_vector(self, anime: AnimeEntry) -> list[float] | None:
         """Process general anime images (covers, posters, banners, trailers) excluding character images.
 
@@ -107,10 +99,8 @@ class VisionProcessor:
             Combined general image embedding vector or None if processing fails
         """
         try:
-            field_mapper = self._get_field_mapper()
-
             # Extract all image URLs from anime data
-            image_urls = field_mapper._extract_image_content(anime)
+            image_urls = self.field_mapper.extract_image_urls(anime)
 
             if not image_urls:
                 logger.warning("No image URLs found for anime")
@@ -207,10 +197,8 @@ class VisionProcessor:
             Combined character image embedding vector or None if processing fails
         """
         try:
-            field_mapper = self._get_field_mapper()
-
             # Extract character image URLs from anime data (separate from general images)
-            character_image_urls = field_mapper._extract_character_image_content(anime)
+            character_image_urls = self.field_mapper.extract_character_image_urls(anime)
 
             if not character_image_urls:
                 logger.debug("No character image URLs found for anime")

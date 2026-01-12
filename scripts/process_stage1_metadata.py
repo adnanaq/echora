@@ -25,6 +25,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from enrichment.utils.deduplication import (
+    deduplicate_simple_array_field,
+    deduplicate_synonyms_language_aware,
+    normalize_string_for_comparison,
+)
+
 # Project root for resolving paths (works from anywhere)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -75,48 +81,6 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
             sources[source_name] = {}
 
     return sources
-
-
-def normalize_string_for_comparison(text: str) -> str:
-    """Normalize string for case-insensitive comparison."""
-    if not text:
-        return ""
-    return text.lower().strip()
-
-
-def deduplicate_array_field(
-    offline_values: list[str], external_values: list[str]
-) -> list[str]:
-    """
-    Deduplicate array field values with offline database as foundation.
-
-    Args:
-        offline_values: Values from offline database
-        external_values: Values from external sources
-
-    Returns:
-        Deduplicated list with offline values first, then unique external values
-    """
-    result = []
-    seen = set()
-
-    # Add offline values first
-    for value in offline_values:
-        if value and value.strip():
-            normalized = normalize_string_for_comparison(value)
-            if normalized not in seen:
-                result.append(value.strip())
-                seen.add(normalized)
-
-    # Add unique external values
-    for value in external_values:
-        if value and value.strip():
-            normalized = normalize_string_for_comparison(value)
-            if normalized not in seen:
-                result.append(value.strip())
-                seen.add(normalized)
-
-    return result
 
 
 def merge_themes_intelligently(
@@ -257,8 +221,8 @@ def organize_images_by_type(sources: dict[str, dict]) -> dict[str, list[str]]:
 
     # AniDB images (covers)
     anidb = sources.get("anidb", {})
-    if anidb.get("picture"):
-        url = f"https://cdn.anidb.net/images/main/{anidb['picture']}"
+    if anidb.get("cover"):
+        url = anidb["cover"]  # Already a full URL from AniDB helper
         if url not in all_urls["covers"]:
             images["covers"].append(url)
             all_urls["covers"].add(url)
@@ -331,8 +295,8 @@ def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
 
     # 1. AniDB (highest priority)
     anidb = sources.get("anidb", {})
-    if anidb.get("description"):
-        synopsis = anidb["description"]
+    if anidb.get("synopsis"):
+        synopsis = anidb["synopsis"]
         # Remove hyperlinks and clean markup
         synopsis = re.sub(r"\[([^\]]+)\]", r"\1", synopsis)  # [link text] → link text
         synopsis = re.sub(r"\[i\]([^\[]*)\[/i\]", r"\1", synopsis)  # [i]text[/i] → text
@@ -549,11 +513,10 @@ def extract_synonyms_from_sources(sources: dict[str, dict]) -> list[str]:
 
     # AniDB synonyms
     anidb = sources.get("anidb", {})
-    anidb_titles = anidb.get("titles", {})
-    if isinstance(anidb_titles, dict):
-        for synonym in anidb_titles.get("synonyms", []):
-            if synonym:
-                all_synonyms.append(synonym)
+    anidb_synonyms = anidb.get("synonyms", [])
+    for synonym in anidb_synonyms:
+        if synonym:
+            all_synonyms.append(synonym)
 
     return all_synonyms
 
@@ -774,6 +737,19 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     # Convert to uppercase for enum compliance
     output["source_material"] = source_material.upper() if source_material else None
 
+    # Sources from offline database
+    output["sources"] = offline_data.get("sources", [])
+
+    # Add AnimSchedule source if available
+    animeschedule_data = sources.get("animeschedule", {})
+    if animeschedule_data.get("route"):
+        animeschedule_url = (
+            f"https://animeschedule.net/anime/{animeschedule_data['route']}"
+        )
+        # Ensure the URL is not already present before appending
+        if animeschedule_url not in output["sources"]:
+            output["sources"].append(animeschedule_url)
+
     # Status (cross-validated)
     output["status"] = cross_validate_with_offline(offline_data, sources, "status")
 
@@ -782,6 +758,12 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
 
     # Title from offline database
     output["title"] = offline_data.get("title")
+
+    # Fallback to AniDB main title if offline database does not provide one
+    if not output["title"]:
+        anidb_data = sources.get("anidb", {})
+        if anidb_data.get("title"):
+            output["title"] = anidb_data["title"]
 
     # English and Japanese titles from Jikan
     titles = jikan_data.get("titles", [])
@@ -800,8 +782,22 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
         if anime_planet.get("title_japanese"):
             output["title_japanese"] = anime_planet["title_japanese"]
 
+    # Fallback to AniDB official titles if still not found
+    anidb_data = sources.get("anidb", {})
+    if anidb_data:
+        if not output["title_english"]:
+            output["title_english"] = anidb_data.get("title_english")
+        if not output["title_japanese"]:
+            output["title_japanese"] = anidb_data.get("title_japanese")
+
     # Type from offline database
     output["type"] = offline_data.get("type")
+
+    # Fallback to AniDB type if offline database does not provide one
+    if not output["type"]:
+        anidb_data = sources.get("anidb", {})
+        if anidb_data.get("type"):
+            output["type"] = anidb_data["type"]
 
     # Year (cross-validated)
     output["year"] = cross_validate_with_offline(offline_data, sources, "year")
@@ -835,7 +831,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     # Genres with multi-source integration and deduplication
     offline_genres = []  # No genres in offline database typically
     external_genres = extract_genres_from_sources(sources)
-    output["genres"] = deduplicate_array_field(offline_genres, external_genres)
+    output["genres"] = deduplicate_simple_array_field(offline_genres, external_genres)
 
     # Opening themes from Jikan
     output["opening_themes"] = extract_opening_themes(sources)
@@ -859,14 +855,15 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
         if normalize_string_for_comparison(synonym) not in main_titles_normalized:
             filtered_external_synonyms.append(synonym)
 
-    output["synonyms"] = deduplicate_array_field(
-        offline_synonyms, filtered_external_synonyms
-    )
+    # Use language-aware deduplication for synonyms to preserve cross-language variants
+    # (e.g., "ONE PIECE", "ワンピース", "원피스" are all kept as separate synonyms)
+    all_synonyms = offline_synonyms + filtered_external_synonyms
+    output["synonyms"] = deduplicate_synonyms_language_aware(all_synonyms)
 
     # Tags from offline database and all sources
     offline_tags = offline_data.get("tags", [])
     external_tags = extract_tags_from_sources(sources)
-    output["tags"] = deduplicate_array_field(offline_tags, external_tags)
+    output["tags"] = deduplicate_simple_array_field(offline_tags, external_tags)
 
     # Themes with intelligent multi-source merging
     offline_themes = []  # No themes in offline database typically

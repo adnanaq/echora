@@ -20,7 +20,8 @@ pytestmark = pytest.mark.integration
 from common.config import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -308,7 +309,11 @@ def test_staff_vector_comprehensive():
     )
 
     settings = get_settings()
-    text_processor = TextProcessor(settings=settings)
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Load anime database
     anime_database = load_anime_database()

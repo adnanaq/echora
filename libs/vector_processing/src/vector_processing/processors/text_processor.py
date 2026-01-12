@@ -22,11 +22,17 @@ logger = logging.getLogger(__name__)
 class TextProcessor:
     """Text embedding processor supporting multiple models."""
 
-    def __init__(self, model: TextEmbeddingModel, settings: Settings | None = None):
-        """Initialize modern text processor with injected model.
+    def __init__(
+        self,
+        model: TextEmbeddingModel,
+        field_mapper: "AnimeFieldMapper",
+        settings: Settings | None = None,
+    ):
+        """Initialize modern text processor with injected dependencies.
 
         Args:
             model: Initialized TextEmbeddingModel instance
+            field_mapper: Initialized AnimeFieldMapper instance
             settings: Configuration settings instance
         """
         if settings is None:
@@ -34,9 +40,7 @@ class TextProcessor:
 
         self.settings = settings
         self.model = model
-
-        # Initialize field mapper for multi-vector processing
-        self._field_mapper: AnimeFieldMapper | None = None
+        self.field_mapper = field_mapper
 
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 
@@ -111,14 +115,6 @@ class TextProcessor:
     # MULTI-VECTOR PROCESSING METHODS
     # ============================================================================
 
-    def _get_field_mapper(self) -> "AnimeFieldMapper":
-        """Lazy initialization of field mapper."""
-        if self._field_mapper is None:
-            from .anime_field_mapper import AnimeFieldMapper
-
-            self._field_mapper = AnimeFieldMapper()
-        return self._field_mapper
-
     def process_anime_vectors(self, anime: AnimeEntry) -> dict[str, list[float]]:
         """
         Process anime data into multiple semantic text embeddings.
@@ -130,16 +126,14 @@ class TextProcessor:
             Dict mapping vector names to their embeddings
         """
         try:
-            field_mapper = self._get_field_mapper()
-
             # Extract field content for all vectors
-            vector_data = field_mapper.map_anime_to_vectors(anime)
+            vector_data = self.field_mapper.map_anime_to_vectors(anime)
 
             # Generate embeddings for text vectors only
             text_embeddings = {}
             text_vectors = [
                 name
-                for name, vec_type in field_mapper.get_vector_types().items()
+                for name, vec_type in self.field_mapper.get_vector_types().items()
                 if vec_type == "text"
             ]
 
@@ -300,10 +294,9 @@ class TextProcessor:
 
     def get_text_vector_names(self) -> list[str]:
         """Get list of text vector names supported by this processor."""
-        field_mapper = self._get_field_mapper()
         return [
             name
-            for name, vec_type in field_mapper.get_vector_types().items()
+            for name, vec_type in self.field_mapper.get_vector_types().items()
             if vec_type == "text"
         ]
 

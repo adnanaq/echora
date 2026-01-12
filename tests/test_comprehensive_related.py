@@ -24,7 +24,8 @@ pytestmark = pytest.mark.integration
 
 import requests
 from common.config import get_settings
-from vector_processing import TextProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -264,7 +265,11 @@ def test_related_vector_realistic():
     print(f"   • Both types: {len(related_data['both'])}")
 
     settings = get_settings()
-    text_processor = TextProcessor()
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Test cases based on ACTUAL data we confirmed exists
     test_cases = [
@@ -697,7 +702,11 @@ def test_random_related_entries():
 
     # Initialize
     settings = get_settings()
-    text_processor = TextProcessor()
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
     related_data = load_related_content_data()
 
     # Combine all anime with related content

@@ -3,6 +3,7 @@
 Enhanced character vector validation test with both text and image testing.
 """
 
+import asyncio
 import json
 import os
 import random
@@ -17,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import requests
 from common.config import get_settings
-from vector_processing import TextProcessor, VisionProcessor
+from vector_processing import AnimeFieldMapper, TextProcessor, VisionProcessor
+from vector_processing.embedding_models.factory import EmbeddingModelFactory
+from vector_processing.utils.image_downloader import ImageDownloader
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
@@ -29,7 +32,11 @@ def test_character_vector_realistic():
     print("[INFO] Testing against actual character data from 13 anime with characters")
 
     settings = get_settings()
-    text_processor = TextProcessor(settings=settings)
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
 
     # Test cases based on ACTUAL data we confirmed exists
     test_cases = [
@@ -184,7 +191,15 @@ def test_character_image_vector():
     print("[INFO] Testing character_image_vector with real character images")
 
     settings = get_settings()
-    vision_processor = VisionProcessor(settings=settings)
+    field_mapper = AnimeFieldMapper()
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    downloader = ImageDownloader(settings.model_cache_dir)
+    vision_processor = VisionProcessor(
+        model=vision_model,
+        downloader=downloader,
+        field_mapper=field_mapper,
+        settings=settings,
+    )
 
     # Load character data
     anime_with_images = load_character_data()
@@ -385,7 +400,8 @@ def create_character_query_patterns():
     ]
 
 
-def test_multimodal_character_search():
+@pytest.mark.asyncio
+async def test_multimodal_character_search():
     """Enhanced multimodal character search testing with comprehensive field coverage."""
     print("\n[CHARACTER] Enhanced Multimodal Character Search Validation")
     print(
@@ -399,9 +415,39 @@ def test_multimodal_character_search():
     import sys
 
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from qdrant_client import AsyncQdrantClient
     from qdrant_db import QdrantClient
 
-    qdrant_client = QdrantClient(settings=settings)
+    # Initialize AsyncQdrantClient from qdrant-client library
+    if settings.qdrant_api_key:
+        async_qdrant_client = AsyncQdrantClient(
+            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+        )
+    else:
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+
+    # Initialize our QdrantClient wrapper with injected dependencies
+    qdrant_client = await QdrantClient.create(
+        settings=settings,
+        async_qdrant_client=async_qdrant_client,
+        url=settings.qdrant_url,
+        collection_name=settings.qdrant_collection_name,
+    )
+
+    # Initialize processors for generating embeddings
+    field_mapper = AnimeFieldMapper()
+    text_model = EmbeddingModelFactory.create_text_model(settings)
+    text_processor = TextProcessor(
+        model=text_model, field_mapper=field_mapper, settings=settings
+    )
+    vision_model = EmbeddingModelFactory.create_vision_model(settings)
+    downloader = ImageDownloader(settings.model_cache_dir)
+    vision_processor = VisionProcessor(
+        model=vision_model,
+        downloader=downloader,
+        field_mapper=field_mapper,
+        settings=settings,
+    )
 
     # Load character data AND full anime database for cross-reference validation
     anime_with_images = load_character_data()
@@ -508,13 +554,19 @@ def test_multimodal_character_search():
 
                 print("   [TEST] Multimodal search: text + image")
 
-                # Perform multimodal character search
-                import asyncio
+                # Generate embeddings
+                text_embedding = text_processor.encode_text(text_query)
+                image_embedding = vision_processor.encode_image(temp_image_path)
 
-                results = asyncio.run(
-                    qdrant_client.search_characters(
-                        query=text_query, image_data=image_b64, limit=5
-                    )
+                if not text_embedding or not image_embedding:
+                    print("   [SKIP] Could not generate embeddings for text or image")
+                    continue
+
+                # Perform multimodal character search
+                results = await qdrant_client.search_characters(
+                    query_embedding=text_embedding,
+                    image_embedding=image_embedding,
+                    limit=5,
                 )
 
                 if results:
@@ -526,8 +578,8 @@ def test_multimodal_character_search():
                     print(f"      1. {top_title} (score: {top_score:.4f})")
 
                     # Comparative analysis: Text-only vs Image-only vs Multimodal
-                    text_only_results = asyncio.run(
-                        qdrant_client.search_characters(query=text_query, limit=5)
+                    text_only_results = await qdrant_client.search_characters(
+                        query_embedding=text_embedding, limit=5
                     )
                     text_only_score = (
                         text_only_results[0].get("score", 0.0)
@@ -535,18 +587,21 @@ def test_multimodal_character_search():
                         else 0.0
                     )
 
-                    image_only_results = asyncio.run(
-                        qdrant_client.search_characters(
-                            query="character",  # minimal text
-                            image_data=image_b64,
+                    # Generate minimal text embedding for image-only test
+                    minimal_text_embedding = text_processor.encode_text("character")
+                    if minimal_text_embedding:
+                        image_only_results = await qdrant_client.search_characters(
+                            query_embedding=minimal_text_embedding,
+                            image_embedding=image_embedding,
                             limit=5,
                         )
-                    )
-                    image_only_score = (
-                        image_only_results[0].get("score", 0.0)
-                        if image_only_results
-                        else 0.0
-                    )
+                        image_only_score = (
+                            image_only_results[0].get("score", 0.0)
+                            if image_only_results
+                            else 0.0
+                        )
+                    else:
+                        image_only_score = 0.0
 
                     print("   [ANALYSIS] Score Analysis:")
                     print(
@@ -699,6 +754,12 @@ def test_multimodal_character_search():
     else:
         print("   [FAIL] No enhanced multimodal character tests completed")
 
+    # Cleanup: Close AsyncQdrantClient
+    try:
+        await async_qdrant_client.close()
+    except Exception as e:
+        print(f"Warning: failed to close AsyncQdrantClient: {e}")
+
 
 if __name__ == "__main__":
     # Run text-based character vector tests
@@ -708,4 +769,4 @@ if __name__ == "__main__":
     test_character_image_vector()
 
     # Run multimodal character search tests
-    test_multimodal_character_search()
+    asyncio.run(test_multimodal_character_search())

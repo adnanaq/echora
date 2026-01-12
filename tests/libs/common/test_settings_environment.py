@@ -26,7 +26,9 @@ class TestGetEnvironment:
     def test_raises_error_when_app_env_not_set(self):
         """Test that missing APP_ENV raises ValueError for production safety."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="APP_ENV environment variable must be set"):
+            with pytest.raises(
+                ValueError, match="APP_ENV environment variable must be set"
+            ):
                 get_environment()
 
     def test_detects_development(self):
@@ -63,7 +65,9 @@ class TestSettingsEnvironmentField:
     def test_requires_app_env_to_be_set(self):
         """Test that Settings raises error when APP_ENV is not set."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="APP_ENV environment variable must be set"):
+            with pytest.raises(
+                ValueError, match="APP_ENV environment variable must be set"
+            ):
                 Settings()
 
     def test_respects_app_env(self):
@@ -138,7 +142,9 @@ class TestUserProvidedValues:
 
     def test_staging_respects_user_wal_disabled(self):
         """Staging should respect user QDRANT_ENABLE_WAL=false."""
-        with patch.dict(os.environ, {"APP_ENV": "staging", "QDRANT_ENABLE_WAL": "false"}):
+        with patch.dict(
+            os.environ, {"APP_ENV": "staging", "QDRANT_ENABLE_WAL": "false"}
+        ):
             settings = Settings()
             assert settings.qdrant_enable_wal is False
 
@@ -152,16 +158,24 @@ class TestUserProvidedValues:
         """Production MUST enforce log_level=WARNING even if user sets DEBUG."""
         with patch.dict(os.environ, {"APP_ENV": "production", "LOG_LEVEL": "DEBUG"}):
             settings = Settings()
-            assert settings.log_level == "WARNING", "Production MUST enforce WARNING log level"
+            assert settings.log_level == "WARNING", (
+                "Production MUST enforce WARNING log level"
+            )
 
     def test_production_still_enforces_wal(self):
         """Production MUST enforce WAL even if user disables it."""
-        with patch.dict(os.environ, {"APP_ENV": "production", "QDRANT_ENABLE_WAL": "false"}):
+        with patch.dict(
+            os.environ, {"APP_ENV": "production", "QDRANT_ENABLE_WAL": "false"}
+        ):
             settings = Settings()
             assert settings.qdrant_enable_wal is True, "Production MUST enforce WAL"
 
     def test_production_still_enforces_warmup(self):
         """Production MUST enforce model warmup even if user disables it."""
-        with patch.dict(os.environ, {"APP_ENV": "production", "MODEL_WARM_UP": "false"}):
+        with patch.dict(
+            os.environ, {"APP_ENV": "production", "MODEL_WARM_UP": "false"}
+        ):
             settings = Settings()
-            assert settings.model_warm_up is True, "Production MUST enforce model warmup"
+            assert settings.model_warm_up is True, (
+                "Production MUST enforce model warmup"
+            )

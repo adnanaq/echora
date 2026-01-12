@@ -28,5 +28,8 @@ string_imports = true
 args = ["-v", "--tb=short"]
 config_discovery = true
 
+[test]
+extra_env_vars = ["APP_ENV=development"]
+
 [ruff]
 config_discovery = true

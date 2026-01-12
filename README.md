@@ -1,10 +1,10 @@
 # Echora
 
-A production-ready semantic search microservice for anime content using an 11-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
+A production-ready semantic search microservice for anime content using a multi-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
 
 ## Features
 
-- **11-Vector Semantic Architecture**: 9 text vectors + 2 image vectors for comprehensive anime understanding
+- **Multi-Vector Semantic Architecture**: Comprehensive anime understanding through text and image vectors
 - **Advanced Text Search**: BGE-M3 embeddings (1024-dim) across multiple semantic domains
 - **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for cover art and character similarity
 - **Character-Focused Search**: Specialized character vector + character image vector search
@@ -77,17 +77,41 @@ curl http://localhost:8002/health
 
 ### Local Development
 
-#### 1. Install Dependencies
+#### 1. Install UV Package Manager
 
 ```bash
-# Using UV (recommended - fast and reliable)
-uv sync
+# Install UV (one-time setup)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Or using pip
-pip install -e .
+# Add UV to your PATH (add to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Verify installation
+uv --version
 ```
 
-#### 2. Start Qdrant Database
+#### 2. Install Python 3.12 and Create Virtual Environment
+
+```bash
+# UV will automatically download Python 3.12 and create venv
+uv venv
+
+# Verify Python version
+.venv/bin/python --version  # Should show Python 3.12.x
+```
+
+#### 3. Install Dependencies
+
+```bash
+# Install all project dependencies (including dev tools)
+uv sync
+
+# This creates/updates:
+# - .venv/ (virtual environment with Python 3.12)
+# - uv.lock (dependency lock file)
+```
+
+#### 4. Start Qdrant Database
 
 ```bash
 docker compose up -d qdrant
@@ -96,29 +120,51 @@ docker compose up -d qdrant
 # http://localhost:6333/dashboard
 ```
 
-#### 3. Run the Service
+#### 5. Run the Service
+
+## Option A: Using `uv run` (Recommended)
 
 ```bash
-# Using UV
-uv run python -m src.main
+# Run service
+uv run python -m apps.service.src.service.main
 
-# Or directly
-python -m src.main
+# Run tests
+uv run pytest
+
+# Run scripts
+uv run python scripts/reindex_anime_database.py
 ```
 
-## Development with Pants
-
-This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, dependency management, and testing in the monorepo.
-
-### Common Pants Commands
+## Option B: Activate virtual environment
 
 ```bash
-# List all targets
-./pants list ::
+# Activate venv
+source .venv/bin/activate
 
-# List targets in a specific directory
-./pants list libs/qdrant_db::
+# Run service
+python -m apps.service.src.service.main
 
+# Run tests
+pytest
+
+# Deactivate when done
+deactivate
+```
+
+## Development Workflow
+
+This project supports both UV and Pants for development:
+
+- **UV**: Faster (~200ms) for code quality checks (formatting, linting) during iteration
+- **Pants**: Hermetic builds for tests, scripts, validation, and CI/CD (handles monorepo dependencies)
+
+**Recommendation**: Use UV for quick formatting/linting iteration, Pants for running tests/scripts and pre-commit validation.
+
+### Testing
+
+**Note**: Use Pants for running tests as it handles monorepo dependencies automatically. UV requires PYTHONPATH setup for imports from `libs/`.
+
+```bash
 # Run all tests
 ./pants test ::
 
@@ -131,48 +177,93 @@ This project uses [Pants](https://www.pantsbuild.org/) for build orchestration, 
 # Run integration tests only
 ./pants test tests/integration::
 
+# Run with coverage
+./pants test --coverage ::
+
+# Run tests matching keyword
+./pants test :: -- -k test_client
+
+# Verbose output with short traceback
+./pants test :: -- -v --tb=short
+```
+
+### Code Quality
+
+```bash
 # Format code
+uv run ruff format .
 ./pants fmt ::
 
 # Lint code
+uv run ruff check --fix .
 ./pants lint ::
 
-# Type check with ty
+# Type check (ty works standalone)
 ty check scripts/ libs/ apps/
 
-# Count lines of code
-./pants count-loc ::
+# Format, lint, and check (Pants-only, recommended before commits)
+./pants fmt lint check ::
 ```
 
 ### Running Scripts
+
+**Note**: Use Pants for running scripts as it handles monorepo dependencies automatically. UV requires PYTHONPATH setup for imports from `libs/`.
 
 ```bash
 # Reindex anime database
 ./pants run scripts/reindex_anime_database.py
 
 # Update vectors
-./pants run scripts/update_vectors.py
+./pants run scripts/update_vectors.py -- --vectors title_vector
 
 # Validate enrichment database
 ./pants run scripts/validate_enrichment_database.py
+
+# View script help
+./pants run scripts/update_vectors.py -- --help
+```
+
+### Pants-Only Commands
+
+```bash
+# List all targets
+./pants list ::
+
+# List targets in a specific directory
+./pants list libs/qdrant_db::
+
+# Show dependencies
+./pants dependencies scripts/reindex_anime_database.py
+
+# Show dependents
+./pants dependents libs/common::
+
+# Count lines of code
+./pants count-loc ::
 ```
 
 ## Libraries
 
 ### `libs/common`
+
 Shared models and configuration used across all libraries and the main application.
+
 - **Models**: `AnimeEntry` and related data structures
 - **Config**: Settings management with pydantic-settings
 
 ### `libs/qdrant_db`
+
 Qdrant vector database client with retry logic and batch operations.
+
 - Async operations with connection pooling
 - Automatic retry with exponential backoff
 - Multi-vector search support
 - Comprehensive test suite (55 tests)
 
 ### `libs/vector_processing`
+
 Vector embedding generation and processing.
+
 - **Text Models**: FastEmbed, HuggingFace Transformers, Sentence Transformers
 - **Vision Models**: OpenCLIP
 - **Processors**: Text and vision processing with caching
@@ -232,12 +323,12 @@ APP_ENV=production
 
 **Environment-Specific Behavior:**
 
-| Setting | Development | Staging | Production |
-|---------|------------|---------|------------|
-| `debug` | `True` (default) | `True` (default) | **`False` (enforced)** |
-| `log_level` | `DEBUG` (default) | `INFO` (default) | **`WARNING` (enforced)** |
-| `qdrant_enable_wal` | user choice | `True` (default) | **`True` (enforced)** |
-| `model_warm_up` | user choice | user choice | **`True` (enforced)** |
+| Setting             | Development       | Staging          | Production               |
+| ------------------- | ----------------- | ---------------- | ------------------------ |
+| `debug`             | `True` (default)  | `True` (default) | **`False` (enforced)**   |
+| `log_level`         | `DEBUG` (default) | `INFO` (default) | **`WARNING` (enforced)** |
+| `qdrant_enable_wal` | user choice       | `True` (default) | **`True` (enforced)**    |
+| `model_warm_up`     | user choice       | user choice      | **`True` (enforced)**    |
 
 **Defaults**: "default" means the value is applied only if you don't explicitly set it in your `.env` file or environment variables.
 
@@ -246,11 +337,13 @@ APP_ENV=production
 **Development/Staging**: These environments respect your custom configuration. Set `DEBUG=false` or `LOG_LEVEL=ERROR` in `.env` to override the defaults.
 
 **Docker Deployment:**
+
 ```dockerfile
 ENV APP_ENV=production
 ```
 
 **Kubernetes Deployment:**
+
 ```yaml
 env:
   - name: APP_ENV
@@ -302,6 +395,13 @@ uv lock --upgrade
 
 # Run scripts
 uv run python script.py
+
+# List installed packages
+uv pip list
+
+# Manage Python versions
+uv python list                 # List installed Python versions
+uv python install 3.12         # Install Python 3.12
 ```
 
 ### Using Pip
@@ -324,7 +424,8 @@ pip install -e ".[dev]"
 
 ### Vector Architecture
 
-**Text Vectors (9)**:
+**Text Vectors**:
+
 1. `title_vector` - Title, synopsis, background
 2. `character_vector` - Character descriptions and roles
 3. `genre_vector` - Genres and themes
@@ -335,7 +436,8 @@ pip install -e ".[dev]"
 8. `franchise_vector` - Franchise information
 9. `episode_vector` - Episode summaries (hierarchical averaging)
 
-**Image Vectors (2)**:
+**Image Vectors**:
+
 1. `image_vector` - Cover art similarity
 2. `character_image_vector` - Character visual similarity
 

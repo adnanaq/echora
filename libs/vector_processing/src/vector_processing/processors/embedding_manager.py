@@ -1,6 +1,6 @@
 """Multi-Vector Embedding Manager for coordinated embedding generation.
 
-This module coordinates the generation of all 11 vectors (9 text + 2 visual)
+This module coordinates the generation of all vectors (text and visual)
 for the comprehensive anime search system with error handling and validation.
 """
 
@@ -25,6 +25,7 @@ class MultiVectorEmbeddingManager:
         self,
         text_processor: TextProcessor,
         vision_processor: VisionProcessor,
+        field_mapper: AnimeFieldMapper,
         settings: Settings | None = None,
     ):
         """Initialize the multi-vector embedding manager with injected processors.
@@ -32,6 +33,7 @@ class MultiVectorEmbeddingManager:
         Args:
             text_processor: An initialized TextProcessor instance.
             vision_processor: An initialized VisionProcessor instance.
+            field_mapper: Shared AnimeFieldMapper instance.
             settings: Configuration settings instance.
         """
         if settings is None:
@@ -44,7 +46,7 @@ class MultiVectorEmbeddingManager:
         self.vision_processor = vision_processor
 
         # Initialize field mapper
-        self.field_mapper = AnimeFieldMapper()
+        self.field_mapper = field_mapper
 
         # Get vector configuration
         self.vector_names = list(settings.vector_names.keys())
@@ -521,7 +523,7 @@ class MultiVectorEmbeddingManager:
                 "vector_configuration": {
                     "total_vectors": len(self.vector_names),
                     "text_vectors": len(self.text_vector_names),
-                    "image_vectors": 1,
+                    "image_vectors": len(self.image_vector_names),
                     "vector_names": self.vector_names,
                     "vector_dimensions": dict(self.settings.vector_names),
                     "vector_priorities": dict(self.settings.vector_priorities),

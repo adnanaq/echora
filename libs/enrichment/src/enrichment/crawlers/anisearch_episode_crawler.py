@@ -6,7 +6,7 @@ numbers to integers. Results are cached in Redis for 24 hours to avoid
 repeated crawling.
 
 Usage:
-    python -m enrichment.crawlers.anisearch_episode_crawler <url> [--output PATH]
+    ./pants run libs/enrichment/src/enrichment/crawlers/anisearch_episode_crawler.py -- <url> [--output PATH]
 
     <url>           anisearch.com anime episode page URL
     --output PATH   optional output file path (default: anisearch_episodes.json)
