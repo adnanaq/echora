@@ -70,30 +70,33 @@ def test_request_metrics():
 @pytest.mark.asyncio
 async def test_circuit_breaker_logic(helper):
     """Test the circuit breaker state transitions."""
-    # Test opening the circuit
-    helper.metrics.consecutive_failures = helper.circuit_breaker_threshold - 1
-    helper._update_circuit_breaker(success=False)
-    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
-    assert helper.circuit_breaker_opened_at > 0
+    with patch("time.time") as mock_time:
+        mock_time.return_value = 1000.0
 
-    # Test that requests are blocked when open
-    assert not await helper._check_circuit_breaker()
+        # Test opening the circuit
+        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold - 1
+        helper._update_circuit_breaker(success=False)
+        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+        assert helper.circuit_breaker_opened_at == 1000.0
 
-    # Test half-open state after timeout
-    helper.circuit_breaker_opened_at = time.time() - helper.circuit_breaker_timeout - 1
-    assert await helper._check_circuit_breaker()
-    assert helper.circuit_breaker_state == CircuitBreakerState.HALF_OPEN
+        # Test that requests are blocked when open
+        assert not await helper._check_circuit_breaker()
 
-    # Test closing from half-open
-    helper._update_circuit_breaker(success=True)
-    assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-    assert helper.metrics.consecutive_failures == 0
+        # Test half-open state after timeout
+        mock_time.return_value = 1000.0 + helper.circuit_breaker_timeout + 1
+        assert await helper._check_circuit_breaker()
+        assert helper.circuit_breaker_state == CircuitBreakerState.HALF_OPEN
 
-    # Test re-opening from half-open
-    helper.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
-    helper.metrics.consecutive_failures = helper.circuit_breaker_threshold
-    helper._update_circuit_breaker(success=False)
-    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+        # Test closing from half-open
+        helper._update_circuit_breaker(success=True)
+        assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
+        assert helper.metrics.consecutive_failures == 0
+
+        # Test re-opening from half-open
+        helper.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
+        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold
+        helper._update_circuit_breaker(success=False)
+        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
 
 
 @pytest.mark.asyncio
@@ -163,6 +166,11 @@ async def test_make_request_with_retry(mock_sleep, helper):
     assert helper._make_single_request.call_count == 3
     assert mock_sleep.call_count == 2  # Sleeps between retries
 
+    # Verify metrics
+    assert helper.metrics.total_requests == 3
+    assert helper.metrics.successful_requests == 1
+    assert helper.metrics.failed_requests == 2
+
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
@@ -180,6 +188,11 @@ async def test_make_request_with_retry_permanent_failure(mock_sleep, helper):
     assert result is None
     assert helper._make_single_request.call_count == 2
     assert mock_sleep.call_count == 1
+
+    # Verify metrics
+    assert helper.metrics.total_requests == 2
+    assert helper.metrics.successful_requests == 0
+    assert helper.metrics.failed_requests == 2
 
 
 @pytest.mark.parametrize(
@@ -738,6 +751,7 @@ async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
     assert data["episode_details"][0]["id"] == 201
 
 
+@pytest.mark.asyncio
 async def test_internal_parsers_granular(helper):
     """Granular tests for existing internal parsing methods and inlined logic."""
     # Test _parse_episode_xml

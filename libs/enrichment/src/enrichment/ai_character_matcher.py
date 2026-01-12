@@ -139,10 +139,7 @@ class LanguageDetector:
 
     def _is_english(self, text: str) -> bool:
         """Check if text is primarily English/Latin"""
-        return (
-            bool(re.search(r"[A-Za-z]", text)) and
-            bool(re.fullmatch(r"[A-Za-z\s.,'-]+", text))
-        )
+        return text.isascii()
 
 
 class CharacterNamePreprocessor:
@@ -151,7 +148,10 @@ class CharacterNamePreprocessor:
     def __init__(self) -> None:
         # Modern pykakasi API (v2.x+) - uses kakasi().convert() method
         # See: https://pykakasi.readthedocs.io/en/latest/api.html
-        self.kks = pykakasi.kakasi()
+        if pykakasi is not None:
+            self.kks = pykakasi.kakasi()
+        else:
+            self.kks = None
 
     def preprocess_name(self, name: str, source_language: str) -> dict[str, str]:
         """Generate multiple normalized representations of a character name"""
@@ -177,8 +177,8 @@ class CharacterNamePreprocessor:
         representations = {
             "original": name,
             "normalized": self._normalize_unicode(name),
-            "hiragana": jaconv.kata2hira(name) if self._is_katakana(name) else name,
-            "katakana": jaconv.hira2kata(name) if self._is_hiragana(name) else name,
+            "hiragana": jaconv.kata2hira(name) if jaconv is not None and self._is_katakana(name) else name,
+            "katakana": jaconv.hira2kata(name) if jaconv is not None and self._is_hiragana(name) else name,
             "romaji": self._to_romaji(name),
             "phonetic": self._get_phonetic_key(self._to_romaji(name)),
             "tokens": self._tokenize_name(name),
@@ -231,6 +231,9 @@ class CharacterNamePreprocessor:
 
     def _to_romaji(self, japanese_text: str) -> str:
         """Convert Japanese text to romaji using modern pykakasi API."""
+        if self.kks is None:
+            return japanese_text
+
         try:
             # Modern API: convert() returns list of dicts with 'hepburn' key
             result = self.kks.convert(japanese_text)

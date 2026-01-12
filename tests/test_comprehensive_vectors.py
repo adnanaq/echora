@@ -669,6 +669,9 @@ class ComprehensiveVectorTester:
             image_b64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
 
             # Process with vision processor for both vector types
+            # Note: embeddings are identical because we are using the same source image
+            # for both vector fields to test the search machinery. In production,
+            # these would typically come from different source images (general vs character).
             image_vector = self.vision_processor.encode_image(
                 f"data:image/png;base64,{image_b64}"
             )
@@ -906,6 +909,9 @@ class ComprehensiveVectorTester:
 
         all_results = {}
         total_weight = sum(config["weight"] for config in query_configs)
+
+        if total_weight <= 0:
+            raise Exception("Invalid weights: total weight must be > 0")
 
         for config in query_configs:
             vector_name = config["vector"]

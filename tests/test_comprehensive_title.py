@@ -147,8 +147,8 @@ def test_title_vector_comprehensive():
         return
 
     # True randomization with timestamp seed
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Get all title-related fields
     title_fields = get_title_related_fields()
@@ -182,110 +182,113 @@ def test_title_vector_comprehensive():
         QdrantClient.create(settings, async_qdrant_client)
     )
 
-    for i, anime in enumerate(test_anime):
-        anime_title = anime.get("title", "Unknown")
+    try:
+        for i, anime in enumerate(test_anime):
+            anime_title = anime.get("title", "Unknown")
 
-        # Filter combinations to only those with available fields
-        valid_combinations = []
-        for combination in all_field_combinations:
-            # Check if all fields in this combination have values
-            if all(anime.get(field) for field in combination):
-                valid_combinations.append(combination)
+            # Filter combinations to only those with available fields
+            valid_combinations = []
+            for combination in all_field_combinations:
+                # Check if all fields in this combination have values
+                if all(anime.get(field) for field in combination):
+                    valid_combinations.append(combination)
 
-        if not valid_combinations:
-            continue
+            if not valid_combinations:
+                continue
 
-        # Randomly select a field combination for this anime
-        selected_combination = random.choice(valid_combinations)
-        combination_key = "+".join(selected_combination)
+            # Randomly select a field combination for this anime
+            selected_combination = random.choice(valid_combinations)
+            combination_key = "+".join(selected_combination)
 
-        # Create query using the selected field combination
-        text_query = create_field_combination_query(anime, selected_combination)
+            # Create query using the selected field combination
+            text_query = create_field_combination_query(anime, selected_combination)
 
-        if not text_query:
-            continue
+            if not text_query:
+                continue
 
-        # Generate embedding
-        embedding = text_processor.encode_text(text_query)
+            # Generate embedding
+            embedding = text_processor.encode_text(text_query)
 
-        if not embedding:
-            continue
+            if not embedding:
+                continue
 
-        # Search title_vector using production method with raw similarity scores
-        try:
-            # Use search_single_vector to get real similarity scores
-            results = asyncio.run(
-                qdrant_client.search_single_vector(
-                    vector_name="title_vector", vector_data=embedding, limit=5
+            # Search title_vector using production method with raw similarity scores
+            try:
+                # Use search_single_vector to get real similarity scores
+                results = asyncio.run(
+                    qdrant_client.search_single_vector(
+                        vector_name="title_vector", vector_data=embedding, limit=5
+                    )
                 )
-            )
 
-            if results:
-                top_result = results[0]
-                top_title = top_result.get("title", "Unknown")
-                top_score = top_result.get("score", 0.0)
+                if results:
+                    top_result = results[0]
+                    top_title = top_result.get("title", "Unknown")
+                    top_score = top_result.get("score", 0.0)
 
-                # Enhanced validation
-                test_passed = False
-                synonym_match = False
-                if top_title == anime_title:
-                    test_passed = True
-                    passed_tests += 1
-                elif any(r.get("title") == anime_title for r in results[:3]):
-                    test_passed = True
-                    passed_tests += 1
+                    # Enhanced validation
+                    test_passed = False
+                    synonym_match = False
+                    if top_title == anime_title:
+                        test_passed = True
+                        passed_tests += 1
+                    elif any(r.get("title") == anime_title for r in results[:3]):
+                        test_passed = True
+                        passed_tests += 1
+                    else:
+                        # Check if any synonyms match
+                        anime_synonyms = anime.get("synonyms", [])
+                        for synonym in anime_synonyms:
+                            if any(
+                                synonym.lower() in r.get("title", "").lower()
+                                for r in results[:3]
+                            ):
+                                test_passed = True
+                                synonym_match = True
+                                passed_tests += 1
+                                break
+
+                    # Print detailed test result using stacked panels
+                    formatter.print_detailed_test_result(
+                        i + 1,
+                        anime,
+                        selected_combination,
+                        text_query,
+                        results,
+                        test_passed,
+                        synonym_match,
+                    )
+
+                    # Track field combination effectiveness
+                    if combination_key not in field_combination_stats:
+                        field_combination_stats[combination_key] = {
+                            "tests": 0,
+                            "passes": 0,
+                            "avg_score": 0.0,
+                        }
+
+                    field_combination_stats[combination_key]["tests"] += 1
+                    if test_passed:
+                        field_combination_stats[combination_key]["passes"] += 1
+                    field_combination_stats[combination_key]["avg_score"] += top_score
+
+                    total_tests += 1
                 else:
-                    # Check if any synonyms match
-                    anime_synonyms = anime.get("synonyms", [])
-                    for synonym in anime_synonyms:
-                        if any(
-                            synonym.lower() in r.get("title", "").lower()
-                            for r in results[:3]
-                        ):
-                            test_passed = True
-                            synonym_match = True
-                            passed_tests += 1
-                            break
+                    # Print detailed result for no results case
+                    formatter.print_detailed_test_result(
+                        i + 1, anime, selected_combination, text_query, [], False
+                    )
+                    total_tests += 1
 
-                # Print detailed test result using stacked panels
+            except Exception as e:
+                # Print error case
+                error_results = [{"title": f"Error: {str(e)}", "score": 0.0}]
                 formatter.print_detailed_test_result(
-                    i + 1,
-                    anime,
-                    selected_combination,
-                    text_query,
-                    results,
-                    test_passed,
-                    synonym_match,
-                )
-
-                # Track field combination effectiveness
-                if combination_key not in field_combination_stats:
-                    field_combination_stats[combination_key] = {
-                        "tests": 0,
-                        "passes": 0,
-                        "avg_score": 0.0,
-                    }
-
-                field_combination_stats[combination_key]["tests"] += 1
-                if test_passed:
-                    field_combination_stats[combination_key]["passes"] += 1
-                field_combination_stats[combination_key]["avg_score"] += top_score
-
-                total_tests += 1
-            else:
-                # Print detailed result for no results case
-                formatter.print_detailed_test_result(
-                    i + 1, anime, selected_combination, text_query, [], False
+                    i + 1, anime, selected_combination, text_query, error_results, False
                 )
                 total_tests += 1
-
-        except Exception as e:
-            # Print error case
-            error_results = [{"title": f"Error: {str(e)}", "score": 0.0}]
-            formatter.print_detailed_test_result(
-                i + 1, anime, selected_combination, text_query, error_results, False
-            )
-            total_tests += 1
+    finally:
+        asyncio.run(async_qdrant_client.close())
 
     # Calculate field combination effectiveness
     for combination_key in field_combination_stats:
@@ -347,8 +350,8 @@ def test_image_vector_comprehensive():
         return
 
     # True randomization
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Randomly select 5 anime for testing
     test_anime = random.sample(anime_with_images, min(5, len(anime_with_images)))
@@ -443,6 +446,9 @@ def test_image_vector_comprehensive():
                 continue
 
     finally:
+        # Close Qdrant client
+        asyncio.run(async_qdrant_client.close())
+
         # Clean up temporary files
         for temp_file in temp_files:
             try:
@@ -531,8 +537,8 @@ def test_multimodal_title_search():
         return
 
     # True randomization
-    random.seed(int(time.time() * 1000) % 2**32)
     random_seed = int(time.time() * 1000) % 2**32
+    random.seed(random_seed)
 
     # Get all title-related fields
     title_fields = get_title_related_fields()
@@ -723,6 +729,9 @@ def test_multimodal_title_search():
                 continue
 
     finally:
+        # Close Qdrant client
+        asyncio.run(async_qdrant_client.close())
+
         # Clean up temporary files
         for temp_file in temp_files:
             try:

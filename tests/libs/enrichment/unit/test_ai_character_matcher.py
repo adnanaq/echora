@@ -3,6 +3,9 @@
 import pytest
 from enrichment.ai_character_matcher import CharacterNamePreprocessor
 
+# Skip all tests in this module if pykakasi is not installed
+pytest.importorskip("pykakasi")
+
 
 class TestCharacterNamePreprocessorRomaji:
     """Test romaji conversion uses modern pykakasi API correctly."""
