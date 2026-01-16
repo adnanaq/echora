@@ -19,7 +19,9 @@ class TestCharacterNamePreprocessorRomaji:
     def test_to_romaji_returns_string_not_object(self, preprocessor):
         """Verify _to_romaji returns a string (modern API), not conversion object (deprecated API)."""
         result = preprocessor._to_romaji("テスト")
-        assert isinstance(result, str), "Result should be a string, not a conversion object"
+        assert isinstance(result, str), (
+            "Result should be a string, not a conversion object"
+        )
 
     def test_romaji_hiragana_conversion(self, preprocessor):
         """Test hiragana to romaji conversion."""
@@ -61,10 +63,10 @@ class TestCharacterNamePreprocessorRomaji:
         # Mock kks.convert to raise an exception
         preprocessor.kks = MagicMock()
         preprocessor.kks.convert.side_effect = Exception("Simulated conversion failure")
-        
+
         japanese_text = "テスト"
         result = preprocessor._to_romaji(japanese_text)
-        
+
         # Should return original text on exception
         assert result == japanese_text
         preprocessor.kks.convert.assert_called_once_with(japanese_text)

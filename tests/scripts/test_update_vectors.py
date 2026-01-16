@@ -9,7 +9,7 @@ from QdrantClient.update_batch_vectors().
 """
 
 import pytest
-from common.models.anime import AnimeEntry
+from common.models.anime import AnimeRecord
 from qdrant_db import QdrantClient
 from vector_db_interface import VectorDocument
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
@@ -20,11 +20,11 @@ pytestmark = pytest.mark.integration
 
 async def add_test_anime(
     client: QdrantClient,
-    anime_list: list[AnimeEntry] | AnimeEntry,
+    anime_list: list[AnimeRecord] | AnimeRecord,
     batch_size: int = 100,
 ):
     """Helper to add anime with correct point IDs."""
-    if isinstance(anime_list, AnimeEntry):
+    if isinstance(anime_list, AnimeRecord):
         anime_list = [anime_list]
 
     documents = []
@@ -43,7 +43,7 @@ async def test_vector_persistence_after_update(
 ):
     """Test that vectors are actually persisted and retrievable after update."""
     # Create and seed test anime
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="persistence-test-1",
         title="Persistence Test Anime",
         genres=["Action"],
@@ -101,7 +101,7 @@ async def test_detailed_results_provide_accurate_tracking(
 ):
     """Test that detailed results from update_batch_vectors enable accurate per-update tracking."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"detailed-test-{i}",
             title=f"Test {i}",
             genres=["Action"],
@@ -187,7 +187,7 @@ async def test_all_or_nothing_anime_success_logic(
     An anime is only considered successful if ALL its vectors succeed.
     This tests the fix to the original flawed logic that incorrectly tracked anime success.
     """
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="all-or-nothing-test",
         title="All Or Nothing Test",
         genres=["Action", "Drama"],
@@ -268,7 +268,7 @@ async def test_per_vector_statistics_from_detailed_results(
     This validates the fix from lines 418-428 in update_vectors.py.
     """
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"stats-test-{i}",
             title=f"Stats Test {i}",
             genres=["Action"],
@@ -361,7 +361,7 @@ async def test_empty_batch_handling(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_all_validation_failures_no_qdrant_call(client: QdrantClient):
     """Test that when all updates fail validation, no Qdrant call is made."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="validation-only-test",
         title="Validation Test",
         genres=["Action"],
@@ -411,7 +411,7 @@ async def test_mixed_batch_all_combinations(
 ):
     """Test batch with all possible anime success combinations: all pass, partial pass, all fail."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"mixed-{i}",
             title=f"Mixed Test {i}",
             genres=["Action"],
@@ -572,7 +572,7 @@ async def test_all_11_vectors_simultaneously(
     client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager
 ):
     """Test updating all 11 vector types in a single batch."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="all-vectors-test",
         title="All Vectors Test",
         genres=["Action", "Drama"],
@@ -633,7 +633,7 @@ async def test_all_11_vectors_simultaneously(
 @pytest.mark.asyncio
 async def test_duplicate_anime_in_same_batch(client: QdrantClient):
     """Test batch with duplicate anime IDs (same vector updated multiple times)."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="duplicate-test",
         title="Duplicate Test",
         genres=["Action"],
@@ -675,7 +675,7 @@ async def test_duplicate_anime_in_same_batch(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_dimension_edge_cases(client: QdrantClient):
     """Test various dimension edge cases."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="dimension-test",
         title="Dimension Test",
         genres=["Action"],
@@ -745,7 +745,7 @@ async def test_special_float_values(client: QdrantClient):
     causing the entire batch to fail before our validation runs.
     This test focuses on edge cases that should pass validation.
     """
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="float-test",
         title="Float Test",
         genres=["Action"],
@@ -834,7 +834,7 @@ async def test_non_existent_anime_ids(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_batch_with_only_invalid_vector_names(client: QdrantClient):
     """Test batch where all vector names are invalid."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="invalid-names-test",
         title="Invalid Names Test",
         genres=["Action"],
@@ -886,7 +886,7 @@ async def test_mixed_valid_invalid_anime_ids(
     Note: Qdrant's update_vectors operation updates existing points.
     Non-existing points will be processed but may not be updated if they don't exist.
     """
-    existing_anime = AnimeEntry(
+    existing_anime = AnimeRecord(
         id="existing-anime",
         title="Existing Anime",
         genres=["Action"],
@@ -929,7 +929,7 @@ async def test_results_ordering_matches_input(
 ):
     """Test that detailed results maintain relationship to input order."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"order-{i}",
             title=f"Order Test {i}",
             genres=["Action"],
@@ -974,7 +974,7 @@ async def test_large_batch_realistic_failures(
 ):
     """Test large batch (100 anime) with realistic failure patterns."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"large-{i}",
             title=f"Large Test {i}",
             genres=["Action"],
@@ -1021,7 +1021,7 @@ async def test_large_batch_realistic_failures(
 @pytest.mark.asyncio
 async def test_sequential_updates_same_vector(client: QdrantClient):
     """Test updating same vector multiple times sequentially."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="sequential-test",
         title="Sequential Test",
         genres=["Action"],
@@ -1063,7 +1063,7 @@ async def test_image_and_text_vectors_mixed(
     client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager
 ):
     """Test mixing image vectors (768-dim) and text vectors (1024-dim) in same batch."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="mixed-dim-test",
         title="Mixed Dimension Test",
         genres=["Action"],
@@ -1116,7 +1116,7 @@ async def test_single_vector_update_method(
     client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager
 ):
     """Test update_single_vector method (not just batch updates)."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="single-update-test",
         title="Single Update Test",
         genres=["Action"],
@@ -1153,7 +1153,7 @@ async def test_batch_size_boundaries(
     """Test various batch sizes: 1, 2, 50, 100, 500."""
     # Create test anime
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"batch-size-{i}",
             title=f"Test {i}",
             genres=["Action"],
@@ -1201,7 +1201,7 @@ async def test_update_then_search_consistency(
     client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager
 ):
     """Test that updated vectors are immediately searchable with correct results."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="consistency-test",
         title="Consistency Test Anime",
         genres=["Action", "Adventure"],
@@ -1252,7 +1252,7 @@ async def test_similarity_search_after_multiple_updates(
     """Test that similarity search returns correct results after vector updates."""
     # Create 3 similar anime
     anime_list = [
-        AnimeEntry(
+        AnimeRecord(
             id="similar-1",
             title="Action Hero Adventure",
             genres=["Action"],
@@ -1261,7 +1261,7 @@ async def test_similarity_search_after_multiple_updates(
             status="FINISHED",
             sources=[],
         ),
-        AnimeEntry(
+        AnimeRecord(
             id="similar-2",
             title="Action Hero Story",
             genres=["Action"],
@@ -1270,7 +1270,7 @@ async def test_similarity_search_after_multiple_updates(
             status="FINISHED",
             sources=[],
         ),
-        AnimeEntry(
+        AnimeRecord(
             id="different-1",
             title="Romance Comedy Love",
             genres=["Romance"],
@@ -1339,7 +1339,7 @@ async def test_vector_extraction_failures_handling(
 ):
     """Test handling when field_mapper extraction returns empty/minimal data."""
     # Create anime with minimal data
-    minimal_anime = AnimeEntry(
+    minimal_anime = AnimeRecord(
         id="minimal-data",
         title="M",  # Very short title
         genres=[],  # Empty genre
@@ -1377,7 +1377,7 @@ async def test_vector_extraction_failures_handling(
 @pytest.mark.asyncio
 async def test_all_error_types_in_detailed_results(client: QdrantClient):
     """Test that all error types return detailed, accurate error messages."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="error-types-test",
         title="Error Types Test",
         genres=["Action"],
@@ -1448,7 +1448,7 @@ async def test_multi_batch_statistics_aggregation(
 ):
     """Test that statistics are correctly aggregated across multiple sequential batches."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"multi-batch-{i}",
             title=f"Test {i}",
             genres=["Action"],
@@ -1514,7 +1514,7 @@ async def test_result_structure_completeness(
     client: QdrantClient, embedding_manager: MultiVectorEmbeddingManager
 ):
     """Test that result structure contains all required fields for both success and failure."""
-    test_anime = AnimeEntry(
+    test_anime = AnimeRecord(
         id="structure-test",
         title="Structure Test",
         genres=["Action"],
@@ -1581,7 +1581,7 @@ async def test_update_with_different_vector_combinations(
 ):
     """Test various combinations of vector updates in single batch."""
     test_anime = [
-        AnimeEntry(
+        AnimeRecord(
             id=f"combo-{i}",
             title=f"Combo Test {i}",
             genres=["Action"],

@@ -178,9 +178,7 @@ def test_title_vector_comprehensive():
     async_qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url, api_key=settings.qdrant_api_key
     )
-    qdrant_client = asyncio.run(
-        QdrantClient.create(settings, async_qdrant_client)
-    )
+    qdrant_client = asyncio.run(QdrantClient.create(settings, async_qdrant_client))
 
     try:
         for i, anime in enumerate(test_anime):
@@ -373,9 +371,7 @@ def test_image_vector_comprehensive():
     async_qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url, api_key=settings.qdrant_api_key
     )
-    qdrant_client = asyncio.run(
-        QdrantClient.create(settings, async_qdrant_client)
-    )
+    qdrant_client = asyncio.run(QdrantClient.create(settings, async_qdrant_client))
 
     try:
         for i, (anime, available_images) in enumerate(test_anime):
@@ -500,9 +496,7 @@ def test_multimodal_title_search():
         if hasattr(settings, "qdrant_api_key")
         else None,
     )
-    qdrant_client = asyncio.run(
-        QdrantClient.create(settings, async_qdrant_client)
-    )
+    qdrant_client = asyncio.run(QdrantClient.create(settings, async_qdrant_client))
 
     # Initialize processors once before the loop
     field_mapper = AnimeFieldMapper()

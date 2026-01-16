@@ -1,0 +1,9 @@
+python_tests(
+    name="tests",
+    sources=["*.py"],
+    dependencies=[
+        "libs/common/src/common:common",
+        "libs/vector_processing/src/vector_processing:vector_processing",
+        "libs/vector_db_interface/src/vector_db_interface:vector_db_interface",
+    ],
+)

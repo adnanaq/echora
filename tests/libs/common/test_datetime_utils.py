@@ -1,9 +1,8 @@
 """Tests for datetime utility functions."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
 from common.models.anime import AnimeSeason, AnimeStatus
 from common.utils.datetime_utils import (
     determine_anime_season,
@@ -27,103 +26,87 @@ class TestDetermineAnimeStatus:
 
     def test_returns_upcoming_when_start_date_in_future(self):
         """Returns UPCOMING when start_date is in the future."""
-        current = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        current = datetime(2024, 1, 1, tzinfo=UTC)
         future_start = "2024-06-01"
 
         status = determine_anime_status(
-            start_date=future_start,
-            end_date=None,
-            current_date=current
+            start_date=future_start, end_date=None, current_date=current
         )
         assert status == AnimeStatus.UPCOMING
 
     def test_returns_upcoming_even_with_future_end_date(self):
         """Returns UPCOMING when start_date is future, regardless of end_date."""
-        current = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        current = datetime(2024, 1, 1, tzinfo=UTC)
         future_start = "2024-06-01"
         future_end = "2024-09-01"
 
         status = determine_anime_status(
-            start_date=future_start,
-            end_date=future_end,
-            current_date=current
+            start_date=future_start, end_date=future_end, current_date=current
         )
         assert status == AnimeStatus.UPCOMING
 
     def test_returns_finished_when_both_dates_in_past(self):
         """Returns FINISHED when both start and end dates are in the past."""
-        current = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        current = datetime(2025, 1, 1, tzinfo=UTC)
         past_start = "2024-10-04"
         past_end = "2024-12-20"
 
         status = determine_anime_status(
-            start_date=past_start,
-            end_date=past_end,
-            current_date=current
+            start_date=past_start, end_date=past_end, current_date=current
         )
         assert status == AnimeStatus.FINISHED
 
     def test_returns_finished_when_end_date_is_today(self):
         """Returns FINISHED when end_date is same as current date."""
-        current = datetime(2024, 12, 20, 12, 0, 0, tzinfo=timezone.utc)
+        current = datetime(2024, 12, 20, 12, 0, 0, tzinfo=UTC)
         start = "2024-10-04"
         end = "2024-12-20"
 
         status = determine_anime_status(
-            start_date=start,
-            end_date=end,
-            current_date=current
+            start_date=start, end_date=end, current_date=current
         )
         assert status == AnimeStatus.FINISHED
 
     def test_returns_ongoing_when_started_but_no_end_date(self):
         """Returns ONGOING when start_date is past but no end_date."""
-        current = datetime(2024, 12, 1, tzinfo=timezone.utc)
+        current = datetime(2024, 12, 1, tzinfo=UTC)
         past_start = "1999-10-20"  # One Piece example
 
         status = determine_anime_status(
-            start_date=past_start,
-            end_date=None,
-            current_date=current
+            start_date=past_start, end_date=None, current_date=current
         )
         assert status == AnimeStatus.ONGOING
 
     def test_returns_ongoing_when_end_date_in_future(self):
         """Returns ONGOING when started but end_date is in future."""
-        current = datetime(2024, 11, 1, tzinfo=timezone.utc)
+        current = datetime(2024, 11, 1, tzinfo=UTC)
         past_start = "2024-10-04"
         future_end = "2024-12-20"
 
         status = determine_anime_status(
-            start_date=past_start,
-            end_date=future_end,
-            current_date=current
+            start_date=past_start, end_date=future_end, current_date=current
         )
         assert status == AnimeStatus.ONGOING
 
     def test_handles_iso_datetime_format(self):
         """Handles ISO datetime format with time and timezone."""
-        current = datetime(2024, 12, 25, tzinfo=timezone.utc)
+        current = datetime(2024, 12, 25, tzinfo=UTC)
         start = "2024-10-04T00:00:00Z"
         end = "2024-12-20T23:59:59Z"
 
         status = determine_anime_status(
-            start_date=start,
-            end_date=end,
-            current_date=current
+            start_date=start, end_date=end, current_date=current
         )
         assert status == AnimeStatus.FINISHED
 
     def test_handles_naive_datetime_assumes_utc(self):
         """Handles naive datetime strings by assuming UTC."""
-        current = datetime(2024, 12, 25, tzinfo=timezone.utc)
+        current = datetime(2024, 12, 25, tzinfo=UTC)
         start = "2024-10-04T00:00:00"
         end = "2024-12-20T23:59:59"
 
         status = determine_anime_status(
-            start_date=start,
-            end_date=end,
-            current_date=current
+            start_date=start, end_date=end, current_date=current
         )
         assert status == AnimeStatus.FINISHED
 
@@ -132,7 +115,7 @@ class TestDetermineAnimeStatus:
         status = determine_anime_status(
             start_date="invalid-date",
             end_date="also-invalid",
-            current_date=datetime(2024, 1, 1, tzinfo=timezone.utc)
+            current_date=datetime(2024, 1, 1, tzinfo=UTC),
         )
         assert status == AnimeStatus.UNKNOWN
 
@@ -146,13 +129,11 @@ class TestDetermineAnimeStatus:
 
     def test_returns_ongoing_when_start_today_no_end(self):
         """Returns ONGOING when anime starts today with no end date."""
-        current = datetime(2024, 10, 4, 12, 0, 0, tzinfo=timezone.utc)
+        current = datetime(2024, 10, 4, 12, 0, 0, tzinfo=UTC)
         start = "2024-10-04"
 
         status = determine_anime_status(
-            start_date=start,
-            end_date=None,
-            current_date=current
+            start_date=start, end_date=None, current_date=current
         )
         assert status == AnimeStatus.ONGOING
 

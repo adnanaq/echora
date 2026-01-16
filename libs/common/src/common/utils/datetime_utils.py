@@ -1,11 +1,16 @@
 """Datetime utility functions for anime data processing."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from common.models.anime import AnimeSeason, AnimeStatus
 
 # Module-level constant for season mapping (winter, spring, summer, fall)
-_SEASONS = (AnimeSeason.WINTER, AnimeSeason.SPRING, AnimeSeason.SUMMER, AnimeSeason.FALL)
+_SEASONS = (
+    AnimeSeason.WINTER,
+    AnimeSeason.SPRING,
+    AnimeSeason.SUMMER,
+    AnimeSeason.FALL,
+)
 
 
 def determine_anime_status(
@@ -52,11 +57,11 @@ def determine_anime_status(
     """
     # Use current UTC time if not provided
     if current_date is None:
-        current_date = datetime.now(timezone.utc)
+        current_date = datetime.now(UTC)
 
     # Ensure current_date is timezone-aware
     if current_date.tzinfo is None:
-        current_date = current_date.replace(tzinfo=timezone.utc)
+        current_date = current_date.replace(tzinfo=UTC)
 
     # Handle None or empty string dates
     if not start_date:
@@ -127,7 +132,7 @@ def _parse_date(date_str: str) -> datetime:
 
     # Ensure timezone-aware (assume UTC for naive)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
 
     return dt
 

@@ -11,7 +11,6 @@ Uses existing infrastructure:
 
 import argparse
 import asyncio
-import hashlib
 import json
 import os
 import uuid
@@ -19,7 +18,7 @@ from typing import Any, cast
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 from common.config import get_settings
-from common.models.anime import AnimeEntry
+from common.models.anime import AnimeRecord
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Record
 from qdrant_db.client import QdrantClient
@@ -66,9 +65,7 @@ async def main() -> None:
         # Initialize embedding manager and processors using factory pattern
         field_mapper = AnimeFieldMapper()
         text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(
-            model=text_model, field_mapper=field_mapper, settings=settings
-        )
+        text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
         image_downloader = ImageDownloader(
@@ -84,7 +81,7 @@ async def main() -> None:
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            field_mapper=field_mapper,
+            # field_mapper removed from manager
             settings=settings,
         )
 
@@ -115,9 +112,9 @@ async def main() -> None:
         anime_data = enrichment_data["data"]
         print(f" Loaded {len(anime_data)} anime entries")
 
-        # Convert to AnimeEntry objects
-        print(" Converting to AnimeEntry objects...")
-        anime_entries: list[AnimeEntry] = []
+        # Convert to AnimeRecord objects
+        print(" Converting to AnimeRecord objects...")
+        records: list[AnimeRecord] = []
 
         for i, anime_dict in enumerate(anime_data):
             try:
@@ -125,18 +122,18 @@ async def main() -> None:
                 if "id" not in anime_dict:
                     anime_dict["id"] = str(uuid.uuid4())
 
-                # Convert to AnimeEntry
-                anime_entry = AnimeEntry(**anime_dict)
-                anime_entries.append(anime_entry)
-                print(f"   {i + 1}/{len(anime_data)}: {anime_entry.title}")
+                # Convert to AnimeRecord (handles flat JSON via model_validator)
+                record = AnimeRecord(**anime_dict)
+                records.append(record)
+                print(f"   {i + 1}/{len(anime_data)}: {record.anime.title}")
 
             except Exception as e:  # noqa: BLE001 - Skip invalid entries, continue processing rest
                 print(f"   Failed to convert entry {i + 1}: {e}")
                 continue
 
-        print(f" Successfully converted {len(anime_entries)} entries")
+        print(f" Successfully converted {len(records)} entries")
 
-        if not anime_entries:
+        if not records:
             print(" No valid anime entries to index")
             return
 
@@ -153,31 +150,15 @@ async def main() -> None:
 
         try:
             # Process batch to get vectors and payloads
-            print(
-                f"\n Processing {len(anime_entries)} anime entries to generate vectors..."
+            print(f"\n Processing {len(records)} anime entries to generate vectors...")
+            # embedding_manager.process_anime_batch now returns list[VectorDocument] directly
+            points: list[VectorDocument] = await embedding_manager.process_anime_batch(
+                records
             )
-            processed_batch = await embedding_manager.process_anime_batch(anime_entries)
 
-            points = []
-            for doc_data in processed_batch:
-                if doc_data["metadata"].get("processing_failed"):
-                    print(
-                        f"Skipping failed document: {doc_data['metadata'].get('anime_title')}"
-                    )
-                    continue
-
-                # Generate point ID from anime ID (matches QdrantClient._generate_point_id)
-                # MD5 is used for non-cryptographic deterministic ID generation
-                point_id = hashlib.md5(doc_data["payload"]["id"].encode()).hexdigest()  # noqa: S324
-
-                doc = VectorDocument(
-                    id=point_id,
-                    vectors=doc_data["vectors"],
-                    payload=doc_data["payload"],
-                )
-                points.append(doc)
-
-            print(f"Successfully generated vectors for {len(points)} entries.")
+            print(
+                f"Successfully generated {len(points)} vector points (Anime + Characters + Episodes)."
+            )
 
             if not points:
                 print("No points to index after embedding; skipping Qdrant upsert.")

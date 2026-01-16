@@ -76,59 +76,59 @@ async def test_search_methods():
             print(f"   ❌ search_multi_vector failed: {e}")
             return False
 
-        # Test 3: search_text_comprehensive
-        print("3. Testing search_text_comprehensive()...")
+        # Test 3: search (text-only, replaces search_text_comprehensive)
+        print("3. Testing search() with text_embedding only...")
         try:
             # Create dummy text embedding (1024 dimensions for BGE-M3)
             dummy_text_embedding = [0.1] * 1024
-            results = await client.search_text_comprehensive(
-                query_embedding=dummy_text_embedding, limit=3
+            results = await client.search(
+                text_embedding=dummy_text_embedding, limit=3
             )
-            print(f"   ✓ search_text_comprehensive returned {len(results)} results")
+            print(f"   ✓ search(text_embedding=...) returned {len(results)} results")
         except Exception as e:
-            print(f"   ❌ search_text_comprehensive failed: {e}")
+            print(f"   ❌ search(text_embedding=...) failed: {e}")
             return False
 
-        # Test 4: search_visual_comprehensive
-        print("4. Testing search_visual_comprehensive()...")
+        # Test 4: search (image-only, replaces search_visual_comprehensive)
+        print("4. Testing search() with image_embedding only...")
         try:
             # Create dummy image embedding (768 dimensions for OpenCLIP ViT-L/14)
             dummy_image_embedding = [0.1] * 768
-            results = await client.search_visual_comprehensive(
+            results = await client.search(
                 image_embedding=dummy_image_embedding, limit=3
             )
-            print(f"   ✓ search_visual_comprehensive returned {len(results)} results")
+            print(f"   ✓ search(image_embedding=...) returned {len(results)} results")
         except Exception as e:
-            print(f"   ❌ search_visual_comprehensive failed: {e}")
+            print(f"   ❌ search(image_embedding=...) failed: {e}")
             return False
 
-        # Test 5: search_complete
-        print("5. Testing search_complete()...")
+        # Test 5: search (multimodal, replaces search_complete)
+        print("5. Testing search() with both text and image embeddings...")
         try:
             # Create dummy embeddings for both text and image
             dummy_text_embedding = [0.1] * 1024
             dummy_image_embedding = [0.1] * 768
-            results = await client.search_complete(
-                query_embedding=dummy_text_embedding,
+            results = await client.search(
+                text_embedding=dummy_text_embedding,
                 image_embedding=dummy_image_embedding,
                 limit=3,
             )
-            print(f"   ✓ search_complete returned {len(results)} results")
+            print(f"   ✓ search(text+image) returned {len(results)} results")
         except Exception as e:
-            print(f"   ❌ search_complete failed: {e}")
+            print(f"   ❌ search(text+image) failed: {e}")
             return False
 
-        # Test 6: search_characters
-        print("6. Testing search_characters()...")
+        # Test 6: search (character entity, replaces search_characters)
+        print("6. Testing search() with entity_type='character'...")
         try:
             # Create dummy text embedding for character search
             dummy_text_embedding = [0.1] * 1024
-            results = await client.search_characters(
-                query_embedding=dummy_text_embedding, limit=3
+            results = await client.search(
+                text_embedding=dummy_text_embedding, entity_type="character", limit=3
             )
-            print(f"   ✓ search_characters returned {len(results)} results")
+            print(f"   ✓ search(entity_type='character') returned {len(results)} results")
         except Exception as e:
-            print(f"   ❌ search_characters failed: {e}")
+            print(f"   ❌ search(entity_type='character') failed: {e}")
             return False
 
         print("\n✅ All search methods are working correctly!")

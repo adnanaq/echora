@@ -3,4 +3,3 @@
 These tests require real Qdrant database and ML models.
 Inherits fixtures from parent conftest files.
 """
-

@@ -1,9 +1,9 @@
 # src/models/anime.py - Pydantic Models for Anime Data
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AnimeStatus(str, Enum):
@@ -60,8 +60,13 @@ class AnimeSeason(str, Enum):
     WINTER = "WINTER"
 
 
-class CharacterEntry(BaseModel):
-    """Character information from external APIs with multi-source support"""
+# =============================================================================
+# ENTITY MODELS (each becomes a vector point)
+# =============================================================================
+
+
+class Character(BaseModel):
+    """Character data that becomes a Character Point in the vector database."""
 
     # =====================================================================
     # SCALAR FIELDS (alphabetical)
@@ -75,6 +80,9 @@ class CharacterEntry(BaseModel):
     )
     gender: str | None = Field(None, description="Character gender")
     hair_color: str | None = Field(None, description="Hair color")
+    id: str | None = Field(
+        None, description="Unique ULID for the character (e.g. char_01H...)"
+    )
     name: str = Field(..., description="Character name")
     name_native: str | None = Field(
         None, description="Native language name (Japanese/Kanji)"
@@ -84,6 +92,10 @@ class CharacterEntry(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
+    anime_ids: list[str] = Field(
+        default_factory=list,
+        description="List of ULIDs of anime this character appears in",
+    )
     character_traits: list[str] = Field(
         default_factory=list,
         description="Character traits/tags from AnimePlanet (e.g., 'Ninja', 'Pirates', 'Superpowers')",
@@ -108,17 +120,22 @@ class CharacterEntry(BaseModel):
     )
 
 
-class EpisodeDetailEntry(BaseModel):
-    """Comprehensive episode details with multi-source integration"""
+class Episode(BaseModel):
+    """Episode data that becomes an Episode Point in the vector database."""
 
     # =====================================================================
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     aired: datetime | None = Field(None, description="Episode air date with timezone")
+    anime_id: str | None = Field(None, description="ULID of the parent anime")
     description: str | None = Field(None, description="Episode description from Kitsu")
     duration: int | None = Field(None, description="Episode duration in seconds")
     episode_number: int = Field(..., description="Episode number")
     filler: bool = Field(default=False, description="Whether episode is filler")
+    id: str | None = Field(
+        None,
+        description="Deterministic ID (hash of anime_id + episode_number)",
+    )
     recap: bool = Field(default=False, description="Whether episode is recap")
     score: float | None = Field(None, description="Episode rating score")
     season_number: int | None = Field(None, description="Season number from Kitsu")
@@ -144,6 +161,33 @@ class EpisodeDetailEntry(BaseModel):
     streaming: dict[str, str] = Field(
         default_factory=dict, description="Streaming platforms and URLs {platform: url}"
     )
+
+
+class Image(BaseModel):
+    """Image data that becomes an Image Point in the vector database."""
+
+    id: str = Field(..., description="Unique ULID for the image (img_ prefix)")
+    image_url: str = Field(..., description="Original image URL")
+    anime_id: str | None = Field(
+        None, description="Parent anime ID (for anime images)"
+    )
+    character_id: str | None = Field(
+        None, description="Parent character ID (for character images)"
+    )
+
+    @model_validator(mode="after")
+    def validate_single_parent(self) -> "Image":
+        """Ensure image belongs to either anime or character, not both."""
+        if self.anime_id and self.character_id:
+            raise ValueError("Image cannot belong to both anime and character")
+        if not self.anime_id and not self.character_id:
+            raise ValueError("Image must belong to either anime or character")
+        return self
+
+
+# =============================================================================
+# SUPPORTING MODELS
+# =============================================================================
 
 
 class TrailerEntry(BaseModel):
@@ -423,26 +467,35 @@ class ScoreCalculations(BaseModel):
     median: float | None = Field(None, description="Median of scores")
 
 
-class AnimeEntry(BaseModel):
-    """Anime entry from anime-offline-database with comprehensive enhancement support"""
+# =============================================================================
+# ANIME ENTITY MODEL (becomes an Anime Point in the vector database)
+# =============================================================================
+
+
+class Anime(BaseModel):
+    """Core anime data that becomes an Anime Point in the vector database."""
 
     # =====================================================================
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     background: str | None = Field(None, description="Background information from MAL")
+    duration: int | None = Field(
+        None,
+        description="Episode duration in seconds",
+    )
     episodes: int = Field(default=0, description="Number of episodes")
     id: str = Field(..., description="Unique identifier for the anime entry")
     month: str | None = Field(None, description="Premiere month from AnimSchedule")
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
-    similarity_score: float | None = Field(
-        None,
-        description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
-    )
     rating: AnimeRating | None = Field(
         None, description="Content rating (PG-13, R, etc.)"
     )
     season: AnimeSeason | None = Field(
         None, description="Anime season (SPRING, SUMMER, FALL, WINTER)"
+    )
+    similarity_score: float | None = Field(
+        None,
+        description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
     )
     source_material: AnimeSourceMaterial | None = Field(
         None, description="Source material (manga, light novel, etc.)"
@@ -460,27 +513,19 @@ class AnimeEntry(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
-    characters: list[CharacterEntry] = Field(
-        default_factory=list,
-        description="Character information with multi-source support",
-    )
     content_warnings: list[str] = Field(
         default_factory=list, description="Content warnings"
     )
     demographics: list[str] = Field(
         default_factory=list, description="Target demographics (Shounen, Seinen, etc.)"
     )
-    ending_themes: list["ThemeSong"] = Field(
+    ending_themes: list[ThemeSong] = Field(
         default_factory=list, description="Ending theme songs"
-    )
-    episode_details: list[EpisodeDetailEntry] = Field(
-        default_factory=list,
-        description="Detailed episode information with multi-source integration",
     )
     genres: list[str] = Field(
         default_factory=list, description="Anime genres from AniList/other sources"
     )
-    opening_themes: list["ThemeSong"] = Field(
+    opening_themes: list[ThemeSong] = Field(
         default_factory=list, description="Opening theme songs"
     )
     related_anime: list[RelatedAnimeEntry] = Field(
@@ -510,22 +555,16 @@ class AnimeEntry(BaseModel):
     # =====================================================================
     # OBJECT/DICT FIELDS (alphabetical)
     # =====================================================================
-    aired_dates: Optional["AiredDates"] = Field(
-        None, description="Detailed airing dates"
-    )
-    broadcast: Optional["Broadcast"] = Field(
+    aired_dates: AiredDates | None = Field(None, description="Detailed airing dates")
+    broadcast: Broadcast | None = Field(
         None, description="Broadcast schedule information"
     )
-    broadcast_schedule: Optional["BroadcastSchedule"] = Field(
+    broadcast_schedule: BroadcastSchedule | None = Field(
         None,
         description="Broadcast timing for different versions (jpn_time, sub_time, dub_time)",
     )
-    delay_information: Optional["DelayInformation"] = Field(
+    delay_information: DelayInformation | None = Field(
         None, description="Current delay status and reasons"
-    )
-    duration: int | None = Field(
-        None,
-        description="Episode duration in seconds",
     )
     enrichment_metadata: EnrichmentMetadata | None = Field(
         None, description="Metadata about enrichment process"
@@ -540,7 +579,7 @@ class AnimeEntry(BaseModel):
     popularity_trends: dict[str, Any] | None = Field(
         None, description="Popularity trend data"
     )
-    premiere_dates: Optional["PremiereDates"] = Field(
+    premiere_dates: PremiereDates | None = Field(
         None, description="Premiere dates for different versions (original, sub, dub)"
     )
     score: ScoreCalculations | None = Field(
@@ -553,4 +592,23 @@ class AnimeEntry(BaseModel):
     statistics: dict[str, StatisticsEntry] = Field(
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
+    )
+
+
+# =============================================================================
+# AGGREGATE MODEL (container for data ingestion)
+# =============================================================================
+
+
+class AnimeRecord(BaseModel):
+    """Aggregate container for data ingestion that groups anime with its characters and episodes."""
+
+    anime: Anime = Field(..., description="Core anime data")
+    characters: list[Character] = Field(
+        default_factory=list,
+        description="Character information with multi-source support",
+    )
+    episodes: list[Episode] = Field(
+        default_factory=list,
+        description="Detailed episode information with multi-source integration",
     )

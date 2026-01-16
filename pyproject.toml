@@ -10,6 +10,7 @@ dependencies = [
     "pydantic==2.11.7",
     "pydantic-settings==2.10.0",
     "python-dotenv>=1.1.0",
+    "python-ulid>=3.0.0",
     # Vector database
     "qdrant-client[fastembed]==1.14.3",
     # Embedding models

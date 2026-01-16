@@ -109,41 +109,21 @@ class Settings(BaseSettings):
     # Multi-Vector Semantic Architecture Configuration
     vector_names: dict[str, int] = Field(
         default={
-            "title_vector": 1024,
-            "character_vector": 1024,
-            "genre_vector": 1024,
-            "staff_vector": 1024,
-            "temporal_vector": 1024,
-            "streaming_vector": 1024,
-            "related_vector": 1024,
-            "franchise_vector": 1024,
-            "episode_vector": 1024,
+            "text_vector": 1024,
             "image_vector": 768,
-            "character_image_vector": 768,
         },
-        description="Multi-vector semantic architecture with named vectors and dimensions (BGE-M3: 1024-dim, OpenCLIP ViT-L/14: 768-dim)",
+        description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
     )
 
     # Vector Priority Classification for Optimization
     vector_priorities: dict[str, list[str]] = Field(
         default={
             "high": [
-                "title_vector",
-                "character_vector",
-                "genre_vector",
+                "text_vector",
                 "image_vector",
-                "character_image_vector",
             ],
-            "medium": [
-                "staff_vector",
-                "temporal_vector",
-                "streaming_vector",
-            ],
-            "low": [
-                "related_vector",
-                "franchise_vector",
-                "episode_vector",
-            ],
+            "medium": [],
+            "low": [],
         },
         description="Vector priority classification for performance optimization",
     )
@@ -282,6 +262,8 @@ class Settings(BaseSettings):
         default={
             # Core searchable fields
             "id": "keyword",
+            "anime_id": "keyword",  # Link to parent anime (for Episodes)
+            "anime_ids": "keyword",  # Link to parent anime (for Characters)
             "title": "keyword",  # Exact title matching
             "title_text": "text",  # Full-text title search
             "type": "keyword",

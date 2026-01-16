@@ -25,10 +25,10 @@ from typing import Any
 
 try:
     from common.models.anime import (
-        AnimeEntry as _AnimeEntry,
+        AnimeRecord as _AnimeRecord,
     )
     from common.models.anime import (
-        CharacterEntry as _CharacterEntry,
+        Character as _Character,
     )
     from common.models.anime import (
         SimpleVoiceActor as _SimpleVoiceActor,
@@ -36,8 +36,8 @@ try:
     from pydantic import ValidationError as _ValidationError
 
     PYDANTIC_AVAILABLE = True
-    AnimeEntry: type[_AnimeEntry] | None = _AnimeEntry
-    CharacterEntry: type[_CharacterEntry] | None = _CharacterEntry
+    AnimeRecord: type[_AnimeRecord] | None = _AnimeRecord
+    Character: type[_Character] | None = _Character
     SimpleVoiceActor: type[_SimpleVoiceActor] | None = _SimpleVoiceActor
     ValidationError: type[_ValidationError] | None = _ValidationError
 except ImportError:
@@ -45,8 +45,8 @@ except ImportError:
         "Warning: Could not import Pydantic models. Schema validation will be limited."
     )
     PYDANTIC_AVAILABLE = False
-    AnimeEntry = None
-    CharacterEntry = None
+    AnimeRecord = None
+    Character = None
     SimpleVoiceActor = None
     ValidationError = None
 
@@ -197,7 +197,7 @@ class EnrichmentValidator:
         issues.extend(self.validate_voice_actors(entry))
 
         # 4. Schema validation (if Pydantic available)
-        if AnimeEntry is not None:
+        if AnimeRecord is not None:
             issues.extend(self.validate_schema_compliance(entry))
 
         is_valid = len([i for i in issues if i.severity == "error"]) == 0
@@ -511,12 +511,12 @@ class EnrichmentValidator:
         issues = []
 
         # Skip schema validation if Pydantic models are not available
-        if not PYDANTIC_AVAILABLE or AnimeEntry is None or ValidationError is None:
+        if not PYDANTIC_AVAILABLE or AnimeRecord is None or ValidationError is None:
             return issues
 
         try:
-            # Attempt to validate with AnimeEntry model
-            AnimeEntry(**entry)
+            # Attempt to validate with AnimeRecord model
+            AnimeRecord(**entry)
         except ValidationError as e:
             for error in e.errors():
                 field_path = ".".join(str(x) for x in error["loc"])

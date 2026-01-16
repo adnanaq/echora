@@ -43,7 +43,7 @@ class TestUpdateSingleVectorRetry:
         # Execute
         result = await mock_client.update_single_vector(
             anime_id="test_123",
-            vector_name="title_vector",
+            vector_name="text_vector",
             vector_data=[0.1] * 1024,
         )
 
@@ -65,7 +65,7 @@ class TestUpdateSingleVectorRetry:
         # Execute
         result = await mock_client.update_single_vector(
             anime_id="test_123",
-            vector_name="title_vector",
+            vector_name="text_vector",
             vector_data=[0.1] * 1024,
             max_retries=3,
             retry_delay=0.01,
@@ -86,7 +86,7 @@ class TestUpdateSingleVectorRetry:
         # Execute
         result = await mock_client.update_single_vector(
             anime_id="test_123",
-            vector_name="title_vector",
+            vector_name="text_vector",
             vector_data=[0.1] * 1024,
         )
 
@@ -105,7 +105,7 @@ class TestUpdateSingleVectorRetry:
         # Execute
         result = await mock_client.update_single_vector(
             anime_id="test_123",
-            vector_name="title_vector",
+            vector_name="text_vector",
             vector_data=[0.1] * 1024,
             max_retries=2,
             retry_delay=0.01,
@@ -159,12 +159,12 @@ class TestUpdateBatchVectorsRetry:
         updates = [
             {
                 "anime_id": "anime_1",
-                "vector_name": "title_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
             {
                 "anime_id": "anime_2",
-                "vector_name": "genre_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.2] * 1024,
             },
         ]
@@ -194,7 +194,7 @@ class TestUpdateBatchVectorsRetry:
         updates = [
             {
                 "anime_id": "anime_1",
-                "vector_name": "title_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
         ]
@@ -220,12 +220,12 @@ class TestUpdateBatchVectorsRetry:
         updates = [
             {
                 "anime_id": "anime_1",
-                "vector_name": "title_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
             {
                 "anime_id": "anime_1",  # Duplicate
-                "vector_name": "title_vector",  # Duplicate
+                "vector_name": "text_vector",  # Duplicate
                 "vector_data": [0.2] * 1024,  # Different data (last-wins)
             },
         ]
@@ -252,7 +252,7 @@ class TestUpdateBatchVectorsRetry:
         updates = [
             {
                 "anime_id": "anime_1",
-                "vector_name": "title_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
         ]
@@ -283,7 +283,7 @@ class TestUpdateBatchVectorsRetry:
         updates = [
             {
                 "anime_id": "anime_1",
-                "vector_name": "title_vector",
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
         ]
@@ -304,3 +304,86 @@ class TestUpdateBatchVectorsRetry:
         # Total should be at least 0.3s
         assert elapsed >= 0.3
         assert result["success"] == 1
+
+
+class TestUnifiedSearch:
+    """Test suite for unified search method."""
+
+    @pytest_asyncio.fixture
+    async def mock_qdrant_client(self):
+        """Create a mock QdrantClient instance for search tests."""
+        settings = get_settings()
+        mock_async_client = AsyncMock()
+
+        # Mock _initialize_collection to avoid DB calls in unit tests
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+            client = await QdrantClient.create(
+                settings=settings,
+                async_qdrant_client=mock_async_client,
+            )
+
+        return client
+
+    @pytest.mark.asyncio
+    async def test_search_text_only(self, mock_qdrant_client):
+        """Test unified search with text embedding only."""
+        text_embedding = [0.1] * 1024
+
+        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
+            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
+
+            results = await mock_qdrant_client.search(text_embedding=text_embedding)
+
+            mock_search.assert_called_once()
+            call_args = mock_search.call_args
+            assert call_args.kwargs["vector_name"] == "text_vector"
+
+    @pytest.mark.asyncio
+    async def test_search_image_only(self, mock_qdrant_client):
+        """Test unified search with image embedding only."""
+        image_embedding = [0.1] * 768
+
+        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
+            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
+
+            results = await mock_qdrant_client.search(image_embedding=image_embedding)
+
+            mock_search.assert_called_once()
+            call_args = mock_search.call_args
+            assert call_args.kwargs["vector_name"] == "image_vector"
+
+    @pytest.mark.asyncio
+    async def test_search_multimodal(self, mock_qdrant_client):
+        """Test unified search with both text and image embeddings."""
+        text_embedding = [0.1] * 1024
+        image_embedding = [0.1] * 768
+
+        with patch.object(mock_qdrant_client, "search_multi_vector") as mock_search:
+            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
+
+            results = await mock_qdrant_client.search(
+                text_embedding=text_embedding, image_embedding=image_embedding
+            )
+
+            mock_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_with_entity_type_filter(self, mock_qdrant_client):
+        """Test unified search with entity type filter."""
+        text_embedding = [0.1] * 1024
+
+        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
+            mock_search.return_value = []
+
+            await mock_qdrant_client.search(
+                text_embedding=text_embedding, entity_type="character"
+            )
+
+            call_args = mock_search.call_args
+            assert call_args.kwargs["filters"] is not None
+
+    @pytest.mark.asyncio
+    async def test_search_requires_embedding(self, mock_qdrant_client):
+        """Test that search raises error without any embedding."""
+        with pytest.raises(ValueError, match="At least one"):
+            await mock_qdrant_client.search()

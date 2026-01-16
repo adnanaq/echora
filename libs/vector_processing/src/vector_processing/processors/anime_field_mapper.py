@@ -2,7 +2,7 @@
 """
 AnimeFieldMapper - Extract and map anime data fields to semantic vector architecture
 
-Maps anime data from AnimeEntry models to appropriate text/visual embeddings
+Maps anime data from AnimeRecord models to appropriate text/visual embeddings
 for each vector type. Implements the comprehensive field mapping strategy
 defined in Phase 2.5 architecture with character image semantic separation.
 """
@@ -10,7 +10,7 @@ defined in Phase 2.5 architecture with character image semantic separation.
 import logging
 from typing import Any
 
-from common.models.anime import AnimeEntry
+from common.models.anime import Anime, AnimeRecord, Character, Episode
 
 logger = logging.getLogger(__name__)
 
@@ -30,32 +30,37 @@ class AnimeFieldMapper:
         """Initialize the anime field mapper."""
         self.logger = logger
 
-    def map_anime_to_vectors(self, anime: AnimeEntry) -> dict[str, str | list[str]]:
+    def map_anime_to_vectors(self, record: AnimeRecord) -> dict[str, str | list[str]]:
         """
-        Map complete anime entry to all vectors.
+        Map complete anime record to all vectors.
 
         Args:
-            anime: AnimeEntry model with comprehensive anime data
+            record: AnimeRecord with anime, characters, and episodes data
 
         Returns:
             Dict mapping vector names to their content for embedding
         """
         vector_data: dict[str, str | list[str]] = {}
+        anime = record.anime
 
         # Text vectors (9)
         vector_data["title_vector"] = self._extract_title_content(anime)
-        vector_data["character_vector"] = self._extract_character_content(anime)
+        vector_data["character_vector"] = self._extract_character_content(
+            record.characters
+        )
         vector_data["genre_vector"] = self._extract_genre_content(anime)
         vector_data["staff_vector"] = self._extract_staff_content(anime)
         vector_data["temporal_vector"] = self._extract_temporal_content(anime)
         vector_data["streaming_vector"] = self._extract_streaming_content(anime)
         vector_data["related_vector"] = self._extract_related_content(anime)
         vector_data["franchise_vector"] = self._extract_franchise_content(anime)
-        vector_data["episode_vector"] = self._extract_episode_content(anime)
+        vector_data["episode_vector"] = self._extract_episode_content(record.episodes)
 
         # Visual vectors (2)
         vector_data["image_vector"] = self.extract_image_urls(anime)
-        vector_data["character_image_vector"] = self.extract_character_image_urls(anime)
+        vector_data["character_image_vector"] = self.extract_character_image_urls(
+            record.characters
+        )
 
         return vector_data
 
@@ -63,7 +68,7 @@ class AnimeFieldMapper:
     # TEXT VECTOR EXTRACTORS (BGE-M3, 1024-dim)
     # ============================================================================
 
-    def _extract_title_content(self, anime: AnimeEntry) -> str:
+    def _extract_title_content(self, anime: Anime) -> str:
         """Extract title, synopsis, background, and synonyms for semantic search."""
         content_parts = []
 
@@ -87,11 +92,11 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_character_content(self, anime: AnimeEntry) -> str:
+    def _extract_character_content(self, characters: list[Character]) -> str:
         """Extract character information for semantic character search."""
         content_parts = []
 
-        for char in anime.characters:
+        for char in characters:
             char_info = []
 
             # Character name and role
@@ -120,7 +125,7 @@ class AnimeFieldMapper:
 
         return " || ".join(content_parts)
 
-    def _extract_genre_content(self, anime: AnimeEntry) -> str:
+    def _extract_genre_content(self, anime: Anime) -> str:
         """Extract genres, tags, themes, demographics, and content warnings."""
         content_parts = []
 
@@ -148,7 +153,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_staff_content(self, anime: AnimeEntry) -> str:
+    def _extract_staff_content(self, anime: Anime) -> str:
         """Extract staff data including directors, composers, studios, voice actors."""
         content_parts = []
 
@@ -210,7 +215,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_temporal_content(self, anime: AnimeEntry) -> str:
+    def _extract_temporal_content(self, anime: Anime) -> str:
         """Extract aired dates, anime season, broadcast, premiere dates."""
         content_parts = []
 
@@ -264,7 +269,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_streaming_content(self, anime: AnimeEntry) -> str:
+    def _extract_streaming_content(self, anime: Anime) -> str:
         """Extract streaming platform information and licenses."""
         content_parts = []
 
@@ -289,7 +294,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_related_content(self, anime: AnimeEntry) -> str:
+    def _extract_related_content(self, anime: Anime) -> str:
         """Extract related anime and franchise connections."""
         content_parts = []
 
@@ -343,7 +348,7 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_franchise_content(self, anime: AnimeEntry) -> str:
+    def _extract_franchise_content(self, anime: Anime) -> str:
         """Extract trailers, opening themes, ending themes (multimedia content)."""
         content_parts = []
 
@@ -382,9 +387,9 @@ class AnimeFieldMapper:
 
         return " | ".join(content_parts)
 
-    def _extract_episode_content(self, anime: AnimeEntry) -> str:
+    def _extract_episode_content(self, episodes: list[Episode]) -> str:
         """Extract detailed episode information with all available fields and chunking for large series."""
-        if not anime.episode_details:
+        if not episodes:
             return ""
 
         # Constants for chunking strategy
@@ -392,7 +397,7 @@ class AnimeFieldMapper:
 
         # Extract episode info with all available semantic fields
         episode_info = []
-        for episode in anime.episode_details:
+        for episode in episodes:
             ep_parts = []
 
             # Episode number
@@ -490,7 +495,7 @@ class AnimeFieldMapper:
     # VISUAL VECTOR EXTRACTORS (OpenCLIP ViT-L/14, 768-dim)
     # ============================================================================
 
-    def extract_image_urls(self, anime: AnimeEntry) -> list[str]:
+    def extract_image_urls(self, anime: Anime) -> list[str]:
         """Extract general anime image URLs (covers, posters, banners, trailers) excluding character images."""
         image_urls = []
 
@@ -530,12 +535,12 @@ class AnimeFieldMapper:
         unique_urls = list(dict.fromkeys(image_urls))
         return unique_urls
 
-    def extract_character_image_urls(self, anime: AnimeEntry) -> list[str]:
+    def extract_character_image_urls(self, characters: list[Character]) -> list[str]:
         """Extract character image URLs for character-specific visual embedding."""
         character_image_urls = []
 
         # Extract character images separately for character identification and recommendations
-        for character in anime.characters:
+        for character in characters:
             if character.images:
                 # character.images is now List[str] with direct image URLs
                 for image_url in character.images:

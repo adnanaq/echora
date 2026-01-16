@@ -1141,46 +1141,63 @@ class ComprehensiveVectorTester:
                         result, exec_time = {"result": []}, 0.0
 
                 elif test_config.get("test_type") == "search_text_comprehensive":
-                    # Text comprehensive search test
+                    # Text comprehensive search test (uses unified search method)
                     query = test_config["query"]
                     limit = test_config.get("limit", 5)
-                    fusion_method = test_config.get("fusion_method", "rrf")
+
+                    # Generate text embedding
+                    text_embedding = self.text_processor.encode_text(query)
+                    if not text_embedding:
+                        print("   ⚠️  Failed to encode query, skipping test")
+                        continue
 
                     start_time = time.time()
-                    search_results = await self.qdrant_client.search_text_comprehensive(
-                        query=query, limit=limit, fusion_method=fusion_method
+                    search_results = await self.qdrant_client.search(
+                        text_embedding=text_embedding, limit=limit
                     )
                     exec_time = time.time() - start_time
                     result = {"result": search_results}
 
                 elif test_config.get("test_type") == "search_characters":
-                    # Character-focused search test
+                    # Character-focused search test (uses unified search with entity_type)
                     query = test_config["query"]
                     limit = test_config.get("limit", 5)
-                    fusion_method = test_config.get("fusion_method", "rrf")
+
+                    # Generate text embedding
+                    text_embedding = self.text_processor.encode_text(query)
+                    if not text_embedding:
+                        print("   ⚠️  Failed to encode query, skipping test")
+                        continue
 
                     start_time = time.time()
-                    search_results = await self.qdrant_client.search_characters(
-                        query=query, limit=limit, fusion_method=fusion_method
+                    search_results = await self.qdrant_client.search(
+                        text_embedding=text_embedding,
+                        entity_type="character",
+                        limit=limit,
                     )
                     exec_time = time.time() - start_time
                     result = {"result": search_results}
 
                 elif test_config.get("test_type") == "search_complete":
-                    # Complete search across all vectors
+                    # Complete search across all vectors (uses unified search)
                     query = test_config["query"]
                     limit = test_config.get("limit", 5)
-                    fusion_method = test_config.get("fusion_method", "rrf")
+
+                    # Generate text embedding
+                    text_embedding = self.text_processor.encode_text(query)
+                    if not text_embedding:
+                        print("   ⚠️  Failed to encode query, skipping test")
+                        continue
 
                     start_time = time.time()
-                    search_results = await self.qdrant_client.search_complete(
-                        query=query, limit=limit, fusion_method=fusion_method
+                    search_results = await self.qdrant_client.search(
+                        text_embedding=text_embedding, limit=limit
                     )
                     exec_time = time.time() - start_time
                     result = {"result": search_results}
 
                 elif test_config.get("test_type") == "search_visual_comprehensive":
-                    # Visual comprehensive search test
+                    # Visual comprehensive search test (uses unified search with image)
                     image_data = test_config.get("image_data")
                     if not image_data or image_data == "placeholder_base64_image_data":
                         print(
@@ -1189,15 +1206,16 @@ class ComprehensiveVectorTester:
                         continue
 
                     limit = test_config.get("limit", 5)
-                    fusion_method = test_config.get("fusion_method", "rrf")
+
+                    # Generate image embedding
+                    image_embedding = self.vision_processor.encode_image(image_data)
+                    if not image_embedding:
+                        print("   ⚠️  Failed to encode image, skipping test")
+                        continue
 
                     start_time = time.time()
-                    search_results = (
-                        await self.qdrant_client.search_visual_comprehensive(
-                            image_data=image_data,
-                            limit=limit,
-                            fusion_method=fusion_method,
-                        )
+                    search_results = await self.qdrant_client.search(
+                        image_embedding=image_embedding, limit=limit
                     )
                     exec_time = time.time() - start_time
                     result = {"result": search_results}

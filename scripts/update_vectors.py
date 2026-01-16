@@ -48,7 +48,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.config import get_settings
-from common.models.anime import AnimeEntry
+from common.models.anime import AnimeRecord
 from qdrant_client import AsyncQdrantClient
 from qdrant_db.client import QdrantClient
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
@@ -186,14 +186,14 @@ async def update_vectors(
         target_anime = anime_data
         logger.info(f"Processing all {len(target_anime)} anime")
 
-    # Convert to AnimeEntry objects, adding UUIDs if missing
-    anime_entries: list[AnimeEntry] = []
+    # Convert to AnimeRecord objects, adding UUIDs if missing
+    records: list[AnimeRecord] = []
     for anime_dict in target_anime:
         if "id" not in anime_dict or not anime_dict["id"]:
             anime_dict["id"] = str(uuid.uuid4())
-        anime_entries.append(AnimeEntry(**anime_dict))
+        records.append(AnimeRecord(**anime_dict))
 
-    total_anime = len(anime_entries)
+    total_anime = len(records)
     num_batches = (total_anime + batch_size - 1) // batch_size  # Ceiling division
     logger.info(
         f"Updating {len(vector_names)} vector(s) across {total_anime} anime entries "
@@ -207,7 +207,7 @@ async def update_vectors(
     for batch_num in range(num_batches):
         batch_start = batch_num * batch_size
         batch_end = min(batch_start + batch_size, total_anime)
-        batch_anime = anime_entries[batch_start:batch_end]
+        batch_anime = records[batch_start:batch_end]
 
         logger.info(
             f"Processing batch {batch_num + 1}/{num_batches}: "
@@ -217,122 +217,42 @@ async def update_vectors(
         # Generate vectors for this batch
         gen_results = await embedding_manager.process_anime_batch(batch_anime)
 
-        # Validate generation results match batch length
-        if not gen_results or len(gen_results) != len(batch_anime):
-            raise VectorGenerationError(
-                f"Vector generation failed for batch {batch_num + 1}: "
-                f"expected {len(batch_anime)} results, got {len(gen_results) if gen_results else 0}"
-            )
+        # Update Qdrant with this batch (Using Upsert/add_documents instead of partial update)
+        if gen_results:
+            # gen_results is list[VectorDocument]
+            result = await client.add_documents(gen_results, batch_size=batch_size)
 
-        # Prepare updates for this batch
-        batch_updates: list[dict[str, Any]] = []
-        batch_generation_failures: list[dict[str, Any]] = []
-
-        for i, anime_entry in enumerate(batch_anime):
-            gen_result = gen_results[i]
-            vectors = gen_result.get("vectors", {})
-
-            for vector_name in vector_names:
-                vector_data = vectors.get(vector_name)
-                if vector_data and len(vector_data) > 0:
-                    batch_updates.append(
-                        {
-                            "anime_id": anime_entry.id,
-                            "vector_name": vector_name,
-                            "vector_data": vector_data,
-                        }
-                    )
-                else:
-                    batch_generation_failures.append(
-                        {
-                            "anime_id": anime_entry.id,
-                            "vector_name": vector_name,
-                            "error": "Vector generation failed or returned None",
-                        }
-                    )
-
-        all_generation_failures.extend(batch_generation_failures)
-
-        # Update Qdrant with this batch
-        if batch_updates:
-            batch_result = await client.update_batch_vectors(
-                updates=batch_updates,
-                dedup_policy="last-wins",
-            )
-            all_batch_results.append(batch_result)
-            logger.info(
-                f"Batch {batch_num + 1} complete: "
-                f"{batch_result['success']} successful, {batch_result['failed']} failed"
-            )
-        else:
-            logger.warning(f"Batch {batch_num + 1} had no valid updates to process")
-
-    # Check if we got any results
-    if not all_batch_results:
-        raise VectorGenerationError(
-            "No vectors were successfully generated for update."
-        )
-
-    # Aggregate results from all batches
-    total_successful = sum(r["success"] for r in all_batch_results)
-    total_failed = sum(r["failed"] for r in all_batch_results)
-    combined_results: list[dict[str, Any]] = []
-    for batch_result in all_batch_results:
-        combined_results.extend(batch_result.get("results", []))
-
-    # Create aggregated result
-    result: dict[str, Any] = {
-        "success": total_successful,
-        "failed": total_failed,
-        "results": combined_results,
-        "total_requested_updates": total_anime * len(vector_names),
-        "generation_failures": len(all_generation_failures),
-        "generation_failures_detail": all_generation_failures,
-    }
-
-    # Calculate per-vector statistics from results
-    vector_stats = {v: {"success": 0, "failed": 0} for v in vector_names}
-    for update_result in combined_results:
-        vector_name = update_result["vector_name"]
-        if vector_name in vector_stats:
-            if update_result["success"]:
-                vector_stats[vector_name]["success"] += 1
+            # Adapt result format to match expected loop output
+            # add_documents returns {"success": bool, "points_count": int, ...}
+            if result["success"]:
+                all_batch_results.append(
+                    {
+                        "success": len(batch_anime),  # Approximation for stats
+                        "failed": 0,
+                        "results": [],  # We lose granular per-vector results in add_documents
+                    }
+                )
+                logger.info(
+                    f"Batch {batch_num + 1} complete: Upserted {len(gen_results)} points."
+                )
             else:
-                vector_stats[vector_name]["failed"] += 1
+                logger.error(f"Batch {batch_num + 1} failed to upsert.")
+                all_batch_results.append({"success": 0, "failed": len(batch_anime)})
+        else:
+            logger.warning(f"Batch {batch_num + 1} generated no documents.")
 
-    # Calculate per-anime success (all vectors must succeed)
-    anime_success_map: dict[str, dict[str, int]] = {}
-    for update_result in combined_results:
-        anime_id = update_result["anime_id"]
-        if anime_id not in anime_success_map:
-            anime_success_map[anime_id] = {"total": 0, "success": 0}
-        anime_success_map[anime_id]["total"] += 1
-        if update_result["success"]:
-            anime_success_map[anime_id]["success"] += 1
-
-    successful_anime = sum(
-        1 for stats in anime_success_map.values() if stats["success"] == stats["total"]
-    )
-    failed_anime = total_anime - successful_anime
+    # Calculate batch success from all_batch_results
+    successful_count = sum(r.get("success", 0) for r in all_batch_results)
+    failed_count = sum(r.get("failed", 0) for r in all_batch_results)
 
     # Log summary
     logger.info("=" * 80)
     logger.info("Update Summary")
     logger.info("=" * 80)
     logger.info(
-        f"Anime Processing: {successful_anime}/{total_anime} successful "
-        f"({successful_anime / total_anime * 100:.1f}%), "
-        f"{failed_anime} failed ({failed_anime / total_anime * 100:.1f}%)"
+        f"Records Processed: {successful_count} successful, {failed_count} failed"
     )
-
-    logger.info(f"Vector Updates (Total: {result['total_requested_updates']}):")
-    for vector_name in vector_names:
-        stats = vector_stats[vector_name]
-        total = stats["success"] + stats["failed"]
-        success_rate = stats["success"] / total * 100 if total > 0 else 0
-        logger.info(
-            f"  {vector_name}: {stats['success']}/{total} ({success_rate:.1f}%)"
-        )
+    logger.info(f"Vectors Updated: {vector_names}")
 
     if len(all_generation_failures) > 0:
         logger.warning(
@@ -341,13 +261,9 @@ async def update_vectors(
 
     return {
         "total_anime": total_anime,
-        "successful_anime": successful_anime,
-        "failed_anime": failed_anime,
-        "total_updates": result["total_requested_updates"],
-        "successful_updates": result["success"],
-        "failed_updates": result["failed"],
-        "generation_failures": result["generation_failures"],
-        "vector_stats": vector_stats,
+        "successful_count": successful_count,
+        "failed_count": failed_count,
+        "generation_failures": len(all_generation_failures),
     }
 
 
@@ -365,9 +281,7 @@ async def async_main(args, settings):
         # Initialize embedding manager and processors using factory pattern
         field_mapper = AnimeFieldMapper()
         text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(
-            model=text_model, field_mapper=field_mapper, settings=settings
-        )
+        text_processor = TextProcessor(model=text_model, settings=settings)
 
         vision_model = EmbeddingModelFactory.create_vision_model(settings)
         image_downloader = ImageDownloader(
@@ -383,7 +297,7 @@ async def async_main(args, settings):
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            field_mapper=field_mapper,
+            # field_mapper removed from manager
             settings=settings,
         )
 

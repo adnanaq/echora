@@ -78,7 +78,7 @@ class EnrichmentConfig(BaseSettings):
         description="Disable timeouts for background processing (fetch ALL data)",
     )
     validate_schemas: bool = Field(
-        default=True, description="Validate output against AnimeEntry schema"
+        default=True, description="Validate output against AnimeRecord schema"
     )
     verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 

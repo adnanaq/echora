@@ -562,10 +562,11 @@ async def test_multimodal_character_search():
                     print("   [SKIP] Could not generate embeddings for text or image")
                     continue
 
-                # Perform multimodal character search
-                results = await qdrant_client.search_characters(
-                    query_embedding=text_embedding,
+                # Perform multimodal character search (unified search with entity_type)
+                results = await qdrant_client.search(
+                    text_embedding=text_embedding,
                     image_embedding=image_embedding,
+                    entity_type="character",
                     limit=5,
                 )
 
@@ -578,8 +579,8 @@ async def test_multimodal_character_search():
                     print(f"      1. {top_title} (score: {top_score:.4f})")
 
                     # Comparative analysis: Text-only vs Image-only vs Multimodal
-                    text_only_results = await qdrant_client.search_characters(
-                        query_embedding=text_embedding, limit=5
+                    text_only_results = await qdrant_client.search(
+                        text_embedding=text_embedding, entity_type="character", limit=5
                     )
                     text_only_score = (
                         text_only_results[0].get("score", 0.0)
@@ -590,9 +591,10 @@ async def test_multimodal_character_search():
                     # Generate minimal text embedding for image-only test
                     minimal_text_embedding = text_processor.encode_text("character")
                     if minimal_text_embedding:
-                        image_only_results = await qdrant_client.search_characters(
-                            query_embedding=minimal_text_embedding,
+                        image_only_results = await qdrant_client.search(
+                            text_embedding=minimal_text_embedding,
                             image_embedding=image_embedding,
+                            entity_type="character",
                             limit=5,
                         )
                         image_only_score = (

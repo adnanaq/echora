@@ -1267,6 +1267,73 @@ class QdrantClient(VectorDBClient):
             logger.error(f"Single vector search failed: {e}")
             raise
 
+    async def search(
+        self,
+        text_embedding: list[float] | None = None,
+        image_embedding: list[float] | None = None,
+        entity_type: str | None = None,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Unified search across all entity types.
+
+        Searches text_vector and/or image_vector based on provided embeddings.
+        Uses Qdrant's native fusion (RRF) when both embeddings are provided.
+
+        Args:
+            text_embedding: Optional text query embedding (1024-dim BGE-M3)
+            image_embedding: Optional image query embedding (768-dim OpenCLIP)
+            entity_type: Optional filter by type ("anime", "character", "episode")
+            limit: Maximum number of results to return
+            filters: Additional payload filters
+
+        Returns:
+            List of search results with payload and similarity scores
+        """
+        if not text_embedding and not image_embedding:
+            raise ValueError(
+                "At least one of text_embedding or image_embedding is required"
+            )
+
+        # Build filter conditions
+        filter_conditions = filters.copy() if filters else {}
+        if entity_type:
+            filter_conditions["type"] = entity_type
+
+        qdrant_filter = (
+            self._build_filter(filter_conditions) if filter_conditions else None
+        )
+
+        # Single vector search
+        if text_embedding and not image_embedding:
+            return await self.search_single_vector(
+                vector_name="text_vector",
+                vector_data=text_embedding,
+                limit=limit,
+                filters=qdrant_filter,
+            )
+
+        if image_embedding and not text_embedding:
+            return await self.search_single_vector(
+                vector_name="image_vector",
+                vector_data=image_embedding,
+                limit=limit,
+                filters=qdrant_filter,
+            )
+
+        # Multi-vector fusion search (both embeddings provided)
+        vector_queries = [
+            {"vector_name": "text_vector", "vector_data": text_embedding},
+            {"vector_name": "image_vector", "vector_data": image_embedding},
+        ]
+
+        return await self.search_multi_vector(
+            vector_queries=vector_queries,
+            limit=limit,
+            fusion_method="rrf",
+            filters=qdrant_filter,
+        )
+
     async def search_multi_vector(
         self,
         vector_queries: list[dict[str, Any]],
@@ -1350,238 +1417,3 @@ class QdrantClient(VectorDBClient):
         except Exception as e:
             logger.error(f"Multi-vector search failed: {e}")
             raise
-
-    async def search_text_comprehensive(
-        self,
-        query_embedding: list[float],
-        limit: int = 10,
-        fusion_method: str = "rrf",
-        filters: Filter | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search across all text vectors using native Qdrant fusion with a pre-computed query embedding.
-
-        Args:
-            query_embedding: Pre-computed text embedding for the query.
-            limit: Maximum number of results
-            fusion_method: Fusion algorithm - "rrf" or "dbsf"
-            filters: Optional Qdrant filter conditions
-
-        Returns:
-            List of search results with comprehensive text similarity scores
-        """
-        try:
-            # All text vectors for comprehensive search
-            text_vector_names = [
-                "title_vector",
-                "character_vector",
-                "genre_vector",
-                "staff_vector",
-                "temporal_vector",
-                "streaming_vector",
-                "related_vector",
-                "franchise_vector",
-                "episode_vector",
-            ]
-
-            # Create vector queries for all text vectors
-            vector_queries = []
-            for vector_name in text_vector_names:
-                vector_queries.append(
-                    {"vector_name": vector_name, "vector_data": query_embedding}
-                )
-
-            # Use native multi-vector search
-            results = await self.search_multi_vector(
-                vector_queries=vector_queries,
-                limit=limit,
-                fusion_method=fusion_method,
-                filters=filters,
-            )
-
-            logger.info(
-                f"Comprehensive text search returned {len(results)} results across {len(text_vector_names)} vectors"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Comprehensive text search failed: {e}")
-            return []
-
-    async def search_visual_comprehensive(
-        self,
-        image_embedding: list[float],
-        limit: int = 10,
-        fusion_method: str = "rrf",
-        filters: Filter | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search across both image vectors using native Qdrant fusion with a pre-computed image embedding.
-
-        Args:
-            image_embedding: Pre-computed image embedding for the query.
-            limit: Maximum number of results
-            fusion_method: Fusion algorithm - "rrf" or "dbsf"
-            filters: Optional Qdrant filter conditions
-
-        Returns:
-            List of search results with comprehensive visual similarity scores
-        """
-        try:
-            # Both image vectors for comprehensive visual search
-            image_vector_names = ["image_vector", "character_image_vector"]
-
-            # Create vector queries for both image vectors
-            vector_queries = []
-            for vector_name in image_vector_names:
-                vector_queries.append(
-                    {"vector_name": vector_name, "vector_data": image_embedding}
-                )
-
-            # Use native multi-vector search
-            results = await self.search_multi_vector(
-                vector_queries=vector_queries,
-                limit=limit,
-                fusion_method=fusion_method,
-                filters=filters,
-            )
-
-            logger.info(
-                f"Comprehensive visual search returned {len(results)} results across {len(image_vector_names)} vectors"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Comprehensive visual search failed: {e}")
-            return []
-
-    async def search_complete(
-        self,
-        query_embedding: list[float] | None = None,
-        image_embedding: list[float] | None = None,
-        limit: int = 10,
-        fusion_method: str = "rrf",
-        filters: Filter | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search across all vectors (text + image) using native Qdrant fusion with pre-computed embeddings.
-
-        Args:
-            query_embedding: Optional pre-computed text embedding for the query.
-            image_embedding: Optional pre-computed image embedding for the query.
-            limit: Maximum number of results
-            fusion_method: Fusion algorithm - "rrf" or "dbsf"
-            filters: Optional Qdrant filter conditions
-
-        Returns:
-            List of search results with complete multi-modal similarity scores
-        """
-        try:
-            vector_queries = []
-
-            if query_embedding:
-                # All text vectors
-                text_vector_names = [
-                    "title_vector",
-                    "character_vector",
-                    "genre_vector",
-                    "staff_vector",
-                    "temporal_vector",
-                    "streaming_vector",
-                    "related_vector",
-                    "franchise_vector",
-                    "episode_vector",
-                ]
-
-                for vector_name in text_vector_names:
-                    vector_queries.append(
-                        {"vector_name": vector_name, "vector_data": query_embedding}
-                    )
-
-            if image_embedding:
-                # Both image vectors
-                image_vector_names = ["image_vector", "character_image_vector"]
-
-                for vector_name in image_vector_names:
-                    vector_queries.append(
-                        {"vector_name": vector_name, "vector_data": image_embedding}
-                    )
-
-            if not vector_queries:
-                logger.error("No valid embeddings provided for complete search")
-                return []
-
-            # Use native multi-vector search across all vectors
-            results = await self.search_multi_vector(
-                vector_queries=vector_queries,
-                limit=limit,
-                fusion_method=fusion_method,
-                filters=filters,
-            )
-
-            logger.info(
-                f"Complete search returned {len(results)} results across {len(vector_queries)} vectors"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Complete search failed: {e}")
-            return []
-
-    async def search_characters(
-        self,
-        query_embedding: list[float],
-        image_embedding: list[float] | None = None,
-        limit: int = 10,
-        fusion_method: str = "rrf",
-        filters: Filter | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search specifically for character-related content using character vectors.
-
-        Args:
-            query_embedding: Pre-computed text embedding for the query.
-            image_embedding: Optional pre-computed image embedding for the query.
-            limit: Maximum number of results
-            fusion_method: Fusion algorithm - "rrf" or "dbsf"
-            filters: Optional Qdrant filter conditions
-
-        Returns:
-            List of search results focused on character similarity across text and image
-        """
-        try:
-            vector_queries = []
-
-            if query_embedding:
-                vector_queries.append(
-                    {"vector_name": "character_vector", "vector_data": query_embedding}
-                )
-            else:
-                logger.warning("No query embedding provided for character search")
-
-            if image_embedding:
-                vector_queries.append(
-                    {
-                        "vector_name": "character_image_vector",
-                        "vector_data": image_embedding,
-                    }
-                )
-            else:
-                logger.warning("No image embedding provided for character search")
-
-            if not vector_queries:
-                logger.error("No valid embeddings generated for character search")
-                return []
-
-            results = await self.search_multi_vector(
-                vector_queries=vector_queries,
-                limit=limit,
-                fusion_method=fusion_method,
-                filters=filters,
-            )
-
-            search_type = "text+image" if image_embedding else "text-only"
-            logger.info(
-                f"Character search ({search_type}) returned {len(results)} results across {len(vector_queries)} vectors"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Character search failed: {e}")
-            return []

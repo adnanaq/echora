@@ -74,7 +74,9 @@ class TestNormalizeJapaneseText:
         result = normalize_japanese_text("Monkey D. Luffy")  # anidb.json format
         assert result == "monkey d. luffy"
 
-        result = normalize_japanese_text("Luffy Monkey D.")  # characters_detailed.json format
+        result = normalize_japanese_text(
+            "Luffy Monkey D."
+        )  # characters_detailed.json format
         assert result == "luffy monkey d."
         # These remain different - character matching logic handles this
 
@@ -152,7 +154,9 @@ class TestNormalizeJapaneseText:
             assert len(result) > 0
             assert result.isascii()
             if expected_contains:
-                assert expected_contains in result, f"Expected '{expected_contains}' in '{result}'"
+                assert expected_contains in result, (
+                    f"Expected '{expected_contains}' in '{result}'"
+                )
 
     def test_thread_safety_simulation(self):
         """Test that function can be called with different inputs (validates no global state issues)."""
@@ -178,7 +182,10 @@ class TestRealCharacterData:
         """Test normalization with main One Piece character names (Katakana)."""
         # Real data from temp/One_agent1/characters_detailed.json
         test_cases = [
-            ("モンキー・D・ルフィ", "monkii"),  # Luffy Monkey D. - pykakasi uses "ii" for long vowels
+            (
+                "モンキー・D・ルフィ",
+                "monkii",
+            ),  # Luffy Monkey D. - pykakasi uses "ii" for long vowels
             ("ニコ・ロビン", "niko"),  # Robin Nico
             ("ロロノア・ゾロ", "roronoa"),  # Zoro Roronoa
             ("フランキー", "furankii"),  # Franky
@@ -194,9 +201,9 @@ class TestRealCharacterData:
             assert len(result) > 0
             assert result.isascii(), f"Result should be ASCII romaji, got: {result}"
             # Check if expected substring is in the result (accounting for variations)
-            assert (
-                expected_romaji_contains.lower() in result.lower()
-            ), f"Expected '{expected_romaji_contains}' in '{result}' for '{japanese_name}'"
+            assert expected_romaji_contains.lower() in result.lower(), (
+                f"Expected '{expected_romaji_contains}' in '{result}' for '{japanese_name}'"
+            )
 
     def test_one_piece_antagonists(self):
         """Test normalization with One Piece antagonist names (mixed scripts)."""
@@ -230,7 +237,9 @@ class TestRealCharacterData:
             result = normalize_japanese_text(japanese_name)
             assert isinstance(result, str)
             assert result.isascii()
-            assert expected_romaji in result.lower() or result.lower() in expected_romaji
+            assert (
+                expected_romaji in result.lower() or result.lower() in expected_romaji
+            )
 
     def test_character_names_with_special_chars(self):
         """Test character names with middle dots and special characters."""
@@ -273,12 +282,14 @@ class TestRealCharacterData:
         results_pass2 = [normalize_japanese_text(name) for name in names]
 
         # Verify consistency (critical for cross-source matching)
-        assert results_pass1 == results_pass2, "Results should be consistent across calls"
+        assert results_pass1 == results_pass2, (
+            "Results should be consistent across calls"
+        )
 
         # Verify all results are unique (no state bleeding between calls)
-        assert len(set(results_pass1)) == len(
-            names
-        ), "Each name should produce a unique result"
+        assert len(set(results_pass1)) == len(names), (
+            "Each name should produce a unique result"
+        )
 
 
 class TestEdgeCases:

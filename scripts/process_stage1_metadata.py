@@ -13,7 +13,7 @@ Key Features:
 - Image organization by type (covers, posters, banners)
 - External link normalization and deduplication
 - Synopsis extraction with 6-level source hierarchy
-- Schema compliance with AnimeEntry Pydantic model
+- Schema compliance with AnimeRecord Pydantic model
 """
 
 import argparse

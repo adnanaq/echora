@@ -28,7 +28,7 @@ import pytest_asyncio
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from common.models.anime import AnimeEntry
+from common.models.anime import AnimeRecord
 from qdrant_db import QdrantClient
 from vector_db_interface import VectorDocument
 
@@ -49,8 +49,8 @@ async def seeded_test_data(
     client: QdrantClient, embedding_manager, test_anime_data: list[dict]
 ):
     """Seed test anime data into Qdrant before running tests."""
-    # Convert to AnimeEntry objects
-    anime_entries = [AnimeEntry(**anime_dict) for anime_dict in test_anime_data]
+    # Convert to AnimeRecord objects
+    anime_entries = [AnimeRecord(**anime_dict) for anime_dict in test_anime_data]
 
     # Generate vectors using embedding_manager
     gen_results = await embedding_manager.process_anime_batch(anime_entries)
@@ -84,7 +84,7 @@ async def seeded_test_data(
 
 def create_test_anime(anime_id: str = "test-anime", title: str = "Test Anime"):
     """Create a test anime entry for isolated tests."""
-    return AnimeEntry(
+    return AnimeRecord(
         id=anime_id,
         title=title,
         genres=["Action", "Adventure"],
@@ -96,7 +96,7 @@ def create_test_anime(anime_id: str = "test-anime", title: str = "Test Anime"):
 
 
 async def add_test_anime(
-    client: QdrantClient, embedding_manager, anime: AnimeEntry
+    client: QdrantClient, embedding_manager, anime: AnimeRecord
 ) -> bool:
     """Add anime entry to Qdrant with generated vectors.
 
@@ -114,7 +114,7 @@ async def add_test_anime(
 
 @pytest.mark.asyncio
 async def test_update_single_vector(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test updating a single vector for one anime."""
     # Get first anime
@@ -134,7 +134,7 @@ async def test_update_single_vector(
 
 @pytest.mark.asyncio
 async def test_update_single_vector_invalid_name(
-    client: QdrantClient, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
 ):
     """Test updating with invalid vector name."""
     anime = seeded_test_data[0]
@@ -152,7 +152,7 @@ async def test_update_single_vector_invalid_name(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch updating multiple vectors."""
     batch_updates = []
@@ -193,7 +193,7 @@ async def test_update_batch_vectors(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_mixed(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch updating multiple vectors for same anime."""
     anime = seeded_test_data[0]
@@ -244,7 +244,7 @@ async def test_update_batch_vectors_empty(client: QdrantClient):
 
 @pytest.mark.asyncio
 async def test_update_image_vector(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test updating image vector."""
     anime = seeded_test_data[0]
@@ -267,7 +267,7 @@ async def test_update_image_vector(
 
 @pytest.mark.asyncio
 async def test_update_all_text_vectors(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test updating all text vectors for one anime."""
     anime = seeded_test_data[0]
@@ -327,7 +327,7 @@ async def test_update_all_text_vectors(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_with_failures(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update correctly tracks both successes and failures with detailed results."""
     anime = seeded_test_data[0]
@@ -396,7 +396,7 @@ async def test_update_batch_vectors_with_failures(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_all_validation_failures(
-    client: QdrantClient, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update when all updates fail validation."""
     anime = seeded_test_data[0]
@@ -436,7 +436,7 @@ async def test_update_batch_vectors_all_validation_failures(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_partial_anime_success(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update where some vectors succeed and some fail for the same anime."""
     anime = seeded_test_data[0]
@@ -487,7 +487,7 @@ async def test_update_batch_vectors_partial_anime_success(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_multiple_anime_mixed_results(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update across multiple anime with mixed success/failure."""
     anime1, anime2, anime3 = seeded_test_data
@@ -536,7 +536,7 @@ async def test_update_batch_vectors_multiple_anime_mixed_results(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_dimension_validation(
-    client: QdrantClient, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update validates vector dimensions correctly."""
     anime = seeded_test_data[0]
@@ -577,7 +577,7 @@ async def test_update_batch_vectors_dimension_validation(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_invalid_data_types(
-    client: QdrantClient, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update rejects invalid data types."""
     anime = seeded_test_data[0]
@@ -618,7 +618,7 @@ async def test_update_batch_vectors_invalid_data_types(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_same_vector_multiple_updates(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update with multiple updates to same vector (last one should win, deduplication occurs)."""
     anime = seeded_test_data[0]
@@ -656,7 +656,7 @@ async def test_update_batch_vectors_same_vector_multiple_updates(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_large_batch(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test batch update with many vectors per anime."""
     anime = seeded_test_data[0]
@@ -720,7 +720,7 @@ async def test_update_batch_vectors_large_batch(
 
 @pytest.mark.asyncio
 async def test_update_batch_vectors_preserves_order(
-    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeEntry]
+    client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
     """Test that detailed results preserve order of input updates."""
     anime = seeded_test_data[0]
@@ -1167,7 +1167,7 @@ async def test_update_batch_anime_vectors_handles_generation_failures(
 ):
     """Test that generation failures can be detected."""
     # Create anime with minimal data (may not generate all vectors)
-    minimal_anime = AnimeEntry(
+    minimal_anime = AnimeRecord(
         id="minimal",
         title="",  # Empty title
         genres=[],  # Empty genres

@@ -20,6 +20,7 @@ from enrichment.utils.deduplication import (
 
 try:
     from langdetect import DetectorFactory
+
     # Set seed for deterministic language detection in tests
     DetectorFactory.seed = 0
 except ImportError:
@@ -231,7 +232,9 @@ class TestLanguageAwareDeduplication:
 
         # Mock langdetect to ensure all values are detected as same language
         with patch("enrichment.utils.deduplication.detect", return_value="en"):
-            result = deduplicate_synonyms_language_aware(values, embedding_model=mock_model)
+            result = deduplicate_synonyms_language_aware(
+                values, embedding_model=mock_model
+            )
 
         # Verify encode was called once with the full batch, not 3 times with single values
         assert mock_model.encode.call_count == 1
