@@ -51,9 +51,19 @@ echora/
 │       │   └── utils/             # Image downloading, caching
 │       └── tests/                 # Unit tests
 ├── scripts/                       # Utility scripts (reindexing, validation, etc.)
-├── tests/                         # Cross-library integration tests
-│   ├── integration/               # Integration tests
-│   └── libs/                      # Per-library test suites
+├── tests/                         # Test suite (mirrors source structure)
+│   ├── conftest.py                # Root fixtures (settings, clients)
+│   ├── integration/               # Cross-library integration tests
+│   ├── apps/service/              # Service tests (unit/, integration/)
+│   ├── libs/                      # Per-library test suites
+│   │   ├── common/                # Common library tests
+│   │   ├── enrichment/            # Enrichment tests (unit/, integration/)
+│   │   ├── http_cache/            # HTTP cache tests (unit/, integration/)
+│   │   ├── qdrant_db/             # Qdrant DB tests (unit/, integration/)
+│   │   ├── vector_db_interface/   # Vector DB interface tests
+│   │   └── vector_processing/     # Vector processing tests (unit/)
+│   ├── scripts/                   # Script tests
+│   └── utils/                     # Test utilities
 └── data/                          # Data storage (Qdrant, anime databases)
 ```
 
@@ -291,18 +301,6 @@ docker compose up -d qdrant
 # Run with coverage
 ./pants test --coverage ::
 ```
-
-### Test Organization
-
-- **Unit Tests**: Mock external dependencies, fast execution (~seconds)
-  - `libs/*/tests/unit/` - Library unit tests
-  - `tests/unit/` - Application unit tests
-  - No external dependencies required
-- **Integration Tests**: Real database and models, slower execution (~minutes)
-  - `libs/*/tests/integration/` - Library integration tests
-  - `tests/integration/` - Application integration tests
-  - Marked with `@pytest.mark.integration` or `pytestmark = pytest.mark.integration`
-  - Requires: Qdrant DB, ML models (BGE-M3, OpenCLIP), real embeddings
 
 ## Configuration
 

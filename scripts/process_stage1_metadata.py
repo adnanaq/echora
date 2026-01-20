@@ -713,7 +713,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     output["background"] = jikan_data.get("background")
 
     # Episodes (cross-validated)
-    output["episodes"] = cross_validate_with_offline(offline_data, sources, "episodes")
+    output["episode_count"] = cross_validate_with_offline(offline_data, sources, "episodes")
 
     # Month from AnimSchedule
     animeschedule_data = sources.get("animeschedule", {})

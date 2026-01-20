@@ -8,31 +8,31 @@ Can be used both as a CLI tool and as an importable module.
 Usage Examples:
 
     # CLI: Update single vector for all anime
-    python scripts/update_vectors.py --vectors title_vector
+    python scripts/update_vectors.py --vectors text_vector
 
     # CLI: Update multiple vectors
-    python scripts/update_vectors.py --vectors title_vector episode_vector
+    python scripts/update_vectors.py --vectors text_vector image_vector
 
     # CLI: Update specific anime by index
-    python scripts/update_vectors.py --vectors title_vector --index 0
+    python scripts/update_vectors.py --vectors text_vector --index 0
 
     # CLI: Update specific anime by title
-    python scripts/update_vectors.py --vectors character_vector --title "Dandadan"
+    python scripts/update_vectors.py --vectors text_vector --title "Dandadan"
 
     # CLI: Batch size control
-    python scripts/update_vectors.py --vectors title_vector --batch-size 50
+    python scripts/update_vectors.py --vectors text_vector --batch-size 50
 
     # Programmatic: Update vectors for all anime
     from scripts.update_vectors import update_vectors
-    await update_vectors(["title_vector", "episode_vector"])
+    await update_vectors(["text_vector"])
 
     # Programmatic: Update vectors for specific anime by index
     from scripts.update_vectors import update_vectors
-    await update_vectors(["character_vector"], anime_index=0)
+    await update_vectors(["text_vector"], anime_index=0)
 
     # Programmatic: Update vectors for specific anime by title
     from scripts.update_vectors import update_vectors
-    await update_vectors(["character_vector"], anime_title="Dandadan")
+    await update_vectors(["text_vector"], anime_title="Dandadan")
 """
 
 import argparse
@@ -108,7 +108,7 @@ async def update_vectors(
     2. Validates input parameters
     3. Generates vectors using MultiVectorEmbeddingManager
     4. Prepares updates for Qdrant
-    5. Calls QdrantClient.update_batch_vectors()
+    5. Calls QdrantClient.add_documents() (Upsert)
     6. Formats and logs results for CLI display
 
     Args:
@@ -215,6 +215,10 @@ async def update_vectors(
         )
 
         # Generate vectors for this batch
+        # Note: In the new architecture, this regenerates ALL points (text+image)
+        # We cannot easily regenerate *only* one vector type because the Manager
+        # produces a flat list of diverse Documents.
+        # This is a full upsert of the records.
         gen_results = await embedding_manager.process_anime_batch(batch_anime)
 
         # Update Qdrant with this batch (Using Upsert/add_documents instead of partial update)
@@ -279,7 +283,10 @@ async def async_main(args, settings):
 
     try:
         # Initialize embedding manager and processors using factory pattern
+        # 1. Initialize Mapper
         field_mapper = AnimeFieldMapper()
+        
+        # 2. Initialize Processors
         text_model = EmbeddingModelFactory.create_text_model(settings)
         text_processor = TextProcessor(model=text_model, settings=settings)
 
@@ -290,14 +297,15 @@ async def async_main(args, settings):
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
-            field_mapper=field_mapper,
+            # field_mapper removed from vision processor
             settings=settings,
         )
 
+        # 3. Initialize Manager
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            # field_mapper removed from manager
+            field_mapper=field_mapper,
             settings=settings,
         )
 
@@ -335,19 +343,19 @@ def main():
         epilog="""
 Examples:
   # Update single vector for all anime
-  python scripts/update_vectors.py --vectors genre_vector
+  python scripts/update_vectors.py --vectors text_vector
 
   # Update multiple vectors
-  python scripts/update_vectors.py --vectors genre_vector episode_vector
+  python scripts/update_vectors.py --vectors text_vector image_vector
 
   # Update specific anime by index
-  python scripts/update_vectors.py --vectors title_vector --index 0
+  python scripts/update_vectors.py --vectors text_vector --index 0
 
   # Update specific anime by title
-  python scripts/update_vectors.py --vectors character_vector --title "Dandadan"
+  python scripts/update_vectors.py --vectors text_vector --title "Dandadan"
 
   # Control batch size
-  python scripts/update_vectors.py --vectors staff_vector --batch-size 50
+  python scripts/update_vectors.py --vectors text_vector --batch-size 50
         """,
     )
 

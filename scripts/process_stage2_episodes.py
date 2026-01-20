@@ -188,7 +188,7 @@ def process_all_episodes(temp_dir: str):
     print(f"Processing {len(episodes_data)} episodes...")
 
     # Convert each episode to the Stage 2 schema format
-    episode_details = []
+    episodes = []
 
     for episode in episodes_data:
         ep_number = episode.get("episode_number")
@@ -245,17 +245,17 @@ def process_all_episodes(temp_dir: str):
             "streaming": {},  # No streaming data from Jikan
         }
 
-        episode_details.append(processed_episode)
+        episodes.append(processed_episode)
 
     # Create the final output structure
-    output = {"episode_details": episode_details}
+    output = {"episodes": episodes}
 
     # Write to stage2_episodes.json
     output_path = f"{temp_dir}/stage2_episodes.json"
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
-    print(f"Successfully processed {len(episode_details)} episodes to {output_path}")
+    print(f"Successfully processed {len(episodes)} episodes to {output_path}")
     print(
         f"File size: {len(json.dumps(output, indent=2, ensure_ascii=False))} characters"
     )
@@ -264,7 +264,7 @@ def process_all_episodes(temp_dir: str):
     print("\nTimezone conversion examples:")
     for i in range(min(3, len(episodes_data))):
         original = episodes_data[i].get("aired")
-        converted = episode_details[i]["aired"]
+        converted = episodes[i]["aired"]
         print(f"  Episode {i + 1}: {original} -> {converted}")
 
 

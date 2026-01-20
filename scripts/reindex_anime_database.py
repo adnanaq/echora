@@ -63,7 +63,10 @@ async def main() -> None:
 
     try:
         # Initialize embedding manager and processors using factory pattern
+        # 1. Initialize Mapper (Content Strategist)
         field_mapper = AnimeFieldMapper()
+        
+        # 2. Initialize Processors (Compute Engines)
         text_model = EmbeddingModelFactory.create_text_model(settings)
         text_processor = TextProcessor(model=text_model, settings=settings)
 
@@ -74,14 +77,15 @@ async def main() -> None:
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
-            field_mapper=field_mapper,
+            # field_mapper removed from vision processor (SRP)
             settings=settings,
         )
 
+        # 3. Initialize Manager (Orchestrator) with all dependencies
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            # field_mapper removed from manager
+            field_mapper=field_mapper, # Injected directly
             settings=settings,
         )
 
@@ -138,19 +142,15 @@ async def main() -> None:
             return
 
         # Start indexing with existing infrastructure
-        print("\n Starting vector indexing using existing infrastructure...")
-        # Count text and image vectors dynamically
-        text_vectors = [v for v in settings.vector_names.keys() if "image" not in v]
-        image_vectors = [v for v in settings.vector_names.keys() if "image" in v]
+        print("\n Starting vector indexing using hierarchical infrastructure...")
         print(" This will generate:")
-        print(f"   - {len(text_vectors)} text vectors (BGE-M3 1024D)")
-        print(f"   - {len(image_vectors)} image vectors (OpenCLIP 768D)")
-        print(f"   - Total: {len(settings.vector_names)} named vectors per entry")
+        print("   - Text Vectors (BGE-M3) for Anime, Characters, Episodes")
+        print("   - Image Vectors (OpenCLIP) for Anime Covers/Posters and Character Portraits")
         print("   - Comprehensive payload indexing")
 
         try:
             # Process batch to get vectors and payloads
-            print(f"\n Processing {len(records)} anime entries to generate vectors...")
+            print(f"\n Processing {len(records)} anime entries to generate hierarchical vectors...")
             # embedding_manager.process_anime_batch now returns list[VectorDocument] directly
             points: list[VectorDocument] = await embedding_manager.process_anime_batch(
                 records
@@ -159,6 +159,7 @@ async def main() -> None:
             print(
                 f"Successfully generated {len(points)} vector points (Anime + Characters + Episodes)."
             )
+            print("   Note: Images are embedded as multivectors within Anime and Character points.")
 
             if not points:
                 print("No points to index after embedding; skipping Qdrant upsert.")
@@ -185,51 +186,6 @@ async def main() -> None:
                 print("\n Final collection status:")
                 print(f"   Points: {info.points_count}")
                 print(f"   Expected: {len(points)} points")
-
-                # Check vector completeness across sample points
-                try:
-                    # scroll() returns tuple[list[Record], Union[int, str, PointId, None]]
-                    scroll_result: tuple[list[Record], Any] = await client.scroll(
-                        limit=5,
-                        with_vectors=True,
-                    )
-                    records, _ = scroll_result
-
-                    expected_vector_count = len(settings.vector_names)
-                    points_with_all_vectors = 0
-                    points_with_character_images = 0
-
-                    for sample_point in records:
-                        # sample_point.vector can be various types, handle as dict for named vectors
-                        vectors_dict = cast(
-                            dict[str, Any],
-                            sample_point.vector
-                            if isinstance(sample_point.vector, dict)
-                            else {},
-                        )
-                        vector_count = len(vectors_dict) if vectors_dict else 0
-                        has_character_images = "character_image_vector" in vectors_dict
-
-                        if vector_count == expected_vector_count:
-                            points_with_all_vectors += 1
-                        if has_character_images:
-                            points_with_character_images += 1
-
-                    print(
-                        f"   Points with all {expected_vector_count} vectors: {points_with_all_vectors}/{len(records)}"
-                    )
-                    print(
-                        f"   Points with character images: {points_with_character_images}/{len(records)}"
-                    )
-
-                    if points_with_all_vectors > 0:
-                        print(" Multi-vector architecture working successfully!")
-                        print(" Character image vectors being generated!")
-                    else:
-                        print("  Warning: Not all vectors being generated")
-
-                except Exception as e:  # noqa: BLE001 - Verification is optional, continue on failure
-                    print(f"  Could not verify vector completeness: {e}")
 
             else:
                 print(" All indexing failed")

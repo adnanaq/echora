@@ -387,3 +387,37 @@ class TestUnifiedSearch:
         """Test that search raises error without any embedding."""
         with pytest.raises(ValueError, match="At least one"):
             await mock_qdrant_client.search()
+
+
+class TestMultivectorConfiguration:
+    """Test suite for multivector collection configuration."""
+
+    @pytest_asyncio.fixture
+    async def mock_client(self):
+        """Create a mock QdrantClient instance."""
+        settings = get_settings()
+        mock_async_client = AsyncMock()
+
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+            client = await QdrantClient.create(
+                settings=settings,
+                async_qdrant_client=mock_async_client,
+            )
+
+        return client
+
+    def test_create_multi_vector_config_with_multivector(self, mock_client):
+        """Test that image_vector gets multivector_config with MAX_SIM."""
+        from qdrant_client.models import MultiVectorComparator
+
+        config = mock_client._create_multi_vector_config()
+
+        # text_vector should NOT have multivector_config
+        assert config["text_vector"].multivector_config is None
+
+        # image_vector SHOULD have multivector_config with MAX_SIM
+        assert config["image_vector"].multivector_config is not None
+        assert (
+            config["image_vector"].multivector_config.comparator
+            == MultiVectorComparator.MAX_SIM
+        )

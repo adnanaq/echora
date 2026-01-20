@@ -1,9 +1,20 @@
 """Unit tests for Image model validation."""
 
+import uuid
+
 import pytest
 from common.models.anime import Image
-from common.utils.id_generation import generate_ulid
+from common.utils.id_generation import generate_entity_id
 from pydantic import ValidationError
+
+
+def _is_valid_uuid(val: str) -> bool:
+    """Check if a string is a valid UUID."""
+    try:
+        uuid.UUID(val)
+        return True
+    except ValueError:
+        return False
 
 
 class TestImageModel:
@@ -12,33 +23,33 @@ class TestImageModel:
     def test_image_with_anime_id_valid(self):
         """Test creating image with anime_id is valid."""
         image = Image(
-            id=generate_ulid("image"),
+            id=generate_entity_id(),
             image_url="https://example.com/cover.jpg",
-            anime_id="anime_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            anime_id="01934f6c-8a2b-4c3d-9e5f-1a2b3c4d5e6f",
         )
         assert image.anime_id is not None
         assert image.character_id is None
-        assert image.id.startswith("img_")
+        assert _is_valid_uuid(image.id)
 
     def test_image_with_character_id_valid(self):
         """Test creating image with character_id is valid."""
         image = Image(
-            id=generate_ulid("image"),
+            id=generate_entity_id(),
             image_url="https://example.com/portrait.jpg",
-            character_id="char_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            character_id="01934f6c-1111-2222-3333-444455556666",
         )
         assert image.anime_id is None
         assert image.character_id is not None
-        assert image.id.startswith("img_")
+        assert _is_valid_uuid(image.id)
 
     def test_image_with_both_ids_invalid(self):
         """Test creating image with both anime_id and character_id raises error."""
         with pytest.raises(ValidationError) as exc_info:
             Image(
-                id=generate_ulid("image"),
+                id=generate_entity_id(),
                 image_url="https://example.com/image.jpg",
-                anime_id="anime_01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                character_id="char_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                anime_id="01934f6c-8a2b-4c3d-9e5f-1a2b3c4d5e6f",
+                character_id="01934f6c-1111-2222-3333-444455556666",
             )
         assert "cannot belong to both" in str(exc_info.value).lower()
 
@@ -46,7 +57,7 @@ class TestImageModel:
         """Test creating image without any parent ID raises error."""
         with pytest.raises(ValidationError) as exc_info:
             Image(
-                id=generate_ulid("image"),
+                id=generate_entity_id(),
                 image_url="https://example.com/orphan.jpg",
             )
         assert "must belong to either" in str(exc_info.value).lower()
@@ -54,9 +65,9 @@ class TestImageModel:
     def test_image_model_dump_excludes_none(self):
         """Test model_dump excludes None values correctly."""
         image = Image(
-            id="img_test123",
+            id="01934f6c-0000-0000-0000-000000000001",
             image_url="https://example.com/cover.jpg",
-            anime_id="anime_test456",
+            anime_id="01934f6c-0000-0000-0000-000000000002",
         )
         dumped = image.model_dump(exclude_none=True)
 
@@ -70,13 +81,13 @@ class TestImageModel:
         with pytest.raises(ValidationError):
             Image(
                 image_url="https://example.com/image.jpg",
-                anime_id="anime_test",
+                anime_id="01934f6c-0000-0000-0000-000000000001",
             )  # Missing id
 
         with pytest.raises(ValidationError):
             Image(
-                id="img_test",
-                anime_id="anime_test",
+                id="01934f6c-0000-0000-0000-000000000001",
+                anime_id="01934f6c-0000-0000-0000-000000000002",
             )  # Missing image_url
 
     def test_image_url_formats(self):
@@ -90,23 +101,23 @@ class TestImageModel:
 
         for url in valid_urls:
             image = Image(
-                id=generate_ulid("image"),
+                id=generate_entity_id(),
                 image_url=url,
-                anime_id="anime_test",
+                anime_id="01934f6c-0000-0000-0000-000000000001",
             )
             assert image.image_url == url
 
 
 class TestImageIdGeneration:
-    """Test suite for Image ID generation."""
-
-    def test_generate_ulid_with_image_type(self):
-        """Test generate_ulid creates img_ prefixed IDs."""
-        image_id = generate_ulid("image")
-        assert image_id.startswith("img_")
-        assert len(image_id) > 4  # prefix + ULID
+    def test_generate_entity_id_creates_valid_uuid(self):
+        """Test generate_entity_id creates valid UUID strings."""
+        image_id = generate_entity_id()
+        assert isinstance(image_id, str)
+        assert len(image_id) == 36
+        # Basic UUID structure check
+        assert len(image_id.split("-")) == 5
 
     def test_image_ids_are_unique(self):
-        """Test that generated image IDs are unique."""
-        ids = [generate_ulid("image") for _ in range(100)]
-        assert len(ids) == len(set(ids))  # All unique
+        """Test that generated IDs are unique."""
+        ids = [generate_entity_id() for _ in range(100)]
+        assert len(set(ids)) == 100

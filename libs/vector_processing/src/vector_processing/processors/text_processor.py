@@ -1,7 +1,8 @@
-"""Text embedding processor supporting multiple models for anime text search.
+"""Text embedding processor for converting text to vector embeddings.
 
-Supports FastEmbed, HuggingFace, and BGE models with dynamic model selection
-for optimal performance.
+This module provides the TextProcessor class which serves as a pure compute
+engine for text embedding. It is strictly responsible for converting strings
+to embedding vectors using configured ML models, with no domain-specific logic.
 """
 
 import logging
@@ -15,18 +16,28 @@ logger = logging.getLogger(__name__)
 
 
 class TextProcessor:
-    """Text embedding processor supporting multiple models."""
+    """Pure text embedding processor with no domain-specific logic.
+
+    This class serves as the "Text Compute Engine" in the vector processing
+    pipeline. It knows HOW to turn text into numbers but has no knowledge
+    of anime, characters, or any domain concepts.
+
+    Responsibilities:
+        - Interface with TextEmbeddingModels (FastEmbed, BGE, etc.).
+        - Handle batching and list processing for text.
+        - Provide zero-vectors for empty content.
+    """
 
     def __init__(
         self,
         model: TextEmbeddingModel,
         settings: Settings | None = None,
     ):
-        """Initialize modern text processor with injected dependencies.
+        """Initialize the text processor with an embedding model.
 
         Args:
-            model: Initialized TextEmbeddingModel instance
-            settings: Configuration settings instance
+            model: An initialized TextEmbeddingModel instance.
+            settings: Configuration settings instance. Uses defaults if None.
         """
         if settings is None:
             settings = Settings()
@@ -37,20 +48,19 @@ class TextProcessor:
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 
     def encode_text(self, text: str) -> list[float] | None:
-        """Encode text to embedding vector.
+        """Encode a single string to an embedding vector.
 
         Args:
-            text: Input text string
+            text: The text string to encode.
 
         Returns:
-            Embedding vector or None if encoding fails
+            A list of floats representing the embedding vector, a zero vector
+            if the input is empty/whitespace, or None if encoding fails.
         """
         try:
-            # Handle empty text
-            if not text.strip():
+            if not text or not text.strip():
                 return self._get_zero_embedding()
 
-            # Encode with model
             embeddings = self.model.encode([text])
             if embeddings:
                 return embeddings[0]
@@ -60,61 +70,38 @@ class TextProcessor:
             logger.error(f"Text encoding failed: {e}")
             return None
 
-    def encode_texts_batch(
-        self, texts: list[str], batch_size: int | None = None
-    ) -> list[list[float] | None]:
-        """Encode multiple texts in batches.
+    def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
+        """Encode multiple texts in a single batch call.
+
+        More efficient than calling encode_text repeatedly as it leverages
+        the model's batch processing capabilities.
 
         Args:
-            texts: List of text strings
-            batch_size: Batch size (ignored, handled by model or caller)
+            texts: List of text strings to encode.
 
         Returns:
-            List of embedding vectors
+            A list of embedding vectors (or None for failed encodings),
+            in the same order as the input texts.
         """
         try:
-            # Simple delegation to model which handles batching or list processing
-            # The base model.encode takes a list and returns a list
             return cast(list[list[float] | None], self.model.encode(texts))
-
         except Exception as e:
             logger.error(f"Batch text encoding failed: {e}")
             return [None] * len(texts)
 
-    def validate_text(self, text: str) -> bool:
-        """Validate if text can be processed.
-
-        Args:
-            text: Input text string
+    def _get_zero_embedding(self) -> list[float]:
+        """Get a zero embedding vector matching model dimensions.
 
         Returns:
-            True if text is valid, False otherwise
+            A list of zeros with length equal to the model's embedding size.
         """
-        try:
-            if not isinstance(text, str):
-                return False
-
-            # Check length
-            if len(text) > self.model.max_length * 4:  # Rough token estimate
-                return False
-
-            return True
-
-        except Exception:
-            return False
-
-    def _get_zero_embedding(self) -> list[float]:
-        """Get zero embedding vector for empty/failed content."""
         return [0.0] * self.model.embedding_size
 
-    def get_text_vector_names(self) -> list[str]:
-        """Get list of text vector names supported by this processor."""
-        return list(self.settings.vector_names.keys())
-
     def get_model_info(self) -> dict[str, Any]:
-        """Get information about the current text embedding model.
+        """Get metadata about the underlying embedding model.
 
         Returns:
-            Dictionary with model information
+            A dictionary containing model information such as name,
+            embedding size, and other model-specific details.
         """
         return self.model.get_model_info()

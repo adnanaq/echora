@@ -115,6 +115,12 @@ class Settings(BaseSettings):
         description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
     )
 
+    # Multivector Configuration
+    multivector_vectors: list[str] = Field(
+        default=["image_vector"],
+        description="Vector names that use multivector storage (list of vectors per point)",
+    )
+
     # Vector Priority Classification for Optimization
     vector_priorities: dict[str, list[str]] = Field(
         default={

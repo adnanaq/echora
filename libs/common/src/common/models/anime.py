@@ -483,7 +483,7 @@ class Anime(BaseModel):
         None,
         description="Episode duration in seconds",
     )
-    episodes: int = Field(default=0, description="Number of episodes")
+    episode_count: int = Field(default=0, description="Number of episodes")
     id: str = Field(..., description="Unique identifier for the anime entry")
     month: str | None = Field(None, description="Premiere month from AnimSchedule")
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")

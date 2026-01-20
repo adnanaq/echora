@@ -179,3 +179,23 @@ class TestUserProvidedValues:
             assert settings.model_warm_up is True, (
                 "Production MUST enforce model warmup"
             )
+
+
+class TestMultivectorConfiguration:
+    """Test multivector settings configuration."""
+
+    def test_multivector_vectors_default(self):
+        """Test default multivector configuration."""
+        with patch.dict(os.environ, {"APP_ENV": "development"}):
+            settings = Settings()
+            assert "image_vector" in settings.multivector_vectors
+            assert settings.multivector_vectors == ["image_vector"]
+
+    def test_vector_names_unchanged(self):
+        """Test vector_names still contains both vectors."""
+        with patch.dict(os.environ, {"APP_ENV": "development"}):
+            settings = Settings()
+            assert settings.vector_names == {
+                "text_vector": 1024,
+                "image_vector": 768,
+            }

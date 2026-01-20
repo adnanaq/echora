@@ -16,7 +16,7 @@ class VectorDocument:
     """
 
     id: str
-    vectors: dict[str, list[float]]
+    vectors: dict[str, list[float] | list[list[float]]]
     payload: dict[str, Any]
 
 

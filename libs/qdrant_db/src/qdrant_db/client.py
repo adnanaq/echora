@@ -23,6 +23,8 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
     HnswConfigDiff,
     MatchAny,
     MatchValue,
+    MultiVectorComparator,
+    MultiVectorConfig,
     OptimizersConfig,
     OptimizersConfigDiff,
     PayloadSchemaType,
@@ -283,22 +285,37 @@ class QdrantClient(VectorDBClient):
 
         Generates VectorParams for all vectors defined in settings with appropriate
         HNSW and quantization configurations based on priority levels.
+        Vectors listed in settings.multivector_vectors get MultiVectorConfig
+        with MAX_SIM comparator for storing multiple vectors per point.
 
         Returns:
             Dictionary mapping vector names to VectorParams with optimized configurations
         """
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
+        # Get list of vectors that use multivector storage
+        multivector_names = getattr(self.settings, "multivector_vectors", [])
+
         # Use multi-vector architecture from settings
         vector_params = {}
         for vector_name, dimension in self.settings.vector_names.items():
             priority = self._get_vector_priority(vector_name)
-            vector_params[vector_name] = VectorParams(
-                size=dimension,
-                distance=distance,
-                hnsw_config=self._get_hnsw_config(priority),
-                quantization_config=self._get_quantization_config(priority),
-            )
+
+            # Build VectorParams kwargs
+            params_kwargs: dict[str, Any] = {
+                "size": dimension,
+                "distance": distance,
+                "hnsw_config": self._get_hnsw_config(priority),
+                "quantization_config": self._get_quantization_config(priority),
+            }
+
+            # Add multivector config for vectors that store multiple vectors per point
+            if vector_name in multivector_names:
+                params_kwargs["multivector_config"] = MultiVectorConfig(
+                    comparator=MultiVectorComparator.MAX_SIM
+                )
+
+            vector_params[vector_name] = VectorParams(**params_kwargs)
 
         logger.info(
             f"Created multi-vector configuration with {len(vector_params)} vectors"
