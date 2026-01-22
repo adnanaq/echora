@@ -10,13 +10,13 @@
 
 ## Executive Summary
 
-The **Anime Vector Service** is a specialized microservice extracted from the main anime-mcp-server repository, designed to provide high-performance vector database operations for anime content discovery and search. This service leverages advanced AI embedding technologies to enable semantic search, visual similarity detection, and multimodal content discovery across anime databases.
+The **Anime Vector Service** is a specialized microservice extracted from the main anime-mcp-server repository, designed to provide high-performance vector database operations for anime content discovery and search. This service leverages advanced AI embedding technologies to enable semantic search and image-based discovery across anime databases.
 
 ### Key Value Propositions
 
 - **Semantic Understanding**: Natural language search that understands context and meaning
 - **Visual Recognition**: Image-based search for anime artwork, covers, and screenshots
-- **Multimodal Capabilities**: Combined text and image search for comprehensive discovery
+- **Text + Image Search**: Combined support for text and image inputs
 - **Production Scalability**: Microservice architecture enabling independent scaling
 - **Advanced AI Integration**: Support for modern embedding models and fine-tuning capabilities
 
@@ -26,7 +26,7 @@ The **Anime Vector Service** is a specialized microservice extracted from the ma
 
 ### Vision Statement
 
-To provide the most advanced and efficient vector-based search capabilities for anime content, enabling users to discover anime through natural language, visual similarity, and multimodal interactions while maintaining high performance and scalability.
+To provide the most advanced and efficient vector-based search capabilities for anime content, enabling users to discover anime through natural language and image-based interactions while maintaining high performance and scalability.
 
 ### Mission Statement
 
@@ -58,8 +58,8 @@ Create a robust, scalable, and intelligent vector database service that serves a
 **Competitive Advantages:**
 
 - **Domain Specialization**: Optimized specifically for anime content and metadata
-- **Multi-Vector Architecture**: Supports text, image, and thumbnail embeddings simultaneously
-- **Advanced Models**: Integration with latest BGE-m3 and JinaCLIP v2 models
+- **Multi-Vector Architecture**: Supports text + image embeddings with multivector image storage
+- **Advanced Models**: Integration with BGE-m3 and OpenCLIP models
 - **Fine-tuning Capabilities**: Built-in support for anime-specific model customization
 - **Production-Ready**: Comprehensive monitoring, health checks, and scalability features
 
@@ -72,12 +72,12 @@ Create a robust, scalable, and intelligent vector database service that serves a
 #### 1. **Content Discovery Platform Developer**
 
 - **Role**: Backend developer building anime discovery features
-- **Goals**: Implement semantic search, recommendation systems, visual similarity
+- **Goals**: Implement semantic search, recommendation systems, image-based discovery
 - **Pain Points**: Complex vector operations, model management, scalability concerns
 - **Use Cases**:
   - Semantic search for "dark psychological thriller anime"
-  - Visual similarity for "anime with similar art style"
-  - Multimodal search combining text descriptions and reference images
+  - Image-based discovery for "anime with similar art style"
+  - Search combining text descriptions and reference images
 
 #### 2. **Data Scientist / ML Engineer**
 
@@ -132,7 +132,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 **Technical Requirements**:
 
-- BGE-m3 text embedding model integration
+- BGE-m3 text embedding model integration (1024-dim)
 - Sub-100ms response time for text queries
 - Support for 8,192 token input sequences
 - Configurable similarity thresholds
@@ -155,14 +155,14 @@ Create a robust, scalable, and intelligent vector database service that serves a
 - Accept base64 encoded images for search input
 - Support multiple image formats (JPEG, PNG, WebP)
 - Provide visual similarity scoring
-- Enable hybrid search combining multiple image vectors
+- Enable hybrid search combining text + image vectors
 - Support image preprocessing and optimization
 
 **Technical Requirements**:
 
-- JinaCLIP v2 vision model integration
-- 512-dimensional image embeddings
-- Support for 512x512 input resolution
+- OpenCLIP vision model integration
+- 768-dimensional image embeddings
+- Support for 224x224 input resolution
 - GPU acceleration for image processing
 - Automatic image resize and normalization
 
@@ -173,70 +173,14 @@ Create a robust, scalable, and intelligent vector database service that serves a
 - [ ] Visual similarity accuracy above 80% for style matching
 - [ ] Handle 10+ concurrent image processing requests
 
-#### 3. **Multimodal Search**
-
-**Priority**: High (P1)  
-**Description**: Combined text and image search with configurable weighting
-
-**Functional Requirements**:
-
-- Combine text queries with reference images
-- Configurable weight balance between text and image components
-- Cross-modal similarity scoring
-- Support for partial inputs (text-only or image-only fallback)
-- Advanced ranking algorithms
-
-**Technical Requirements**:
-
-- Unified scoring mechanism across modalities
-- Real-time weight adjustment
-- Efficient vector combination algorithms
-- Caching for common query patterns
-- A/B testing framework for ranking optimization
-
-**Acceptance Criteria**:
-
-- [ ] Multimodal queries outperform single-modal by 15% in relevance
-- [ ] Weight adjustment affects results predictably
-- [ ] Response time under 400ms for combined queries
-- [ ] Support for experimental ranking algorithms
-
-#### 4. **Similarity Recommendation Engine**
-
-**Priority**: High (P1)  
-**Description**: Find similar anime based on content, visual, or vector similarity
-
-**Functional Requirements**:
-
-- Multiple similarity types: semantic, visual, vector-based
-- Batch similarity processing for multiple references
-- Similarity confidence scoring
-- Configurable result limits and thresholds
-- Support for similarity explanations
-
-**Technical Requirements**:
-
-- Efficient k-nearest neighbor search
-- Multiple distance metrics (cosine, euclidean, dot product)
-- Similarity caching and memoization
-- Real-time similarity computation
-- Integration with fine-tuned models
-
-**Acceptance Criteria**:
-
-- [ ] Find 20 similar anime in under 100ms per query
-- [ ] Batch processing of 10 references in under 500ms
-- [ ] Similarity scores correlate with human judgment (r > 0.7)
-- [ ] Support for different similarity algorithms
-
-#### 5. **Vector Database Management**
+#### 3. **Vector Database Management**
 
 **Priority**: Critical (P0)  
 **Description**: Comprehensive vector storage and retrieval system
 
 **Functional Requirements**:
 
-- Multi-vector storage (text, picture, thumbnail embeddings)
+- Multi-vector storage (text + image embeddings with multivector image storage)
 - Efficient vector indexing and retrieval
 - Metadata filtering and payload indexing
 - Batch upsert operations
@@ -344,41 +288,23 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 ### API Endpoints
 
-#### Search APIs
-
-```
-POST /api/v1/search                    # Semantic text search
-POST /api/v1/search/image             # Image-based search
-POST /api/v1/search/multimodal        # Combined text+image search
-GET  /api/v1/search/by-id/{anime_id}  # Get anime by ID
-```
-
-#### Similarity APIs
-
-```
-GET  /api/v1/similarity/anime/{anime_id}    # Content-based similarity
-GET  /api/v1/similarity/visual/{anime_id}   # Visual similarity
-GET  /api/v1/similarity/vector/{anime_id}   # Vector-based similarity
-POST /api/v1/similarity/batch               # Batch similarity processing
-```
-
-#### Administration APIs
-
-```
-GET  /api/v1/admin/stats                    # Database statistics
-GET  /api/v1/admin/health                   # Detailed health check
-GET  /api/v1/admin/collection/info          # Collection information
-POST /api/v1/admin/vectors/upsert           # Add/update vectors
-POST /api/v1/admin/reindex                  # Rebuild vector index
-DELETE /api/v1/admin/vectors/{anime_id}     # Delete vectors
-```
-
-#### System APIs
+#### Implemented APIs (Current)
 
 ```
 GET  /health                                # Basic health check
 GET  /                                      # Service information
 GET  /docs                                  # OpenAPI documentation
+GET  /api/v1/admin/health                   # Detailed health check
+GET  /api/v1/admin/stats                    # Database statistics
+GET  /api/v1/admin/collection/info          # Collection information
+POST /api/v1/admin/reindex                  # Rebuild vector index
+DELETE /api/v1/admin/vectors/{anime_id}     # Delete vectors
+```
+
+#### Planned APIs (Requirements)
+
+```
+POST /api/v1/search                    # Semantic text search
 ```
 
 ---
@@ -412,7 +338,7 @@ GET  /docs                                  # OpenAPI documentation
 │  ┌──────────────┬──────────────┬─────────────────┐  │
 │  │Text          │Vision        │Multi-Vector     │  │
 │  │Processor     │Processor     │Manager          │  │
-│  │(BGE-m3)      │(JinaCLIP v2) │                 │  │
+│  │(BGE-m3)      │(OpenCLIP)    │                 │  │
 │  └──────────────┴──────────────┴─────────────────┘  │
 └─────────────────┬───────────────────────────────────┘
                   │
@@ -420,7 +346,7 @@ GET  /docs                                  # OpenAPI documentation
 │                Qdrant Vector Database               │
 │  ┌──────────────┬──────────────┬─────────────────┐  │
 │  │Text Vectors  │Image Vectors │Metadata Index   │  │
-│  │(384-dim)     │(512-dim)     │(Payload Fields) │  │
+│  │(1024-dim)    │(768-dim)     │(Payload Fields) │  │
 │  └──────────────┴──────────────┴─────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
@@ -447,7 +373,7 @@ GET  /docs                                  # OpenAPI documentation
 - **Web Framework**: FastAPI 0.115+
 - **Vector Database**: Qdrant 1.14+
 - **Text Embeddings**: BGE-m3 (BAAI/bge-m3)
-- **Image Embeddings**: JinaCLIP v2 (jinaai/jina-clip-v2)
+- **Image Embeddings**: OpenCLIP (ViT-L/14)
 - **ML Framework**: PyTorch 2.0+, Sentence Transformers 5.0+
 
 **Infrastructure:**
@@ -491,19 +417,28 @@ GET  /docs                                  # OpenAPI documentation
   "duration": 24,
   "episodes": 25,
   "images": {
-    "picture": "https://cdn.myanimelist.net/images/anime/10/47347.jpg",
-    "thumbnail": "https://cdn.myanimelist.net/images/anime/10/47347t.jpg"
+    "covers": ["https://cdn.myanimelist.net/images/anime/10/47347.jpg"],
+    "posters": ["https://cdn.myanimelist.net/images/anime/10/47347t.jpg"]
   },
   "vectors": {
-    "text": [0.1, 0.2, ...],      // 384 dimensions
-    "picture": [0.3, 0.4, ...],  // 512 dimensions
-    "thumbnail": [0.5, 0.6, ...]  // 512 dimensions
+    "text_vector": [0.1, 0.2, ...],     // 1024 dimensions
+    "image_vector": [[0.3, 0.4, ...]]   // multivector (768-dim per image)
   },
   "metadata": {
     "created_at": "2024-01-01T00:00:00Z",
     "updated_at": "2024-08-05T00:00:00Z",
     "version": "1.2"
   }
+}
+```
+
+#### AnimeRecord Ingestion Structure
+
+```json
+{
+  "anime": { "...": "core anime fields" },
+  "characters": [{ "...": "character fields" }],
+  "episodes": [{ "...": "episode fields" }]
 }
 ```
 
@@ -529,8 +464,6 @@ class SearchResponse(BaseModel):
 
 - **Text Search**: < 100ms (95th percentile)
 - **Image Search**: < 300ms (95th percentile)
-- **Multimodal Search**: < 400ms (95th percentile)
-- **Similarity Search**: < 150ms (95th percentile)
 - **Batch Operations**: < 50ms per item (95th percentile)
 
 #### Throughput Requirements
@@ -595,7 +528,7 @@ class SearchResponse(BaseModel):
 - [x] ✅ Basic FastAPI service with health endpoints
 - [x] ✅ Qdrant integration with multi-vector support
 - [x] ✅ Text search with BGE-m3 embeddings
-- [x] ✅ Image search with JinaCLIP v2
+- [x] ✅ Image search with OpenCLIP
 - [x] ✅ Docker containerization and deployment
 - [x] ✅ Basic client library implementation
 
@@ -608,12 +541,11 @@ class SearchResponse(BaseModel):
 
 ### Phase 2: Advanced Search Features (Weeks 5-8)
 
-**Objective**: Implement multimodal search and similarity features
+**Objective**: Implement text + image search features
 
 **Deliverables**:
 
-- [x] ✅ Multimodal search with configurable weighting
-- [x] ✅ Similarity search (semantic, visual, vector)
+- [x] ✅ Text + image search support
 - [x] ✅ Batch processing capabilities
 - [x] ✅ Advanced filtering and metadata search
 - [ ] 🔄 Performance optimization and caching
@@ -621,8 +553,7 @@ class SearchResponse(BaseModel):
 
 **Success Criteria**:
 
-- Multimodal search outperforms single-modal by 15%
-- Similarity search accuracy > 80%
+- Text + image search accuracy > 80%
 - Batch processing 10x faster than individual requests
 - Complete API documentation with examples
 
@@ -797,7 +728,7 @@ class SearchResponse(BaseModel):
 #### Secondary Segment: Content Aggregators
 
 **Market Size**: 200+ anime databases and communities
-**Pain Points**: Manual content categorization, limited similarity features
+**Pain Points**: Manual content categorization, limited image-based discovery
 **Value Proposition**: Automated content analysis and recommendation
 **Sales Strategy**: Partner channel, API marketplace, freemium model
 

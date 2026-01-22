@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Anime Vector Service is a specialized microservice designed for high-performance vector database operations, extracted from the main anime-mcp-server repository. It provides semantic search, visual similarity detection, and multimodal content discovery capabilities for anime databases.
+The Anime Vector Service is a specialized microservice designed for high-performance vector database operations, extracted from the main anime-mcp-server repository. It provides semantic search and image-based discovery capabilities for anime databases.
 
 ## Architecture Diagram
 
@@ -27,15 +27,14 @@ graph TB
         end
 
         subgraph "API Endpoints"
-            SEARCH[Search APIs]
-            SIM[Similarity APIs]
+            SEARCH[Search API]
             ADMIN[Admin APIs]
             HEALTH[Health Check]
         end
 
         subgraph "Processing Layer"
             TP[Text Processor<br/>BGE-M3]
-            VP[Vision Processor<br/>JinaCLIP v2]
+            VP[Vision Processor<br/>OpenCLIP]
             MVM[Multi-Vector Manager]
         end
 
@@ -54,9 +53,8 @@ graph TB
             end
 
             subgraph "Vector Storage"
-                TV[Text Vectors<br/>384-dim BGE-M3]
-                PV[Picture Vectors<br/>512-dim JinaCLIP]
-                THV[Thumbnail Vectors<br/>512-dim JinaCLIP]
+                TV[Text Vectors<br/>1024-dim BGE-M3]
+                IV[Image Vectors<br/>768-dim OpenCLIP<br/>(Multivector)]
             end
 
             subgraph "Indexes"
@@ -67,7 +65,7 @@ graph TB
     end
 
     subgraph "Model Cache"
-        MC[HuggingFace Cache<br/>BGE-M3 + JinaCLIP v2]
+        MC[HuggingFace Cache<br/>BGE-M3 + OpenCLIP]
     end
 
     C1 --> LB
@@ -80,7 +78,6 @@ graph TB
     MW --> LS
 
     API --> SEARCH
-    API --> SIM
     API --> ADMIN
     API --> HEALTH
 
@@ -88,7 +85,6 @@ graph TB
     SEARCH --> VP
     SEARCH --> MVM
 
-    SIM --> QC
     ADMIN --> QC
     HEALTH --> QC
 
@@ -102,8 +98,7 @@ graph TB
     SI --> TC
 
     QC --> TV
-    QC --> PV
-    QC --> THV
+    QC --> IV
     QC --> PI
     QC --> HI
 
@@ -115,34 +110,33 @@ graph TB
 
 ### Core Components
 
-#### 1. FastAPI Application (`src/main.py`)
+#### 1. FastAPI Application (`apps/service/src/service/main.py`)
 
 - **Purpose**: Main application entry point and service orchestration
 - **Dependencies**: Configuration, Logging, CORS, Routers
 - **Interfaces**: HTTP REST API, Health endpoints
 - **Lifecycle**: Manages startup/shutdown, initializes Qdrant client
 
-#### 2. Configuration System (`src/config/settings.py`)
+#### 2. Configuration System (`libs/common/src/common/config/settings.py`)
 
 - **Purpose**: Centralized configuration with validation
 - **Features**: Environment variable support, type safety, field validation
 - **Dependencies**: Pydantic, environment files
 - **Scope**: Vector service, Qdrant, embedding models, API settings
 
-#### 3. Vector Processing Layer (`src/vector/`)
+#### 3. Vector Processing Layer (`libs/vector_processing/src/vector_processing/`)
 
 - **Text Processor**: BGE-M3 embeddings for semantic understanding
-- **Vision Processor**: JinaCLIP v2 for image understanding
+- **Vision Processor**: OpenCLIP for image understanding
 - **Multi-Vector Manager**: Coordinates multiple embedding types
-- **Dataset Manager**: Handles anime data structures
 
-#### 4. API Layer (`src/api/`)
+#### 4. API Layer (`apps/service/src/service/routes/`)
 
-- **Search Router**: Text, image, and multimodal search endpoints
-- **Similarity Router**: Content and visual similarity endpoints
+- **Search Router**: Text + image search endpoint (planned)
 - **Admin Router**: Database management and statistics
+- **Health**: Service health endpoint
 
-#### 5. Qdrant Integration (`src/vector/qdrant_client.py`)
+#### 5. Qdrant Integration (`libs/qdrant_db/src/qdrant_db/client.py`)
 
 - **Purpose**: Vector database client and operations
 - **Features**: Multi-vector storage, HNSW indexing, payload filtering
@@ -168,11 +162,8 @@ sequenceDiagram
         Processor->>Models: BGE-M3 Embedding
         Models-->>Processor: Text Vector
     else Image Search
-        Processor->>Models: JinaCLIP v2 Embedding
+        Processor->>Models: OpenCLIP Embedding
         Models-->>Processor: Image Vector
-    else Multimodal
-        Processor->>Models: Both Embeddings
-        Models-->>Processor: Combined Vectors
     end
 
     Processor->>Qdrant: Vector Search
@@ -186,27 +177,27 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Admin
+    participant Pipeline
     participant API
     participant Processor
     participant Qdrant
 
-    Admin->>API: Upsert Vectors
-    API->>Processor: Process Anime Data
+    Pipeline->>API: Submit AnimeRecord
+    API->>Processor: Process AnimeRecord
 
     par Text Processing
         Processor->>Processor: Extract Text Features
         Processor->>Processor: Generate BGE-M3 Embedding
     and Image Processing
-        Processor->>Processor: Process Picture/Thumbnail
-        Processor->>Processor: Generate JinaCLIP Embeddings
+        Processor->>Processor: Process Anime/Character Images
+        Processor->>Processor: Generate OpenCLIP Embeddings
     end
 
-    Processor->>Qdrant: Store Multi-Vector Document
+    Processor->>Qdrant: Store Anime/Character/Episode Points
     Qdrant->>Qdrant: Update HNSW Index
     Qdrant->>Qdrant: Update Payload Index
     Qdrant-->>API: Confirmation
-    API-->>Admin: Success Response
+    API-->>Pipeline: Success Response
 ```
 
 ## Technology Stack
@@ -225,8 +216,8 @@ sequenceDiagram
 
 ### AI/ML Stack
 
-- **BGE-M3**: BAAI/bge-m3 for multilingual text embeddings (384-dim)
-- **JinaCLIP v2**: jinaai/jina-clip-v2 for vision-language embeddings (512-dim)
+- **BGE-M3**: BAAI/bge-m3 for multilingual text embeddings (1024-dim)
+- **OpenCLIP ViT-L/14**: Vision embeddings (768-dim)
 - **PyTorch**: 2.0+ as ML framework backend
 - **Sentence Transformers**: 5.0+ for embedding pipeline
 - **HuggingFace Transformers**: Model loading and caching
@@ -257,8 +248,8 @@ sequenceDiagram
 
 1. **Ingestion**: Anime data from external sources (MCP server integration)
 2. **Enrichment**: Multi-source data synthesis and AI enhancement
-3. **Vectorization**: BGE-M3 text + JinaCLIP image embedding generation
-4. **Storage**: Multi-vector document storage in Qdrant
+3. **Vectorization**: BGE-M3 text + OpenCLIP image embedding generation
+4. **Storage**: Anime/character/episode point storage in Qdrant
 5. **Indexing**: HNSW and payload index maintenance
 
 ## Performance Characteristics
@@ -267,8 +258,6 @@ sequenceDiagram
 
 - **Text Search**: < 100ms (95th percentile)
 - **Image Search**: < 300ms (95th percentile)
-- **Multimodal Search**: < 400ms (95th percentile)
-- **Similarity**: < 150ms (95th percentile)
 
 ### Scalability Metrics
 

@@ -14,12 +14,12 @@
 
 - **Qdrant 1.14+**: Selected for its superior performance with HNSW indexing, multi-vector support, and production-ready features
 - **HNSW Algorithm**: Hierarchical Navigable Small World for fast approximate nearest neighbor search
-- **Advanced Quantization**: Binary, scalar, and product quantization for 40x speedup potential
-- **13-Vector Primary Collection**: Main anime collection with named vectors (11×1024-dim text + 2×768-dim visual)
-- **Dual-Collection Architecture**:
-  - **Primary Collection**: 38K+ anime entries with comprehensive 13-vector semantic coverage
-  - **Episode Collection**: Granular episode-level search with BGE-M3 chunking (Phase 3.5)
-  - **Slug-Based Linking**: Cross-collection relationships using title-based IDs
+- **Advanced Quantization**: Binary, scalar, and product quantization for speedup potential
+- **2-Vector Primary Collection**: `text_vector` (1024-dim) + `image_vector` (768-dim) with multivector image storage
+- **Single-Collection Points**:
+  - **Anime Point**: Text + image multivector per anime
+  - **Character Point**: Text + image multivector per character
+  - **Episode Point**: Text-only point per episode
 - **Hybrid Dense+Sparse**: Support for both semantic embeddings and explicit feature matching (Phase 4)
 
 #### AI/ML Stack
@@ -28,6 +28,13 @@
 - **OpenCLIP ViT-L/14**: Vision transformer for 768-dimensional image embeddings with commercial-friendly licensing
 - **Multi-Provider Support**: FastEmbed, HuggingFace, Sentence Transformers for dynamic model selection
 - **PyTorch 2.0+**: Backend ML framework with optimized inference
+
+#### Supporting Libraries
+
+- **Qdrant Client**: `qdrant-client[fastembed]` for vector operations
+- **HTTP**: `aiohttp` for async requests, `hishel` for HTTP caching
+- **Caching**: `redis` for cache backends
+- **Crawling**: `crawl4ai` for web extraction pipelines
 
 ### Development Setup
 
@@ -40,13 +47,14 @@
 - Git for version control
 - 8GB+ RAM required for model loading
 - GPU optional but recommended for image processing
+- UV package manager (recommended for dependency sync)
 
 #### Local Development
 
 **Setup Process:**
 
 1. Clone repository from version control
-2. Install Python dependencies via requirements.txt
+2. Install Python dependencies via `uv sync` (pyproject.toml + uv.lock)
 3. Start Qdrant database using Docker Compose
 4. Run service using Python module execution
 5. Access API documentation at localhost:8002/docs
@@ -79,7 +87,7 @@ The service uses Pydantic Settings for type-safe configuration:
 **Embedding Models Configuration:**
 
 - TEXT_EMBEDDING_MODEL: Text model (default: BAAI/bge-m3)
-- IMAGE_EMBEDDING_MODEL: Image model (default: jinaai/jina-clip-v2)
+- IMAGE_EMBEDDING_MODEL: Image model (default: ViT-L-14/laion2b_s32b_b82k)
 
 **Performance Tuning:**
 
@@ -96,14 +104,14 @@ The service uses Pydantic Settings for type-safe configuration:
 
 #### Multi-Vector Architecture
 
-- **Decision**: Store text, picture, and thumbnail vectors separately in same collection
-- **Rationale**: Enables targeted search types while maintaining data locality
-- **Implementation**: Named vectors in Qdrant with different dimensions
+- **Decision**: Store text and image vectors in the same collection with multivector image storage
+- **Rationale**: Enables text and image search while maintaining data locality
+- **Implementation**: Named vectors in Qdrant (`text_vector`, `image_vector`)
 
 #### Embedding Model Selection
 
 - **BGE-M3**: Chosen for multilingual support, large context window, and state-of-the-art performance
-- **JinaCLIP v2**: Selected for superior vision-language understanding compared to OpenAI CLIP
+- **OpenCLIP ViT-L/14**: Selected for image embeddings with commercial-friendly licensing
 - **Model Caching**: HuggingFace cache directory for faster subsequent loads
 
 #### Async Architecture
@@ -169,30 +177,33 @@ The service uses Pydantic Settings for type-safe configuration:
 
 #### Memory Constraints
 
-- **Model Loading**: BGE-M3 + JinaCLIP v2 require ~4GB RAM combined
-- **Vector Storage**: 384-dim + 2�512-dim vectors per anime = ~5KB per document
+- **Model Loading**: BGE-M3 + OpenCLIP require multi-GB RAM combined
+- **Vector Storage**: 1024-dim text vectors plus 768-dim image vectors (multivector size varies by image count)
 - **Index Memory**: HNSW index requires additional memory proportional to dataset size
 
 #### Performance Constraints
 
-- **Embedding Generation**: Text: ~50ms, Image: ~200ms per item
-- **Vector Search**: ~10ms for 100K vectors with HNSW
-- **Concurrent Limits**: ~100 simultaneous requests before degradation
+- **Embedding Generation**: Depends on hardware and batch sizes
+- **Vector Search**: Depends on index settings and dataset size
+- **Concurrent Limits**: Depends on CPU/RAM sizing and model placement
 
 #### Storage Constraints
 
-- **Vector Size**: 100K anime � 5KB vectors = ~500MB vector storage
-- **Payload Size**: Metadata adds ~2KB per anime document
-- **Index Overhead**: HNSW index adds ~30% storage overhead
+- **Vector Size**: Scales with image count per anime (multivector image storage)
+- **Payload Size**: Metadata size varies by enrichment depth
+- **Index Overhead**: HNSW index adds additional storage overhead
 
 ### Development Tools
 
+#### Build and Dependency Management
+
+- **UV**: Dependency management via pyproject.toml + uv.lock
+- **Pants**: Monorepo build/test orchestration
+
 #### Code Quality
 
-- **Black**: Code formatting (configured in pyproject.toml)
-- **isort**: Import sorting
-- **autoflake**: Unused import removal
-- **mypy**: Static type checking (future)
+- **Ruff**: Linting and formatting (configured in pyproject.toml)
+- **ty**: Static type checking
 
 #### Testing Framework
 
@@ -265,29 +276,27 @@ The service uses Pydantic Settings for type-safe configuration:
 
 **Current State Analysis:**
 
-- Repository contains 65+ AnimeEntry schema fields with comprehensive anime metadata
-- Existing 3-vector architecture: text (384-dim BGE-M3) + picture + thumbnail (512-dim JinaCLIP v2)
+- Repository contains 65+ Anime schema fields with comprehensive anime metadata
+- Current 2-vector architecture: text_vector (1024-dim BGE-M3) + image_vector (768-dim OpenCLIP, multivector)
 - Proven scale: 38,894+ anime entries in MCP server implementation
 - Current performance: 80-350ms query latency, 50+ RPS throughput
 
 **Optimization Strategy for Million-Query Scale:**
 
-#### **12-Vector Semantic Architecture**
+#### **2-Vector Semantic Architecture**
 
-**Technical Decision:** Single comprehensive collection with 12 named vectors
+**Technical Decision:** Single comprehensive collection with 2 named vectors
 
-- **10 Text Vectors (1024-dim BGE-M3 each):** title_vector, character_vector, genre_vector, staff_vector, review_vector, temporal_vector, streaming_vector, related_vector, franchise_vector, episode_vector
-- **1 Visual Vector (512-dim JinaCLIP v2):** image_vector (unified picture/thumbnail/images)
+- **Text Vector (1024-dim BGE-M3):** `text_vector`
+- **Image Vector (768-dim OpenCLIP):** `image_vector` stored as multivector per image
 - **Rationale:** Data locality optimization, atomic consistency, reduced complexity
 
 #### **Performance Optimization Configuration**
 
 **Vector Quantization Strategy:**
 
-- **High-Priority Vectors:** Scalar quantization (int8) for semantic-rich vectors (title, character, genre, review, image)
-- **Medium-Priority Vectors:** Scalar quantization with disk storage for moderate-usage vectors
-- **Low-Priority Vectors:** Binary quantization (32x compression) for utility vectors (franchise, episode, sources, identifiers)
-- **Memory Reduction Target:** 75% reduction (15GB → 4GB for 30K anime, 500GB → 125GB for 1M anime)
+- **Text/Image Vectors:** Optional scalar/binary/product quantization for memory and speed trade-offs
+- **Memory Reduction Target:** 75% reduction target with quantization enabled
 
 **HNSW Parameter Optimization:**
 
@@ -322,7 +331,7 @@ low_priority_hnsw = {
 
 **Performance Targets Validated:**
 
-- **Query Latency:** 100-500ms for complex multi-vector searches (85% improvement from current)
+- **Query Latency:** 100-500ms for text + image searches (target)
 - **Memory Usage:** ~32GB peak for 1M anime with optimization (vs ~200GB unoptimized)
 - **Throughput:** 300-600 RPS sustained mixed workload (12x improvement)
 - **Concurrent Users:** 100K+ concurrent support (100x improvement)
@@ -333,7 +342,7 @@ low_priority_hnsw = {
 **Rollback-Safe Implementation Strategy:**
 
 - **Configuration-First:** All optimizations start with settings.py changes
-- **Parallel Methods:** New 14-vector methods alongside existing 3-vector methods
+- **Parallel Methods:** Migration steps use configuration-first changes with rollback safety
 - **Graceful Fallbacks:** All systems degrade to current functionality on failure
 - **Feature Flags:** Production toggles without code deployment
 - **Atomic Sub-Phases:** 2-4 hour implementation windows with independent testing
@@ -348,13 +357,13 @@ low_priority_hnsw = {
 #### **Frontend Integration Technical Specifications**
 
 **Customer-Facing Payload Design:**
-Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
+Based on comprehensive Anime schema analysis and 2-vector architecture:
 
 - **Search Results (Fast Loading):** Essential display fields for listing pages
 - **Detail View (Complete):** All 65+ fields for comprehensive anime pages
 - **Filtering (Performance):** ~60+ indexed fields for real-time filtering on all structured data
 - **Computed Performance Fields:** Ranking scores, popularity metrics, content richness indicators
-- **Vector Coverage:** All semantic content embedded in 14 specialized vectors for similarity search
+- **Vector Coverage:** Semantic content embedded in text_vector and image_vector
 
 **API Performance Optimization:**
 
@@ -383,7 +392,7 @@ Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
 
 #### Phase 2.5 Vector Optimization (Current Focus)
 
-- **14-Vector Collection Implementation**: Complete semantic search coverage
+- **2-Vector Collection Implementation**: Text + image vectors with multivector image storage
 - **Quantization Deployment**: 75% memory reduction with maintained accuracy
 - **Performance Validation**: Million-query scalability testing
 - **Frontend Integration**: Customer-facing payload optimization
@@ -395,12 +404,12 @@ Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
 - **Authentication**: JWT-based API authentication with rate limiting
 - **Load Testing**: Million-query performance validation
 
-#### Phase 3.5 Episode Collection Architecture (In Progress)
+#### Phase 3.5 Episode Search Architecture (In Progress)
 
-- **Dual-Collection Design**: Separate episode collection for granular search
-- **BGE-M3 Episode Chunking**: Hierarchical averaging with equal weighting
-- **Cross-Collection Linking**: Slug-based ID strategy for anime-episode relationships
-- **Smart Search Integration**: Episode-specific search capabilities
+- **Single-Collection Points**: Episode points stored alongside anime and character points
+- **BGE-M3 Episode Texting**: Episode text extraction and embedding generation
+- **Linking Strategy**: Episode points reference parent anime IDs
+- **Smart Search Integration**: Episode-aware search capabilities
 - **Testing and Validation**: Performance impact assessment
 
 #### Phase 4 Enterprise Data Enrichment
@@ -410,107 +419,18 @@ Based on comprehensive AnimeEntry schema analysis and 14-vector architecture:
 - **Horizontal Scaling**: Multi-agent coordination for distributed processing
 - **Advanced Analytics**: Processing optimization and predictive scaling
 
-#### Phase 4.1.2 Sparse Vector Integration (Updated for Dual Collections)
+#### Phase 4.1.2 Sparse Vector Integration (Updated for Single Collection)
 
 - **Metadata Sparse Vectors**: Categorical features (genre, studio, year) with static weights
 - **Behavioral Sparse Vectors**: Future API usage patterns and user preferences
 - **Unified Search Enhancement**: RRF fusion across dense and sparse vectors
-- **Simplified Implementation**: Leveraging dual-collection architecture for cleaner integration
+- **Simplified Implementation**: Leverages single-collection architecture
 
 #### Phase 5 Advanced AI Features
 
 - **Global Distribution**: CDN integration and multi-region deployment
 - **Advanced Search**: Context-aware search and intelligent query understanding
 - **Enterprise Analytics**: Business intelligence integration and predictive analytics
-
-## ML Validation Framework (Phase 3)
-
-### Embedding Quality Validation
-
-#### Model Drift Detection
-
-**Implementation Strategy:**
-
-```python
-# Historical metrics with rolling windows
-class EmbeddingQualityMonitor:
-    alert_bands = {
-        "genre_clustering": {"excellent": 0.75, "warning": 0.65, "critical": 0.60},
-        "studio_similarity": {"excellent": 0.70, "warning": 0.60, "critical": 0.55},
-        "temporal_consistency": {"excellent": 0.80, "warning": 0.70, "critical": 0.65}
-    }
-```
-
-**Key Metrics:**
-
-- **Distribution Shift Detection**: Wasserstein distance across BGE-M3 1024 dimensions
-- **Semantic Coherence**: Genre clustering purity, studio visual consistency
-- **Trend Analysis**: 7-day and 30-day rolling windows with statistical significance testing
-
-#### Cross-Modal Validation
-
-**Contrastive Testing Protocol:**
-
-```python
-# Same anime text+image should be more similar than random pairs
-positive_similarities = cosine_similarity(text_embedding, same_anime_image)
-negative_similarities = cosine_similarity(text_embedding, random_anime_image)
-
-# Statistical validation with Mann-Whitney U test
-assert mannwhitneyu(positive_similarities, negative_similarities).pvalue < 0.001
-```
-
-### Search Quality Validation
-
-#### Gold Standard Dataset
-
-**Expert-Curated Test Cases (500 queries):**
-
-- **Genre Categories**: Shounen, shoujo, seinen, josei with character archetypes
-- **Studio Styles**: Visual consistency validation across production houses
-- **Temporal Queries**: Era-specific anime and sequel/franchise relationships
-- **Edge Cases**: Ambiguous queries and boundary conditions
-
-#### Hard Negative Sampling
-
-**Critical Validation Tests:**
-
-```python
-hard_negatives = {
-    "genre_confusion": {
-        "query": "Romantic comedy anime like Toradora",
-        "negatives": ["Attack on Titan", "Monster", "Ghost in the Shell"],
-        "threshold": "<0.3"  # Should be very dissimilar
-    }
-}
-```
-
-#### Automated Metrics Pipeline
-
-- **Precision@K, Recall@K, NDCG**: Traditional relevance metrics
-- **Mean Reciprocal Rank (MRR)**: Critical for "find specific anime" queries
-- **Semantic Consistency**: Within-result coherence measurement
-
-### A/B Testing Framework
-
-#### User Simulation Models
-
-**Advanced Click Modeling:**
-
-```python
-class CascadeClickModel:
-    """Users scan top-to-bottom, click first satisfying result"""
-
-class DependentClickModel:
-    """Models examination vs attractiveness separately"""
-    examination_probs = [0.95, 0.85, 0.70, 0.50, 0.30, 0.15]  # Position-based
-```
-
-#### Search Algorithm Comparison
-
-- **Statistical Significance Testing**: Proper experimental design
-- **Engagement Metrics**: CTR, satisfaction scores, dwell time simulation
-- **Performance Analysis**: Response time vs quality trade-offs
 
 ## Sparse Vector Integration (Phase 4)
 
@@ -658,30 +578,19 @@ def personalization_coverage(recommendations, user_profiles):
 
 ### Implementation Architecture
 
-#### Extending Existing 14-Vector Collection (CHOSEN APPROACH)
+#### Extending Existing 2-Vector Collection (CHOSEN APPROACH)
 
-**Rationale**: Preserve 38K+ anime entries, maintain data locality, unified search capabilities.
+**Rationale**: Preserve existing anime entries, maintain data locality, unified search capabilities.
 
 **Collection Extension Strategy:**
 
 ```python
-# src/vector/qdrant_client.py - Modify existing collection creation
+# qdrant_db/client.py - Modify existing collection creation
 def _create_multi_vector_config(self) -> Dict:
-    """Extend existing 14-vector config with sparse vectors"""
+    """Extend existing 2-vector config with sparse vectors"""
     vectors_config = {
-        # EXISTING: 14 dense vectors (preserve compatibility)
-        "title_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "character_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "genre_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "staff_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "review_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "temporal_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "streaming_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "related_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "franchise_vector": VectorParams(size=1024, distance=Distance.COSINE),
-        "episode_vector": VectorParams(size=1024, distance=Distance.COSINE),
+        "text_vector": VectorParams(size=1024, distance=Distance.COSINE),
         "image_vector": VectorParams(size=768, distance=Distance.COSINE),
-        "character_image_vector": VectorParams(size=768, distance=Distance.COSINE),
 
         # NEW: Sparse vectors (backwards compatible addition)
         "metadata_sparse": {},     # Categorical features (genre, studio, year, etc.)
@@ -755,7 +664,7 @@ class AnimeStaticSparseProcessor:
             "episodes_long_running": 0.3, # Lower preference for very long series
         }
 
-    def generate_metadata_sparse_vector(self, anime: AnimeEntry) -> SparseVector:
+    def generate_metadata_sparse_vector(self, anime: Anime) -> SparseVector:
         """Convert anime metadata to weighted sparse vector"""
         indices = []
         values = []
@@ -896,16 +805,15 @@ def online_weight_adaptation(recent_feedback_window=7):
 
 #### Sparse Vector Performance Benchmarks
 
-**Current Baseline (Dense-Only 14-Vector Architecture):**
+**Current Baseline (Dense-Only 2-Vector Architecture):**
 
 ```python
 # Performance metrics from existing 38K+ anime dataset
 baseline_performance = {
-    "text_search_latency": "80ms",          # BGE-M3 title_vector search
+    "text_search_latency": "80ms",          # BGE-M3 text_vector search
     "image_search_latency": "250ms",        # OpenCLIP image_vector search
-    "multimodal_search_latency": "350ms",   # Combined text + image
-    "memory_usage_per_anime": "~5KB",       # 14 vectors + payload
-    "total_memory_38k_anime": "~190MB",     # Current proven scale
+    "memory_usage_per_anime": "varies",     # text + image multivector + payload
+    "total_memory_38k_anime": "varies",     # Current proven scale
     "concurrent_requests": "50+ RPS",       # Tested throughput
     "precision_at_5": "0.82",              # Estimated from query patterns
     "semantic_coherence": "0.78",          # Genre clustering baseline
@@ -1652,4 +1560,3 @@ future_features = {
 ```
 
 ```
-

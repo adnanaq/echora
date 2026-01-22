@@ -30,7 +30,7 @@ echora/
 │   ├── common/                    # Common models and configuration
 │   │   └── src/common/
 │   │       ├── config/            # Settings and configuration
-│   │       └── models/            # Shared data models (AnimeEntry, etc.)
+│   │       └── models/            # Shared data models (AnimeRecord, etc.)
 │   ├── enrichment/                # Anime data enrichment pipeline
 │   │   └── src/enrichment/
 │   │       ├── api_helpers/       # External API integrations (AniList, Kitsu, etc.)
