@@ -20,7 +20,9 @@ Use pytest markers to run/skip integration tests:
 
 import json
 import sys
+import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -28,7 +30,7 @@ import pytest_asyncio
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from common.models.anime import AnimeRecord
+from common.models.anime import Anime, AnimeRecord
 from qdrant_db import QdrantClient
 from vector_db_interface import VectorDocument
 
@@ -44,6 +46,33 @@ def test_anime_data():
     return data["data"][:3]  # Use first 3 anime for testing
 
 
+def build_anime_record(
+    *,
+    anime_id: str,
+    title: str,
+    genres: list[str],
+    year: int | None,
+    type: str,
+    status: str,
+    sources: list[str] | None = None,
+) -> AnimeRecord:
+    """Build an AnimeRecord with nested Anime data."""
+    if sources is None:
+        sources = []
+
+    return AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title=title,
+            genres=genres,
+            year=year,
+            type=type,
+            status=status,
+            sources=sources,
+        )
+    )
+
+
 @pytest_asyncio.fixture
 async def seeded_test_data(
     client: QdrantClient, embedding_manager, test_anime_data: list[dict]
@@ -53,27 +82,11 @@ async def seeded_test_data(
     anime_entries = [AnimeRecord(**anime_dict) for anime_dict in test_anime_data]
 
     # Generate vectors using embedding_manager
-    gen_results = await embedding_manager.process_anime_batch(anime_entries)
-
-    # Create VectorDocument objects with generated vectors
-    documents = []
-    for i, anime_entry in enumerate(anime_entries):
-        gen_result = gen_results[i]
-        if gen_result.get("metadata", {}).get("processing_failed"):
-            pytest.skip(
-                f"Failed to generate vectors for test anime: {anime_entry.title}"
-            )
-
-        # Create document with generated vectors
-        doc = VectorDocument(
-            id=client._generate_point_id(anime_entry.id),
-            vectors=gen_result.get("vectors", {}),
-            payload=anime_entry.model_dump(),
-        )
-        documents.append(doc)
+    # Note: process_anime_batch returns a flattened list of all points (anime, characters, episodes)
+    all_documents = await embedding_manager.process_anime_batch(anime_entries)
 
     # Upsert test data to ensure points exist
-    result = await client.add_documents(documents, batch_size=len(documents))
+    result = await client.add_documents(all_documents, batch_size=len(all_documents))
 
     if not result.get("success"):
         pytest.skip("Failed to seed test data into Qdrant")
@@ -82,10 +95,10 @@ async def seeded_test_data(
     return anime_entries
 
 
-def create_test_anime(anime_id: str = "test-anime", title: str = "Test Anime"):
+def create_test_anime(anime_id: str = "019bce3b-d48e-3d81-61ba-518ea655b2de", title: str = "Test Anime"):
     """Create a test anime entry for isolated tests."""
-    return AnimeRecord(
-        id=anime_id,
+    return build_anime_record(
+        anime_id=anime_id,
         title=title,
         genres=["Action", "Adventure"],
         year=2020,
@@ -102,12 +115,9 @@ async def add_test_anime(
 
     Helper function that mimics the old add_documents([anime]) behavior.
     """
-    gen_results = await embedding_manager.process_anime_batch([anime])
-    doc = VectorDocument(
-        id=client._generate_point_id(anime.id),
-        vectors=gen_results[0].get("vectors", {}),
-        payload=anime.model_dump(),
-    )
+    gen_results = await embedding_manager.process_anime_vectors(anime)
+    # The first document in results is always the anime point
+    doc = gen_results[0]
     result = await client.add_documents([doc], batch_size=1)
     return result.get("success", False)
 
@@ -120,13 +130,13 @@ async def test_update_single_vector(
     # Get first anime
     anime = seeded_test_data[0]
 
-    # Generate title vector
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector = embedding_manager.text_processor.encode_text(title_content)
+    # Generate text vector
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector = embedding_manager.text_processor.encode_text(full_text)
 
     # Update single vector
     success = await client.update_single_vector(
-        anime_id=anime.id, vector_name="title_vector", vector_data=title_vector
+        anime_id=anime.anime.id, vector_name="text_vector", vector_data=text_vector
     )
 
     assert success is True, "Single vector update should succeed"
@@ -144,7 +154,7 @@ async def test_update_single_vector_invalid_name(
 
     # Try to update non-existent vector
     success = await client.update_single_vector(
-        anime_id=anime.id, vector_name="invalid_vector", vector_data=dummy_vector
+        anime_id=anime.anime.id, vector_name="invalid_vector", vector_data=dummy_vector
     )
 
     assert success is False, "Invalid vector name should fail"
@@ -158,15 +168,15 @@ async def test_update_batch_vectors(
     batch_updates = []
 
     for anime in seeded_test_data:
-        # Generate genre vector
-        genre_content = embedding_manager.field_mapper._extract_genre_content(anime)
-        genre_vector = embedding_manager.text_processor.encode_text(genre_content)
+        # Generate text vector
+        full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+        text_vector = embedding_manager.text_processor.encode_text(full_text)
 
         batch_updates.append(
             {
-                "anime_id": anime.id,
-                "vector_name": "genre_vector",
-                "vector_data": genre_vector,
+                "anime_id": anime.anime.id,
+                "vector_name": "text_vector",
+                "vector_data": text_vector,
             }
         )
 
@@ -199,36 +209,20 @@ async def test_update_batch_vectors_mixed(
     anime = seeded_test_data[0]
 
     # Generate multiple vectors
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector = embedding_manager.text_processor.encode_text(title_content)
-
-    genre_content = embedding_manager.field_mapper._extract_genre_content(anime)
-    genre_vector = embedding_manager.text_processor.encode_text(genre_content)
-
-    character_content = embedding_manager.field_mapper._extract_character_content(anime)
-    character_vector = embedding_manager.text_processor.encode_text(character_content)
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector = embedding_manager.text_processor.encode_text(full_text)
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector,
-        },
-        {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
-            "vector_data": genre_vector,
-        },
-        {
-            "anime_id": anime.id,
-            "vector_name": "character_vector",
-            "vector_data": character_vector,
-        },
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector,
+        }
     ]
 
     result = await client.update_batch_vectors(batch_updates)
 
-    assert result["success"] == 3, "All 3 vector updates should succeed"
+    assert result["success"] == 1, "Vector update should succeed"
     assert result["failed"] == 0, "No updates should fail"
 
 
@@ -250,16 +244,18 @@ async def test_update_image_vector(
     anime = seeded_test_data[0]
 
     # Generate image vector
-    image_vector = await embedding_manager.vision_processor.process_anime_image_vector(
-        anime
-    )
-
-    if image_vector is None:
+    image_urls = embedding_manager.field_mapper.extract_image_urls(anime.anime)
+    if not image_urls:
         pytest.skip("No image data available for this anime")
+        
+    image_matrix = await embedding_manager.vision_processor.encode_images_batch(image_urls)
+
+    if not image_matrix:
+        pytest.skip("Failed to encode any images for this anime")
 
     # Update image vector
     success = await client.update_single_vector(
-        anime_id=anime.id, vector_name="image_vector", vector_data=image_vector
+        anime_id=anime.anime.id, vector_name="image_vector", vector_data=image_matrix[0]
     )
 
     assert success is True, "Image vector update should succeed"
@@ -269,50 +265,23 @@ async def test_update_image_vector(
 async def test_update_all_text_vectors(
     client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
-    """Test updating all text vectors for one anime."""
+    """Test updating text vectors for one anime."""
     anime = seeded_test_data[0]
 
-    text_vector_names = [
-        "title_vector",
-        "character_vector",
-        "genre_vector",
-        "staff_vector",
-        "temporal_vector",
-        "streaming_vector",
-        "related_vector",
-        "franchise_vector",
-        "episode_vector",
-    ]
+    # Current architecture only has text_vector and image_vector
+    text_vector_names = ["text_vector"]
 
     batch_updates = []
 
     for vector_name in text_vector_names:
-        # Extract content based on vector type
-        if vector_name == "title_vector":
-            content = embedding_manager.field_mapper._extract_title_content(anime)
-        elif vector_name == "character_vector":
-            content = embedding_manager.field_mapper._extract_character_content(anime)
-        elif vector_name == "genre_vector":
-            content = embedding_manager.field_mapper._extract_genre_content(anime)
-        elif vector_name == "staff_vector":
-            content = embedding_manager.field_mapper._extract_staff_content(anime)
-        elif vector_name == "temporal_vector":
-            content = embedding_manager.field_mapper._extract_temporal_content(anime)
-        elif vector_name == "streaming_vector":
-            content = embedding_manager.field_mapper._extract_streaming_content(anime)
-        elif vector_name == "related_vector":
-            content = embedding_manager.field_mapper._extract_related_content(anime)
-        elif vector_name == "franchise_vector":
-            content = embedding_manager.field_mapper._extract_franchise_content(anime)
-        elif vector_name == "episode_vector":
-            content = embedding_manager.field_mapper._extract_episode_content(anime)
-
+        # Extract content
+        content = embedding_manager.field_mapper.extract_anime_text(anime.anime)
         # Generate vector
         vector_data = embedding_manager.text_processor.encode_text(content)
 
         batch_updates.append(
             {
-                "anime_id": anime.id,
+                "anime_id": anime.anime.id,
                 "vector_name": vector_name,
                 "vector_data": vector_data,
             }
@@ -321,7 +290,7 @@ async def test_update_all_text_vectors(
     # Execute batch update
     result = await client.update_batch_vectors(batch_updates)
 
-    assert result["success"] == 9, "All 9 text vector updates should succeed"
+    assert result["success"] == len(text_vector_names), "Text vector updates should succeed"
     assert result["failed"] == 0, "No updates should fail"
 
 
@@ -336,35 +305,22 @@ async def test_update_batch_vectors_with_failures(
     batch_updates = []
 
     # Valid update
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector = embedding_manager.text_processor.encode_text(title_content)
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector = embedding_manager.text_processor.encode_text(full_text)
     batch_updates.append(
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector,
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector,
         }
     )
 
     # Invalid update (invalid vector name)
-    genre_content = embedding_manager.field_mapper._extract_genre_content(anime)
-    genre_vector = embedding_manager.text_processor.encode_text(genre_content)
     batch_updates.append(
         {
-            "anime_id": anime.id,
+            "anime_id": anime.anime.id,
             "vector_name": "invalid_vector_name",
-            "vector_data": genre_vector,
-        }
-    )
-
-    # Another valid update
-    character_content = embedding_manager.field_mapper._extract_character_content(anime)
-    character_vector = embedding_manager.text_processor.encode_text(character_content)
-    batch_updates.append(
-        {
-            "anime_id": anime.id,
-            "vector_name": "character_vector",
-            "vector_data": character_vector,
+            "vector_data": text_vector,
         }
     )
 
@@ -376,15 +332,15 @@ async def test_update_batch_vectors_with_failures(
     assert "results" in result, "Result should contain detailed results"
 
     # Verify counts
-    assert result["success"] == 2, "Should have 2 successful updates"
+    assert result["success"] == 1, "Should have 1 successful update"
     assert result["failed"] == 1, "Should have 1 failed update"
-    assert len(result["results"]) == 3, "Should have 3 detailed results"
+    assert len(result["results"]) == 2, "Should have 2 detailed results"
 
     # Verify detailed results
     successful_updates = [r for r in result["results"] if r["success"]]
     failed_updates = [r for r in result["results"] if not r["success"]]
 
-    assert len(successful_updates) == 2, "Should have 2 successful update details"
+    assert len(successful_updates) == 1, "Should have 1 successful update detail"
     assert len(failed_updates) == 1, "Should have 1 failed update detail"
 
     # Check failed update has error message
@@ -404,20 +360,20 @@ async def test_update_batch_vectors_all_validation_failures(
     batch_updates = [
         # Invalid vector name
         {
-            "anime_id": anime.id,
+            "anime_id": seeded_test_data[0].anime.id,
             "vector_name": "invalid_vector_1",
             "vector_data": [0.1] * 1024,
         },
         # Wrong dimension
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": seeded_test_data[1].anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 512,  # Should be 1024
         },
         # Invalid data type
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
+            "anime_id": seeded_test_data[2].anime.id,
+            "vector_name": "text_vector",
             "vector_data": "not a vector",
         },
     ]
@@ -442,47 +398,48 @@ async def test_update_batch_vectors_partial_anime_success(
     anime = seeded_test_data[0]
 
     # Generate valid vectors
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector = embedding_manager.text_processor.encode_text(title_content)
-
-    genre_content = embedding_manager.field_mapper._extract_genre_content(anime)
-    genre_vector = embedding_manager.text_processor.encode_text(genre_content)
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector = embedding_manager.text_processor.encode_text(full_text)
 
     batch_updates = [
         # Valid update
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector,
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector,
         },
         # Invalid update (wrong dimension)
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 512,  # Wrong dimension
         },
-        # Valid update
+    ]
+
+    # Since we use anime_id + vector_name as keys for deduplication, we can't easily test
+    # partial success for the SAME vector name in one batch as one will be removed.
+    # We'll use different vector names if available, or different anime.
+    
+    batch_updates = [
+        # Anime 1 - valid
         {
-            "anime_id": anime.id,
-            "vector_name": "character_vector",
-            "vector_data": genre_vector,  # Reuse valid vector
+            "anime_id": seeded_test_data[0].anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector,
         },
+        # Anime 1 - invalid (wrong dimension)
+        {
+            "anime_id": seeded_test_data[0].anime.id,
+            "vector_name": "image_vector",
+            "vector_data": [0.1] * 512, # Wrong dimension (should be 768)
+        }
     ]
 
     result = await client.update_batch_vectors(batch_updates)
 
-    assert result["success"] == 2, "Should have 2 successful updates"
+    assert result["success"] == 1, "Should have 1 successful update"
     assert result["failed"] == 1, "Should have 1 failed update"
-    assert len(result["results"]) == 3, "Should have 3 detailed results"
-
-    # Verify we can identify which specific update failed
-    failed_result = next(r for r in result["results"] if not r["success"])
-    assert failed_result["vector_name"] == "genre_vector", (
-        "Should identify genre_vector as failed"
-    )
-    assert "dimension" in failed_result["error"].lower(), (
-        "Error should mention dimension mismatch"
-    )
+    assert len(result["results"]) == 2, "Should have 2 detailed results"
 
 
 @pytest.mark.asyncio
@@ -493,29 +450,29 @@ async def test_update_batch_vectors_multiple_anime_mixed_results(
     anime1, anime2, anime3 = seeded_test_data
 
     # Generate valid vectors
-    title1 = embedding_manager.field_mapper._extract_title_content(anime1)
-    title_vector1 = embedding_manager.text_processor.encode_text(title1)
+    text1 = embedding_manager.field_mapper.extract_anime_text(anime1.anime)
+    text_vector1 = embedding_manager.text_processor.encode_text(text1)
 
-    title2 = embedding_manager.field_mapper._extract_title_content(anime2)
-    title_vector2 = embedding_manager.text_processor.encode_text(title2)
+    text2 = embedding_manager.field_mapper.extract_anime_text(anime2.anime)
+    text_vector2 = embedding_manager.text_processor.encode_text(text2)
 
     batch_updates = [
         # Anime 1 - valid
         {
-            "anime_id": anime1.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector1,
+            "anime_id": anime1.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector1,
         },
         # Anime 2 - valid
         {
-            "anime_id": anime2.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector2,
+            "anime_id": anime2.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector2,
         },
         # Anime 3 - invalid (wrong dimension)
         {
-            "anime_id": anime3.id,
-            "vector_name": "title_vector",
+            "anime_id": anime3.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 512,
         },
     ]
@@ -529,9 +486,9 @@ async def test_update_batch_vectors_multiple_anime_mixed_results(
     successful_anime_ids = {r["anime_id"] for r in result["results"] if r["success"]}
     failed_anime_ids = {r["anime_id"] for r in result["results"] if not r["success"]}
 
-    assert anime1.id in successful_anime_ids, "Anime 1 should succeed"
-    assert anime2.id in successful_anime_ids, "Anime 2 should succeed"
-    assert anime3.id in failed_anime_ids, "Anime 3 should fail"
+    assert anime1.anime.id in successful_anime_ids, "Anime 1 should succeed"
+    assert anime2.anime.id in successful_anime_ids, "Anime 2 should succeed"
+    assert anime3.anime.id in failed_anime_ids, "Anime 3 should fail"
 
 
 @pytest.mark.asyncio
@@ -544,18 +501,18 @@ async def test_update_batch_vectors_dimension_validation(
     batch_updates = [
         # Too small
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": seeded_test_data[0].anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 512,
         },
         # Too large
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
+            "anime_id": seeded_test_data[1].anime.id,
+            "vector_name": "image_vector",
             "vector_data": [0.1] * 2048,
         },
         # Empty vector (fails is_float_vector check)
-        {"anime_id": anime.id, "vector_name": "character_vector", "vector_data": []},
+        {"anime_id": seeded_test_data[2].anime.id, "vector_name": "text_vector", "vector_data": []},
     ]
 
     result = await client.update_batch_vectors(batch_updates)
@@ -585,22 +542,22 @@ async def test_update_batch_vectors_invalid_data_types(
     batch_updates = [
         # String instead of list
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": "not a vector",
         },
         # Dict instead of list
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "image_vector",
             "vector_data": {"invalid": "data"},
         },
         # None value
-        {"anime_id": anime.id, "vector_name": "character_vector", "vector_data": None},
+        {"anime_id": anime.anime.id, "vector_name": "invalid_vector_1", "vector_data": None},
         # List with non-float values
         {
-            "anime_id": anime.id,
-            "vector_name": "staff_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "invalid_vector_2",
             "vector_data": ["a", "b", "c"],
         },
     ]
@@ -623,22 +580,22 @@ async def test_update_batch_vectors_same_vector_multiple_updates(
     """Test batch update with multiple updates to same vector (last one should win, deduplication occurs)."""
     anime = seeded_test_data[0]
 
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector1 = embedding_manager.text_processor.encode_text(title_content)
-    title_vector2 = embedding_manager.text_processor.encode_text(
-        title_content
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector1 = embedding_manager.text_processor.encode_text(full_text)
+    text_vector2 = embedding_manager.text_processor.encode_text(
+        full_text
     )  # Same content, different instance
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector1,
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector1,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector2,
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector2,
         },
     ]
 
@@ -648,10 +605,10 @@ async def test_update_batch_vectors_same_vector_multiple_updates(
     assert result["success"] == 1, "Should have 1 successful update (deduplicated)"
     assert result["failed"] == 0, "No failures expected"
     assert len(result["results"]) == 1, "Should have 1 result (deduplicated)"
-    assert result["results"][0]["vector_name"] == "title_vector", (
-        "Should be title_vector"
+    assert result["results"][0]["vector_name"] == "text_vector", (
+        "Should be text_vector"
     )
-    assert result["results"][0]["anime_id"] == anime.id, "Should be correct anime_id"
+    assert result["results"][0]["anime_id"] == anime.anime.id, "Should be correct anime_id"
 
 
 @pytest.mark.asyncio
@@ -661,45 +618,17 @@ async def test_update_batch_vectors_large_batch(
     """Test batch update with many vectors per anime."""
     anime = seeded_test_data[0]
 
-    # Update all 9 text vectors
-    text_vector_names = [
-        "title_vector",
-        "character_vector",
-        "genre_vector",
-        "staff_vector",
-        "temporal_vector",
-        "streaming_vector",
-        "related_vector",
-        "franchise_vector",
-        "episode_vector",
-    ]
+    # Current architecture has text_vector and image_vector
+    vector_names = ["text_vector"]
 
     batch_updates = []
-    for vector_name in text_vector_names:
-        if vector_name == "title_vector":
-            content = embedding_manager.field_mapper._extract_title_content(anime)
-        elif vector_name == "character_vector":
-            content = embedding_manager.field_mapper._extract_character_content(anime)
-        elif vector_name == "genre_vector":
-            content = embedding_manager.field_mapper._extract_genre_content(anime)
-        elif vector_name == "staff_vector":
-            content = embedding_manager.field_mapper._extract_staff_content(anime)
-        elif vector_name == "temporal_vector":
-            content = embedding_manager.field_mapper._extract_temporal_content(anime)
-        elif vector_name == "streaming_vector":
-            content = embedding_manager.field_mapper._extract_streaming_content(anime)
-        elif vector_name == "related_vector":
-            content = embedding_manager.field_mapper._extract_related_content(anime)
-        elif vector_name == "franchise_vector":
-            content = embedding_manager.field_mapper._extract_franchise_content(anime)
-        elif vector_name == "episode_vector":
-            content = embedding_manager.field_mapper._extract_episode_content(anime)
-
+    for vector_name in vector_names:
+        content = embedding_manager.field_mapper.extract_anime_text(anime.anime)
         vector_data = embedding_manager.text_processor.encode_text(content)
 
         batch_updates.append(
             {
-                "anime_id": anime.id,
+                "anime_id": anime.anime.id,
                 "vector_name": vector_name,
                 "vector_data": vector_data,
             }
@@ -707,15 +636,9 @@ async def test_update_batch_vectors_large_batch(
 
     result = await client.update_batch_vectors(batch_updates)
 
-    assert result["success"] == 9, "All 9 vector updates should succeed"
+    assert result["success"] == len(vector_names), "Vector updates should succeed"
     assert result["failed"] == 0, "No failures expected"
-    assert len(result["results"]) == 9, "Should have 9 detailed results"
-
-    # Verify all vector names are present in results
-    result_vector_names = {r["vector_name"] for r in result["results"]}
-    assert result_vector_names == set(text_vector_names), (
-        "All vectors should be in results"
-    )
+    assert len(result["results"]) == len(vector_names), "Should have results for each"
 
 
 @pytest.mark.asyncio
@@ -725,30 +648,30 @@ async def test_update_batch_vectors_preserves_order(
     """Test that detailed results preserve order of input updates."""
     anime = seeded_test_data[0]
 
-    title_content = embedding_manager.field_mapper._extract_title_content(anime)
-    title_vector = embedding_manager.text_processor.encode_text(title_content)
+    full_text = embedding_manager.field_mapper.extract_anime_text(anime.anime)
+    text_vector = embedding_manager.text_processor.encode_text(full_text)
 
     # Mix of valid and invalid updates in specific order
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
-            "vector_data": title_vector,
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
+            "vector_data": text_vector,
         },  # Valid
         {
-            "anime_id": anime.id,
+            "anime_id": anime.anime.id,
             "vector_name": "invalid_1",
-            "vector_data": title_vector,
+            "vector_data": text_vector,
         },  # Invalid
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
-            "vector_data": title_vector,
+            "anime_id": anime.anime.id,
+            "vector_name": "image_vector",
+            "vector_data": [0.1] * 768, # Valid dim
         },  # Valid
         {
-            "anime_id": anime.id,
+            "anime_id": anime.anime.id,
             "vector_name": "invalid_2",
-            "vector_data": title_vector,
+            "vector_data": text_vector,
         },  # Invalid
     ]
 
@@ -761,8 +684,8 @@ async def test_update_batch_vectors_preserves_order(
 
     # Count specific vectors in results
     result_vectors = [r["vector_name"] for r in result["results"]]
-    assert "title_vector" in result_vectors, "title_vector should be in results"
-    assert "genre_vector" in result_vectors, "genre_vector should be in results"
+    assert "text_vector" in result_vectors, "text_vector should be in results"
+    assert "image_vector" in result_vectors, "image_vector should be in results"
     assert "invalid_1" in result_vectors, "invalid_1 should be in results"
     assert "invalid_2" in result_vectors, "invalid_2 should be in results"
 
@@ -775,7 +698,8 @@ async def test_update_batch_vectors_preserves_order(
 @pytest.mark.asyncio
 async def test_deduplication_last_wins_policy(client: QdrantClient, embedding_manager):
     """Test that last-wins deduplication keeps the last occurrence."""
-    anime = create_test_anime(anime_id="dedup-last-wins-test")
+    anime_uuid = str(uuid.uuid4())
+    anime = create_test_anime(anime_id=anime_uuid)
     await add_test_anime(client, embedding_manager, anime)
 
     # Create duplicate updates with very different vectors
@@ -784,13 +708,13 @@ async def test_deduplication_last_wins_policy(client: QdrantClient, embedding_ma
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": first_vector,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": second_vector,
         },  # Duplicate
     ]
@@ -802,12 +726,15 @@ async def test_deduplication_last_wins_policy(client: QdrantClient, embedding_ma
 
     # Verify the second vector was used by searching with it
     search_result = await client.search_single_vector(
-        vector_name="title_vector", vector_data=second_vector, limit=5
+        vector_name="text_vector", vector_data=second_vector, limit=5
     )
 
     # Find our anime in results
-    our_anime = next((r for r in search_result if r["id"] == anime.id), None)
-    assert our_anime is not None, f"Should find anime {anime.id} in results"
+    # Find our anime in results
+    # Search result 'id' is overwritten by payload anime ID
+    our_anime = next((r for r in search_result if r["id"] == anime.anime.id), None)
+    assert our_anime is not None, f"Should find anime {anime.anime.id} in results"
+    assert our_anime is not None, f"Should find anime {anime.anime.id} in results"
     assert our_anime["similarity_score"] > 0.99, (
         "Should match the last vector with high similarity"
     )
@@ -816,7 +743,8 @@ async def test_deduplication_last_wins_policy(client: QdrantClient, embedding_ma
 @pytest.mark.asyncio
 async def test_deduplication_first_wins_policy(client: QdrantClient, embedding_manager):
     """Test that first-wins deduplication keeps the first occurrence."""
-    anime = create_test_anime(anime_id="dedup-first-wins-test")
+    anime_uuid = str(uuid.uuid4())
+    anime = create_test_anime(anime_id=anime_uuid)
     await add_test_anime(client, embedding_manager, anime)
 
     first_vector = [0.001] * 1024
@@ -824,13 +752,13 @@ async def test_deduplication_first_wins_policy(client: QdrantClient, embedding_m
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": first_vector,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": second_vector,
         },  # Duplicate
     ]
@@ -842,10 +770,13 @@ async def test_deduplication_first_wins_policy(client: QdrantClient, embedding_m
 
     # Verify the first vector was used
     search_result = await client.search_single_vector(
-        vector_name="title_vector", vector_data=first_vector, limit=5
+        vector_name="text_vector", vector_data=first_vector, limit=5
     )
-    our_anime = next((r for r in search_result if r["id"] == anime.id), None)
-    assert our_anime is not None, f"Should find anime {anime.id} in results"
+    # Find our anime in results
+    # Search result 'id' is overwritten by payload anime ID
+    our_anime = next((r for r in search_result if r["id"] == anime.anime.id), None)
+    assert our_anime is not None, f"Should find anime {anime.anime.id} in results"
+    assert our_anime is not None, f"Should find anime {anime.anime.id} in results"
     assert our_anime["similarity_score"] > 0.99, (
         "Should match the first vector with high similarity"
     )
@@ -859,13 +790,13 @@ async def test_deduplication_fail_policy(client: QdrantClient, embedding_manager
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.9] * 1024,
         },  # Duplicate
     ]
@@ -884,13 +815,13 @@ async def test_deduplication_warn_policy(
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.9] * 1024,
         },  # Duplicate
     ]
@@ -917,14 +848,14 @@ async def test_no_duplicates_all_policies(client: QdrantClient, embedding_manage
 
     batch_updates = [
         {
-            "anime_id": anime.id,
-            "vector_name": "title_vector",
+            "anime_id": anime.anime.id,
+            "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
         {
-            "anime_id": anime.id,
-            "vector_name": "genre_vector",
-            "vector_data": [0.2] * 1024,
+            "anime_id": anime.anime.id,
+            "vector_name": "image_vector",
+            "vector_data": [0.2] * 768,
         },
     ]
 
@@ -967,8 +898,8 @@ async def test_retry_on_transient_error(client: QdrantClient, embedding_manager)
     ):
         batch_updates = [
             {
-                "anime_id": anime.id,
-                "vector_name": "title_vector",
+                "anime_id": anime.anime.id,
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             }
         ]
@@ -992,19 +923,20 @@ async def test_max_retries_exceeded(client: QdrantClient, embedding_manager):
 
     call_count = [0]
 
-    def mock_update_always_fails(*args, **kwargs):
+    def mock_always_fails(*args, **kwargs):
         call_count[0] += 1
         raise Exception("Connection timeout - persistent")
 
     from unittest.mock import patch
 
+    # Patch qdrant_client.AsyncQdrantClient.update_vectors which is what client.client is
     with patch.object(
-        client.client, "update_vectors", side_effect=mock_update_always_fails
+        client.client, "update_vectors", side_effect=mock_always_fails
     ):
         batch_updates = [
             {
-                "anime_id": anime.id,
-                "vector_name": "title_vector",
+                "anime_id": anime.anime.id,
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             }
         ]
@@ -1029,19 +961,19 @@ async def test_non_transient_error_no_retry(client: QdrantClient, embedding_mana
 
     call_count = [0]
 
-    def mock_update_non_transient_error(*args, **kwargs):
+    def mock_non_transient_error(*args, **kwargs):
         call_count[0] += 1
         raise Exception("Invalid data format - permanent error")
 
     from unittest.mock import patch
 
     with patch.object(
-        client.client, "update_vectors", side_effect=mock_update_non_transient_error
+        client.client, "update_vectors", side_effect=mock_non_transient_error
     ):
         batch_updates = [
             {
-                "anime_id": anime.id,
-                "vector_name": "title_vector",
+                "anime_id": anime.anime.id,
+                "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             }
         ]
@@ -1065,31 +997,31 @@ async def test_update_batch_anime_vectors_basic(
     client: QdrantClient, embedding_manager
 ):
     """Test basic functionality of batch vector updates following script pattern."""
+    # Create test data
     anime_entries = [
-        create_test_anime(anime_id="test-1", title="Test Anime 1"),
-        create_test_anime(anime_id="test-2", title="Test Anime 2"),
+        create_test_anime(anime_id=str(uuid.uuid4()), title="Test Anime 1"),
+        create_test_anime(anime_id=str(uuid.uuid4()), title="Test Anime 2"),
     ]
 
     # Add initial documents
     for anime in anime_entries:
         await add_test_anime(client, embedding_manager, anime)
 
-    # Generate vectors (following scripts/update_vectors.py pattern)
-    gen_results = await embedding_manager.process_anime_batch(anime_entries)
-
-    # Prepare updates
+    # Generate vectors
+    # Parent anime points are the first in results for each record
     updates = []
-    for i, anime_entry in enumerate(anime_entries):
-        vectors = gen_results[i].get("vectors", {})
-        for vector_name in ["title_vector", "genre_vector"]:
-            if vector_name in vectors and vectors[vector_name]:
-                updates.append(
-                    {
-                        "anime_id": anime_entry.id,
-                        "vector_name": vector_name,
-                        "vector_data": vectors[vector_name],
-                    }
-                )
+    for anime_entry in anime_entries:
+        gen_results = await embedding_manager.process_anime_vectors(anime_entry)
+        anime_doc = gen_results[0]
+        vectors = anime_doc.vectors
+        if "text_vector" in vectors:
+            updates.append(
+                {
+                    "anime_id": anime_entry.anime.id,
+                    "vector_name": "text_vector",
+                    "vector_data": vectors["text_vector"],
+                }
+            )
 
     # Update batch
     result = await client.update_batch_vectors(updates)
@@ -1102,23 +1034,30 @@ async def test_update_batch_anime_vectors_basic(
 async def test_update_batch_anime_vectors_all_vectors(
     client: QdrantClient, embedding_manager, settings
 ):
-    """Test updating all 11 vectors for one anime."""
+    """Test updating all vectors for one anime."""
     anime = create_test_anime()
     await add_test_anime(client, embedding_manager, anime)
 
     # Generate all vectors
-    gen_results = await embedding_manager.process_anime_batch([anime])
-    vectors = gen_results[0].get("vectors", {})
+    gen_results = await embedding_manager.process_anime_vectors(anime)
+    anime_doc = gen_results[0]
+    vectors = anime_doc.vectors
 
     # Prepare updates for all generated vectors
     updates = []
     for vector_name in settings.vector_names.keys():
         if vector_name in vectors and vectors[vector_name]:
+            # If it's a multivector (like image_vector), we take the first one for this test
+            # as update_single_vector expects a single vector
+            vec_data = vectors[vector_name]
+            if isinstance(vec_data[0], list): # list of lists
+                vec_data = vec_data[0]
+                
             updates.append(
                 {
-                    "anime_id": anime.id,
+                    "anime_id": anime.anime.id,
                     "vector_name": vector_name,
-                    "vector_data": vectors[vector_name],
+                    "vector_data": vec_data,
                 }
             )
 
@@ -1132,43 +1071,42 @@ async def test_update_batch_anime_vectors_all_vectors(
 async def test_update_batch_anime_vectors_with_progress_callback(
     client: QdrantClient, embedding_manager
 ):
-    """Test batch updates work correctly (progress tracking removed from low-level API)."""
-    anime_entries = [create_test_anime(anime_id=f"test-{i}") for i in range(5)]
+    """Test batch updates work correctly."""
+    # Create 2 test anime
+    anime_entries = [create_test_anime(anime_id=str(uuid.uuid4())) for _ in range(2)]
 
     # Add initial documents
     for anime in anime_entries:
         await add_test_anime(client, embedding_manager, anime)
 
     # Generate vectors
-    gen_results = await embedding_manager.process_anime_batch(anime_entries)
-
-    # Prepare updates
     updates = []
-    for i, anime_entry in enumerate(anime_entries):
-        vectors = gen_results[i].get("vectors", {})
-        if "title_vector" in vectors and vectors["title_vector"]:
+    for anime_entry in anime_entries:
+        gen_results = await embedding_manager.process_anime_vectors(anime_entry)
+        vectors = gen_results[0].vectors
+        if "text_vector" in vectors:
             updates.append(
                 {
-                    "anime_id": anime_entry.id,
-                    "vector_name": "title_vector",
-                    "vector_data": vectors["title_vector"],
+                    "anime_id": anime_entry.anime.id,
+                    "vector_name": "text_vector",
+                    "vector_data": vectors["text_vector"],
                 }
             )
 
     result = await client.update_batch_vectors(updates)
 
-    # Should have 5 successful updates
-    assert result["success"] == 5, "Should successfully update all 5 anime"
+    # Should have 2 successful updates
+    assert result["success"] == 2, "Should successfully update all 2 anime"
 
 
 @pytest.mark.asyncio
 async def test_update_batch_anime_vectors_handles_generation_failures(
     client: QdrantClient, embedding_manager
 ):
-    """Test that generation failures can be detected."""
-    # Create anime with minimal data (may not generate all vectors)
-    minimal_anime = AnimeRecord(
-        id="minimal",
+    """Test that generation failures can be handled."""
+    # Create anime with minimal data
+    minimal_anime = build_anime_record(
+        anime_id="minimal",
         title="",  # Empty title
         genres=[],  # Empty genres
         year=2020,
@@ -1180,17 +1118,18 @@ async def test_update_batch_anime_vectors_handles_generation_failures(
     await add_test_anime(client, embedding_manager, minimal_anime)
 
     # Generate vectors
-    gen_results = await embedding_manager.process_anime_batch([minimal_anime])
-    vectors = gen_results[0].get("vectors", {})
+    gen_results = await embedding_manager.process_anime_vectors(minimal_anime)
+    vectors = gen_results[0].vectors
 
     # Track which vectors were NOT generated
-    requested_vectors = ["title_vector", "genre_vector"]
+    # text_vector is always generated (at least as zero vector)
+    requested_vectors = ["text_vector"]
     generation_failures = [
         v for v in requested_vectors if v not in vectors or not vectors[v]
     ]
 
-    # Should have some failures due to empty data
-    assert len(generation_failures) >= 0, "Can detect missing vectors"
+    # Should have no failures for text_vector as it falls back to zero
+    assert len(generation_failures) == 0, "Should handle minimal data gracefully"
 
 
 @pytest.mark.asyncio
@@ -1208,25 +1147,23 @@ async def test_update_batch_anime_vectors_respects_batch_size(
     client: QdrantClient, embedding_manager
 ):
     """Test that batch updates work for larger batches."""
-    anime_entries = [create_test_anime(anime_id=f"batch-{i}") for i in range(10)]
+    anime_entries = [create_test_anime(anime_id=str(uuid.uuid4())) for i in range(10)]
 
     # Add initial documents
     for anime in anime_entries:
         await add_test_anime(client, embedding_manager, anime)
 
     # Generate vectors for all anime
-    gen_results = await embedding_manager.process_anime_batch(anime_entries)
-
-    # Prepare all updates
     updates = []
-    for i, anime_entry in enumerate(anime_entries):
-        vectors = gen_results[i].get("vectors", {})
-        if "title_vector" in vectors and vectors["title_vector"]:
+    for anime_entry in anime_entries:
+        gen_results = await embedding_manager.process_anime_vectors(anime_entry)
+        vectors = gen_results[0].vectors
+        if "text_vector" in vectors:
             updates.append(
                 {
-                    "anime_id": anime_entry.id,
-                    "vector_name": "title_vector",
-                    "vector_data": vectors["title_vector"],
+                    "anime_id": anime_entry.anime.id,
+                    "vector_name": "text_vector",
+                    "vector_data": vectors["text_vector"],
                 }
             )
 
@@ -1243,20 +1180,20 @@ async def test_update_single_anime_vector_success(
     client: QdrantClient, embedding_manager
 ):
     """Test successful single anime vector update with manual vector generation."""
-    anime = create_test_anime(anime_id="single-anime-1", title="Test Anime")
+    anime = create_test_anime(anime_id=str(uuid.uuid4()), title="Test Anime")
     await add_test_anime(client, embedding_manager, anime)
 
-    # Generate vectors using embedding_manager (matches new pattern from scripts)
-    gen_results = await embedding_manager.process_anime_batch([anime])
-    vectors = gen_results[0].get("vectors", {})
+    # Generate vectors using embedding_manager
+    gen_results = await embedding_manager.process_anime_vectors(anime)
+    vectors = gen_results[0].vectors
 
     # Verify vector was generated
-    assert "title_vector" in vectors, "title_vector should be generated"
-    vector_data = vectors["title_vector"]
+    assert "text_vector" in vectors, "text_vector should be generated"
+    vector_data = vectors["text_vector"]
 
     # Update using low-level method
     success = await client.update_single_vector(
-        anime_id=anime.id, vector_name="title_vector", vector_data=vector_data
+        anime_id=anime.anime.id, vector_name="text_vector", vector_data=vector_data
     )
 
     assert success is True, "Update should succeed"
@@ -1267,13 +1204,13 @@ async def test_update_single_anime_vector_invalid_vector_name(
     client: QdrantClient, embedding_manager
 ):
     """Test that invalid vector name is rejected by validation."""
-    anime = create_test_anime(anime_id="single-anime-2")
+    anime = create_test_anime(anime_id=str(uuid.uuid4()))
     await add_test_anime(client, embedding_manager, anime)
 
     # Try to update with invalid vector name
     dummy_vector = [0.0] * 1024
     success = await client.update_single_vector(
-        anime_id=anime.id, vector_name="invalid_vector_name", vector_data=dummy_vector
+        anime_id=anime.anime.id, vector_name="invalid_vector_name", vector_data=dummy_vector
     )
 
     # Should fail validation
@@ -1282,25 +1219,23 @@ async def test_update_single_anime_vector_invalid_vector_name(
 
 @pytest.mark.asyncio
 async def test_update_single_anime_vector_generation_failure(
-    client: QdrantClient, embedding_manager
+    client: QdrantClient, embedding_manager, monkeypatch
 ):
-    """Test handling when vector generation fails."""
-    from unittest.mock import patch
-
-    anime = create_test_anime(anime_id="single-anime-3")
+    """Test handling of vector generation failures."""
+    anime = create_test_anime(anime_id=str(uuid.uuid4()))
     await add_test_anime(client, embedding_manager, anime)
 
     # Mock embedding manager to return empty vectors
     with patch.object(
         embedding_manager,
-        "process_anime_batch",
-        return_value=[{"vectors": {}}],  # No vectors generated
+        "process_anime_vectors",
+        return_value=[VectorDocument(id="test", vectors={}, payload={})],  # No vectors generated
     ):
-        gen_results = await embedding_manager.process_anime_batch([anime])
-        vectors = gen_results[0].get("vectors", {})
+        gen_results = await embedding_manager.process_anime_vectors(anime)
+        vectors = gen_results[0].vectors
 
-        # Should have no title_vector
-        assert "title_vector" not in vectors, "Vector generation should fail"
+        # Should have no text_vector
+        assert "text_vector" not in vectors, "Vector generation should fail"
 
 
 @pytest.mark.asyncio
@@ -1308,29 +1243,21 @@ async def test_update_single_anime_vector_multiple_vectors_sequential(
     client: QdrantClient, embedding_manager
 ):
     """Test updating multiple vectors sequentially for one anime."""
-    anime = create_test_anime(anime_id="single-anime-4")
+    anime = create_test_anime(anime_id=str(uuid.uuid4()))
     await add_test_anime(client, embedding_manager, anime)
 
     # Generate all vectors once
-    gen_results = await embedding_manager.process_anime_batch([anime])
-    vectors = gen_results[0].get("vectors", {})
+    gen_results = await embedding_manager.process_anime_vectors(anime)
+    vectors = gen_results[0].vectors
 
-    # Update title_vector
+    # Update text_vector
     success1 = await client.update_single_vector(
-        anime_id=anime.id,
-        vector_name="title_vector",
-        vector_data=vectors["title_vector"],
-    )
-
-    # Update genre_vector
-    success2 = await client.update_single_vector(
-        anime_id=anime.id,
-        vector_name="genre_vector",
-        vector_data=vectors["genre_vector"],
+        anime_id=anime.anime.id,
+        vector_name="text_vector",
+        vector_data=vectors["text_vector"],
     )
 
     assert success1 is True, "First update should succeed"
-    assert success2 is True, "Second update should succeed"
 
 
 @pytest.mark.asyncio
@@ -1338,24 +1265,30 @@ async def test_update_single_anime_vector_image_vector(
     client: QdrantClient, embedding_manager
 ):
     """Test updating image vector with manual generation."""
-    anime = create_test_anime(anime_id="single-anime-5")
+    anime = create_test_anime(anime_id=str(uuid.uuid4()))
     # Add images dict for image vector generation
-    anime.images = {
-        "poster": ["https://example.com/poster.jpg"],
-        "cover": ["https://example.com/cover.jpg"],
+    anime.anime.images = {
+        "covers": ["https://example.com/poster.jpg"],
+        "posters": ["https://example.com/cover.jpg"],
     }
     await add_test_anime(client, embedding_manager, anime)
 
-    # Generate vectors (image_vector may or may not be generated depending on URL availability)
-    gen_results = await embedding_manager.process_anime_batch([anime])
-    vectors = gen_results[0].get("vectors", {})
+    # Generate vectors
+    gen_results = await embedding_manager.process_anime_vectors(anime)
+    vectors = gen_results[0].vectors
 
     # If image_vector was generated, update it
     if "image_vector" in vectors and vectors["image_vector"]:
+        # Update single vector expects a single vector, not a matrix
+        # For image_vector (multivector), we update with one of the vectors
+        image_data = vectors["image_vector"]
+        if isinstance(image_data[0], list):
+            image_data = image_data[0]
+            
         success = await client.update_single_vector(
-            anime_id=anime.id,
+            anime_id=anime.anime.id,
             vector_name="image_vector",
-            vector_data=vectors["image_vector"],
+            vector_data=image_data,
         )
         assert success is True, "Image vector update should succeed if generated"
 

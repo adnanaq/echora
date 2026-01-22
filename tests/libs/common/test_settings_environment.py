@@ -199,3 +199,15 @@ class TestMultivectorConfiguration:
                 "text_vector": 1024,
                 "image_vector": 768,
             }
+
+    def test_invalid_multivector_vectors_raises_error(self):
+        """Test that unknown multivector vectors raise ValueError."""
+        with patch.dict(
+            os.environ,
+            {
+                "APP_ENV": "development",
+                "MULTIVECTOR_VECTORS": '["nonexistent_vector"]',
+            },
+        ):
+            with pytest.raises(ValueError, match="Unknown multivector vectors"):
+                Settings()

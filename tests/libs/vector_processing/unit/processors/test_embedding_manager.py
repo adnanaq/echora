@@ -40,7 +40,7 @@ def mock_text_processor():
     processor.encode_texts_batch.side_effect = lambda texts: [
         [0.1] * 1024 for _ in texts
     ]
-    processor._get_zero_embedding.return_value = [0.0] * 1024
+    processor.get_zero_embedding.return_value = [0.0] * 1024
     return processor
 
 

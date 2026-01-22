@@ -4,7 +4,6 @@ Tests cover all code paths including initialization, encoding,
 batch processing, and edge cases.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from vector_processing.processors.text_processor import TextProcessor
@@ -77,17 +76,6 @@ class TestEncodeText:
         assert result == [0.0] * 1024
         mock_text_model.encode.assert_not_called()
 
-    def test_encode_text_none_like_empty_returns_zero_embedding(
-        self, mock_text_model, mock_settings
-    ):
-        """Test that falsy empty string returns zero embedding."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
-
-        # Empty string is falsy
-        result = processor.encode_text("")
-
-        assert result == [0.0] * 1024
-
     def test_encode_text_model_returns_empty_list(self, mock_text_model, mock_settings):
         """Test when model returns empty list."""
         mock_text_model.encode.return_value = []
@@ -155,14 +143,14 @@ class TestEncodeTextsBatch:
 
 
 class TestGetZeroEmbedding:
-    """Tests for _get_zero_embedding method."""
+    """Tests for get_zero_embedding method."""
 
     def test_get_zero_embedding_correct_size(self, mock_text_model, mock_settings):
         """Test zero embedding has correct dimensions."""
         mock_text_model.embedding_size = 512
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor._get_zero_embedding()
+        result = processor.get_zero_embedding()
 
         assert len(result) == 512
         assert all(x == 0.0 for x in result)
@@ -173,7 +161,7 @@ class TestGetZeroEmbedding:
             mock_text_model.embedding_size = size
             processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-            result = processor._get_zero_embedding()
+            result = processor.get_zero_embedding()
 
             assert len(result) == size
 

@@ -1,8 +1,8 @@
 """Tests for ID generation utility."""
 
-import time
 import uuid
 
+import pytest
 from common.utils.id_generation import (
     generate_deterministic_id,
     generate_entity_id,
@@ -65,3 +65,15 @@ def test_generate_deterministic_id_episode_pattern():
     # Consistency check
     ep_id_2 = generate_deterministic_id(seed)
     assert ep_id == ep_id_2
+
+
+def test_generate_deterministic_id_empty_seed_raises():
+    """Test that empty seed raises ValueError."""
+    with pytest.raises(ValueError, match="seed must be a non-empty string"):
+        generate_deterministic_id("")
+
+
+def test_generate_deterministic_id_whitespace_seed_raises():
+    """Test that whitespace-only seed raises ValueError."""
+    with pytest.raises(ValueError, match="seed must be a non-empty string"):
+        generate_deterministic_id("   \t\n  ")

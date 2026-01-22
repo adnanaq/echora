@@ -332,7 +332,7 @@ class TestUnifiedSearch:
         with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
             mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
 
-            results = await mock_qdrant_client.search(text_embedding=text_embedding)
+            await mock_qdrant_client.search(text_embedding=text_embedding)
 
             mock_search.assert_called_once()
             call_args = mock_search.call_args
@@ -346,7 +346,7 @@ class TestUnifiedSearch:
         with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
             mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
 
-            results = await mock_qdrant_client.search(image_embedding=image_embedding)
+            await mock_qdrant_client.search(image_embedding=image_embedding)
 
             mock_search.assert_called_once()
             call_args = mock_search.call_args
@@ -361,7 +361,7 @@ class TestUnifiedSearch:
         with patch.object(mock_qdrant_client, "search_multi_vector") as mock_search:
             mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
 
-            results = await mock_qdrant_client.search(
+            await mock_qdrant_client.search(
                 text_embedding=text_embedding, image_embedding=image_embedding
             )
 

@@ -4,9 +4,9 @@ Tests cover all code paths including initialization, image encoding,
 cache management, hashing, and edge cases.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from vector_processing.processors.vision_processor import VisionProcessor
 
 # Fixtures mock_vision_model, mock_downloader, and mock_settings are provided by conftest.py
@@ -280,6 +280,7 @@ class TestClearCache:
         )
 
         result = processor.clear_cache(max_age_days=7)
+        assert result == {"cleared": 50, "remaining": 50}
 
         mock_downloader.clear_cache.assert_called_once_with(7)
 
