@@ -40,8 +40,8 @@ def determine_anime_status(
             started but not finished.
 
     Examples:
-        >>> from datetime import datetime, timezone
-        >>> current = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        >>> from datetime import UTC, datetime
+        >>> current = datetime(2025, 1, 1, tzinfo=UTC)
         >>> # Finished anime
         >>> determine_anime_status("2024-10-04", "2024-12-20", current)
         <AnimeStatus.FINISHED: 'FINISHED'>

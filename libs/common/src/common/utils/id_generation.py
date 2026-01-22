@@ -7,6 +7,12 @@ This module provides standard functions for generating:
 
 import uuid
 
+__all__ = [
+    "NAMESPACE_ECHORA",
+    "generate_entity_id",
+    "generate_deterministic_id",
+]
+
 # Namespace for Echora to ensure global uniqueness of our deterministic IDs
 # Generated once: uuid.uuid4()
 NAMESPACE_ECHORA = uuid.UUID("979fe79f-4bcb-499b-841f-3b9a075ae30f")
@@ -28,9 +34,15 @@ def generate_deterministic_id(seed: str) -> str:
     if their content hasn't changed.
 
     Args:
-        seed: Unique string content to hash (e.g. "anime_id_episode_1")
+        seed: Unique string content to hash (e.g. "anime_id_episode_1").
+              Must be a non-empty string.
 
     Returns:
         UUID string
+
+    Raises:
+        ValueError: If seed is None or empty.
     """
+    if not seed or not seed.strip():
+        raise ValueError("seed must be a non-empty string")
     return str(uuid.uuid5(NAMESPACE_ECHORA, seed))

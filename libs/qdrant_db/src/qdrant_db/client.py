@@ -4,7 +4,6 @@ Provides high-performance vector search capabilities optimized for anime data
 with advanced filtering, cross-platform ID lookups, and hybrid search.
 """
 
-import hashlib
 import logging
 from typing import Any, TypeGuard, cast
 
@@ -294,7 +293,14 @@ class QdrantClient(VectorDBClient):
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
         # Get list of vectors that use multivector storage
-        multivector_names = getattr(self.settings, "multivector_vectors", [])
+        multivector_names = set(
+            getattr(self.settings, "multivector_vectors", []) or []
+        )
+        unknown = multivector_names - set(self.settings.vector_names)
+        if unknown:
+            logger.warning(
+                f"Unknown multivector vectors ignored: {sorted(unknown)}"
+            )
 
         # Use multi-vector architecture from settings
         vector_params = {}
@@ -628,17 +634,6 @@ class QdrantClient(VectorDBClient):
             offset=offset,
         )
 
-    def _generate_point_id(self, anime_id: str) -> str:
-        """Generate unique point ID from anime ID.
-
-        Args:
-            anime_id: Anime identifier string
-
-        Returns:
-            MD5 hash of anime ID as hexadecimal string
-        """
-        return hashlib.md5(anime_id.encode()).hexdigest()
-
     async def add_documents(
         self,
         documents: list[VectorDocument],
@@ -755,7 +750,8 @@ class QdrantClient(VectorDBClient):
                 logger.error(f"Validation failed for {vector_name}: {error_msg}")
                 return False
 
-            point_id = self._generate_point_id(anime_id)
+            # Use input ID directly as point ID
+            point_id = anime_id
 
             # Define the update operation
             async def _perform_update() -> None:
@@ -924,7 +920,7 @@ class QdrantClient(VectorDBClient):
             # Create PointVectors for batch update
             point_updates = []
             for anime_id, vectors_dict in grouped_updates.items():
-                point_id = self._generate_point_id(anime_id)
+                point_id = anime_id
                 # Cast needed due to dict invariance: Dict[str, List[float]] -> Dict[str, Union[List[float], ...]]
                 point_updates.append(
                     PointVectors(id=point_id, vector=cast(dict[str, Any], vectors_dict))
@@ -1122,9 +1118,10 @@ class QdrantClient(VectorDBClient):
             Anime data dictionary or None if not found
         """
         try:
-            internal_point_id = self._generate_point_id(point_id)
+            # Use raw point ID directly
+            internal_point_id = point_id
 
-            # Retrieve point by ID
+            # Check if point exists using retrieve
             points = await self.client.retrieve(
                 collection_name=self.collection_name,
                 ids=[internal_point_id],

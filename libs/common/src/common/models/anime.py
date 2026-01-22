@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class AnimeStatus(str, Enum):
@@ -161,28 +161,6 @@ class Episode(BaseModel):
     streaming: dict[str, str] = Field(
         default_factory=dict, description="Streaming platforms and URLs {platform: url}"
     )
-
-
-class Image(BaseModel):
-    """Image data that becomes an Image Point in the vector database."""
-
-    id: str = Field(..., description="Unique ULID for the image (img_ prefix)")
-    image_url: str = Field(..., description="Original image URL")
-    anime_id: str | None = Field(
-        None, description="Parent anime ID (for anime images)"
-    )
-    character_id: str | None = Field(
-        None, description="Parent character ID (for character images)"
-    )
-
-    @model_validator(mode="after")
-    def validate_single_parent(self) -> "Image":
-        """Ensure image belongs to either anime or character, not both."""
-        if self.anime_id and self.character_id:
-            raise ValueError("Image cannot belong to both anime and character")
-        if not self.anime_id and not self.character_id:
-            raise ValueError("Image must belong to either anime or character")
-        return self
 
 
 # =============================================================================
@@ -496,6 +474,7 @@ class Anime(BaseModel):
     similarity_score: float | None = Field(
         None,
         description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
+        exclude=True,
     )
     source_material: AnimeSourceMaterial | None = Field(
         None, description="Source material (manga, light novel, etc.)"

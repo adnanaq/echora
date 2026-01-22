@@ -4,7 +4,7 @@ import os
 from enum import Enum
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -471,6 +471,21 @@ class Settings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
+
+    @field_validator("multivector_vectors")
+    @classmethod
+    def validate_multivector_vectors(
+        cls, v: list[str], info: ValidationInfo
+    ) -> list[str]:
+        """Validate multivector_vectors against vector_names."""
+        vector_names = (info.data or {}).get("vector_names", {})
+        unknown = [name for name in v if name not in vector_names]
+        if unknown:
+            raise ValueError(
+                f"Unknown multivector vectors: {unknown}. "
+                f"Valid vectors: {list(vector_names.keys())}"
+            )
+        return v
 
 
 @lru_cache

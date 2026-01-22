@@ -59,7 +59,7 @@ class TextProcessor:
         """
         try:
             if not text or not text.strip():
-                return self._get_zero_embedding()
+                return self.get_zero_embedding()
 
             embeddings = self.model.encode([text])
             if embeddings:
@@ -86,10 +86,10 @@ class TextProcessor:
         try:
             return cast(list[list[float] | None], self.model.encode(texts))
         except Exception as e:
-            logger.error(f"Batch text encoding failed: {e}")
+            logger.exception(f"Batch text encoding failed: {e}")
             return [None] * len(texts)
 
-    def _get_zero_embedding(self) -> list[float]:
+    def get_zero_embedding(self) -> list[float]:
         """Get a zero embedding vector matching model dimensions.
 
         Returns:

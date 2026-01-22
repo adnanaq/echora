@@ -157,7 +157,7 @@ class MultiVectorEmbeddingManager:
         if text_vec:
             embeddings["text_vector"] = text_vec
         else:
-            embeddings["text_vector"] = self.text_processor._get_zero_embedding()
+            embeddings["text_vector"] = self.text_processor.get_zero_embedding()
 
         # 3. Generate Image Vector (multivector matrix)
         image_urls = self.field_mapper.extract_image_urls(anime)
