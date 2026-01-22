@@ -99,22 +99,28 @@ async def update_vectors(
     batch_size: int = 100,
     data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
 ) -> dict[str, Any]:
-    """Update specific vectors for anime entries.
+    """Regenerate and upsert vectors for anime entries.
 
-    This function now handles vector generation and calls the low-level
-    QdrantClient.update_batch_vectors() method.
+    NOTE: In the current hierarchical architecture, this performs a FULL upsert
+    of all vectors (text + image) for the specified records. Selective single-vector
+    updates are not supported because the embedding manager produces complete
+    VectorDocuments containing all vector types.
 
+    The vector_names parameter is validated against the configuration but currently
+    serves as a sanity check that the requested vectors exist - the actual operation
+    regenerates all vectors for the targeted anime entries.
+
+    Process:
     1. Loads and filters anime data from JSON file
-    2. Validates input parameters
-    3. Generates vectors using MultiVectorEmbeddingManager
-    4. Prepares updates for Qdrant
-    5. Calls QdrantClient.add_documents() (Upsert)
-    6. Formats and logs results for CLI display
+    2. Validates vector_names against configuration
+    3. Generates ALL vectors using MultiVectorEmbeddingManager
+    4. Upserts complete VectorDocuments to Qdrant
+    5. Formats and logs results for CLI display
 
     Args:
         client: An initialized QdrantClient instance.
         embedding_manager: An initialized MultiVectorEmbeddingManager instance.
-        vector_names: List of vector names to update
+        vector_names: List of vector names to validate (full upsert performed regardless)
         anime_index: Optional index of specific anime to update
         anime_title: Optional title to search for specific anime
         batch_size: Number of anime to process per batch
@@ -215,9 +221,8 @@ async def update_vectors(
         )
 
         # Generate vectors for this batch
-        # Note: In the new architecture, this regenerates ALL points (text+image)
-        # We cannot easily regenerate *only* one vector type because the Manager
-        # produces a flat list of diverse Documents.
+        # Note: In the new architecture, this regenerates ALL vectors (text+image)
+        # because the Manager produces complete VectorDocuments.
         # This is a full upsert of the records.
         gen_results = await embedding_manager.process_anime_batch(batch_anime)
 
@@ -285,7 +290,7 @@ async def async_main(args, settings):
         # Initialize embedding manager and processors using factory pattern
         # 1. Initialize Mapper
         field_mapper = AnimeFieldMapper()
-        
+
         # 2. Initialize Processors
         text_model = EmbeddingModelFactory.create_text_model(settings)
         text_processor = TextProcessor(model=text_model, settings=settings)
@@ -391,7 +396,7 @@ Examples:
         result = asyncio.run(async_main(args, settings))
 
         # Exit with appropriate code
-        if result.get("failed_anime", 0) > 0:
+        if result.get("failed_count", 0) > 0:
             logger.warning("Update completed with failures")
             sys.exit(2)  # Partial failure
         else:
