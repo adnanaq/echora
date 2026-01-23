@@ -7,7 +7,6 @@ deduplication using embedding models with dependency injection.
 
 import logging
 from collections import defaultdict
-from typing import Any
 
 from sklearn.metrics.pairwise import cosine_similarity
 from vector_processing.embedding_models.text.base import TextEmbeddingModel

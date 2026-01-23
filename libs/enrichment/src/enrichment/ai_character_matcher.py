@@ -438,13 +438,11 @@ class EnsembleFuzzyMatcher:
                     and AnimeFieldMapper is not None
                 ):
                     settings = Settings()
-                    field_mapper = AnimeFieldMapper()
                     vision_model = EmbeddingModelFactory.create_vision_model(settings)
                     downloader = ImageDownloader(settings.model_cache_dir)
                     self.vision_processor = VisionProcessor(
                         model=vision_model,
                         downloader=downloader,
-                        field_mapper=field_mapper,
                         settings=settings,
                     )
                     self.ccips = CCIP(settings)

@@ -290,7 +290,7 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 #### Implemented APIs (Current)
 
-```
+```http
 GET  /health                                # Basic health check
 GET  /                                      # Service information
 GET  /docs                                  # OpenAPI documentation
@@ -303,7 +303,7 @@ DELETE /api/v1/admin/vectors/{anime_id}     # Delete vectors
 
 #### Planned APIs (Requirements)
 
-```
+```http
 POST /api/v1/search                    # Semantic text search
 ```
 

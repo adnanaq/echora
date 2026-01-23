@@ -29,10 +29,9 @@ from crawl4ai import (
     JsonCssExtractionStrategy,
 )
 from crawl4ai.types import RunManyReturn
+from enrichment.crawlers.utils import sanitize_output_path
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
-
-from enrichment.crawlers.utils import sanitize_output_path
 
 logger = logging.getLogger(__name__)
 
