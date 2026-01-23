@@ -94,6 +94,7 @@ dev = [
     "ruff==0.14.10",
     "scikit-learn-stubs>=0.0.3",
     "scipy-stubs>=1.16.2.0",
+    "ty>=0.0.8",
     "types-pillow>=10.2.0.20240822",
     "types-python-dateutil>=2.9.0.20250822",
     "types-requests>=2.32.4.20250913",
@@ -138,8 +139,9 @@ exclude = [
 
 [tool.ruff.lint]
 # Enable pycodestyle (E) and Pyflakes (F) codes by default
-# Plus isort (I) for import sorting
-select = ["E", "F", "I", "N", "UP", "W"]
+# Plus isort (I) for import sorting, tryceratops (TRY) for exception handling,
+# flake8-bandit (S) for security checks
+select = ["E", "F", "I", "N", "S", "TRY", "UP", "W"]
 
 # Never enforce these rules
 ignore = [
@@ -151,7 +153,7 @@ ignore = [
 
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions
+"tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions, assert statements
 "stubs/**/*.pyi" = ["N801", "N803", "UP046"]  # Stub files: allow non-CapWords names, uppercase args, Generic subclass patterns
 
 [tool.ruff.format]
