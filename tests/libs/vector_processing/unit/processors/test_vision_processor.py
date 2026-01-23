@@ -215,7 +215,7 @@ class TestHashEmbedding:
         # Create an object that will cause round() to fail
         class BadFloat:
             def __round__(self, n):
-                raise TypeError("Cannot round")
+                raise TypeError("Cannot round")  # noqa: TRY003
 
             def __iter__(self):
                 return iter([self])

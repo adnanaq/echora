@@ -13,9 +13,10 @@ def _is_valid_uuid(val: str) -> bool:
     """Check if a string is a valid UUID."""
     try:
         uuid.UUID(val)
-        return True
     except ValueError:
         return False
+    else:
+        return True
 
 
 def test_generate_entity_id_format():

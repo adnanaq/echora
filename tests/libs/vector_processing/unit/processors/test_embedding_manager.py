@@ -1,9 +1,9 @@
 """Unit tests for MultiVectorEmbeddingManager."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
-from common.config import Settings
+import pytest
 from common.models.anime import (
     Anime,
     AnimeRecord,
@@ -50,7 +50,7 @@ def mock_vision_processor():
     # Mock the downloader
     processor.downloader = AsyncMock()
     processor.downloader.download_and_cache_image = AsyncMock(
-        return_value="/tmp/cached_image.jpg"
+        return_value=f"{tempfile.gettempdir()}/cached_image.jpg"
     )
     # Mock encode_image
     processor.encode_image = MagicMock(return_value=[0.2] * 768)
@@ -116,7 +116,11 @@ def sample_record_no_images():
 
 @pytest.mark.asyncio
 async def test_process_anime_vectors_structure(
-    mock_field_mapper, mock_text_processor, mock_vision_processor, sample_record
+    mock_field_mapper,
+    mock_text_processor,
+    mock_vision_processor,
+    sample_record,
+    mock_settings,
 ):
     """Test that process_anime_vectors returns correct document hierarchy.
 
@@ -130,7 +134,7 @@ async def test_process_anime_vectors_structure(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     documents = await manager.process_anime_vectors(sample_record)
@@ -171,7 +175,7 @@ async def test_process_anime_vectors_structure(
 
 @pytest.mark.asyncio
 async def test_process_anime_vectors_missing_char_id(
-    mock_field_mapper, mock_text_processor, mock_vision_processor
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
 ):
     """Test deterministic ID generation for characters without IDs."""
     record = AnimeRecord(
@@ -191,7 +195,7 @@ async def test_process_anime_vectors_missing_char_id(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     documents = await manager.process_anime_vectors(record)
@@ -215,14 +219,18 @@ async def test_process_anime_vectors_missing_char_id(
 
 @pytest.mark.asyncio
 async def test_process_anime_batch(
-    mock_field_mapper, mock_text_processor, mock_vision_processor, sample_record
+    mock_field_mapper,
+    mock_text_processor,
+    mock_vision_processor,
+    sample_record,
+    mock_settings,
 ):
     """Test batch processing flattens results correctly."""
     manager = MultiVectorEmbeddingManager(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     # Process batch of 2 identical records
@@ -240,6 +248,7 @@ async def test_process_anime_vectors_no_images(
     mock_text_processor,
     mock_vision_processor,
     sample_record_no_images,
+    mock_settings,
 ):
     """Test processing record with no images omits image_vector from vectors."""
     # Override mock to return no images for this test
@@ -251,7 +260,7 @@ async def test_process_anime_vectors_no_images(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     documents = await manager.process_anime_vectors(sample_record_no_images)
@@ -272,7 +281,7 @@ async def test_process_anime_vectors_no_images(
 
 @pytest.mark.asyncio
 async def test_image_processing_failure_handled(
-    mock_field_mapper, mock_text_processor, mock_vision_processor
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
 ):
     """Test that image processing failures are handled gracefully."""
     # Make image encoding return empty (simulating all failures)
@@ -295,7 +304,7 @@ async def test_image_processing_failure_handled(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     documents = await manager.process_anime_vectors(record)
@@ -304,12 +313,14 @@ async def test_image_processing_failure_handled(
     assert len(documents) == 1
     assert documents[0].payload["type"] == "anime"
     assert "text_vector" in documents[0].vectors
-    assert "image_vector" not in documents[0].vectors  # Failed encoding = no image_vector
+    assert (
+        "image_vector" not in documents[0].vectors
+    )  # Failed encoding = no image_vector
 
 
 @pytest.mark.asyncio
 async def test_multiple_images_creates_multivector_matrix(
-    mock_field_mapper, mock_text_processor, mock_vision_processor
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
 ):
     """Test that multiple images create a multivector matrix in the anime point."""
     # Mock field mapper to return multiple deduplicated URLs
@@ -342,7 +353,7 @@ async def test_multiple_images_creates_multivector_matrix(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        settings=Settings(),
+        settings=mock_settings,
     )
 
     documents = await manager.process_anime_vectors(record)
@@ -357,3 +368,215 @@ async def test_multiple_images_creates_multivector_matrix(
     assert len(anime_doc.vectors["image_vector"]) == 2
     assert anime_doc.vectors["image_vector"][0] == [0.1] * 768
     assert anime_doc.vectors["image_vector"][1] == [0.2] * 768
+
+
+# ============================================================================
+# TDD: anime_ids Merging Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_character_anime_ids_empty_list_adds_current_anime(
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
+):
+    """Test that character with empty anime_ids gets current anime_id added."""
+    anime_id = "anime_01H1234567890ABCDEF"
+    char_id = "char_01H1234567890ABCDEF"
+
+    record = AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title="Test Anime",
+            type=AnimeType.TV,
+            status=AnimeStatus.FINISHED,
+            sources=["https://myanimelist.net/anime/1"],
+        ),
+        characters=[
+            Character(
+                id=char_id,
+                name="Test Character",
+                role="Main",
+                anime_ids=[],  # Empty list
+            )
+        ],
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        settings=mock_settings,
+    )
+
+    documents = await manager.process_anime_vectors(record)
+    char_doc = next(d for d in documents if d.payload["type"] == "character")
+
+    # Should contain current anime_id
+    assert char_doc.payload["anime_ids"] == [anime_id]
+
+
+@pytest.mark.asyncio
+async def test_character_anime_ids_none_creates_list_with_current_anime(
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
+):
+    """Test that character with None anime_ids gets initialized with current anime_id."""
+    anime_id = "anime_01H1234567890ABCDEF"
+    char_id = "char_01H1234567890ABCDEF"
+
+    # Create character dict directly to force None anime_ids
+    record = AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title="Test Anime",
+            type=AnimeType.TV,
+            status=AnimeStatus.FINISHED,
+            sources=["https://myanimelist.net/anime/1"],
+        ),
+        characters=[
+            Character(
+                id=char_id,
+                name="Test Character",
+                role="Main",
+                # anime_ids omitted - will be default_factory=list, but we'll test None case
+            )
+        ],
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        settings=mock_settings,
+    )
+
+    documents = await manager.process_anime_vectors(record)
+    char_doc = next(d for d in documents if d.payload["type"] == "character")
+
+    # Should contain current anime_id
+    assert char_doc.payload["anime_ids"] == [anime_id]
+
+
+@pytest.mark.asyncio
+async def test_character_anime_ids_existing_list_merges_new_anime(
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
+):
+    """Test that character with existing anime_ids gets new anime_id appended."""
+    anime_id = "anime_NEW_ID_01H123"
+    existing_anime_id = "anime_EXISTING_01H456"
+    char_id = "char_01H1234567890ABCDEF"
+
+    record = AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title="Test Anime",
+            type=AnimeType.TV,
+            status=AnimeStatus.FINISHED,
+            sources=["https://myanimelist.net/anime/1"],
+        ),
+        characters=[
+            Character(
+                id=char_id,
+                name="Shared Character",
+                role="Main",
+                anime_ids=[existing_anime_id],  # Already appeared in another anime
+            )
+        ],
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        settings=mock_settings,
+    )
+
+    documents = await manager.process_anime_vectors(record)
+    char_doc = next(d for d in documents if d.payload["type"] == "character")
+
+    # Should contain both anime IDs
+    assert set(char_doc.payload["anime_ids"]) == {existing_anime_id, anime_id}
+    assert len(char_doc.payload["anime_ids"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_character_anime_ids_prevents_duplicates(
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
+):
+    """Test that duplicate anime_ids are not added when processing same anime twice."""
+    anime_id = "anime_01H1234567890ABCDEF"
+    char_id = "char_01H1234567890ABCDEF"
+
+    record = AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title="Test Anime",
+            type=AnimeType.TV,
+            status=AnimeStatus.FINISHED,
+            sources=["https://myanimelist.net/anime/1"],
+        ),
+        characters=[
+            Character(
+                id=char_id,
+                name="Test Character",
+                role="Main",
+                anime_ids=[anime_id],  # Already contains current anime_id
+            )
+        ],
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        settings=mock_settings,
+    )
+
+    documents = await manager.process_anime_vectors(record)
+    char_doc = next(d for d in documents if d.payload["type"] == "character")
+
+    # Should not duplicate the anime_id
+    assert char_doc.payload["anime_ids"] == [anime_id]
+    assert len(char_doc.payload["anime_ids"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_character_anime_ids_preserves_order_and_adds_new(
+    mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
+):
+    """Test that existing anime_ids order is preserved when adding new anime_id."""
+    anime_id = "anime_NEW_01H789"
+    existing_ids = ["anime_FIRST_01H123", "anime_SECOND_01H456"]
+    char_id = "char_01H1234567890ABCDEF"
+
+    record = AnimeRecord(
+        anime=Anime(
+            id=anime_id,
+            title="Test Anime",
+            type=AnimeType.TV,
+            status=AnimeStatus.FINISHED,
+            sources=["https://myanimelist.net/anime/1"],
+        ),
+        characters=[
+            Character(
+                id=char_id,
+                name="Multi-Anime Character",
+                role="Main",
+                anime_ids=existing_ids.copy(),  # Character appeared in 2 anime already
+            )
+        ],
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        settings=mock_settings,
+    )
+
+    documents = await manager.process_anime_vectors(record)
+    char_doc = next(d for d in documents if d.payload["type"] == "character")
+
+    # Should preserve order and append new ID
+    expected = existing_ids + [anime_id]
+    assert char_doc.payload["anime_ids"] == expected
+    assert len(char_doc.payload["anime_ids"]) == 3
