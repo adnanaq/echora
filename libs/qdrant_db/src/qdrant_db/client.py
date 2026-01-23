@@ -293,14 +293,10 @@ class QdrantClient(VectorDBClient):
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
         # Get list of vectors that use multivector storage
-        multivector_names = set(
-            getattr(self.settings, "multivector_vectors", []) or []
-        )
+        multivector_names = set(getattr(self.settings, "multivector_vectors", []) or [])
         unknown = multivector_names - set(self.settings.vector_names)
         if unknown:
-            logger.warning(
-                f"Unknown multivector vectors ignored: {sorted(unknown)}"
-            )
+            logger.warning(f"Unknown multivector vectors ignored: {sorted(unknown)}")
 
         # Use multi-vector architecture from settings
         vector_params = {}

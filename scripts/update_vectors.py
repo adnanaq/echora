@@ -192,11 +192,11 @@ async def update_vectors(
         target_anime = anime_data
         logger.info(f"Processing all {len(target_anime)} anime")
 
-    # Convert to AnimeRecord objects, adding UUIDs if missing
+    # Convert to AnimeRecord objects, adding UUIDs to anime.id if missing
     records: list[AnimeRecord] = []
     for anime_dict in target_anime:
-        if "id" not in anime_dict or not anime_dict["id"]:
-            anime_dict["id"] = str(uuid.uuid4())
+        if "id" not in anime_dict["anime"] or not anime_dict["anime"]["id"]:
+            anime_dict["anime"]["id"] = str(uuid.uuid4())
         records.append(AnimeRecord(**anime_dict))
 
     total_anime = len(records)
@@ -226,6 +226,21 @@ async def update_vectors(
         # This is a full upsert of the records.
         gen_results = await embedding_manager.process_anime_batch(batch_anime)
 
+        # Count anime-level success by checking which anime actually generated documents
+        anime_doc_ids = {
+            doc.id for doc in gen_results if doc.payload.get("type") == "anime"
+        }
+        successful_batch = len(anime_doc_ids)
+        failed_batch = len(batch_anime) - successful_batch
+
+        # Track which specific anime failed to generate
+        if failed_batch:
+            all_generation_failures.extend(
+                {"anime_id": rec.anime.id, "title": rec.anime.title}
+                for rec in batch_anime
+                if rec.anime.id not in anime_doc_ids
+            )
+
         # Update Qdrant with this batch (Using Upsert/add_documents instead of partial update)
         if gen_results:
             # gen_results is list[VectorDocument]
@@ -236,19 +251,21 @@ async def update_vectors(
             if result["success"]:
                 all_batch_results.append(
                     {
-                        "success": len(batch_anime),  # Approximation for stats
-                        "failed": 0,
+                        "success": successful_batch,
+                        "failed": failed_batch,
                         "results": [],  # We lose granular per-vector results in add_documents
                     }
                 )
                 logger.info(
-                    f"Batch {batch_num + 1} complete: Upserted {len(gen_results)} points."
+                    f"Batch {batch_num + 1} complete: Upserted {len(gen_results)} points "
+                    f"({successful_batch} anime, {failed_batch} failed)."
                 )
             else:
                 logger.error(f"Batch {batch_num + 1} failed to upsert.")
                 all_batch_results.append({"success": 0, "failed": len(batch_anime)})
         else:
             logger.warning(f"Batch {batch_num + 1} generated no documents.")
+            all_batch_results.append({"success": 0, "failed": len(batch_anime)})
 
     # Calculate batch success from all_batch_results
     successful_count = sum(r.get("success", 0) for r in all_batch_results)
@@ -265,8 +282,12 @@ async def update_vectors(
 
     if len(all_generation_failures) > 0:
         logger.warning(
-            f"Generation Failures: {len(all_generation_failures)} vectors failed to generate"
+            f"Generation Failures: {len(all_generation_failures)} anime failed to generate"
         )
+        for failure in all_generation_failures[:10]:  # Show first 10
+            logger.warning(f"  - {failure['title']} (ID: {failure['anime_id']})")
+        if len(all_generation_failures) > 10:
+            logger.warning(f"  ... and {len(all_generation_failures) - 10} more")
 
     return {
         "total_anime": total_anime,

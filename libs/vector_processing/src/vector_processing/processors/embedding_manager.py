@@ -232,7 +232,11 @@ class MultiVectorEmbeddingManager:
 
             payload = char.model_dump(exclude_none=True)
             payload["type"] = "character"
-            payload["anime_ids"] = [anime_id]
+            # Merge anime_ids: preserve existing anime relationships
+            existing_anime_ids = payload.get("anime_ids") or []
+            if anime_id not in existing_anime_ids:
+                existing_anime_ids.append(anime_id)
+            payload["anime_ids"] = existing_anime_ids
 
             documents.append(
                 VectorDocument(id=char_id, vectors=vectors, payload=payload)

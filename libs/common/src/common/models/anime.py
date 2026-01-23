@@ -81,7 +81,7 @@ class Character(BaseModel):
     gender: str | None = Field(None, description="Character gender")
     hair_color: str | None = Field(None, description="Hair color")
     id: str | None = Field(
-        None, description="Unique ULID for the character (e.g. char_01H...)"
+        None, description="Unique UUID for the character"
     )
     name: str = Field(..., description="Character name")
     name_native: str | None = Field(
@@ -94,7 +94,7 @@ class Character(BaseModel):
     # =====================================================================
     anime_ids: list[str] = Field(
         default_factory=list,
-        description="List of ULIDs of anime this character appears in",
+        description="List of UUIDs of anime this character appears in",
     )
     character_traits: list[str] = Field(
         default_factory=list,
@@ -127,7 +127,7 @@ class Episode(BaseModel):
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     aired: datetime | None = Field(None, description="Episode air date with timezone")
-    anime_id: str | None = Field(None, description="ULID of the parent anime")
+    anime_id: str | None = Field(None, description="UUID of the parent anime")
     description: str | None = Field(None, description="Episode description from Kitsu")
     duration: int | None = Field(None, description="Episode duration in seconds")
     episode_number: int = Field(..., description="Episode number")

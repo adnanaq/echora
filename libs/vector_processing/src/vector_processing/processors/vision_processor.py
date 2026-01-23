@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from common.config import Settings
+
 from ..embedding_models.vision.base import VisionEmbeddingModel
 from ..utils.image_downloader import ImageDownloader
 
@@ -72,9 +73,7 @@ class VisionProcessor:
             logger.exception(f"Image encoding failed: {e}")
             return None
 
-    async def encode_images_batch(
-        self, image_urls: list[str]
-    ) -> list[list[float]]:
+    async def encode_images_batch(self, image_urls: list[str]) -> list[list[float]]:
         """Encode multiple images from URLs into a matrix for multivector storage.
 
         Downloads and encodes each image, returning a matrix (list of vectors)

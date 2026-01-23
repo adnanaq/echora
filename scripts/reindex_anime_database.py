@@ -14,13 +14,11 @@ import asyncio
 import json
 import os
 import uuid
-from typing import Any, cast
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 from common.config import get_settings
 from common.models.anime import AnimeRecord
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Record
 from qdrant_db.client import QdrantClient
 from vector_db_interface import VectorDocument
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
@@ -65,7 +63,7 @@ async def main() -> None:
         # Initialize embedding manager and processors using factory pattern
         # 1. Initialize Mapper (Content Strategist)
         field_mapper = AnimeFieldMapper()
-        
+
         # 2. Initialize Processors (Compute Engines)
         text_model = EmbeddingModelFactory.create_text_model(settings)
         text_processor = TextProcessor(model=text_model, settings=settings)
@@ -85,7 +83,7 @@ async def main() -> None:
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            field_mapper=field_mapper, # Injected directly
+            field_mapper=field_mapper,  # Injected directly
             settings=settings,
         )
 
@@ -122,11 +120,11 @@ async def main() -> None:
 
         for i, anime_dict in enumerate(anime_data):
             try:
-                # Add UUID if missing
-                if "id" not in anime_dict:
-                    anime_dict["id"] = str(uuid.uuid4())
+                # Add UUID to anime.id if missing
+                if "id" not in anime_dict["anime"] or not anime_dict["anime"]["id"]:
+                    anime_dict["anime"]["id"] = str(uuid.uuid4())
 
-                # Convert to AnimeRecord (handles flat JSON via model_validator)
+                # Convert to AnimeRecord
                 record = AnimeRecord(**anime_dict)
                 records.append(record)
                 print(f"   {i + 1}/{len(anime_data)}: {record.anime.title}")
@@ -145,12 +143,16 @@ async def main() -> None:
         print("\n Starting vector indexing using hierarchical infrastructure...")
         print(" This will generate:")
         print("   - Text Vectors (BGE-M3) for Anime, Characters, Episodes")
-        print("   - Image Vectors (OpenCLIP) for Anime Covers/Posters and Character Portraits")
+        print(
+            "   - Image Vectors (OpenCLIP) for Anime Covers/Posters and Character Portraits"
+        )
         print("   - Comprehensive payload indexing")
 
         try:
             # Process batch to get vectors and payloads
-            print(f"\n Processing {len(records)} anime entries to generate hierarchical vectors...")
+            print(
+                f"\n Processing {len(records)} anime entries to generate hierarchical vectors..."
+            )
             # embedding_manager.process_anime_batch now returns list[VectorDocument] directly
             points: list[VectorDocument] = await embedding_manager.process_anime_batch(
                 records
@@ -159,7 +161,9 @@ async def main() -> None:
             print(
                 f"Successfully generated {len(points)} vector points (Anime + Characters + Episodes)."
             )
-            print("   Note: Images are embedded as multivectors within Anime and Character points.")
+            print(
+                "   Note: Images are embedded as multivectors within Anime and Character points."
+            )
 
             if not points:
                 print("No points to index after embedding; skipping Qdrant upsert.")
