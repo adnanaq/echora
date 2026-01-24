@@ -49,7 +49,7 @@ dev = [
     "pytest-mock==3.14.1",
 
     # Development dependencies
-    "ty>=0.0.13",
+    # Note: ty is specified in [dependency-groups] dev for uv/pdm compatibility
     "ruff==0.14.10",
     "types-requests>=2.32.0",
 
