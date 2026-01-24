@@ -10,6 +10,8 @@ import hashlib
 import logging
 from typing import Any
 
+import aiohttp
+
 from common.config import Settings
 
 from ..embedding_models.vision.base import VisionEmbeddingModel
@@ -36,6 +38,7 @@ class VisionProcessor:
         model: VisionEmbeddingModel,
         downloader: ImageDownloader,
         settings: Settings | None = None,
+        max_concurrent_downloads: int = 10,
     ):
         """Initialize the vision processor with model and downloader.
 
@@ -43,6 +46,8 @@ class VisionProcessor:
             model: An initialized VisionEmbeddingModel instance.
             downloader: An initialized ImageDownloader for fetching images.
             settings: Configuration settings instance. Uses defaults if None.
+            max_concurrent_downloads: Maximum number of concurrent image downloads.
+                Defaults to 10 to prevent resource exhaustion.
         """
         if settings is None:
             settings = Settings()
@@ -50,6 +55,7 @@ class VisionProcessor:
         self.settings = settings
         self.model = model
         self.downloader = downloader
+        self.max_concurrent_downloads = max_concurrent_downloads
 
         logger.info(f"Initialized VisionProcessor with model: {model.model_name}")
 
@@ -77,9 +83,9 @@ class VisionProcessor:
     async def encode_images_batch(self, image_urls: list[str]) -> list[list[float]]:
         """Encode multiple images from URLs into a matrix for multivector storage.
 
-        Downloads images concurrently and encodes them in a single batch for
-        optimal performance. Uses asyncio.gather for parallel I/O and leverages
-        the model's native batch processing capabilities.
+        Downloads images concurrently with semaphore-based rate limiting and
+        encodes them in a single batch for optimal performance. Uses shared
+        aiohttp session to prevent connection proliferation.
 
         Args:
             image_urls: List of image URLs to download and encode.
@@ -91,18 +97,24 @@ class VisionProcessor:
         if not image_urls:
             return []
 
-        # Concurrent downloads (I/O-bound - benefits from async)
-        async def download_single(url: str) -> tuple[str, str | None]:
-            try:
-                local_path = await self.downloader.download_and_cache_image(url)
-                return (url, local_path)
-            except Exception as e:
-                logger.warning(f"Error downloading image {url}: {e}")
-                return (url, None)
+        # Create shared session and semaphore for controlled concurrency
+        semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        async with aiohttp.ClientSession() as session:
+            # Concurrent downloads with semaphore limiting (I/O-bound)
+            async def download_single(url: str) -> tuple[str, str | None]:
+                async with semaphore:
+                    try:
+                        local_path = await self.downloader.download_and_cache_image(
+                            url, session=session
+                        )
+                        return (url, local_path)
+                    except Exception as e:
+                        logger.warning(f"Error downloading image {url}: {e}")
+                        return (url, None)
 
-        download_results = await asyncio.gather(
-            *[download_single(url) for url in image_urls]
-        )
+            download_results = await asyncio.gather(
+                *[download_single(url) for url in image_urls]
+            )
 
         # Filter successful downloads
         local_paths = [path for _, path in download_results if path is not None]

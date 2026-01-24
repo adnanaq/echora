@@ -362,7 +362,7 @@ class TestEncodeImagesBatch:
         # Track when each download is called
         download_times = []
 
-        async def track_download(url):
+        async def track_download(url, **kwargs):
             download_times.append(asyncio.get_event_loop().time())
             await asyncio.sleep(0.01)  # Simulate network delay
             return f"/cache/{url.split('/')[-1]}"
@@ -594,7 +594,7 @@ class TestEncodeImagesBatch:
         """Test that exception in one download doesn't prevent others from completing."""
         mock_downloader = AsyncMock()
 
-        async def download_with_exception(url):
+        async def download_with_exception(url, **kwargs):
             if "2.jpg" in url:
                 raise RuntimeError("Network error")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
@@ -626,3 +626,124 @@ class TestEncodeImagesBatch:
                 "/cache/3.jpg",
             ]
         )
+
+
+    @pytest.mark.asyncio
+    async def test_limits_concurrent_downloads_with_semaphore(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that concurrent downloads are limited by semaphore to prevent resource exhaustion.
+        
+        This test verifies the fix for unbounded concurrency issue where all downloads
+        ran simultaneously, causing potential resource exhaustion with large batches.
+        """
+        import asyncio
+
+        mock_downloader = AsyncMock()
+
+        # Track maximum concurrent downloads
+        active_downloads = 0
+        max_concurrent = 0
+
+        async def track_concurrent_download(url):
+            nonlocal active_downloads, max_concurrent
+            active_downloads += 1
+            max_concurrent = max(max_concurrent, active_downloads)
+            await asyncio.sleep(0.01)  # Simulate download time
+            active_downloads -= 1
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image.side_effect = track_concurrent_download
+        mock_vision_model.encode_image.return_value = [[0.1] * 768] * 20
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+            max_concurrent_downloads=5,  # NEW: Limit to 5 concurrent
+        )
+
+        # Test with 20 URLs
+        urls = [f"http://example.com/{i}.jpg" for i in range(20)]
+        await processor.encode_images_batch(urls)
+
+        # CRITICAL: Max concurrent should respect the limit
+        assert max_concurrent <= 5, (
+            f"Exceeded concurrency limit: {max_concurrent} concurrent (limit: 5)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_uses_shared_session_for_downloads(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that ImageDownloader uses a shared session instead of creating new ones.
+        
+        This test verifies the fix for session proliferation where each download
+        created its own ClientSession (1:1 ratio).
+        """
+        mock_downloader = AsyncMock()
+
+        # Track session usage
+        sessions_created = []
+
+        async def track_session_usage(url, session=None):
+            sessions_created.append(session)
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image.side_effect = track_session_usage
+        mock_vision_model.encode_image.return_value = [[0.1] * 768] * 10
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [f"http://example.com/{i}.jpg" for i in range(10)]
+        await processor.encode_images_batch(urls)
+
+        # CRITICAL: Downloader should be called with session parameter
+        # All calls should have session parameter (not None)
+        for call in mock_downloader.download_and_cache_image.call_args_list:
+            kwargs = call.kwargs
+            assert "session" in kwargs, "Session not passed to downloader"
+            assert kwargs["session"] is not None, "Session is None"
+
+    @pytest.mark.asyncio
+    async def test_default_concurrency_limit_reasonable(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that default concurrency limit is reasonable (not unbounded)."""
+        import asyncio
+
+        mock_downloader = AsyncMock()
+
+        active_downloads = 0
+        max_concurrent = 0
+
+        async def track_concurrent(url, **kwargs):
+            nonlocal active_downloads, max_concurrent
+            active_downloads += 1
+            max_concurrent = max(max_concurrent, active_downloads)
+            await asyncio.sleep(0.001)
+            active_downloads -= 1
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image.side_effect = track_concurrent
+        mock_vision_model.encode_image.return_value = [[0.1] * 768] * 50
+
+        # Create processor WITHOUT specifying max_concurrent_downloads
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [f"http://example.com/{i}.jpg" for i in range(50)]
+        await processor.encode_images_batch(urls)
+
+        # Default should be reasonable (e.g., 10-20, not 50)
+        assert max_concurrent <= 20, (
+            f"Default concurrency too high: {max_concurrent} (should be ≤20)"
+        )
+        assert max_concurrent > 0, "No downloads were concurrent"
