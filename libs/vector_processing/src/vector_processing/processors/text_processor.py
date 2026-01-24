@@ -62,9 +62,9 @@ class TextProcessor:
                 return self.get_zero_embedding()
 
             embeddings = self.model.encode([text])
-            if embeddings:
-                return embeddings[0]
-            return None
+            if not embeddings:
+                return None
+            return embeddings[0]
 
         except Exception:
             logger.exception("Text encoding failed")
@@ -81,10 +81,42 @@ class TextProcessor:
 
         Returns:
             A list of embedding vectors (or None for failed encodings),
-            in the same order as the input texts.
+            in the same order as the input texts. Empty or whitespace-only
+            strings return zero vectors to maintain consistency with encode_text.
         """
         try:
-            return cast(list[list[float] | None], self.model.encode(texts))
+            # Pre-process texts to identify empty/whitespace entries
+            zero_embedding = self.get_zero_embedding()
+            valid_indices = []
+            valid_texts = []
+            
+            for i, text in enumerate(texts):
+                if text and text.strip():
+                    valid_indices.append(i)
+                    valid_texts.append(text)
+            
+            # If all texts are empty, return zero vectors for all
+            if not valid_texts:
+                return [zero_embedding for _ in texts]
+            
+            # Encode only valid texts
+            encoded_valid = self.model.encode(valid_texts)
+            
+            # Reconstruct result list with zero vectors for empty inputs
+            result: list[list[float] | None] = []
+            valid_idx = 0
+            
+            for i in range(len(texts)):
+                if i in valid_indices:
+                    result.append(
+                        cast(list[float] | None, encoded_valid[valid_idx])
+                    )
+                    valid_idx += 1
+                else:
+                    result.append(zero_embedding)
+            
+            return result
+            
         except Exception:
             logger.exception("Batch text encoding failed")
             return [None] * len(texts)

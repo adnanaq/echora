@@ -141,6 +141,80 @@ class TestEncodeTextsBatch:
         assert result == [None, None]
         assert "Batch text encoding failed" in caplog.text
 
+    def test_encode_texts_batch_with_empty_strings(self, mock_text_model, mock_settings):
+        """Test batch encoding filters out empty strings and returns zero vectors."""
+        # Model should only receive non-empty texts
+        mock_text_model.encode.return_value = [
+            [0.1] * 1024,  # For "valid text"
+        ]
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(["", "valid text", ""])
+
+        assert len(result) == 3
+        assert result[0] == [0.0] * 1024  # Empty string -> zero vector
+        assert result[1] == [0.1] * 1024  # Valid text -> encoded
+        assert result[2] == [0.0] * 1024  # Empty string -> zero vector
+        # Model should only be called with valid text
+        mock_text_model.encode.assert_called_once_with(["valid text"])
+
+    def test_encode_texts_batch_with_whitespace_strings(
+        self, mock_text_model, mock_settings
+    ):
+        """Test batch encoding filters out whitespace-only strings."""
+        mock_text_model.encode.return_value = [
+            [0.2] * 1024,  # For "real content"
+        ]
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(["   \t\n  ", "real content", "  "])
+
+        assert len(result) == 3
+        assert result[0] == [0.0] * 1024  # Whitespace -> zero vector
+        assert result[1] == [0.2] * 1024  # Valid text -> encoded
+        assert result[2] == [0.0] * 1024  # Whitespace -> zero vector
+        mock_text_model.encode.assert_called_once_with(["real content"])
+
+    def test_encode_texts_batch_all_empty(self, mock_text_model, mock_settings):
+        """Test batch encoding when all inputs are empty/whitespace."""
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(["", "   ", "\t\n"])
+
+        assert len(result) == 3
+        assert all(vec == [0.0] * 1024 for vec in result)
+        # Model should not be called at all
+        mock_text_model.encode.assert_not_called()
+
+    def test_encode_texts_batch_mixed_content(self, mock_text_model, mock_settings):
+        """Test batch encoding with realistic mixed content."""
+        mock_text_model.encode.return_value = [
+            [0.1] * 1024,  # "Action anime"
+            [0.2] * 1024,  # "Character development"
+            [0.3] * 1024,  # "Epic finale"
+        ]
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch([
+            "Action anime",
+            "",
+            "Character development",
+            "  \t  ",
+            "Epic finale",
+        ])
+
+        assert len(result) == 5
+        assert result[0] == [0.1] * 1024
+        assert result[1] == [0.0] * 1024
+        assert result[2] == [0.2] * 1024
+        assert result[3] == [0.0] * 1024
+        assert result[4] == [0.3] * 1024
+        mock_text_model.encode.assert_called_once_with([
+            "Action anime",
+            "Character development",
+            "Epic finale",
+        ])
+
 
 class TestGetZeroEmbedding:
     """Tests for get_zero_embedding method."""
