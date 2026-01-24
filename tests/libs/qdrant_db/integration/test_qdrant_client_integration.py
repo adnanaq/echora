@@ -31,6 +31,7 @@ import pytest_asyncio
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from common.models.anime import Anime, AnimeRecord, AnimeStatus, AnimeType
+from common.utils.id_generation import generate_deterministic_id
 from qdrant_db import QdrantClient
 from vector_db_interface import VectorDocument
 
@@ -1308,6 +1309,9 @@ async def test_update_single_point_vector_for_character(
         pytest.skip("No anime with characters in test data")
 
     character = anime_with_chars.characters[0]
+    char_point_id = character.id or generate_deterministic_id(
+        f"{anime_with_chars.anime.id}_{character.name}"
+    )
 
     # Generate text vector for character
     char_text = f"{character.name} {character.description or ''}"
@@ -1315,7 +1319,7 @@ async def test_update_single_point_vector_for_character(
 
     # Update character point's text vector using generic method
     success = await client.update_single_point_vector(
-        point_id=character.id,  # Character ID, not anime ID
+        point_id=char_point_id,  # Character ID, not anime ID
         vector_name="text_vector",
         vector_data=text_vector,
     )
@@ -1339,6 +1343,9 @@ async def test_update_single_point_vector_for_episode(
         pytest.skip("No anime with episodes in test data")
 
     episode = anime_with_eps.episodes[0]
+    ep_point_id = episode.id or generate_deterministic_id(
+        f"{anime_with_eps.anime.id}_{episode.episode_number}"
+    )
 
     # Generate text vector for episode
     ep_text = f"Episode {episode.episode_number}: {episode.title or ''} {episode.description or ''}"
@@ -1346,7 +1353,7 @@ async def test_update_single_point_vector_for_episode(
 
     # Update episode point's text vector using generic method
     success = await client.update_single_point_vector(
-        point_id=episode.id,  # Episode ID, not anime ID
+        point_id=ep_point_id,  # Episode ID, not anime ID
         vector_name="text_vector",
         vector_data=text_vector,
     )
