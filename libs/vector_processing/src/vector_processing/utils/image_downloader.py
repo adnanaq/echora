@@ -35,7 +35,7 @@ class ImageDownloader:
         """
         try:
             # Generate cache key from URL
-            cache_key = hashlib.md5(image_url.encode()).hexdigest()
+            cache_key = hashlib.blake2b(image_url.encode(), digest_size=16).hexdigest()
             cache_file = self.image_cache_dir / f"{cache_key}.jpg"
 
             # Check if already cached
@@ -67,8 +67,8 @@ class ImageDownloader:
                             # Return path
                             return str(cache_file.absolute())
 
-                        except Exception as e:
-                            logger.error(f"Invalid image data from {image_url}: {e}")
+                        except Exception:
+                            logger.exception(f"Invalid image data from {image_url}")
                             return None
                     else:
                         logger.warning(
@@ -77,10 +77,10 @@ class ImageDownloader:
                         return None
 
         except TimeoutError:
-            logger.error(f"Timeout downloading image from {image_url}")
+            logger.exception(f"Timeout downloading image from {image_url}")
             return None
-        except Exception as e:
-            logger.error(f"Error downloading image from {image_url}: {e}")
+        except Exception:
+            logger.exception(f"Error downloading image from {image_url}")
             return None
 
     def get_cache_stats(self) -> dict[str, Any]:
@@ -100,7 +100,7 @@ class ImageDownloader:
                 "cache_enabled": True,
             }
         except Exception as e:
-            logger.error(f"Error getting cache stats: {e}")
+            logger.exception("Error getting cache stats")
             return {"cache_enabled": False, "error": str(e)}
 
     def clear_cache(self, max_age_days: int | None = None) -> dict[str, Any]:
@@ -139,5 +139,5 @@ class ImageDownloader:
             }
 
         except Exception as e:
-            logger.error(f"Error clearing cache: {e}")
+            logger.exception("Error clearing cache")
             return {"error": str(e)}

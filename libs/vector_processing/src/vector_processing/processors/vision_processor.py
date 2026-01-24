@@ -131,12 +131,12 @@ class VisionProcessor:
             precision: Decimal places to round to before hashing.
 
         Returns:
-            An MD5 hash string of the rounded embedding vector.
+            A blake2b hash string of the rounded embedding vector.
         """
         try:
             rounded_embedding = [round(x, precision) for x in embedding]
             embedding_str = ",".join(map(str, rounded_embedding))
-            return hashlib.md5(embedding_str.encode()).hexdigest()
+            return hashlib.blake2b(embedding_str.encode(), digest_size=16).hexdigest()
         except Exception:
             return str(hash(tuple(embedding)))
 

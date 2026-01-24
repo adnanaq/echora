@@ -66,8 +66,8 @@ class TextProcessor:
                 return embeddings[0]
             return None
 
-        except Exception as e:
-            logger.error(f"Text encoding failed: {e}")
+        except Exception:
+            logger.exception("Text encoding failed")
             return None
 
     def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
@@ -85,8 +85,8 @@ class TextProcessor:
         """
         try:
             return cast(list[list[float] | None], self.model.encode(texts))
-        except Exception as e:
-            logger.exception(f"Batch text encoding failed: {e}")
+        except Exception:
+            logger.exception("Batch text encoding failed")
             return [None] * len(texts)
 
     def get_zero_embedding(self) -> list[float]:
