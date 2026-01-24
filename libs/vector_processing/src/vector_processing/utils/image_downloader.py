@@ -1,6 +1,7 @@
 import hashlib
 import io
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -113,8 +114,6 @@ class ImageDownloader:
             Dictionary with cleanup statistics
         """
         try:
-            import time
-
             cache_files = list(self.image_cache_dir.glob("*.jpg"))
             removed_count = 0
             total_removed_size = 0

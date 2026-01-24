@@ -5,6 +5,7 @@ engine for image embedding. It is strictly responsible for converting image
 files to embedding vectors using OpenCLIP models, with no domain-specific logic.
 """
 
+import asyncio
 import hashlib
 import logging
 from typing import Any
@@ -87,8 +88,6 @@ class VisionProcessor:
             A list of embedding vectors (matrix). Failed downloads/encodings
             are skipped, so the result may have fewer vectors than input URLs.
         """
-        import asyncio
-
         if not image_urls:
             return []
 

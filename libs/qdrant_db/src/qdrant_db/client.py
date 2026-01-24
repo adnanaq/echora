@@ -989,7 +989,6 @@ class QdrantClient(VectorDBClient):
             # Create PointVectors for batch update
             point_updates = []
             for point_id, vectors_dict in grouped_updates.items():
-                point_id = point_id
                 # Cast needed due to dict invariance: Dict[str, List[float]] -> Dict[str, Union[List[float], ...]]
                 point_updates.append(
                     PointVectors(id=point_id, vector=cast(dict[str, Any], vectors_dict))
