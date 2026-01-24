@@ -347,7 +347,90 @@ class TestGetModelInfo:
 
 
 class TestEncodeImagesBatch:
-    """Tests for encode_images_batch async method."""
+    """Tests for encode_images_batch async method with concurrent downloads."""
+
+    @pytest.mark.asyncio
+    async def test_downloads_all_images_concurrently(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that all images are downloaded concurrently, not sequentially."""
+        import asyncio
+        from unittest.mock import call
+
+        mock_downloader = AsyncMock()
+
+        # Track when each download is called
+        download_times = []
+
+        async def track_download(url):
+            download_times.append(asyncio.get_event_loop().time())
+            await asyncio.sleep(0.01)  # Simulate network delay
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image.side_effect = track_download
+        mock_vision_model.encode_image.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
+            [0.3] * 768,
+        ]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [
+            "http://example.com/1.jpg",
+            "http://example.com/2.jpg",
+            "http://example.com/3.jpg",
+        ]
+        await processor.encode_images_batch(urls)
+
+        # All downloads should start at nearly the same time (concurrent)
+        # If sequential, time difference would be ~30ms (3 * 10ms)
+        # If concurrent, time difference should be < 5ms
+        assert len(download_times) == 3
+        time_spread = max(download_times) - min(download_times)
+        assert time_spread < 0.005, f"Downloads were sequential, not concurrent: {time_spread}s spread"
+
+    @pytest.mark.asyncio
+    async def test_calls_encode_image_once_with_all_paths(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that model.encode_image is called ONCE with ALL paths in batch."""
+        mock_downloader = AsyncMock()
+        mock_downloader.download_and_cache_image.side_effect = [
+            "/cache/image1.jpg",
+            "/cache/image2.jpg",
+            "/cache/image3.jpg",
+        ]
+
+        mock_vision_model.encode_image.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
+            [0.3] * 768,
+        ]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [
+            "http://example.com/1.jpg",
+            "http://example.com/2.jpg",
+            "http://example.com/3.jpg",
+        ]
+        await processor.encode_images_batch(urls)
+
+        # CRITICAL: Should call encode_image ONCE with all 3 paths
+        mock_vision_model.encode_image.assert_called_once_with([
+            "/cache/image1.jpg",
+            "/cache/image2.jpg",
+            "/cache/image3.jpg",
+        ])
 
     @pytest.mark.asyncio
     async def test_encode_images_batch_returns_matrix(
@@ -360,9 +443,10 @@ class TestEncodeImagesBatch:
             "/cache/image2.jpg",
         ]
 
-        mock_vision_model.encode_image.side_effect = [
-            [[0.1] * 768],
-            [[0.2] * 768],
+        # Single call returns all embeddings
+        mock_vision_model.encode_image.return_value = [
+            [0.1] * 768,
+            [0.2] * 768,
         ]
 
         processor = VisionProcessor(
@@ -401,7 +485,7 @@ class TestEncodeImagesBatch:
     async def test_encode_images_batch_skips_failed_downloads(
         self, mock_vision_model, mock_settings
     ):
-        """Test that failed downloads are skipped."""
+        """Test that failed downloads are skipped, successful ones are batched."""
         mock_downloader = AsyncMock()
         mock_downloader.download_and_cache_image.side_effect = [
             "/cache/image1.jpg",
@@ -409,9 +493,10 @@ class TestEncodeImagesBatch:
             "/cache/image3.jpg",
         ]
 
-        mock_vision_model.encode_image.side_effect = [
-            [[0.1] * 768],
-            [[0.3] * 768],
+        # Single batch call with only successful downloads
+        mock_vision_model.encode_image.return_value = [
+            [0.1] * 768,
+            [0.3] * 768,
         ]
 
         processor = VisionProcessor(
@@ -429,12 +514,17 @@ class TestEncodeImagesBatch:
 
         # Should only have 2 results (skipping the failed download)
         assert len(result) == 2
+        # Should batch encode only the 2 successful downloads
+        mock_vision_model.encode_image.assert_called_once_with([
+            "/cache/image1.jpg",
+            "/cache/image3.jpg",
+        ])
 
     @pytest.mark.asyncio
-    async def test_encode_images_batch_skips_failed_encoding(
+    async def test_encode_images_batch_handles_encoding_failure(
         self, mock_vision_model, mock_settings
     ):
-        """Test that failed encodings are skipped."""
+        """Test that batch encoding failure returns empty list."""
         mock_downloader = AsyncMock()
         mock_downloader.download_and_cache_image.side_effect = [
             "/cache/image1.jpg",
@@ -442,10 +532,35 @@ class TestEncodeImagesBatch:
             "/cache/image3.jpg",
         ]
 
-        mock_vision_model.encode_image.side_effect = [
-            [[0.1] * 768],
-            None,  # Failed encoding
-            [[0.3] * 768],
+        # Batch encoding fails
+        mock_vision_model.encode_image.side_effect = RuntimeError("GPU error")
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [
+            "http://example.com/1.jpg",
+            "http://example.com/2.jpg",
+            "http://example.com/3.jpg",
+        ]
+        result = await processor.encode_images_batch(urls)
+
+        # Should return empty list on batch encoding failure
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_all_downloads_fail_returns_empty(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that when all downloads fail, returns empty list without calling encode."""
+        mock_downloader = AsyncMock()
+        mock_downloader.download_and_cache_image.side_effect = [
+            None,  # Failed
+            None,  # Failed
+            None,  # Failed
         ]
 
         processor = VisionProcessor(
@@ -461,5 +576,45 @@ class TestEncodeImagesBatch:
         ]
         result = await processor.encode_images_batch(urls)
 
-        # Should only have 2 results (skipping the failed encoding)
+        # Should return empty list
+        assert result == []
+        # Should NOT call encode_image when no downloads succeeded
+        mock_vision_model.encode_image.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_download_exception_does_not_stop_other_downloads(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that exception in one download doesn't prevent others from completing."""
+        mock_downloader = AsyncMock()
+
+        async def download_with_exception(url):
+            if "2.jpg" in url:
+                raise Exception("Network error")
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image.side_effect = download_with_exception
+        mock_vision_model.encode_image.return_value = [
+            [0.1] * 768,
+            [0.3] * 768,
+        ]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [
+            "http://example.com/1.jpg",
+            "http://example.com/2.jpg",  # Will raise exception
+            "http://example.com/3.jpg",
+        ]
+        result = await processor.encode_images_batch(urls)
+
+        # Should get 2 results (1 and 3 succeeded, 2 failed)
         assert len(result) == 2
+        mock_vision_model.encode_image.assert_called_once_with([
+            "/cache/1.jpg",
+            "/cache/3.jpg",
+        ])

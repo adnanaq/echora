@@ -46,6 +46,57 @@ from qdrant_db.utils import retry_with_backoff
 logger = logging.getLogger(__name__)
 
 
+# Custom exceptions for better error handling and testing
+class VectorConfigurationError(ValueError):
+    """Raised when vector configuration is invalid or empty."""
+
+    def __init__(self, message: str = "Vector configuration is empty") -> None:
+        super().__init__(message)
+
+
+class VectorCountMismatchError(ValueError):
+    """Raised when vector count doesn't match expected count."""
+
+    def __init__(self, expected: int, actual: int) -> None:
+        super().__init__(f"Vector count mismatch: expected {expected}, got {actual}")
+
+
+class VectorDimensionMismatchError(ValueError):
+    """Raised when vector dimensions don't match expected dimensions."""
+
+    def __init__(self, vector_name: str, expected: int, actual: int) -> None:
+        super().__init__(
+            f"Vector {vector_name} dimension mismatch: expected {expected}, got {actual}"
+        )
+
+
+class DuplicateUpdateError(ValueError):
+    """Raised when duplicate update is found with 'fail' deduplication policy."""
+
+    def __init__(self, point_id: str, vector_name: str) -> None:
+        super().__init__(
+            f"Duplicate update found for ({point_id}, {vector_name}). "
+            f"Deduplication policy is 'fail'."
+        )
+
+
+class MissingEmbeddingError(ValueError):
+    """Raised when neither text nor image embedding is provided."""
+
+    def __init__(
+        self,
+        message: str = "At least one of text_embedding or image_embedding is required",
+    ) -> None:
+        super().__init__(message)
+
+
+class EmptyVectorQueriesError(ValueError):
+    """Raised when vector_queries list is empty."""
+
+    def __init__(self, message: str = "vector_queries cannot be empty") -> None:
+        super().__init__(message)
+
+
 def is_float_vector(vector: Any) -> TypeGuard[list[float]]:
     """Type guard to check if vector is a List[float].
 
@@ -197,8 +248,8 @@ class QdrantClient(VectorDBClient):
                         f"Collection {self.collection_name} validated successfully"
                     )
 
-        except Exception as e:
-            logger.error(f"Failed to ensure collection exists: {e}")
+        except Exception:
+            logger.exception("Failed to ensure collection exists")
             raise
 
     async def _validate_collection_compatibility(self) -> bool:
@@ -236,8 +287,8 @@ class QdrantClient(VectorDBClient):
                 )
                 return False
 
-        except Exception as e:
-            logger.error(f"Failed to validate collection compatibility: {e}")
+        except Exception:
+            logger.exception("Failed to validate collection compatibility")
             return False
 
     def _validate_vector_config(self, vectors_config: dict[str, VectorParams]) -> None:
@@ -250,22 +301,22 @@ class QdrantClient(VectorDBClient):
             ValueError: If configuration is invalid or dimensions don't match
         """
         if not vectors_config:
-            raise ValueError("Vector configuration is empty")
+            raise VectorConfigurationError()
 
         expected_count = len(self.settings.vector_names)
         actual_count = len(vectors_config)
 
         if actual_count != expected_count:
-            raise ValueError(
-                f"Vector count mismatch: expected {expected_count}, got {actual_count}"
-            )
+            raise VectorCountMismatchError(expected=expected_count, actual=actual_count)
 
         # Validate vector dimensions
         for vector_name, vector_params in vectors_config.items():
             expected_dim = self.settings.vector_names.get(vector_name)
             if expected_dim and vector_params.size != expected_dim:
-                raise ValueError(
-                    f"Vector {vector_name} dimension mismatch: expected {expected_dim}, got {vector_params.size}"
+                raise VectorDimensionMismatchError(
+                    vector_name=vector_name,
+                    expected=expected_dim,
+                    actual=vector_params.size,
                 )
 
         logger.info(
@@ -388,8 +439,8 @@ class QdrantClient(VectorDBClient):
                 indexing_threshold=20000,
                 memmap_threshold=self.settings.memory_mapping_threshold_mb * 1024,
             )
-        except Exception as e:
-            logger.error(f"Failed to create optimized optimizers config: {e}")
+        except Exception:
+            logger.exception("Failed to create optimized optimizers config")
             return None
 
     def _create_quantization_config(
@@ -432,8 +483,8 @@ class QdrantClient(VectorDBClient):
             else:
                 logger.warning(f"Unknown quantization type: {quantization_type}")
                 return None
-        except Exception as e:
-            logger.error(f"Failed to create quantization config: {e}")
+        except Exception:
+            logger.exception("Failed to create quantization config")
             return None
 
     def _create_optimizers_config(self) -> OptimizersConfig | None:
@@ -463,8 +514,8 @@ class QdrantClient(VectorDBClient):
                 logger.info(f"Applying optimizer configuration: {optimizer_params}")
                 return OptimizersConfig(**optimizer_params)
             return None
-        except Exception as e:
-            logger.error(f"Failed to create optimizers config: {e}")
+        except Exception:
+            logger.exception("Failed to create optimizers config")
             return None
 
     def _create_wal_config(self) -> WalConfigDiff | None:
@@ -479,8 +530,8 @@ class QdrantClient(VectorDBClient):
                 config = WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
                 logger.info(f"WAL configuration: enabled={enable_wal}")
                 return config
-            except Exception as e:
-                logger.error(f"Failed to create WAL config: {e}")
+            except Exception:
+                logger.exception("Failed to create WAL config")
         return None
 
     async def _setup_payload_indexing(self) -> None:
@@ -564,8 +615,8 @@ class QdrantClient(VectorDBClient):
             # Simple health check by getting collections
             await self.client.get_collections()
             return True
-        except Exception as e:
-            logger.exception(f"Health check failed: {e}")
+        except Exception:
+            logger.exception("Health check failed")
             return False
 
     async def get_stats(self) -> dict[str, Any]:
@@ -596,7 +647,7 @@ class QdrantClient(VectorDBClient):
             }
 
         except Exception as e:
-            logger.error(f"Failed to get stats: {e}")
+            logger.exception("Failed to get stats")
             return {"error": str(e)}
 
     async def get_collection_info(self) -> Any:
@@ -678,19 +729,19 @@ class QdrantClient(VectorDBClient):
             return {"success": True, "document_count": total_docs}
 
         except Exception as e:
-            logger.error(f"Failed to add documents: {e}")
+            logger.exception("Failed to add documents")
             return {"success": False, "error": str(e)}
 
     def _validate_vector_update(
         self,
         vector_name: str,
-        vector_data: list[float],
+        vector_data: list[float] | list[list[float]],
     ) -> tuple[bool, str | None]:
         """Validate a vector update for correct name and dimensions.
 
         Args:
             vector_name: Name of the vector to validate
-            vector_data: Vector embedding data to validate
+            vector_data: Vector embedding data to validate (single vector or multivector)
 
         Returns:
             Tuple of (is_valid, error_message)
@@ -702,37 +753,60 @@ class QdrantClient(VectorDBClient):
         if expected_dim is None:
             return False, f"Invalid vector name: {vector_name}"
 
-        # Check if data is a valid float vector
-        if not is_float_vector(vector_data):
-            return False, "Vector data is not a valid float vector"
+        # Check if this is a multivector
+        multivector_names = set(getattr(self.settings, "multivector_vectors", []) or [])
+        is_multivector = vector_name in multivector_names
 
-        # Check dimension matches
-        if len(vector_data) != expected_dim:
-            return (
-                False,
-                f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}",
-            )
+        # Validate multivector format
+        if is_multivector:
+            # Should be list[list[float]]
+            if not isinstance(vector_data, list) or len(vector_data) == 0:
+                return False, "Multivector data must be a non-empty list"
 
-        return True, None
+            # Check each vector in the multivector
+            for i, vec in enumerate(vector_data):
+                if not is_float_vector(vec):
+                    return False, f"Multivector element {i} is not a valid float vector"
+                if len(vec) != expected_dim:
+                    return (
+                        False,
+                        f"Multivector element {i} dimension mismatch: expected {expected_dim}, got {len(vec)}",
+                    )
 
-    async def update_single_vector(
+            return True, None
+
+        # Validate single vector format
+        else:
+            # Should be list[float]
+            if not is_float_vector(vector_data):
+                return False, "Vector data is not a valid float vector"
+
+            # Check dimension matches
+            if len(vector_data) != expected_dim:
+                return (
+                    False,
+                    f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}",
+                )
+
+            return True, None
+
+    async def update_single_point_vector(
         self,
-        anime_id: str,
+        point_id: str,
         vector_name: str,
-        vector_data: list[float],
+        vector_data: list[float] | list[list[float]],
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> bool:
-        """Update a single named vector for an existing anime point.
+        """Update a single named vector for an existing point.
 
         This method updates ONLY the specified vector while keeping all other
-        vectors unchanged. Useful for selective updates like weekly statistics
-        refreshes without re-indexing the entire database.
+        vectors unchanged. Works with any point type (anime, character, episode).
 
         Args:
-            anime_id: Anime ID (will be hashed to point ID)
-            vector_name: Name of vector to update (e.g., "review_vector")
-            vector_data: New vector embedding
+            point_id: Point ID (anime.id, character.id, or episode.id)
+            vector_name: Name of vector to update (e.g., "text_vector", "image_vector")
+            vector_data: New vector embedding (single vector or multivector)
             max_retries: Maximum number of retry attempts (default: 3)
             retry_delay: Initial delay in seconds between retries (default: 1.0)
 
@@ -745,9 +819,6 @@ class QdrantClient(VectorDBClient):
             if not is_valid:
                 logger.error(f"Validation failed for {vector_name}: {error_msg}")
                 return False
-
-            # Use input ID directly as point ID
-            point_id = anime_id
 
             # Define the update operation
             async def _perform_update() -> None:
@@ -766,31 +837,31 @@ class QdrantClient(VectorDBClient):
                 retry_delay=retry_delay,
             )
 
-            logger.debug(f"Updated {vector_name} for anime {anime_id}")
+            logger.debug(f"Updated {vector_name} for point {point_id}")
             return True
 
         except Exception:
-            logger.exception(f"Failed to update vector {vector_name} for {anime_id}")
+            logger.exception(f"Failed to update vector {vector_name} for {point_id}")
             return False
 
-    async def update_batch_vectors(
+    async def update_batch_point_vectors(
         self,
         updates: list[dict[str, Any]],
         dedup_policy: str = "last-wins",
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> dict[str, Any]:
-        """Update multiple vectors across multiple anime points in a single batch.
+        """Update multiple vectors across multiple points in a single batch.
 
         More efficient than individual updates when updating many points.
         Processes updates in batches for optimal performance.
 
         Args:
             updates: List of update dictionaries with keys:
-                - anime_id: Anime ID to update
+                - point_id: Anime ID to update
                 - vector_name: Name of vector to update
                 - vector_data: New vector embedding
-            dedup_policy: How to handle duplicate (anime_id, vector_name) pairs:
+            dedup_policy: How to handle duplicate (point_id, vector_name) pairs:
                 - "last-wins": Keep last occurrence (default)
                 - "first-wins": Keep first occurrence
                 - "fail": Raise error on duplicates
@@ -803,7 +874,7 @@ class QdrantClient(VectorDBClient):
                 - success: Total count of successful updates
                 - failed: Total count of failed updates
                 - results: List of per-update status dicts with keys:
-                    - anime_id: Anime ID
+                    - point_id: Anime ID
                     - vector_name: Vector name
                     - success: Boolean indicating success/failure
                     - error: Error message (only if success=False)
@@ -824,12 +895,12 @@ class QdrantClient(VectorDBClient):
             # Check for duplicates and apply deduplication policy
             seen_keys: dict[
                 tuple[str, str], int
-            ] = {}  # (anime_id, vector_name) -> first index
+            ] = {}  # (point_id, vector_name) -> first index
             duplicates: list[tuple[str, str]] = []
             deduplicated_updates: list[dict[str, Any]] = []
 
             for idx, update in enumerate(updates):
-                key = (update["anime_id"], update["vector_name"])
+                key = (update["point_id"], update["vector_name"])
 
                 if key in seen_keys:
                     duplicates.append(key)
@@ -842,28 +913,28 @@ class QdrantClient(VectorDBClient):
                             u
                             for u in deduplicated_updates
                             if not (
-                                u["anime_id"] == update["anime_id"]
+                                u["point_id"] == update["point_id"]
                                 and u["vector_name"] == update["vector_name"]
                             )
                         ]
                     elif dedup_policy == "warn":
                         # Same as last-wins but log warning
                         logger.warning(
-                            f"Duplicate update for ({update['anime_id']}, {update['vector_name']}), "
+                            f"Duplicate update for ({update['point_id']}, {update['vector_name']}), "
                             f"using last occurrence"
                         )
                         deduplicated_updates = [
                             u
                             for u in deduplicated_updates
                             if not (
-                                u["anime_id"] == update["anime_id"]
+                                u["point_id"] == update["point_id"]
                                 and u["vector_name"] == update["vector_name"]
                             )
                         ]
                     elif dedup_policy == "fail":
-                        raise ValueError(
-                            f"Duplicate update found for ({update['anime_id']}, {update['vector_name']}). "
-                            f"Deduplication policy is 'fail'."
+                        raise DuplicateUpdateError(
+                            point_id=update["point_id"],
+                            vector_name=update["vector_name"],
                         )
 
                 seen_keys[key] = idx
@@ -880,13 +951,13 @@ class QdrantClient(VectorDBClient):
             # Track detailed results for each update
             results: list[dict[str, Any]] = []
 
-            # Group updates by anime_id to batch multiple vector updates per point
+            # Group updates by point_id to batch multiple vector updates per point
             grouped_updates: dict[str, dict[str, list[float]]] = {}
             # Map to track which updates belong to which anime
             update_mapping: dict[str, list[int]] = {}
 
             for idx, update in enumerate(deduplicated_updates):
-                anime_id = update["anime_id"]
+                point_id = update["point_id"]
                 vector_name = update["vector_name"]
                 vector_data = update["vector_data"]
 
@@ -897,7 +968,7 @@ class QdrantClient(VectorDBClient):
                 if not is_valid:
                     results.append(
                         {
-                            "anime_id": anime_id,
+                            "point_id": point_id,
                             "vector_name": vector_name,
                             "success": False,
                             "error": error_msg,
@@ -906,17 +977,17 @@ class QdrantClient(VectorDBClient):
                     continue
 
                 # Valid update - add to batch
-                if anime_id not in grouped_updates:
-                    grouped_updates[anime_id] = {}
-                    update_mapping[anime_id] = []
+                if point_id not in grouped_updates:
+                    grouped_updates[point_id] = {}
+                    update_mapping[point_id] = []
 
-                grouped_updates[anime_id][vector_name] = vector_data
-                update_mapping[anime_id].append(idx)
+                grouped_updates[point_id][vector_name] = vector_data
+                update_mapping[point_id].append(idx)
 
             # Create PointVectors for batch update
             point_updates = []
-            for anime_id, vectors_dict in grouped_updates.items():
-                point_id = anime_id
+            for point_id, vectors_dict in grouped_updates.items():
+                point_id = point_id
                 # Cast needed due to dict invariance: Dict[str, List[float]] -> Dict[str, Union[List[float], ...]]
                 point_updates.append(
                     PointVectors(id=point_id, vector=cast(dict[str, Any], vectors_dict))
@@ -941,11 +1012,11 @@ class QdrantClient(VectorDBClient):
                     )
 
                     # Success - mark all grouped updates as successful
-                    for anime_id in grouped_updates.keys():
-                        for vector_name in grouped_updates[anime_id].keys():
+                    for point_id in grouped_updates.keys():
+                        for vector_name in grouped_updates[point_id].keys():
                             results.append(
                                 {
-                                    "anime_id": anime_id,
+                                    "point_id": point_id,
                                     "vector_name": vector_name,
                                     "success": True,
                                 }
@@ -954,11 +1025,11 @@ class QdrantClient(VectorDBClient):
                 except Exception as e:
                     # Retry failed - mark all as failed
                     logger.exception("Batch update failed after retries")
-                    for anime_id in grouped_updates.keys():
-                        for vector_name in grouped_updates[anime_id].keys():
+                    for point_id in grouped_updates.keys():
+                        for vector_name in grouped_updates[point_id].keys():
                             results.append(
                                 {
-                                    "anime_id": anime_id,
+                                    "point_id": point_id,
                                     "vector_name": vector_name,
                                     "success": False,
                                     "error": f"Update failed after {max_retries} retries: {e!s}",
@@ -980,16 +1051,16 @@ class QdrantClient(VectorDBClient):
                 "duplicates_removed": duplicates_removed,
             }
 
-        except ValueError as e:
+        except ValueError:
             # Deduplication policy violation
-            logger.error(f"Deduplication policy error: {e}")
+            logger.exception("Deduplication policy error")
             raise
         except Exception as e:
             logger.exception("Failed to batch update vectors")
             # Return failure for all updates
             results = [
                 {
-                    "anime_id": update.get("anime_id", "unknown"),
+                    "point_id": update.get("point_id", "unknown"),
                     "vector_name": update.get("vector_name", "unknown"),
                     "success": False,
                     "error": f"Batch update failed: {str(e)}",
@@ -1039,8 +1110,8 @@ class QdrantClient(VectorDBClient):
                 "generation_failures_detail": generation_failures,
             }
 
-        except Exception as e:
-            logger.error(f"Failed to aggregate batch results: {e}")
+        except Exception:
+            logger.exception("Failed to aggregate batch results")
             return {
                 "total_anime": total_anime,
                 "total_requested_updates": total_anime * num_vectors,
@@ -1129,8 +1200,8 @@ class QdrantClient(VectorDBClient):
                 return dict(points[0].payload) if points[0].payload else {}
             return None
 
-        except Exception as e:
-            logger.error(f"Failed to get anime by ID {point_id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to get anime by ID {point_id}")
             return None
 
     async def get_point(self, point_id: str) -> dict[str, Any] | None:
@@ -1160,8 +1231,8 @@ class QdrantClient(VectorDBClient):
                 }
             return None
 
-        except Exception as e:
-            logger.error(f"Failed to get point by ID {point_id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to get point by ID {point_id}")
             return None
 
     async def clear_index(self) -> bool:
@@ -1182,8 +1253,8 @@ class QdrantClient(VectorDBClient):
 
             logger.info(f"Cleared and recreated collection: {self.collection_name}")
             return True
-        except Exception as e:
-            logger.error(f"Failed to clear index: {e}")
+        except Exception:
+            logger.exception("Failed to clear index")
             return False
 
     async def delete_collection(self) -> bool:
@@ -1196,8 +1267,8 @@ class QdrantClient(VectorDBClient):
             await self.client.delete_collection(self.collection_name)
             logger.info(f"Deleted collection: {self.collection_name}")
             return True
-        except Exception as e:
-            logger.error(f"Failed to delete collection: {e}")
+        except Exception:
+            logger.exception("Failed to delete collection")
             return False
 
     async def collection_exists(self) -> bool:
@@ -1209,8 +1280,8 @@ class QdrantClient(VectorDBClient):
         try:
             collections = (await self.client.get_collections()).collections
             return any(col.name == self.collection_name for col in collections)
-        except Exception as e:
-            logger.error(f"Failed to check collection existence: {e}")
+        except Exception:
+            logger.exception("Failed to check collection existence")
             return False
 
     async def create_collection(self) -> bool:
@@ -1222,8 +1293,8 @@ class QdrantClient(VectorDBClient):
         try:
             await self._initialize_collection()
             return True
-        except Exception as e:
-            logger.error(f"Failed to create collection: {e}")
+        except Exception:
+            logger.exception("Failed to create collection")
             return False
 
     async def search_single_vector(
@@ -1273,8 +1344,8 @@ class QdrantClient(VectorDBClient):
             )
             return results
 
-        except Exception as e:
-            logger.error(f"Single vector search failed: {e}")
+        except Exception:
+            logger.exception("Single vector search failed")
             raise
 
     async def search(
@@ -1301,9 +1372,7 @@ class QdrantClient(VectorDBClient):
             List of search results with payload and similarity scores
         """
         if not text_embedding and not image_embedding:
-            raise ValueError(
-                "At least one of text_embedding or image_embedding is required"
-            )
+            raise MissingEmbeddingError()
 
         # Build filter conditions
         filter_conditions = filters.copy() if filters else {}
@@ -1367,7 +1436,7 @@ class QdrantClient(VectorDBClient):
         """
         try:
             if not vector_queries:
-                raise ValueError("vector_queries cannot be empty")
+                raise EmptyVectorQueriesError()
 
             # Create prefetch queries for each vector
             prefetch_queries = []
@@ -1424,6 +1493,6 @@ class QdrantClient(VectorDBClient):
             )
             return results
 
-        except Exception as e:
-            logger.error(f"Multi-vector search failed: {e}")
+        except Exception:
+            logger.exception("Multi-vector search failed")
             raise

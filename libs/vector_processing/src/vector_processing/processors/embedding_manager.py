@@ -122,11 +122,11 @@ class MultiVectorEmbeddingManager:
             logger.info(
                 f"Batch processing complete. Generated {len(all_documents)} total points."
             )
+        except Exception:  # noqa: BLE001
+            logger.exception("Batch processing failed")
+        else:
             return all_documents
-
-        except Exception as e:
-            logger.error(f"Batch processing failed: {e}")
-            return []
+        return []
 
     # ============================================================================
     # POINT GENERATION HELPER METHODS

@@ -40,7 +40,7 @@ Arguments: $ARGUMENTS
 
 File reference: @path/to/file.js
 
-Bash command output: (exclamation)git status(backticks)
+Bash command output: (!)git status(`)
 ```
 
 ## ⚠️ Security Restrictions

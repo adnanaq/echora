@@ -577,6 +577,6 @@ async def test_character_anime_ids_preserves_order_and_adds_new(
     char_doc = next(d for d in documents if d.payload["type"] == "character")
 
     # Should preserve order and append new ID
-    expected = existing_ids + [anime_id]
+    expected = [*existing_ids, anime_id]
     assert char_doc.payload["anime_ids"] == expected
     assert len(char_doc.payload["anime_ids"]) == 3

@@ -201,8 +201,8 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] **Deterministic ID (`id` for derived entities):**
     -   **Strategy:** Use **UUIDv5** of a stable, canonical seed.
     -   **Examples:**
-      - For a character: `UUIDv5(anime_id + character_name)`
-      - For an episode: `UUIDv5(anime_id + episode_number)`
+    - For a character: `UUIDv5(anime_id + character_name)`
+    - For an episode: `UUIDv5(anime_id + episode_number)`
     -   **Properties:** Used for deterministic IDs for derived entities when needed.
   - [x] **Rationale Document (implementation-aligned):**
     -   **UUIDv4 (`id`)**: Provides globally unique, stable primary keys.

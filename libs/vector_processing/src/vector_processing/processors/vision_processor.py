@@ -69,15 +69,16 @@ class VisionProcessor:
                 return embeddings[0]
             return None
 
-        except Exception as e:
-            logger.exception(f"Image encoding failed: {e}")
+        except Exception:
+            logger.exception("Image encoding failed")
             return None
 
     async def encode_images_batch(self, image_urls: list[str]) -> list[list[float]]:
         """Encode multiple images from URLs into a matrix for multivector storage.
 
-        Downloads and encodes each image, returning a matrix (list of vectors)
-        suitable for Qdrant's multivector storage with MAX_SIM comparator.
+        Downloads images concurrently and encodes them in a single batch for
+        optimal performance. Uses asyncio.gather for parallel I/O and leverages
+        the model's native batch processing capabilities.
 
         Args:
             image_urls: List of image URLs to download and encode.
@@ -86,34 +87,41 @@ class VisionProcessor:
             A list of embedding vectors (matrix). Failed downloads/encodings
             are skipped, so the result may have fewer vectors than input URLs.
         """
+        import asyncio
+
         if not image_urls:
             return []
 
-        embeddings_matrix: list[list[float]] = []
-
-        for url in image_urls:
+        # Concurrent downloads (I/O-bound - benefits from async)
+        async def download_single(url: str) -> tuple[str, str | None]:
             try:
-                # Download image
                 local_path = await self.downloader.download_and_cache_image(url)
-                if local_path is None:
-                    logger.warning(f"Failed to download image: {url}")
-                    continue
-
-                # Encode image
-                embeddings = self.model.encode_image([local_path])
-                if embeddings and embeddings[0]:
-                    embeddings_matrix.append(embeddings[0])
-                else:
-                    logger.warning(f"Failed to encode image: {url}")
-
+                return (url, local_path)
             except Exception as e:
-                logger.warning(f"Error processing image {url}: {e}")
-                continue
+                logger.warning(f"Error downloading image {url}: {e}")
+                return (url, None)
 
-        logger.debug(
-            f"Encoded {len(embeddings_matrix)}/{len(image_urls)} images successfully"
+        download_results = await asyncio.gather(
+            *[download_single(url) for url in image_urls]
         )
-        return embeddings_matrix
+
+        # Filter successful downloads
+        local_paths = [path for _, path in download_results if path is not None]
+
+        if not local_paths:
+            logger.debug("No images downloaded successfully")
+            return []
+
+        # Single batch encoding (CPU/GPU-bound - leverage model's batch processing)
+        try:
+            embeddings = self.model.encode_image(local_paths)
+            logger.debug(
+                f"Encoded {len(embeddings)}/{len(image_urls)} images successfully"
+            )
+            return embeddings
+        except Exception as e:
+            logger.warning(f"Batch encoding failed: {e}")
+            return []
 
     def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:
         """Create a hash of an embedding vector for duplicate detection.

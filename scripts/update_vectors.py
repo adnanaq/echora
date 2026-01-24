@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.config import get_settings
 from common.models.anime import AnimeRecord
+from pydantic import ValidationError
 from qdrant_client import AsyncQdrantClient
 from qdrant_db.client import QdrantClient
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
@@ -194,10 +195,14 @@ async def update_vectors(
 
     # Convert to AnimeRecord objects, adding UUIDs to anime.id if missing
     records: list[AnimeRecord] = []
-    for anime_dict in target_anime:
-        if "id" not in anime_dict["anime"] or not anime_dict["anime"]["id"]:
-            anime_dict["anime"]["id"] = str(uuid.uuid4())
-        records.append(AnimeRecord(**anime_dict))
+    for i, anime_dict in enumerate(target_anime):
+        try:
+            if "id" not in anime_dict["anime"] or not anime_dict["anime"]["id"]:
+                anime_dict["anime"]["id"] = str(uuid.uuid4())
+            records.append(AnimeRecord(**anime_dict))
+        except (KeyError, ValidationError) as e:
+            logger.warning(f"Skipping malformed record {i}: {e}")
+            continue
 
     total_anime = len(records)
     num_batches = (total_anime + batch_size - 1) // batch_size  # Ceiling division

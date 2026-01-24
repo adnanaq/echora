@@ -1,8 +1,8 @@
 """Unit tests for QdrantClient retry functionality using retry_with_backoff utility.
 
 This test file uses TDD approach to verify that:
-1. update_single_vector uses retry_with_backoff correctly
-2. update_batch_vectors uses retry_with_backoff correctly
+1. update_single_point_vector uses retry_with_backoff correctly
+2. update_batch_point_vectors uses retry_with_backoff correctly
 3. Both methods maintain their existing functionality
 """
 
@@ -15,8 +15,8 @@ from common.config import get_settings
 from qdrant_db import QdrantClient
 
 
-class TestUpdateSingleVectorRetry:
-    """Test suite for update_single_vector with retry functionality."""
+class TestUpdateSinglePointVectorRetry:
+    """Test suite for update_single_point_vector with retry functionality."""
 
     @pytest_asyncio.fixture
     async def mock_client(self):
@@ -35,14 +35,14 @@ class TestUpdateSingleVectorRetry:
         return client
 
     @pytest.mark.asyncio
-    async def test_update_single_vector_success_first_attempt(self, mock_client):
+    async def test_update_single_point_vector_success_first_attempt(self, mock_client):
         """RED: Test successful update on first attempt uses retry utility."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(return_value=None)
 
         # Execute
-        result = await mock_client.update_single_vector(
-            anime_id="test_123",
+        result = await mock_client.update_single_point_vector(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
             vector_name="text_vector",
             vector_data=[0.1] * 1024,
         )
@@ -52,7 +52,7 @@ class TestUpdateSingleVectorRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_single_vector_retries_on_transient_error(self, mock_client):
+    async def test_update_single_point_vector_retries_on_transient_error(self, mock_client):
         """RED: Test that transient errors trigger retry using retry utility."""
         # Setup - fail twice with transient errors, then succeed
         mock_client.client.update_vectors = AsyncMock()
@@ -63,8 +63,8 @@ class TestUpdateSingleVectorRetry:
         ]
 
         # Execute
-        result = await mock_client.update_single_vector(
-            anime_id="test_123",
+        result = await mock_client.update_single_point_vector(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
             vector_name="text_vector",
             vector_data=[0.1] * 1024,
             max_retries=3,
@@ -76,7 +76,7 @@ class TestUpdateSingleVectorRetry:
         assert mock_client.client.update_vectors.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_update_single_vector_fails_on_non_transient_error(self, mock_client):
+    async def test_update_single_point_vector_fails_on_non_transient_error(self, mock_client):
         """RED: Test that non-transient errors fail immediately without retry."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(
@@ -84,8 +84,8 @@ class TestUpdateSingleVectorRetry:
         )
 
         # Execute
-        result = await mock_client.update_single_vector(
-            anime_id="test_123",
+        result = await mock_client.update_single_point_vector(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
             vector_name="text_vector",
             vector_data=[0.1] * 1024,
         )
@@ -95,7 +95,7 @@ class TestUpdateSingleVectorRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_single_vector_max_retries_exceeded(self, mock_client):
+    async def test_update_single_point_vector_max_retries_exceeded(self, mock_client):
         """RED: Test that exceeding max retries returns False."""
         # Setup - always fail with transient error
         mock_client.client.update_vectors = AsyncMock(
@@ -103,8 +103,8 @@ class TestUpdateSingleVectorRetry:
         )
 
         # Execute
-        result = await mock_client.update_single_vector(
-            anime_id="test_123",
+        result = await mock_client.update_single_point_vector(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
             vector_name="text_vector",
             vector_data=[0.1] * 1024,
             max_retries=2,
@@ -118,11 +118,11 @@ class TestUpdateSingleVectorRetry:
         )  # 1 initial + 2 retries
 
     @pytest.mark.asyncio
-    async def test_update_single_vector_validation_fails_no_retry(self, mock_client):
+    async def test_update_single_point_vector_validation_fails_no_retry(self, mock_client):
         """RED: Test that validation errors don't trigger retry."""
         # Execute with invalid vector name
-        result = await mock_client.update_single_vector(
-            anime_id="test_123",
+        result = await mock_client.update_single_point_vector(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
             vector_name="invalid_vector",
             vector_data=[0.1] * 1024,
         )
@@ -132,8 +132,8 @@ class TestUpdateSingleVectorRetry:
         assert mock_client.client.update_vectors.call_count == 0
 
 
-class TestUpdateBatchVectorsRetry:
-    """Test suite for update_batch_vectors with retry functionality."""
+class TestUpdateBatchPointVectorsRetry:
+    """Test suite for update_batch_point_vectors with retry functionality."""
 
     @pytest_asyncio.fixture
     async def mock_client(self):
@@ -151,26 +151,26 @@ class TestUpdateBatchVectorsRetry:
         return client
 
     @pytest.mark.asyncio
-    async def test_update_batch_vectors_success_first_attempt(self, mock_client):
+    async def test_update_batch_point_vectors_success_first_attempt(self, mock_client):
         """RED: Test successful batch update on first attempt."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(return_value=None)
 
         updates = [
             {
-                "anime_id": "anime_1",
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
                 "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
             {
-                "anime_id": "anime_2",
+                "point_id": "550e8400-e29b-41d4-a716-446655440002",
                 "vector_name": "text_vector",
                 "vector_data": [0.2] * 1024,
             },
         ]
 
         # Execute
-        result = await mock_client.update_batch_vectors(
+        result = await mock_client.update_batch_point_vectors(
             updates=updates,
             dedup_policy="last-wins",
         )
@@ -181,7 +181,7 @@ class TestUpdateBatchVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_batch_vectors_retries_on_transient_error(self, mock_client):
+    async def test_update_batch_point_vectors_retries_on_transient_error(self, mock_client):
         """RED: Test that batch update retries on transient errors."""
         # Setup
         mock_client.client.update_vectors = AsyncMock()
@@ -193,14 +193,14 @@ class TestUpdateBatchVectorsRetry:
 
         updates = [
             {
-                "anime_id": "anime_1",
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
                 "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
         ]
 
         # Execute
-        result = await mock_client.update_batch_vectors(
+        result = await mock_client.update_batch_point_vectors(
             updates=updates,
             max_retries=3,
             retry_delay=0.01,
@@ -212,26 +212,26 @@ class TestUpdateBatchVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_update_batch_vectors_deduplication_still_works(self, mock_client):
+    async def test_update_batch_point_vectors_deduplication_still_works(self, mock_client):
         """RED: Test that deduplication logic is preserved."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(return_value=None)
 
         updates = [
             {
-                "anime_id": "anime_1",
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
                 "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
             {
-                "anime_id": "anime_1",  # Duplicate
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",  # Duplicate
                 "vector_name": "text_vector",  # Duplicate
                 "vector_data": [0.2] * 1024,  # Different data (last-wins)
             },
         ]
 
         # Execute
-        result = await mock_client.update_batch_vectors(
+        result = await mock_client.update_batch_point_vectors(
             updates=updates,
             dedup_policy="last-wins",
         )
@@ -242,7 +242,7 @@ class TestUpdateBatchVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_batch_vectors_max_retries_exceeded(self, mock_client):
+    async def test_update_batch_point_vectors_max_retries_exceeded(self, mock_client):
         """RED: Test that batch update fails after max retries."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(
@@ -251,14 +251,14 @@ class TestUpdateBatchVectorsRetry:
 
         updates = [
             {
-                "anime_id": "anime_1",
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
                 "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
         ]
 
         # Execute
-        result = await mock_client.update_batch_vectors(
+        result = await mock_client.update_batch_point_vectors(
             updates=updates,
             max_retries=2,
             retry_delay=0.01,
@@ -270,7 +270,7 @@ class TestUpdateBatchVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 3  # 1 + 2 retries
 
     @pytest.mark.asyncio
-    async def test_update_batch_vectors_exponential_backoff(self, mock_client):
+    async def test_update_batch_point_vectors_exponential_backoff(self, mock_client):
         """RED: Test that retry uses exponential backoff."""
         # Setup
         mock_client.client.update_vectors = AsyncMock()
@@ -282,7 +282,7 @@ class TestUpdateBatchVectorsRetry:
 
         updates = [
             {
-                "anime_id": "anime_1",
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
                 "vector_name": "text_vector",
                 "vector_data": [0.1] * 1024,
             },
@@ -291,7 +291,7 @@ class TestUpdateBatchVectorsRetry:
         # Execute and measure time
         start_time = asyncio.get_event_loop().time()
 
-        result = await mock_client.update_batch_vectors(
+        result = await mock_client.update_batch_point_vectors(
             updates=updates,
             max_retries=3,
             retry_delay=0.1,
