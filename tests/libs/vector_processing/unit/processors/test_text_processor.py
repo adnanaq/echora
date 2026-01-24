@@ -215,6 +215,89 @@ class TestEncodeTextsBatch:
             "Epic finale",
         ])
 
+    def test_encode_texts_batch_zero_vectors_are_independent(
+        self, mock_text_model, mock_settings
+    ):
+        """Test that zero vectors are independent copies, not the same object.
+
+        Regression test for issue where all empty inputs shared the same
+        zero vector instance, causing mutations to affect all empty embeddings.
+        """
+        mock_text_model.encode.return_value = [[0.1] * 1024]
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(["", "valid", "", ""])
+
+        # All empty positions should have zero vectors
+        assert result[0] == [0.0] * 1024
+        assert result[2] == [0.0] * 1024
+        assert result[3] == [0.0] * 1024
+
+        # Critical: They must be DIFFERENT objects
+        assert id(result[0]) != id(result[2])
+        assert id(result[0]) != id(result[3])
+        assert id(result[2]) != id(result[3])
+
+        # Verify mutation isolation
+        result[0][0] = 999.0
+        assert result[2][0] == 0.0  # Should NOT be affected
+        assert result[3][0] == 0.0  # Should NOT be affected
+
+    def test_encode_texts_batch_all_empty_produces_independent_vectors(
+        self, mock_text_model, mock_settings
+    ):
+        """Test all-empty case produces independent zero vectors.
+
+        Regression test for the same issue in the all-empty code path.
+        """
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(["", "", "", ""])
+
+        # All should be zero vectors
+        assert all(vec == [0.0] * 1024 for vec in result)
+
+        # Critical: Each must be a different object
+        assert id(result[0]) != id(result[1])
+        assert id(result[0]) != id(result[2])
+        assert id(result[0]) != id(result[3])
+
+        # Verify mutation isolation
+        result[0][0] = 999.0
+        assert result[1][0] == 0.0
+        assert result[2][0] == 0.0
+        assert result[3][0] == 0.0
+
+    def test_encode_texts_batch_large_batch_correctness(
+        self, mock_text_model, mock_settings
+    ):
+        """Test correctness with large batch (regression test for O(n²) complexity).
+
+        While we can't easily test performance in a unit test, we verify that
+        the set-based lookup produces correct results with large batches.
+        """
+        # Create large batch with alternating pattern
+        size = 1000
+        texts = ["valid" if i % 2 == 0 else "" for i in range(size)]
+
+        # Mock should return embeddings for 500 valid texts
+        mock_text_model.encode.return_value = [
+            [float(i)] * 1024 for i in range(size // 2)
+        ]
+        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+
+        result = processor.encode_texts_batch(texts)
+
+        # Verify length
+        assert len(result) == size
+
+        # Verify alternating pattern: even indices have embeddings, odd have zeros
+        for i in range(size):
+            if i % 2 == 0:  # Valid text
+                assert result[i][0] == float(i // 2)
+            else:  # Empty string
+                assert result[i] == [0.0] * 1024
+
 
 class TestGetZeroEmbedding:
     """Tests for get_zero_embedding method."""

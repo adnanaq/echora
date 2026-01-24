@@ -95,9 +95,9 @@ class TextProcessor:
                     valid_indices.append(i)
                     valid_texts.append(text)
             
-            # If all texts are empty, return zero vectors for all
+            # If all texts are empty, return independent zero vectors for all
             if not valid_texts:
-                return [zero_embedding for _ in texts]
+                return [zero_embedding.copy() for _ in texts]
             
             # Encode only valid texts
             encoded_valid = self.model.encode(valid_texts)
@@ -105,15 +105,16 @@ class TextProcessor:
             # Reconstruct result list with zero vectors for empty inputs
             result: list[list[float] | None] = []
             valid_idx = 0
+            valid_index_set = set(valid_indices)
             
             for i in range(len(texts)):
-                if i in valid_indices:
+                if i in valid_index_set:
                     result.append(
                         cast(list[float] | None, encoded_valid[valid_idx])
                     )
                     valid_idx += 1
                 else:
-                    result.append(zero_embedding)
+                    result.append(zero_embedding.copy())
             
             return result
             
