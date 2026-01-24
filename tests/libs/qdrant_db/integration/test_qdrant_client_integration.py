@@ -879,7 +879,7 @@ async def test_retry_on_transient_error(client: QdrantClient, embedding_manager)
         call_count[0] += 1
         if call_count[0] == 1:
             # First call fails with transient error
-            raise RuntimeError("Connection timeout - temporary network issue")
+            raise ConnectionError("Connection timeout")
         # Second call succeeds
         return original_update(*_args, **_kwargs)
 

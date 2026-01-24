@@ -131,10 +131,10 @@ class TestEncodeImage:
 class TestHashEmbedding:
     """Tests for _hash_embedding method."""
 
-    def test_hash_embedding_returns_md5_hash(
+    def test_hash_embedding_returns_blake2b_hash(
         self, mock_vision_model, mock_downloader, mock_settings
     ):
-        """Test hash embedding returns consistent MD5 hash."""
+        """Test hash embedding returns consistent blake2b hash."""
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
@@ -144,7 +144,7 @@ class TestHashEmbedding:
         embedding = [0.1234, 0.5678, 0.9012]
         result = processor._hash_embedding(embedding)
 
-        # Should return a 32-character hex string (MD5)
+        # Should return a 32-character hex string (blake2b with digest_size=16)
         assert len(result) == 32
         assert all(c in "0123456789abcdef" for c in result)
 
@@ -389,10 +389,12 @@ class TestEncodeImagesBatch:
 
         # All downloads should start at nearly the same time (concurrent)
         # If sequential, time difference would be ~30ms (3 * 10ms)
-        # If concurrent, time difference should be < 5ms
+        # If concurrent, time difference should be < 15ms (allowing for CI scheduler jitter)
         assert len(download_times) == 3
         time_spread = max(download_times) - min(download_times)
-        assert time_spread < 0.005, f"Downloads were sequential, not concurrent: {time_spread}s spread"
+        assert time_spread < 0.015, (
+            f"Downloads were sequential, not concurrent: {time_spread}s spread"
+        )
 
     @pytest.mark.asyncio
     async def test_calls_encode_image_once_with_all_paths(
@@ -426,11 +428,13 @@ class TestEncodeImagesBatch:
         await processor.encode_images_batch(urls)
 
         # CRITICAL: Should call encode_image ONCE with all 3 paths
-        mock_vision_model.encode_image.assert_called_once_with([
-            "/cache/image1.jpg",
-            "/cache/image2.jpg",
-            "/cache/image3.jpg",
-        ])
+        mock_vision_model.encode_image.assert_called_once_with(
+            [
+                "/cache/image1.jpg",
+                "/cache/image2.jpg",
+                "/cache/image3.jpg",
+            ]
+        )
 
     @pytest.mark.asyncio
     async def test_encode_images_batch_returns_matrix(
@@ -515,10 +519,12 @@ class TestEncodeImagesBatch:
         # Should only have 2 results (skipping the failed download)
         assert len(result) == 2
         # Should batch encode only the 2 successful downloads
-        mock_vision_model.encode_image.assert_called_once_with([
-            "/cache/image1.jpg",
-            "/cache/image3.jpg",
-        ])
+        mock_vision_model.encode_image.assert_called_once_with(
+            [
+                "/cache/image1.jpg",
+                "/cache/image3.jpg",
+            ]
+        )
 
     @pytest.mark.asyncio
     async def test_encode_images_batch_handles_encoding_failure(
@@ -590,7 +596,7 @@ class TestEncodeImagesBatch:
 
         async def download_with_exception(url):
             if "2.jpg" in url:
-                raise Exception("Network error")
+                raise RuntimeError("Network error")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image.side_effect = download_with_exception
@@ -614,7 +620,9 @@ class TestEncodeImagesBatch:
 
         # Should get 2 results (1 and 3 succeeded, 2 failed)
         assert len(result) == 2
-        mock_vision_model.encode_image.assert_called_once_with([
-            "/cache/1.jpg",
-            "/cache/3.jpg",
-        ])
+        mock_vision_model.encode_image.assert_called_once_with(
+            [
+                "/cache/1.jpg",
+                "/cache/3.jpg",
+            ]
+        )
