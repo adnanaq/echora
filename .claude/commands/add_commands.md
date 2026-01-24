@@ -40,16 +40,18 @@ Arguments: $ARGUMENTS
 
 File reference: @path/to/file.js
 
-Bash command output: (!)git status(`)
+Bash command output: !`git status`
 ```
+
+**Note**: In the examples below, backtick-enclosed commands are shown literally (e.g., `` !`git status` ``). When creating your command, use actual backticks.
 
 ## ⚠️ Security Restrictions
 
 **Bash Commands (exclamation prefix)**: Limited to current working directory only.
 
-- ✅ Works: `! + backtick + git status + backtick` (in project dir)
-- ❌ Blocked: `! + backtick + ls /outside/project + backtick` (outside project)
-- ❌ Blocked: `! + backtick + pwd + backtick` (if referencing dirs outside project)
+- ✅ Works: `` !`git status` `` (in project dir)
+- ❌ Blocked: `` !`ls /outside/project` `` (outside project)
+- ❌ Blocked: `` !`pwd` `` (if referencing dirs outside project)
 
 **File References (`@` prefix)**: No directory restrictions.
 
@@ -83,9 +85,9 @@ Compare @src/old.js with @src/new.js and explain differences
 allowed-tools: Bash(git:*)
 ---
 
-Current status: (!)git status(`)
-Current branch: (!)git branch --show-current(`)
-Recent commits: (!)git log --oneline -5(`)
+Current status: !`git status`
+Current branch: !`git branch --show-current`
+Recent commits: !`git log --oneline -5`
 
 Create commit for these changes.
 ```
@@ -114,7 +116,7 @@ echo "Ask GPT-5 about: $ARGUMENTS" > ~/.claude/commands/ai/gpt5.md
 ```markdown
 # System prompt editor (file reference only)
 
-(@)path/to/system/prompt.md
+@path/to/system/prompt.md
 
 Edit your system prompt above.
 ```
@@ -126,8 +128,8 @@ Edit your system prompt above.
 allowed-tools: Bash(git:*), Bash(npm:*)
 ---
 
-Current git status: (!)git status(`)
-Package info: (!)npm list --depth=0(`)
+Current git status: !`git status`
+Package info: !`npm list --depth=0`
 
 Review project state and suggest next steps.
 ```
@@ -137,7 +139,7 @@ Review project state and suggest next steps.
 ```markdown
 # Compare config files
 
-Compare (@)path/to/system.md with (@)project/config.md
+Compare @path/to/system.md with @project/config.md
 
 Show differences and suggest improvements.
 ```
