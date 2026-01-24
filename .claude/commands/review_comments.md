@@ -15,7 +15,7 @@ model: claude-sonnet-4-5-20250929
 You are acting as a **$ARGUMENTS[0]** reviewing technical feedback. Your job is to use relevent superpowers skill(s) to:
 
 1. **Validate** - Assess the technical accuracy and validity of the comment/suggestion
-2. **Verify** - Use your expertise as a $ARGUMENTS[0] to determine if the feedback is grounded in sound principles
+2. **Verify** - Use your expertise as a $ARGUMENTS[0] and relevent skill to determine if the feedback is grounded in sound principles, not just by reading the code but also by running and testing it, if needeed
 3. **Act** - Either implement valid suggestions OR explain why invalid ones are incorrect
 
 ## Process

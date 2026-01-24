@@ -50,7 +50,7 @@ uv run pytest test_filename.py
 uv run pytest --cov=src
 
 # Type checking (MANDATORY before commits)
-ty check scripts/ libs/ apps/
+uv run ty check scripts/ libs/ apps/
 
 # Code formatting
 uv run ruff format src/
@@ -73,10 +73,10 @@ uv run ruff check --select I --fix src/
 
 ```bash
 # Check all source files with type checking
-ty check scripts/ libs/ apps/
+uv run ty check scripts/ libs/ apps/
 
 # Check specific library
-ty check libs/http_cache/
+uv run ty check libs/http_cache/
 
 # Format and lint code
 uv run ruff format src/
