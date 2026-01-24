@@ -952,7 +952,9 @@ class QdrantClient(VectorDBClient):
             results: list[dict[str, Any]] = []
 
             # Group updates by point_id to batch multiple vector updates per point
-            grouped_updates: dict[str, dict[str, list[float]]] = {}
+            grouped_updates: dict[
+                str, dict[str, list[float] | list[list[float]]]
+            ] = {}
             # Map to track which updates belong to which anime
             update_mapping: dict[str, list[int]] = {}
 

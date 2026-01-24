@@ -266,7 +266,8 @@ async def update_vectors(
                     f"({successful_batch} anime, {failed_batch} failed)."
                 )
             else:
-                logger.error(f"Batch {batch_num + 1} failed to upsert.")
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Batch {batch_num + 1} failed to upsert: {error_msg}")
                 all_batch_results.append({"success": 0, "failed": len(batch_anime)})
         else:
             logger.warning(f"Batch {batch_num + 1} generated no documents.")
