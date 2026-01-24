@@ -15,6 +15,14 @@ class AnimeStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class EntityType(str, Enum):
+    """Primary entity type classification for vector search."""
+
+    ANIME = "anime"
+    CHARACTER = "character"
+    EPISODE = "episode"
+
+
 class AnimeType(str, Enum):
     """Anime type classification."""
 
@@ -83,6 +91,10 @@ class Character(BaseModel):
     id: str | None = Field(
         None, description="Unique UUID for the character"
     )
+    entity_type: EntityType = Field(
+        default=EntityType.CHARACTER,
+        description="Entity type for vector search filtering",
+    )
     name: str = Field(..., description="Character name")
     name_native: str | None = Field(
         None, description="Native language name (Japanese/Kanji)"
@@ -135,6 +147,10 @@ class Episode(BaseModel):
     id: str | None = Field(
         None,
         description="Deterministic ID (hash of anime_id + episode_number)",
+    )
+    entity_type: EntityType = Field(
+        default=EntityType.EPISODE,
+        description="Entity type for vector search filtering",
     )
     recap: bool = Field(default=False, description="Whether episode is recap")
     score: float | None = Field(None, description="Episode rating score")
@@ -463,6 +479,10 @@ class Anime(BaseModel):
     )
     episode_count: int = Field(default=0, description="Number of episodes")
     id: str = Field(..., description="Unique identifier for the anime entry")
+    entity_type: EntityType = Field(
+        default=EntityType.ANIME,
+        description="Entity type for vector search filtering",
+    )
     month: str | None = Field(None, description="Premiere month from AnimSchedule")
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
     rating: AnimeRating | None = Field(

@@ -168,7 +168,7 @@ class MultiVectorEmbeddingManager:
 
         # 4. Construct Payload
         payload = anime.model_dump(exclude_none=True)
-        payload["type"] = "anime"
+        payload["entity_type"] = "anime"
 
         return VectorDocument(id=anime.id, vectors=embeddings, payload=payload)
 
@@ -231,7 +231,7 @@ class MultiVectorEmbeddingManager:
                     vectors["image_vector"] = image_matrix
 
             payload = char.model_dump(exclude_none=True)
-            payload["type"] = "character"
+            payload["entity_type"] = "character"
             # Merge anime_ids: preserve existing anime relationships
             existing_anime_ids = payload.get("anime_ids") or []
             if anime_id not in existing_anime_ids:
@@ -285,7 +285,7 @@ class MultiVectorEmbeddingManager:
                 ep_id = generate_deterministic_id(f"{anime_id}_{ep.episode_number}")
 
             payload = ep.model_dump(exclude_none=True)
-            payload["type"] = "episode"
+            payload["entity_type"] = "episode"
             payload["anime_id"] = anime_id
 
             documents.append(

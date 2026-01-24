@@ -143,7 +143,7 @@ async def test_process_anime_vectors_structure(
     assert len(documents) == 3
 
     # Analyze Anime Point (text + image multivector)
-    anime_doc = next(d for d in documents if d.payload["type"] == "anime")
+    anime_doc = next(d for d in documents if d.payload["entity_type"] == "anime")
     assert anime_doc.id == sample_record.anime.id
     assert "text_vector" in anime_doc.vectors
     assert "image_vector" in anime_doc.vectors  # Multivector embedded
@@ -153,7 +153,7 @@ async def test_process_anime_vectors_structure(
     assert anime_doc.payload["title"] == "Test Anime"
 
     # Analyze Character Point (text + image multivector)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
     assert char_doc.id == "char_01ARZ3NDEKTSV4RRFFQ69G5FA1"
     assert "text_vector" in char_doc.vectors
     assert "image_vector" in char_doc.vectors  # Multivector embedded
@@ -163,13 +163,13 @@ async def test_process_anime_vectors_structure(
     assert char_doc.payload["anime_ids"] == [sample_record.anime.id]
 
     # Analyze Episode Point (text only, no images)
-    ep_doc = next(d for d in documents if d.payload["type"] == "episode")
+    ep_doc = next(d for d in documents if d.payload["entity_type"] == "episode")
     assert "text_vector" in ep_doc.vectors
     assert "image_vector" not in ep_doc.vectors  # Episodes don't have images
     assert ep_doc.payload["anime_id"] == sample_record.anime.id
 
     # No separate Image Points
-    image_docs = [d for d in documents if d.payload["type"] == "image"]
+    image_docs = [d for d in documents if d.payload["entity_type"] == "image"]
     assert len(image_docs) == 0  # Images embedded in parent entities
 
 
@@ -200,7 +200,7 @@ async def test_process_anime_vectors_missing_char_id(
 
     documents = await manager.process_anime_vectors(record)
 
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should be deterministic ID starting with 'char_' or similar (impl detail)
     # The current impl uses generate_deterministic_id with "character" type
@@ -213,7 +213,7 @@ async def test_process_anime_vectors_missing_char_id(
     assert len(char_doc.id) > 0
     # Verify consistency
     documents2 = await manager.process_anime_vectors(record)
-    char_doc2 = next(d for d in documents2 if d.payload["type"] == "character")
+    char_doc2 = next(d for d in documents2 if d.payload["entity_type"] == "character")
     assert char_doc.id == char_doc2.id
 
 
@@ -269,12 +269,12 @@ async def test_process_anime_vectors_no_images(
     assert len(documents) == 2
 
     # Anime point should not have image_vector (no images available)
-    anime_doc = next(d for d in documents if d.payload["type"] == "anime")
+    anime_doc = next(d for d in documents if d.payload["entity_type"] == "anime")
     assert "text_vector" in anime_doc.vectors
     assert "image_vector" not in anime_doc.vectors  # No images = no image_vector
 
     # Character point should not have image_vector (no images available)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
     assert "text_vector" in char_doc.vectors
     assert "image_vector" not in char_doc.vectors  # No images = no image_vector
 
@@ -311,7 +311,7 @@ async def test_image_processing_failure_handled(
 
     # Should still have anime point with text_vector, but no image_vector due to failure
     assert len(documents) == 1
-    assert documents[0].payload["type"] == "anime"
+    assert documents[0].payload["entity_type"] == "anime"
     assert "text_vector" in documents[0].vectors
     assert (
         "image_vector" not in documents[0].vectors
@@ -361,7 +361,7 @@ async def test_multiple_images_creates_multivector_matrix(
     # Should have 1 document: Anime with embedded multivector
     assert len(documents) == 1
     anime_doc = documents[0]
-    assert anime_doc.payload["type"] == "anime"
+    assert anime_doc.payload["entity_type"] == "anime"
 
     # image_vector should be a matrix with 2 vectors
     assert "image_vector" in anime_doc.vectors
@@ -409,7 +409,7 @@ async def test_character_anime_ids_empty_list_adds_current_anime(
     )
 
     documents = await manager.process_anime_vectors(record)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should contain current anime_id
     assert char_doc.payload["anime_ids"] == [anime_id]
@@ -450,7 +450,7 @@ async def test_character_anime_ids_none_creates_list_with_current_anime(
     )
 
     documents = await manager.process_anime_vectors(record)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should contain current anime_id
     assert char_doc.payload["anime_ids"] == [anime_id]
@@ -491,7 +491,7 @@ async def test_character_anime_ids_existing_list_merges_new_anime(
     )
 
     documents = await manager.process_anime_vectors(record)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should contain both anime IDs
     assert set(char_doc.payload["anime_ids"]) == {existing_anime_id, anime_id}
@@ -532,7 +532,7 @@ async def test_character_anime_ids_prevents_duplicates(
     )
 
     documents = await manager.process_anime_vectors(record)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should not duplicate the anime_id
     assert char_doc.payload["anime_ids"] == [anime_id]
@@ -574,7 +574,7 @@ async def test_character_anime_ids_preserves_order_and_adds_new(
     )
 
     documents = await manager.process_anime_vectors(record)
-    char_doc = next(d for d in documents if d.payload["type"] == "character")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
     # Should preserve order and append new ID
     expected = [*existing_ids, anime_id]
