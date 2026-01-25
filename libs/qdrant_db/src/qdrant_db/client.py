@@ -143,6 +143,15 @@ class QdrantClient(VectorDBClient):
         self._vector_size = settings.text_vector_size
         self._image_vector_size = settings.image_vector_size
 
+        # Extract vector names from config to prevent hard-coding drift
+        # Look for text/image vectors in config, with fallback to legacy names
+        self._text_vector_name = next(
+            (name for name in settings.vector_names if "text" in name.lower()), "text_vector"
+        )
+        self._image_vector_name = next(
+            (name for name in settings.vector_names if "image" in name.lower() and "character" not in name.lower()), "image_vector"
+        )
+
     @property
     def vector_size(self) -> int:
         """Get the text vector embedding size."""
@@ -871,13 +880,12 @@ class QdrantClient(VectorDBClient):
                 max_retries=max_retries,
                 retry_delay=retry_delay,
             )
-
-            logger.debug(f"Updated {vector_name} for point {point_id}")
-            return True
-
         except Exception:
             logger.exception(f"Failed to update vector {vector_name} for {point_id}")
             return False
+        else:
+            logger.debug(f"Updated {vector_name} for point {point_id}")
+            return True
 
     async def update_batch_point_vectors(
         self,
@@ -893,7 +901,7 @@ class QdrantClient(VectorDBClient):
 
         Args:
             updates: List of update dictionaries with keys:
-                - point_id: Anime ID to update
+                - point_id: Point ID to update (anime/character/episode)
                 - vector_name: Name of vector to update
                 - vector_data: New vector embedding
             dedup_policy: How to handle duplicate (point_id, vector_name) pairs:
@@ -909,7 +917,7 @@ class QdrantClient(VectorDBClient):
                 - success: Total count of successful updates
                 - failed: Total count of failed updates
                 - results: List of per-update status dicts with keys:
-                    - point_id: Anime ID
+                    - point_id: Point ID
                     - vector_name: Vector name
                     - success: Boolean indicating success/failure
                     - error: Error message (only if success=False)
@@ -1460,7 +1468,7 @@ class QdrantClient(VectorDBClient):
         # Single vector search
         if text_embedding and not image_embedding:
             return await self.search_single_vector(
-                vector_name="text_vector",
+                vector_name=self._text_vector_name,
                 vector_data=text_embedding,
                 limit=limit,
                 filters=qdrant_filter,
@@ -1468,7 +1476,7 @@ class QdrantClient(VectorDBClient):
 
         if image_embedding and not text_embedding:
             return await self.search_single_vector(
-                vector_name="image_vector",
+                vector_name=self._image_vector_name,
                 vector_data=image_embedding,
                 limit=limit,
                 filters=qdrant_filter,
@@ -1476,8 +1484,8 @@ class QdrantClient(VectorDBClient):
 
         # Multi-vector fusion search (both embeddings provided)
         vector_queries = [
-            {"vector_name": "text_vector", "vector_data": text_embedding},
-            {"vector_name": "image_vector", "vector_data": image_embedding},
+            {"vector_name": self._text_vector_name, "vector_data": text_embedding},
+            {"vector_name": self._image_vector_name, "vector_data": image_embedding},
         ]
 
         return await self.search_multi_vector(

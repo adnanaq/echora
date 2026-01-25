@@ -171,7 +171,7 @@ class VisionProcessor:
             )
             return embeddings
         except Exception as e:
-            logger.error(f"Batch encoding failed: {e}")
+            logger.exception(f"Batch encoding failed: {e}")
             return []
 
     def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:

@@ -1670,7 +1670,7 @@ def test_malformed_anime_payload_handling():
     records = []
     skipped = []
 
-    for i, (desc, anime_dict) in enumerate(test_cases):
+    for desc, anime_dict in test_cases:
         try:
             # This is the fixed code from lines 206-213 in update_vectors.py
             anime_payload = anime_dict.get("anime")

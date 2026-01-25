@@ -487,7 +487,7 @@ class Settings(BaseSettings):
         vector_names = (info.data or {}).get("vector_names", {})
         unknown = [name for name in v if name not in vector_names]
         if unknown:
-            raise ValueError(
+            raise ValueError(  # noqa: TRY003
                 f"Unknown multivector vectors: {unknown}. "
                 f"Valid vectors: {list(vector_names.keys())}"
             )

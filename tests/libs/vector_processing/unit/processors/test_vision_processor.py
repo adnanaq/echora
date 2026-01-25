@@ -762,12 +762,12 @@ class TestRetryLogic:
         attempt_count = 0
         attempt_times = []
 
-        async def failing_download(url, session=None):
+        async def failing_download(url, session=None):  # noqa: ARG001
             nonlocal attempt_count
             attempt_count += 1
             attempt_times.append(asyncio.get_event_loop().time())
             if attempt_count < 3:  # Fail first 2 attempts, succeed on 3rd
-                raise Exception("Transient network error")
+                raise RuntimeError("Transient network error")
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image = AsyncMock(
@@ -852,9 +852,9 @@ class TestMetricsLogging:
     ):
         """Test that batch download success rates are logged."""
         # 7 successful, 3 failed
-        async def selective_download(url, session=None):
+        async def selective_download(url, session=None):  # noqa: ARG001
             if "fail" in url:
-                raise Exception("Download failed")
+                raise RuntimeError("Download failed")
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image = AsyncMock(
