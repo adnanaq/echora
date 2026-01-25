@@ -410,14 +410,14 @@ async def test_character_anime_ids_empty_list_adds_current_anime(
 
 
 @pytest.mark.asyncio
-async def test_character_anime_ids_none_creates_list_with_current_anime(
+async def test_character_anime_ids_missing_creates_list_with_current_anime(
     mock_field_mapper, mock_text_processor, mock_vision_processor, mock_settings
 ):
-    """Test that character with None anime_ids gets initialized with current anime_id."""
+    """Test that character with missing anime_ids gets initialized with current anime_id."""
     anime_id = "anime_01H1234567890ABCDEF"
     char_id = "char_01H1234567890ABCDEF"
 
-    # Create character dict directly to force None anime_ids
+    # Create character with omitted anime_ids field
     record = AnimeRecord(
         anime=Anime(
             id=anime_id,
@@ -431,7 +431,7 @@ async def test_character_anime_ids_none_creates_list_with_current_anime(
                 id=char_id,
                 name="Test Character",
                 role="Main",
-                # anime_ids omitted - will be default_factory=list, but we'll test None case
+                # anime_ids omitted - uses default_factory=list
             )
         ],
     )
