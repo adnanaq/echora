@@ -202,16 +202,10 @@ async def test_process_anime_vectors_missing_char_id(
 
     char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
 
-    # Should be deterministic ID starting with 'char_' or similar (impl detail)
-    # The current impl uses generate_deterministic_id with "character" type
-    # which prefixes "char_"? No, it uses prefix from map.
-    # Let's check impl:
-    #   generate_deterministic_id(seed, "character")
-    #   if entity_type: prefix = ENTITY_PREFIXES.get...
-    # We should assume it generates a string ID.
+    # Verify deterministic ID generation
     assert isinstance(char_doc.id, str)
     assert len(char_doc.id) > 0
-    # Verify consistency
+    # Verify consistency across multiple calls
     documents2 = await manager.process_anime_vectors(record)
     char_doc2 = next(d for d in documents2 if d.payload["entity_type"] == "character")
     assert char_doc.id == char_doc2.id

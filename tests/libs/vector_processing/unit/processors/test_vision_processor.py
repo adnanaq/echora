@@ -362,7 +362,7 @@ class TestEncodeImagesBatch:
         # Track when each download is called
         download_times = []
 
-        async def track_download(url, **kwargs):
+        async def track_download(url, **_kwargs):
             download_times.append(asyncio.get_event_loop().time())
             await asyncio.sleep(0.01)  # Simulate network delay
             return f"/cache/{url.split('/')[-1]}"
@@ -594,7 +594,7 @@ class TestEncodeImagesBatch:
         """Test that exception in one download doesn't prevent others from completing."""
         mock_downloader = AsyncMock()
 
-        async def download_with_exception(url, **kwargs):
+        async def download_with_exception(url, **_kwargs):
             if "2.jpg" in url:
                 raise RuntimeError("Network error")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
@@ -721,7 +721,7 @@ class TestEncodeImagesBatch:
         active_downloads = 0
         max_concurrent = 0
 
-        async def track_concurrent(url, **kwargs):
+        async def track_concurrent(url, **_kwargs):
             nonlocal active_downloads, max_concurrent
             active_downloads += 1
             max_concurrent = max(max_concurrent, active_downloads)
