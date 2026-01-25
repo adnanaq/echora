@@ -171,21 +171,28 @@ async def update_vectors(
                 f"Invalid index {anime_index} (valid range: 0-{len(anime_data) - 1})"
             )
         target_anime = [anime_data[anime_index]]
-        logger.info(
-            f"Targeting anime at index {anime_index}: {target_anime[0].get('title', 'Unknown')}"
-        )
+        target_title = target_anime[0].get("anime", {}).get("title") or target_anime[
+            0
+        ].get("title", "Unknown")
+        logger.info(f"Targeting anime at index {anime_index}: {target_title}")
 
     elif anime_title is not None:
         search_title = anime_title.lower()
         for anime_dict in anime_data:
-            if search_title in anime_dict.get("title", "").lower():
+            title = anime_dict.get("anime", {}).get("title") or anime_dict.get(
+                "title", ""
+            )
+            if search_title in str(title).lower():
                 target_anime.append(anime_dict)
 
         if not target_anime:
             raise AnimeNotFoundError(f"No anime found matching title: '{anime_title}'")
 
         if len(target_anime) == 1:
-            logger.info(f"Found anime: {target_anime[0]['title']}")
+            title = target_anime[0].get("anime", {}).get("title") or target_anime[
+                0
+            ].get("title", "Unknown")
+            logger.info(f"Found anime: {title}")
         else:
             logger.info(f"Found {len(target_anime)} matching anime")
 
