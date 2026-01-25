@@ -240,7 +240,7 @@ async def update_vectors(
 
         # Count anime-level success by checking which anime actually generated documents
         anime_doc_ids = {
-            doc.id for doc in gen_results if doc.payload.get("type") == "anime"
+            doc.id for doc in gen_results if doc.payload.get("entity_type") == "anime"
         }
         successful_batch = len(anime_doc_ids)
         failed_batch = len(batch_anime) - successful_batch
