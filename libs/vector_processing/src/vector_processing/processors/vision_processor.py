@@ -38,7 +38,7 @@ class VisionProcessor:
         model: VisionEmbeddingModel,
         downloader: ImageDownloader,
         settings: Settings | None = None,
-        max_concurrent_downloads: int = 10,
+        max_concurrent_downloads: int | None = None,
     ):
         """Initialize the vision processor with model and downloader.
 
@@ -47,7 +47,8 @@ class VisionProcessor:
             downloader: An initialized ImageDownloader for fetching images.
             settings: Configuration settings instance. Uses defaults if None.
             max_concurrent_downloads: Maximum number of concurrent image downloads.
-                Defaults to 10 to prevent resource exhaustion.
+                If None, uses settings.max_concurrent_image_downloads (default: 10).
+                Override for testing or special cases.
         """
         if settings is None:
             settings = Settings()
@@ -55,9 +56,18 @@ class VisionProcessor:
         self.settings = settings
         self.model = model
         self.downloader = downloader
-        self.max_concurrent_downloads = max_concurrent_downloads
 
-        logger.info(f"Initialized VisionProcessor with model: {model.model_name}")
+        # Use settings value as default, allow override for testing
+        self.max_concurrent_downloads = (
+            max_concurrent_downloads
+            if max_concurrent_downloads is not None
+            else settings.max_concurrent_image_downloads
+        )
+
+        logger.info(
+            f"Initialized VisionProcessor with model: {model.model_name}, "
+            f"max_concurrent_downloads: {self.max_concurrent_downloads}"
+        )
 
     def encode_image(self, image_path: str) -> list[float] | None:
         """Encode a local image file to an embedding vector.
@@ -80,15 +90,19 @@ class VisionProcessor:
             logger.exception("Image encoding failed")
             return None
 
-    async def encode_images_batch(self, image_urls: list[str]) -> list[list[float]]:
+    async def encode_images_batch(
+        self, image_urls: list[str], max_retries: int = 2
+    ) -> list[list[float]]:
         """Encode multiple images from URLs into a matrix for multivector storage.
 
         Downloads images concurrently with semaphore-based rate limiting and
         encodes them in a single batch for optimal performance. Uses shared
-        aiohttp session to prevent connection proliferation.
+        aiohttp session to prevent connection proliferation. Failed downloads
+        are automatically retried with exponential backoff.
 
         Args:
             image_urls: List of image URLs to download and encode.
+            max_retries: Maximum retry attempts for failed downloads (default: 2).
 
         Returns:
             A list of embedding vectors (matrix). Failed downloads/encodings
@@ -97,41 +111,67 @@ class VisionProcessor:
         if not image_urls:
             return []
 
+        total_urls = len(image_urls)
+
         # Create shared session and semaphore for controlled concurrency
         semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
         async with aiohttp.ClientSession() as session:
-            # Concurrent downloads with semaphore limiting (I/O-bound)
-            async def download_single(url: str) -> tuple[str, str | None]:
+            # Concurrent downloads with semaphore limiting and retry logic (I/O-bound)
+            async def download_single_with_retry(url: str) -> tuple[str, str | None]:
                 async with semaphore:
-                    try:
-                        local_path = await self.downloader.download_and_cache_image(
-                            url, session=session
-                        )
-                        return (url, local_path)
-                    except Exception as e:
-                        logger.warning(f"Error downloading image {url}: {e}")
-                        return (url, None)
+                    for attempt in range(max_retries + 1):
+                        try:
+                            local_path = await self.downloader.download_and_cache_image(
+                                url, session=session
+                            )
+                            return (url, local_path)
+                        except Exception as e:
+                            if attempt < max_retries:
+                                # Exponential backoff: 0.5s, 1s, 2s, ...
+                                wait_time = 0.5 * (2**attempt)
+                                logger.debug(
+                                    f"Download attempt {attempt + 1}/{max_retries + 1} "
+                                    f"failed for {url}, retrying in {wait_time}s: {e}"
+                                )
+                                await asyncio.sleep(wait_time)
+                            else:
+                                logger.warning(
+                                    f"Failed to download {url} after {max_retries + 1} attempts: {e}"
+                                )
+                                return (url, None)
+                    return (url, None)
 
             download_results = await asyncio.gather(
-                *[download_single(url) for url in image_urls]
+                *[download_single_with_retry(url) for url in image_urls]
             )
 
-        # Filter successful downloads
+        # Filter successful downloads and compute metrics
         local_paths = [path for _, path in download_results if path is not None]
+        successful_downloads = len(local_paths)
+        failed_downloads = total_urls - successful_downloads
+        success_rate = (
+            (successful_downloads / total_urls * 100) if total_urls > 0 else 0
+        )
+
+        # Log batch download metrics
+        logger.info(
+            f"Batch download complete: {successful_downloads}/{total_urls} successful "
+            f"({success_rate:.1f}% success rate), {failed_downloads} failed"
+        )
 
         if not local_paths:
-            logger.debug("No images downloaded successfully")
+            logger.warning("No images downloaded successfully in batch")
             return []
 
         # Single batch encoding (CPU/GPU-bound - leverage model's batch processing)
         try:
             embeddings = self.model.encode_image(local_paths)
-            logger.debug(
-                f"Encoded {len(embeddings)}/{len(image_urls)} images successfully"
+            logger.info(
+                f"Batch encoding complete: {len(embeddings)}/{total_urls} images encoded successfully"
             )
             return embeddings
         except Exception as e:
-            logger.warning(f"Batch encoding failed: {e}")
+            logger.error(f"Batch encoding failed: {e}")
             return []
 
     def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:

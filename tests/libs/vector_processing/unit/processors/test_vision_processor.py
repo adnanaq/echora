@@ -747,3 +747,221 @@ class TestEncodeImagesBatch:
             f"Default concurrency too high: {max_concurrent} (should be ≤20)"
         )
         assert max_concurrent > 0, "No downloads were concurrent"
+
+
+class TestRetryLogic:
+    """Tests for download retry logic with exponential backoff."""
+
+    @pytest.mark.asyncio
+    async def test_retries_failed_downloads_with_backoff(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that failed downloads are retried with exponential backoff."""
+        import asyncio
+
+        attempt_count = 0
+        attempt_times = []
+
+        async def failing_download(url, session=None):
+            nonlocal attempt_count
+            attempt_count += 1
+            attempt_times.append(asyncio.get_event_loop().time())
+            if attempt_count < 3:  # Fail first 2 attempts, succeed on 3rd
+                raise Exception("Transient network error")
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image = AsyncMock(
+            side_effect=failing_download
+        )
+        mock_vision_model.encode_image.return_value = [[0.1] * 768]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = ["http://example.com/test.jpg"]
+        result = await processor.encode_images_batch(urls, max_retries=2)
+
+        # Should succeed after retries
+        assert len(result) == 1
+        assert attempt_count == 3  # 3 total attempts (initial + 2 retries)
+
+        # Verify exponential backoff timing
+        if len(attempt_times) >= 3:
+            first_retry_delay = attempt_times[1] - attempt_times[0]
+            second_retry_delay = attempt_times[2] - attempt_times[1]
+            # First retry should wait ~0.5s, second ~1s (exponential)
+            assert first_retry_delay >= 0.4, "First retry too fast"
+            assert second_retry_delay >= 0.9, "Second retry didn't backoff"
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_retries(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that downloads are abandoned after max_retries exhausted."""
+        mock_downloader.download_and_cache_image = AsyncMock(
+            side_effect=Exception("Persistent failure")
+        )
+        mock_vision_model.encode_image.return_value = []
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = ["http://example.com/broken.jpg"]
+        result = await processor.encode_images_batch(urls, max_retries=2)
+
+        # Should fail after 3 total attempts (1 initial + 2 retries)
+        assert len(result) == 0
+        assert mock_downloader.download_and_cache_image.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_successful_downloads_dont_retry(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that successful downloads on first attempt don't trigger retries."""
+        mock_downloader.download_and_cache_image = AsyncMock(
+            return_value="/cache/test.jpg"
+        )
+        mock_vision_model.encode_image.return_value = [[0.1] * 768]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = ["http://example.com/test.jpg"]
+        result = await processor.encode_images_batch(urls, max_retries=2)
+
+        assert len(result) == 1
+        # Should only call download once (no retries needed)
+        assert mock_downloader.download_and_cache_image.call_count == 1
+
+
+class TestMetricsLogging:
+    """Tests for download/encoding metrics and logging."""
+
+    @pytest.mark.asyncio
+    async def test_logs_batch_download_metrics(
+        self, mock_vision_model, mock_downloader, mock_settings, caplog
+    ):
+        """Test that batch download success rates are logged."""
+        # 7 successful, 3 failed
+        async def selective_download(url, session=None):
+            if "fail" in url:
+                raise Exception("Download failed")
+            return f"/cache/{url.split('/')[-1]}"
+
+        mock_downloader.download_and_cache_image = AsyncMock(
+            side_effect=selective_download
+        )
+        mock_vision_model.encode_image.return_value = [[0.1] * 768] * 7
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = [f"http://example.com/{i}.jpg" for i in range(7)]
+        urls += [f"http://example.com/fail{i}.jpg" for i in range(3)]
+
+        with caplog.at_level("INFO"):
+            result = await processor.encode_images_batch(urls, max_retries=0)
+
+        # Verify metrics logged
+        assert len(result) == 7
+        log_messages = [record.message for record in caplog.records]
+
+        # Should log download metrics
+        download_log = [msg for msg in log_messages if "Batch download complete" in msg]
+        assert len(download_log) > 0, "No download metrics logged"
+        assert "7/10 successful" in download_log[0]
+        assert "70.0% success rate" in download_log[0]
+
+        # Should log encoding metrics
+        encoding_log = [msg for msg in log_messages if "Batch encoding complete" in msg]
+        assert len(encoding_log) > 0, "No encoding metrics logged"
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_when_all_downloads_fail(
+        self, mock_vision_model, mock_downloader, mock_settings, caplog
+    ):
+        """Test that warning is logged when no images download successfully."""
+        mock_downloader.download_and_cache_image = AsyncMock(
+            side_effect=Exception("All downloads failed")
+        )
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        urls = ["http://example.com/1.jpg", "http://example.com/2.jpg"]
+
+        with caplog.at_level("WARNING"):
+            result = await processor.encode_images_batch(urls, max_retries=0)
+
+        assert len(result) == 0
+        log_messages = [record.message for record in caplog.records]
+        warning_log = [
+            msg for msg in log_messages if "No images downloaded successfully" in msg
+        ]
+        assert len(warning_log) > 0, "No warning logged for complete failure"
+
+
+class TestConfigurationIntegration:
+    """Tests for configuration-driven behavior."""
+
+    def test_uses_settings_max_concurrent_downloads(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that processor uses settings.max_concurrent_image_downloads by default."""
+        mock_settings.max_concurrent_image_downloads = 25
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+        )
+
+        assert processor.max_concurrent_downloads == 25
+
+    def test_allows_override_of_max_concurrent_downloads(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that max_concurrent_downloads can be overridden for testing."""
+        mock_settings.max_concurrent_image_downloads = 25
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            settings=mock_settings,
+            max_concurrent_downloads=5,  # Override
+        )
+
+        assert processor.max_concurrent_downloads == 5
+
+    def test_logs_concurrency_limit_on_init(
+        self, mock_vision_model, mock_downloader, mock_settings, caplog
+    ):
+        """Test that initialization logs the configured concurrency limit."""
+        mock_settings.max_concurrent_image_downloads = 15
+
+        with caplog.at_level("INFO"):
+            VisionProcessor(
+                model=mock_vision_model,
+                downloader=mock_downloader,
+                settings=mock_settings,
+            )
+
+        log_messages = [record.message for record in caplog.records]
+        init_log = [msg for msg in log_messages if "max_concurrent_downloads" in msg]
+        assert len(init_log) > 0, "Concurrency limit not logged"
+        assert "15" in init_log[0]

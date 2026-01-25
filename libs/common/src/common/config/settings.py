@@ -184,6 +184,12 @@ class Settings(BaseSettings):
         le=128,
         description="Batch size for image embedding processing (adjust based on GPU VRAM: 4-8 for 8GB, 16+ for 16GB+)",
     )
+    max_concurrent_image_downloads: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum concurrent image downloads in batch processing (adjust based on bandwidth and rate limits)",
+    )
 
     # ============================================================================
     # MODEL MANAGEMENT

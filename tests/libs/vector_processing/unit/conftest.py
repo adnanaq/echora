@@ -9,7 +9,10 @@ from common.config import Settings
 @pytest.fixture
 def mock_settings():
     """Create mock Settings instance for unit tests."""
-    return MagicMock(spec=Settings)
+    settings = MagicMock(spec=Settings)
+    # Add new configuration field
+    settings.max_concurrent_image_downloads = 10
+    return settings
 
 
 @pytest.fixture
