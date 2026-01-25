@@ -1402,6 +1402,9 @@ async def test_update_single_point_vector_with_multivector(
         pytest.skip("No characters with images in test data")
 
     character = next(c for c in anime_with_char_images.characters if c.images and len(c.images) > 0)
+    char_point_id = character.id or generate_deterministic_id(
+        f"{anime_with_char_images.anime.id}_{character.name}"
+    )
 
     # Generate image vectors for character
     image_urls = [character.images[0]]
@@ -1414,7 +1417,7 @@ async def test_update_single_point_vector_with_multivector(
 
     # Update character point's image vector (multivector)
     success = await client.update_single_point_vector(
-        point_id=character.id,
+        point_id=char_point_id,
         vector_name="image_vector",
         vector_data=image_vectors,  # List of vectors (multivector)
     )
