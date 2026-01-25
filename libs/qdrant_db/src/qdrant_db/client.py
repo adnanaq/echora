@@ -688,12 +688,34 @@ class QdrantClient(VectorDBClient):
     ) -> dict[str, Any]:
         """Add documents (with pre-generated vectors) to the collection.
 
+        Upserts documents to Qdrant in batches for efficient bulk loading.
+        Documents must have vectors already generated.
+
         Args:
             documents: List of VectorDocument objects (provider-agnostic)
-            batch_size: Number of documents to process per batch
+            batch_size: Number of documents to process per batch (default: 100)
 
         Returns:
-            Dict with success status and document count
+            Dictionary with operation results:
+                - success: Boolean indicating overall success
+                - document_count: Number of documents added (if success=True)
+                - error: Error message (if success=False)
+
+        Raises:
+            Exception: Logged but not raised - returns error dict on failure
+
+        Example:
+            >>> client = QdrantClient(...)
+            >>> documents = [
+            ...     VectorDocument(
+            ...         id="anime_1",
+            ...         vectors={"title_vector": embedding1, "image_vector": embedding2},
+            ...         payload={"title": "One Piece", "year": 1999}
+            ...     ),
+            ...     # ... more documents
+            ... ]
+            >>> result = await client.add_documents(documents, batch_size=50)
+            >>> print(f"Added {result['document_count']} documents")
         """
         try:
             # Convert VectorDocument to Qdrant PointStruct
@@ -811,7 +833,20 @@ class QdrantClient(VectorDBClient):
             retry_delay: Initial delay in seconds between retries (default: 1.0)
 
         Returns:
-            True if successful, False otherwise
+            True if update successful, False if validation failed or operation failed
+
+        Raises:
+            Exception: Logged but not raised - returns False on any failure
+
+        Example:
+            >>> client = QdrantClient(...)
+            >>> success = await client.update_single_point_vector(
+            ...     point_id="anime_12345",
+            ...     vector_name="synopsis_vector",
+            ...     vector_data=new_embedding
+            ... )
+            >>> if success:
+            ...     print("Vector updated successfully")
         """
         try:
             # Validate vector update
@@ -1178,12 +1213,30 @@ class QdrantClient(VectorDBClient):
     ) -> dict[str, Any] | None:
         """Get anime by ID.
 
+        Retrieves a single anime document from the collection by its ID.
+
         Args:
             point_id: The anime ID to retrieve
             with_vectors: Whether to include vector data in response
 
         Returns:
-            Anime data dictionary or None if not found
+            Anime data dictionary with all payload fields, or None if not found.
+            Payload typically includes:
+                - title: Anime title
+                - genres: List of genres
+                - synopsis: Description text
+                - year: Release year
+                - type: Anime type (TV, Movie, OVA, etc.)
+                - ...other metadata fields
+
+        Raises:
+            Exception: If Qdrant API call fails (logged and returns None)
+
+        Example:
+            >>> client = QdrantClient(...)
+            >>> anime = await client.get_by_id("anime_12345")
+            >>> if anime:
+            ...     print(anime["title"], anime["genres"])
         """
         try:
             # Use raw point ID directly
@@ -1307,6 +1360,8 @@ class QdrantClient(VectorDBClient):
     ) -> list[dict[str, Any]]:
         """Search a single vector with raw similarity scores.
 
+        Performs semantic search using a single named vector from the collection.
+
         Args:
             vector_name: Name of the vector to search (e.g., "title_vector")
             vector_data: The query vector (list of floats)
@@ -1314,7 +1369,25 @@ class QdrantClient(VectorDBClient):
             filters: Optional Qdrant filter conditions
 
         Returns:
-            List of search results with raw similarity scores
+            List of anime result dictionaries with keys:
+                - id: Anime ID (string)
+                - anime_id: Same as id (string)
+                - _id: Same as id (string)
+                - similarity_score: Raw vector similarity score (float, higher is better)
+                - ...additional payload fields (title, genres, etc.)
+
+        Raises:
+            Exception: If Qdrant API call fails
+
+        Example:
+            >>> client = QdrantClient(...)
+            >>> results = await client.search_single_vector(
+            ...     vector_name="title_vector",
+            ...     vector_data=embedding,
+            ...     limit=5
+            ... )
+            >>> for result in results:
+            ...     print(f"{result['title']}: {result['similarity_score']:.4f}")
         """
         try:
             # Direct vector search with raw similarity scores
@@ -1423,17 +1496,43 @@ class QdrantClient(VectorDBClient):
     ) -> list[dict[str, Any]]:
         """Search across multiple vectors using Qdrant's native multi-vector API.
 
+        Combines results from multiple vector searches using fusion algorithms
+        (Reciprocal Rank Fusion or Distribution-Based Score Fusion).
+
         Args:
             vector_queries: List of vector query dicts with keys:
                 - vector_name: Name of the vector to search (e.g., "title_vector")
                 - vector_data: The query vector (list of floats)
                 - weight: Optional weight for fusion (default: 1.0)
             limit: Maximum number of results to return
-            fusion_method: Fusion algorithm - "rrf" or "dbsf"
+            fusion_method: Fusion algorithm - "rrf" (Reciprocal Rank Fusion) or 
+                "dbsf" (Distribution-Based Score Fusion)
             filters: Optional Qdrant filter conditions
 
         Returns:
-            List of search results with fusion scores
+            List of anime result dictionaries with keys:
+                - id: Anime ID (string)
+                - anime_id: Same as id (string)
+                - _id: Same as id (string)
+                - similarity_score: Fusion score (float, higher is better)
+                - ...additional payload fields (title, genres, etc.)
+
+        Raises:
+            EmptyVectorQueriesError: If vector_queries list is empty
+            Exception: If Qdrant API call fails
+
+        Example:
+            >>> client = QdrantClient(...)
+            >>> results = await client.search_multi_vector(
+            ...     vector_queries=[
+            ...         {"vector_name": "title_vector", "vector_data": title_embedding},
+            ...         {"vector_name": "synopsis_vector", "vector_data": synopsis_embedding},
+            ...     ],
+            ...     limit=10,
+            ...     fusion_method="rrf"
+            ... )
+            >>> for result in results:
+            ...     print(result["title"], result["similarity_score"])
         """
         try:
             if not vector_queries:
