@@ -98,7 +98,7 @@ async def update_vectors(
     anime_index: int | None = None,
     anime_title: str | None = None,
     batch_size: int = 100,
-    data_file: str = "./data/qdrant_storage/enriched_anime_database.json",
+    data_file: str = "./assets/seed_data/anime_database.json",
 ) -> dict[str, Any]:
     """Regenerate and upsert vectors for anime entries.
 
@@ -412,7 +412,7 @@ Examples:
     parser.add_argument(
         "--file",
         type=str,
-        default="./data/qdrant_storage/enriched_anime_database.json",
+        default="./assets/seed_data/anime_database.json",
         help="Path to enriched anime database JSON file",
     )
 

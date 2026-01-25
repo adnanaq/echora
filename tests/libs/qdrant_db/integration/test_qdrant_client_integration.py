@@ -42,7 +42,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def test_anime_data():
     """Load test anime data from enriched database."""
-    with open("./data/qdrant_storage/enriched_anime_database.json") as f:
+    with open("./assets/seed_data/anime_database.json") as f:
         data = json.load(f)
     return data["data"][:3]  # Use first 3 anime for testing
 

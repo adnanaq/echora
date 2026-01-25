@@ -61,7 +61,7 @@ class EnrichmentConfig(BaseSettings):
         description="Path to offline anime database",
     )
     enriched_database_path: str = Field(
-        default="data/qdrant_storage/enriched_anime_database.json",
+        default="assets/seed_data/anime_database.json",
         description="Path to enriched anime database",
     )
     temp_dir: str = Field(

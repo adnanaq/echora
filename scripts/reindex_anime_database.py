@@ -36,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--data-file",
-        default="./data/qdrant_storage/enriched_anime_database.json",
-        help="Path to enriched anime database JSON file (default: ./data/qdrant_storage/enriched_anime_database.json)",
+        default="./assets/seed_data/anime_database.json",
+        help="Path to enriched anime database JSON file (default: ./assets/seed_data/anime_database.json)",
     )
     return parser.parse_args()
 

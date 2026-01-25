@@ -168,7 +168,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--input",
-        default="data/qdrant_storage/enriched_anime_database.json",
+        default="assets/seed_data/anime_database.json",
         help="Path to enriched database file",
     )
     parser.add_argument(

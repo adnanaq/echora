@@ -7,7 +7,7 @@
 All tests in this file are **integration tests** that require:
 - Running Qdrant database (default: http://localhost:6333)
 - ML models downloaded (BGE-M3, OpenCLIP)
-- Test data file: `./data/qdrant_storage/enriched_anime_database.json`
+- Test data file: `./assets/seed_data/anime_database.json`
 
 ### Running Integration Tests
 
