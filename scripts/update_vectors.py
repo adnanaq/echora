@@ -204,10 +204,13 @@ async def update_vectors(
     records: list[AnimeRecord] = []
     for i, anime_dict in enumerate(target_anime):
         try:
-            if "id" not in anime_dict["anime"] or not anime_dict["anime"]["id"]:
-                anime_dict["anime"]["id"] = str(uuid.uuid4())
+            anime_payload = anime_dict.get("anime")
+            if not isinstance(anime_payload, dict):
+                raise KeyError("Missing or invalid 'anime' key")
+            if not anime_payload.get("id"):
+                anime_payload["id"] = str(uuid.uuid4())
             records.append(AnimeRecord(**anime_dict))
-        except (KeyError, ValidationError) as e:
+        except (KeyError, TypeError, ValidationError) as e:
             logger.warning(f"Skipping malformed record {i}: {e}")
             continue
 
