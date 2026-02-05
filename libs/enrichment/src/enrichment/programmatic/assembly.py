@@ -1,8 +1,8 @@
 """
-Step 5: Assembly Module - Merge AI outputs into AnimeEntry schema
+Step 5: Assembly Module - Merge AI outputs into AnimeRecord schema
 
 This module takes outputs from Step 4 (6-stage AI pipeline) and assembles them
-into a complete AnimeEntry object that passes schema validation.
+into a complete AnimeRecord object that passes schema validation.
 
 Key responsibilities:
 1. Merge programmatic data (Steps 1-3) with AI-enhanced data (Step 4)
@@ -19,20 +19,20 @@ from pathlib import Path
 from typing import Any
 
 # Type annotations for optional imports
-_AnimeEntry: type[Any] | None = None
+_AnimeRecord: type[Any] | None = None
 _EnrichmentMetadata: type[Any] | None = None
 _EnrichmentValidator: type[Any] | None = None
 _ValidationError: type[Exception] = Exception
 
 try:
     # Import the existing validator
-    from common.models.anime import AnimeEntry, EnrichmentMetadata
+    from common.models.anime import AnimeRecord, EnrichmentMetadata
     from pydantic import ValidationError
 
     from scripts.validate_enrichment_database import EnrichmentValidator
 
     # Set the type markers for successful imports
-    _AnimeEntry = AnimeEntry
+    _AnimeRecord = AnimeRecord
     _EnrichmentMetadata = EnrichmentMetadata
     _EnrichmentValidator = EnrichmentValidator
     _ValidationError = ValidationError
@@ -58,7 +58,7 @@ class AssemblyResult:
 
 class EnrichmentAssembler:
     """
-    Assembles AI stage outputs into final AnimeEntry schema
+    Assembles AI stage outputs into final AnimeRecord schema
     """
 
     # Required fields that must always be present
@@ -132,7 +132,7 @@ class EnrichmentAssembler:
         anime_sources: list[str],
     ) -> AssemblyResult:
         """
-        Assemble complete AnimeEntry from stage outputs and programmatic data
+        Assemble complete AnimeRecord from stage outputs and programmatic data
 
         Args:
             stage_outputs: Dictionary with keys 'stage1' through 'stage6' containing AI outputs
@@ -450,13 +450,13 @@ class EnrichmentAssembler:
             "error_message": "; ".join(self.errors) if self.errors else None,
         }
 
-        # Apply proper AnimeEntry schema field ordering
+        # Apply proper AnimeRecord schema field ordering
         return self._apply_schema_ordering(entry)
 
     def _apply_schema_ordering(self, entry: dict[str, Any]) -> dict[str, Any]:
-        """Apply AnimeEntry schema field ordering: SCALAR → ARRAY → OBJECT → enrichment_metadata"""
+        """Apply AnimeRecord schema field ordering: SCALAR → ARRAY → OBJECT → enrichment_metadata"""
 
-        # Define field order per AnimeEntry schema
+        # Define field order per AnimeRecord schema
         scalar_fields = [
             "background",
             "episodes",

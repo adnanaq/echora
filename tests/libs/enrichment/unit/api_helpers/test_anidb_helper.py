@@ -663,8 +663,8 @@ async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
     # Exponential backoff: min(error_cooldown_base * 2^failures, max_request_interval)
     # With 3 failures: min(5.0 * 8, 10.0) = 10.0
     expected_interval = min(
-        helper.error_cooldown_base * (2 ** helper.metrics.consecutive_failures),
-        helper.max_request_interval
+        helper.error_cooldown_base * (2**helper.metrics.consecutive_failures),
+        helper.max_request_interval,
     )
     assert mock_sleep.call_args[0][0] == pytest.approx(expected_interval, abs=0.1)
 

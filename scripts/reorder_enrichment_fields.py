@@ -3,7 +3,7 @@
 Reorder Enrichment Database Fields
 
 Reorders all fields in the enriched anime database to match the
-AnimeEntry model structure (SCALAR -> ARRAY -> OBJECT/DICT order).
+AnimeRecord model structure (SCALAR -> ARRAY -> OBJECT/DICT order).
 
 This ensures consistent field ordering and makes the database easier to read/maintain.
 
@@ -34,11 +34,11 @@ class DateTimeEncoder(json.JSONEncoder):
 
 
 try:
-    from common.models.anime import AnimeEntry
+    from common.models.anime import AnimeRecord
     from pydantic import ValidationError
 except ImportError:
     print(
-        "Error: Could not import AnimeEntry model. Ensure you're in the correct directory."
+        "Error: Could not import AnimeRecord model. Ensure you're in the correct directory."
     )
     exit(1)
 
@@ -51,15 +51,15 @@ logger = logging.getLogger(__name__)
 
 def reorder_entry_fields(entry: dict[str, Any]) -> dict[str, Any]:
     """
-    Reorder fields in a single anime entry to match AnimeEntry model structure.
+    Reorder fields in a single anime entry to match AnimeRecord model structure.
 
     Ensures enrichment_metadata is always placed at the very end.
 
     Uses Pydantic's model_dump() to get the correct field ordering.
     """
     try:
-        # Load entry through AnimeEntry model (validates and structures)
-        anime_entry = AnimeEntry(**entry)
+        # Load entry through AnimeRecord model (validates and structures)
+        anime_entry = AnimeRecord(**entry)
 
         # Serialize back to dict with proper field ordering, preserving JSON aliases
         # Use exclude_none=True to avoid adding empty fields that validation script would remove
@@ -164,11 +164,11 @@ def reorder_database(input_file: str, backup: bool = True) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Reorder enrichment database fields to match AnimeEntry model structure"
+        description="Reorder enrichment database fields to match AnimeRecord model structure"
     )
     parser.add_argument(
         "--input",
-        default="data/qdrant_storage/enriched_anime_database.json",
+        default="assets/seed_data/anime_database.json",
         help="Path to enriched database file",
     )
     parser.add_argument(
@@ -215,7 +215,7 @@ def main() -> int:
 
     if result["reordered_entries"] > 0:
         print(
-            f"\n✅ Successfully reordered {result['reordered_entries']} entries to match AnimeEntry model structure"
+            f"\n✅ Successfully reordered {result['reordered_entries']} entries to match AnimeRecord model structure"
         )
     else:
         print("\n✅ All entries already in correct field order")

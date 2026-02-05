@@ -11,12 +11,14 @@ class VectorDocument:
 
     Attributes:
         id: Unique identifier for the document
-        vectors: Named vectors for multi-vector search (e.g., {"text": [...], "image": [...]})
+        vectors: Named vectors for multi-vector search. Supports single vectors
+            (e.g., {"text": [0.1, 0.2, ...]}) or multivectors for hierarchical
+            embeddings (e.g., {"episodes": [[0.1, ...], [0.2, ...]]})
         payload: Metadata and searchable fields
     """
 
     id: str
-    vectors: dict[str, list[float]]
+    vectors: dict[str, list[float] | list[list[float]]]
     payload: dict[str, Any]
 
 

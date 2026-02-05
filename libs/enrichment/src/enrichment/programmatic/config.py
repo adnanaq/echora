@@ -61,7 +61,7 @@ class EnrichmentConfig(BaseSettings):
         description="Path to offline anime database",
     )
     enriched_database_path: str = Field(
-        default="data/qdrant_storage/enriched_anime_database.json",
+        default="assets/seed_data/anime_database.json",
         description="Path to enriched anime database",
     )
     temp_dir: str = Field(
@@ -78,7 +78,7 @@ class EnrichmentConfig(BaseSettings):
         description="Disable timeouts for background processing (fetch ALL data)",
     )
     validate_schemas: bool = Field(
-        default=True, description="Validate output against AnimeEntry schema"
+        default=True, description="Validate output against AnimeRecord schema"
     )
     verbose_logging: bool = Field(default=False, description="Enable verbose logging")
 

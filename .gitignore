@@ -226,3 +226,16 @@ gha-creds-*.json
 /.pants.d/
 .pids/
 .serena/
+
+# Bmad-method
+_bmad/
+_bmad-output/
+.codex/
+.agent/
+.mcp.json
+.claude/audio/
+.claude/commands/agent-vibes/
+.claude/commands/bmad/
+.claude/config/
+.claude/hooks/
+.claude/personalities/

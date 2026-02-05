@@ -90,10 +90,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         field_mapper = AnimeFieldMapper()
 
         # Initialize processors with injected dependencies
-        text_processor = TextProcessor(text_model, field_mapper, settings)
-        vision_processor = VisionProcessor(
-            vision_model, image_downloader, field_mapper, settings
-        )
+        text_processor = TextProcessor(text_model, settings)
+        vision_processor = VisionProcessor(vision_model, image_downloader, settings)
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,

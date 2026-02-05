@@ -36,7 +36,7 @@ from sentence_transformers import SentenceTransformer
 try:
     from common.config.settings import Settings
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
-    from vector_processing.field_mapper import AnimeFieldMapper
+    from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
     from vector_processing.processors.vision_processor import VisionProcessor
     from vector_processing.utils.image_downloader import ImageDownloader
 
@@ -177,8 +177,12 @@ class CharacterNamePreprocessor:
         representations = {
             "original": name,
             "normalized": self._normalize_unicode(name),
-            "hiragana": jaconv.kata2hira(name) if jaconv is not None and self._is_katakana(name) else name,
-            "katakana": jaconv.hira2kata(name) if jaconv is not None and self._is_hiragana(name) else name,
+            "hiragana": jaconv.kata2hira(name)
+            if jaconv is not None and self._is_katakana(name)
+            else name,
+            "katakana": jaconv.hira2kata(name)
+            if jaconv is not None and self._is_hiragana(name)
+            else name,
             "romaji": self._to_romaji(name),
             "phonetic": self._get_phonetic_key(self._to_romaji(name)),
             "tokens": self._tokenize_name(name),
@@ -434,13 +438,11 @@ class EnsembleFuzzyMatcher:
                     and AnimeFieldMapper is not None
                 ):
                     settings = Settings()
-                    field_mapper = AnimeFieldMapper()
                     vision_model = EmbeddingModelFactory.create_vision_model(settings)
                     downloader = ImageDownloader(settings.model_cache_dir)
                     self.vision_processor = VisionProcessor(
                         model=vision_model,
                         downloader=downloader,
-                        field_mapper=field_mapper,
                         settings=settings,
                     )
                     self.ccips = CCIP(settings)

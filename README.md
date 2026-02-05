@@ -4,20 +4,11 @@ A production-ready semantic search microservice for anime content using a multi-
 
 ## Features
 
-- **Multi-Vector Semantic Architecture**: Comprehensive anime understanding through text and image vectors
-- **Advanced Text Search**: BGE-M3 embeddings (1024-dim) across multiple semantic domains
-- **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for cover art and character similarity
-- **Character-Focused Search**: Specialized character vector + character image vector search
-- **Multi-Vector Fusion**: Native Qdrant RRF/DBSF fusion for optimal search results
+- **Unified Multi-Vector Architecture**: High-performance semantic search using text and image vectors
+- **Advanced Text Search**: BGE-M3 embeddings (1024-dim) for cross-platform semantic matching
+- **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for multi-source image similarity
+- **Multi-Vector Fusion**: Native Qdrant RRF/DBSF fusion for optimal hybrid results
 - **Modular Monorepo**: Clean separation of concerns with Pants build system
-- **Production Ready**: Health checks, monitoring, comprehensive test suite
-
-## Project Stats
-
-- **Lines of Code**: ~102k LOC
-- **Files**: 180 Python files
-- **Test Coverage**: 50%+ with unit and integration tests
-- **Libraries**: 3 core libraries (`common`, `qdrant_db`, `vector_processing`)
 
 ## Monorepo Structure
 
@@ -30,7 +21,7 @@ echora/
 │   ├── common/                    # Common models and configuration
 │   │   └── src/common/
 │   │       ├── config/            # Settings and configuration
-│   │       └── models/            # Shared data models (AnimeEntry, etc.)
+│   │       └── models/            # Shared data models (AnimeRecord, etc.)
 │   ├── enrichment/                # Anime data enrichment pipeline
 │   │   └── src/enrichment/
 │   │       ├── api_helpers/       # External API integrations (AniList, Kitsu, etc.)
@@ -51,9 +42,19 @@ echora/
 │       │   └── utils/             # Image downloading, caching
 │       └── tests/                 # Unit tests
 ├── scripts/                       # Utility scripts (reindexing, validation, etc.)
-├── tests/                         # Cross-library integration tests
-│   ├── integration/               # Integration tests
-│   └── libs/                      # Per-library test suites
+├── tests/                         # Test suite (mirrors source structure)
+│   ├── conftest.py                # Root fixtures (settings, clients)
+│   ├── integration/               # Cross-library integration tests
+│   ├── apps/service/              # Service tests (unit/, integration/)
+│   ├── libs/                      # Per-library test suites
+│   │   ├── common/                # Common library tests
+│   │   ├── enrichment/            # Enrichment tests (unit/, integration/)
+│   │   ├── http_cache/            # HTTP cache tests (unit/, integration/)
+│   │   ├── qdrant_db/             # Qdrant DB tests (unit/, integration/)
+│   │   ├── vector_db_interface/   # Vector DB interface tests
+│   │   └── vector_processing/     # Vector processing tests (unit/)
+│   ├── scripts/                   # Script tests
+│   └── utils/                     # Test utilities
 └── data/                          # Data storage (Qdrant, anime databases)
 ```
 
@@ -248,8 +249,9 @@ ty check scripts/ libs/ apps/
 
 Shared models and configuration used across all libraries and the main application.
 
-- **Models**: `AnimeEntry` and related data structures
+- **Models**: `Anime`, `Character`, `Episode`, and `AnimeRecord` Pydantic models
 - **Config**: Settings management with pydantic-settings
+- **Utils**: ID generation and datetime utilities
 
 ### `libs/qdrant_db`
 
@@ -291,18 +293,6 @@ docker compose up -d qdrant
 # Run with coverage
 ./pants test --coverage ::
 ```
-
-### Test Organization
-
-- **Unit Tests**: Mock external dependencies, fast execution (~seconds)
-  - `libs/*/tests/unit/` - Library unit tests
-  - `tests/unit/` - Application unit tests
-  - No external dependencies required
-- **Integration Tests**: Real database and models, slower execution (~minutes)
-  - `libs/*/tests/integration/` - Library integration tests
-  - `tests/integration/` - Application integration tests
-  - Marked with `@pytest.mark.integration` or `pytestmark = pytest.mark.integration`
-  - Requires: Qdrant DB, ML models (BGE-M3, OpenCLIP), real embeddings
 
 ## Configuration
 
@@ -424,22 +414,13 @@ pip install -e ".[dev]"
 
 ### Vector Architecture
 
-**Text Vectors**:
+The service uses a unified multi-vector architecture optimized for million-query scale:
 
-1. `title_vector` - Title, synopsis, background
-2. `character_vector` - Character descriptions and roles
-3. `genre_vector` - Genres and themes
-4. `staff_vector` - Staff and production information
-5. `temporal_vector` - Airing dates and season
-6. `streaming_vector` - Streaming platforms
-7. `related_vector` - Related anime and adaptations
-8. `franchise_vector` - Franchise information
-9. `episode_vector` - Episode summaries (hierarchical averaging)
+**Text Vectors**:
+- `text_vector`: 1024-dimensional BGE-M3 embeddings covering titles, synopses, and metadata across all entity types (Anime, Characters, Episodes).
 
 **Image Vectors**:
-
-1. `image_vector` - Cover art similarity
-2. `character_image_vector` - Character visual similarity
+- `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
 
 ### Technology Stack
 
@@ -462,10 +443,6 @@ pip install -e ".[dev]"
 4. Run tests: `./pants test ::`
 5. Format code: `./pants fmt ::`
 6. Submit PR
-
-## License
-
-[Add your license here]
 
 ## Related Documentation
 

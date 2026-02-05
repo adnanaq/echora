@@ -22,9 +22,10 @@ from xml.etree.ElementTree import Element  # For type annotations only
 import aiohttp
 import defusedxml.ElementTree as ET
 from common.utils.datetime_utils import determine_anime_status
+from http_cache.instance import http_cache_manager as _cache_manager
+
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from enrichment.crawlers.utils import sanitize_output_path
-from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 

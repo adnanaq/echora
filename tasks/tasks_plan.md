@@ -4,10 +4,10 @@
 
 **Phase**: 3.1 of 6 (Semantic Validation Framework) - Week 9/10
 **Overall Progress**: 95% complete (Phase 2.5 complete, Phase 3.0 Genre Enhancement postponed due to data scarcity)
-**Current Focus**: 13-vector system validation and semantic quality assurance
+**Current Focus**: 2-vector system validation and semantic quality assurance (text_vector + image_vector)
 **Previous Achievement**: ✅ Phase 2.5 Million-Query Vector Optimization (Complete), ✅ Phase 3.0 Genre Enhancement Infrastructure (4,200+ LOC) - Awaiting data
 **Next Phase**: Phase 4 (Sparse Vector Optimization)
-**Architecture**: Single comprehensive collection with 14 named vectors (12×1024-dim text + 2×1024-dim visual)
+**Architecture**: Single comprehensive collection with 2 named vectors (text_vector + image_vector), with multivector image storage for anime/character images and AnimeRecord ingestion producing anime, character, and episode points
 
 ## Rollback-Safe Implementation Strategy
 
@@ -72,8 +72,8 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 - [x] FastAPI service with health endpoints
 - [x] Qdrant integration with multi-vector support
-- [x] Text search with BGE-M3 embeddings (384-dim)
-- [x] Image search with JinaCLIP v2 embeddings (512-dim)
+- [x] Text search with BGE-M3 embeddings (improved to 1024-dim)
+- [x] Image search with OpenCLIP embeddings (improved to 768-dim; JinaCLIP v2 historical)
 - [x] Docker containerization and deployment
 - [x] Basic Python client library
 
@@ -99,15 +99,15 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Fixed Kitsu pagination (1347 episodes vs 10)
   - [x] Fixed AnimSchedule file duplication issue
 
-- [ ] **Step 5 Assembly Implementation** (NEXT SESSION - 0% complete)
-  - [ ] Assembly module for merging agentic AI stage outputs
-  - [ ] Schema validation integration (validate_enrichment_database.py)
-  - [ ] Object-to-schema mapping based on prompt definitions
+- [ ] **Step 5 Assembly Implementation** (IN PROGRESS)
+  - [x] Assembly module for merging agentic AI stage outputs (implemented in `libs/enrichment/src/enrichment/programmatic/assembly.py`)
+  - [x] Schema validation integration (EnrichmentValidator from `scripts/validate_enrichment_database.py`)
+  - [x] Object-to-schema mapping based on prompt definitions (field mapping + schema ordering)
   - [ ] Testing with mock stage outputs
   - [ ] Complete enrichment pipeline validation
 
 - [ ] **Performance Optimization** (60% complete)
-  - [ ] Redis caching layer implementation
+  - [x] Redis caching layer implementation (result-level caching via `libs/http_cache`)
   - [ ] Model loading optimization (cold start performance)
   - [ ] Connection pooling enhancement
   - [ ] Memory usage optimization
@@ -120,12 +120,23 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 #### 📋 Phase 2 Remaining Tasks
 
-- [ ] Query result caching with TTL management
-- [ ] Model warm-up configuration option
+- [ ] Query result caching with TTL management (search endpoint result caching)
+- [x] Model warm-up configuration option (configurable in `libs/common/src/common/config/settings.py`)
 - [ ] Benchmarking suite for performance validation
 - [ ] Enhanced error reporting for batch operations
 
 ### ✅ Phase 2.5: Million-Query Vector Optimization - COMPLETED (100%)
+
+**Note**: The 14/13-vector milestones below are historical. The current architecture is simplified to 2 vectors (text_vector + image_vector) with multivector image storage.
+
+#### ✅ Vector Architecture Simplification (14 → 11 → 2) - COMPLETED
+
+- [x] Reduced named vectors to `text_vector` and `image_vector` in settings (`libs/common/src/common/config/settings.py`)
+- [x] Added multivector storage for `image_vector` to support multiple images per anime/character
+- [x] Updated embedding pipeline to emit 3 point types per AnimeRecord (anime + character + episode)
+- [x] Standardized ingestion on `AnimeRecord` (anime, characters, episodes) container
+- [x] Updated Qdrant client to use multivector config for image vectors
+- [x] Retired 14-vector search helpers in favor of text/image search (historical methods removed)
 
 #### ✅ IMPLEMENTATION COMPLETE - Key Achievements
 
@@ -177,41 +188,40 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Memory allocation strategy (in-memory vs disk-based)
   - [x] Projected 75% memory reduction with optimization
 
-#### ✅ Implementation Phase: 14-Vector Collection (✅ COMPLETE)
+#### ✅ Implementation Phase: 14-Vector Collection (✅ COMPLETE, Historical)
 
-**Sub-Phase 2.5.0: Unique ID Strategy & Core Data Model Enhancements** (Rollback-Safe: data model definition) - [ ] COMPLETED
+**Sub-Phase 2.5.0: Unique ID Strategy & Core Data Model Enhancements** (Rollback-Safe: data model definition) - [x] COMPLETED
 
-- [ ] **2.5.0a: Define Global Unique ID Strategy** (Est: 3 hours) - REVISED
-  - [ ] **Adopt a Hybrid ID Strategy for all entities to ensure both uniqueness and deterministic deduplication.**
-  - [ ] **Primary Key (`id`):**
-    -   **Strategy:** Use a non-deterministic, prefixed **ULID** (e.g., `char_01H9J...`).
+- [x] **2.5.0a: Define Global Unique ID Strategy** (Est: 3 hours) - REVISED
+  - [x] **Adopt UUID-based ID Strategy for all entities (current implementation).**
+  - [x] **Primary Key (`id`):**
+    -   **Strategy:** Use a non-deterministic **UUIDv4**.
     -   **Generation:** Generated **once** when an entity is first created.
     -   **Properties:** This ID is **immutable** and serves as the permanent, internal primary key (`_id` in MongoDB, `id` in Qdrant). All foreign key relationships will reference this stable ID.
-  - [ ] **Deduplication Key (`deduplication_key`):**
-    -   **Strategy:** Use a **deterministic hash** (e.g., SHA-256) of a stable, canonical seed.
+  - [x] **Deterministic ID (`id` for derived entities):**
+    -   **Strategy:** Use **UUIDv5** of a stable, canonical seed.
     -   **Examples:**
-        -   For a character: `SHA-256(source_platform + source_character_id)`
-        -   For an episode: `SHA-256(source_platform + source_anime_id + episode_number)`
-    -   **Properties:** This key is used exclusively for **lookup and deduplication** during data ingestion and processing. It will be a separate, indexed field in MongoDB.
-  - [ ] **Ingestion Workflow:**
-    1.  When processing a new entity (e.g., a character), generate its deterministic `deduplication_key`.
-    2.  Query the database for an existing entity with that key.
-    3.  **If found:** Use the existing entity's immutable `id` (the ULID) for all operations.
-    4.  **If not found:** This is a new entity. Generate a new immutable `id` (ULID), and store the new entity with both its `id` and `deduplication_key`.
-  - [ ] **Rationale Document:**
-    -   **ULID (`id`):** Provides a globally unique, time-sortable, and stable primary key that is immune to changes in source metadata (e.g., a character name correction).
-    -   **Hash (`deduplication_key`):** Solves the critical need for deterministic deduplication across different data sources and processing runs, preventing duplicate entities.
-    -   **Combined:** This hybrid approach provides the resilience of immutable primary keys with the robustness of deterministic lookups.
+    - For a character: `UUIDv5(anime_id + character_name)`
+    - For an episode: `UUIDv5(anime_id + episode_number)`
+    -   **Properties:** Used for deterministic IDs for derived entities when needed.
+  - [x] **Rationale Document (implementation-aligned):**
+    -   **UUIDv4 (`id`)**: Provides globally unique, stable primary keys.
+    -   **UUIDv5 (deterministic)**: Provides reproducible IDs for sub-entities derived from stable seeds.
+  - [x] Implemented UUIDv4/v5 id generation utilities as the current baseline (`libs/common/src/common/utils/id_generation.py`)
 
-- [ ] **2.5.0b: Enhance `EpisodeDetailEntry` for Relationships** (Est: 1 hour)
-  - [ ] Add `anime_id: str` field to `EpisodeDetailEntry` Pydantic model.
-  - [ ] Document purpose: foreign key for linking episode to parent anime, enabling future separate episode collection and efficient queries/filtering.
+- [x] **2.5.0b: Enhance `EpisodeDetailEntry` for Relationships** (Est: 1 hour)
+  - [x] Added `anime_id` on the `Episode` model (implemented in `libs/common/src/common/models/anime.py`)
+  - [x] Documented as foreign key for linking episodes to parent anime
   - [ ] Plan for `anime_id` to be included in Qdrant payload for episode points (when `Sub-Phase 3.9` is implemented).
 
-- [ ] **2.5.0c: Enhance `CharacterEntry` for Relationships** (Est: 1 hour)
-  - [ ] Add `anime_ids: List[str]` field to `CharacterEntry` Pydantic model.
-  - [ ] Document purpose: model many-to-many relationship (character appearing in multiple anime), enabling future separate character collection and efficient queries/filtering.
+- [x] **2.5.0c: Enhance `CharacterEntry` for Relationships** (Est: 1 hour)
+  - [x] Added `anime_ids` on the `Character` model (implemented in `libs/common/src/common/models/anime.py`)
+  - [x] Documented many-to-many relationship (character appearing in multiple anime)
   - [ ] Plan for `anime_ids` to be included in Qdrant payload for character points (when separate character collection is implemented).
+
+- [x] **2.5.0d: Introduce `AnimeRecord` Aggregate Model** (Est: 1 hour)
+  - [x] Added `AnimeRecord` container with `anime`, `characters`, and `episodes`
+  - [x] Updated embedding pipeline to consume AnimeRecord and emit anime/character/episode points
 
 **Sub-Phase 2.5.1: Collection Configuration Foundation** (Rollback-Safe: settings only) - ✅ COMPLETED
 
@@ -259,7 +269,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [x] Added validation methods and vector type mapping utilities
   - [x] Separated character images from general images for semantic precision
 
-#### 📊 14-Vector Architecture Reference (Complete Field Mapping)
+#### 📊 14-Vector Architecture Reference (Complete Field Mapping, Historical)
 
 **Text Vectors (BGE-M3, 1024-dim each):**
 
@@ -416,27 +426,25 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 - **Memory Usage**: ~8GB RAM during search operations
 - **Semantic Coverage**: 100% of enriched dataset fields searchable
 
-### 🔄 Phase 3: Semantic Quality Validation - IN PROGRESS (CURRENT PRIORITY: 14-Vector System Validation)
+### 🔄 Phase 3: Semantic Quality Validation - IN PROGRESS (CURRENT PRIORITY: 2-Vector System Validation)
 
 **Rationale**: Validate semantic search quality across all 14 vectors and establish comprehensive validation framework. Phase 3.0 Genre Enhancement infrastructure completed but postponed due to insufficient training data.
 
-#### 🔄 **Sub-Phase 3.1: 14-Vector System Validation** - CURRENT FOCUS (Est: 4 hours)
+#### 🔄 **Sub-Phase 3.1: 2-Vector System Validation** - CURRENT FOCUS (Est: 4 hours)
 
-**Priority**: Validate that default BGE-M3 vector system is working correctly across all 14 vectors before further optimization.
+**Priority**: Validate that the current 2-vector system (text + image) is working correctly across anime, character, and episode points before further optimization.
+
+- [x] **3.1.0: 14/13-Vector Validation Plan** (Superseded)
+  - [x] Superseded by 2-vector architecture (text_vector + image_vector)
 
 - [ ] **3.1.1: Per-Vector Search Quality Testing** (Est: 2 hours) - CURRENT TASK
-  - [ ] Test each of 14 vectors individually with domain-specific queries
-  - [ ] Validate title_vector: "Studio Ghibli" → Ghibli films in top results
-  - [ ] Validate character_vector: "ninja characters" → anime with ninja characters
-  - [ ] Validate genre_vector: "shounen action" → shounen action anime (standard BGE-M3)
-  - [ ] Test all 12 text vectors + 2 image vectors with representative queries
+  - [ ] Test text_vector with domain-specific queries (e.g., "Studio Ghibli")
+  - [ ] Test image_vector against anime images (covers/posters) and character images
+  - [ ] Validate anime vs character image separation using payload filters
 
 - [ ] **3.1.2: Multi-Vector Fusion Validation** (Est: 2 hours)
-  - [ ] Test search_complete() with complex multi-vector queries
-  - [ ] Validate RRF fusion improves results vs single vectors
-  - [ ] Test search_text_comprehensive() (12 text vectors)
-  - [ ] Test search_visual_comprehensive() (2 image vectors)
-  - [ ] Verify vector selection logic and weighting effectiveness
+  - [ ] Validate combined text+image searches on the 2-vector architecture
+  - [ ] Compare text-only vs image-only vs combined results for key queries
 
 #### ✅ **Sub-Phase 3.2: Genre Enhancement Implementation** - COMPLETED BUT POSTPONED (100% Infrastructure)
 
@@ -553,8 +561,8 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 **Sub-Phase 3.4.1: Data Quality Assurance Framework** (Est: 6 hours)
 
-- [ ] **3.4.1a: AnimeEntry Schema Validation** (Est: 2 hours)
-  - [ ] Implement comprehensive validation for all 65+ AnimeEntry fields
+- [ ] **3.4.1a: Anime/AnimeRecord Schema Validation** (Est: 2 hours)
+  - [ ] Implement comprehensive validation for Anime + AnimeRecord fields (anime, characters, episodes)
   - [ ] Add data completeness scoring (required vs optional fields)
   - [ ] Create data quality metrics dashboard (missing fields, invalid formats)
   - [ ] Set up automated data quality regression testing
@@ -613,9 +621,9 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
   - [ ] Create positive/negative similarity distribution analysis
   - [ ] Set up automated consistency monitoring
 
-- [ ] **3.5.2c: Character vs General Image Vector Validation** (Est: 2 hours)
-  - [ ] Validate character_image_vector vs image_vector separation logic
-  - [ ] Test character image clustering vs general image clustering
+- [ ] **3.5.2c: Character vs Anime Image Separation Validation** (Est: 2 hours)
+  - [ ] Validate character vs anime image separation within the shared image_vector
+  - [ ] Test character image clustering vs anime image clustering
   - [ ] Implement cross-validation for character identification accuracy
   - [ ] Add character-specific visual consistency checks
 
@@ -796,7 +804,7 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 ### 📋 Phase 4: Sparse Vector Integration - PLANNED (Extend Existing Collection + Static→Learnable Evolution)
 
-**Architecture Decision**: Extend existing 13-vector collection with sparse vectors for unified search capabilities.
+**Architecture Decision**: Extend existing 2-vector collection with sparse vectors for unified search capabilities.
 **Weight Strategy**: Start with static information-theoretic weights, evolve to learnable weights from API usage patterns.
 **Episode Integration**: Apply sparse vectors to both anime collection and episode collection independently.
 
@@ -1603,9 +1611,9 @@ and identify areas for optimization.
 - ✅ **FastAPI Application**: Stable async service with proper lifecycle management
 - ✅ **Vector Database**: Qdrant integration with multi-vector collections (38,894+ anime entries from MCP server)
 - ✅ **Text Search**: BGE-M3 semantic search (~80ms response time, upgraded from BGE-small-en-v1.5)
-- ✅ **Image Search**: JinaCLIP v2 visual search (~250ms response time, upgraded from CLIP ViT-B/32)
+- ✅ **Image Search**: OpenCLIP visual search (~250ms response time, upgraded from CLIP ViT-B/32)
 - ✅ **Multimodal Search**: Combined text+image search (~350ms response time)
-- ✅ **Modern Embedding Architecture**: Support for multiple providers (CLIP, SigLIP, JinaCLIP v2)
+- ✅ **Modern Embedding Architecture**: Support for multiple providers (CLIP, SigLIP, OpenCLIP)
 
 ### API Endpoints
 
@@ -1637,19 +1645,19 @@ and identify areas for optimization.
 ### Immediate (This Sprint)
 
 1. **Redis Caching Layer**
-   - Query result caching with configurable TTL
-   - Cache invalidation strategies
+   - ✅ Query result caching with configurable TTL (implemented as result-level caching for crawler outputs)
+   - ✅ Cache invalidation strategies (schema-hash-based cache keys)
    - Performance impact measurement
 
 2. **Model Loading Optimization**
-   - Configurable model warm-up option
+   - ✅ Configurable model warm-up option
    - Memory sharing between requests
    - Cold start performance improvement
 
 3. **Vector Database Optimizations** (from MCP server learnings)
    - GPU acceleration implementation
-   - Advanced quantization (Binary/Scalar/Product)
-   - HNSW parameter tuning (ef_construct, M parameters)
+   - ✅ Advanced quantization (Binary/Scalar/Product)
+   - ✅ HNSW parameter tuning (ef_construct, M parameters)
    - Hybrid search API optimization
 
 4. **API Documentation Completion**
@@ -1808,15 +1816,15 @@ and identify areas for optimization.
 
 - **Current Proven**: 38,894+ anime entries in MCP server
 - **Target Scale**: 1M+ anime entries with optimized architecture
-- **Vector Efficiency**: 13-vector architecture with priority-based optimization
-- **Model Accuracy**: JinaCLIP v2 + BGE-M3 state-of-the-art performance
+- **Vector Efficiency**: 2-vector architecture (text + image) with multivector image storage
+- **Model Accuracy**: OpenCLIP + BGE-M3 state-of-the-art performance
 
 #### **Performance Validation Benchmarks**
 
 - **Single Collection Design**: Data locality benefits proven at scale
 - **Quantization Effectiveness**: 75% memory reduction with maintained accuracy
 - **HNSW Optimization**: Anime-specific parameters for optimal similarity matching
-- **Multi-Vector Coordination**: Efficient search across 13 semantic vector types
+- **Multi-Vector Coordination**: Efficient search across text and image vectors
 
 ## Next Phase Preparation
 
@@ -1863,7 +1871,7 @@ and identify areas for optimization.
 
 ## 📋 Phase 2.6: LangGraph Smart Query Integration - TENTATIVE (NEW)
 
-**Purpose**: Add intelligent LLM-powered query routing to enhance search capabilities without modifying existing 13-vector architecture.
+**Purpose**: Add intelligent LLM-powered query routing to enhance search capabilities without modifying existing 2-vector architecture.
 
 ### **Sub-Phase 2.6.1: Core LangGraph Infrastructure** (Rollback-Safe: new modules only)
 
@@ -1912,7 +1920,7 @@ and identify areas for optimization.
   - [ ] Test intent detection accuracy with sample queries
 
 - [ ] **2.6.2a.2: Vector Selection Intelligence** (Est: 2 hours)
-  - [ ] Design LLM prompt for intelligent vector selection from 14 vectors
+  - [ ] Design LLM prompt for intelligent vector selection from 2 vectors
   - [ ] Create vector description context for LLM decision-making
   - [ ] Add vector weight assignment logic
   - [ ] Test vector selection relevance with domain-specific queries

@@ -62,21 +62,17 @@ def settings() -> Settings:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def text_processor(
-    settings: Settings, field_mapper: AnimeFieldMapper
-) -> TextProcessor:
+async def text_processor(settings: Settings) -> TextProcessor:
     """Create TextProcessor for tests."""
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
     # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings)
-    return TextProcessor(model=text_model, field_mapper=field_mapper, settings=settings)
+    return TextProcessor(model=text_model, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")
-async def vision_processor(
-    settings: Settings, field_mapper: AnimeFieldMapper
-) -> VisionProcessor:
+async def vision_processor(settings: Settings) -> VisionProcessor:
     """Create VisionProcessor for tests."""
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.utils.image_downloader import ImageDownloader
@@ -87,7 +83,6 @@ async def vision_processor(
     return VisionProcessor(
         model=vision_model,
         downloader=downloader,
-        field_mapper=field_mapper,
         settings=settings,
     )
 

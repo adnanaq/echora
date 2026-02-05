@@ -50,7 +50,7 @@ uv run pytest test_filename.py
 uv run pytest --cov=src
 
 # Type checking (MANDATORY before commits)
-ty check scripts/ libs/ apps/
+uv run ty check scripts/ libs/ apps/
 
 # Code formatting
 uv run ruff format src/
@@ -73,10 +73,10 @@ uv run ruff check --select I --fix src/
 
 ```bash
 # Check all source files with type checking
-ty check scripts/ libs/ apps/
+uv run ty check scripts/ libs/ apps/
 
 # Check specific library
-ty check libs/http_cache/
+uv run ty check libs/http_cache/
 
 # Format and lint code
 uv run ruff format src/
@@ -327,9 +327,8 @@ uv run python scripts/reindex_anime_database.py
 
 The service uses a single Qdrant collection with named vectors:
 
-- `text`: 1024-dimensional BGE-M3 embeddings for semantic search
+- `text_vector`: 1024-dimensional BGE-M3 embeddings for semantic search
 - `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for cover art, posters, banners
-- `character_image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for character images
 
 This design enables efficient multimodal search while maintaining data locality and reducing storage overhead.
 

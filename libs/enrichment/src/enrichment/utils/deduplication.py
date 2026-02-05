@@ -7,7 +7,6 @@ deduplication using embedding models with dependency injection.
 
 import logging
 from collections import defaultdict
-from typing import Any
 
 from sklearn.metrics.pairwise import cosine_similarity
 from vector_processing.embedding_models.text.base import TextEmbeddingModel
@@ -267,15 +266,11 @@ def deduplicate_synonyms_language_aware(
                         deduped_lang_values.append(value)
                         deduped_embeddings.append(embedding)
                     else:
-                        logger.debug(
-                            f"Removing duplicate within {lang}: '{value}'"
-                        )
+                        logger.debug(f"Removing duplicate within {lang}: '{value}'")
 
         except (RuntimeError, ValueError, OSError, MemoryError, TypeError) as e:
             # Catch common ML library exceptions: model execution, invalid inputs, device/memory issues
-            logger.warning(
-                f"Error batch processing language '{lang}': {e}"
-            )
+            logger.warning(f"Error batch processing language '{lang}': {e}")
             # Fallback: add all values using normalized comparison
             seen_normalized = set()
             for value in lang_values:

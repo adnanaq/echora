@@ -1,6 +1,7 @@
 import hashlib
 import io
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,63 +25,68 @@ class ImageDownloader:
         )
         self.image_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    async def download_and_cache_image(self, image_url: str) -> str | None:
+    async def download_and_cache_image(
+        self, image_url: str, session: aiohttp.ClientSession
+    ) -> str | None:
         """Download image from URL and cache locally.
 
         Args:
             image_url: URL of the image to download
+            session: aiohttp session to use (prevents connection proliferation)
 
         Returns:
             Path to cached image file or None if download fails
         """
         try:
             # Generate cache key from URL
-            cache_key = hashlib.md5(image_url.encode()).hexdigest()
+            cache_key = hashlib.blake2b(image_url.encode(), digest_size=16).hexdigest()
             cache_file = self.image_cache_dir / f"{cache_key}.jpg"
 
             # Check if already cached
             if cache_file.exists():
                 return str(cache_file.absolute())
 
-            # Download image
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    image_url,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    },
-                ) as response:
-                    if response.status == 200:
-                        image_bytes = await response.read()
+            # Download image using provided session
+            response = await session.get(
+                image_url,
+                timeout=aiohttp.ClientTimeout(total=10),
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
+            )
+            try:
+                if response.status == 200:
+                    image_bytes = await response.read()
 
-                        # Validate image
-                        try:
-                            image: Image.Image = Image.open(io.BytesIO(image_bytes))
+                    # Validate image
+                    try:
+                        image: Image.Image = Image.open(io.BytesIO(image_bytes))
 
-                            if image.mode != "RGB":
-                                image = image.convert("RGB")
+                        if image.mode != "RGB":
+                            image = image.convert("RGB")
 
-                            # Cache image
-                            image.save(cache_file, "JPEG", quality=85)
+                        # Cache image
+                        image.save(cache_file, "JPEG", quality=85)
 
-                            # Return path
-                            return str(cache_file.absolute())
+                        # Return path
+                        return str(cache_file.absolute())
 
-                        except Exception as e:
-                            logger.error(f"Invalid image data from {image_url}: {e}")
-                            return None
-                    else:
-                        logger.warning(
-                            f"Failed to download image {image_url}: status {response.status}"
-                        )
+                    except Exception:
+                        logger.exception(f"Invalid image data from {image_url}")
                         return None
+                else:
+                    logger.warning(
+                        f"Failed to download image {image_url}: status {response.status}"
+                    )
+                    return None
+            finally:
+                response.close()
 
         except TimeoutError:
-            logger.error(f"Timeout downloading image from {image_url}")
+            logger.exception(f"Timeout downloading image from {image_url}")
             return None
-        except Exception as e:
-            logger.error(f"Error downloading image from {image_url}: {e}")
+        except Exception:
+            logger.exception(f"Error downloading image from {image_url}")
             return None
 
     def get_cache_stats(self) -> dict[str, Any]:
@@ -100,7 +106,7 @@ class ImageDownloader:
                 "cache_enabled": True,
             }
         except Exception as e:
-            logger.error(f"Error getting cache stats: {e}")
+            logger.exception("Error getting cache stats")
             return {"cache_enabled": False, "error": str(e)}
 
     def clear_cache(self, max_age_days: int | None = None) -> dict[str, Any]:
@@ -113,8 +119,6 @@ class ImageDownloader:
             Dictionary with cleanup statistics
         """
         try:
-            import time
-
             cache_files = list(self.image_cache_dir.glob("*.jpg"))
             removed_count = 0
             total_removed_size = 0
@@ -139,5 +143,5 @@ class ImageDownloader:
             }
 
         except Exception as e:
-            logger.error(f"Error clearing cache: {e}")
+            logger.exception("Error clearing cache")
             return {"error": str(e)}
