@@ -127,9 +127,6 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# Pyre type checker
-.pyre/
-
 # Vector Service Specific
 # ------------------------
 
@@ -140,18 +137,8 @@ model_cache/
 *.model
 *.bin
 
-# Vector database storage (except sample data)
-data/qdrant_storage/*
-!data/qdrant_storage/enriched_anime_database.json
-!data/qdrant_storage/BUILD
-data/processed/
-data/cache/
-data/temp/
-data/logs/
-
-# Keep sample/example data
-!data/sample/
-!data/examples/
+# Vector database storage
+data/
 
 # Fine-tuning data and models
 data/anime_fine_tuning_data.json
@@ -189,7 +176,6 @@ ehthumbs.db
 Thumbs.db
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # Temporary files
@@ -212,8 +198,6 @@ service.pid
 
 # Enrichment process temp files
 temp/
-current_anime*.json
-data/current_anime*.json
 
 # AI processing temporary files
 stage*_*.json
@@ -233,9 +217,7 @@ _bmad-output/
 .codex/
 .agent/
 .mcp.json
-.claude/audio/
 .claude/commands/agent-vibes/
 .claude/commands/bmad/
 .claude/config/
 .claude/hooks/
-.claude/personalities/
