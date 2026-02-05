@@ -4,20 +4,11 @@ A production-ready semantic search microservice for anime content using a multi-
 
 ## Features
 
-- **Multi-Vector Semantic Architecture**: Comprehensive anime understanding through text and image vectors
-- **Advanced Text Search**: BGE-M3 embeddings (1024-dim) across multiple semantic domains
-- **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for cover art and character similarity
-- **Character-Focused Search**: Specialized character vector + character image vector search
-- **Multi-Vector Fusion**: Native Qdrant RRF/DBSF fusion for optimal search results
+- **Unified Multi-Vector Architecture**: High-performance semantic search using text and image vectors
+- **Advanced Text Search**: BGE-M3 embeddings (1024-dim) for cross-platform semantic matching
+- **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for multi-source image similarity
+- **Multi-Vector Fusion**: Native Qdrant RRF/DBSF fusion for optimal hybrid results
 - **Modular Monorepo**: Clean separation of concerns with Pants build system
-- **Production Ready**: Health checks, monitoring, comprehensive test suite
-
-## Project Stats
-
-- **Lines of Code**: ~102k LOC
-- **Files**: 180 Python files
-- **Test Coverage**: 50%+ with unit and integration tests
-- **Libraries**: 3 core libraries (`common`, `qdrant_db`, `vector_processing`)
 
 ## Monorepo Structure
 
@@ -258,8 +249,9 @@ ty check scripts/ libs/ apps/
 
 Shared models and configuration used across all libraries and the main application.
 
-- **Models**: `AnimeEntry` and related data structures
+- **Models**: `Anime`, `Character`, `Episode`, and `AnimeRecord` Pydantic models
 - **Config**: Settings management with pydantic-settings
+- **Utils**: ID generation and datetime utilities
 
 ### `libs/qdrant_db`
 
@@ -422,22 +414,13 @@ pip install -e ".[dev]"
 
 ### Vector Architecture
 
-**Text Vectors**:
+The service uses a unified multi-vector architecture optimized for million-query scale:
 
-1. `title_vector` - Title, synopsis, background
-2. `character_vector` - Character descriptions and roles
-3. `genre_vector` - Genres and themes
-4. `staff_vector` - Staff and production information
-5. `temporal_vector` - Airing dates and season
-6. `streaming_vector` - Streaming platforms
-7. `related_vector` - Related anime and adaptations
-8. `franchise_vector` - Franchise information
-9. `episode_vector` - Episode summaries (hierarchical averaging)
+**Text Vectors**:
+- `text_vector`: 1024-dimensional BGE-M3 embeddings covering titles, synopses, and metadata across all entity types (Anime, Characters, Episodes).
 
 **Image Vectors**:
-
-1. `image_vector` - Cover art similarity
-2. `character_image_vector` - Character visual similarity
+- `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
 
 ### Technology Stack
 
@@ -460,10 +443,6 @@ pip install -e ".[dev]"
 4. Run tests: `./pants test ::`
 5. Format code: `./pants fmt ::`
 6. Submit PR
-
-## License
-
-[Add your license here]
 
 ## Related Documentation
 

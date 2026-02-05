@@ -355,7 +355,6 @@ class TestEncodeImagesBatch:
     ):
         """Test that all images are downloaded concurrently, not sequentially."""
         import asyncio
-        from unittest.mock import call
 
         mock_downloader = AsyncMock()
 
@@ -627,13 +626,12 @@ class TestEncodeImagesBatch:
             ]
         )
 
-
     @pytest.mark.asyncio
     async def test_limits_concurrent_downloads_with_semaphore(
         self, mock_vision_model, mock_settings
     ):
         """Test that concurrent downloads are limited by semaphore to prevent resource exhaustion.
-        
+
         This test verifies the fix for unbounded concurrency issue where all downloads
         ran simultaneously, causing potential resource exhaustion with large batches.
         """
@@ -677,7 +675,7 @@ class TestEncodeImagesBatch:
         self, mock_vision_model, mock_settings
     ):
         """Test that ImageDownloader uses a shared session instead of creating new ones.
-        
+
         This test verifies the fix for session proliferation where each download
         created its own ClientSession (1:1 ratio).
         """
@@ -767,7 +765,7 @@ class TestRetryLogic:
             attempt_count += 1
             attempt_times.append(asyncio.get_event_loop().time())
             if attempt_count < 3:  # Fail first 2 attempts, succeed on 3rd
-                raise RuntimeError("Transient network error")
+                raise RuntimeError("Transient network error")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image = AsyncMock(
@@ -851,10 +849,11 @@ class TestMetricsLogging:
         self, mock_vision_model, mock_downloader, mock_settings, caplog
     ):
         """Test that batch download success rates are logged."""
+
         # 7 successful, 3 failed
         async def selective_download(url, session=None):  # noqa: ARG001
             if "fail" in url:
-                raise RuntimeError("Download failed")
+                raise RuntimeError("Download failed")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image = AsyncMock(
