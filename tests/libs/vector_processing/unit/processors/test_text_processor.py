@@ -6,6 +6,7 @@ batch processing, and edge cases.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from vector_processing.processors.text_processor import TextProcessor
 
 # Fixtures mock_text_model and mock_settings are provided by conftest.py
@@ -45,47 +46,54 @@ class TestTextProcessorInit:
 class TestEncodeText:
     """Tests for encode_text method."""
 
-    def test_encode_text_success(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_text_success(self, mock_text_model, mock_settings):
         """Test successful text encoding."""
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_text("Hello world")
+        result = await processor.encode_text("Hello world")
 
         assert result == [0.1] * 1024
         mock_text_model.encode.assert_called_once_with(["Hello world"])
 
-    def test_encode_text_empty_string_returns_zero_embedding(
+    @pytest.mark.asyncio
+    async def test_encode_text_empty_string_returns_zero_embedding(
         self, mock_text_model, mock_settings
     ):
         """Test empty string returns zero embedding."""
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_text("")
+        result = await processor.encode_text("")
 
         assert result == [0.0] * 1024
         mock_text_model.encode.assert_not_called()
 
-    def test_encode_text_whitespace_only_returns_zero_embedding(
+    @pytest.mark.asyncio
+    async def test_encode_text_whitespace_only_returns_zero_embedding(
         self, mock_text_model, mock_settings
     ):
         """Test whitespace-only string returns zero embedding."""
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_text("   \t\n  ")
+        result = await processor.encode_text("   \t\n  ")
 
         assert result == [0.0] * 1024
         mock_text_model.encode.assert_not_called()
 
-    def test_encode_text_model_returns_empty_list(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_text_model_returns_empty_list(
+        self, mock_text_model, mock_settings
+    ):
         """Test when model returns empty list."""
         mock_text_model.encode.return_value = []
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_text("Hello")
+        result = await processor.encode_text("Hello")
 
         assert result is None
 
-    def test_encode_text_model_raises_exception(
+    @pytest.mark.asyncio
+    async def test_encode_text_model_raises_exception(
         self, mock_text_model, mock_settings, caplog
     ):
         """Test when model raises exception."""
@@ -93,7 +101,7 @@ class TestEncodeText:
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
         with caplog.at_level("ERROR"):
-            result = processor.encode_text("Hello")
+            result = await processor.encode_text("Hello")
 
         assert result is None
         assert "Text encoding failed" in caplog.text
@@ -102,7 +110,8 @@ class TestEncodeText:
 class TestEncodeTextsBatch:
     """Tests for encode_texts_batch method."""
 
-    def test_encode_texts_batch_success(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_success(self, mock_text_model, mock_settings):
         """Test successful batch encoding."""
         mock_text_model.encode.return_value = [
             [0.1] * 1024,
@@ -111,7 +120,7 @@ class TestEncodeTextsBatch:
         ]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["text1", "text2", "text3"])
+        result = await processor.encode_texts_batch(["text1", "text2", "text3"])
 
         assert len(result) == 3
         assert result[0] == [0.1] * 1024
@@ -119,16 +128,18 @@ class TestEncodeTextsBatch:
         assert result[2] == [0.3] * 1024
         mock_text_model.encode.assert_called_once_with(["text1", "text2", "text3"])
 
-    def test_encode_texts_batch_empty_list(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_empty_list(self, mock_text_model, mock_settings):
         """Test batch encoding with empty list."""
         mock_text_model.encode.return_value = []
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch([])
+        result = await processor.encode_texts_batch([])
 
         assert result == []
 
-    def test_encode_texts_batch_model_raises_exception(
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_model_raises_exception(
         self, mock_text_model, mock_settings, caplog
     ):
         """Test when model raises exception during batch encoding."""
@@ -136,12 +147,15 @@ class TestEncodeTextsBatch:
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
         with caplog.at_level("ERROR"):
-            result = processor.encode_texts_batch(["text1", "text2"])
+            result = await processor.encode_texts_batch(["text1", "text2"])
 
         assert result == [None, None]
         assert "Batch text encoding failed" in caplog.text
 
-    def test_encode_texts_batch_with_empty_strings(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_with_empty_strings(
+        self, mock_text_model, mock_settings
+    ):
         """Test batch encoding filters out empty strings and returns zero vectors."""
         # Model should only receive non-empty texts
         mock_text_model.encode.return_value = [
@@ -149,7 +163,7 @@ class TestEncodeTextsBatch:
         ]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["", "valid text", ""])
+        result = await processor.encode_texts_batch(["", "valid text", ""])
 
         assert len(result) == 3
         assert result[0] == [0.0] * 1024  # Empty string -> zero vector
@@ -158,7 +172,8 @@ class TestEncodeTextsBatch:
         # Model should only be called with valid text
         mock_text_model.encode.assert_called_once_with(["valid text"])
 
-    def test_encode_texts_batch_with_whitespace_strings(
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_with_whitespace_strings(
         self, mock_text_model, mock_settings
     ):
         """Test batch encoding filters out whitespace-only strings."""
@@ -167,7 +182,7 @@ class TestEncodeTextsBatch:
         ]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["   \t\n  ", "real content", "  "])
+        result = await processor.encode_texts_batch(["   \t\n  ", "real content", "  "])
 
         assert len(result) == 3
         assert result[0] == [0.0] * 1024  # Whitespace -> zero vector
@@ -175,18 +190,22 @@ class TestEncodeTextsBatch:
         assert result[2] == [0.0] * 1024  # Whitespace -> zero vector
         mock_text_model.encode.assert_called_once_with(["real content"])
 
-    def test_encode_texts_batch_all_empty(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_all_empty(self, mock_text_model, mock_settings):
         """Test batch encoding when all inputs are empty/whitespace."""
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["", "   ", "\t\n"])
+        result = await processor.encode_texts_batch(["", "   ", "\t\n"])
 
         assert len(result) == 3
         assert all(vec == [0.0] * 1024 for vec in result)
         # Model should not be called at all
         mock_text_model.encode.assert_not_called()
 
-    def test_encode_texts_batch_mixed_content(self, mock_text_model, mock_settings):
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_mixed_content(
+        self, mock_text_model, mock_settings
+    ):
         """Test batch encoding with realistic mixed content."""
         mock_text_model.encode.return_value = [
             [0.1] * 1024,  # "Action anime"
@@ -195,13 +214,15 @@ class TestEncodeTextsBatch:
         ]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch([
-            "Action anime",
-            "",
-            "Character development",
-            "  \t  ",
-            "Epic finale",
-        ])
+        result = await processor.encode_texts_batch(
+            [
+                "Action anime",
+                "",
+                "Character development",
+                "  \t  ",
+                "Epic finale",
+            ]
+        )
 
         assert len(result) == 5
         assert result[0] == [0.1] * 1024
@@ -209,13 +230,16 @@ class TestEncodeTextsBatch:
         assert result[2] == [0.2] * 1024
         assert result[3] == [0.0] * 1024
         assert result[4] == [0.3] * 1024
-        mock_text_model.encode.assert_called_once_with([
-            "Action anime",
-            "Character development",
-            "Epic finale",
-        ])
+        mock_text_model.encode.assert_called_once_with(
+            [
+                "Action anime",
+                "Character development",
+                "Epic finale",
+            ]
+        )
 
-    def test_encode_texts_batch_zero_vectors_are_independent(
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_zero_vectors_are_independent(
         self, mock_text_model, mock_settings
     ):
         """Test that zero vectors are independent copies, not the same object.
@@ -226,7 +250,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.return_value = [[0.1] * 1024]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["", "valid", "", ""])
+        result = await processor.encode_texts_batch(["", "valid", "", ""])
 
         # All empty positions should have zero vectors
         assert result[0] == [0.0] * 1024
@@ -238,12 +262,16 @@ class TestEncodeTextsBatch:
         assert id(result[0]) != id(result[3])
         assert id(result[2]) != id(result[3])
 
-        # Verify mutation isolation
+        # Verify mutation isolation (narrow types — these are known zero vectors)
+        assert result[0] is not None
+        assert result[2] is not None
+        assert result[3] is not None
         result[0][0] = 999.0
         assert result[2][0] == 0.0  # Should NOT be affected
         assert result[3][0] == 0.0  # Should NOT be affected
 
-    def test_encode_texts_batch_all_empty_produces_independent_vectors(
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_all_empty_produces_independent_vectors(
         self, mock_text_model, mock_settings
     ):
         """Test all-empty case produces independent zero vectors.
@@ -252,7 +280,7 @@ class TestEncodeTextsBatch:
         """
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(["", "", "", ""])
+        result = await processor.encode_texts_batch(["", "", "", ""])
 
         # All should be zero vectors
         assert all(vec == [0.0] * 1024 for vec in result)
@@ -262,16 +290,21 @@ class TestEncodeTextsBatch:
         assert id(result[0]) != id(result[2])
         assert id(result[0]) != id(result[3])
 
-        # Verify mutation isolation
+        # Verify mutation isolation (narrow types — these are known zero vectors)
+        assert result[0] is not None
+        assert result[1] is not None
+        assert result[2] is not None
+        assert result[3] is not None
         result[0][0] = 999.0
         assert result[1][0] == 0.0
         assert result[2][0] == 0.0
         assert result[3][0] == 0.0
 
-    def test_encode_texts_batch_large_batch_correctness(
+    @pytest.mark.asyncio
+    async def test_encode_texts_batch_large_batch_correctness(
         self, mock_text_model, mock_settings
     ):
-        """Test correctness with large batch (regression test for O(n²) complexity).
+        """Test correctness with large batch (regression test for O(n^2) complexity).
 
         While we can't easily test performance in a unit test, we verify that
         the set-based lookup produces correct results with large batches.
@@ -286,17 +319,19 @@ class TestEncodeTextsBatch:
         ]
         processor = TextProcessor(model=mock_text_model, settings=mock_settings)
 
-        result = processor.encode_texts_batch(texts)
+        result = await processor.encode_texts_batch(texts)
 
         # Verify length
         assert len(result) == size
 
         # Verify alternating pattern: even indices have embeddings, odd have zeros
         for i in range(size):
+            vec = result[i]
+            assert vec is not None
             if i % 2 == 0:  # Valid text
-                assert result[i][0] == float(i // 2)
+                assert vec[0] == float(i // 2)
             else:  # Empty string
-                assert result[i] == [0.0] * 1024
+                assert vec == [0.0] * 1024
 
 
 class TestGetZeroEmbedding:

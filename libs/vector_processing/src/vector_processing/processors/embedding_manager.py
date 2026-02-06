@@ -153,7 +153,7 @@ class MultiVectorEmbeddingManager:
         # 2. Generate Text Vector
         embeddings: dict[str, list[float] | list[list[float]]] = {}
 
-        text_vec = self.text_processor.encode_text(full_text)
+        text_vec = await self.text_processor.encode_text(full_text)
         if text_vec:
             embeddings["text_vector"] = text_vec
         else:
@@ -205,7 +205,7 @@ class MultiVectorEmbeddingManager:
             valid_characters.append(char)
 
         # Batch Embed text
-        embeddings_batch = self.text_processor.encode_texts_batch(texts_to_embed)
+        embeddings_batch = await self.text_processor.encode_texts_batch(texts_to_embed)
 
         for i, char in enumerate(valid_characters):
             text_embedding = embeddings_batch[i]
@@ -273,7 +273,7 @@ class MultiVectorEmbeddingManager:
             valid_episodes.append(ep)
 
         # Batch Embed
-        embeddings_batch = self.text_processor.encode_texts_batch(texts_to_embed)
+        embeddings_batch = await self.text_processor.encode_texts_batch(texts_to_embed)
 
         for i, ep in enumerate(valid_episodes):
             embedding = embeddings_batch[i]
