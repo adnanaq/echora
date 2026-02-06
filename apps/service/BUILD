@@ -12,7 +12,7 @@ python_sources(
 
 pex_binary(
     name="service",
-    entry_point="service.main:app",
+    entry_point="service.main",
     dependencies=[
         ":lib",
     ],

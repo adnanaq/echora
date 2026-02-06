@@ -30,7 +30,7 @@ COPY README.md .
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV APP_ENV=development
+ENV ENVIRONMENT=development
 
 # Expose port for dev server
 EXPOSE 8002

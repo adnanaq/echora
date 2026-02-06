@@ -33,7 +33,7 @@ class SentenceTransformerModel(TextEmbeddingModel):
             logger.info(f"Initialized Sentence Transformers model: {model_name}")
 
         except ImportError as e:
-            logger.error(
+            logger.exception(
                 "Sentence Transformers not installed. Install with: pip install sentence-transformers"
             )
             raise ImportError("Sentence Transformers dependencies missing") from e
@@ -56,7 +56,7 @@ class SentenceTransformerModel(TextEmbeddingModel):
             return cast(list[list[float]], embeddings.tolist())
 
         except Exception as e:
-            logger.error(f"Sentence Transformers encoding failed: {e}")
+            logger.exception(f"Sentence Transformers encoding failed: {e}")
             raise
 
     @property

@@ -3,10 +3,9 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from crawl4ai import CrawlResult
-
 from common.models.anime import AnimeSeason
 from common.utils.datetime_utils import determine_anime_season
+from crawl4ai import CrawlResult
 from enrichment.crawlers.anime_planet_anime_crawler import (
     _extract_json_ld,
     _extract_rank,

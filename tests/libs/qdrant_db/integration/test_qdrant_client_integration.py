@@ -1064,7 +1064,7 @@ async def test_update_batch_anime_vectors_all_vectors(
 
     # Prepare updates for all generated vectors
     updates = []
-    for vector_name in settings.vector_names.keys():
+    for vector_name in settings.qdrant.vector_names.keys():
         if vectors.get(vector_name):
             # If it's a multivector (like image_vector), we take the first one for this test
             # as update_single_vector expects a single vector
@@ -2045,10 +2045,14 @@ async def test_non_existent_anime_ids(client: QdrantClient):
 
     # Qdrant's update_vectors accepts updates for non-existent points without error,
     # so our client reports all 3 as successful (no exception raised by Qdrant).
-    assert result["success"] == 3, "All updates should succeed (Qdrant doesn't reject non-existent IDs)"
+    assert result["success"] == 3, (
+        "All updates should succeed (Qdrant doesn't reject non-existent IDs)"
+    )
     assert result["failed"] == 0, "No updates should fail"
     assert len(result["results"]) == 3, "Should have one result per update"
-    assert all(r["success"] for r in result["results"]), "Each result should be marked successful"
+    assert all(r["success"] for r in result["results"]), (
+        "Each result should be marked successful"
+    )
 
 
 @pytest.mark.asyncio

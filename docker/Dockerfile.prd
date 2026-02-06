@@ -41,7 +41,7 @@ COPY --from=builder /app/README.md ./README.md
 ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONPATH=/app/apps/service/src:/app
 ENV PYTHONUNBUFFERED=1
-ENV APP_ENV=production
+ENV ENVIRONMENT=production
 
 # Expose port
 EXPOSE 8002

@@ -375,7 +375,7 @@ class AniDBEnrichmentHelper:
                     )
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.error(
+                    logger.exception(
                         f"Request failed after {self.max_retries + 1} attempts: {e}"
                     )
 
@@ -441,7 +441,7 @@ class AniDBEnrichmentHelper:
                             f"Decompressed content length: {len(content)} bytes"
                         )
                     except Exception as e:
-                        logger.error(f"Failed to decompress gzipped content: {e}")
+                        logger.exception(f"Failed to decompress gzipped content: {e}")
                         raise
 
                 # Decode content with multiple encoding fallbacks

@@ -109,7 +109,7 @@ def reorder_database(input_file: str, backup: bool = True) -> dict[str, Any]:
         with open(input_file, encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
-        logger.error(f"Failed to load database: {e}")
+        logger.exception(f"Failed to load database: {e}")
         return {"error": str(e)}
 
     if "data" not in data:
@@ -150,7 +150,7 @@ def reorder_database(input_file: str, backup: bool = True) -> dict[str, Any]:
             json.dump(data, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
         logger.info(f"Saved reordered database to: {input_file}")
     except Exception as e:
-        logger.error(f"Failed to save database: {e}")
+        logger.exception(f"Failed to save database: {e}")
         return {"error": f"Save failed: {e}"}
 
     return {

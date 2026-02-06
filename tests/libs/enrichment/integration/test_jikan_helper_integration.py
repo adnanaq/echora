@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 import redis
-
 from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 
 # Mark all tests in this module as integration tests

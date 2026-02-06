@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import Request
-from qdrant_db import QdrantClient
+from vector_db_interface import VectorDBClient
 from vector_processing import (
     MultiVectorEmbeddingManager,
     TextProcessor,
@@ -11,11 +11,11 @@ from vector_processing import (
 logger = logging.getLogger(__name__)
 
 
-async def get_qdrant_client(request: Request) -> QdrantClient:
+async def get_vector_db_client(request: Request) -> VectorDBClient:
     """
-    Dependency that provides a QdrantClient instance.
+    Dependency that provides a VectorDBClient instance.
 
-    The QdrantClient is initialized in the FastAPI lifespan event and stored
+    The vector DB client is initialized in the FastAPI lifespan event and stored
     in the app's state. This dependency retrieves it. No cleanup is needed
     here since the client lifecycle is managed by the lifespan context manager.
 
@@ -23,17 +23,17 @@ async def get_qdrant_client(request: Request) -> QdrantClient:
         request: FastAPI request object containing app state
 
     Returns:
-        Initialized QdrantClient instance
+        Initialized VectorDBClient instance
 
     Raises:
-        RuntimeError: If QdrantClient not available in app state
+        RuntimeError: If vector DB client not available in app state
     """
     if (
         not hasattr(request.app.state, "qdrant_client")
         or request.app.state.qdrant_client is None
     ):
-        logger.error("QdrantClient not initialized in app state.")
-        raise RuntimeError("QdrantClient not available.")
+        logger.error("Vector DB client not initialized in app state.")
+        raise RuntimeError("Vector DB client not available.")
     return request.app.state.qdrant_client
 
 

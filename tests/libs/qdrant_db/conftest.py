@@ -16,7 +16,7 @@ def settings():
     """Get test settings with test collection name."""
     settings = get_settings()
     # Override to use test collection for libs tests
-    settings.qdrant_collection_name = "anime_database_test"
+    settings.qdrant.qdrant_collection_name = "anime_database_test"
     return settings
 
 
@@ -30,19 +30,20 @@ async def client(settings):
     async_qdrant_client = None
     try:
         # Initialize AsyncQdrantClient from qdrant-client library
-        if settings.qdrant_api_key:
+        if settings.qdrant.qdrant_api_key:
             async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+                url=settings.qdrant.qdrant_url,
+                api_key=settings.qdrant.qdrant_api_key,
             )
         else:
-            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
         # Initialize our QdrantClient wrapper - NOTE: no embedding_manager parameter
         client = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
     except Exception as e:
         pytest.skip(f"Failed to create test collection: {e}")

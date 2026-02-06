@@ -24,33 +24,33 @@ class TestGetEnvironment:
     """Test environment detection function."""
 
     def test_raises_error_when_app_env_not_set(self):
-        """Test that missing APP_ENV raises ValueError for production safety."""
+        """Test that missing ENVIRONMENT raises ValueError for production safety."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
-                ValueError, match="APP_ENV environment variable must be set"
+                ValueError, match="ENVIRONMENT environment variable must be set"
             ):
                 get_environment()
 
     def test_detects_development(self):
-        with patch.dict(os.environ, {"APP_ENV": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             assert get_environment() == Environment.DEVELOPMENT
 
     def test_detects_production(self):
-        with patch.dict(os.environ, {"APP_ENV": "production"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             assert get_environment() == Environment.PRODUCTION
 
     def test_detects_staging(self):
-        with patch.dict(os.environ, {"APP_ENV": "staging"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging"}):
             assert get_environment() == Environment.STAGING
 
     def test_raises_error_for_invalid_value(self):
-        """Test that invalid APP_ENV values raise ValueError."""
-        with patch.dict(os.environ, {"APP_ENV": "invalid"}):
-            with pytest.raises(ValueError, match="Invalid APP_ENV value 'invalid'"):
+        """Test that invalid ENVIRONMENT values raise ValueError."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "invalid"}):
+            with pytest.raises(ValueError, match="Invalid ENVIRONMENT value 'invalid'"):
                 get_environment()
 
     def test_case_insensitive(self):
-        with patch.dict(os.environ, {"APP_ENV": "PRODUCTION"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "PRODUCTION"}):
             assert get_environment() == Environment.PRODUCTION
 
 
@@ -58,20 +58,20 @@ class TestSettingsEnvironmentField:
     """Test Settings.environment field."""
 
     def test_has_environment_field(self):
-        with patch.dict(os.environ, {"APP_ENV": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             settings = Settings()
             assert hasattr(settings, "environment")
 
     def test_requires_app_env_to_be_set(self):
-        """Test that Settings raises error when APP_ENV is not set."""
+        """Test that Settings raises error when ENVIRONMENT is not set anywhere."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
-                ValueError, match="APP_ENV environment variable must be set"
+                ValueError, match="ENVIRONMENT environment variable must be set"
             ):
-                Settings()
+                Settings(_env_file=None)
 
     def test_respects_app_env(self):
-        with patch.dict(os.environ, {"APP_ENV": "production"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             settings = Settings()
             assert settings.environment == Environment.PRODUCTION
 
@@ -80,37 +80,39 @@ class TestProductionSafety:
     """Test production safety enforcement."""
 
     def test_production_forces_debug_false(self):
-        with patch.dict(os.environ, {"APP_ENV": "production", "DEBUG": "true"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "DEBUG": "true"}):
             settings = Settings()
             assert settings.debug is False
 
     def test_production_forces_warning_log_level(self):
-        with patch.dict(os.environ, {"APP_ENV": "production", "LOG_LEVEL": "DEBUG"}):
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "production", "LOG_LEVEL": "DEBUG"}
+        ):
             settings = Settings()
-            assert settings.log_level == "WARNING"
+            assert settings.service.log_level == "WARNING"
 
     def test_production_enables_wal(self):
-        with patch.dict(os.environ, {"APP_ENV": "production"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             settings = Settings()
-            assert settings.qdrant_enable_wal is True
+            assert settings.qdrant.qdrant_enable_wal is True
 
     def test_production_enables_model_warmup(self):
-        with patch.dict(os.environ, {"APP_ENV": "production"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             settings = Settings()
-            assert settings.model_warm_up is True
+            assert settings.embedding.model_warm_up is True
 
     def test_staging_enables_debug(self):
-        with patch.dict(os.environ, {"APP_ENV": "staging"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=True):
             settings = Settings()
             assert settings.debug is True
-            assert settings.log_level == "INFO"
-            assert settings.qdrant_enable_wal is True
+            assert settings.service.log_level == "INFO"
+            assert settings.qdrant.qdrant_enable_wal is True
 
     def test_development_enables_debug(self):
-        with patch.dict(os.environ, {"APP_ENV": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
             settings = Settings()
             assert settings.debug is True
-            assert settings.log_level == "DEBUG"
+            assert settings.service.log_level == "DEBUG"
 
 
 class TestUserProvidedValues:
@@ -118,65 +120,71 @@ class TestUserProvidedValues:
 
     def test_development_respects_user_debug_false(self):
         """Development should respect user DEBUG=false."""
-        with patch.dict(os.environ, {"APP_ENV": "development", "DEBUG": "false"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development", "DEBUG": "false"}):
             settings = Settings()
             assert settings.debug is False
 
     def test_development_respects_user_log_level(self):
         """Development should respect user LOG_LEVEL=ERROR."""
-        with patch.dict(os.environ, {"APP_ENV": "development", "LOG_LEVEL": "ERROR"}):
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "development", "LOG_LEVEL": "ERROR"}
+        ):
             settings = Settings()
-            assert settings.log_level == "ERROR"
+            assert settings.service.log_level == "ERROR"
 
     def test_staging_respects_user_debug_false(self):
         """Staging should respect user DEBUG=false."""
-        with patch.dict(os.environ, {"APP_ENV": "staging", "DEBUG": "false"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging", "DEBUG": "false"}):
             settings = Settings()
             assert settings.debug is False
 
     def test_staging_respects_user_log_level(self):
         """Staging should respect user LOG_LEVEL=ERROR."""
-        with patch.dict(os.environ, {"APP_ENV": "staging", "LOG_LEVEL": "ERROR"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging", "LOG_LEVEL": "ERROR"}):
             settings = Settings()
-            assert settings.log_level == "ERROR"
+            assert settings.service.log_level == "ERROR"
 
     def test_staging_respects_user_wal_disabled(self):
         """Staging should respect user QDRANT_ENABLE_WAL=false."""
         with patch.dict(
-            os.environ, {"APP_ENV": "staging", "QDRANT_ENABLE_WAL": "false"}
+            os.environ, {"ENVIRONMENT": "staging", "QDRANT_ENABLE_WAL": "false"}
         ):
             settings = Settings()
-            assert settings.qdrant_enable_wal is False
+            assert settings.qdrant.qdrant_enable_wal is False
 
     def test_production_still_enforces_debug_false(self):
         """Production MUST enforce debug=False even if user sets DEBUG=true."""
-        with patch.dict(os.environ, {"APP_ENV": "production", "DEBUG": "true"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "DEBUG": "true"}):
             settings = Settings()
             assert settings.debug is False, "Production MUST enforce debug=False"
 
     def test_production_still_enforces_log_level(self):
         """Production MUST enforce log_level=WARNING even if user sets DEBUG."""
-        with patch.dict(os.environ, {"APP_ENV": "production", "LOG_LEVEL": "DEBUG"}):
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "production", "LOG_LEVEL": "DEBUG"}
+        ):
             settings = Settings()
-            assert settings.log_level == "WARNING", (
+            assert settings.service.log_level == "WARNING", (
                 "Production MUST enforce WARNING log level"
             )
 
     def test_production_still_enforces_wal(self):
         """Production MUST enforce WAL even if user disables it."""
         with patch.dict(
-            os.environ, {"APP_ENV": "production", "QDRANT_ENABLE_WAL": "false"}
+            os.environ, {"ENVIRONMENT": "production", "QDRANT_ENABLE_WAL": "false"}
         ):
             settings = Settings()
-            assert settings.qdrant_enable_wal is True, "Production MUST enforce WAL"
+            assert settings.qdrant.qdrant_enable_wal is True, (
+                "Production MUST enforce WAL"
+            )
 
     def test_production_still_enforces_warmup(self):
         """Production MUST enforce model warmup even if user disables it."""
         with patch.dict(
-            os.environ, {"APP_ENV": "production", "MODEL_WARM_UP": "false"}
+            os.environ, {"ENVIRONMENT": "production", "MODEL_WARM_UP": "false"}
         ):
             settings = Settings()
-            assert settings.model_warm_up is True, (
+            assert settings.embedding.model_warm_up is True, (
                 "Production MUST enforce model warmup"
             )
 
@@ -186,16 +194,16 @@ class TestMultivectorConfiguration:
 
     def test_multivector_vectors_default(self):
         """Test default multivector configuration."""
-        with patch.dict(os.environ, {"APP_ENV": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             settings = Settings()
-            assert "image_vector" in settings.multivector_vectors
-            assert settings.multivector_vectors == ["image_vector"]
+            assert "image_vector" in settings.qdrant.multivector_vectors
+            assert settings.qdrant.multivector_vectors == ["image_vector"]
 
     def test_vector_names_unchanged(self):
         """Test vector_names still contains both vectors."""
-        with patch.dict(os.environ, {"APP_ENV": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             settings = Settings()
-            assert settings.vector_names == {
+            assert settings.qdrant.vector_names == {
                 "text_vector": 1024,
                 "image_vector": 768,
             }
@@ -205,7 +213,7 @@ class TestMultivectorConfiguration:
         with patch.dict(
             os.environ,
             {
-                "APP_ENV": "development",
+                "ENVIRONMENT": "development",
                 "MULTIVECTOR_VECTORS": '["nonexistent_vector"]',
             },
         ):

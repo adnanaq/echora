@@ -9,7 +9,6 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from enrichment.programmatic.api_fetcher import ParallelAPIFetcher
 
 

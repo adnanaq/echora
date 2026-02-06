@@ -34,6 +34,7 @@ from sentence_transformers import SentenceTransformer
 
 # Vision processing for character image similarity
 try:
+    from common.config.embedding_config import EmbeddingConfig
     from common.config.settings import Settings
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
@@ -46,6 +47,7 @@ try:
 except ImportError:
     VisionProcessor = None  # ty: ignore[invalid-assignment]
     CCIP = None  # ty: ignore[invalid-assignment]
+    EmbeddingConfig = None  # ty: ignore[invalid-assignment]
     Settings = None  # ty: ignore[invalid-assignment]
     AnimeFieldMapper = None  # ty: ignore[invalid-assignment]
     EmbeddingModelFactory = None  # ty: ignore[invalid-assignment]
@@ -432,22 +434,25 @@ class EnsembleFuzzyMatcher:
             try:
                 if (
                     Settings is not None
+                    and EmbeddingConfig is not None
                     and VisionProcessor is not None
                     and EmbeddingModelFactory is not None
                     and ImageDownloader is not None
                     and AnimeFieldMapper is not None
                 ):
-                    settings = Settings()
-                    vision_model = EmbeddingModelFactory.create_vision_model(settings)
-                    downloader = ImageDownloader(settings.model_cache_dir)
+                    embedding_config = Settings().embedding
+                    vision_model = EmbeddingModelFactory.create_vision_model(
+                        embedding_config
+                    )
+                    downloader = ImageDownloader(embedding_config.model_cache_dir)
                     self.vision_processor = VisionProcessor(
                         model=vision_model,
                         downloader=downloader,
-                        settings=settings,
+                        config=embedding_config,
                     )
-                    self.ccips = CCIP(settings)
+                    self.ccips = CCIP(embedding_config)
                     logger.info(
-                        f"Visual character matching enabled with CCIP (fallback: {settings.image_embedding_model})"
+                        f"Visual character matching enabled with CCIP (fallback: {embedding_config.image_embedding_model})"
                     )
             except Exception as e:
                 logger.warning(

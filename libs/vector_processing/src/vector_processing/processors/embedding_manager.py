@@ -8,7 +8,6 @@ import asyncio
 import logging
 from typing import Any
 
-from common.config import Settings
 from common.models.anime import AnimeRecord
 from common.utils.id_generation import (
     generate_deterministic_id,
@@ -30,7 +29,6 @@ class MultiVectorEmbeddingManager:
         text_processor: TextProcessor,
         vision_processor: VisionProcessor,
         field_mapper: AnimeFieldMapper,
-        settings: Settings | None = None,
     ):
         """Initialize the embedding manager with injected processors.
 
@@ -38,12 +36,7 @@ class MultiVectorEmbeddingManager:
             text_processor: An initialized TextProcessor instance.
             vision_processor: An initialized VisionProcessor instance.
             field_mapper: An initialized AnimeFieldMapper instance.
-            settings: Configuration settings instance.
         """
-        if settings is None:
-            settings = Settings()
-
-        self.settings = settings
         self.text_processor = text_processor
         self.vision_processor = vision_processor
         self.field_mapper = field_mapper

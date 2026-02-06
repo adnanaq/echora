@@ -1,7 +1,7 @@
-"""
-Admin API endpoints for vector service management.
+"""Admin API endpoints for vector service management.
 
-Provides database statistics, health monitoring, and administrative operations.
+Provides database statistics and collection information for administrative
+dashboards and operational monitoring.
 """
 
 import logging
@@ -10,10 +10,14 @@ from typing import Any
 from common.config import get_settings
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from qdrant_db import QdrantClient
+from vector_db_interface import VectorDBClient
 from vector_processing import TextProcessor, VisionProcessor
 
-from ..dependencies import get_qdrant_client, get_text_processor, get_vision_processor
+from ..dependencies import (
+    get_text_processor,
+    get_vector_db_client,
+    get_vision_processor,
+)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -36,17 +40,26 @@ class StatsResponse(BaseModel):
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_database_stats(
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+    db_client: VectorDBClient = Depends(get_vector_db_client),
 ) -> StatsResponse:
-    """
-    Get comprehensive database statistics.
+    """Return comprehensive database statistics.
 
-    Returns information about the vector database including document counts,
-    collection status, and performance metrics.
+    Queries the vector database for document counts, collection status, and
+    optimizer metrics.
+
+    Args:
+        db_client: Injected vector database client.
+
+    Returns:
+        Structured statistics including collection name, document count,
+        vector configuration, and optimizer state.
+
+    Raises:
+        HTTPException: 500 if statistics cannot be retrieved.
     """
     try:
         # Get database statistics
-        stats = await qdrant_client.get_stats()
+        stats = await db_client.get_stats()
 
         if "error" in stats:
             raise HTTPException(
@@ -69,141 +82,44 @@ async def get_database_stats(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get stats: {e}")
+        logger.exception(f"Failed to get stats: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve database statistics: {str(e)}"
         )
 
 
-@router.get("/health")
-async def admin_health_check(
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
-) -> dict[str, Any]:
-    """
-    Detailed health check for admin purposes.
-
-    Provides more comprehensive health information than the basic health endpoint.
-    """
-    try:
-        # Perform health check
-        qdrant_healthy = await qdrant_client.health_check()
-
-        # Get basic stats for additional health info
-        stats = {}
-        try:
-            stats = await qdrant_client.get_stats()
-        except Exception as e:
-            logger.warning(f"Could not retrieve stats for health check: {e}")
-
-        return {
-            "status": "healthy" if qdrant_healthy else "unhealthy",
-            "qdrant_client": "initialized",
-            "qdrant_status": "healthy" if qdrant_healthy else "unhealthy",
-            "collection_name": stats.get("collection_name", "unknown"),
-            "document_count": stats.get("total_documents", 0),
-            "details": (
-                "All systems operational"
-                if qdrant_healthy
-                else "Vector database issues detected"
-            ),
-        }
-
-    except Exception as e:
-        logger.error(f"Admin health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "details": "Health check encountered an error",
-        }
-
-
-@router.delete("/vectors/{anime_id}")
-async def delete_vector(
-    anime_id: str, qdrant_client: QdrantClient = Depends(get_qdrant_client)
-) -> dict[str, Any]:
-    """
-    Delete a vector from the database.
-
-    Removes the specified anime from the vector collection.
-    """
-    try:
-        # Check if anime exists
-        existing = await qdrant_client.get_by_id(anime_id)
-        if not existing:
-            raise HTTPException(status_code=404, detail=f"Anime not found: {anime_id}")
-
-        # For now, we don't have a direct delete method in QdrantClient
-        # This would need to be implemented
-        # await qdrant_client.delete_by_id(anime_id)
-
-        # Placeholder response
-        return {
-            "deleted": False,
-            "anime_id": anime_id,
-            "message": "Delete operation not yet implemented",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Delete operation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Delete operation failed: {str(e)}"
-        )
-
-
-@router.post("/reindex")
-async def reindex_collection(
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
-) -> dict[str, Any]:
-    """
-    Rebuild the vector index.
-
-    WARNING: This operation will clear the existing collection and recreate it.
-    Use with caution in production environments.
-    """
-    try:
-        # Clear and recreate the index
-        success = await qdrant_client.clear_index()
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to reindex collection")
-
-        return {
-            "reindexed": True,
-            "message": "Collection successfully cleared and recreated",
-            "warning": "All existing data has been removed",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Reindex operation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Reindex operation failed: {str(e)}"
-        )
-
-
-@router.get("/collection/info")
+@router.get("/collection")
 async def get_collection_info(
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+    db_client: VectorDBClient = Depends(get_vector_db_client),
     text_processor: TextProcessor = Depends(get_text_processor),
     vision_processor: VisionProcessor = Depends(get_vision_processor),
 ) -> dict[str, Any]:
-    """
-    Get detailed collection information.
+    """Return detailed vector collection configuration and processor info.
 
-    Returns comprehensive information about the vector collection configuration.
+    Combines database-level statistics with embedding model metadata from
+    the text and vision processors.
+
+    Args:
+        db_client: Injected vector database client.
+        text_processor: Injected text embedding processor.
+        vision_processor: Injected vision embedding processor.
+
+    Returns:
+        Dict with collection config (name, URL, dimensions, metric),
+        database stats, and processor model info.
+
+    Raises:
+        HTTPException: 500 if collection info cannot be retrieved.
     """
     try:
-        stats = await qdrant_client.get_stats()
+        stats = await db_client.get_stats()
 
         return {
-            "collection_name": qdrant_client.collection_name,
-            "qdrant_url": qdrant_client.url,
-            "vector_size": qdrant_client.vector_size,
-            "image_vector_size": qdrant_client.image_vector_size,
-            "distance_metric": qdrant_client.distance_metric,
+            "collection_name": db_client.collection_name,
+            "database_url": db_client.connection_url,
+            "vector_size": db_client.vector_size,
+            "image_vector_size": db_client.image_vector_size,
+            "distance_metric": db_client.distance_metric,
             "stats": stats,
             "processors": {
                 "text_processor": text_processor.get_model_info(),
@@ -212,7 +128,7 @@ async def get_collection_info(
         }
 
     except Exception as e:
-        logger.error(f"Failed to get collection info: {e}")
+        logger.exception(f"Failed to get collection info: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get collection information: {str(e)}"
         )

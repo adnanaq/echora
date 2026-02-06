@@ -94,10 +94,10 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
         logger.warning(f"Stage file not found: {stage_file}")
         return []
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {stage_file}: {e}")
+        logger.exception(f"Invalid JSON in {stage_file}: {e}")
         return []
     except Exception as e:
-        logger.error(f"Error loading {stage_file}: {e}")
+        logger.exception(f"Error loading {stage_file}: {e}")
         return []
 
 
@@ -613,7 +613,7 @@ async def process_stage5_ai_characters(
         )
 
     except Exception as e:
-        logger.error(f"AI character processing failed: {e}")
+        logger.exception(f"AI character processing failed: {e}")
         raise
 
 

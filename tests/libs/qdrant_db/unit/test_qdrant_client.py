@@ -28,7 +28,7 @@ class TestUpdateSinglePointVectorRetry:
         with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             # Create client instance using async factory
             client = await QdrantClient.create(
-                settings=settings,
+                config=settings.qdrant,
                 async_qdrant_client=mock_async_client,
             )
 
@@ -52,7 +52,9 @@ class TestUpdateSinglePointVectorRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_single_point_vector_retries_on_transient_error(self, mock_client):
+    async def test_update_single_point_vector_retries_on_transient_error(
+        self, mock_client
+    ):
         """RED: Test that transient errors trigger retry using retry utility."""
         # Setup - fail twice with transient errors, then succeed
         mock_client.client.update_vectors = AsyncMock()
@@ -76,7 +78,9 @@ class TestUpdateSinglePointVectorRetry:
         assert mock_client.client.update_vectors.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_update_single_point_vector_fails_on_non_transient_error(self, mock_client):
+    async def test_update_single_point_vector_fails_on_non_transient_error(
+        self, mock_client
+    ):
         """RED: Test that non-transient errors fail immediately without retry."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(
@@ -118,7 +122,9 @@ class TestUpdateSinglePointVectorRetry:
         )  # 1 initial + 2 retries
 
     @pytest.mark.asyncio
-    async def test_update_single_point_vector_validation_fails_no_retry(self, mock_client):
+    async def test_update_single_point_vector_validation_fails_no_retry(
+        self, mock_client
+    ):
         """RED: Test that validation errors don't trigger retry."""
         # Execute with invalid vector name
         result = await mock_client.update_single_point_vector(
@@ -144,7 +150,7 @@ class TestUpdateBatchPointVectorsRetry:
         # Mock _initialize_collection to avoid DB calls in unit tests
         with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             client = await QdrantClient.create(
-                settings=settings,
+                config=settings.qdrant,
                 async_qdrant_client=mock_async_client,
             )
 
@@ -181,7 +187,9 @@ class TestUpdateBatchPointVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_retries_on_transient_error(self, mock_client):
+    async def test_update_batch_point_vectors_retries_on_transient_error(
+        self, mock_client
+    ):
         """RED: Test that batch update retries on transient errors."""
         # Setup
         mock_client.client.update_vectors = AsyncMock()
@@ -212,7 +220,9 @@ class TestUpdateBatchPointVectorsRetry:
         assert mock_client.client.update_vectors.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_deduplication_still_works(self, mock_client):
+    async def test_update_batch_point_vectors_deduplication_still_works(
+        self, mock_client
+    ):
         """RED: Test that deduplication logic is preserved."""
         # Setup
         mock_client.client.update_vectors = AsyncMock(return_value=None)
@@ -318,7 +328,7 @@ class TestUnifiedSearch:
         # Mock _initialize_collection to avoid DB calls in unit tests
         with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             client = await QdrantClient.create(
-                settings=settings,
+                config=settings.qdrant,
                 async_qdrant_client=mock_async_client,
             )
 
@@ -400,7 +410,7 @@ class TestMultivectorConfiguration:
 
         with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
             client = await QdrantClient.create(
-                settings=settings,
+                config=settings.qdrant,
                 async_qdrant_client=mock_async_client,
             )
 

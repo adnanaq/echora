@@ -54,7 +54,7 @@ services:
       - "8002:8002"
     environment:
       # Environment (enables development mode: debug=True, log_level=DEBUG)
-      - APP_ENV=development
+      - ENVIRONMENT=development
 
       # Vector Service Configuration
       - VECTOR_SERVICE_HOST=0.0.0.0

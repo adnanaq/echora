@@ -123,33 +123,17 @@ docker compose up -d qdrant
 
 #### 5. Run the Service
 
-## Option A: Using `uv run` (Recommended)
+**Using Pants (Recommended)** — handles monorepo dependencies automatically:
 
 ```bash
-# Run service
-uv run python -m apps.service.src.service.main
+# Run the service (available at http://localhost:8002)
+./pants run apps/service:service
 
 # Run tests
-uv run pytest
+./pants test ::
 
 # Run scripts
-uv run python scripts/reindex_anime_database.py
-```
-
-## Option B: Activate virtual environment
-
-```bash
-# Activate venv
-source .venv/bin/activate
-
-# Run service
-python -m apps.service.src.service.main
-
-# Run tests
-pytest
-
-# Deactivate when done
-deactivate
+./pants run scripts/reindex_anime_database.py
 ```
 
 ## Development Workflow
@@ -298,17 +282,17 @@ docker compose up -d qdrant
 
 ### Environment Detection
 
-**REQUIRED**: The service requires `APP_ENV` to be explicitly set for production safety. No default value is provided to prevent accidental deployment with development settings.
+**REQUIRED**: The service requires `ENVIRONMENT` to be explicitly set for production safety. No default value is provided to prevent accidental deployment with development settings.
 
 ```bash
 # Development - debug enabled, verbose logging (respects user overrides)
-APP_ENV=development
+ENVIRONMENT=development
 
 # Staging - debug enabled, moderate logging, WAL enabled (respects user overrides)
-APP_ENV=staging
+ENVIRONMENT=staging
 
 # Production - ENFORCED safety settings (ignores user overrides)
-APP_ENV=production
+ENVIRONMENT=production
 ```
 
 **Environment-Specific Behavior:**
@@ -329,14 +313,14 @@ APP_ENV=production
 **Docker Deployment:**
 
 ```dockerfile
-ENV APP_ENV=production
+ENV ENVIRONMENT=production
 ```
 
 **Kubernetes Deployment:**
 
 ```yaml
 env:
-  - name: APP_ENV
+  - name: ENVIRONMENT
     value: "production"
 ```
 
@@ -346,7 +330,7 @@ Create a `.env` file or set environment variables:
 
 ```env
 # Environment (REQUIRED - must be explicitly set)
-APP_ENV=development
+ENVIRONMENT=development
 
 # Service
 VECTOR_SERVICE_HOST=0.0.0.0
@@ -406,9 +390,10 @@ pip install -e ".[dev]"
 
 ## API Endpoints
 
-- `GET /health` - Service health status
+- `GET /health` - Service health status with database diagnostics
 - `GET /api/v1/admin/stats` - Database statistics
-- `POST /api/v1/search` - Multi-vector semantic search (coming soon)
+- `GET /api/v1/admin/collection` - Collection configuration and processor info
+- `GET /docs` - Interactive API documentation (Swagger UI)
 
 ## Architecture
 

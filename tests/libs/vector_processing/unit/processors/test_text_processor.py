@@ -17,28 +17,29 @@ class TestTextProcessorInit:
 
     def test_init_with_settings(self, mock_text_model, mock_settings):
         """Test initialization with provided settings."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         assert processor.model == mock_text_model
-        assert processor.settings == mock_settings
+        assert processor.config == mock_settings
 
     def test_init_without_settings_uses_defaults(self, mock_text_model):
-        """Test initialization without settings uses default Settings."""
+        """Test initialization without config uses default EmbeddingConfig."""
         with patch(
-            "vector_processing.processors.text_processor.Settings"
-        ) as mock_settings_class:
-            mock_default_settings = MagicMock()
-            mock_settings_class.return_value = mock_default_settings
+            "vector_processing.processors.text_processor.EmbeddingConfig"
+        ) as mock_config_class:
+            mock_default_config = MagicMock()
+            mock_default_config.embed_max_concurrency = 2
+            mock_config_class.return_value = mock_default_config
 
             processor = TextProcessor(model=mock_text_model)
 
-            mock_settings_class.assert_called_once()
-            assert processor.settings == mock_default_settings
+            mock_config_class.assert_called_once()
+            assert processor.config == mock_default_config
 
     def test_init_logs_model_name(self, mock_text_model, mock_settings, caplog):
         """Test that initialization logs the model name."""
         with caplog.at_level("INFO"):
-            TextProcessor(model=mock_text_model, settings=mock_settings)
+            TextProcessor(model=mock_text_model, config=mock_settings)
 
         assert "Initialized TextProcessor with model: test-text-model" in caplog.text
 
@@ -49,7 +50,7 @@ class TestEncodeText:
     @pytest.mark.asyncio
     async def test_encode_text_success(self, mock_text_model, mock_settings):
         """Test successful text encoding."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_text("Hello world")
 
@@ -61,7 +62,7 @@ class TestEncodeText:
         self, mock_text_model, mock_settings
     ):
         """Test empty string returns zero embedding."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_text("")
 
@@ -73,7 +74,7 @@ class TestEncodeText:
         self, mock_text_model, mock_settings
     ):
         """Test whitespace-only string returns zero embedding."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_text("   \t\n  ")
 
@@ -86,7 +87,7 @@ class TestEncodeText:
     ):
         """Test when model returns empty list."""
         mock_text_model.encode.return_value = []
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_text("Hello")
 
@@ -98,7 +99,7 @@ class TestEncodeText:
     ):
         """Test when model raises exception."""
         mock_text_model.encode.side_effect = RuntimeError("Model error")
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         with caplog.at_level("ERROR"):
             result = await processor.encode_text("Hello")
@@ -118,7 +119,7 @@ class TestEncodeTextsBatch:
             [0.2] * 1024,
             [0.3] * 1024,
         ]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["text1", "text2", "text3"])
 
@@ -132,7 +133,7 @@ class TestEncodeTextsBatch:
     async def test_encode_texts_batch_empty_list(self, mock_text_model, mock_settings):
         """Test batch encoding with empty list."""
         mock_text_model.encode.return_value = []
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch([])
 
@@ -144,7 +145,7 @@ class TestEncodeTextsBatch:
     ):
         """Test when model raises exception during batch encoding."""
         mock_text_model.encode.side_effect = RuntimeError("Batch error")
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         with caplog.at_level("ERROR"):
             result = await processor.encode_texts_batch(["text1", "text2"])
@@ -161,7 +162,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.return_value = [
             [0.1] * 1024,  # For "valid text"
         ]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["", "valid text", ""])
 
@@ -180,7 +181,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.return_value = [
             [0.2] * 1024,  # For "real content"
         ]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["   \t\n  ", "real content", "  "])
 
@@ -193,7 +194,7 @@ class TestEncodeTextsBatch:
     @pytest.mark.asyncio
     async def test_encode_texts_batch_all_empty(self, mock_text_model, mock_settings):
         """Test batch encoding when all inputs are empty/whitespace."""
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["", "   ", "\t\n"])
 
@@ -212,7 +213,7 @@ class TestEncodeTextsBatch:
             [0.2] * 1024,  # "Character development"
             [0.3] * 1024,  # "Epic finale"
         ]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(
             [
@@ -248,7 +249,7 @@ class TestEncodeTextsBatch:
         zero vector instance, causing mutations to affect all empty embeddings.
         """
         mock_text_model.encode.return_value = [[0.1] * 1024]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["", "valid", "", ""])
 
@@ -278,7 +279,7 @@ class TestEncodeTextsBatch:
 
         Regression test for the same issue in the all-empty code path.
         """
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(["", "", "", ""])
 
@@ -317,7 +318,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.return_value = [
             [float(i)] * 1024 for i in range(size // 2)
         ]
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = await processor.encode_texts_batch(texts)
 
@@ -340,7 +341,7 @@ class TestGetZeroEmbedding:
     def test_get_zero_embedding_correct_size(self, mock_text_model, mock_settings):
         """Test zero embedding has correct dimensions."""
         mock_text_model.embedding_size = 512
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = processor.get_zero_embedding()
 
@@ -351,7 +352,7 @@ class TestGetZeroEmbedding:
         """Test zero embedding works for different model sizes."""
         for size in [256, 768, 1024, 1536]:
             mock_text_model.embedding_size = size
-            processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+            processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
             result = processor.get_zero_embedding()
 
@@ -369,7 +370,7 @@ class TestGetModelInfo:
             "provider": "test",
         }
         mock_text_model.get_model_info.return_value = expected_info
-        processor = TextProcessor(model=mock_text_model, settings=mock_settings)
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         result = processor.get_model_info()
 

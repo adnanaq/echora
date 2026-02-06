@@ -1,8 +1,8 @@
-from typing import Any, Optional
+from typing import Any
 
 class AsyncPlaywrightCrawlerStrategy:
     def __init__(
         self,
-        browser_config: Optional[Any] = None,
-        browser_adapter: Optional[Any] = None,
+        browser_config: Any | None = None,
+        browser_adapter: Any | None = None,
     ) -> None: ...

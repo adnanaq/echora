@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 import aiohttp
-from common.config import Settings
+from common.config import EmbeddingConfig
 
 from ..embedding_models.vision.base import VisionEmbeddingModel
 from ..utils.image_downloader import ImageDownloader
@@ -36,7 +36,7 @@ class VisionProcessor:
         self,
         model: VisionEmbeddingModel,
         downloader: ImageDownloader,
-        settings: Settings | None = None,
+        config: EmbeddingConfig | None = None,
         max_concurrent_downloads: int | None = None,
     ):
         """Initialize the vision processor with model and downloader.
@@ -44,24 +44,24 @@ class VisionProcessor:
         Args:
             model: An initialized VisionEmbeddingModel instance.
             downloader: An initialized ImageDownloader for fetching images.
-            settings: Configuration settings instance. Uses defaults if None.
+            config: Embedding configuration instance. Uses defaults if None.
             max_concurrent_downloads: Maximum number of concurrent image downloads.
-                If None, uses settings.max_concurrent_image_downloads (default: 10).
+                If None, uses config.max_concurrent_image_downloads (default: 10).
                 Override for testing or special cases.
         """
-        if settings is None:
-            settings = Settings()
+        if config is None:
+            config = EmbeddingConfig()
 
-        self.settings = settings
+        self.config = config
         self.model = model
         self.downloader = downloader
-        self._semaphore = asyncio.Semaphore(settings.embed_max_concurrency)
+        self._semaphore = asyncio.Semaphore(config.embed_max_concurrency)
 
-        # Use settings value as default, allow override for testing
+        # Use config value as default, allow override for testing
         self.max_concurrent_downloads = (
             max_concurrent_downloads
             if max_concurrent_downloads is not None
-            else settings.max_concurrent_image_downloads
+            else config.max_concurrent_image_downloads
         )
 
         logger.info(
@@ -147,7 +147,10 @@ class VisionProcessor:
                                 return (url, None)
                         else:
                             return (url, local_path)
-                    return (url, None)  # pragma: no cover - unreachable defensive fallback
+                    return (
+                        url,
+                        None,
+                    )  # pragma: no cover - unreachable defensive fallback
 
             download_results = await asyncio.gather(
                 *[download_single_with_retry(url) for url in image_urls]

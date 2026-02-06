@@ -49,15 +49,17 @@ async def main() -> None:
 
     # Load settings
     settings = get_settings()
-    print(f" Configuration loaded: {len(settings.vector_names)} vectors configured")
+    print(
+        f" Configuration loaded: {len(settings.qdrant.vector_names)} vectors configured"
+    )
 
     # Initialize AsyncQdrantClient
-    if settings.qdrant_api_key:
+    if settings.qdrant.qdrant_api_key:
         async_qdrant_client = AsyncQdrantClient(
-            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            url=settings.qdrant.qdrant_url, api_key=settings.qdrant.qdrant_api_key
         )
     else:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
     try:
         # Initialize embedding manager and processors using factory pattern
@@ -65,40 +67,40 @@ async def main() -> None:
         field_mapper = AnimeFieldMapper()
 
         # 2. Initialize Processors (Compute Engines)
-        text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(model=text_model, settings=settings)
+        text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+        text_processor = TextProcessor(model=text_model, config=settings.embedding)
 
-        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
         image_downloader = ImageDownloader(
-            cache_dir=settings.model_cache_dir or "cache"
+            cache_dir=settings.embedding.model_cache_dir or "cache"
         )
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
-            # field_mapper removed from vision processor (SRP)
-            settings=settings,
+            config=settings.embedding,
         )
 
         # 3. Initialize Manager (Orchestrator) with all dependencies
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            field_mapper=field_mapper,  # Injected directly
-            settings=settings,
+            field_mapper=field_mapper,
         )
 
         # Initialize Qdrant client
         client = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
 
         # Delete existing collection if it exists
         try:
             await client.delete_collection()
-            print(f"  Deleted existing collection: {settings.qdrant_collection_name}")
+            print(
+                f"  Deleted existing collection: {settings.qdrant.qdrant_collection_name}"
+            )
         except Exception as e:  # noqa: BLE001 - Best effort: continue if collection doesn't exist
             print(f"  Could not delete existing collection (may not exist): {e}")
 

@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 if TYPE_CHECKING:
-    from common.config import Settings
+    from common.config import EmbeddingConfig
     from vector_processing.embedding_models.vision.base import VisionEmbeddingModel
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,13 @@ class CCIP:
     - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
-    def __init__(self, settings: "Settings | None" = None):
-        """Initialize CCIP with optional settings.
+    def __init__(self, config: "EmbeddingConfig | None" = None):
+        """Initialize CCIP with optional config.
 
         Args:
-            settings: Configuration settings for fallback model creation
+            config: Embedding configuration for fallback model creation
         """
-        self.settings = settings
+        self.config = config
         self._fallback_model: VisionEmbeddingModel | None = None
 
     def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
@@ -46,13 +46,13 @@ class CCIP:
                     EmbeddingModelFactory,
                 )
 
-                if self.settings is None:
-                    from common.config import Settings
+                if self.config is None:
+                    from common.config import EmbeddingConfig
 
-                    self.settings = Settings()
+                    self.config = EmbeddingConfig()
 
                 self._fallback_model = EmbeddingModelFactory.create_vision_model(
-                    self.settings
+                    self.config
                 )
                 logger.info("OpenCLIP fallback model initialized for CCIP")
             except Exception as e:

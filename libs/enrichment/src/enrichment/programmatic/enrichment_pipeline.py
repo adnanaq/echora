@@ -157,7 +157,7 @@ class ProgrammaticEnrichmentPipeline:
             return result
 
         except Exception as e:
-            logger.error(f"Enrichment failed for {anime_title}: {e}")
+            logger.exception(f"Enrichment failed for {anime_title}: {e}")
             if self.config.skip_failed_apis:
                 # Return partial data on failure (graceful degradation)
                 return {

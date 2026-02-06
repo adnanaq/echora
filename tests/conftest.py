@@ -57,7 +57,7 @@ def settings() -> Settings:
     """
     settings = get_settings()
     # Override to use test collection for ALL tests
-    settings.qdrant_collection_name = "anime_database_test"
+    settings.qdrant.qdrant_collection_name = "anime_database_test"
     return settings
 
 
@@ -67,8 +67,8 @@ async def text_processor(settings: Settings) -> TextProcessor:
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
     # Create text model using factory
-    text_model = EmbeddingModelFactory.create_text_model(settings)
-    return TextProcessor(model=text_model, settings=settings)
+    text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+    return TextProcessor(model=text_model, config=settings.embedding)
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -78,12 +78,12 @@ async def vision_processor(settings: Settings) -> VisionProcessor:
     from vector_processing.utils.image_downloader import ImageDownloader
 
     # Create vision model and downloader using factory
-    vision_model = EmbeddingModelFactory.create_vision_model(settings)
-    downloader = ImageDownloader(settings.model_cache_dir)
+    vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
+    downloader = ImageDownloader(settings.embedding.model_cache_dir)
     return VisionProcessor(
         model=vision_model,
         downloader=downloader,
-        settings=settings,
+        config=settings.embedding,
     )
 
 
@@ -92,14 +92,12 @@ async def embedding_manager(
     text_processor: TextProcessor,
     vision_processor: VisionProcessor,
     field_mapper: AnimeFieldMapper,
-    settings: Settings,
 ) -> MultiVectorEmbeddingManager:
     """Create MultiVectorEmbeddingManager for tests."""
     return MultiVectorEmbeddingManager(
         text_processor=text_processor,
         vision_processor=vision_processor,
         field_mapper=field_mapper,
-        settings=settings,
     )
 
 
@@ -122,19 +120,20 @@ async def client(
 
     try:
         # Initialize AsyncQdrantClient from qdrant-client library
-        if settings.qdrant_api_key:
+        if settings.qdrant.qdrant_api_key:
             async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+                url=settings.qdrant.qdrant_url,
+                api_key=settings.qdrant.qdrant_api_key,
             )
         else:
-            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
         # Initialize our QdrantClient wrapper with injected dependencies
         client = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
     except Exception as e:
         pytest.skip(f"Failed to create test collection: {e}")

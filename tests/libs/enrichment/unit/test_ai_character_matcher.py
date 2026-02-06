@@ -1,7 +1,8 @@
 """Unit tests for ai_character_matcher, particularly CharacterNamePreprocessor romaji conversion with modern pykakasi API."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from enrichment.ai_character_matcher import CharacterNamePreprocessor
 
 # Skip all tests in this module if pykakasi is not installed

@@ -1,11 +1,17 @@
 """Vector Service Configuration Settings."""
 
+import json
 import os
 from enum import Enum
 from functools import lru_cache
+from typing import Any
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .embedding_config import EmbeddingConfig
+from .qdrant_config import QdrantConfig
+from .service_config import ServiceConfig
 
 
 class Environment(str, Enum):
@@ -17,18 +23,18 @@ class Environment(str, Enum):
 
 
 def get_environment() -> Environment:
-    """Detect environment from APP_ENV variable.
+    """Detect environment from ENVIRONMENT variable.
 
     Returns:
-        Environment: Detected environment based on APP_ENV.
+        Environment: Detected environment based on ENVIRONMENT.
 
     Raises:
-        ValueError: If APP_ENV is not set or contains an invalid value.
+        ValueError: If ENVIRONMENT is not set or contains an invalid value.
     """
-    env_str = os.getenv("APP_ENV")
+    env_str = os.getenv("ENVIRONMENT")
     if not env_str:
         raise ValueError(
-            "APP_ENV environment variable must be set to one of: "
+            "ENVIRONMENT environment variable must be set to one of: "
             "development, staging, production"
         )
 
@@ -43,9 +49,34 @@ def get_environment() -> Environment:
             return Environment.DEVELOPMENT
         case _:
             raise ValueError(
-                f"Invalid APP_ENV value '{env_str}'. "
+                f"Invalid ENVIRONMENT value '{env_str}'. "
                 "Must be one of: development, staging, production"
             )
+
+
+# Field name -> sub-config key mapping
+_QDRANT_FIELDS = frozenset(QdrantConfig.model_fields.keys())
+_EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
+_SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
+
+# Fields that expect complex types (list/dict) and need JSON parsing from env vars
+_JSON_FIELDS: frozenset[str] = frozenset(
+    field_name
+    for config_cls in (QdrantConfig, EmbeddingConfig, ServiceConfig)
+    for field_name, field_info in config_cls.model_fields.items()
+    if field_info.annotation is not None
+    and any(t in str(field_info.annotation) for t in ("list", "dict", "List", "Dict"))
+)
+
+
+def _maybe_parse_json(field_name: str, value: Any) -> Any:
+    """Parse JSON strings for fields that expect complex types (list/dict)."""
+    if field_name in _JSON_FIELDS and isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return value
+    return value
 
 
 class Settings(BaseSettings):
@@ -55,358 +86,93 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
-    # ============================================================================
-    # ENVIRONMENT & APPLICATION
-    # ============================================================================
-
+    # Top-level fields
     environment: Environment = Field(
         default_factory=get_environment,
         description="Application environment (development/staging/production)",
     )
     debug: bool = Field(default=True, description="Enable debug mode")
 
-    # ============================================================================
-    # SERVICE CONFIGURATION
-    # ============================================================================
+    # Composed sub-configs
+    qdrant: QdrantConfig = Field(default_factory=QdrantConfig)
+    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    service: ServiceConfig = Field(default_factory=ServiceConfig)
 
-    vector_service_host: str = Field(
-        default="0.0.0.0", description="Vector service host address"
-    )
-    vector_service_port: int = Field(
-        default=8002, ge=1, le=65535, description="Vector service port"
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def distribute_env_vars(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Route flat env vars into nested sub-config groups.
 
-    # ============================================================================
-    # QDRANT DATABASE CONNECTION
-    # ============================================================================
+        BaseSettings only loads env vars for fields defined directly on Settings.
+        Since sub-config fields (e.g. log_level, qdrant_url) now live on BaseModel
+        sub-configs, we must explicitly read them from the environment and inject
+        them into the appropriate nested dict.
 
-    qdrant_url: str = Field(
-        default="http://localhost:6333", description="Qdrant server URL"
-    )
-    qdrant_api_key: str | None = Field(
-        default=None, description="Qdrant API key for cloud authentication"
-    )
-    qdrant_collection_name: str = Field(
-        default="anime_database", description="Qdrant collection name"
-    )
-    qdrant_distance_metric: str = Field(
-        default="cosine", description="Distance metric for similarity"
-    )
+        Precedence: real env var > .env file value > default.
+        For fields with complex types (list/dict), JSON string values are parsed.
+        """
+        if not isinstance(data, dict):
+            return data
 
-    # ============================================================================
-    # VECTOR ARCHITECTURE & DIMENSIONS
-    # ============================================================================
+        # Normalize environment value to lowercase for case-insensitive enum matching
+        env_val = data.get("environment")
+        if isinstance(env_val, str):
+            data["environment"] = env_val.lower()
 
-    text_vector_size: int = Field(
-        default=1024,
-        description="Vector embedding dimensions for text vectors (BGE-M3)",
-    )
-    image_vector_size: int = Field(
-        default=768,
-        description="Image embedding dimensions (OpenCLIP ViT-L/14: 768, ViT-B/32: 512)",
-    )
+        qdrant_data: dict[str, Any] = {}
+        embedding_data: dict[str, Any] = {}
+        service_data: dict[str, Any] = {}
 
-    # Multi-Vector Semantic Architecture Configuration
-    vector_names: dict[str, int] = Field(
-        default={
-            "text_vector": 1024,
-            "image_vector": 768,
-        },
-        description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
-    )
+        # Collect sub-config fields from data (may come from .env file via BaseSettings)
+        keys_to_remove: list[str] = []
+        for key, value in data.items():
+            lower_key = key.lower() if isinstance(key, str) else key
+            if lower_key in _QDRANT_FIELDS:
+                qdrant_data[lower_key] = _maybe_parse_json(lower_key, value)
+                keys_to_remove.append(key)
+            elif lower_key in _EMBEDDING_FIELDS:
+                embedding_data[lower_key] = _maybe_parse_json(lower_key, value)
+                keys_to_remove.append(key)
+            elif lower_key in _SERVICE_FIELDS:
+                service_data[lower_key] = _maybe_parse_json(lower_key, value)
+                keys_to_remove.append(key)
 
-    # Multivector Configuration
-    multivector_vectors: list[str] = Field(
-        default=["image_vector"],
-        description="Vector names that use multivector storage (list of vectors per point)",
-    )
+        for key in keys_to_remove:
+            data.pop(key, None)
 
-    # Vector Priority Classification for Optimization
-    vector_priorities: dict[str, list[str]] = Field(
-        default={
-            "high": [
-                "text_vector",
-                "image_vector",
-            ],
-            "medium": [],
-            "low": [],
-        },
-        description="Vector priority classification for performance optimization",
-    )
+        # Override with real env vars (take precedence over .env file values)
+        for field_name in _QDRANT_FIELDS:
+            env_val = os.environ.get(field_name.upper())
+            if env_val is not None:
+                qdrant_data[field_name] = _maybe_parse_json(field_name, env_val)
 
-    # ============================================================================
-    # TEXT EMBEDDING MODELS
-    # ============================================================================
+        for field_name in _EMBEDDING_FIELDS:
+            env_val = os.environ.get(field_name.upper())
+            if env_val is not None:
+                embedding_data[field_name] = _maybe_parse_json(field_name, env_val)
 
-    text_embedding_provider: str = Field(
-        default="huggingface",
-        description="Text embedding provider: fastembed, huggingface, sentence-transformers",
-    )
-    text_embedding_model: str = Field(
-        default="BAAI/bge-m3", description="Modern text embedding model name"
-    )
+        for field_name in _SERVICE_FIELDS:
+            env_val = os.environ.get(field_name.upper())
+            if env_val is not None:
+                service_data[field_name] = _maybe_parse_json(field_name, env_val)
 
-    # BGE Model-Specific Configuration
-    bge_model_version: str = Field(
-        default="m3", description="BGE model version: v1.5, m3, reranker"
-    )
-    bge_model_size: str = Field(
-        default="base", description="BGE model size: small, base, large"
-    )
-    bge_max_length: int = Field(
-        default=8192, description="BGE maximum input sequence length"
-    )
+        # Merge into existing nested dicts (if any) or create new ones
+        for config_key, config_data in [
+            ("qdrant", qdrant_data),
+            ("embedding", embedding_data),
+            ("service", service_data),
+        ]:
+            if config_data:
+                existing = data.get(config_key, {})
+                if isinstance(existing, dict):
+                    existing.update(config_data)
+                    data[config_key] = existing
+                else:
+                    data[config_key] = config_data
 
-    # ============================================================================
-    # IMAGE EMBEDDING MODELS
-    # ============================================================================
+        return data
 
-    image_embedding_provider: str = Field(
-        default="openclip", description="Image embedding provider: openclip"
-    )
-    image_embedding_model: str = Field(
-        default="ViT-L-14/laion2b_s32b_b82k",
-        description="OpenCLIP ViT-L/14 model for high-quality image embeddings (768 dims)",
-    )
-
-    # OpenCLIP Model-Specific Configuration
-    openclip_input_resolution: int = Field(
-        default=224, description="OpenCLIP input image resolution"
-    )
-    openclip_text_max_length: int = Field(
-        default=77, description="OpenCLIP maximum text sequence length"
-    )
-
-    # Image Processing Configuration
-    image_batch_size: int = Field(
-        default=16,
-        ge=1,
-        le=128,
-        description="Batch size for image embedding processing (adjust based on GPU VRAM: 4-8 for 8GB, 16+ for 16GB+)",
-    )
-    max_concurrent_image_downloads: int = Field(
-        default=10,
-        ge=1,
-        le=50,
-        description="Maximum concurrent image downloads in batch processing (adjust based on bandwidth and rate limits)",
-    )
-
-    # ============================================================================
-    # MODEL MANAGEMENT
-    # ============================================================================
-
-    model_cache_dir: str | None = Field(
-        default=None, description="Custom cache directory for embedding models"
-    )
-    model_warm_up: bool = Field(
-        default=False, description="Pre-load and warm up models during initialization"
-    )
-
-    # ============================================================================
-    # PERFORMANCE OPTIMIZATION - QUANTIZATION
-    # ============================================================================
-
-    qdrant_enable_quantization: bool = Field(
-        default=False, description="Enable quantization for performance"
-    )
-    qdrant_quantization_type: str = Field(
-        default="scalar", description="Quantization type: binary, scalar, product"
-    )
-    qdrant_quantization_always_ram: bool | None = Field(
-        default=None, description="Keep quantized vectors in RAM"
-    )
-
-    # ============================================================================
-    # EMBEDDING CONCURRENCY
-    # ============================================================================
-
-    embed_max_concurrency: int = Field(
-        default=2,
-        ge=1,
-        le=16,
-        description="Maximum concurrent embedding tasks per process",
-    )
-
-    # Advanced Quantization Configuration per Vector Priority
-    quantization_config: dict[str, dict[str, object]] = Field(
-        default={
-            "high": {"type": "scalar", "scalar_type": "int8", "always_ram": True},
-            "medium": {"type": "scalar", "scalar_type": "int8", "always_ram": False},
-            "low": {"type": "binary", "always_ram": False},
-        },
-        description="Quantization configuration per vector priority for memory optimization",
-    )
-
-    # ============================================================================
-    # PERFORMANCE OPTIMIZATION - HNSW INDEX
-    # ============================================================================
-
-    qdrant_hnsw_ef_construct: int | None = Field(
-        default=None, description="HNSW ef_construct parameter"
-    )
-    qdrant_hnsw_m: int | None = Field(default=None, description="HNSW M parameter")
-    qdrant_hnsw_max_indexing_threads: int | None = Field(
-        default=None, description="Maximum indexing threads"
-    )
-
-    # Anime-Optimized HNSW Parameters per Vector Priority
-    hnsw_config: dict[str, dict[str, int]] = Field(
-        default={
-            "high": {"ef_construct": 256, "m": 64, "ef": 128},
-            "medium": {"ef_construct": 200, "m": 48, "ef": 64},
-            "low": {"ef_construct": 128, "m": 32, "ef": 32},
-        },
-        description="Anime-optimized HNSW parameters per vector priority for similarity matching",
-    )
-
-    # ============================================================================
-    # PERFORMANCE OPTIMIZATION - MEMORY & STORAGE
-    # ============================================================================
-
-    qdrant_memory_mapping_threshold: int | None = Field(
-        default=None, description="Memory mapping threshold in KB"
-    )
-    memory_mapping_threshold_mb: int = Field(
-        default=50,
-        description="Memory mapping threshold in MB for large collection optimization",
-    )
-    qdrant_enable_wal: bool | None = Field(
-        default=None, description="Enable Write-Ahead Logging"
-    )
-
-    # ============================================================================
-    # INDEXING CONFIGURATION
-    # ============================================================================
-
-    qdrant_enable_payload_indexing: bool = Field(
-        default=True, description="Enable payload field indexing"
-    )
-    qdrant_indexed_payload_fields: dict[str, str] = Field(
-        default={
-            # Core searchable fields
-            "id": "keyword",
-            "anime_id": "keyword",  # Link to parent anime (for Episodes)
-            "anime_ids": "keyword",  # Link to parent anime (for Characters)
-            "title": "keyword",  # Exact title matching
-            "title_text": "text",  # Full-text title search
-            "type": "keyword",
-            "status": "keyword",
-            "episodes": "integer",
-            "rating": "keyword",
-            "source_material": "keyword",
-            "nsfw": "bool",
-            # Categorical fields
-            "genres": "keyword",
-            "tags": "keyword",
-            "demographics": "text",  # Descriptive text content
-            "content_warnings": "text",  # Descriptive text content
-            # Character physical attributes (AnimePlanet)
-            "characters.hair_color": "keyword",
-            "characters.eye_color": "keyword",
-            "characters.character_traits": "keyword",
-            # Temporal fields (flattened)
-            "year": "integer",
-            "season": "keyword",
-            "duration": "integer",  # Episode duration in seconds
-            # Platform fields
-            "sources": "keyword",
-            # Statistics for numerical filtering - per-platform nested fields
-            # MAL (MyAnimeList) statistics
-            "statistics.mal.score": "float",
-            "statistics.mal.scored_by": "integer",
-            "statistics.mal.members": "integer",
-            "statistics.mal.favorites": "integer",
-            "statistics.mal.rank": "integer",
-            "statistics.mal.popularity_rank": "integer",
-            # AniList statistics
-            "statistics.anilist.score": "float",
-            "statistics.anilist.favorites": "integer",
-            "statistics.anilist.popularity_rank": "integer",
-            # AniDB statistics
-            "statistics.anidb.score": "float",
-            "statistics.anidb.scored_by": "integer",
-            # Anime-Planet statistics
-            "statistics.animeplanet.score": "float",
-            "statistics.animeplanet.scored_by": "integer",
-            "statistics.animeplanet.rank": "integer",
-            # Kitsu statistics
-            "statistics.kitsu.score": "float",
-            "statistics.kitsu.members": "integer",
-            "statistics.kitsu.favorites": "integer",
-            "statistics.kitsu.rank": "integer",
-            "statistics.kitsu.popularity_rank": "integer",
-            # AnimeSchedule statistics
-            "statistics.animeschedule.score": "float",
-            "statistics.animeschedule.scored_by": "integer",
-            "statistics.animeschedule.members": "integer",
-            "statistics.animeschedule.rank": "integer",
-            # Aggregate score field
-            "score.arithmetic_mean": "float",
-            # Note: enrichment_metadata intentionally excluded (non-indexed operational data)
-        },
-        description="Payload fields with their types for optimized indexing (excludes operational metadata)",
-    )
-
-    # ============================================================================
-    # API CONFIGURATION
-    # ============================================================================
-
-    api_title: str = Field(default="Anime Vector Service", description="API title")
-    api_version: str = Field(default="1.0.0", description="API version")
-    api_description: str = Field(
-        default="Microservice for anime vector database operations",
-        description="API description",
-    )
-
-    # ============================================================================
-    # REQUEST PROCESSING & LIMITS
-    # ============================================================================
-
-    # Batch Processing
-    default_batch_size: int = Field(
-        default=100, ge=1, le=1000, description="Default batch size for operations"
-    )
-    max_batch_size: int = Field(
-        default=500, ge=1, le=2000, description="Maximum allowed batch size"
-    )
-
-    # Search & Request Limits
-    max_search_limit: int = Field(
-        default=100, ge=1, le=1000, description="Maximum search results limit"
-    )
-    request_timeout: int = Field(
-        default=30, ge=1, le=300, description="Request timeout in seconds"
-    )
-
-    # ============================================================================
-    # LOGGING CONFIGURATION
-    # ============================================================================
-
-    log_level: str = Field(default="INFO", description="Logging level")
-    log_format: str = Field(
-        default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        description="Log format string",
-    )
-
-    # ============================================================================
-    # CORS CONFIGURATION
-    # ============================================================================
-
-    allowed_origins: list[str] = Field(
-        default=["*"], description="Allowed CORS origins"
-    )
-    allowed_methods: list[str] = Field(
-        default=["*"], description="Allowed HTTP methods"
-    )
-    allowed_headers: list[str] = Field(
-        default=["*"], description="Allowed HTTP headers"
-    )
-
-    # ============================================================================
-    # LIFECYCLE & VALIDATION
-    # ============================================================================
-
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, __context: Any) -> None:
         """Apply environment-specific overrides after initialization."""
         self.apply_environment_settings()
 
@@ -431,78 +197,23 @@ class Settings(BaseSettings):
             if os.getenv("DEBUG") is None:
                 self.debug = True
             if os.getenv("LOG_LEVEL") is None:
-                self.log_level = "DEBUG"
+                self.service.log_level = "DEBUG"
 
         elif self.environment == Environment.STAGING:
             # Apply defaults only if user didn't explicitly set values
             if os.getenv("DEBUG") is None:
                 self.debug = True
             if os.getenv("LOG_LEVEL") is None:
-                self.log_level = "INFO"
+                self.service.log_level = "INFO"
             if os.getenv("QDRANT_ENABLE_WAL") is None:
-                self.qdrant_enable_wal = True
+                self.qdrant.qdrant_enable_wal = True
 
         elif self.environment == Environment.PRODUCTION:
             # ENFORCED - cannot be bypassed (security feature)
             self.debug = False
-            self.log_level = "WARNING"
-            self.qdrant_enable_wal = True
-            self.model_warm_up = True
-
-    @field_validator("qdrant_distance_metric")
-    @classmethod
-    def validate_distance_metric(cls, v: str) -> str:
-        """Validate distance metric."""
-        valid_metrics = ["cosine", "euclid", "dot"]
-        if v.lower() not in valid_metrics:
-            raise ValueError(f"Distance metric must be one of: {valid_metrics}")
-        return v.lower()
-
-    @field_validator("text_embedding_provider")
-    @classmethod
-    def validate_text_provider(cls, v: str) -> str:
-        """Validate text embedding provider."""
-        valid_providers = ["fastembed", "huggingface", "sentence-transformers"]
-        if v.lower() not in valid_providers:
-            raise ValueError(
-                f"Text embedding provider must be one of: {valid_providers}"
-            )
-        return v.lower()
-
-    @field_validator("image_embedding_provider")
-    @classmethod
-    def validate_image_provider(cls, v: str) -> str:
-        """Validate image embedding provider."""
-        valid_providers = ["openclip"]
-        if v.lower() not in valid_providers:
-            raise ValueError(
-                f"Image embedding provider must be one of: {valid_providers}"
-            )
-        return v.lower()
-
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        """Validate log level."""
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_levels:
-            raise ValueError(f"Log level must be one of: {valid_levels}")
-        return v.upper()
-
-    @field_validator("multivector_vectors")
-    @classmethod
-    def validate_multivector_vectors(
-        cls, v: list[str], info: ValidationInfo
-    ) -> list[str]:
-        """Validate multivector_vectors against vector_names."""
-        vector_names = (info.data or {}).get("vector_names", {})
-        unknown = [name for name in v if name not in vector_names]
-        if unknown:
-            raise ValueError(  # noqa: TRY003
-                f"Unknown multivector vectors: {unknown}. "
-                f"Valid vectors: {list(vector_names.keys())}"
-            )
-        return v
+            self.service.log_level = "WARNING"
+            self.qdrant.qdrant_enable_wal = True
+            self.embedding.model_warm_up = True
 
 
 @lru_cache

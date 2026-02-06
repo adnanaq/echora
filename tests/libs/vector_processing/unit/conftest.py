@@ -3,17 +3,17 @@
 from unittest.mock import MagicMock
 
 import pytest
-from common.config import Settings
+from common.config import EmbeddingConfig
 
 
 @pytest.fixture
 def mock_settings():
-    """Create mock Settings instance for unit tests."""
-    settings = MagicMock(spec=Settings)
+    """Create mock EmbeddingConfig instance for unit tests."""
+    config = MagicMock(spec=EmbeddingConfig)
     # Add configuration fields
-    settings.max_concurrent_image_downloads = 10
-    settings.embed_max_concurrency = 2
-    return settings
+    config.max_concurrent_image_downloads = 10
+    config.embed_max_concurrency = 2
+    return config
 
 
 @pytest.fixture
