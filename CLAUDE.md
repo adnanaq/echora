@@ -37,32 +37,34 @@ docker compose -f docker/docker-compose.yml logs -f vector-service
 docker compose -f docker/docker-compose.yml down
 ```
 
-### Testing and Quality
+### Testing
+
+**Note**: Use Pants for running tests as it handles monorepo dependencies automatically.
 
 ```bash
-# Run tests
-uv run pytest
+# Run all tests
+./pants test ::
 
-# Run specific test file
-uv run pytest test_filename.py
+# Run tests for a specific library
+./pants test libs/qdrant_db::
 
-# Run tests with coverage
-uv run pytest --cov=src
+# Run a specific test file
+./pants test tests/libs/qdrant_db/integration/test_qdrant_client_integration.py
 
-# Type checking (MANDATORY before commits)
-uv run ty check scripts/ libs/ apps/
+# Run integration tests only (requires Qdrant + ML models)
+./pants test :: -- -m integration
 
-# Code formatting
-uv run ruff format src/
-uv run ruff check --select I --fix src/
+# Skip integration tests (fast, no DB/models required)
+./pants test :: -- -m "not integration"
 
-# Or use Pants (recommended)
-./pants fmt ::
+# Run tests matching keyword
+./pants test :: -- -k test_client
+
+# Verbose output with short traceback
+./pants test :: -- -v --tb=short
 ```
 
-### Type Safety Protocol
-
-**MANDATORY**: All code must pass ty type checking before commits.
+### Code Quality
 
 **Code Quality Tools**:
 
@@ -72,18 +74,31 @@ uv run ruff check --select I --fix src/
 - Linting: ruff check (replaces autoflake and flake8)
 
 ```bash
-# Check all source files with type checking
+# Format code
+uv run ruff format .
+./pants fmt ::
+
+# Lint code
+uv run ruff check --fix .
+./pants lint ::
+
+# Type check (ty works standalone)
+uv run ty check scripts/ libs/ apps/
+
+# Format, lint, and check (recommended before commits)
+./pants fmt lint check ::
+```
+
+### Type Safety Protocol
+
+**MANDATORY**: All code must pass ty type checking before commits.
+
+```bash
+# Check all source files
 uv run ty check scripts/ libs/ apps/
 
 # Check specific library
 uv run ty check libs/http_cache/
-
-# Format and lint code
-uv run ruff format src/
-uv run ruff check --fix src/
-
-# Or use Pants
-./pants fmt lint check ::
 ```
 
 ### Service Health Checks

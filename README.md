@@ -200,7 +200,7 @@ uv run ruff check --fix .
 ./pants lint ::
 
 # Type check (ty works standalone)
-ty check scripts/ libs/ apps/
+uv run ty check scripts/ libs/ apps/
 
 # Format, lint, and check (Pants-only, recommended before commits)
 ./pants fmt lint check ::

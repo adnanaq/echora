@@ -1,8 +1,8 @@
 """Common fixtures for vector_processing tests."""
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from common.config import Settings
 
 
@@ -10,8 +10,9 @@ from common.config import Settings
 def mock_settings():
     """Create mock Settings instance for unit tests."""
     settings = MagicMock(spec=Settings)
-    # Add new configuration field
+    # Add configuration fields
     settings.max_concurrent_image_downloads = 10
+    settings.embed_max_concurrency = 2
     return settings
 
 

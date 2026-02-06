@@ -216,6 +216,17 @@ class Settings(BaseSettings):
         default=None, description="Keep quantized vectors in RAM"
     )
 
+    # ============================================================================
+    # EMBEDDING CONCURRENCY
+    # ============================================================================
+
+    embed_max_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=16,
+        description="Maximum concurrent embedding tasks per process",
+    )
+
     # Advanced Quantization Configuration per Vector Priority
     quantization_config: dict[str, dict[str, object]] = Field(
         default={

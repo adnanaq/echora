@@ -1,6 +1,6 @@
 python_tests(
     dependencies=[
         "//:reqs0#pytest-asyncio",
-        "data/qdrant_storage:test_data",
+        "assets/seed_data:anime_seed_data",
     ],
 )

@@ -5,6 +5,7 @@ engine for text embedding. It is strictly responsible for converting strings
 to embedding vectors using configured ML models, with no domain-specific logic.
 """
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -44,11 +45,15 @@ class TextProcessor:
 
         self.settings = settings
         self.model = model
+        self._semaphore = asyncio.Semaphore(settings.embed_max_concurrency)
 
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 
-    def encode_text(self, text: str) -> list[float] | None:
+    async def encode_text(self, text: str) -> list[float] | None:
         """Encode a single string to an embedding vector.
+
+        Runs the model inference in a thread to avoid blocking the event loop,
+        with semaphore-based concurrency control.
 
         Args:
             text: The text string to encode.
@@ -57,24 +62,26 @@ class TextProcessor:
             A list of floats representing the embedding vector, a zero vector
             if the input is empty/whitespace, or None if encoding fails.
         """
-        try:
-            if not text or not text.strip():
-                return self.get_zero_embedding()
+        if not text or not text.strip():
+            return self.get_zero_embedding()
 
-            embeddings = self.model.encode([text])
+        try:
+            async with self._semaphore:
+                embeddings = await asyncio.to_thread(self.model.encode, [text])
+        except Exception:
+            logger.exception("Text encoding failed")
+            return None
+        else:
             if not embeddings:
                 return None
             return embeddings[0]
 
-        except Exception:
-            logger.exception("Text encoding failed")
-            return None
-
-    def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
+    async def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
         """Encode multiple texts in a single batch call.
 
         More efficient than calling encode_text repeatedly as it leverages
-        the model's batch processing capabilities.
+        the model's batch processing capabilities. Pre-processing runs on
+        the event loop; the model call runs in a thread with semaphore control.
 
         Args:
             texts: List of text strings to encode.
@@ -84,43 +91,41 @@ class TextProcessor:
             in the same order as the input texts. Empty or whitespace-only
             strings return zero vectors to maintain consistency with encode_text.
         """
+        # Pre-process texts to identify empty/whitespace entries
+        zero_embedding = self.get_zero_embedding()
+        valid_indices = []
+        valid_texts = []
+
+        for i, text in enumerate(texts):
+            if text and text.strip():
+                valid_indices.append(i)
+                valid_texts.append(text)
+
+        # If all texts are empty, return independent zero vectors for all
+        if not valid_texts:
+            return [zero_embedding.copy() for _ in texts]
+
+        # Encode only valid texts (CPU/GPU-bound — run in thread)
         try:
-            # Pre-process texts to identify empty/whitespace entries
-            zero_embedding = self.get_zero_embedding()
-            valid_indices = []
-            valid_texts = []
-            
-            for i, text in enumerate(texts):
-                if text and text.strip():
-                    valid_indices.append(i)
-                    valid_texts.append(text)
-            
-            # If all texts are empty, return independent zero vectors for all
-            if not valid_texts:
-                return [zero_embedding.copy() for _ in texts]
-            
-            # Encode only valid texts
-            encoded_valid = self.model.encode(valid_texts)
-            
-            # Reconstruct result list with zero vectors for empty inputs
-            result: list[list[float] | None] = []
-            valid_idx = 0
-            valid_index_set = set(valid_indices)
-            
-            for i in range(len(texts)):
-                if i in valid_index_set:
-                    result.append(
-                        cast(list[float] | None, encoded_valid[valid_idx])
-                    )
-                    valid_idx += 1
-                else:
-                    result.append(zero_embedding.copy())
-            
-            return result
-            
+            async with self._semaphore:
+                encoded_valid = await asyncio.to_thread(self.model.encode, valid_texts)
         except Exception:
             logger.exception("Batch text encoding failed")
             return [None] * len(texts)
+
+        # Reconstruct result list with zero vectors for empty inputs
+        result: list[list[float] | None] = []
+        valid_idx = 0
+        valid_index_set = set(valid_indices)
+
+        for i in range(len(texts)):
+            if i in valid_index_set:
+                result.append(cast(list[float] | None, encoded_valid[valid_idx]))
+                valid_idx += 1
+            else:
+                result.append(zero_embedding.copy())
+
+        return result
 
     def get_zero_embedding(self) -> list[float]:
         """Get a zero embedding vector matching model dimensions.

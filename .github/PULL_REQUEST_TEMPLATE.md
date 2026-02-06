@@ -13,6 +13,10 @@
 
 <!-- Brief description of what this PR does -->
 
+## Reviewers
+
+<!-- Optional: @team or @person -->
+
 ## Changes
 
 <!-- Detailed list of changes made -->
@@ -31,6 +35,14 @@
 <!-- If no issue exists, explain the motivation/context in the Summary section above -->
 
 N/A
+
+## Breaking Changes (If Any)
+
+<!-- Describe breaking changes and any migration steps required -->
+
+## Questions for Reviewers (Optional)
+
+<!-- What should reviewers pay extra attention to? -->
 
 ## Checklist
 

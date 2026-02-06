@@ -1,0 +1,33 @@
+# --- Heavy Data & Models ---
+cache/
+data/
+temp/
+downloads/
+
+# --- Version Control & IDE ---
+.git/
+.idea/
+.vscode/
+.claude/
+.serena/
+
+# --- Python & Build Artifacts ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- System & Logs ---
+.DS_Store
+*.log
+
+# --- Project Specific ---
+.pants.d/
+pants

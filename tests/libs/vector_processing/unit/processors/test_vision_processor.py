@@ -65,7 +65,8 @@ class TestVisionProcessorInit:
 class TestEncodeImage:
     """Tests for encode_image method."""
 
-    def test_encode_image_success(
+    @pytest.mark.asyncio
+    async def test_encode_image_success(
         self, mock_vision_model, mock_downloader, mock_settings
     ):
         """Test successful image encoding."""
@@ -75,12 +76,13 @@ class TestEncodeImage:
             settings=mock_settings,
         )
 
-        result = processor.encode_image("/path/to/image.jpg")
+        result = await processor.encode_image("/path/to/image.jpg")
 
         assert result == [0.2] * 768
         mock_vision_model.encode_image.assert_called_once_with(["/path/to/image.jpg"])
 
-    def test_encode_image_model_returns_empty_list(
+    @pytest.mark.asyncio
+    async def test_encode_image_model_returns_empty_list(
         self, mock_vision_model, mock_downloader, mock_settings
     ):
         """Test when model returns empty list."""
@@ -91,11 +93,12 @@ class TestEncodeImage:
             settings=mock_settings,
         )
 
-        result = processor.encode_image("/path/to/image.jpg")
+        result = await processor.encode_image("/path/to/image.jpg")
 
         assert result is None
 
-    def test_encode_image_model_returns_none(
+    @pytest.mark.asyncio
+    async def test_encode_image_model_returns_none(
         self, mock_vision_model, mock_downloader, mock_settings
     ):
         """Test when model returns None."""
@@ -106,11 +109,12 @@ class TestEncodeImage:
             settings=mock_settings,
         )
 
-        result = processor.encode_image("/path/to/image.jpg")
+        result = await processor.encode_image("/path/to/image.jpg")
 
         assert result is None
 
-    def test_encode_image_model_raises_exception(
+    @pytest.mark.asyncio
+    async def test_encode_image_model_raises_exception(
         self, mock_vision_model, mock_downloader, mock_settings, caplog
     ):
         """Test when model raises exception."""
@@ -122,7 +126,7 @@ class TestEncodeImage:
         )
 
         with caplog.at_level("ERROR"):
-            result = processor.encode_image("/path/to/image.jpg")
+            result = await processor.encode_image("/path/to/image.jpg")
 
         assert result is None
         assert "Image encoding failed" in caplog.text

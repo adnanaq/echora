@@ -11,7 +11,6 @@ import logging
 from typing import Any
 
 import aiohttp
-
 from common.config import Settings
 
 from ..embedding_models.vision.base import VisionEmbeddingModel
@@ -56,6 +55,7 @@ class VisionProcessor:
         self.settings = settings
         self.model = model
         self.downloader = downloader
+        self._semaphore = asyncio.Semaphore(settings.embed_max_concurrency)
 
         # Use settings value as default, allow override for testing
         self.max_concurrent_downloads = (
@@ -69,8 +69,11 @@ class VisionProcessor:
             f"max_concurrent_downloads: {self.max_concurrent_downloads}"
         )
 
-    def encode_image(self, image_path: str) -> list[float] | None:
+    async def encode_image(self, image_path: str) -> list[float] | None:
         """Encode a local image file to an embedding vector.
+
+        Runs the model inference in a thread to avoid blocking the event loop,
+        with semaphore-based concurrency control.
 
         Args:
             image_path: Absolute path to the local image file.
@@ -80,14 +83,16 @@ class VisionProcessor:
             or None if encoding fails.
         """
         try:
-            # Encode with model
-            embeddings = self.model.encode_image([image_path])
-            if embeddings:
-                return embeddings[0]
-            return None
-
+            async with self._semaphore:
+                embeddings = await asyncio.to_thread(
+                    self.model.encode_image, [image_path]
+                )
         except Exception:
             logger.exception("Image encoding failed")
+            return None
+        else:
+            if embeddings:
+                return embeddings[0]
             return None
 
     async def encode_images_batch(
@@ -124,7 +129,8 @@ class VisionProcessor:
                             local_path = await self.downloader.download_and_cache_image(
                                 url, session=session
                             )
-                            return (url, local_path)
+                            if local_path is None:
+                                raise RuntimeError(f"Download returned None for {url}")  # noqa: TRY003, TRY301
                         except Exception as e:
                             if attempt < max_retries:
                                 # Exponential backoff: 0.5s, 1s, 2s, ...
@@ -139,6 +145,8 @@ class VisionProcessor:
                                     f"Failed to download {url} after {max_retries + 1} attempts: {e}"
                                 )
                                 return (url, None)
+                        else:
+                            return (url, local_path)
                     return (url, None)
 
             download_results = await asyncio.gather(
@@ -165,14 +173,18 @@ class VisionProcessor:
 
         # Single batch encoding (CPU/GPU-bound - leverage model's batch processing)
         try:
-            embeddings = self.model.encode_image(local_paths)
+            async with self._semaphore:
+                embeddings = await asyncio.to_thread(
+                    self.model.encode_image, local_paths
+                )
+        except Exception:
+            logger.exception("Batch encoding failed")
+            return []
+        else:
             logger.info(
                 f"Batch encoding complete: {len(embeddings)}/{total_urls} images encoded successfully"
             )
             return embeddings
-        except Exception as e:
-            logger.exception(f"Batch encoding failed: {e}")
-            return []
 
     def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:
         """Create a hash of an embedding vector for duplicate detection.
