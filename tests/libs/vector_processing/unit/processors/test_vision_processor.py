@@ -362,12 +362,16 @@ class TestEncodeImagesBatch:
 
         mock_downloader = AsyncMock()
 
-        # Track when each download is called
-        download_times = []
+        # Track concurrent downloads using overlap counting (deterministic, not timing-based)
+        active_downloads = 0
+        max_concurrent = 0
 
         async def track_download(url, **_kwargs):
-            download_times.append(asyncio.get_running_loop().time())
+            nonlocal active_downloads, max_concurrent
+            active_downloads += 1
+            max_concurrent = max(max_concurrent, active_downloads)
             await asyncio.sleep(0.01)  # Simulate network delay
+            active_downloads -= 1
             return f"/cache/{url.split('/')[-1]}"
 
         mock_downloader.download_and_cache_image.side_effect = track_download
@@ -390,13 +394,10 @@ class TestEncodeImagesBatch:
         ]
         await processor.encode_images_batch(urls)
 
-        # All downloads should start at nearly the same time (concurrent)
-        # If sequential, time difference would be ~30ms (3 * 10ms)
-        # If concurrent, time difference should be < 50ms (allowing for CI scheduler jitter)
-        assert len(download_times) == 3
-        time_spread = max(download_times) - min(download_times)
-        assert time_spread < 0.05, (
-            f"Downloads were sequential, not concurrent: {time_spread}s spread"
+        # All 3 downloads should overlap (semaphore allows 10 concurrent)
+        # If sequential, max_concurrent would be 1
+        assert max_concurrent == 3, (
+            f"Expected all 3 downloads to run concurrently, but max_concurrent={max_concurrent}"
         )
 
     @pytest.mark.asyncio
@@ -759,18 +760,18 @@ class TestRetryLogic:
         self, mock_vision_model, mock_downloader, mock_settings
     ):
         """Test that failed downloads are retried with exponential backoff."""
-        import asyncio
-
         attempt_count = 0
-        attempt_times = []
+        sleep_delays: list[float] = []
 
         async def failing_download(url, session=None):  # noqa: ARG001
             nonlocal attempt_count
             attempt_count += 1
-            attempt_times.append(asyncio.get_event_loop().time())
             if attempt_count < 3:  # Fail first 2 attempts, succeed on 3rd
                 raise RuntimeError("Transient network error")  # noqa: TRY003
             return f"/cache/{url.split('/')[-1]}"
+
+        async def tracking_sleep(delay):
+            sleep_delays.append(delay)
 
         mock_downloader.download_and_cache_image = AsyncMock(
             side_effect=failing_download
@@ -784,19 +785,17 @@ class TestRetryLogic:
         )
 
         urls = ["http://example.com/test.jpg"]
-        result = await processor.encode_images_batch(urls, max_retries=2)
+        with patch("asyncio.sleep", new=tracking_sleep):
+            result = await processor.encode_images_batch(urls, max_retries=2)
 
         # Should succeed after retries
         assert len(result) == 1
         assert attempt_count == 3  # 3 total attempts (initial + 2 retries)
 
-        # Verify exponential backoff timing
-        if len(attempt_times) >= 3:
-            first_retry_delay = attempt_times[1] - attempt_times[0]
-            second_retry_delay = attempt_times[2] - attempt_times[1]
-            # First retry should wait ~0.5s, second ~1s (exponential)
-            assert first_retry_delay >= 0.4, "First retry too fast"
-            assert second_retry_delay >= 0.9, "Second retry didn't backoff"
+        # Verify exact exponential backoff delays passed to asyncio.sleep
+        assert len(sleep_delays) == 2, "Should have 2 backoff sleeps"
+        assert sleep_delays[0] == pytest.approx(0.5), "First retry should wait 0.5s"
+        assert sleep_delays[1] == pytest.approx(1.0), "Second retry should wait 1.0s"
 
     @pytest.mark.asyncio
     async def test_gives_up_after_max_retries(
