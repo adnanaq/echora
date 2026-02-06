@@ -12,6 +12,9 @@ downloads/
 .serena/
 
 # --- Python & Build Artifacts ---
+env
+env.*
+*.env
 .venv/
 venv/
 __pycache__/
