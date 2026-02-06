@@ -1929,7 +1929,7 @@ async def test_all_supported_vectors_simultaneously(
     for vector_name in vector_names:
         if "image" in vector_name:
             # Image vectors are 768-dimensional (multivector format)
-            vector_data: list[float] = [[0.1] * 768]
+            vector_data: list[float] | list[list[float]] = [[0.1] * 768]
         else:
             # Text vectors are 1024-dimensional
             content = embedding_manager.field_mapper.extract_anime_text(
@@ -2043,15 +2043,12 @@ async def test_non_existent_anime_ids(client: QdrantClient):
 
     result = await client.update_batch_point_vectors(batch_updates)
 
-    # Qdrant should accept updates even if points don't exist (will create them)
-    # OR reject them - document the actual behavior
-    assert "success" in result, "Should return result structure"
-    assert "failed" in result, "Should return failed count"
-    assert "results" in result, "Should return detailed results"
-
-    print(
-        f"Non-existent anime behavior: success={result['success']}, failed={result['failed']}"
-    )
+    # Qdrant's update_vectors accepts updates for non-existent points without error,
+    # so our client reports all 3 as successful (no exception raised by Qdrant).
+    assert result["success"] == 3, "All updates should succeed (Qdrant doesn't reject non-existent IDs)"
+    assert result["failed"] == 0, "No updates should fail"
+    assert len(result["results"]) == 3, "Should have one result per update"
+    assert all(r["success"] for r in result["results"]), "Each result should be marked successful"
 
 
 @pytest.mark.asyncio

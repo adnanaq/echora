@@ -147,7 +147,7 @@ class VisionProcessor:
                                 return (url, None)
                         else:
                             return (url, local_path)
-                    return (url, None)
+                    return (url, None)  # pragma: no cover - unreachable defensive fallback
 
             download_results = await asyncio.gather(
                 *[download_single_with_retry(url) for url in image_urls]
