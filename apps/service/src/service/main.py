@@ -8,8 +8,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-# Disable CUDA to force CPU usage
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# Disable CUDA to force CPU usage (can be overridden with ENABLE_GPU=true)
+if os.getenv("ENABLE_GPU", "false").lower() != "true":
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -199,10 +200,7 @@ async def health_check(
 
         # Return 503 if database is unhealthy
         if not db_healthy:
-            raise HTTPException(
-                status_code=503,
-                detail="Database unhealthy"
-            )
+            raise HTTPException(status_code=503, detail="Database unhealthy")
 
         # Only retrieve stats when database is healthy
         stats: dict[str, Any] = {}
@@ -227,10 +225,7 @@ async def health_check(
         raise
     except Exception as e:
         logger.exception("Health check failed")
-        raise HTTPException(
-            status_code=503,
-            detail="Service unhealthy"
-        ) from e
+        raise HTTPException(status_code=503, detail="Service unhealthy") from e
 
 
 # Include API routers

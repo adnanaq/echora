@@ -138,10 +138,8 @@ class OpenClipModel(VisionEmbeddingModel):
                         else:
                             pil_img = loaded_img  # ImageFile is compatible with Image
                     except Exception:
-                        logger.exception(f"Failed to load image from path {img}")
-                        # Skip failed images or raise?
-                        # To keep consistent list length, we should probably raise or handle gracefully.
-                        # For now, let's raise as the input is expected to be valid.
+                        # Let the outer handler log the full traceback
+                        # Input is expected to be valid, so propagate the error
                         raise
                 else:
                     pil_img = img

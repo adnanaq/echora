@@ -339,7 +339,7 @@ class ParallelAPIFetcher:
             return result
 
         except Exception as e:
-            logger.exception("Jikan fetch failed for MAL ID {mal_id}: ")
+            logger.exception(f"Jikan fetch failed for MAL ID {mal_id}")
             self.api_errors["jikan"] = str(e)
             return None
 
@@ -512,7 +512,7 @@ class ParallelAPIFetcher:
 
             return result
         except Exception as e:
-            logger.exception("AniList fetch failed for ID {anilist_id}: ")
+            logger.exception(f"AniList fetch failed for ID {anilist_id}")
             self.api_errors["anilist"] = str(e)
             return None
 
@@ -575,7 +575,7 @@ class ParallelAPIFetcher:
             self.api_timings["kitsu"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception("Kitsu fetch failed for ID {kitsu_id}: ")
+            logger.exception(f"Kitsu fetch failed for ID {kitsu_id}")
             self.api_errors["kitsu"] = str(e)
             return None
 
@@ -589,7 +589,7 @@ class ParallelAPIFetcher:
             self.api_timings["anidb"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception("AniDB fetch failed for ID {anidb_id}: ")
+            logger.exception(f"AniDB fetch failed for ID {anidb_id}")
             self.api_errors["anidb"] = str(e)
             return None
 
@@ -619,7 +619,7 @@ class ParallelAPIFetcher:
             self.api_timings["anisearch"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception("AniSearch fetch failed for ID {anisearch_id}: ")
+            logger.exception(f"AniSearch fetch failed for ID {anisearch_id}")
             self.api_errors["anisearch"] = str(e)
             return None
 

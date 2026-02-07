@@ -2,6 +2,7 @@
 
 import json
 import os
+import types
 import typing
 from enum import Enum
 from functools import lru_cache
@@ -61,13 +62,13 @@ _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
 
 # Ensure no field name collisions between sub-configs
-assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (
+assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (  # noqa: S101
     f"Field overlap Qdrant/Embedding: {_QDRANT_FIELDS & _EMBEDDING_FIELDS}"
 )
-assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (
+assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Qdrant/Service: {_QDRANT_FIELDS & _SERVICE_FIELDS}"
 )
-assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (
+assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
 )
 
@@ -82,7 +83,7 @@ def _is_complex_type(annotation: Any) -> bool:
     if origin in (list, dict):
         return True
     # Handle Union types (e.g., list[str] | None)
-    if origin is typing.Union or isinstance(annotation, type(str | None)):
+    if origin is typing.Union or isinstance(annotation, types.UnionType):
         for arg in typing.get_args(annotation):
             if _is_complex_type(arg):
                 return True
@@ -241,6 +242,23 @@ class Settings(BaseSettings):
             self.service.log_level = "WARNING"
             self.qdrant.qdrant_enable_wal = True
             self.embedding.model_warm_up = True
+
+
+# Ensure sub-config fields don't collide with Settings' own fields
+_SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
+    "qdrant",
+    "embedding",
+    "service",
+}
+assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+    f"Field overlap Qdrant/Settings: {_QDRANT_FIELDS & _SETTINGS_FIELDS}"
+)
+assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+    f"Field overlap Embedding/Settings: {_EMBEDDING_FIELDS & _SETTINGS_FIELDS}"
+)
+assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+    f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
+)
 
 
 @lru_cache

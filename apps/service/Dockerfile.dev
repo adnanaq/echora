@@ -6,7 +6,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install development dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     curl \
@@ -14,8 +14,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the self-contained PEX binary built by Pants
-# For dev, we use the same PEX as production but can mount source for live reload
 COPY apps.service/service.pex /app/service.pex
+
+# Run as non-root user for security (catches permission issues early)
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --no-create-home appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -28,9 +33,13 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8002/health || exit 1
 
-# For development with live reload, you can:
-# 1. Use volume mounts: docker run -v $(pwd):/app/src ...
-# 2. Rebuild PEX when dependencies change: pants package apps/service:service
+# Development workflow:
+# PEX files are self-contained archives - volume mounts won't override the code inside.
+# To see code changes:
+#   1. Rebuild the PEX: pants package apps/service:service
+#   2. Rebuild the image: docker compose build service
+#   3. Restart the container: docker compose up -d service
+# For faster iteration, consider running the service directly: uv run python -m src.main
 
 # Run the PEX binary
 ENTRYPOINT ["/app/service.pex"]

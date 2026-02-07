@@ -34,8 +34,8 @@ class AniSearchEnrichmentHelper:
             if match:
                 return int(match.group(1))
             return None
-        except (AttributeError, TypeError, ValueError) as e:
-            logger.exception("Error extracting AniSearch ID from URL {url}: ")
+        except (AttributeError, TypeError, ValueError):
+            logger.exception(f"Error extracting AniSearch ID from URL {url}")
             return None
 
     async def find_anisearch_url(

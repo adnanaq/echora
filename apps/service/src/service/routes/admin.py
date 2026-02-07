@@ -7,7 +7,6 @@ dashboards and operational monitoring.
 import logging
 from typing import Any
 
-from common.config import get_settings
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from vector_db_interface import VectorDBClient
@@ -19,7 +18,6 @@ from ..dependencies import (
     get_vision_processor,
 )
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -84,7 +82,7 @@ async def get_database_stats(
     except Exception as e:
         logger.exception("Failed to get stats")
         raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve database statistics: {str(e)}"
+            status_code=500, detail=f"Failed to retrieve database statistics: {e!s}"
         ) from e
 
 
@@ -129,5 +127,5 @@ async def get_collection_info(
     except Exception as e:
         logger.exception("Failed to get collection info")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get collection information: {str(e)}"
+            status_code=500, detail=f"Failed to get collection information: {e!s}"
         ) from e

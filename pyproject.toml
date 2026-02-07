@@ -42,11 +42,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     # Testing dependencies
+    # Note: pytest 8.4.1 is bundled with Pants, but we declare it explicitly
+    # for version control and to allow BUILD files to reference it
     "pytest>=8.2.0",
-    "pytest-asyncio==1.0.0",
-    "httpx>=0.28.1",
-    "pytest-cov==6.2.1",
-    "pytest-mock==3.14.1",
+    "pytest-asyncio==1.0.0",  # Required plugin for async test support
+    "httpx>=0.28.1",           # HTTP client for testing
+    "pytest-mock==3.14.1",     # Required plugin for mocking
 
     # Development dependencies
     # Note: ty is specified in [dependency-groups] dev for uv/pdm compatibility
@@ -66,11 +67,6 @@ asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--strict-config",
-    # Coverage is configured per-library via [tool.coverage.run]
-    "--cov",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-report=html:htmlcov",
-    "--cov-fail-under=80"
 ]
 markers = [
     "integration: marks tests as integration tests (require database, models, etc.)",
@@ -82,11 +78,8 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-# Measure coverage only for the library being tested, not dependencies
-# source_pkgs must be set by the test runner based on the library being tested
-# For qdrant_db tests: source_pkgs = ["qdrant_db"]
-# For vector_processing tests: source_pkgs = ["vector_processing"], etc.
-source_pkgs = ["qdrant_db"]
+# Pants automatically filters coverage to the transitive closure of test dependencies.
+# No need to manually configure source_pkgs - Pants handles this per-library.
 relative_files = true
 omit = [
     "*/tests/*",

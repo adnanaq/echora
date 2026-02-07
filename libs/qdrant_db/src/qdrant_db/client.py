@@ -139,12 +139,8 @@ class QdrantClient(VectorDBClient):
 
         self._distance_metric = config.qdrant_distance_metric
 
-        # Initialize vector sizes based on config
-        self._vector_size = config.vector_names["text_vector"]
-        self._image_vector_size = config.vector_names["image_vector"]
-
-        # Extract vector names from config to prevent hard-coding drift
-        # Look for text/image vectors in config, with fallback to legacy names
+        # Extract vector names from config with graceful fallback to prevent hard-coding drift
+        # Resolve names first, then derive sizes from resolved names for consistency
         self._text_vector_name = next(
             (name for name in config.vector_names if "text" in name.lower()),
             "text_vector",
@@ -157,6 +153,10 @@ class QdrantClient(VectorDBClient):
             ),
             "image_vector",
         )
+
+        # Derive vector sizes from resolved names (graceful access with fallback)
+        self._vector_size = config.vector_names.get(self._text_vector_name, 1024)
+        self._image_vector_size = config.vector_names.get(self._image_vector_name, 768)
 
     @property
     def collection_name(self) -> str:
@@ -522,16 +522,12 @@ class QdrantClient(VectorDBClient):
             optimizer_params = {}
 
             # Task #116: Configure memory mapping threshold
-            memory_threshold = getattr(
-                self.config, "qdrant_memory_mapping_threshold", None
-            )
+            memory_threshold = self.config.qdrant_memory_mapping_threshold
             if memory_threshold:
                 optimizer_params["memmap_threshold"] = memory_threshold
 
             # Configure indexing threads if specified
-            indexing_threads = getattr(
-                self.config, "qdrant_hnsw_max_indexing_threads", None
-            )
+            indexing_threads = self.config.qdrant_hnsw_max_indexing_threads
             if indexing_threads:
                 optimizer_params["indexing_threshold"] = 0  # Start indexing immediately
 

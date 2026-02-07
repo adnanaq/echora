@@ -129,10 +129,8 @@ class CCIP:
                 emb1 = np.array(embeddings[0])
                 emb2 = np.array(embeddings[1])
 
-            # Normalize and calculate cosine similarity
-            emb1 = emb1 / np.linalg.norm(emb1)
-            emb2 = emb2 / np.linalg.norm(emb2)
-
+            # Calculate cosine similarity
+            # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
             similarity = float(np.dot(emb1, emb2))
             logger.debug(f"OpenCLIP fallback similarity: {similarity}")
             return similarity

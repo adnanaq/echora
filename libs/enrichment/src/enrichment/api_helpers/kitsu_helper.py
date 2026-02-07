@@ -64,8 +64,8 @@ class KitsuEnrichmentHelper:
         try:
             response = await self._make_request(f"/anime/{anime_id}")
             return response.get("data") if response else None
-        except Exception as e:
-            logger.exception("Kitsu get_anime_by_id failed for ID {anime_id}: ")
+        except Exception:
+            logger.exception(f"Kitsu get_anime_by_id failed for ID {anime_id}")
             return None
 
     async def get_anime_episodes(self, anime_id: int) -> list[dict[str, Any]]:
@@ -112,8 +112,8 @@ class KitsuEnrichmentHelper:
             )
             return all_episodes
 
-        except Exception as e:
-            logger.exception("Kitsu get_anime_episodes failed for ID {anime_id}: ")
+        except Exception:
+            logger.exception(f"Kitsu get_anime_episodes failed for ID {anime_id}")
             return all_episodes  # Return what we got so far
 
     async def get_anime_categories(self, anime_id: int) -> list[dict[str, Any]]:
@@ -121,8 +121,8 @@ class KitsuEnrichmentHelper:
         try:
             response = await self._make_request(f"/anime/{anime_id}/categories")
             return response.get("data", []) if response else []
-        except Exception as e:
-            logger.exception("Kitsu get_anime_categories failed for ID {anime_id}: ")
+        except Exception:
+            logger.exception(f"Kitsu get_anime_categories failed for ID {anime_id}")
             return []
 
     async def fetch_all_data(self, anime_id: int) -> dict[str, Any]:
@@ -161,8 +161,8 @@ class KitsuEnrichmentHelper:
                     else []
                 ),
             }
-        except Exception as e:
-            logger.exception("Kitsu fetch_all_data failed for ID {anime_id}: ")
+        except Exception:
+            logger.exception(f"Kitsu fetch_all_data failed for ID {anime_id}")
             return {"anime": None, "episodes": [], "categories": []}
 
     async def close(self) -> None:
