@@ -441,7 +441,7 @@ class AniDBEnrichmentHelper:
                             f"Decompressed content length: {len(content)} bytes"
                         )
                     except Exception as e:
-                        logger.exception(f"Failed to decompress gzipped content: {e}")
+                        logger.exception("Failed to decompress gzipped content: ")
                         raise
 
                 # Decode content with multiple encoding fallbacks

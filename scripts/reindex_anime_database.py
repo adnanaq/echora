@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import os
+import tempfile
 import uuid
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -179,13 +180,27 @@ async def main() -> None:
             if result["success"]:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
 
-                # Save updated anime data with generated IDs
+                # Save updated anime data with generated IDs using atomic write
                 print(
                     f"\nSaving updated anime data with generated IDs to {args.data_file}..."
                 )
-                with open(args.data_file, "w", encoding="utf-8") as f:
-                    json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
-                print("Updated data saved successfully")
+                # Write to temp file first, then atomic rename to prevent data loss on crash
+                temp_fd, temp_path = tempfile.mkstemp(
+                    dir=os.path.dirname(args.data_file) or ".",
+                    prefix=".tmp_anime_",
+                    suffix=".json"
+                )
+                try:
+                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                        json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
+                    # Atomic rename - if this fails, original file is untouched
+                    os.replace(temp_path, args.data_file)
+                    print("Updated data saved successfully")
+                except Exception:
+                    # Clean up temp file on failure
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
 
                 # Verify results using wrapper methods
                 info = await client.get_collection_info()

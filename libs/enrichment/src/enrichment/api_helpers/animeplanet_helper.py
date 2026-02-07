@@ -38,7 +38,7 @@ class AnimePlanetEnrichmentHelper:
                 return match.group(1)
             return None
         except Exception as e:
-            logger.exception(f"Error extracting slug from URL {url}: {e}")
+            logger.exception("Error extracting slug from URL {url}: ")
             return None
 
     async def find_animeplanet_url(
@@ -62,7 +62,7 @@ class AnimePlanetEnrichmentHelper:
                     return source
             return None
         except Exception as e:
-            logger.exception(f"Error finding Anime-Planet URL: {e}")
+            logger.exception("Error finding Anime-Planet URL: ")
             return None
 
     async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
@@ -95,7 +95,7 @@ class AnimePlanetEnrichmentHelper:
             return character_data
 
         except Exception as e:
-            logger.exception(f"Error fetching character data for slug '{slug}': {e}")
+            logger.exception("Error fetching character data for slug '{slug}': ")
             return None
 
     async def fetch_anime_data(
@@ -145,7 +145,7 @@ class AnimePlanetEnrichmentHelper:
             return anime_data
 
         except Exception as e:
-            logger.exception(f"Error fetching anime data for slug '{slug}': {e}")
+            logger.exception("Error fetching anime data for slug '{slug}': ")
             return None
 
     async def fetch_all_data(

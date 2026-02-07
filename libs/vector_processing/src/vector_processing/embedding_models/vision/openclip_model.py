@@ -109,8 +109,8 @@ class OpenClipModel(VisionEmbeddingModel):
                 "OpenCLIP dependencies not installed. Install with: pip install open-clip-torch"
             )
             raise ImportError("OpenCLIP dependencies missing") from e
-        except Exception as e:
-            logger.exception(f"Failed to load OpenCLIP model {model_name}: {e}")
+        except Exception:
+            logger.exception(f"Failed to load OpenCLIP model {model_name}")
             raise
 
     def encode_image(self, images: list[Image.Image | str]) -> list[list[float]]:
@@ -137,8 +137,8 @@ class OpenClipModel(VisionEmbeddingModel):
                             pil_img = loaded_img.convert("RGB")
                         else:
                             pil_img = loaded_img  # ImageFile is compatible with Image
-                    except Exception as e:
-                        logger.exception(f"Failed to load image from path {img}: {e}")
+                    except Exception:
+                        logger.exception(f"Failed to load image from path {img}")
                         # Skip failed images or raise?
                         # To keep consistent list length, we should probably raise or handle gracefully.
                         # For now, let's raise as the input is expected to be valid.
@@ -164,8 +164,8 @@ class OpenClipModel(VisionEmbeddingModel):
 
                 return cast(list[list[float]], image_features.cpu().numpy().tolist())
 
-        except Exception as e:
-            logger.exception(f"OpenCLIP encoding failed: {e}")
+        except Exception:
+            logger.exception("OpenCLIP encoding failed")
             raise
 
     @property

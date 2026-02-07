@@ -83,8 +83,8 @@ class HuggingFaceModel(TextEmbeddingModel):
                 # Convert to list of lists
                 return cast(list[list[float]], embeddings.cpu().numpy().tolist())
 
-        except Exception as e:
-            logger.exception(f"HuggingFace encoding failed: {e}")
+        except Exception:
+            logger.exception("HuggingFace encoding failed")
             raise
 
     @property

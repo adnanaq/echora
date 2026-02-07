@@ -55,8 +55,8 @@ class SentenceTransformerModel(TextEmbeddingModel):
             # Convert to list of lists
             return cast(list[list[float]], embeddings.tolist())
 
-        except Exception as e:
-            logger.exception(f"Sentence Transformers encoding failed: {e}")
+        except Exception:
+            logger.exception("Sentence Transformers encoding failed")
             raise
 
     @property

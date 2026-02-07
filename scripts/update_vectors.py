@@ -438,14 +438,14 @@ Examples:
             logger.info("Update completed successfully")
             sys.exit(0)  # Complete success
 
-    except (InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError) as e:
-        logger.exception(f"Validation error: {e}")
+    except (InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError):
+        logger.exception("Validation error")
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Update interrupted by user")
         sys.exit(130)
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
+    except Exception:
+        logger.exception("Unexpected error")
         sys.exit(1)
 
 
