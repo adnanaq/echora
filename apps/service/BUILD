@@ -17,3 +17,15 @@ pex_binary(
         ":lib",
     ],
 )
+
+docker_image(
+    name="service-image",
+    source="Dockerfile.prd",
+    # The pex_binary dependency is auto-inferred from COPY in Dockerfile
+)
+
+docker_image(
+    name="service-dev",
+    source="Dockerfile.dev",
+    # The pex_binary dependency is auto-inferred from COPY in Dockerfile
+)

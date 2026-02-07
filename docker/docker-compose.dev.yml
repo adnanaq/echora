@@ -45,10 +45,12 @@ services:
     restart: unless-stopped
 
   # Anime Vector Service
+  # Build with Pants: pants package apps/service:service-dev
+  # Or use docker-compose build with updated path:
   vector-service:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.dev
+      dockerfile: apps/service/Dockerfile.dev
     container_name: anime-vector-service
     ports:
       - "8002:8002"
