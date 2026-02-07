@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
 
         # Store all clients and processors on app state
-        app.state.qdrant_client = qdrant_client_instance
+        app.state.vector_db_client = qdrant_client_instance
         app.state.async_qdrant_client = async_qdrant_client
         app.state.embedding_manager = embedding_manager
         app.state.text_processor = text_processor
@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.field_mapper = field_mapper
 
         # Health check
-        healthy = await app.state.qdrant_client.health_check()
+        healthy = await app.state.vector_db_client.health_check()
         if not healthy:
             logger.error("Qdrant health check failed!")
             raise RuntimeError("Vector database is not available")
@@ -197,14 +197,23 @@ async def health_check(
     try:
         db_healthy = await db_client.health_check()
 
+        # Return 503 if database is unhealthy
+        if not db_healthy:
+            raise HTTPException(
+                status_code=503,
+                detail="Database unhealthy"
+            )
+
+        # Only retrieve stats when database is healthy
         stats: dict[str, Any] = {}
         try:
             stats = await db_client.get_stats()
         except Exception:
             logger.warning("Could not retrieve stats during health check")
 
+        # Return full payload only when healthy
         return {
-            "status": "healthy" if db_healthy else "unhealthy",
+            "status": "healthy",
             "timestamp": datetime.now(UTC).isoformat(),
             "service": "anime-vector-service",
             "version": settings.service.api_version,
@@ -216,9 +225,12 @@ async def health_check(
         }
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         logger.exception("Health check failed")
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+        raise HTTPException(
+            status_code=503,
+            detail="Service unhealthy"
+        ) from e
 
 
 # Include API routers

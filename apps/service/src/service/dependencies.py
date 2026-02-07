@@ -29,12 +29,12 @@ async def get_vector_db_client(request: Request) -> VectorDBClient:
         RuntimeError: If vector DB client not available in app state
     """
     if (
-        not hasattr(request.app.state, "qdrant_client")
-        or request.app.state.qdrant_client is None
+        not hasattr(request.app.state, "vector_db_client")
+        or request.app.state.vector_db_client is None
     ):
         logger.error("Vector DB client not initialized in app state.")
         raise RuntimeError("Vector DB client not available.")
-    return request.app.state.qdrant_client
+    return request.app.state.vector_db_client
 
 
 async def get_embedding_manager(request: Request) -> MultiVectorEmbeddingManager:

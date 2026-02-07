@@ -82,10 +82,10 @@ async def get_database_stats(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Failed to get stats: {e}")
+        logger.exception("Failed to get stats")
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve database statistics: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/collection")
@@ -116,7 +116,6 @@ async def get_collection_info(
 
         return {
             "collection_name": db_client.collection_name,
-            "database_url": db_client.connection_url,
             "vector_size": db_client.vector_size,
             "image_vector_size": db_client.image_vector_size,
             "distance_metric": db_client.distance_metric,
@@ -128,7 +127,7 @@ async def get_collection_info(
         }
 
     except Exception as e:
-        logger.exception(f"Failed to get collection info: {e}")
+        logger.exception("Failed to get collection info")
         raise HTTPException(
             status_code=500, detail=f"Failed to get collection information: {str(e)}"
-        )
+        ) from e
