@@ -2,6 +2,7 @@
 
 import json
 import os
+import typing
 from enum import Enum
 from functools import lru_cache
 from typing import Any
@@ -59,13 +60,41 @@ _QDRANT_FIELDS = frozenset(QdrantConfig.model_fields.keys())
 _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
 
+# Ensure no field name collisions between sub-configs
+assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (
+    f"Field overlap Qdrant/Embedding: {_QDRANT_FIELDS & _EMBEDDING_FIELDS}"
+)
+assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (
+    f"Field overlap Qdrant/Service: {_QDRANT_FIELDS & _SERVICE_FIELDS}"
+)
+assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (
+    f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
+)
+
+
+def _is_complex_type(annotation: Any) -> bool:
+    """Check if a type annotation represents a list or dict (including generics).
+
+    Uses typing introspection instead of string matching for robustness.
+    Handles Union types (e.g., list[str] | None).
+    """
+    origin = typing.get_origin(annotation)
+    if origin in (list, dict):
+        return True
+    # Handle Union types (e.g., list[str] | None)
+    if origin is typing.Union or isinstance(annotation, type(str | None)):
+        for arg in typing.get_args(annotation):
+            if _is_complex_type(arg):
+                return True
+    return False
+
+
 # Fields that expect complex types (list/dict) and need JSON parsing from env vars
 _JSON_FIELDS: frozenset[str] = frozenset(
     field_name
     for config_cls in (QdrantConfig, EmbeddingConfig, ServiceConfig)
     for field_name, field_info in config_cls.model_fields.items()
-    if field_info.annotation is not None
-    and any(t in str(field_info.annotation) for t in ("list", "dict", "List", "Dict"))
+    if field_info.annotation is not None and _is_complex_type(field_info.annotation)
 )
 
 
@@ -141,20 +170,15 @@ class Settings(BaseSettings):
             data.pop(key, None)
 
         # Override with real env vars (take precedence over .env file values)
-        for field_name in _QDRANT_FIELDS:
-            env_val = os.environ.get(field_name.upper())
-            if env_val is not None:
-                qdrant_data[field_name] = _maybe_parse_json(field_name, env_val)
-
-        for field_name in _EMBEDDING_FIELDS:
-            env_val = os.environ.get(field_name.upper())
-            if env_val is not None:
-                embedding_data[field_name] = _maybe_parse_json(field_name, env_val)
-
-        for field_name in _SERVICE_FIELDS:
-            env_val = os.environ.get(field_name.upper())
-            if env_val is not None:
-                service_data[field_name] = _maybe_parse_json(field_name, env_val)
+        for fields, target_data in [
+            (_QDRANT_FIELDS, qdrant_data),
+            (_EMBEDDING_FIELDS, embedding_data),
+            (_SERVICE_FIELDS, service_data),
+        ]:
+            for field_name in fields:
+                env_val = os.environ.get(field_name.upper())
+                if env_val is not None:
+                    target_data[field_name] = _maybe_parse_json(field_name, env_val)
 
         # Merge into existing nested dicts (if any) or create new ones
         for config_key, config_data in [
@@ -210,6 +234,9 @@ class Settings(BaseSettings):
 
         elif self.environment == Environment.PRODUCTION:
             # ENFORCED - cannot be bypassed (security feature)
+            # NOTE: Direct attribute assignment bypasses Pydantic validators.
+            # This is intentional for production enforcement. All values here are
+            # pre-validated to be correct and safe.
             self.debug = False
             self.service.log_level = "WARNING"
             self.qdrant.qdrant_enable_wal = True

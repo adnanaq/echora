@@ -1,6 +1,6 @@
 """Qdrant database configuration model."""
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 
 class QdrantConfig(BaseModel):
@@ -21,14 +21,6 @@ class QdrantConfig(BaseModel):
     )
 
     # Vector Architecture & Dimensions
-    text_vector_size: int = Field(
-        default=1024,
-        description="Vector embedding dimensions for text vectors (BGE-M3)",
-    )
-    image_vector_size: int = Field(
-        default=768,
-        description="Image embedding dimensions (OpenCLIP ViT-L/14: 768, ViT-B/32: 512)",
-    )
     vector_names: dict[str, int] = Field(
         default={
             "text_vector": 1024,
@@ -175,6 +167,15 @@ class QdrantConfig(BaseModel):
         valid_metrics = ["cosine", "euclid", "dot"]
         if v.lower() not in valid_metrics:
             raise ValueError(f"Distance metric must be one of: {valid_metrics}")
+        return v.lower()
+
+    @field_validator("qdrant_quantization_type")
+    @classmethod
+    def validate_quantization_type(cls, v: str) -> str:
+        """Validate quantization type."""
+        valid_types = ["binary", "scalar", "product"]
+        if v.lower() not in valid_types:
+            raise ValueError(f"Quantization type must be one of: {valid_types}")
         return v.lower()
 
     @field_validator("multivector_vectors")

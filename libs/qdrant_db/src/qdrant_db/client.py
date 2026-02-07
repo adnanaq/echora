@@ -140,8 +140,8 @@ class QdrantClient(VectorDBClient):
         self._distance_metric = config.qdrant_distance_metric
 
         # Initialize vector sizes based on config
-        self._vector_size = config.text_vector_size
-        self._image_vector_size = config.image_vector_size
+        self._vector_size = config.vector_names["text_vector"]
+        self._image_vector_size = config.vector_names["image_vector"]
 
         # Extract vector names from config to prevent hard-coding drift
         # Look for text/image vectors in config, with fallback to legacy names
@@ -253,7 +253,7 @@ class QdrantClient(VectorDBClient):
                 )
 
                 # Configure payload indexing for faster filtering
-                if getattr(self.config, "qdrant_enable_payload_indexing", True):
+                if self.config.qdrant_enable_payload_indexing:
                     await self._setup_payload_indexing()
 
                 logger.info(
@@ -369,7 +369,7 @@ class QdrantClient(VectorDBClient):
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
         # Get list of vectors that use multivector storage
-        multivector_names = set(getattr(self.config, "multivector_vectors", []) or [])
+        multivector_names = set(self.config.multivector_vectors)
         unknown = multivector_names - set(self.config.vector_names)
         if unknown:
             logger.warning(f"Unknown multivector vectors ignored: {sorted(unknown)}")
@@ -476,11 +476,11 @@ class QdrantClient(VectorDBClient):
         Returns:
             Quantization config based on settings (binary, scalar, or product), or None if disabled
         """
-        if not getattr(self.config, "qdrant_enable_quantization", False):
+        if not self.config.qdrant_enable_quantization:
             return None
 
-        quantization_type = getattr(self.config, "qdrant_quantization_type", "scalar")
-        always_ram = getattr(self.config, "qdrant_quantization_always_ram", None)
+        quantization_type = self.config.qdrant_quantization_type
+        always_ram = self.config.qdrant_quantization_always_ram
 
         try:
             if quantization_type == "binary":
@@ -549,7 +549,7 @@ class QdrantClient(VectorDBClient):
         Returns:
             WalConfigDiff with WAL parameters, or None if not enabled in settings
         """
-        enable_wal = getattr(self.config, "qdrant_enable_wal", None)
+        enable_wal = self.config.qdrant_enable_wal
         if enable_wal is not None:
             try:
                 config = WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
@@ -575,7 +575,7 @@ class QdrantClient(VectorDBClient):
         Non-indexed operational data:
         - enrichment_metadata: Development/debugging data not needed for search
         """
-        indexed_fields = getattr(self.config, "qdrant_indexed_payload_fields", {})
+        indexed_fields = self.config.qdrant_indexed_payload_fields
         if not indexed_fields:
             logger.info("No payload indexing configured")
             return
@@ -664,7 +664,7 @@ class QdrantClient(VectorDBClient):
                 "collection_name": self.collection_name,
                 "total_documents": count_result.count,
                 "vector_size": self._vector_size,
-                "distance_metric": "cosine",
+                "distance_metric": self._distance_metric,
                 "status": collection_info.status,
                 "optimizer_status": collection_info.optimizer_status,
                 "indexed_vectors_count": collection_info.indexed_vectors_count,
@@ -801,7 +801,7 @@ class QdrantClient(VectorDBClient):
             return False, f"Invalid vector name: {vector_name}"
 
         # Check if this is a multivector
-        multivector_names = set(getattr(self.config, "multivector_vectors", []) or [])
+        multivector_names = set(self.config.multivector_vectors)
         is_multivector = vector_name in multivector_names
 
         # Validate multivector format

@@ -1,0 +1,36 @@
+# Development Dockerfile using Pants-built PEX binary
+# This Dockerfile is managed by Pants and should be built with: pants package apps/service:service-dev
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the self-contained PEX binary built by Pants
+# For dev, we use the same PEX as production but can mount source for live reload
+COPY apps.service/service.pex /app/service.pex
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=development
+
+# Expose port
+EXPOSE 8002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8002/health || exit 1
+
+# For development with live reload, you can:
+# 1. Use volume mounts: docker run -v $(pwd):/app/src ...
+# 2. Rebuild PEX when dependencies change: pants package apps/service:service
+
+# Run the PEX binary
+ENTRYPOINT ["/app/service.pex"]

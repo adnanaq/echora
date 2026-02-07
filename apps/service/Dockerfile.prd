@@ -1,0 +1,31 @@
+# Production Dockerfile using Pants-built PEX binary
+# This Dockerfile is managed by Pants and should be built with: pants package apps/service:service-image
+
+# ---- Production stage ----
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install runtime dependencies (curl for healthcheck)
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the self-contained PEX binary built by Pants
+# Pants automatically infers this dependency and includes the PEX in the build context
+COPY apps.service/service.pex /app/service.pex
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=production
+
+# Expose port
+EXPOSE 8002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8002/health || exit 1
+
+# Run the PEX binary
+# The PEX is self-contained with all dependencies and source code
+ENTRYPOINT ["/app/service.pex"]

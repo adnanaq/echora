@@ -90,3 +90,21 @@ class EmbeddingConfig(BaseModel):
                 f"Image embedding provider must be one of: {valid_providers}"
             )
         return v.lower()
+
+    @field_validator("bge_model_version")
+    @classmethod
+    def validate_bge_model_version(cls, v: str) -> str:
+        """Validate BGE model version."""
+        valid_versions = ["v1.5", "m3", "reranker"]
+        if v.lower() not in valid_versions:
+            raise ValueError(f"BGE model version must be one of: {valid_versions}")
+        return v.lower()
+
+    @field_validator("bge_model_size")
+    @classmethod
+    def validate_bge_model_size(cls, v: str) -> str:
+        """Validate BGE model size."""
+        valid_sizes = ["small", "base", "large"]
+        if v.lower() not in valid_sizes:
+            raise ValueError(f"BGE model size must be one of: {valid_sizes}")
+        return v.lower()

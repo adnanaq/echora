@@ -1,6 +1,6 @@
 """Service-level configuration."""
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ServiceConfig(BaseModel):
@@ -62,3 +62,13 @@ class ServiceConfig(BaseModel):
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
+
+    @model_validator(mode="after")
+    def validate_batch_sizes(self) -> "ServiceConfig":
+        """Ensure default_batch_size does not exceed max_batch_size."""
+        if self.default_batch_size > self.max_batch_size:
+            raise ValueError(
+                f"default_batch_size ({self.default_batch_size}) must not exceed "
+                f"max_batch_size ({self.max_batch_size})"
+            )
+        return self
