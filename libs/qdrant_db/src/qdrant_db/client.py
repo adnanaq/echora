@@ -411,15 +411,16 @@ class QdrantClient(VectorDBClient):
         Returns:
             QuantizationConfig appropriate for priority level, or None if not configured
         """
-        config = self.config.quantization_config.get(priority, {})
-        if config.get("type") == "scalar":
+        quant_cfg = self.config.quantization_config.get(priority, {})
+        if quant_cfg.get("type") == "scalar":
             scalar_config = ScalarQuantizationConfig(
-                type=ScalarType.INT8, always_ram=bool(config.get("always_ram", False))
+                type=ScalarType.INT8,
+                always_ram=bool(quant_cfg.get("always_ram", False)),
             )
             return ScalarQuantization(scalar=scalar_config)
-        elif config.get("type") == "binary":
+        elif quant_cfg.get("type") == "binary":
             binary_config = BinaryQuantizationConfig(
-                always_ram=bool(config.get("always_ram", False))
+                always_ram=bool(quant_cfg.get("always_ram", False))
             )
             return BinaryQuantization(binary=binary_config)
         return None
@@ -433,9 +434,9 @@ class QdrantClient(VectorDBClient):
         Returns:
             HnswConfigDiff with appropriate parameters for priority level
         """
-        config = self.config.hnsw_config.get(priority, {})
+        hnsw_cfg = self.config.hnsw_config.get(priority, {})
         return HnswConfigDiff(
-            ef_construct=config.get("ef_construct", 200), m=config.get("m", 48)
+            ef_construct=hnsw_cfg.get("ef_construct", 200), m=hnsw_cfg.get("m", 48)
         )
 
     def _get_vector_priority(self, vector_name: str) -> str:

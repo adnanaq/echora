@@ -55,8 +55,8 @@ class KitsuEnrichmentHelper:
                     else:
                         logger.warning(f"Kitsu API error: HTTP {response.status}")
                         return {}
-        except Exception as e:
-            logger.exception("Kitsu API request failed: ")
+        except Exception:
+            logger.exception("Kitsu API request failed")
             return {}
 
     async def get_anime_by_id(self, anime_id: int) -> dict[str, Any] | None:

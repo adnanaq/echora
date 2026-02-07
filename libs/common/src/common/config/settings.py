@@ -62,13 +62,13 @@ _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
 
 # Ensure no field name collisions between sub-configs
-assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (  # noqa: S101
+assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (
     f"Field overlap Qdrant/Embedding: {_QDRANT_FIELDS & _EMBEDDING_FIELDS}"
 )
-assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
+assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (
     f"Field overlap Qdrant/Service: {_QDRANT_FIELDS & _SERVICE_FIELDS}"
 )
-assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
+assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (
     f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
 )
 
@@ -250,13 +250,13 @@ _SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
     "embedding",
     "service",
 }
-assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (
     f"Field overlap Qdrant/Settings: {_QDRANT_FIELDS & _SETTINGS_FIELDS}"
 )
-assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (
     f"Field overlap Embedding/Settings: {_EMBEDDING_FIELDS & _SETTINGS_FIELDS}"
 )
-assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (
     f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
 )
 

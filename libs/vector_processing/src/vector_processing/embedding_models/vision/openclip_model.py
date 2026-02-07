@@ -131,16 +131,11 @@ class OpenClipModel(VisionEmbeddingModel):
                 pil_img: Image.Image
                 if isinstance(img, str):
                     # Load from path if string
-                    try:
-                        loaded_img = Image.open(img)
-                        if loaded_img.mode != "RGB":
-                            pil_img = loaded_img.convert("RGB")
-                        else:
-                            pil_img = loaded_img  # ImageFile is compatible with Image
-                    except Exception:
-                        # Let the outer handler log the full traceback
-                        # Input is expected to be valid, so propagate the error
-                        raise
+                    loaded_img = Image.open(img)
+                    if loaded_img.mode != "RGB":
+                        pil_img = loaded_img.convert("RGB")
+                    else:
+                        pil_img = loaded_img  # ImageFile is compatible with Image
                 else:
                     pil_img = img
 

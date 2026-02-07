@@ -55,8 +55,8 @@ class AniSearchEnrichmentHelper:
                 if isinstance(source, str) and "anisearch.com" in source:
                     return source
             return None
-        except (AttributeError, TypeError, KeyError) as e:
-            logger.exception("Error finding AniSearch URL: ")
+        except (AttributeError, TypeError, KeyError):
+            logger.exception("Error finding AniSearch URL")
             return None
 
     async def fetch_anime_data(self, anisearch_id: int) -> dict[str, Any] | None:

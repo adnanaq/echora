@@ -37,6 +37,9 @@ class CCIP:
     def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
         """Lazy-load OpenCLIP model for fallback similarity calculation.
 
+        Note: If self.config is None, this method will initialize it with
+        default EmbeddingConfig() as a side-effect (lazy initialization pattern).
+
         Returns:
             Initialized VisionEmbeddingModel or None if unavailable
         """

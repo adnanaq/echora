@@ -605,7 +605,7 @@ class ParallelAPIFetcher:
             self.api_timings["anime_planet"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception("Anime-Planet fetch failed: ")
+            logger.exception("Anime-Planet fetch failed")
             self.api_errors["anime_planet"] = str(e)
             return None
 
@@ -650,7 +650,7 @@ class ParallelAPIFetcher:
             return result
 
         except Exception as e:
-            logger.exception("AnimSchedule fetch failed: ")
+            logger.exception("AnimSchedule fetch failed")
             self.api_errors["animeschedule"] = str(e)
             return None
 
