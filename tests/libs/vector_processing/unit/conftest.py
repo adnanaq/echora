@@ -8,7 +8,11 @@ from common.config import EmbeddingConfig
 
 @pytest.fixture
 def mock_settings():
-    """Create mock EmbeddingConfig instance for unit tests."""
+    """Create mock EmbeddingConfig instance for unit tests.
+
+    TODO: Rename to mock_embedding_config for clarity - the name mock_settings
+    suggests it mocks the full Settings object, but it only mocks EmbeddingConfig.
+    """
     config = MagicMock(spec=EmbeddingConfig)
     # Add configuration fields
     config.max_concurrent_image_downloads = 10

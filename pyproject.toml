@@ -66,8 +66,8 @@ asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=src",
-    "--cov=libs",
+    # Coverage is configured per-library via [tool.coverage.run]
+    "--cov",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html:htmlcov",
     "--cov-fail-under=80"
@@ -79,6 +79,18 @@ filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+# Measure coverage only for the library being tested, not dependencies
+# source_pkgs must be set by the test runner based on the library being tested
+# For qdrant_db tests: source_pkgs = ["qdrant_db"]
+# For vector_processing tests: source_pkgs = ["vector_processing"], etc.
+source_pkgs = ["qdrant_db"]
+relative_files = true
+omit = [
+    "*/tests/*",
+    "**/test_*.py",
 ]
 
 [tool.coverage.report]

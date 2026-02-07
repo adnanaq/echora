@@ -39,11 +39,10 @@ async def client(settings):
             async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
         # Initialize our QdrantClient wrapper - NOTE: no embedding_manager parameter
+        # url and collection_name are automatically sourced from config
         client = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant.qdrant_url,
-            collection_name=settings.qdrant.qdrant_collection_name,
         )
     except Exception as e:
         pytest.skip(f"Failed to create test collection: {e}")
