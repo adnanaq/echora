@@ -88,9 +88,7 @@ class Character(BaseModel):
     )
     gender: str | None = Field(None, description="Character gender")
     hair_color: str | None = Field(None, description="Hair color")
-    id: str | None = Field(
-        None, description="Unique UUID for the character"
-    )
+    id: str | None = Field(None, description="Unique UUID for the character")
     entity_type: EntityType = Field(
         default=EntityType.CHARACTER,
         description="Entity type for vector search filtering",

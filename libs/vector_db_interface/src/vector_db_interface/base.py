@@ -77,3 +77,35 @@ class VectorDBClient(ABC):
     async def get_stats(self) -> dict[str, Any]:
         """Get database statistics."""
         pass
+
+    # ==================== Connection & Configuration ====================
+
+    @property
+    @abstractmethod
+    def collection_name(self) -> str:
+        """Name of the active collection/index."""
+        ...
+
+    @property
+    @abstractmethod
+    def connection_url(self) -> str:
+        """Database connection URL."""
+        ...
+
+    @property
+    @abstractmethod
+    def vector_size(self) -> int:
+        """Primary (text) vector dimension."""
+        ...
+
+    @property
+    @abstractmethod
+    def image_vector_size(self) -> int:
+        """Image vector dimension."""
+        ...
+
+    @property
+    @abstractmethod
+    def distance_metric(self) -> str:
+        """Distance metric for similarity (cosine, euclid, dot)."""
+        ...

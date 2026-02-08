@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import os
+import tempfile
 import uuid
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -49,15 +50,17 @@ async def main() -> None:
 
     # Load settings
     settings = get_settings()
-    print(f" Configuration loaded: {len(settings.vector_names)} vectors configured")
+    print(
+        f" Configuration loaded: {len(settings.qdrant.vector_names)} vectors configured"
+    )
 
     # Initialize AsyncQdrantClient
-    if settings.qdrant_api_key:
+    if settings.qdrant.qdrant_api_key:
         async_qdrant_client = AsyncQdrantClient(
-            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            url=settings.qdrant.qdrant_url, api_key=settings.qdrant.qdrant_api_key
         )
     else:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
     try:
         # Initialize embedding manager and processors using factory pattern
@@ -65,40 +68,40 @@ async def main() -> None:
         field_mapper = AnimeFieldMapper()
 
         # 2. Initialize Processors (Compute Engines)
-        text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(model=text_model, settings=settings)
+        text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+        text_processor = TextProcessor(model=text_model, config=settings.embedding)
 
-        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
         image_downloader = ImageDownloader(
-            cache_dir=settings.model_cache_dir or "cache"
+            cache_dir=settings.embedding.model_cache_dir or "cache"
         )
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
-            # field_mapper removed from vision processor (SRP)
-            settings=settings,
+            config=settings.embedding,
         )
 
         # 3. Initialize Manager (Orchestrator) with all dependencies
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
-            field_mapper=field_mapper,  # Injected directly
-            settings=settings,
+            field_mapper=field_mapper,
         )
 
         # Initialize Qdrant client
         client = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
 
         # Delete existing collection if it exists
         try:
             await client.delete_collection()
-            print(f"  Deleted existing collection: {settings.qdrant_collection_name}")
+            print(
+                f"  Deleted existing collection: {settings.qdrant.qdrant_collection_name}"
+            )
         except Exception as e:  # noqa: BLE001 - Best effort: continue if collection doesn't exist
             print(f"  Could not delete existing collection (may not exist): {e}")
 
@@ -177,13 +180,27 @@ async def main() -> None:
             if result["success"]:
                 print(f"\nSuccessfully indexed {len(points)} documents.")
 
-                # Save updated anime data with generated IDs
+                # Save updated anime data with generated IDs using atomic write
                 print(
                     f"\nSaving updated anime data with generated IDs to {args.data_file}..."
                 )
-                with open(args.data_file, "w", encoding="utf-8") as f:
-                    json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
-                print("Updated data saved successfully")
+                # Write to temp file first, then atomic rename to prevent data loss on crash
+                temp_fd, temp_path = tempfile.mkstemp(
+                    dir=os.path.dirname(args.data_file) or ".",
+                    prefix=".tmp_anime_",
+                    suffix=".json"
+                )
+                try:
+                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                        json.dump(enrichment_data, f, indent=2, ensure_ascii=False)
+                    # Atomic rename - if this fails, original file is untouched
+                    os.replace(temp_path, args.data_file)
+                    print("Updated data saved successfully")
+                except Exception:
+                    # Clean up temp file on failure
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
 
                 # Verify results using wrapper methods
                 info = await client.get_collection_info()

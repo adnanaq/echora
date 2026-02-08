@@ -141,8 +141,8 @@ async def update_vectors(
     # Load settings (still needed for vector_names validation)
     settings = get_settings()
 
-    # Validate vector names against settings.vector_names
-    valid_vectors = list(settings.vector_names.keys())
+    # Validate vector names against settings.qdrant.vector_names
+    valid_vectors = list(settings.qdrant.vector_names.keys())
     invalid_vectors = [v for v in vector_names if v not in valid_vectors]
     if invalid_vectors:
         raise InvalidVectorNameError(
@@ -316,12 +316,12 @@ async def update_vectors(
 async def async_main(args, settings):
     """Async main function that initializes clients and runs updates."""
     # Initialize AsyncQdrantClient
-    if settings.qdrant_api_key:
+    if settings.qdrant.qdrant_api_key:
         async_qdrant_client = AsyncQdrantClient(
-            url=settings.qdrant_url, api_key=settings.qdrant_api_key
+            url=settings.qdrant.qdrant_url, api_key=settings.qdrant.qdrant_api_key
         )
     else:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
     try:
         # Initialize embedding manager and processors using factory pattern
@@ -329,18 +329,17 @@ async def async_main(args, settings):
         field_mapper = AnimeFieldMapper()
 
         # 2. Initialize Processors
-        text_model = EmbeddingModelFactory.create_text_model(settings)
-        text_processor = TextProcessor(model=text_model, settings=settings)
+        text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+        text_processor = TextProcessor(model=text_model, config=settings.embedding)
 
-        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
         image_downloader = ImageDownloader(
-            cache_dir=settings.model_cache_dir or "cache"
+            cache_dir=settings.embedding.model_cache_dir or "cache"
         )
         vision_processor = VisionProcessor(
             model=vision_model,
             downloader=image_downloader,
-            # field_mapper removed from vision processor
-            settings=settings,
+            config=settings.embedding,
         )
 
         # 3. Initialize Manager
@@ -348,15 +347,14 @@ async def async_main(args, settings):
             text_processor=text_processor,
             vision_processor=vision_processor,
             field_mapper=field_mapper,
-            settings=settings,
         )
 
         # Initialize Qdrant client using async factory
         qdrant_client = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
 
         # Run update and return result
@@ -377,7 +375,7 @@ def main():
     """CLI entry point."""
     # Load settings to get valid vector names for help text and client initialization
     settings = get_settings()
-    valid_vectors = list(settings.vector_names.keys())
+    valid_vectors = list(settings.qdrant.vector_names.keys())
 
     parser = argparse.ArgumentParser(
         description="Generic vector update script for selective Qdrant updates",
@@ -440,14 +438,14 @@ Examples:
             logger.info("Update completed successfully")
             sys.exit(0)  # Complete success
 
-    except (InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError) as e:
-        logger.error(f"Validation error: {e}")
+    except (InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError):
+        logger.exception("Validation error")
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Update interrupted by user")
         sys.exit(130)
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
+    except Exception:
+        logger.exception("Unexpected error")
         sys.exit(1)
 
 

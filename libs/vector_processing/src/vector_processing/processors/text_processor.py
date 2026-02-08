@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from common.config import Settings
+from common.config import EmbeddingConfig
 
 from ..embedding_models.text.base import TextEmbeddingModel
 
@@ -32,20 +32,20 @@ class TextProcessor:
     def __init__(
         self,
         model: TextEmbeddingModel,
-        settings: Settings | None = None,
+        config: EmbeddingConfig | None = None,
     ):
         """Initialize the text processor with an embedding model.
 
         Args:
             model: An initialized TextEmbeddingModel instance.
-            settings: Configuration settings instance. Uses defaults if None.
+            config: Embedding configuration instance. Uses defaults if None.
         """
-        if settings is None:
-            settings = Settings()
+        if config is None:
+            config = EmbeddingConfig()
 
-        self.settings = settings
+        self.config = config
         self.model = model
-        self._semaphore = asyncio.Semaphore(settings.embed_max_concurrency)
+        self._semaphore = asyncio.Semaphore(config.embed_max_concurrency)
 
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")
 

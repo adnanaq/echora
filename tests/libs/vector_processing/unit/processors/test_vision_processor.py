@@ -22,29 +22,31 @@ class TestVisionProcessorInit:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         assert processor.model == mock_vision_model
         assert processor.downloader == mock_downloader
-        assert processor.settings == mock_settings
+        assert processor.config == mock_settings
 
     def test_init_without_settings_uses_defaults(
         self, mock_vision_model, mock_downloader
     ):
-        """Test initialization without settings uses default Settings."""
+        """Test initialization without config uses default EmbeddingConfig."""
         with patch(
-            "vector_processing.processors.vision_processor.Settings"
-        ) as mock_settings_class:
-            mock_default_settings = MagicMock()
-            mock_settings_class.return_value = mock_default_settings
+            "vector_processing.processors.vision_processor.EmbeddingConfig"
+        ) as mock_config_class:
+            mock_default_config = MagicMock()
+            mock_default_config.embed_max_concurrency = 2
+            mock_default_config.max_concurrent_image_downloads = 10
+            mock_config_class.return_value = mock_default_config
 
             processor = VisionProcessor(
                 model=mock_vision_model, downloader=mock_downloader
             )
 
-            mock_settings_class.assert_called_once()
-            assert processor.settings == mock_default_settings
+            mock_config_class.assert_called_once()
+            assert processor.config == mock_default_config
 
     def test_init_logs_model_name(
         self, mock_vision_model, mock_downloader, mock_settings, caplog
@@ -54,7 +56,7 @@ class TestVisionProcessorInit:
             VisionProcessor(
                 model=mock_vision_model,
                 downloader=mock_downloader,
-                settings=mock_settings,
+                config=mock_settings,
             )
 
         assert (
@@ -73,7 +75,7 @@ class TestEncodeImage:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = await processor.encode_image("/path/to/image.jpg")
@@ -90,7 +92,7 @@ class TestEncodeImage:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = await processor.encode_image("/path/to/image.jpg")
@@ -106,7 +108,7 @@ class TestEncodeImage:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = await processor.encode_image("/path/to/image.jpg")
@@ -122,7 +124,7 @@ class TestEncodeImage:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         with caplog.at_level("ERROR"):
@@ -142,7 +144,7 @@ class TestHashEmbedding:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         embedding = [0.1234, 0.5678, 0.9012]
@@ -159,7 +161,7 @@ class TestHashEmbedding:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         embedding = [0.1, 0.2, 0.3, 0.4, 0.5]
@@ -175,7 +177,7 @@ class TestHashEmbedding:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         embedding1 = [0.1, 0.2, 0.3]
@@ -193,7 +195,7 @@ class TestHashEmbedding:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         # These differ at 5th decimal place
@@ -213,7 +215,7 @@ class TestHashEmbedding:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         # Create an object that will cause round() to fail
@@ -246,7 +248,7 @@ class TestGetCacheStats:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.get_cache_stats()
@@ -265,7 +267,7 @@ class TestClearCache:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.clear_cache()
@@ -280,7 +282,7 @@ class TestClearCache:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.clear_cache(max_age_days=7)
@@ -299,7 +301,7 @@ class TestGetSupportedFormats:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.get_supported_formats()
@@ -313,7 +315,7 @@ class TestGetSupportedFormats:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.get_supported_formats()
@@ -341,7 +343,7 @@ class TestGetModelInfo:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = processor.get_model_info()
@@ -384,7 +386,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -421,7 +423,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -460,7 +462,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = ["http://example.com/1.jpg", "http://example.com/2.jpg"]
@@ -481,7 +483,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         result = await processor.encode_images_batch([])
@@ -510,7 +512,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -548,7 +550,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -576,7 +578,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -612,7 +614,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [
@@ -662,7 +664,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
             max_concurrent_downloads=5,  # NEW: Limit to 5 concurrent
         )
 
@@ -699,7 +701,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [f"http://example.com/{i}.jpg" for i in range(10)]
@@ -739,7 +741,7 @@ class TestEncodeImagesBatch:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [f"http://example.com/{i}.jpg" for i in range(50)]
@@ -781,7 +783,7 @@ class TestRetryLogic:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = ["http://example.com/test.jpg"]
@@ -810,7 +812,7 @@ class TestRetryLogic:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = ["http://example.com/broken.jpg"]
@@ -833,7 +835,7 @@ class TestRetryLogic:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = ["http://example.com/test.jpg"]
@@ -867,7 +869,7 @@ class TestMetricsLogging:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = [f"http://example.com/{i}.jpg" for i in range(7)]
@@ -902,7 +904,7 @@ class TestMetricsLogging:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         urls = ["http://example.com/1.jpg", "http://example.com/2.jpg"]
@@ -930,7 +932,7 @@ class TestConfigurationIntegration:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
         )
 
         assert processor.max_concurrent_downloads == 25
@@ -944,7 +946,7 @@ class TestConfigurationIntegration:
         processor = VisionProcessor(
             model=mock_vision_model,
             downloader=mock_downloader,
-            settings=mock_settings,
+            config=mock_settings,
             max_concurrent_downloads=5,  # Override
         )
 
@@ -960,7 +962,7 @@ class TestConfigurationIntegration:
             VisionProcessor(
                 model=mock_vision_model,
                 downloader=mock_downloader,
-                settings=mock_settings,
+                config=mock_settings,
             )
 
         log_messages = [record.message for record in caplog.records]

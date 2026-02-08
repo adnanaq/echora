@@ -163,7 +163,7 @@ class EnrichmentValidator:
             with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load database file: {e}")
+            logger.exception("Failed to load database file")
             return {"error": str(e)}
 
         if "data" not in data:

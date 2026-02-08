@@ -8,8 +8,14 @@ from typing import Any
 from hishel._core._headers import Headers as Headers
 from hishel._core.models import (
     Entry as Entry,
+)
+from hishel._core.models import (
     EntryMeta as EntryMeta,
+)
+from hishel._core.models import (
     Request as Request,
+)
+from hishel._core.models import (
     Response as Response,
 )
 

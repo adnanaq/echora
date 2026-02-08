@@ -37,8 +37,8 @@ class AnimePlanetEnrichmentHelper:
             if match:
                 return match.group(1)
             return None
-        except Exception as e:
-            logger.error(f"Error extracting slug from URL {url}: {e}")
+        except Exception:
+            logger.exception(f"Error extracting slug from URL {url}")
             return None
 
     async def find_animeplanet_url(
@@ -61,8 +61,8 @@ class AnimePlanetEnrichmentHelper:
                 if isinstance(source, str) and "anime-planet.com" in source:
                     return source
             return None
-        except Exception as e:
-            logger.error(f"Error finding Anime-Planet URL: {e}")
+        except Exception:
+            logger.exception("Error finding Anime-Planet URL")
             return None
 
     async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
@@ -94,8 +94,8 @@ class AnimePlanetEnrichmentHelper:
             )
             return character_data
 
-        except Exception as e:
-            logger.error(f"Error fetching character data for slug '{slug}': {e}")
+        except Exception:
+            logger.exception(f"Error fetching character data for slug '{slug}'")
             return None
 
     async def fetch_anime_data(
@@ -144,8 +144,8 @@ class AnimePlanetEnrichmentHelper:
             logger.info(f"Successfully fetched anime data for '{slug}' using crawler")
             return anime_data
 
-        except Exception as e:
-            logger.error(f"Error fetching anime data for slug '{slug}': {e}")
+        except Exception:
+            logger.exception(f"Error fetching anime data for slug '{slug}'")
             return None
 
     async def fetch_all_data(
@@ -186,11 +186,9 @@ class AnimePlanetEnrichmentHelper:
             )
             return None
 
-        except Exception as e:
+        except Exception:
             title = offline_anime_data.get("title", "Unknown")
-            logger.error(
-                f"Error in fetch_all_data for anime '{title}': {e}", exc_info=True
-            )
+            logger.exception(f"Error in fetch_all_data for anime '{title}'")
             return None
 
     async def close(self) -> None:

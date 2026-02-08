@@ -93,11 +93,11 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
     except FileNotFoundError:
         logger.warning(f"Stage file not found: {stage_file}")
         return []
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {stage_file}: {e}")
+    except json.JSONDecodeError:
+        logger.exception("Invalid JSON in %s", stage_file)
         return []
-    except Exception as e:
-        logger.error(f"Error loading {stage_file}: {e}")
+    except Exception:
+        logger.exception("Error loading %s", stage_file)
         return []
 
 
@@ -612,8 +612,8 @@ async def process_stage5_ai_characters(
             f"  AnimePlanet: {len(anime_planet_chars)} → {len(working_animeplanet)}"
         )
 
-    except Exception as e:
-        logger.error(f"AI character processing failed: {e}")
+    except Exception:
+        logger.exception("AI character processing failed")
         raise
 
 

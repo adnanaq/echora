@@ -1,6 +1,5 @@
 """Unit tests for VectorDocument with multivector support."""
 
-import pytest
 from vector_db_interface import VectorDocument
 
 

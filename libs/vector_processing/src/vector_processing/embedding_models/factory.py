@@ -1,6 +1,6 @@
 import logging
 
-from common.config import Settings
+from common.config import EmbeddingConfig
 
 from .text.base import TextEmbeddingModel
 from .text.fastembed_model import FastEmbedModel
@@ -16,18 +16,18 @@ class EmbeddingModelFactory:
     """Factory for creating embedding models based on configuration."""
 
     @staticmethod
-    def create_text_model(settings: Settings) -> TextEmbeddingModel:
-        """Create text embedding model based on settings.
+    def create_text_model(config: EmbeddingConfig) -> TextEmbeddingModel:
+        """Create text embedding model based on config.
 
         Args:
-            settings: Configuration settings
+            config: Embedding configuration
 
         Returns:
             Initialized TextEmbeddingModel
         """
-        provider = settings.text_embedding_provider
-        model_name = settings.text_embedding_model
-        cache_dir = settings.model_cache_dir
+        provider = config.text_embedding_provider
+        model_name = config.text_embedding_model
+        cache_dir = config.model_cache_dir
 
         logger.info(f"Creating text embedding model: {provider} - {model_name}")
 
@@ -41,19 +41,19 @@ class EmbeddingModelFactory:
             raise ValueError(f"Unsupported text embedding provider: {provider}")
 
     @staticmethod
-    def create_vision_model(settings: Settings) -> VisionEmbeddingModel:
-        """Create vision embedding model based on settings.
+    def create_vision_model(config: EmbeddingConfig) -> VisionEmbeddingModel:
+        """Create vision embedding model based on config.
 
         Args:
-            settings: Configuration settings
+            config: Embedding configuration
 
         Returns:
             Initialized VisionEmbeddingModel
         """
-        provider = settings.image_embedding_provider
-        model_name = settings.image_embedding_model
-        cache_dir = settings.model_cache_dir
-        batch_size = getattr(settings, "image_batch_size", 16)
+        provider = config.image_embedding_provider
+        model_name = config.image_embedding_model
+        cache_dir = config.model_cache_dir
+        batch_size = config.image_batch_size
 
         logger.info(f"Creating vision embedding model: {provider} - {model_name}")
 

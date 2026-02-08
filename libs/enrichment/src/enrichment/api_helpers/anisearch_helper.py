@@ -34,8 +34,8 @@ class AniSearchEnrichmentHelper:
             if match:
                 return int(match.group(1))
             return None
-        except (AttributeError, TypeError, ValueError) as e:
-            logger.error(f"Error extracting AniSearch ID from URL {url}: {e}")
+        except (AttributeError, TypeError, ValueError):
+            logger.exception(f"Error extracting AniSearch ID from URL {url}")
             return None
 
     async def find_anisearch_url(
@@ -55,8 +55,8 @@ class AniSearchEnrichmentHelper:
                 if isinstance(source, str) and "anisearch.com" in source:
                     return source
             return None
-        except (AttributeError, TypeError, KeyError) as e:
-            logger.error(f"Error finding AniSearch URL: {e}")
+        except (AttributeError, TypeError, KeyError):
+            logger.exception("Error finding AniSearch URL")
             return None
 
     async def fetch_anime_data(self, anisearch_id: int) -> dict[str, Any] | None:

@@ -173,7 +173,7 @@ class EnrichmentAssembler:
             )
 
         except Exception as e:
-            logger.error(f"Assembly failed: {str(e)}")
+            logger.exception("Assembly failed")
             self.errors.append(f"Assembly exception: {str(e)}")
             return AssemblyResult(
                 success=False,
@@ -615,8 +615,8 @@ def load_stage_outputs(stage_dir: Path) -> dict[str, Any]:
             try:
                 with open(stage_file, encoding="utf-8") as f:
                     stage_outputs[f"stage{stage_num}"] = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load {stage_file}: {e}")
+            except Exception:
+                logger.exception(f"Failed to load {stage_file}")
                 stage_outputs[f"stage{stage_num}"] = None
         else:
             logger.warning(f"Stage {stage_num} output not found in {stage_dir}")

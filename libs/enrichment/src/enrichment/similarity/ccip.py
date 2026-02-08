@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 if TYPE_CHECKING:
-    from common.config import Settings
+    from common.config import EmbeddingConfig
     from vector_processing.embedding_models.vision.base import VisionEmbeddingModel
 
 logger = logging.getLogger(__name__)
@@ -25,17 +25,20 @@ class CCIP:
     - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
-    def __init__(self, settings: "Settings | None" = None):
-        """Initialize CCIP with optional settings.
+    def __init__(self, config: "EmbeddingConfig | None" = None):
+        """Initialize CCIP with optional config.
 
         Args:
-            settings: Configuration settings for fallback model creation
+            config: Embedding configuration for fallback model creation
         """
-        self.settings = settings
+        self.config = config
         self._fallback_model: VisionEmbeddingModel | None = None
 
     def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
         """Lazy-load OpenCLIP model for fallback similarity calculation.
+
+        Note: If self.config is None, this method will initialize it with
+        default EmbeddingConfig() as a side-effect (lazy initialization pattern).
 
         Returns:
             Initialized VisionEmbeddingModel or None if unavailable
@@ -46,17 +49,17 @@ class CCIP:
                     EmbeddingModelFactory,
                 )
 
-                if self.settings is None:
-                    from common.config import Settings
+                if self.config is None:
+                    from common.config import EmbeddingConfig
 
-                    self.settings = Settings()
+                    self.config = EmbeddingConfig()
 
                 self._fallback_model = EmbeddingModelFactory.create_vision_model(
-                    self.settings
+                    self.config
                 )
                 logger.info("OpenCLIP fallback model initialized for CCIP")
-            except Exception as e:
-                logger.exception(f"Failed to initialize OpenCLIP fallback model: {e}")
+            except Exception:
+                logger.exception("Failed to initialize OpenCLIP fallback model")
                 return None
         return self._fallback_model
 
@@ -75,8 +78,8 @@ class CCIP:
             else:
                 # Handle local file path
                 return Image.open(url_or_path)
-        except Exception as e:
-            logger.exception(f"Failed to load image from {url_or_path}: {e}")
+        except Exception:
+            logger.exception("Failed to load image from %s", url_or_path)
             return None
 
     def _calculate_openclip_similarity(
@@ -102,43 +105,28 @@ class CCIP:
             img1 = self._load_image_for_ccip(image_url_1)
             img2 = self._load_image_for_ccip(image_url_2)
 
-            if not img1 or not img2:
+            if img1 is None or img2 is None:
                 logger.debug("Could not load images for OpenCLIP fallback")
                 return 0.0
 
-            # Encode both images (model expects list of paths, but we have PIL Images)
-            # Save images temporarily to encode them
-            import tempfile
-            from pathlib import Path
+            # Encode both images directly (OpenCLIP accepts PIL Images)
+            embeddings = model.encode_image([img1, img2])
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmpdir_path = Path(tmpdir)
-                img1_path = tmpdir_path / "img1.jpg"
-                img2_path = tmpdir_path / "img2.jpg"
+            if embeddings is None or len(embeddings) < 2:
+                logger.warning("Failed to encode images with OpenCLIP")
+                return 0.0
 
-                img1.save(img1_path, "JPEG")
-                img2.save(img2_path, "JPEG")
+            emb1 = np.array(embeddings[0])
+            emb2 = np.array(embeddings[1])
 
-                # Encode images
-                embeddings = model.encode_image([str(img1_path), str(img2_path)])
-
-                if not embeddings or len(embeddings) < 2:
-                    logger.warning("Failed to encode images with OpenCLIP")
-                    return 0.0
-
-                emb1 = np.array(embeddings[0])
-                emb2 = np.array(embeddings[1])
-
-            # Normalize and calculate cosine similarity
-            emb1 = emb1 / np.linalg.norm(emb1)
-            emb2 = emb2 / np.linalg.norm(emb2)
-
-            similarity = float(np.dot(emb1, emb2))
+            # Calculate cosine similarity
+            # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
+            # Clamp to [0.0, 1.0] to match CCIP range and handle floating-point edge cases
+            similarity = float(np.clip(np.dot(emb1, emb2), 0.0, 1.0))  # ty: ignore[unresolved-attribute]
             logger.debug(f"OpenCLIP fallback similarity: {similarity}")
-            return similarity
-
-        except Exception as e:
-            logger.exception(f"OpenCLIP fallback similarity calculation failed: {e}")
+            return similarity  # noqa: TRY300
+        except Exception:
+            logger.exception("OpenCLIP fallback similarity calculation failed")
             return 0.0
 
     def calculate_character_similarity(
@@ -164,7 +152,7 @@ class CCIP:
             img1 = self._load_image_for_ccip(image_url_1)
             img2 = self._load_image_for_ccip(image_url_2)
 
-            if not img1 or not img2:
+            if img1 is None or img2 is None:
                 logger.warning(
                     "Could not load one or both images for CCIP, trying OpenCLIP fallback"
                 )

@@ -452,8 +452,8 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        assert "episode_details" in output
-        episodes = output["episode_details"]
+        assert "episodes" in output
+        episodes = output["episodes"]
         assert len(episodes) == 3
 
         # Test Episode 1: Jikan data
@@ -508,7 +508,7 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        episodes = output["episode_details"]
+        episodes = output["episodes"]
 
         # Episode 1: Has Jikan title
         assert episodes[0]["title"] == "Jikan Title 1"
@@ -527,7 +527,7 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        episodes = output["episode_details"]
+        episodes = output["episodes"]
 
         # Episode 1: Has MAL URL
         assert "mal" in episodes[0]["episode_pages"]
@@ -547,7 +547,7 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        episodes = output["episode_details"]
+        episodes = output["episodes"]
 
         for episode in episodes:
             aired = episode.get("aired")
@@ -582,8 +582,8 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        assert len(output["episode_details"]) == 1
-        ep = output["episode_details"][0]
+        assert len(output["episodes"]) == 1
+        ep = output["episodes"][0]
         assert ep["title"] == "Episode 1"
         assert ep["aired"] == "2023-12-31T15:00:00Z"
 
@@ -600,8 +600,8 @@ class TestEpisodeProcessing:
 
         # Verify structure
         assert isinstance(output, dict)
-        assert "episode_details" in output
-        assert isinstance(output["episode_details"], list)
+        assert "episodes" in output
+        assert isinstance(output["episodes"], list)
 
     def test_process_all_episodes_with_four_episodes(self, tmp_path):
         """Test timezone conversion examples print (covers lines 236-239)."""
@@ -627,7 +627,7 @@ class TestEpisodeProcessing:
         with open(output_file) as f:
             output = json.load(f)
 
-        assert len(output["episode_details"]) == 4
+        assert len(output["episodes"]) == 4
 
 
 class TestAutoDetectTempDir:
@@ -701,7 +701,7 @@ class TestEdgeCases:
         with open(output_file) as f:
             output = json.load(f)
 
-        assert output["episode_details"] == []
+        assert output["episodes"] == []
 
     def test_malformed_json_graceful_handling(self, tmp_path):
         """Test graceful handling of malformed JSON files."""
@@ -733,7 +733,7 @@ class TestEdgeCases:
         with open(output_file) as f:
             output = json.load(f)
 
-        ep = output["episode_details"][0]
+        ep = output["episodes"][0]
         assert ep["episode_number"] == 1
         assert ep["title"] is None
         assert ep["aired"] is None
@@ -764,7 +764,7 @@ class TestEdgeCases:
         with open(output_file) as f:
             output = json.load(f)
 
-        ep = output["episode_details"][0]
+        ep = output["episodes"][0]
         assert ep["aired"] is None
 
     def test_ensure_ascii_false(self, tmp_path):
@@ -823,7 +823,7 @@ class TestEdgeCases:
             output = json.load(f)
 
         # Empty string is falsy, should fallback to Kitsu
-        ep = output["episode_details"][0]
+        ep = output["episodes"][0]
         assert ep["synopsis"] == "Kitsu synopsis"
 
 

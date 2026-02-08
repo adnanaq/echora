@@ -1,16 +1,16 @@
-"""
-Anime Vector Service - FastAPI application for vector database operations.
+"""Anime Vector Service - FastAPI application for vector database operations.
 
-This microservice provides semantic search capabilities using Qdrant vector database
-with multi-modal embeddings (text + image) for anime content.
+This microservice provides semantic search capabilities using Qdrant vector
+database with multi-modal embeddings (text + image) for anime content.
 """
 
 import logging
 import os
 from contextlib import asynccontextmanager
 
-# Disable CUDA to force CPU usage
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# Disable CUDA to force CPU usage (can be overridden with ENABLE_GPU=true)
+if os.getenv("ENABLE_GPU", "false").lower() != "true":
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -23,6 +23,7 @@ from http_cache.instance import http_cache_manager
 from http_cache.result_cache import close_result_cache_redis_client
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
+from vector_db_interface import VectorDBClient
 from vector_processing import (
     AnimeFieldMapper,
     MultiVectorEmbeddingManager,
@@ -32,7 +33,7 @@ from vector_processing import (
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.utils.image_downloader import ImageDownloader
 
-from .dependencies import get_qdrant_client
+from .dependencies import get_vector_db_client
 from .routes import admin
 
 # Get application settings
@@ -40,7 +41,8 @@ settings = get_settings()
 
 # Configure logging
 logging.basicConfig(
-    level=getattr(logging, settings.log_level), format=settings.log_format
+    level=getattr(logging, settings.service.log_level),
+    format=settings.service.log_format,
 )
 logger = logging.getLogger(__name__)
 
@@ -50,67 +52,69 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """
-    Initialize services on startup and cleanup on shutdown.
+    """Manage application startup and shutdown lifecycle.
 
-    Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes Qdrant client,
-    and stores all processors on app.state for dependency injection. Ensures proper
-    cleanup of AsyncQdrantClient connection on shutdown.
+    Loads embedding models (BGE-M3 and OpenCLIP ViT-L/14), initializes the
+    Qdrant client, and stores all processors on ``app.state`` for dependency
+    injection. Ensures proper cleanup of the AsyncQdrantClient connection on
+    shutdown.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
 
     Yields:
-        None after successful initialization
+        Control back to the framework after successful initialization.
 
     Raises:
-        RuntimeError: If Qdrant health check fails or vector database is unavailable
+        RuntimeError: If the vector database health check fails on startup.
     """
     logger.info("Initializing Qdrant client, embedding models, and dependencies...")
 
     async_qdrant_client = None
     try:
         # Initialize AsyncQdrantClient from qdrant-client library
-        if settings.qdrant_api_key:
+        if settings.qdrant.qdrant_api_key:
             async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant_url, api_key=settings.qdrant_api_key
+                url=settings.qdrant.qdrant_url,
+                api_key=settings.qdrant.qdrant_api_key,
             )
         else:
-            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant_url)
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
         # Initialize embedding processors
         logger.info("Loading embedding models...")
 
         # Create models via factory
-        text_model = EmbeddingModelFactory.create_text_model(settings)
-        vision_model = EmbeddingModelFactory.create_vision_model(settings)
+        text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
 
         # Create utilities
-        image_downloader = ImageDownloader(cache_dir=settings.model_cache_dir)
+        image_downloader = ImageDownloader(cache_dir=settings.embedding.model_cache_dir)
         field_mapper = AnimeFieldMapper()
 
         # Initialize processors with injected dependencies
-        text_processor = TextProcessor(text_model, settings)
-        vision_processor = VisionProcessor(vision_model, image_downloader, settings)
+        text_processor = TextProcessor(text_model, settings.embedding)
+        vision_processor = VisionProcessor(
+            vision_model, image_downloader, settings.embedding
+        )
 
         embedding_manager = MultiVectorEmbeddingManager(
             text_processor=text_processor,
             vision_processor=vision_processor,
             field_mapper=field_mapper,
-            settings=settings,
         )
         logger.info("Embedding models loaded successfully")
 
         # Initialize QdrantClient
         qdrant_client_instance = await QdrantClient.create(
-            settings=settings,
+            config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
-            url=settings.qdrant_url,
-            collection_name=settings.qdrant_collection_name,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
         )
 
         # Store all clients and processors on app state
-        app.state.qdrant_client = qdrant_client_instance
+        app.state.vector_db_client = qdrant_client_instance
         app.state.async_qdrant_client = async_qdrant_client
         app.state.embedding_manager = embedding_manager
         app.state.text_processor = text_processor
@@ -118,7 +122,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.field_mapper = field_mapper
 
         # Health check
-        healthy = await app.state.qdrant_client.health_check()
+        healthy = await app.state.vector_db_client.health_check()
         if not healthy:
             logger.error("Qdrant health check failed!")
             raise RuntimeError("Vector database is not available")
@@ -153,9 +157,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 # Create FastAPI app
 app = FastAPI(
-    title=settings.api_title,
-    description=settings.api_description,
-    version=settings.api_version,
+    title=settings.service.api_title,
+    description=settings.service.api_description,
+    version=settings.service.api_version,
     lifespan=lifespan,
 )
 
@@ -164,50 +168,85 @@ app = FastAPI(
 # See: https://github.com/fastapi/fastapi/discussions/10968
 app.add_middleware(
     CORSMiddleware,  # ty: ignore[invalid-argument-type]
-    allow_origins=settings.allowed_origins,
+    allow_origins=settings.service.allowed_origins,
     allow_credentials=True,
-    allow_methods=settings.allowed_methods,
-    allow_headers=settings.allowed_headers,
+    allow_methods=settings.service.allowed_methods,
+    allow_headers=settings.service.allowed_headers,
 )
 
 
-# Health check endpoint
 @app.get("/health")
 async def health_check(
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+    db_client: VectorDBClient = Depends(get_vector_db_client),
 ) -> dict[str, Any]:
-    """Health check endpoint."""
+    """Return service health status with database diagnostics.
+
+    Checks the vector database connection and optionally retrieves collection
+    statistics. Used by load balancers, Kubernetes probes, and admin dashboards.
+
+    Args:
+        db_client: Injected vector database client.
+
+    Returns:
+        Health status dict including service metadata, database connectivity,
+        and collection-level statistics when available.
+
+    Raises:
+        HTTPException: 503 if the database client is unreachable or an
+            unexpected error occurs during the check.
+    """
     try:
-        qdrant_status = await qdrant_client.health_check()
+        db_healthy = await db_client.health_check()
+
+        # Return 503 if database is unhealthy
+        if not db_healthy:
+            raise HTTPException(status_code=503, detail="Database unhealthy")
+
+        # Only retrieve stats when database is healthy
+        stats: dict[str, Any] = {}
+        try:
+            stats = await db_client.get_stats()
+        except Exception:
+            logger.warning("Could not retrieve stats during health check")
+
+        # Return full payload only when healthy
         return {
-            "status": "healthy" if qdrant_status else "unhealthy",
+            "status": "healthy",
             "timestamp": datetime.now(UTC).isoformat(),
             "service": "anime-vector-service",
-            "version": settings.api_version,
-            "qdrant_status": qdrant_status,
+            "version": settings.service.api_version,
+            "database": {
+                "healthy": db_healthy,
+                "collection_name": stats.get("collection_name", "unknown"),
+                "document_count": stats.get("total_documents", 0),
+            },
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+        logger.exception("Health check failed")
+        raise HTTPException(status_code=503, detail="Service unhealthy") from e
 
 
 # Include API routers
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
-# Root endpoint
 @app.get("/")
 async def root() -> dict[str, Any]:
-    """Root endpoint with service information."""
+    """Return service metadata and a directory of available endpoints.
+
+    Returns:
+        Dict with service name, version, and endpoint paths.
+    """
     return {
         "service": "Anime Vector Service",
-        "version": settings.api_version,
+        "version": settings.service.api_version,
         "description": "Microservice for anime vector database operations",
         "endpoints": {
             "health": "/health",
-            "admin_health": "/api/v1/admin/health",
             "stats": "/api/v1/admin/stats",
-            "collection_info": "/api/v1/admin/collection/info",
+            "collection": "/api/v1/admin/collection",
             "docs": "/docs",
         },
     }
@@ -218,8 +257,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "service.main:app",
-        host=settings.vector_service_host,
-        port=settings.vector_service_port,
+        host=settings.service.vector_service_host,
+        port=settings.service.vector_service_port,
         reload=settings.debug,
-        log_level=settings.log_level.lower(),
+        log_level=settings.service.log_level.lower(),
     )

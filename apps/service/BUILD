@@ -12,8 +12,20 @@ python_sources(
 
 pex_binary(
     name="service",
-    entry_point="service.main:app",
+    entry_point="service.main",
     dependencies=[
         ":lib",
     ],
+)
+
+docker_image(
+    name="service-image",
+    source="Dockerfile.prd",
+    # The pex_binary dependency is auto-inferred from COPY in Dockerfile
+)
+
+docker_image(
+    name="service-dev",
+    source="Dockerfile.dev",
+    # The pex_binary dependency is auto-inferred from COPY in Dockerfile
 )

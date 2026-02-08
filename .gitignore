@@ -203,6 +203,8 @@ temp/
 stage*_*.json
 __pycache__/
 
+.worktrees/
+
 .gemini/
 gha-creds-*.json
 

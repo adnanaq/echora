@@ -7,7 +7,7 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 import logging
 from typing import Any, TypeGuard, cast
 
-from common.config import Settings
+from common.config import QdrantConfig
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -118,7 +118,7 @@ class QdrantClient(VectorDBClient):
 
     def __init__(
         self,
-        settings: Settings,
+        config: QdrantConfig,
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
@@ -126,31 +126,42 @@ class QdrantClient(VectorDBClient):
         """Initialize Qdrant client with injected dependencies and configuration.
 
         Args:
-            settings: Configuration settings instance.
+            config: Qdrant configuration instance.
             async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library.
-            url: Qdrant server URL (optional, uses settings if not provided)
-            collection_name: Name of the anime collection (optional, uses settings if not provided)
+            url: Qdrant server URL (optional, uses config if not provided)
+            collection_name: Name of the anime collection (optional, uses config if not provided)
         """
-        self.settings = settings
-        self.url = url or settings.qdrant_url
-        self.collection_name = collection_name or settings.qdrant_collection_name
+        self.config = config
+        self.url = url or config.qdrant_url
+        self._collection_name = collection_name or config.qdrant_collection_name
 
         self.client = async_qdrant_client
 
-        self._distance_metric = settings.qdrant_distance_metric
+        self._distance_metric = config.qdrant_distance_metric
 
-        # Initialize vector sizes based on settings
-        self._vector_size = settings.text_vector_size
-        self._image_vector_size = settings.image_vector_size
-
-        # Extract vector names from config to prevent hard-coding drift
-        # Look for text/image vectors in config, with fallback to legacy names
+        # Extract vector names from config with graceful fallback to prevent hard-coding drift
+        # Resolve names first, then derive sizes from resolved names for consistency
         self._text_vector_name = next(
-            (name for name in settings.vector_names if "text" in name.lower()), "text_vector"
+            (name for name in config.vector_names if "text" in name.lower()),
+            "text_vector",
         )
         self._image_vector_name = next(
-            (name for name in settings.vector_names if "image" in name.lower() and "character" not in name.lower()), "image_vector"
+            (
+                name
+                for name in config.vector_names
+                if "image" in name.lower() and "character" not in name.lower()
+            ),
+            "image_vector",
         )
+
+        # Derive vector sizes from resolved names (graceful access with fallback)
+        self._vector_size = config.vector_names.get(self._text_vector_name, 1024)
+        self._image_vector_size = config.vector_names.get(self._image_vector_name, 768)
+
+    @property
+    def collection_name(self) -> str:
+        """Name of the active collection."""
+        return self._collection_name
 
     @property
     def vector_size(self) -> int:
@@ -167,10 +178,15 @@ class QdrantClient(VectorDBClient):
         """Get the distance metric used for vector similarity."""
         return self._distance_metric
 
+    @property
+    def connection_url(self) -> str:
+        """Database connection URL."""
+        return self.url
+
     @classmethod
     async def create(
         cls,
-        settings: Settings,
+        config: QdrantConfig,
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
@@ -182,10 +198,10 @@ class QdrantClient(VectorDBClient):
         ensures the collection is properly initialized before use.
 
         Args:
-            settings: Configuration settings instance
+            config: Qdrant configuration instance
             async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library
-            url: Qdrant server URL (optional, uses settings if not provided)
-            collection_name: Name of the anime collection (optional, uses settings if not provided)
+            url: Qdrant server URL (optional, uses config if not provided)
+            collection_name: Name of the anime collection (optional, uses config if not provided)
 
         Returns:
             Initialized QdrantClient instance with collection ready
@@ -193,7 +209,7 @@ class QdrantClient(VectorDBClient):
         Raises:
             Exception: If collection initialization fails
         """
-        client = cls(settings, async_qdrant_client, url, collection_name)
+        client = cls(config, async_qdrant_client, url, collection_name)
         await client._initialize_collection()
         return client
 
@@ -237,7 +253,7 @@ class QdrantClient(VectorDBClient):
                 )
 
                 # Configure payload indexing for faster filtering
-                if getattr(self.settings, "qdrant_enable_payload_indexing", True):
+                if self.config.qdrant_enable_payload_indexing:
                     await self._setup_payload_indexing()
 
                 logger.info(
@@ -274,7 +290,7 @@ class QdrantClient(VectorDBClient):
             existing_vectors = collection_info.config.params.vectors
 
             # Check if collection has expected vector configurations
-            expected_vectors = set(self.settings.vector_names.keys())
+            expected_vectors = set(self.config.vector_names.keys())
 
             if isinstance(existing_vectors, dict):
                 existing_vector_names = set(existing_vectors.keys())
@@ -312,7 +328,7 @@ class QdrantClient(VectorDBClient):
         if not vectors_config:
             raise VectorConfigurationError()
 
-        expected_count = len(self.settings.vector_names)
+        expected_count = len(self.config.vector_names)
         actual_count = len(vectors_config)
 
         if actual_count != expected_count:
@@ -320,7 +336,7 @@ class QdrantClient(VectorDBClient):
 
         # Validate vector dimensions
         for vector_name, vector_params in vectors_config.items():
-            expected_dim = self.settings.vector_names.get(vector_name)
+            expected_dim = self.config.vector_names.get(vector_name)
             if expected_dim and vector_params.size != expected_dim:
                 raise VectorDimensionMismatchError(
                     vector_name=vector_name,
@@ -353,14 +369,14 @@ class QdrantClient(VectorDBClient):
         distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
 
         # Get list of vectors that use multivector storage
-        multivector_names = set(getattr(self.settings, "multivector_vectors", []) or [])
-        unknown = multivector_names - set(self.settings.vector_names)
+        multivector_names = set(self.config.multivector_vectors)
+        unknown = multivector_names - set(self.config.vector_names)
         if unknown:
             logger.warning(f"Unknown multivector vectors ignored: {sorted(unknown)}")
 
         # Use multi-vector architecture from settings
         vector_params = {}
-        for vector_name, dimension in self.settings.vector_names.items():
+        for vector_name, dimension in self.config.vector_names.items():
             priority = self._get_vector_priority(vector_name)
 
             # Build VectorParams kwargs
@@ -395,15 +411,16 @@ class QdrantClient(VectorDBClient):
         Returns:
             QuantizationConfig appropriate for priority level, or None if not configured
         """
-        config = self.settings.quantization_config.get(priority, {})
-        if config.get("type") == "scalar":
+        quant_cfg = self.config.quantization_config.get(priority, {})
+        if quant_cfg.get("type") == "scalar":
             scalar_config = ScalarQuantizationConfig(
-                type=ScalarType.INT8, always_ram=bool(config.get("always_ram", False))
+                type=ScalarType.INT8,
+                always_ram=bool(quant_cfg.get("always_ram", False)),
             )
             return ScalarQuantization(scalar=scalar_config)
-        elif config.get("type") == "binary":
+        elif quant_cfg.get("type") == "binary":
             binary_config = BinaryQuantizationConfig(
-                always_ram=bool(config.get("always_ram", False))
+                always_ram=bool(quant_cfg.get("always_ram", False))
             )
             return BinaryQuantization(binary=binary_config)
         return None
@@ -417,9 +434,9 @@ class QdrantClient(VectorDBClient):
         Returns:
             HnswConfigDiff with appropriate parameters for priority level
         """
-        config = self.settings.hnsw_config.get(priority, {})
+        hnsw_cfg = self.config.hnsw_config.get(priority, {})
         return HnswConfigDiff(
-            ef_construct=config.get("ef_construct", 200), m=config.get("m", 48)
+            ef_construct=hnsw_cfg.get("ef_construct", 200), m=hnsw_cfg.get("m", 48)
         )
 
     def _get_vector_priority(self, vector_name: str) -> str:
@@ -431,7 +448,7 @@ class QdrantClient(VectorDBClient):
         Returns:
             Priority level string ("high", "medium", or "low"), defaults to "medium"
         """
-        for priority, vectors in self.settings.vector_priorities.items():
+        for priority, vectors in self.config.vector_priorities.items():
             if vector_name in vectors:
                 return str(priority)
         return "medium"  # default
@@ -446,7 +463,7 @@ class QdrantClient(VectorDBClient):
             return OptimizersConfigDiff(
                 default_segment_number=4,
                 indexing_threshold=20000,
-                memmap_threshold=self.settings.memory_mapping_threshold_mb * 1024,
+                memmap_threshold=self.config.memory_mapping_threshold_mb * 1024,
             )
         except Exception:
             logger.exception("Failed to create optimized optimizers config")
@@ -460,11 +477,11 @@ class QdrantClient(VectorDBClient):
         Returns:
             Quantization config based on settings (binary, scalar, or product), or None if disabled
         """
-        if not getattr(self.settings, "qdrant_enable_quantization", False):
+        if not self.config.qdrant_enable_quantization:
             return None
 
-        quantization_type = getattr(self.settings, "qdrant_quantization_type", "scalar")
-        always_ram = getattr(self.settings, "qdrant_quantization_always_ram", None)
+        quantization_type = self.config.qdrant_quantization_type
+        always_ram = self.config.qdrant_quantization_always_ram
 
         try:
             if quantization_type == "binary":
@@ -506,16 +523,12 @@ class QdrantClient(VectorDBClient):
             optimizer_params = {}
 
             # Task #116: Configure memory mapping threshold
-            memory_threshold = getattr(
-                self.settings, "qdrant_memory_mapping_threshold", None
-            )
+            memory_threshold = self.config.qdrant_memory_mapping_threshold
             if memory_threshold:
                 optimizer_params["memmap_threshold"] = memory_threshold
 
             # Configure indexing threads if specified
-            indexing_threads = getattr(
-                self.settings, "qdrant_hnsw_max_indexing_threads", None
-            )
+            indexing_threads = self.config.qdrant_hnsw_max_indexing_threads
             if indexing_threads:
                 optimizer_params["indexing_threshold"] = 0  # Start indexing immediately
 
@@ -533,11 +546,10 @@ class QdrantClient(VectorDBClient):
         Returns:
             WalConfigDiff with WAL parameters, or None if not enabled in settings
         """
-        enable_wal = getattr(self.settings, "qdrant_enable_wal", None)
-        if enable_wal is not None:
+        if self.config.qdrant_enable_wal:
             try:
                 config = WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
-                logger.info(f"WAL configuration: enabled={enable_wal}")
+                logger.info("WAL configuration: enabled=True")
                 return config
             except Exception:
                 logger.exception("Failed to create WAL config")
@@ -559,7 +571,7 @@ class QdrantClient(VectorDBClient):
         Non-indexed operational data:
         - enrichment_metadata: Development/debugging data not needed for search
         """
-        indexed_fields = getattr(self.settings, "qdrant_indexed_payload_fields", {})
+        indexed_fields = self.config.qdrant_indexed_payload_fields
         if not indexed_fields:
             logger.info("No payload indexing configured")
             return
@@ -648,7 +660,7 @@ class QdrantClient(VectorDBClient):
                 "collection_name": self.collection_name,
                 "total_documents": count_result.count,
                 "vector_size": self._vector_size,
-                "distance_metric": "cosine",
+                "distance_metric": self._distance_metric,
                 "status": collection_info.status,
                 "optimizer_status": collection_info.optimizer_status,
                 "indexed_vectors_count": collection_info.indexed_vectors_count,
@@ -780,12 +792,12 @@ class QdrantClient(VectorDBClient):
             - (False, error_message) if invalid
         """
         # Check if vector name is valid
-        expected_dim = self.settings.vector_names.get(vector_name)
+        expected_dim = self.config.vector_names.get(vector_name)
         if expected_dim is None:
             return False, f"Invalid vector name: {vector_name}"
 
         # Check if this is a multivector
-        multivector_names = set(getattr(self.settings, "multivector_vectors", []) or [])
+        multivector_names = set(self.config.multivector_vectors)
         is_multivector = vector_name in multivector_names
 
         # Validate multivector format
@@ -995,9 +1007,7 @@ class QdrantClient(VectorDBClient):
             results: list[dict[str, Any]] = []
 
             # Group updates by point_id to batch multiple vector updates per point
-            grouped_updates: dict[
-                str, dict[str, list[float] | list[list[float]]]
-            ] = {}
+            grouped_updates: dict[str, dict[str, list[float] | list[list[float]]]] = {}
             # Map to track which updates belong to which anime
             update_mapping: dict[str, list[int]] = {}
 
@@ -1513,7 +1523,7 @@ class QdrantClient(VectorDBClient):
                 - vector_data: The query vector (list of floats)
                 - weight: Optional weight for fusion (default: 1.0)
             limit: Maximum number of results to return
-            fusion_method: Fusion algorithm - "rrf" (Reciprocal Rank Fusion) or 
+            fusion_method: Fusion algorithm - "rrf" (Reciprocal Rank Fusion) or
                 "dbsf" (Distribution-Based Score Fusion)
             filters: Optional Qdrant filter conditions
 

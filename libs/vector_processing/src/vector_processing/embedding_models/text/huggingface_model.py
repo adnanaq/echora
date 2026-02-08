@@ -42,7 +42,7 @@ class HuggingFaceModel(TextEmbeddingModel):
             logger.info(f"Initialized HuggingFace model: {model_name} on {self.device}")
 
         except ImportError as e:
-            logger.error(
+            logger.exception(
                 "HuggingFace dependencies not installed. Install with: pip install transformers torch"
             )
             raise ImportError("HuggingFace dependencies missing") from e
@@ -83,8 +83,8 @@ class HuggingFaceModel(TextEmbeddingModel):
                 # Convert to list of lists
                 return cast(list[list[float]], embeddings.cpu().numpy().tolist())
 
-        except Exception as e:
-            logger.error(f"HuggingFace encoding failed: {e}")
+        except Exception:
+            logger.exception("HuggingFace encoding failed")
             raise
 
     @property
