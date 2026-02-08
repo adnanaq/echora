@@ -546,11 +546,10 @@ class QdrantClient(VectorDBClient):
         Returns:
             WalConfigDiff with WAL parameters, or None if not enabled in settings
         """
-        enable_wal = self.config.qdrant_enable_wal
-        if enable_wal is not None:
+        if self.config.qdrant_enable_wal:
             try:
                 config = WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
-                logger.info(f"WAL configuration: enabled={enable_wal}")
+                logger.info("WAL configuration: enabled=True")
                 return config
             except Exception:
                 logger.exception("Failed to create WAL config")

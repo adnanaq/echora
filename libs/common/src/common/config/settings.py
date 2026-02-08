@@ -206,11 +206,11 @@ class Settings(BaseSettings):
 
         DEVELOPMENT:
             - Sets debug=True, log_level=DEBUG as defaults
-            - Respects user-provided values
+            - Respects user-provided values (from env vars, .env, or constructor)
 
         STAGING:
             - Sets debug=True, log_level=INFO, wal=True as defaults
-            - Respects user-provided values
+            - Respects user-provided values (from env vars, .env, or constructor)
 
         PRODUCTION (ENFORCED):
             - ALWAYS enforces debug=False, log_level=WARNING
@@ -218,19 +218,30 @@ class Settings(BaseSettings):
             - Security: Cannot be bypassed by user configuration
         """
         if self.environment == Environment.DEVELOPMENT:
-            # Apply defaults only if user didn't explicitly set values
-            if os.getenv("DEBUG") is None:
+            # Apply defaults only if user didn't explicitly provide values
+            # Check model value vs field default to catch env vars, .env, and constructor args
+            if self.debug == Settings.model_fields["debug"].default:
                 self.debug = True
-            if os.getenv("LOG_LEVEL") is None:
+            if (
+                self.service.log_level
+                == ServiceConfig.model_fields["log_level"].default
+            ):
                 self.service.log_level = "DEBUG"
 
         elif self.environment == Environment.STAGING:
-            # Apply defaults only if user didn't explicitly set values
-            if os.getenv("DEBUG") is None:
+            # Apply defaults only if user didn't explicitly provide values
+            # Check model value vs field default to catch env vars, .env, and constructor args
+            if self.debug == Settings.model_fields["debug"].default:
                 self.debug = True
-            if os.getenv("LOG_LEVEL") is None:
+            if (
+                self.service.log_level
+                == ServiceConfig.model_fields["log_level"].default
+            ):
                 self.service.log_level = "INFO"
-            if os.getenv("QDRANT_ENABLE_WAL") is None:
+            if (
+                self.qdrant.qdrant_enable_wal
+                == QdrantConfig.model_fields["qdrant_enable_wal"].default
+            ):
                 self.qdrant.qdrant_enable_wal = True
 
         elif self.environment == Environment.PRODUCTION:
