@@ -112,7 +112,7 @@ class CCIP:
             # Encode both images directly (OpenCLIP accepts PIL Images)
             embeddings = model.encode_image([img1, img2])
 
-            if not embeddings or len(embeddings) < 2:
+            if embeddings is None or len(embeddings) < 2:
                 logger.warning("Failed to encode images with OpenCLIP")
                 return 0.0
 
@@ -123,8 +123,7 @@ class CCIP:
             # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
             similarity = float(np.dot(emb1, emb2))
             logger.debug(f"OpenCLIP fallback similarity: {similarity}")
-            return similarity
-
+            return similarity  # noqa: TRY300
         except Exception:
             logger.exception("OpenCLIP fallback similarity calculation failed")
             return 0.0
