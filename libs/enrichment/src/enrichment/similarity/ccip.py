@@ -109,28 +109,15 @@ class CCIP:
                 logger.debug("Could not load images for OpenCLIP fallback")
                 return 0.0
 
-            # Encode both images (model expects list of paths, but we have PIL Images)
-            # Save images temporarily to encode them
-            import tempfile
-            from pathlib import Path
+            # Encode both images directly (OpenCLIP accepts PIL Images)
+            embeddings = model.encode_image([img1, img2])
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmpdir_path = Path(tmpdir)
-                img1_path = tmpdir_path / "img1.jpg"
-                img2_path = tmpdir_path / "img2.jpg"
+            if not embeddings or len(embeddings) < 2:
+                logger.warning("Failed to encode images with OpenCLIP")
+                return 0.0
 
-                img1.save(img1_path, "JPEG")
-                img2.save(img2_path, "JPEG")
-
-                # Encode images
-                embeddings = model.encode_image([str(img1_path), str(img2_path)])
-
-                if not embeddings or len(embeddings) < 2:
-                    logger.warning("Failed to encode images with OpenCLIP")
-                    return 0.0
-
-                emb1 = np.array(embeddings[0])
-                emb2 = np.array(embeddings[1])
+            emb1 = np.array(embeddings[0])
+            emb2 = np.array(embeddings[1])
 
             # Calculate cosine similarity
             # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
