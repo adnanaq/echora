@@ -357,6 +357,8 @@ class TestDistributeEnvVarsEdgeCases:
         """
         import logging
 
+        from pydantic import ValidationError
+
         with caplog.at_level(logging.WARNING):
             with patch.dict(
                 os.environ,
@@ -367,8 +369,8 @@ class TestDistributeEnvVarsEdgeCases:
             ):
                 try:
                     Settings()
-                except Exception:  # noqa: S110
-                    # Pydantic will reject the invalid value, which is expected
+                except ValidationError:
+                    # Pydantic rejects the invalid value, which is expected
                     pass
 
             # Check that a warning was logged about the parse failure

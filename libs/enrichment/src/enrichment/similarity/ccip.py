@@ -79,7 +79,7 @@ class CCIP:
                 # Handle local file path
                 return Image.open(url_or_path)
         except Exception:
-            logger.exception(f"Failed to load image from {url_or_path}")
+            logger.exception("Failed to load image from %s", url_or_path)
             return None
 
     def _calculate_openclip_similarity(
@@ -105,7 +105,7 @@ class CCIP:
             img1 = self._load_image_for_ccip(image_url_1)
             img2 = self._load_image_for_ccip(image_url_2)
 
-            if not img1 or not img2:
+            if img1 is None or img2 is None:
                 logger.debug("Could not load images for OpenCLIP fallback")
                 return 0.0
 
@@ -121,7 +121,8 @@ class CCIP:
 
             # Calculate cosine similarity
             # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
-            similarity = float(np.dot(emb1, emb2))
+            # Clamp to [0.0, 1.0] to match CCIP range and handle floating-point edge cases
+            similarity = float(np.clip(np.dot(emb1, emb2), 0.0, 1.0))  # ty: ignore[unresolved-attribute]
             logger.debug(f"OpenCLIP fallback similarity: {similarity}")
             return similarity  # noqa: TRY300
         except Exception:
@@ -151,7 +152,7 @@ class CCIP:
             img1 = self._load_image_for_ccip(image_url_1)
             img2 = self._load_image_for_ccip(image_url_2)
 
-            if not img1 or not img2:
+            if img1 is None or img2 is None:
                 logger.warning(
                     "Could not load one or both images for CCIP, trying OpenCLIP fallback"
                 )

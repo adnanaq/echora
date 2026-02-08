@@ -111,7 +111,7 @@ def _maybe_parse_json(field_name: str, value: Any) -> Any:
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(
                 f"Failed to parse JSON for field '{field_name}': {e}. "
-                f"Value will be passed as-is: {value[:100]}..."
+                f"Value will be passed as-is: {value[:100]}{'...' if len(value) > 100 else ''}"
             )
             return value
     return value
