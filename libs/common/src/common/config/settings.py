@@ -1,6 +1,7 @@
 """Vector Service Configuration Settings."""
 
 import json
+import logging
 import os
 import types
 import typing
@@ -14,6 +15,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from .embedding_config import EmbeddingConfig
 from .qdrant_config import QdrantConfig
 from .service_config import ServiceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class Environment(str, Enum):
@@ -35,7 +38,7 @@ def get_environment() -> Environment:
     """
     env_str = os.getenv("ENVIRONMENT")
     if not env_str:
-        raise ValueError(
+        raise ValueError(  # noqa: TRY003
             "ENVIRONMENT environment variable must be set to one of: "
             "development, staging, production"
         )
@@ -50,7 +53,7 @@ def get_environment() -> Environment:
         case "development":
             return Environment.DEVELOPMENT
         case _:
-            raise ValueError(
+            raise ValueError(  # noqa: TRY003
                 f"Invalid ENVIRONMENT value '{env_str}'. "
                 "Must be one of: development, staging, production"
             )
@@ -62,13 +65,14 @@ _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
 
 # Ensure no field name collisions between sub-configs
-assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (
+# Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
+assert not (_QDRANT_FIELDS & _EMBEDDING_FIELDS), (  # noqa: S101
     f"Field overlap Qdrant/Embedding: {_QDRANT_FIELDS & _EMBEDDING_FIELDS}"
 )
-assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (
+assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Qdrant/Service: {_QDRANT_FIELDS & _SERVICE_FIELDS}"
 )
-assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (
+assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
 )
 
@@ -104,7 +108,11 @@ def _maybe_parse_json(field_name: str, value: Any) -> Any:
     if field_name in _JSON_FIELDS and isinstance(value, str):
         try:
             return json.loads(value)
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(
+                f"Failed to parse JSON for field '{field_name}': {e}. "
+                f"Value will be passed as-is: {value[:100]}..."
+            )
             return value
     return value
 
@@ -192,6 +200,11 @@ class Settings(BaseSettings):
                 if isinstance(existing, dict):
                     existing.update(config_data)
                     data[config_key] = existing
+                elif hasattr(existing, "model_dump"):
+                    # Preserve fields from pre-built Pydantic models
+                    merged = existing.model_dump()
+                    merged.update(config_data)
+                    data[config_key] = merged
                 else:
                     data[config_key] = config_data
 
@@ -218,30 +231,23 @@ class Settings(BaseSettings):
             - Security: Cannot be bypassed by user configuration
         """
         if self.environment == Environment.DEVELOPMENT:
-            # Apply defaults only if user didn't explicitly provide values
-            # Check model value vs field default to catch env vars, .env, and constructor args
-            if self.debug == Settings.model_fields["debug"].default:
+            # Apply defaults only if user didn't explicitly provide values via env vars
+            # Note: This checks os.environ (not .env file or constructor args)
+            # to avoid overriding explicit user values that happen to match defaults
+            if "DEBUG" not in os.environ:
                 self.debug = True
-            if (
-                self.service.log_level
-                == ServiceConfig.model_fields["log_level"].default
-            ):
+            if "LOG_LEVEL" not in os.environ:
                 self.service.log_level = "DEBUG"
 
         elif self.environment == Environment.STAGING:
-            # Apply defaults only if user didn't explicitly provide values
-            # Check model value vs field default to catch env vars, .env, and constructor args
-            if self.debug == Settings.model_fields["debug"].default:
+            # Apply defaults only if user didn't explicitly provide values via env vars
+            # Note: This checks os.environ (not .env file or constructor args)
+            # to avoid overriding explicit user values that happen to match defaults
+            if "DEBUG" not in os.environ:
                 self.debug = True
-            if (
-                self.service.log_level
-                == ServiceConfig.model_fields["log_level"].default
-            ):
+            if "LOG_LEVEL" not in os.environ:
                 self.service.log_level = "INFO"
-            if (
-                self.qdrant.qdrant_enable_wal
-                == QdrantConfig.model_fields["qdrant_enable_wal"].default
-            ):
+            if "QDRANT_ENABLE_WAL" not in os.environ:
                 self.qdrant.qdrant_enable_wal = True
 
         elif self.environment == Environment.PRODUCTION:
@@ -261,18 +267,31 @@ _SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
     "embedding",
     "service",
 }
-assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (
+# Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
+assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
     f"Field overlap Qdrant/Settings: {_QDRANT_FIELDS & _SETTINGS_FIELDS}"
 )
-assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (
+assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
     f"Field overlap Embedding/Settings: {_EMBEDDING_FIELDS & _SETTINGS_FIELDS}"
 )
-assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (
+assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
     f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
 )
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance."""
+    """Get cached settings instance.
+
+    Returns a singleton Settings instance that is cached for the lifetime of the process.
+    This is efficient for production use but has implications for testing:
+
+    - Tests should construct Settings() directly, not use get_settings()
+    - If get_settings() is used in tests, the cache must be cleared between tests:
+      `get_settings.cache_clear()`
+    - Changing environment variables after the first call has no effect
+
+    Returns:
+        Cached Settings instance
+    """
     return Settings()

@@ -23,7 +23,7 @@ class TestEnvironmentEnum:
 class TestGetEnvironment:
     """Test environment detection function."""
 
-    def test_raises_error_when_app_env_not_set(self):
+    def test_raises_error_when_environment_not_set(self):
         """Test that missing ENVIRONMENT raises ValueError for production safety."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
@@ -62,15 +62,15 @@ class TestSettingsEnvironmentField:
             settings = Settings()
             assert hasattr(settings, "environment")
 
-    def test_requires_app_env_to_be_set(self):
+    def test_requires_environment_to_be_set(self):
         """Test that Settings raises error when ENVIRONMENT is not set anywhere."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
                 ValueError, match="ENVIRONMENT environment variable must be set"
             ):
-                Settings(_env_file=None)
+                Settings()
 
-    def test_respects_app_env(self):
+    def test_respects_environment(self):
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             settings = Settings()
             assert settings.environment == Environment.PRODUCTION
@@ -188,6 +188,31 @@ class TestUserProvidedValues:
                 "Production MUST enforce model warmup"
             )
 
+    def test_development_respects_explicit_default_value(self):
+        """Development should respect LOG_LEVEL=INFO even though INFO is the default.
+
+        REGRESSION TEST: Previously, the code compared current value to default,
+        so setting LOG_LEVEL=INFO (which equals the default) would be overridden
+        to DEBUG. Now we check os.environ directly, so explicit defaults are respected.
+        """
+        with patch.dict(
+            os.environ, {"ENVIRONMENT": "development", "LOG_LEVEL": "INFO"}
+        ):
+            settings = Settings()
+            # User explicitly set LOG_LEVEL=INFO, should NOT be overridden to DEBUG
+            assert settings.service.log_level == "INFO"
+
+    def test_staging_respects_explicit_default_debug(self):
+        """Staging should respect DEBUG=true even though true is staging's target default.
+
+        REGRESSION TEST: Ensures explicit env vars are respected even when they
+        match the environment-specific default we would otherwise apply.
+        """
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging", "DEBUG": "true"}):
+            settings = Settings()
+            # User explicitly set DEBUG=true, should be respected
+            assert settings.debug is True
+
 
 class TestMultivectorConfiguration:
     """Test multivector settings configuration."""
@@ -263,17 +288,14 @@ class TestDistributeEnvVarsEdgeCases:
             # Custom value should be preserved
             assert settings.qdrant.qdrant_url == "http://custom:6333"
 
-    def test_env_var_replaces_entire_sub_config_not_merge(self):
-        """Test that env vars REPLACE pre-built sub-config, not merge.
+    def test_env_var_merges_with_pre_built_sub_config(self):
+        """Test that env vars MERGE with pre-built sub-config, preserving non-overridden fields.
 
-        REGRESSION TEST for line 196 behavior: When any env var for a
-        sub-config is set, the entire pre-built object is replaced with
-        a dict containing only the env var fields. Other fields from the
-        pre-built object are lost and revert to defaults.
+        When a pre-built Pydantic model (e.g., QdrantConfig) is provided and
+        env vars are set for specific fields, the env vars override those fields
+        while preserving all other fields from the pre-built object.
 
-        This is the current "env-var-first" workflow behavior. If you
-        provide a pre-built QdrantConfig AND set QDRANT_URL env var,
-        the env var wins and other pre-built fields are discarded.
+        This implements proper precedence: env var > pre-built field > default
         """
         from common.config.qdrant_config import QdrantConfig
 
@@ -290,10 +312,67 @@ class TestDistributeEnvVarsEdgeCases:
         ):
             settings = Settings(qdrant=custom_qdrant)
 
-            # Env var field wins
+            # Env var field wins (overrides pre-built)
             assert settings.qdrant.qdrant_url == "http://envvar:6333"
 
-            # Other pre-built field is LOST and reverts to default
-            # (This is the behavior documented in the review comment)
-            assert settings.qdrant.qdrant_collection_name == "anime_database"  # default
-            assert settings.qdrant.qdrant_collection_name != "custom_collection"  # lost
+            # Other pre-built field is PRESERVED (not lost)
+            assert settings.qdrant.qdrant_collection_name == "custom_collection"
+
+    def test_multiple_env_vars_preserve_pre_built_fields(self):
+        """Test that multiple env vars merge with pre-built config correctly."""
+        from common.config.qdrant_config import QdrantConfig
+
+        # Pre-build with many custom values
+        custom_qdrant = QdrantConfig(
+            qdrant_url="http://custom:6333",
+            qdrant_collection_name="custom_collection",
+            qdrant_enable_quantization=True,
+            qdrant_quantization_type="binary",
+        )
+
+        # Set env vars for TWO fields
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "QDRANT_URL": "http://envvar:6333",
+                "QDRANT_ENABLE_QUANTIZATION": "false",
+            },
+        ):
+            settings = Settings(qdrant=custom_qdrant)
+
+            # Env vars override their specific fields
+            assert settings.qdrant.qdrant_url == "http://envvar:6333"
+            assert settings.qdrant.qdrant_enable_quantization is False
+
+            # Non-overridden pre-built fields are preserved
+            assert settings.qdrant.qdrant_collection_name == "custom_collection"
+            assert settings.qdrant.qdrant_quantization_type == "binary"
+
+    def test_invalid_json_env_var_logs_warning(self, caplog):
+        """Test that invalid JSON in env vars logs a warning.
+
+        When a user sets an env var with invalid JSON for a complex field,
+        the parser should log a warning to help diagnose misconfiguration.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            with patch.dict(
+                os.environ,
+                {
+                    "ENVIRONMENT": "development",
+                    "VECTOR_NAMES": "not valid json",  # Invalid JSON
+                },
+            ):
+                try:
+                    Settings()
+                except Exception:  # noqa: S110
+                    # Pydantic will reject the invalid value, which is expected
+                    pass
+
+            # Check that a warning was logged about the parse failure
+            assert any(
+                "Failed to parse JSON for field 'vector_names'" in record.message
+                for record in caplog.records
+            ), "Expected warning about JSON parse failure"
