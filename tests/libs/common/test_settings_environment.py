@@ -219,3 +219,81 @@ class TestMultivectorConfiguration:
         ):
             with pytest.raises(ValueError, match="Unknown multivector vectors"):
                 Settings()
+
+
+class TestDistributeEnvVarsEdgeCases:
+    """Test edge cases in distribute_env_vars validator."""
+
+    def test_env_var_overrides_pre_built_sub_config(self):
+        """Test that env vars override pre-built sub-config objects.
+
+        When Settings receives a pre-built sub-config object (e.g.,
+        Settings(qdrant=QdrantConfig(qdrant_url="x"))) and a corresponding
+        env var is set, the env var should take precedence.
+
+        This tests the behavior on line 196 where the entire object is
+        replaced with a dict from env vars rather than merging.
+        """
+        from common.config.qdrant_config import QdrantConfig
+
+        # Pre-build a QdrantConfig with a specific URL
+        custom_qdrant = QdrantConfig(qdrant_url="http://custom:6333")
+
+        # Set env var that should override it
+        with patch.dict(
+            os.environ,
+            {"ENVIRONMENT": "development", "QDRANT_URL": "http://envvar:6333"},
+        ):
+            settings = Settings(qdrant=custom_qdrant)
+
+            # Env var should win
+            assert settings.qdrant.qdrant_url == "http://envvar:6333"
+            assert settings.qdrant.qdrant_url != "http://custom:6333"
+
+    def test_pre_built_sub_config_respected_without_env_var(self):
+        """Test that pre-built sub-config objects are respected when no env var set."""
+        from common.config.qdrant_config import QdrantConfig
+
+        # Pre-build a QdrantConfig with a specific URL
+        custom_qdrant = QdrantConfig(qdrant_url="http://custom:6333")
+
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
+            settings = Settings(qdrant=custom_qdrant)
+
+            # Custom value should be preserved
+            assert settings.qdrant.qdrant_url == "http://custom:6333"
+
+    def test_env_var_replaces_entire_sub_config_not_merge(self):
+        """Test that env vars REPLACE pre-built sub-config, not merge.
+
+        REGRESSION TEST for line 196 behavior: When any env var for a
+        sub-config is set, the entire pre-built object is replaced with
+        a dict containing only the env var fields. Other fields from the
+        pre-built object are lost and revert to defaults.
+
+        This is the current "env-var-first" workflow behavior. If you
+        provide a pre-built QdrantConfig AND set QDRANT_URL env var,
+        the env var wins and other pre-built fields are discarded.
+        """
+        from common.config.qdrant_config import QdrantConfig
+
+        # Pre-build a QdrantConfig with multiple custom values
+        custom_qdrant = QdrantConfig(
+            qdrant_url="http://custom:6333",
+            qdrant_collection_name="custom_collection",
+        )
+
+        # Set env var for only ONE field
+        with patch.dict(
+            os.environ,
+            {"ENVIRONMENT": "development", "QDRANT_URL": "http://envvar:6333"},
+        ):
+            settings = Settings(qdrant=custom_qdrant)
+
+            # Env var field wins
+            assert settings.qdrant.qdrant_url == "http://envvar:6333"
+
+            # Other pre-built field is LOST and reverts to default
+            # (This is the behavior documented in the review comment)
+            assert settings.qdrant.qdrant_collection_name == "anime_database"  # default
+            assert settings.qdrant.qdrant_collection_name != "custom_collection"  # lost
