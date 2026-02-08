@@ -56,7 +56,7 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     sources = {}
 
     source_files = {
-        "jikan": f"{temp_dir}/jikan.json",
+        "mal": f"{temp_dir}/mal.json",
         "animeschedule": f"{temp_dir}/animeschedule.json",
         "kitsu": f"{temp_dir}/kitsu.json",
         "anime_planet": f"{temp_dir}/anime_planet.json",
@@ -91,7 +91,7 @@ def merge_themes_intelligently(
 
     Args:
         offline_themes: Themes from offline database
-        external_themes: Themes from external sources (Jikan, Kitsu, AniList, AniDB)
+        external_themes: Themes from external sources (MAL, Kitsu, AniList, AniDB)
         existing_genres: Set of existing genre names (case-insensitive)
 
     Returns:
@@ -115,7 +115,7 @@ def merge_themes_intelligently(
             "description": theme.get("description"),
         }
 
-    # Process external themes with priority: Jikan → Kitsu → AniList → AniDB
+    # Process external themes with priority: MAL → Kitsu → AniList → AniDB
     for theme in external_themes:
         if not theme or not theme.get("name"):
             continue
@@ -152,10 +152,10 @@ def organize_images_by_type(sources: dict[str, dict]) -> dict[str, list[str]]:
 
     all_urls = {"covers": set(), "posters": set(), "banners": set()}
 
-    # Jikan images (covers)
-    jikan = sources.get("jikan", {})
-    if jikan.get("data", {}).get("images", {}).get("jpg", {}).get("large_image_url"):
-        url = jikan["data"]["images"]["jpg"]["large_image_url"]
+    # MAL images (covers)
+    mal = sources.get("mal", {})
+    if mal.get("data", {}).get("images", {}).get("jpg", {}).get("large_image_url"):
+        url = mal["data"]["images"]["jpg"]["large_image_url"]
         if url not in all_urls["covers"]:
             images["covers"].append(url)
             all_urls["covers"].add(url)
@@ -253,10 +253,10 @@ def normalize_external_links(sources: dict[str, dict]) -> dict[str, str]:
     """
     external_links = {}
 
-    # Jikan external links
-    jikan = sources.get("jikan", {})
+    # MAL external links
+    mal = sources.get("mal", {})
     for link_type in ["external", "streaming"]:
-        for link in jikan.get("data", {}).get(link_type, []):
+        for link in mal.get("data", {}).get(link_type, []):
             if link.get("name") and link.get("url"):
                 key = normalize_string_for_comparison(link["name"]).replace(" ", "")
                 if key not in external_links:
@@ -290,7 +290,7 @@ def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
     """
     Extract synopsis using 6-level source hierarchy with cleanup.
 
-    Priority: AniDB → Jikan → AnimSchedule → Kitsu → Anime-Planet → AniList
+    Priority: AniDB → MAL → AnimSchedule → Kitsu → Anime-Planet → AniList
     """
 
     # 1. AniDB (highest priority)
@@ -303,10 +303,10 @@ def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
         if synopsis.strip():
             return synopsis.strip()
 
-    # 2. Jikan (high priority)
-    jikan = sources.get("jikan", {})
-    if jikan.get("data", {}).get("synopsis"):
-        synopsis = jikan["data"]["synopsis"]
+    # 2. MAL (high priority)
+    mal = sources.get("mal", {})
+    if mal.get("data", {}).get("synopsis"):
+        synopsis = mal["data"]["synopsis"]
         if synopsis.strip():
             return synopsis.strip()
 
@@ -355,9 +355,9 @@ def extract_trailers_with_deduplication(sources: dict[str, dict]) -> list[dict]:
     trailers = []
     seen_urls = set()
 
-    # Jikan trailers
-    jikan = sources.get("jikan", {})
-    trailer = jikan.get("data", {}).get("trailer")
+    # MAL trailers
+    mal = sources.get("mal", {})
+    trailer = mal.get("data", {}).get("trailer")
     if trailer and trailer.get("url"):
         url = trailer["url"]
         if url not in seen_urls:
@@ -400,12 +400,12 @@ def extract_trailers_with_deduplication(sources: dict[str, dict]) -> list[dict]:
 
 
 def extract_genres_from_sources(sources: dict[str, dict]) -> list[str]:
-    """Extract genres from Jikan + AnimSchedule + Anime-Planet + AniList."""
+    """Extract genres from MAL + AnimSchedule + Anime-Planet + AniList."""
     all_genres = []
 
-    # Jikan genres
-    jikan = sources.get("jikan", {})
-    for genre in jikan.get("data", {}).get("genres", []):
+    # MAL genres
+    mal = sources.get("mal", {})
+    for genre in mal.get("data", {}).get("genres", []):
         if genre.get("name"):
             all_genres.append(genre["name"])
 
@@ -438,14 +438,14 @@ def extract_themes_from_sources(sources: dict[str, dict]) -> list[dict]:
     """Extract themes from all sources with proper priority ordering."""
     all_themes = []
 
-    # Jikan themes (highest priority)
-    jikan = sources.get("jikan", {})
-    for theme in jikan.get("data", {}).get("themes", []):
+    # MAL themes (highest priority)
+    mal = sources.get("mal", {})
+    for theme in mal.get("data", {}).get("themes", []):
         if theme.get("name"):
             all_themes.append(
                 {
                     "name": theme["name"],
-                    "description": None,  # Jikan themes typically don't have descriptions
+                    "description": None,  # MAL themes typically don't have descriptions
                 }
             )
 
@@ -485,9 +485,9 @@ def extract_synonyms_from_sources(sources: dict[str, dict]) -> list[str]:
     """Extract synonyms from all sources following priority order."""
     all_synonyms = []
 
-    # Jikan synonyms
-    jikan = sources.get("jikan", {})
-    for synonym in jikan.get("data", {}).get("titles", []):
+    # MAL synonyms
+    mal = sources.get("mal", {})
+    for synonym in mal.get("data", {}).get("titles", []):
         if synonym.get("type") == "Synonym" and synonym.get("title"):
             all_synonyms.append(synonym["title"])
 
@@ -529,7 +529,7 @@ def extract_tags_from_sources(_sources: dict[str, dict]) -> list[str]:
 
 
 def parse_theme_song_string(theme_string: str) -> dict[str, str | None]:
-    """Parse Jikan theme song string into ThemeSong components."""
+    """Parse MAL theme song string into ThemeSong components."""
     import re
 
     # Pattern: "{num}: \"{title}\" by {artist} (eps {episodes})"
@@ -573,11 +573,11 @@ def parse_theme_song_string(theme_string: str) -> dict[str, str | None]:
 
 
 def extract_opening_themes(sources: dict[str, dict]) -> list[dict[str, str | None]]:
-    """Extract opening themes from Jikan theme.openings array."""
+    """Extract opening themes from MAL theme.openings array."""
     opening_themes = []
 
-    jikan = sources.get("jikan", {})
-    openings = jikan.get("data", {}).get("theme", {}).get("openings", [])
+    mal = sources.get("mal", {})
+    openings = mal.get("data", {}).get("theme", {}).get("openings", [])
 
     for opening in openings:
         if opening:
@@ -588,11 +588,11 @@ def extract_opening_themes(sources: dict[str, dict]) -> list[dict[str, str | Non
 
 
 def extract_ending_themes(sources: dict[str, dict]) -> list[dict[str, str | None]]:
-    """Extract ending themes from Jikan theme.endings array."""
+    """Extract ending themes from MAL theme.endings array."""
     ending_themes = []
 
-    jikan = sources.get("jikan", {})
-    endings = jikan.get("data", {}).get("theme", {}).get("endings", [])
+    mal = sources.get("mal", {})
+    endings = mal.get("data", {}).get("theme", {}).get("endings", [])
 
     for ending in endings:
         if ending:
@@ -608,7 +608,7 @@ def cross_validate_with_offline(
     """
     Cross-validate field with offline database using source hierarchy.
 
-    Hierarchy: Offline DB → Jikan → AniList → Kitsu/AnimSchedule
+    Hierarchy: Offline DB → MAL → AniList → Kitsu/AnimSchedule
     """
     offline_value = None
 
@@ -633,13 +633,13 @@ def cross_validate_with_offline(
         return offline_value
 
     # Otherwise follow source hierarchy
-    source_hierarchy = ["jikan", "anilist", "kitsu", "animeschedule"]
+    source_hierarchy = ["mal", "anilist", "kitsu", "animeschedule"]
 
     for source_name in source_hierarchy:
         source_data = sources.get(source_name, {})
         value = None
 
-        if source_name == "jikan":
+        if source_name == "mal":
             data = source_data.get("data", {})
             if field == "episodes":
                 value = data.get("episodes")
@@ -708,9 +708,9 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
 
-    # Background from Jikan
-    jikan_data = sources.get("jikan", {}).get("data", {})
-    output["background"] = jikan_data.get("background")
+    # Background from MAL
+    mal_data = sources.get("mal", {}).get("data", {})
+    output["background"] = mal_data.get("background")
 
     # Episodes (cross-validated)
     output["episode_count"] = cross_validate_with_offline(
@@ -725,14 +725,14 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     kitsu_data = sources.get("kitsu", {}).get("anime", {}).get("attributes", {})
     output["nsfw"] = kitsu_data.get("nsfw")
 
-    # Rating from Jikan
-    output["rating"] = jikan_data.get("rating")
+    # Rating from MAL
+    output["rating"] = mal_data.get("rating")
 
     # Season (cross-validated)
     output["season"] = cross_validate_with_offline(offline_data, sources, "season")
 
-    # Source material from Jikan, fallback to AniList
-    source_material = jikan_data.get("source")
+    # Source material from MAL, fallback to AniList
+    source_material = mal_data.get("source")
     if not source_material:
         anilist_media = sources.get("anilist", {})
         source_material = anilist_media.get("source")
@@ -767,8 +767,8 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
         if anidb_data.get("title"):
             output["title"] = anidb_data["title"]
 
-    # English and Japanese titles from Jikan
-    titles = jikan_data.get("titles", [])
+    # English and Japanese titles from MAL
+    titles = mal_data.get("titles", [])
     output["title_english"] = None
     output["title_japanese"] = None
 
@@ -778,7 +778,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
         elif title.get("type") == "Japanese" and not output["title_japanese"]:
             output["title_japanese"] = title.get("title")
 
-    # Fallback to Anime-Planet for Japanese title if not found in Jikan
+    # Fallback to Anime-Planet for Japanese title if not found in MAL
     if not output["title_japanese"]:
         anime_planet = sources.get("anime_planet", {})
         if anime_planet.get("title_japanese"):
@@ -820,14 +820,14 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
             content_warnings.append("Nudity")
     output["content_warnings"] = content_warnings
 
-    # Demographics from Jikan only
+    # Demographics from MAL only
     demographics = []
-    for demo in jikan_data.get("demographics", []):
+    for demo in mal_data.get("demographics", []):
         if demo.get("name"):
             demographics.append(demo["name"])
     output["demographics"] = demographics
 
-    # Ending themes from Jikan
+    # Ending themes from MAL
     output["ending_themes"] = extract_ending_themes(sources)
 
     # Genres with multi-source integration and deduplication
@@ -835,7 +835,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     external_genres = extract_genres_from_sources(sources)
     output["genres"] = deduplicate_simple_array_field(offline_genres, external_genres)
 
-    # Opening themes from Jikan
+    # Opening themes from MAL
     output["opening_themes"] = extract_opening_themes(sources)
 
     # Synonyms with multi-source integration and deduplication
@@ -882,8 +882,8 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     # OBJECT/DICT FIELDS (alphabetical)
     # =====================================================================
 
-    # Aired dates from Jikan
-    aired = jikan_data.get("aired", {})
+    # Aired dates from MAL
+    aired = mal_data.get("aired", {})
     if aired:
         output["aired_dates"] = {
             "from": aired.get("from"),
@@ -893,8 +893,8 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     else:
         output["aired_dates"] = None
 
-    # Broadcast from Jikan
-    broadcast = jikan_data.get("broadcast", {})
+    # Broadcast from MAL
+    broadcast = mal_data.get("broadcast", {})
     if broadcast:
         output["broadcast"] = {
             "day": broadcast.get("day"),

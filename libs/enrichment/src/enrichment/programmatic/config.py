@@ -20,7 +20,7 @@ class EnrichmentConfig(BaseSettings):
     # API Configuration
     api_timeout: int = Field(
         default=200,
-        description="Timeout for each API call in seconds (200s allows ~400 detailed Jikan requests at 0.5s each)",
+        description="Timeout for each API call in seconds (200s allows ~400 detailed MAL requests at 0.5s each)",
     )
     max_concurrent_apis: int = Field(
         default=6, description="Maximum concurrent API calls"

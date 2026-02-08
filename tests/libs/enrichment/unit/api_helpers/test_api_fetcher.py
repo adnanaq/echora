@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from enrichment.programmatic.api_fetcher import ParallelAPIFetcher
 
 
@@ -27,7 +28,7 @@ class TestParallelAPIFetcherContextManager:
             assert fetcher.anidb_helper is not None
             assert fetcher.anime_planet_helper is not None
             assert fetcher.anisearch_helper is not None
-            assert fetcher.jikan_session is not None
+            assert fetcher.mal_session is not None
 
     @pytest.mark.asyncio
     async def test_context_manager_closes_all_helpers(self):
@@ -40,14 +41,14 @@ class TestParallelAPIFetcherContextManager:
         mock_anidb = AsyncMock()
         mock_anime_planet = AsyncMock()
         mock_anisearch = AsyncMock()
-        mock_jikan_session = AsyncMock()
+        mock_mal_session = AsyncMock()
 
         fetcher.anilist_helper = mock_anilist
         fetcher.kitsu_helper = mock_kitsu
         fetcher.anidb_helper = mock_anidb
         fetcher.anime_planet_helper = mock_anime_planet
         fetcher.anisearch_helper = mock_anisearch
-        fetcher.jikan_session = mock_jikan_session
+        fetcher.mal_session = mock_mal_session
 
         async with fetcher:
             pass
@@ -58,7 +59,7 @@ class TestParallelAPIFetcherContextManager:
         mock_anidb.close.assert_awaited_once()
         mock_anime_planet.close.assert_awaited_once()
         mock_anisearch.close.assert_awaited_once()
-        mock_jikan_session.close.assert_awaited_once()
+        mock_mal_session.close.assert_awaited_once()
 
         # All helpers should be reset to None for safe reusability
         assert fetcher.anilist_helper is None
@@ -66,7 +67,7 @@ class TestParallelAPIFetcherContextManager:
         assert fetcher.anidb_helper is None
         assert fetcher.anime_planet_helper is None
         assert fetcher.anisearch_helper is None
-        assert fetcher.jikan_session is None
+        assert fetcher.mal_session is None
 
     @pytest.mark.asyncio
     async def test_context_manager_cleanup_on_exception(self):
@@ -77,7 +78,7 @@ class TestParallelAPIFetcherContextManager:
         mock_anilist = AsyncMock()
         mock_jikan = AsyncMock()
         fetcher.anilist_helper = mock_anilist
-        fetcher.jikan_session = mock_jikan
+        fetcher.mal_session = mock_jikan
 
         with pytest.raises(ValueError, match="Test error"):
             async with fetcher:
@@ -98,7 +99,7 @@ class TestParallelAPIFetcherContextManager:
         fetcher.anidb_helper = None
         fetcher.anime_planet_helper = None
         fetcher.anisearch_helper = None
-        fetcher.jikan_session = None
+        fetcher.mal_session = None
 
         # Should not raise any errors
         async with fetcher:
@@ -113,12 +114,12 @@ class TestParallelAPIFetcherContextManager:
         assert not hasattr(fetcher, "cleanup")
 
 
-class TestFetchJikanComplete:
-    """Test _fetch_jikan_complete method with various scenarios."""
+class TestFetchMALComplete:
+    """Test _fetch_mal_complete method with various scenarios."""
 
     @pytest.fixture
     def mock_anime_response(self) -> dict[str, Any]:
-        """Mock Jikan anime full response."""
+        """Mock MAL anime full response."""
         return {
             "data": {
                 "mal_id": 1,
@@ -130,7 +131,7 @@ class TestFetchJikanComplete:
 
     @pytest.fixture
     def mock_characters_response(self) -> dict[str, Any]:
-        """Mock Jikan characters response."""
+        """Mock MAL characters response."""
         return {
             "data": [
                 {
@@ -152,29 +153,31 @@ class TestFetchJikanComplete:
         }
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_without_temp_dir(
+    async def test_fetch_mal_complete_without_temp_dir(
         self,
         mock_anime_response: dict[str, Any],
         mock_characters_response: dict[str, Any],
         offline_data: dict[str, Any],
     ):
-        """Test _fetch_jikan_complete with temp_dir=None (bug scenario)."""
+        """Test _fetch_mal_complete with temp_dir=None (bug scenario)."""
         fetcher = ParallelAPIFetcher()
-        fetcher.jikan_session = AsyncMock()
+        fetcher.mal_session = AsyncMock()
 
-        # Mock the _fetch_jikan_async method to return our test data
-        async def mock_fetch(url: str):
-            if "full" in url:
-                return mock_anime_response
-            elif "characters" in url:
-                return mock_characters_response
-            return None
+        helper = AsyncMock()
+        helper.fetch_anime = AsyncMock(return_value=mock_anime_response["data"])
+        helper.fetch_characters_basic = AsyncMock(
+            return_value=mock_characters_response["data"]
+        )
 
-        with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
-            # This should NOT raise UnboundLocalError anymore
-            result = await fetcher._fetch_jikan_complete(
-                "1", offline_data, temp_dir=None
-            )
+        helper_cm = AsyncMock()
+        helper_cm.__aenter__ = AsyncMock(return_value=helper)
+        helper_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
+            return_value=helper_cm,
+        ):
+            result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=None)
 
         # Verify result structure
         assert result is not None
@@ -190,51 +193,38 @@ class TestFetchJikanComplete:
         assert result["characters"][0]["character"]["mal_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_with_temp_dir(
+    async def test_fetch_mal_complete_with_temp_dir(
         self,
         mock_anime_response: dict[str, Any],
         mock_characters_response: dict[str, Any],
         offline_data: dict[str, Any],
     ):
-        """Test _fetch_jikan_complete with temp_dir provided (normal scenario)."""
+        """Test _fetch_mal_complete with temp_dir provided (normal scenario)."""
         fetcher = ParallelAPIFetcher()
-        fetcher.jikan_session = AsyncMock()
+        fetcher.mal_session = AsyncMock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Mock the _fetch_jikan_async method
-            async def mock_fetch(url: str):
-                if "full" in url:
-                    return mock_anime_response
-                elif "characters" in url:
-                    return mock_characters_response
-                return None
+            helper = AsyncMock()
+            helper.fetch_anime = AsyncMock(return_value=mock_anime_response["data"])
+            helper.fetch_characters_basic = AsyncMock(
+                return_value=mock_characters_response["data"]
+            )
+            helper.fetch_episodes = AsyncMock(
+                return_value=[{"mal_id": 1, "title": "Episode 1"}]
+            )
+            helper.fetch_characters_detailed = AsyncMock(
+                return_value=[{"mal_id": 1, "name": "Detailed Character"}]
+            )
 
-            # Mock JikanDetailedFetcher to avoid actual API calls
-            with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
-                with patch(
-                    "enrichment.programmatic.api_fetcher.JikanDetailedFetcher"
-                ) as mock_fetcher_class:
-                    # Mock the fetch_detailed_data method to create output files
-                    async def mock_fetch_detailed(input_file: str, output_file: str):
-                        # Create mock output files
-                        if "episodes" in output_file:
-                            with open(output_file, "w") as f:
-                                json.dump([{"mal_id": 1, "title": "Episode 1"}], f)
-                        elif "characters" in output_file:
-                            with open(output_file, "w") as f:
-                                json.dump(
-                                    [{"mal_id": 1, "name": "Detailed Character"}], f
-                                )
+            helper_cm = AsyncMock()
+            helper_cm.__aenter__ = AsyncMock(return_value=helper)
+            helper_cm.__aexit__ = AsyncMock(return_value=False)
 
-                    mock_instance = AsyncMock()
-                    mock_instance.fetch_detailed_data = AsyncMock(
-                        side_effect=mock_fetch_detailed
-                    )
-                    mock_fetcher_class.return_value = mock_instance
-
-                    result = await fetcher._fetch_jikan_complete(
-                        "1", offline_data, temp_dir=temp_dir
-                    )
+            with patch(
+                "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
+                return_value=helper_cm,
+            ):
+                result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
 
             # Verify result structure
             assert result is not None
@@ -242,27 +232,27 @@ class TestFetchJikanComplete:
             assert "episodes" in result
             assert "characters" in result
             assert result["anime"]["mal_id"] == 1
-            # Episodes should be loaded from file
+            # Episodes should be returned from helper (and persisted for debugging)
             assert len(result["episodes"]) == 1
             assert result["episodes"][0]["mal_id"] == 1
-            # Characters should be loaded from file
+            # Characters should be returned from helper (and persisted for debugging)
             assert len(result["characters"]) == 1
             assert result["characters"][0]["mal_id"] == 1
 
-            # Verify jikan.json was saved
-            jikan_file = os.path.join(temp_dir, "jikan.json")
-            assert os.path.exists(jikan_file)
-            with open(jikan_file) as f:
+            # Verify mal.json was saved
+            mal_file = os.path.join(temp_dir, "mal.json")
+            assert os.path.exists(mal_file)
+            with open(mal_file) as f:
                 saved_data = json.load(f)
-                assert saved_data["data"]["mal_id"] == 1
+                assert saved_data["mal_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_with_no_episodes(
+    async def test_fetch_mal_complete_with_no_episodes(
         self, mock_characters_response: dict[str, Any], offline_data: dict[str, Any]
     ):
-        """Test _fetch_jikan_complete with anime that has no episodes."""
+        """Test _fetch_mal_complete with anime that has no episodes."""
         fetcher = ParallelAPIFetcher()
-        fetcher.jikan_session = AsyncMock()
+        fetcher.mal_session = AsyncMock()
 
         # Mock anime response with no episodes
         anime_response_no_episodes = {
@@ -273,17 +263,21 @@ class TestFetchJikanComplete:
             }
         }
 
-        async def mock_fetch(url: str):
-            if "full" in url:
-                return anime_response_no_episodes
-            elif "characters" in url:
-                return mock_characters_response
-            return None
+        helper = AsyncMock()
+        helper.fetch_anime = AsyncMock(return_value=anime_response_no_episodes["data"])
+        helper.fetch_characters_basic = AsyncMock(
+            return_value=mock_characters_response["data"]
+        )
 
-        with patch.object(fetcher, "_fetch_jikan_async", side_effect=mock_fetch):
-            result = await fetcher._fetch_jikan_complete(
-                "2", offline_data, temp_dir=None
-            )
+        helper_cm = AsyncMock()
+        helper_cm.__aenter__ = AsyncMock(return_value=helper)
+        helper_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
+            return_value=helper_cm,
+        ):
+            result = await fetcher._fetch_mal_complete("2", offline_data, temp_dir=None)
 
         # Should use offline_data for episode count
         assert result is not None
@@ -292,40 +286,85 @@ class TestFetchJikanComplete:
         assert result["episodes"] == []
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_api_failure(self, offline_data: dict[str, Any]):
-        """Test _fetch_jikan_complete when API request fails (returns None)."""
+    async def test_fetch_mal_complete_api_failure(self, offline_data: dict[str, Any]):
+        """Test _fetch_mal_complete when API request fails (returns None)."""
         fetcher = ParallelAPIFetcher()
-        fetcher.jikan_session = AsyncMock()
+        fetcher.mal_session = AsyncMock()
 
-        # Mock API failure (returns None)
-        with patch.object(fetcher, "_fetch_jikan_async", return_value=None):
-            result = await fetcher._fetch_jikan_complete(
-                "999", offline_data, temp_dir=None
-            )
+        helper = AsyncMock()
+        helper.fetch_anime = AsyncMock(return_value=None)
+
+        helper_cm = AsyncMock()
+        helper_cm.__aenter__ = AsyncMock(return_value=helper)
+        helper_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
+            return_value=helper_cm,
+        ):
+            result = await fetcher._fetch_mal_complete("999", offline_data, temp_dir=None)
 
         # Should return None on failure
         assert result is None
         # api_errors should be empty (no exception, just failed fetch)
-        assert "jikan" not in fetcher.api_errors
+        assert "mal" not in fetcher.api_errors
 
     @pytest.mark.asyncio
-    async def test_fetch_jikan_complete_exception_handling(
+    async def test_fetch_mal_complete_exception_handling(
         self, offline_data: dict[str, Any]
     ):
-        """Test _fetch_jikan_complete exception handling."""
+        """Test _fetch_mal_complete exception handling."""
         fetcher = ParallelAPIFetcher()
-        fetcher.jikan_session = AsyncMock()
+        fetcher.mal_session = AsyncMock()
 
-        # Mock exception during fetch
-        with patch.object(
-            fetcher, "_fetch_jikan_async", side_effect=Exception("Network error")
+        helper = AsyncMock()
+        helper.fetch_anime = AsyncMock(side_effect=Exception("Network error"))
+
+        helper_cm = AsyncMock()
+        helper_cm.__aenter__ = AsyncMock(return_value=helper)
+        helper_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
+            return_value=helper_cm,
         ):
-            result = await fetcher._fetch_jikan_complete(
-                "1", offline_data, temp_dir=None
-            )
+            result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=None)
 
         # Should return None on exception
         assert result is None
         # Error should be logged
-        assert "jikan" in fetcher.api_errors
-        assert "Network error" in fetcher.api_errors["jikan"]
+        assert "mal" in fetcher.api_errors
+        assert "Network error" in fetcher.api_errors["mal"]
+
+
+class TestSaveTempFiles:
+    """Test _save_temp_files behavior."""
+
+    @pytest.mark.asyncio
+    async def test_save_temp_files_offloads_disk_writes(self):
+        """
+        _save_temp_files is async and must not block the event loop with sync file I/O.
+
+        This test enforces that JSON writes are offloaded via asyncio.to_thread.
+        """
+        fetcher = ParallelAPIFetcher()
+
+        results: dict[str, Any] = {
+            "mal": {"mal_id": 1},
+            "anilist": {"id": 2},
+            "kitsu": None,  # Should be skipped
+        }
+
+        async def fake_to_thread(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
+            fn(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch(
+                "enrichment.programmatic.api_fetcher.asyncio.to_thread",
+                new=AsyncMock(side_effect=fake_to_thread),
+            ) as mock_to_thread:
+                await fetcher._save_temp_files(results, temp_dir)
+
+            assert os.path.exists(os.path.join(temp_dir, "mal.json"))
+            assert os.path.exists(os.path.join(temp_dir, "anilist.json"))
+            mock_to_thread.assert_awaited()

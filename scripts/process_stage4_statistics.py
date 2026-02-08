@@ -23,7 +23,7 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     sources = {}
 
     source_files = {
-        "jikan": f"{temp_dir}/jikan.json",
+        "mal": f"{temp_dir}/mal.json",
         "animeschedule": f"{temp_dir}/animeschedule.json",
         "kitsu": f"{temp_dir}/kitsu.json",
         "anime_planet": f"{temp_dir}/anime_planet.json",
@@ -86,9 +86,9 @@ def normalize_score(score: Any, scale_factor: float = 1.0) -> float | None:
         return None
 
 
-def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
+def extract_mal_statistics(mal_data: dict[str, Any]) -> dict[str, Any]:
     """
-    Extract MAL statistics from Jikan data.
+    Extract MAL statistics from MAL data.
 
     Field mappings:
     - data.score → score (already 0-10 scale)
@@ -98,7 +98,7 @@ def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
     - data.members → members
     - data.favorites → favorites
     """
-    data = safe_get(jikan_data, "data", default={})
+    data = safe_get(mal_data, "data", default={})
     return {
         "score": normalize_score(safe_get(data, "score")),
         "scored_by": safe_get(data, "scored_by"),
@@ -251,7 +251,7 @@ def extract_all_statistics(sources: dict[str, dict[str, Any]]) -> dict[str, Any]
 
     # Extract statistics from each source
     extractors = {
-        "mal": ("jikan", extract_mal_statistics),
+        "mal": ("mal", extract_mal_statistics),
         "animeschedule": ("animeschedule", extract_animeschedule_statistics),
         "kitsu": ("kitsu", extract_kitsu_statistics),
         "animeplanet": ("anime_planet", extract_animeplanet_statistics),

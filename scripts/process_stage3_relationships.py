@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Multi-source relationship analysis according to Stage 3 prompt requirements.
-Processes Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, and offline URLs data with intelligent deduplication.
+Processes MAL, AnimePlanet, AnimSchedule, AniList, AniDB, and offline URLs data with intelligent deduplication.
 """
 
 import argparse
@@ -105,19 +105,19 @@ def route_to_title(route: str) -> str:
     return title
 
 
-def process_jikan_relations(
-    jikan_data: dict[str, Any],
+def process_mal_relations(
+    mal_data: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
-    Process Jikan relations data (primary source).
+    Process MAL relations data (primary source).
     Returns (related_anime, relations) tuples.
     """
     related_anime = []
     relations = []
 
-    jikan_relations = jikan_data.get("data", {}).get("relations", [])
+    mal_relations = mal_data.get("data", {}).get("relations", [])
 
-    for relation_group in jikan_relations:
+    for relation_group in mal_relations:
         relation_type = relation_group.get("relation")
         entries = relation_group.get("entry", [])
 
@@ -293,7 +293,7 @@ def process_offline_urls(
 
     Args:
         offline_urls: List of URLs from offline database
-        existing_urls: Set of URLs already present in Jikan/AnimePlanet relations
+        existing_urls: Set of URLs already present in MAL/AnimePlanet relations
     """
     related_anime = []
     skipped_count = 0
@@ -333,7 +333,7 @@ def process_offline_urls(
         processed_count += 1
 
     print(
-        f"  - Offline URL processing: {skipped_count} URLs skipped (already in Jikan/AnimePlanet)"
+        f"  - Offline URL processing: {skipped_count} URLs skipped (already in MAL/AnimePlanet)"
     )
     print(
         f"  - Offline URL processing: {processed_count} URLs processed (all remaining URLs included)"
@@ -420,7 +420,7 @@ def infer_relationship_from_url(url: str) -> str:
 def deduplicate_by_url(all_relations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Deduplicate relations using URL-based strategy with priority hierarchy.
-    Priority: Jikan > AnimePlanet > AnimSchedule > Offline URLs
+    Priority: MAL > AnimePlanet > AnimSchedule > Offline URLs
     """
     url_groups = {}
 
@@ -444,10 +444,10 @@ def deduplicate_by_url(all_relations: list[dict[str, Any]]) -> list[dict[str, An
             # Multiple entries for same URL - apply priority hierarchy
             best_entry = entries[0]
 
-            # Source priority: Jikan > AnimePlanet > AnimSchedule
+            # Source priority: MAL > AnimePlanet > AnimSchedule
             for entry in entries:
                 entry_url = entry.get("url", "")
-                if "myanimelist.net" in entry_url:  # Jikan source
+                if "myanimelist.net" in entry_url:  # MAL source
                     best_entry = entry
                     break
                 elif "anime-planet.com" in entry_url:  # AnimePlanet source
@@ -466,15 +466,15 @@ def deduplicate_by_url(all_relations: list[dict[str, Any]]) -> list[dict[str, An
 def process_all_relationships(current_anime_file: str, temp_dir: str):
     """
     Main processing function following Stage 3 prompt requirements.
-    Processes all 6 sources: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, and Offline URLs.
+    Processes all 6 sources: MAL, AnimePlanet, AnimSchedule, AniList, AniDB, and Offline URLs.
 
     Args:
         current_anime_file: Path to current_anime_N.json file
         temp_dir: Path to temp directory with data files (e.g., temp/One/)
     """
     # Load all data sources from the specified temp directory
-    with open(f"{temp_dir}/jikan.json", encoding="utf-8") as f:
-        jikan_data = json.load(f)
+    with open(f"{temp_dir}/mal.json", encoding="utf-8") as f:
+        mal_data = json.load(f)
 
     with open(f"{temp_dir}/anime_planet.json", encoding="utf-8") as f:
         animeplanet_data = json.load(f)
@@ -490,10 +490,10 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     print("Processing relationships from 6 sources...")
 
-    # Step 1: Process Jikan relations (primary source)
-    jikan_anime, jikan_manga = process_jikan_relations(jikan_data)
+    # Step 1: Process MAL relations (primary source)
+    mal_anime, mal_manga = process_mal_relations(mal_data)
     print(
-        f"Jikan: {len(jikan_anime)} anime relations, {len(jikan_manga)} manga relations"
+        f"MAL: {len(mal_anime)} anime relations, {len(mal_manga)} manga relations"
     )
 
     # Step 2: Process AnimePlanet relations (co-primary source)
@@ -516,7 +516,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     # Step 6: Combine and deduplicate all NON-OFFLINE sources first
     non_offline_relations = (
-        jikan_anime
+        mal_anime
         + animeplanet_anime
         + animeschedule_anime
         + anilist_anime
@@ -611,7 +611,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     )
 
     # Combine manga relations from sources that have them
-    all_manga_relations = jikan_manga + anilist_manga
+    all_manga_relations = mal_manga + anilist_manga
     print(f"Total manga relations: {len(all_manga_relations)}")
 
     # Create final output
@@ -626,7 +626,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print(f"  - Related anime: {len(all_anime_relations)} entries")
     print(f"  - Relations (manga): {len(all_manga_relations)} entries")
     print(
-        "  - Sources processed: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, Offline URLs"
+        "  - Sources processed: MAL, AnimePlanet, AnimSchedule, AniList, AniDB, Offline URLs"
     )
     print(f"  - File saved: {output_file}")
 

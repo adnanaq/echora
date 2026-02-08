@@ -228,21 +228,21 @@ def process_all_episodes(temp_dir: str):
             "filler": episode.get("filler", False),
             "recap": episode.get("recap", False),
             "score": episode.get("score"),
-            "season_number": kitsu_season_number,  # From Kitsu (Jikan doesn't provide this)
+            "season_number": kitsu_season_number,  # From Kitsu (MAL doesn't provide this)
             "synopsis": episode.get("synopsis")
-            or kitsu_synopsis,  # Jikan primary, Kitsu fallback
+            or kitsu_synopsis,  # MAL primary, Kitsu fallback
             "title": episode.get("title")
             or kitsu_title
-            or anisearch_title,  # Jikan → Kitsu → AniSearch
+            or anisearch_title,  # MAL → Kitsu → AniSearch
             "title_japanese": episode.get("title_japanese")
-            or kitsu_title_japanese,  # Jikan primary, Kitsu fallback
+            or kitsu_title_japanese,  # MAL primary, Kitsu fallback
             "title_romaji": episode.get("title_romaji")
-            or kitsu_title_romaji,  # Jikan primary, Kitsu fallback
+            or kitsu_title_romaji,  # MAL primary, Kitsu fallback
             # ARRAY FIELDS (alphabetical)
             "thumbnails": thumbnails,
             # OBJECT/DICT FIELDS (alphabetical)
             "episode_pages": episode_pages,
-            "streaming": {},  # No streaming data from Jikan
+            "streaming": {},  # No streaming data from MAL
         }
 
         episodes.append(processed_episode)
