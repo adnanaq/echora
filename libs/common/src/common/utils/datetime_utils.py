@@ -34,13 +34,26 @@ def determine_anime_status(
             uses current UTC time. Should be timezone-aware.
 
     Returns:
-        The determined status as an enum value.
+        The determined status as an enum value. Returns UNKNOWN if start_date
+            is missing, UPCOMING if start_date is in the future, FINISHED if
+            both dates exist and end_date has passed, or ONGOING if anime has
+            started but not finished.
 
     Examples:
         >>> from datetime import UTC, datetime
         >>> current = datetime(2025, 1, 1, tzinfo=UTC)
+        >>> # Finished anime
         >>> determine_anime_status("2024-10-04", "2024-12-20", current)
         <AnimeStatus.FINISHED: 'FINISHED'>
+        >>> # Ongoing anime (no end date)
+        >>> determine_anime_status("1999-10-20", None, current)
+        <AnimeStatus.ONGOING: 'ONGOING'>
+        >>> # Upcoming anime
+        >>> determine_anime_status("2025-04-01", None, current)
+        <AnimeStatus.UPCOMING: 'UPCOMING'>
+        >>> # Unknown (no dates)
+        >>> determine_anime_status(None, None, current)
+        <AnimeStatus.UNKNOWN: 'UNKNOWN'>
     """
     # Use current UTC time if not provided
     if current_date is None:
@@ -182,7 +195,21 @@ def determine_anime_season(date_str: str | None) -> AnimeSeason | None:
         date_str: Date string in various formats (ISO, AniSearch).
 
     Returns:
-        The determined anime season enum or None.
+        The anime season enum value (WINTER, SPRING, SUMMER, or FALL) based
+            on the date's month, or None if the date cannot be parsed or is
+            invalid.
+
+    Examples:
+        >>> determine_anime_season("2024-04-20")
+        <AnimeSeason.SPRING: 'SPRING'>
+        >>> determine_anime_season("2024-10-04")
+        <AnimeSeason.FALL: 'FALL'>
+        >>> determine_anime_season("2024-12-25")
+        <AnimeSeason.WINTER: 'WINTER'>
+        >>> determine_anime_season(None)
+        None
+        >>> determine_anime_season("invalid")
+        None
     """
     if not date_str:
         return None
@@ -206,6 +233,11 @@ def determine_anime_season(date_str: str | None) -> AnimeSeason | None:
     except (ValueError, TypeError, IndexError):
         return None
 
+    # Use mathematical mapping: (month % 12) // 3
+    # Winter (12,1,2): (12%12)//3=0, (1%12)//3=0, (2%12)//3=0
+    # Spring (3,4,5): (3%12)//3=1, (4%12)//3=1, (5%12)//3=1
+    # Summer (6,7,8): (6%12)//3=2, (7%12)//3=2, (8%12)//3=2
+    # Fall (9,10,11): (9%12)//3=3, (10%12)//3=3, (11%12)//3=3
     return _SEASONS[(month % 12) // 3]
 
 
@@ -239,3 +271,4 @@ def determine_anime_year(date_str: str | None) -> int | None:
         return year
     except (ValueError, TypeError, IndexError):
         return None
+
