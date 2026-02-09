@@ -1,4 +1,4 @@
-"""Type stubs for hishel HTTP caching library (v1.0)."""
+"""Type stubs for hishel HTTP caching library (v1.1.9)."""
 
 import uuid
 from collections.abc import Callable
@@ -18,6 +18,7 @@ from hishel._core.models import (
 from hishel._core.models import (
     Response as Response,
 )
+from hishel._core._storages._async_base import AsyncBaseStorage as AsyncBaseStorage
 
 # Storage base classes (public API)
 #
@@ -354,21 +355,23 @@ class SyncCacheProxy:
         ...
 
 class AsyncCacheProxy:
-    """Asynchronous cache proxy for aiohttp/httpx."""
+    """Asynchronous cache proxy for aiohttp/httpx with request_sender pattern (v1.1.9+)."""
 
     def __init__(
         self,
-        client: Any,
+        request_sender: Callable[[Request], Any],  # Async callable returning Response
         storage: AsyncBaseStorage,
-        options: CacheOptions | None = None,
+        policy: Any | None = None,  # CachePolicy
     ) -> None:
         """
-        Initialize an asynchronous cache proxy for an HTTP client.
+        Initialize an asynchronous cache proxy with request_sender callback.
 
         Parameters:
-            client (Any): The HTTP client instance used to send requests (e.g., aiohttp or httpx client).
+            request_sender (Callable[[Request], Awaitable[Response]]): Async callback that sends requests to origin server.
+                Called by Hishel on cache miss or revalidation. Must accept Request and return Response.
             storage (AsyncBaseStorage): Asynchronous storage backend used to persist and retrieve cache entries.
-            options (Optional[CacheOptions]): Optional cache configuration and behavior overrides.
+            policy (Optional[CachePolicy]): Cache policy controlling RFC 9111 compliance and filtering.
+                Common policies: SpecificationPolicy (default RFC 9111), FilterPolicy (with body-key support).
         """
         ...
 
@@ -381,5 +384,60 @@ class AsyncCacheProxy:
 
         Returns:
             Response: The HTTP response, either from cache or from the underlying client.
+        """
+        ...
+
+
+# Cache Policy Classes (v1.1.9+)
+class CachePolicy:
+    """Base class for cache policies controlling RFC 9111 behavior."""
+
+    use_body_key: bool
+    """Include request body in cache key computation (for GraphQL/POST caching)."""
+
+    def __init__(self) -> None: ...
+
+
+class BaseFilter[T]:
+    """Base class for request/response filters in FilterPolicy."""
+
+    def needs_body(self) -> bool:
+        """Return True if filter needs response/request body to make decision."""
+        ...
+
+    def apply(self, item: T, body: bytes | None) -> bool:
+        """
+        Determine if item should be cached.
+
+        Parameters:
+            item: Request or Response object to filter.
+            body: Request/response body bytes (None if needs_body() returns False).
+
+        Returns:
+            True to allow caching, False to prevent caching.
+        """
+        ...
+
+
+class FilterPolicy(CachePolicy):
+    """Cache policy with request/response filtering support (v1.1.9+)."""
+
+    request_filters: list[BaseFilter[Request]]
+    """Filters applied to requests before caching."""
+
+    response_filters: list[BaseFilter[Response]]
+    """Filters applied to responses before caching."""
+
+    def __init__(
+        self,
+        request_filters: list[BaseFilter[Request]] | None = None,
+        response_filters: list[BaseFilter[Response]] | None = None,
+    ) -> None:
+        """
+        Initialize FilterPolicy with optional request/response filters.
+
+        Parameters:
+            request_filters: List of filters applied to requests.
+            response_filters: List of filters applied to responses (e.g., NeverCacheErrorsFilter).
         """
         ...
