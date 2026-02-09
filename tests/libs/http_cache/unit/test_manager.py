@@ -13,9 +13,10 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from hishel import SpecificationPolicy
+from hishel import FilterPolicy
 from http_cache.config import CacheConfig
-from http_cache.manager import HTTPCacheManager
+from http_cache.exceptions import StorageConfigurationError
+from http_cache.manager import HTTPCacheManager, NeverCacheErrorsFilter
 
 
 class TestHTTPCacheManagerInit:
@@ -28,7 +29,12 @@ class TestHTTPCacheManagerInit:
 
         assert manager.config == config
         assert manager._async_redis_client is None
-        assert isinstance(manager.policy, SpecificationPolicy)
+        assert isinstance(manager.policy, FilterPolicy)
+        # Policy should have body-key enabled for GraphQL caching
+        assert manager.policy.use_body_key is True
+        # Policy should have error filter to prevent caching errors
+        assert len(manager.policy.response_filters) == 1
+        assert isinstance(manager.policy.response_filters[0], NeverCacheErrorsFilter)
 
     def test_init_with_config_enabled_redis(self) -> None:
         """Test initialization with Redis storage enabled (lazy initialization)."""
@@ -39,7 +45,12 @@ class TestHTTPCacheManagerInit:
         # Redis client is lazily initialized, not created during __init__
         assert manager._async_redis_client is None
         assert manager._redis_event_loop is None
-        assert isinstance(manager.policy, SpecificationPolicy)
+        assert isinstance(manager.policy, FilterPolicy)
+        # Policy should have body-key enabled for GraphQL caching
+        assert manager.policy.use_body_key is True
+        # Policy should have error filter to prevent caching errors
+        assert len(manager.policy.response_filters) == 1
+        assert isinstance(manager.policy.response_filters[0], NeverCacheErrorsFilter)
 
     def test_init_redis_url_missing_logs_warning(self) -> None:
         """Test that missing redis_url logs warning and does not crash."""
@@ -61,7 +72,7 @@ class TestHTTPCacheManagerInit:
         config.force_cache = False
         config.always_revalidate = False
 
-        with pytest.raises(ValueError, match="Unknown storage type"):
+        with pytest.raises(StorageConfigurationError, match="Unknown storage type"):
             HTTPCacheManager(config)
 
 
