@@ -78,13 +78,11 @@ class AniListEnrichmentHelper:
 
             # Get cached session from centralized cache manager
             # Each event loop gets its own session via the cache manager
-            # This enables GraphQL caching while preventing event loop conflicts
+            # Body-key caching is enabled globally in FilterPolicy, so POST requests
+            # (GraphQL queries) automatically include request body in cache key
             self.session = http_cache_manager.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
-                headers={
-                    "X-Hishel-Body-Key": "true"
-                },  # Enable body-based caching for GraphQL
             )
             logger.debug(
                 "AniList cached session created via cache manager for current event loop"
@@ -99,13 +97,6 @@ class AniListEnrichmentHelper:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                if self.rate_limit_remaining < 5:
-                    logger.info(
-                        f"Rate limit low ({self.rate_limit_remaining}), waiting 60 seconds..."
-                    )
-                    await asyncio.sleep(60)
-                    self.rate_limit_remaining = 90
-
                 async with self.session.post(
                     self.base_url, json=payload, headers=headers
                 ) as response:
@@ -115,6 +106,13 @@ class AniListEnrichmentHelper:
                     if "X-RateLimit-Remaining" in response.headers:
                         self.rate_limit_remaining = int(
                             response.headers["X-RateLimit-Remaining"]
+                        )
+                    # Do not apply client-side throttling for cache hits.
+                    # For misses, rely on server-provided 429 Retry-After for correctness.
+                    if not from_cache and self.rate_limit_remaining < 5:
+                        logger.info(
+                            "Rate limit low (%s) for non-cache response; continuing and relying on 429 handling if needed.",
+                            self.rate_limit_remaining,
                         )
 
                     if response.status == 429:

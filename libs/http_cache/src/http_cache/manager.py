@@ -12,12 +12,69 @@ import logging
 from typing import Any
 
 import aiohttp
-from hishel import CacheOptions, SpecificationPolicy
+from hishel import BaseFilter, FilterPolicy
+from hishel._core.models import Response as HishelResponse
 from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
+from .exceptions import StorageConfigurationError
 
 logger = logging.getLogger(__name__)
+
+
+class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
+    """Hishel response filter that prevents caching of HTTP error responses.
+
+    This filter ensures that error responses (4xx/5xx status codes) are never
+    cached, forcing fresh network requests on retry. This is critical for:
+
+    - Rate limit errors (429): Retries should check current limit status
+    - Server errors (5xx): Transient failures shouldn't be cached
+    - Auth failures (401/403): Auth state may change between requests
+    - Not Found (404): Resources might be created later
+
+    The filter is integrated into Hishel's FilterPolicy and evaluated before
+    responses are stored in the cache backend.
+
+    Examples:
+        >>> policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
+        >>> manager = HTTPCacheManager(policy=policy)
+
+    Note:
+        This filter works at the Hishel policy level, preventing error responses
+        from ever reaching the storage backend. It's more efficient than storing
+        and checking errors later.
+    """
+
+    def needs_body(self) -> bool:
+        """Indicate whether response body is needed for filtering decision.
+
+        Returns:
+            Always False - status code alone determines cacheability.
+        """
+        return False
+
+    def apply(self, item: HishelResponse, body: bytes | None) -> bool:
+        """Determine if response should be cached based on status code.
+
+        Args:
+            item: Hishel Response object containing status code and headers.
+            body: Response body bytes (unused, always None since needs_body=False).
+
+        Returns:
+            True to allow caching (2xx/3xx), False to prevent caching (4xx/5xx).
+
+        Examples:
+            >>> filter = NeverCacheErrorsFilter()
+            >>> response_200 = Response(status_code=200, ...)
+            >>> filter.apply(response_200, None)  # Returns True (cache allowed)
+            True
+            >>> response_429 = Response(status_code=429, ...)
+            >>> filter.apply(response_429, None)  # Returns False (no cache)
+            False
+        """
+        # Only cache successful responses (2xx, 3xx)
+        return item.status_code < 400
 
 
 class HTTPCacheManager:
@@ -33,9 +90,11 @@ class HTTPCacheManager:
         self.config = config
         self._async_redis_client: AsyncRedis | None = None
         self._redis_event_loop: Any | None = None
-        self.policy = SpecificationPolicy(
-            cache_options=CacheOptions()
-        )
+        # Enable body-key caching for POST requests (GraphQL queries)
+        # Body-key ensures different queries/variables in POST body have separate cache entries
+        # Add response filter to prevent caching of error responses
+        self.policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
+        self.policy.use_body_key = True  # Include request body in cache key
 
         if self.config.enabled:
             self._init_storage()
@@ -47,12 +106,12 @@ class HTTPCacheManager:
         If `storage_type` is "redis", initializes Redis storage; otherwise raises an error.
 
         Raises:
-            ValueError: If `config.storage_type` is not a recognized backend.
+            StorageConfigurationError: If `config.storage_type` is not a recognized backend.
         """
         if self.config.storage_type == "redis":
             self._init_redis_storage()
         else:
-            raise ValueError(f"Unknown storage type: {self.config.storage_type}")
+            raise StorageConfigurationError(self.config.storage_type)
 
     def _init_redis_storage(self) -> None:
         """
@@ -60,26 +119,30 @@ class HTTPCacheManager:
 
         Checks that `redis_url` is present in the configured settings and logs an info message when valid. On validation failure logs a warning indicating Redis-based HTTP caching will not be used; the function does not re-raise exceptions.
         """
-        try:
-            if not self.config.redis_url:
-                raise ValueError("redis_url required for Redis storage")
-
-            logger.info(
-                f"Redis cache configured for aiohttp sessions: {self.config.redis_url}"
-            )
-
-        except (ValueError, Exception) as e:
+        # Validate configuration before logging
+        if not self.config.redis_url:
+            # Configuration error - log warning instead of failing
             logger.warning(
-                f"Redis configuration failed: {e}. "
+                "Redis configuration failed: redis_url required for Redis storage. "
                 "Async (aiohttp) requests will not be cached on Redis."
             )
+            return
+
+        # Configuration valid - log success
+        logger.info(
+            f"Redis cache configured for aiohttp sessions: {self.config.redis_url}"
+        )
 
     def _get_or_create_redis_client(self) -> AsyncRedis | None:
-        """
-        Obtain an AsyncRedis client bound to the current event loop, creating one if necessary.
+        """Obtain an AsyncRedis client bound to the current event loop.
+
+        Creates a new client if necessary or reuses existing client for current loop.
+        This ensures each asyncio event loop has its own Redis connection, which is
+        critical for multi-agent concurrent processing.
 
         Returns:
-            AsyncRedis client bound to the current event loop, or `None` if no event loop is running or Redis URL is not configured.
+            AsyncRedis client bound to current event loop, or None if no event loop
+            is running or Redis URL is not configured.
         """
         try:
             current_loop = asyncio.get_running_loop()
@@ -135,17 +198,27 @@ class HTTPCacheManager:
     def get_aiohttp_session(
         self, service: str, **session_kwargs: Any
     ) -> Any:  # Returns aiohttp.ClientSession or CachedAiohttpSession
-        """
-        Return an aiohttp session configured for the given service, using Redis-backed body-aware caching when enabled.
+        """Get an aiohttp session for the specified service with caching support.
 
-        When Redis caching is active and available, returns a CachedAiohttpSession that includes the request body in the cache key so distinct request bodies produce separate cache entries. Otherwise returns a standard aiohttp.ClientSession.
+        When Redis caching is enabled and available, returns a CachedAiohttpSession
+        with body-aware caching (critical for GraphQL/POST requests). Different
+        request bodies produce separate cache entries. Falls back to standard
+        aiohttp.ClientSession if caching is disabled or unavailable.
 
-        Parameters:
-            service (str): Name of the service for which the session is created (used to determine TTL).
-            **session_kwargs: Additional arguments forwarded to the session constructor.
+        Args:
+            service: Service name used to determine cache TTL (e.g., "anilist", "jikan").
+            **session_kwargs: Additional arguments forwarded to session constructor
+                (e.g., timeout, headers, connector).
 
         Returns:
-            aiohttp.ClientSession or CachedAiohttpSession: A session object suitable for making HTTP requests; a cached session when Redis-backed caching is available, otherwise a plain aiohttp.ClientSession.
+            CachedAiohttpSession with Redis backend if caching enabled, otherwise
+            plain aiohttp.ClientSession.
+
+        Examples:
+            >>> manager = HTTPCacheManager(config)
+            >>> session = manager.get_aiohttp_session("anilist")
+            >>> async with session.post(url, json=payload) as response:
+            ...     data = await response.json()
         """
         if not self.config.enabled or self.config.storage_type != "redis":
             return aiohttp.ClientSession(**session_kwargs)
@@ -191,11 +264,14 @@ class HTTPCacheManager:
             return aiohttp.ClientSession(**session_kwargs)
 
     def _get_service_ttl(self, service: str) -> int:
-        """
-        Retrieve TTL (time-to-live) in seconds for the given service.
+        """Retrieve cache TTL in seconds for the specified service.
+
+        Args:
+            service: Service name (e.g., "anilist", "jikan", "kitsu").
 
         Returns:
-            ttl_seconds (int): TTL in seconds for the service; defaults to 86400 (24 hours) if not configured.
+            TTL in seconds for the service, defaults to 86400 (24 hours) if not
+            configured via CacheConfig.ttl_{service}.
         """
         ttl_attr = f"ttl_{service}"
         return getattr(self.config, ttl_attr, 86400)  # Default 24 hours
@@ -217,15 +293,14 @@ class HTTPCacheManager:
                 self._redis_event_loop = None
 
     def get_stats(self) -> dict[str, Any]:
-        """
-        Provide a summary of the cache manager's current configuration and status.
+        """Get summary of cache manager's current configuration and status.
 
         Returns:
-            stats (dict[str, Any]): If caching is disabled, `{"enabled": False}`.
-                If enabled, a dictionary with keys:
-                - `"enabled"`: `True`
-                - `"storage_type"`: configured storage backend
-                - `"redis_url"`: configured Redis URL (may be `None`)
+            Dictionary with cache configuration. If caching disabled, returns
+            {"enabled": False}. If enabled, includes:
+            - "enabled": True
+            - "storage_type": Backend type (e.g., "redis")
+            - "redis_url": Redis connection URL (may be None)
         """
         if not self.config.enabled:
             return {"enabled": False}

@@ -24,6 +24,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from .config import get_cache_config
+from .exceptions import RedisInitializationError
 
 # Type variables for preserving function signatures
 P = ParamSpec("P")
@@ -45,7 +46,7 @@ async def get_result_cache_redis_client() -> Redis:
         Redis: The initialized singleton Redis client for result caching.
 
     Raises:
-        RuntimeError: If client initialization fails and no Redis instance could be created.
+        RedisInitializationError: If client initialization fails and no Redis instance could be created.
     """
     global _redis_client
     async with _redis_lock:
@@ -71,7 +72,7 @@ async def get_result_cache_redis_client() -> Redis:
             )
         # After initialization, client must be non-None
         if _redis_client is None:
-            raise RuntimeError("Failed to initialize Redis client for result cache")
+            raise RedisInitializationError()
         return _redis_client
 
 
