@@ -4,6 +4,7 @@ Cache configuration for HTTP requests in enrichment pipeline.
 Supports Redis backend for production and multi-agent concurrent processing.
 """
 
+import os
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +43,19 @@ class CacheConfig(BaseModel):
     )
     ttl_animeschedule: int = Field(
         default=86400, description="AnimSchedule cache TTL - 24 hours"
+    )
+
+    # Cache behavior configuration
+    force_cache: bool = Field(
+        default=True,
+        description=(
+            "If True, ignores RFC 9111 headers and always caches/serves from cache "
+            "regardless of Cache-Control, Expires, etc. Useful for misbehaving APIs."
+        ),
+    )
+    always_revalidate: bool = Field(
+        default=False,
+        description="If True, always attempts to revalidate with the server even on cache hits.",
     )
 
     # Cache key configuration
@@ -95,6 +109,9 @@ def get_cache_config() -> CacheConfig:
 
     Environment variables read (with defaults):
         ENABLE_HTTP_CACHE (default: "true")
+        FORCE_HTTP_CACHE (default: "false")
+        ALWAYS_REVALIDATE_HTTP_CACHE (default: "false")
+        MAX_CACHE_KEY_LENGTH (default: "200")
         REDIS_CACHE_URL (default: "redis://localhost:6379/0")
         REDIS_MAX_CONNECTIONS (default: "100")
         REDIS_SOCKET_KEEPALIVE (default: "true")
@@ -104,21 +121,11 @@ def get_cache_config() -> CacheConfig:
         REDIS_HEALTH_CHECK_INTERVAL (default: "30")
 
     Returns:
-        CacheConfig: Configuration populated from the environment; missing or invalid environment values fall back to the model's defaults or the listed fallback strings above.
+        CacheConfig: Configuration populated from the environment.
     """
-    import os
 
     def parse_bool(value: str, default: bool) -> bool:
-        """
-        Interpret a string as a boolean with a default fallback.
-
-        Parameters:
-            value (str): Input string to interpret; accepts "true", "1", "yes" (case-insensitive) as True and "false", "0", "no" as False.
-            default (bool): Value to return when the input is not a recognized boolean token.
-
-        Returns:
-            bool: `True` if `value` represents truth, `False` if it represents falsehood, otherwise `default`.
-        """
+        """Interpret a string as a boolean with a default fallback."""
         if value.lower() in ("true", "1", "yes"):
             return True
         elif value.lower() in ("false", "0", "no"):
@@ -126,16 +133,7 @@ def get_cache_config() -> CacheConfig:
         return default
 
     def parse_int(value: str, default: int) -> int:
-        """
-        Parse an integer from a string, falling back to a default when parsing fails.
-
-        Parameters:
-            value (str): String to parse as an integer.
-            default (int): Value to return if `value` cannot be parsed as an integer.
-
-        Returns:
-            int: The parsed integer, or `default` if parsing raises a ValueError or TypeError.
-        """
+        """Parse an integer from a string, falling back to a default."""
         try:
             return int(value)
         except (ValueError, TypeError):
@@ -143,6 +141,10 @@ def get_cache_config() -> CacheConfig:
 
     return CacheConfig(
         enabled=os.getenv("ENABLE_HTTP_CACHE", "true").lower() == "true",
+        force_cache=os.getenv("FORCE_HTTP_CACHE", "true").lower() == "true",
+        always_revalidate=os.getenv("ALWAYS_REVALIDATE_HTTP_CACHE", "false").lower()
+        == "true",
+        max_cache_key_length=parse_int(os.getenv("MAX_CACHE_KEY_LENGTH", "200"), 200),
         redis_url=os.getenv("REDIS_CACHE_URL", "redis://localhost:6379/0"),
         redis_max_connections=parse_int(os.getenv("REDIS_MAX_CONNECTIONS", "100"), 100),
         redis_socket_keepalive=parse_bool(

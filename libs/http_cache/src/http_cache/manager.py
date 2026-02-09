@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 import aiohttp
+from hishel import CacheOptions, SpecificationPolicy
 from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
@@ -32,6 +33,9 @@ class HTTPCacheManager:
         self.config = config
         self._async_redis_client: AsyncRedis | None = None
         self._redis_event_loop: Any | None = None
+        self.policy = SpecificationPolicy(
+            cache_options=CacheOptions()
+        )
 
         if self.config.enabled:
             self._init_storage()
@@ -167,19 +171,17 @@ class HTTPCacheManager:
                 key_prefix="hishel_cache",
             )
 
-            # Enable body-based caching by adding X-Hishel-Body-Key header
-            # This ensures POST requests (GraphQL, etc.) include body in cache key
-            # Copy headers to avoid mutating caller's dict
-            base_headers = session_kwargs.get("headers") or {}
-            headers = dict(base_headers)
-            headers["X-Hishel-Body-Key"] = "true"
-            session_kwargs["headers"] = headers
-
             # Return cached session
             logger.debug(
                 f"Async Redis cache session created for {service} (TTL: {ttl}s, event loop: {id(self._redis_event_loop)})"
             )
-            return CachedAiohttpSession(storage=async_storage, **session_kwargs)
+            return CachedAiohttpSession(
+                storage=async_storage,
+                policy=self.policy,
+                force_cache=self.config.force_cache,
+                always_revalidate=self.config.always_revalidate,
+                **session_kwargs,
+            )
 
         except ImportError as e:
             logger.warning(f"Async caching dependencies missing: {e}")

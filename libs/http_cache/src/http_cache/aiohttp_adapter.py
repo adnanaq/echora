@@ -3,20 +3,16 @@ aiohttp caching adapter using Hishel's AsyncRedisStorage.
 
 Provides a drop-in replacement for aiohttp.ClientSession that adds
 HTTP caching via Redis backend.
-
-**Note**: This is a simplified implementation that directly uses
-AsyncRedisStorage. For async helpers (AniList, Kitsu, AniDB), we use
-the cached session which wraps the original aiohttp.ClientSession.
 """
 
-import hashlib
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator
 from types import TracebackType
 from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientResponseError, RequestInfo
+from hishel import AsyncCacheProxy, CachePolicy, SpecificationPolicy
 from hishel._core._headers import Headers
 from hishel._core._storages._async_base import AsyncBaseStorage
 from hishel._core.models import Request, Response
@@ -221,6 +217,9 @@ class CachedAiohttpSession:
     def __init__(
         self,
         storage: AsyncBaseStorage,
+        policy: CachePolicy | None = None,
+        force_cache: bool = False,
+        always_revalidate: bool = False,
         session: aiohttp.ClientSession | None = None,
         **session_kwargs: Any,
     ) -> None:
@@ -229,11 +228,65 @@ class CachedAiohttpSession:
 
         Parameters:
             storage (AsyncBaseStorage): Storage backend used to persist and retrieve cached HTTP entries.
+            policy (Optional[CachePolicy]): Hishel policy for cache control.
+            force_cache (bool): If True, forces caching of responses by injecting headers if missing.
+            always_revalidate (bool): If True, always revalidates with the server.
             session (Optional[aiohttp.ClientSession]): Optional existing aiohttp session to wrap; if omitted a new session is created.
             **session_kwargs (Any): Keyword arguments forwarded to aiohttp.ClientSession when a new session is created.
         """
         self.storage = storage
+        self.policy = policy or SpecificationPolicy()
+        self.force_cache = force_cache
+        self.always_revalidate = always_revalidate
         self.session = session or aiohttp.ClientSession(**session_kwargs)
+
+        async def request_sender(request: Request) -> Response:
+            # This sender is called by hishel when it needs a fresh response
+            # Convert hishel.Request back to aiohttp call
+            # Handle streaming body if present
+            data = None
+            if request.stream:
+                collected = b"".join([chunk async for chunk in request.stream])
+                data = collected
+
+            # Capture headers from hishel Request
+            headers = dict(request.headers)
+
+            response = await self.session.request(
+                method=request.method,
+                url=str(request.url),
+                headers=headers,
+                data=data,
+            )
+            try:
+                body = await response.read()
+
+                async def body_stream():
+                    yield body
+
+                # Convert aiohttp.ClientResponse to hishel.Response
+                res_headers = dict(response.headers)
+
+                # Inject Cache-Control if force_cache is enabled and headers are missing
+                if self.force_cache and "cache-control" not in [
+                    k.lower() for k in res_headers.keys()
+                ]:
+                    # Default to 24h caching if forced
+                    res_headers["Cache-Control"] = "public, max-age=86400"
+
+                return Response(
+                    status_code=response.status,
+                    headers=Headers(res_headers),
+                    stream=body_stream(),
+                )
+            finally:
+                response.close()
+
+        self._proxy = AsyncCacheProxy(
+            request_sender=request_sender,
+            storage=self.storage,
+            policy=self.policy,
+        )
 
     def get(self, url: str, **kwargs: Any) -> _CachedRequestContextManager:
         """
@@ -274,215 +327,64 @@ class CachedAiohttpSession:
 
         Returns:
             _CachedResponse: A response wrapper containing status, headers, body, url, method, and request headers. The wrapper's `from_cache` flag is `True` when the response was served from storage and `False` when it was fetched live.
-
-        Notes:
-            - On a cache hit this function reconstructs the response body and headers from the most recently created cache entry and does not perform a network request.
-            - On a cache miss it performs the network request, reads the full body, and stores the response in storage only if the HTTP status is less than 400.
         """
-        # Generate cache key
-        cache_key = self._generate_cache_key(method, url, kwargs)
-
-        # Check cache
-        entries = await self.storage.get_entries(cache_key)
-        if entries:
-            # Cache hit - return cached response WITHOUT making HTTP request
-            # Select entry with latest created_at timestamp (not entries[0])
-            # Redis SMEMBERS returns unordered results, so entries[0] may be stale
-            entry = max(
-                entries,
-                key=lambda cached_entry: getattr(cached_entry.meta, "created_at", 0.0),
-            )
-            if entry.response:
-                # Read all chunks from cached stream
-                body_chunks: list[bytes] = []
-                if entry.response.stream:
-                    # Handle both async and sync iterators
-                    stream = entry.response.stream
-                    if hasattr(stream, "__aiter__"):
-                        # AsyncIterator
-                        async for chunk in stream:
-                            body_chunks.append(chunk)
-                    else:
-                        # Iterator
-                        body_chunks.extend(list(stream))
-                body = b"".join(body_chunks)
-
-                # Extract headers - convert to simple dict
-                if isinstance(entry.response.headers, Headers):
-                    # Use public API: Headers implements MutableMapping
-                    # dict() constructor converts properly (handles multi-value headers)
-                    headers_dict: dict[str, str] = dict(entry.response.headers)
-                else:
-                    headers_dict = entry.response.headers
-
-                # Return cached response
-                return _CachedResponse(
-                    status=entry.response.status_code,
-                    headers=headers_dict,
-                    body=body,
-                    url=url,
-                    method=method,
-                    request_headers=kwargs.get("headers", {}),
-                    from_cache=True,
-                )
-
-        # Cache miss - make actual HTTP request
-        response = await self.session.request(method, url, **kwargs)
-
-        # Read response body to cache it
-        body = await response.read()
-
-        # Only cache successful responses (2xx and 3xx)
-        # NEVER cache error responses (4xx, 5xx) as they are temporary
-        if response.status < 400:
-            await self._store_response_with_body(
-                method, response, cache_key, kwargs, body
-            )
-
-        # Return cached response wrapper (allows multiple reads)
-        return _CachedResponse(
-            status=response.status,
-            headers=dict(response.headers),
-            body=body,
-            url=str(response.url),
-            method=method,
-            request_headers=dict(response.request_info.headers),
-            from_cache=False,
-        )
-
-    def _generate_cache_key(self, method: str, url: str, kwargs: dict[str, Any]) -> str:
-        """
-        Create a deterministic cache key for an HTTP request.
-
-        Parameters:
-            method (str): HTTP method (e.g., "GET", "POST").
-            url (str): Request URL.
-            kwargs (dict[str, Any]): Request keyword arguments; `json`, `params`, and `data`
-                values (when present) are included in a deterministic serialized form.
-
-        Returns:
-            str: Cache key in the form "<METHOD>:<sha256 hex>", derived from the method,
-                 URL, and serialized payloads to ensure stable, comparable keys.
-        """
-
-        key_parts = [method, url]
-
-        def serialize_payload(value: Any) -> str:
-            """
-            Create a deterministic string representation of arbitrary payloads suitable for cache key generation.
-
-            Parameters:
-                value (Any): The payload to serialize; may be bytes, str, mappings, sequences, sets, or other objects.
-
-            Returns:
-                serialized (str): A stable string form of `value`. Bytes/bytearray are decoded as UTF-8 (ignoring errors); mappings are converted to a JSON-encoded list of key/value pairs with keys sorted and values recursively serialized; sequences and sets are JSON-encoded lists of recursively serialized items; all other values use `str(value)`.
-            """
-            if isinstance(value, bytes | bytearray):
-                return value.decode("utf-8", errors="ignore")
-            if isinstance(value, str):
-                return value
-            if isinstance(value, Mapping):
-                items = sorted(
-                    (str(key), serialize_payload(item_value))
-                    for key, item_value in value.items()
-                )
-                return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
-            if isinstance(value, Sequence | set) and not isinstance(
-                value, bytes | bytearray | str
-            ):
-                serialized = [serialize_payload(item) for item in value]
-                return json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
-            return str(value)
-
+        # 1. Create hishel Request object
+        # Handle body for POST/PUT if present in kwargs
+        body = None
         if "json" in kwargs:
-            key_parts.append(
-                json.dumps(
-                    kwargs["json"],
-                    sort_keys=True,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                )
-            )
+            body = json.dumps(kwargs["json"]).encode("utf-8")
+        elif "data" in kwargs:
+            data = kwargs["data"]
+            if isinstance(data, str):
+                body = data.encode("utf-8")
+            elif isinstance(data, bytes | bytearray):
+                body = bytes(data)
 
-        if params := kwargs.get("params"):
-            key_parts.append(f"params={serialize_payload(params)}")
-
-        if "data" in kwargs:
-            key_parts.append(f"data={serialize_payload(kwargs['data'])}")
-
-        # Hash to create stable key
-        key_string = ":".join(key_parts)
-        key_hash = hashlib.sha256(key_string.encode()).hexdigest()
-        return f"{method}:{key_hash}"
-
-    async def _store_response_with_body(
-        self,
-        method: str,
-        response: aiohttp.ClientResponse,
-        cache_key: str,
-        request_kwargs: dict[str, Any],
-        body: bytes,
-    ) -> None:
-        """
-        Store an aiohttp response and its pre-read body into the storage backend under the given cache key.
-
-        Converts the live aiohttp response and request information into Hishel `Request` and `Response`
-        models, creates a cache entry via the storage backend, and consumes the entry's response stream
-        so any wrapped stream persistence logic (e.g., saving chunks to Redis) is triggered.
-
-        Parameters:
-            method: HTTP method used for the original request.
-            response: The aiohttp.ClientResponse that was received.
-            cache_key: The key under which the entry will be stored in the backend.
-            request_kwargs: Original request keyword arguments; `metadata` (if present) is propagated to the stored Request.
-            body: The full response body already read from `response`, provided as bytes.
-        """
-        # Convert aiohttp response to Hishel Entry
-        hishel_request = Request(
-            method=method,
-            url=str(response.url),
-            headers=Headers(dict(response.request_info.headers)),
-            stream=None,  # Request body not needed for caching
-            metadata=request_kwargs.get("metadata", {}),
-        )
-
-        # Create async iterator factory for body (can be called multiple times)
-        def body_stream_factory() -> AsyncIterator[bytes]:
-            """
-            Create an async iterator that yields the captured response body as a single bytes chunk.
-
-            Returns:
-                AsyncIterator[bytes]: An async iterator which yields one `bytes` value containing the full body.
-            """
-
-            async def body_stream() -> AsyncIterator[bytes]:
+        async def body_stream():
+            if body:
                 yield body
 
-            return body_stream()
+        request_headers = dict(kwargs.get("headers", {}))
+        if self.always_revalidate:
+            # Force hishel to revalidate by adding no-cache to request
+            request_headers["Cache-Control"] = "no-cache"
 
-        hishel_response = Response(
-            status_code=response.status,
-            headers=Headers(dict(response.headers)),
-            stream=body_stream_factory(),
-            metadata={},
+        hishel_request = Request(
+            method=method,
+            url=url,
+            headers=Headers(request_headers),
+            stream=body_stream() if body else None,
         )
 
-        # Store in cache - this returns an Entry with wrapped stream
-        entry = await self.storage.create_entry(
-            hishel_request, hishel_response, cache_key
-        )
+        # 2. Add metadata for hishel (TTL, body-key)
+        if request_headers.get("X-Hishel-Body-Key") == "true":
+            hishel_request.metadata["hishel_body_key"] = True
 
-        # IMPORTANT: Consume the wrapped stream to actually save to Redis
-        # The storage wraps the stream with _save_stream which saves chunks as they're read
-        if entry.response and entry.response.stream:
-            stream = entry.response.stream
-            if hasattr(stream, "__aiter__"):
-                # ty doesn't recognize Hishel's stream as AsyncIterable after hasattr check
-                async for _ in stream:  # ty: ignore[not-iterable]
-                    pass  # Just consume, data already yielded from body_stream()
+        # 3. Delegate to hishel proxy
+        hishel_response = await self._proxy.handle_request(hishel_request)
+
+        # 4. Convert hishel.Response back to _CachedResponse
+        body_chunks = []
+        if hishel_response.stream:
+            if hasattr(hishel_response.stream, "__aiter__"):
+                async for chunk in hishel_response.stream:
+                    body_chunks.append(chunk)
             else:
-                for _ in stream:
-                    pass  # Sync iterator fallback
+                body_chunks.extend(list(hishel_response.stream))
+        response_body = b"".join(body_chunks)
+
+        # Detect if it was served from cache
+        from_cache = hishel_response.metadata.get("hishel_from_cache", False)
+
+        return _CachedResponse(
+            status=hishel_response.status_code,
+            headers=dict(hishel_response.headers),
+            body=response_body,
+            url=url,
+            method=method,
+            request_headers=request_headers,
+            from_cache=from_cache,
+        )
 
     async def close(self) -> None:
         """Close the session and storage."""
