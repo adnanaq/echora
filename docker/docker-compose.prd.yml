@@ -1,12 +1,12 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.14.3 # Match qdrant-client version for compatibility
+    image: qdrant/qdrant:v1.16.2
     container_name: anime-vector-qdrant
     ports:
       - "6333:6333"
     volumes:
-      - ../data/qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
@@ -22,7 +22,7 @@ services:
   # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
     image: redis:7-alpine
-    container_name: anime-vector-redis
+    container_name: echora_redis
     ports:
       - "6379:6379"
     volumes:
@@ -43,7 +43,7 @@ services:
     build:
       context: ..
       dockerfile: apps/service/Dockerfile.prd # Managed by Pants: pants package apps/service:service-image
-    container_name: anime-vector-service
+    container_name: echora_vector_anime
     ports:
       - "8002:8002"
     deploy:
@@ -103,6 +103,8 @@ networks:
   vector-network:
     driver: bridge
 volumes:
+  qdrant_data:
+    driver: local
   redis-data:
     driver: local
   model_cache:

@@ -21,7 +21,7 @@ uv sync --extra dev
 docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Run service locally for development
-uv run python -m src.main
+./pants run apps/service:service
 ```
 
 ### Docker Development (Recommended)

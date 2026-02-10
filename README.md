@@ -70,7 +70,7 @@ echora/
 
 ```bash
 # Start all services
-docker compose up -d
+docker compose -f docker/docker-compose.dev.yml up -d
 
 # Service available at http://localhost:8002
 curl http://localhost:8002/health
@@ -115,7 +115,7 @@ uv sync
 #### 4. Start Qdrant Database
 
 ```bash
-docker compose up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Access Qdrant UI dashboard
 # http://localhost:6333/dashboard
@@ -127,6 +127,7 @@ docker compose up -d qdrant
 
 ```bash
 # Run the service (available at http://localhost:8002)
+# Note: prefer the repo wrapper `./pants` (works even when `pants` isn't on PATH).
 ./pants run apps/service:service
 
 # Run tests
@@ -265,7 +266,7 @@ Vector embedding generation and processing.
 ./pants test :: -- -m "not integration"
 
 # Run ONLY integration tests (requires Qdrant + ML models)
-docker compose up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 ./pants test :: -- -m integration
 
 # Run tests for specific library
