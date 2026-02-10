@@ -238,7 +238,7 @@ def cached_result(
             config = get_cache_config()
 
             # Skip caching if disabled
-            if not config.enabled or config.storage_type != "redis":
+            if not config.cache_enable or config.storage_type != "redis":
                 return await func(*args, **kwargs)
 
             # Generate cache key with schema hash

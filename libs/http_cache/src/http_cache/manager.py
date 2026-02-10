@@ -85,7 +85,7 @@ class HTTPCacheManager:
         Initialize the HTTPCacheManager with the provided cache configuration.
 
         Parameters:
-            config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.enabled` is true, storage backend initialization is attempted.
+            config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.cache_enable` is true, storage backend initialization is attempted.
         """
         self.config = config
         self._async_redis_client: AsyncRedis | None = None
@@ -96,7 +96,7 @@ class HTTPCacheManager:
         self.policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
         self.policy.use_body_key = True  # Include request body in cache key
 
-        if self.config.enabled:
+        if self.config.cache_enable:
             self._init_storage()
 
     def _init_storage(self) -> None:
@@ -220,7 +220,7 @@ class HTTPCacheManager:
             >>> async with session.post(url, json=payload) as response:
             ...     data = await response.json()
         """
-        if not self.config.enabled or self.config.storage_type != "redis":
+        if not self.config.cache_enable or self.config.storage_type != "redis":
             return aiohttp.ClientSession(**session_kwargs)
 
         # Get or create Redis client for current event loop
@@ -297,16 +297,16 @@ class HTTPCacheManager:
 
         Returns:
             Dictionary with cache configuration. If caching disabled, returns
-            {"enabled": False}. If enabled, includes:
-            - "enabled": True
+            {"cache_enable": False}. If enabled, includes:
+            - "cache_enable": True
             - "storage_type": Backend type (e.g., "redis")
             - "redis_url": Redis connection URL (may be None)
         """
-        if not self.config.enabled:
-            return {"enabled": False}
+        if not self.config.cache_enable:
+            return {"cache_enable": False}
 
         return {
-            "enabled": True,
+            "cache_enable": True,
             "storage_type": self.config.storage_type,
             "redis_url": self.config.redis_url,
         }

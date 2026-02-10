@@ -4,16 +4,24 @@ Cache configuration for HTTP requests in enrichment pipeline.
 Supports Redis backend for production and multi-agent concurrent processing.
 """
 
-import os
+from functools import lru_cache
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class CacheConfig(BaseModel):
+class CacheConfig(BaseSettings):
     """HTTP cache configuration for enrichment pipeline."""
 
-    enabled: bool = Field(
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    cache_enable: bool = Field(
         default=True,
         description="Enable HTTP caching (enabled by default on feature branch)",
     )
@@ -97,67 +105,30 @@ class CacheConfig(BaseModel):
         description="Health check interval in seconds (0=disabled, proactively validates connections)",
     )
 
-    class Config:
-        """Pydantic configuration."""
 
-        env_prefix = ""  # Allow both prefixed and non-prefixed env vars
-
-
+@lru_cache
 def get_cache_config() -> CacheConfig:
-    """
-    Builds a CacheConfig populated from environment variables.
+    """Get cached CacheConfig instance populated from environment variables.
 
-    Environment variables read (with defaults):
-        ENABLE_HTTP_CACHE (default: "true")
-        FORCE_HTTP_CACHE (default: "false")
-        ALWAYS_REVALIDATE_HTTP_CACHE (default: "false")
-        MAX_CACHE_KEY_LENGTH (default: "200")
-        REDIS_CACHE_URL (default: "redis://localhost:6379/0")
-        REDIS_MAX_CONNECTIONS (default: "100")
-        REDIS_SOCKET_KEEPALIVE (default: "true")
-        REDIS_SOCKET_CONNECT_TIMEOUT (default: "5")
-        REDIS_SOCKET_TIMEOUT (default: "10")
-        REDIS_RETRY_ON_TIMEOUT (default: "true")
-        REDIS_HEALTH_CHECK_INTERVAL (default: "30")
+    Environment variables are automatically read by Pydantic BaseSettings:
+        CACHE_ENABLE (default: true)
+        FORCE_CACHE (default: true)
+        ALWAYS_REVALIDATE (default: false)
+        MAX_CACHE_KEY_LENGTH (default: 200)
+        REDIS_URL (default: "redis://localhost:6379/0")
+        REDIS_MAX_CONNECTIONS (default: 100)
+        REDIS_SOCKET_KEEPALIVE (default: true)
+        REDIS_SOCKET_CONNECT_TIMEOUT (default: 5)
+        REDIS_SOCKET_TIMEOUT (default: 10)
+        REDIS_RETRY_ON_TIMEOUT (default: true)
+        REDIS_HEALTH_CHECK_INTERVAL (default: 30)
+        TTL_JIKAN, TTL_ANILIST, TTL_ANIDB, etc. (default: 86400)
 
     Returns:
-        CacheConfig: Configuration populated from the environment.
+        Cached CacheConfig instance.
+
+    Note:
+        Uses @lru_cache for singleton pattern. For testing, call
+        get_cache_config.cache_clear() to reset the cache.
     """
-
-    def parse_bool(value: str, default: bool) -> bool:
-        """Interpret a string as a boolean with a default fallback."""
-        if value.lower() in ("true", "1", "yes"):
-            return True
-        elif value.lower() in ("false", "0", "no"):
-            return False
-        return default
-
-    def parse_int(value: str, default: int) -> int:
-        """Parse an integer from a string, falling back to a default."""
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return default
-
-    return CacheConfig(
-        enabled=os.getenv("ENABLE_HTTP_CACHE", "true").lower() == "true",
-        force_cache=os.getenv("FORCE_HTTP_CACHE", "true").lower() == "true",
-        always_revalidate=os.getenv("ALWAYS_REVALIDATE_HTTP_CACHE", "false").lower()
-        == "true",
-        max_cache_key_length=parse_int(os.getenv("MAX_CACHE_KEY_LENGTH", "200"), 200),
-        redis_url=os.getenv("REDIS_CACHE_URL", "redis://localhost:6379/0"),
-        redis_max_connections=parse_int(os.getenv("REDIS_MAX_CONNECTIONS", "100"), 100),
-        redis_socket_keepalive=parse_bool(
-            os.getenv("REDIS_SOCKET_KEEPALIVE", "true"), True
-        ),
-        redis_socket_connect_timeout=parse_int(
-            os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"), 5
-        ),
-        redis_socket_timeout=parse_int(os.getenv("REDIS_SOCKET_TIMEOUT", "10"), 10),
-        redis_retry_on_timeout=parse_bool(
-            os.getenv("REDIS_RETRY_ON_TIMEOUT", "true"), True
-        ),
-        redis_health_check_interval=parse_int(
-            os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"), 30
-        ),
-    )
+    return CacheConfig()
