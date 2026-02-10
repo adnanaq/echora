@@ -65,31 +65,96 @@ flowchart TB
 
 ### Environment Variables
 
-```bash
-# Enable/disable caching (enabled by default)
-ENABLE_HTTP_CACHE=true
+The library uses Pydantic BaseSettings for configuration, supporting both environment variables and `.env` files.
 
-# Redis connection (required for caching)
-REDIS_CACHE_URL=redis://localhost:6379/0
+**Core Configuration:**
+
+```bash
+# Enable/disable caching (default: true)
+CACHE_ENABLE=true
+
+# Redis connection URL (default: redis://localhost:6379/0)
+REDIS_URL=redis://localhost:6379/0
+
+# Override RFC 9111 cache headers (default: true)
+# When true, forces caching even if API returns no-cache headers
+FORCE_CACHE=true
+
+# Always revalidate cached responses (default: false)
+ALWAYS_REVALIDATE=false
+
+# Max cache key length before hashing (default: 200)
+MAX_CACHE_KEY_LENGTH=200
 ```
 
-### TTL Configuration
+**Redis Connection Pool Configuration:**
 
-Configure cache expiration via `CacheConfig` in `http_cache/config.py`:
+```bash
+# Maximum Redis connections (default: 100)
+# Tuned for multi-agent concurrency (20 agents × 10 concurrent ops)
+REDIS_MAX_CONNECTIONS=100
+
+# Enable TCP keepalive (default: true)
+REDIS_SOCKET_KEEPALIVE=true
+
+# Connection timeout in seconds (default: 5)
+REDIS_SOCKET_CONNECT_TIMEOUT=5
+
+# Socket read/write timeout in seconds (default: 10)
+REDIS_SOCKET_TIMEOUT=10
+
+# Retry operations on timeout (default: true)
+REDIS_RETRY_ON_TIMEOUT=true
+
+# Health check interval in seconds (default: 30, 0=disabled)
+REDIS_HEALTH_CHECK_INTERVAL=30
+```
+
+**Service-Specific TTLs (all default to 86400 seconds / 24 hours):**
+
+```bash
+TTL_JIKAN=86400
+TTL_ANILIST=86400
+TTL_ANIDB=86400
+TTL_KITSU=86400
+TTL_ANIME_PLANET=86400
+TTL_ANISEARCH=86400
+TTL_ANIMESCHEDULE=86400
+```
+
+### .env File Support
+
+Create a `.env` file in your working directory for local development:
+
+```bash
+# .env
+CACHE_ENABLE=false
+REDIS_URL=redis://prod-redis:6379/2
+FORCE_CACHE=false
+TTL_JIKAN=3600
+TTL_ANILIST=7200
+```
+
+### Programmatic Configuration (Optional)
 
 ```python
 from http_cache.config import CacheConfig
 
 config = CacheConfig(
-    service_ttls={
-        "my_api": 3600,      # 1 hour
-        "slow_api": 86400,   # 24 hours
-        "fast_api": 300,     # 5 minutes
-    }
+    cache_enable=False,
+    redis_url="redis://custom:6379/1",
+    ttl_jikan=3600,
+    force_cache=False,
 )
 ```
 
-**Default TTL**: 86400 seconds (24 hours)
+### Configuration Precedence
+
+**Priority order (highest to lowest):**
+1. Environment variables
+2. `.env` file values
+3. Programmatic `CacheConfig()` arguments
+4. Field defaults
 
 For service-specific configurations in the enrichment pipeline, see [enrichment/README.md](../enrichment/README.md).
 
@@ -333,7 +398,7 @@ pytest tests/libs/http_cache/ --cov=http_cache
 docker compose up -d redis
 
 # Run integration tests
-REDIS_CACHE_URL=redis://localhost:6379/1 pytest tests/cache_manager/integration/
+REDIS_URL=redis://localhost:6379/1 pytest tests/cache_manager/integration/
 
 # Stop Redis
 docker compose down redis
@@ -343,13 +408,13 @@ docker compose down redis
 
 **Use separate Redis database for tests:**
 ```bash
-REDIS_CACHE_URL=redis://localhost:6379/1  # DB 1 for tests
-REDIS_CACHE_URL=redis://localhost:6379/0  # DB 0 for dev/production
+REDIS_URL=redis://localhost:6379/1  # DB 1 for tests
+REDIS_URL=redis://localhost:6379/0  # DB 0 for dev/production
 ```
 
 **Disable caching in tests when needed:**
 ```bash
-ENABLE_HTTP_CACHE=false pytest tests/
+CACHE_ENABLE=false pytest tests/
 ```
 
 For enrichment pipeline-specific tests, see [enrichment/README.md - Testing](../enrichment/README.md#testing).
@@ -430,7 +495,7 @@ async def long_args(very_long_dict: dict, another_dict: dict) -> dict:
 
 ```bash
 # Check if cache enabled
-echo $ENABLE_HTTP_CACHE  # Should be "true"
+echo $CACHE_ENABLE  # Should be "true"
 
 # Check Redis connection
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
@@ -443,9 +508,9 @@ docker exec -it anime-vector-redis redis-cli
 
 **Solutions:**
 
-1. Verify `ENABLE_HTTP_CACHE=true` in environment
+1. Verify `CACHE_ENABLE=true` in environment or `.env` file
 2. Check Redis is running: `docker compose ps redis`
-3. Validate `REDIS_CACHE_URL=redis://localhost:6379/0`
+3. Validate `REDIS_URL=redis://localhost:6379/0` in environment
 4. Check application logs for cache-related warnings
 
 ### Redis Connection Failed
@@ -464,7 +529,7 @@ docker compose up -d redis
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
 
 # Check connection string format
-echo $REDIS_CACHE_URL  # Should be: redis://host:port/db
+echo $REDIS_URL  # Should be: redis://host:port/db
 ```
 
 ### Session Lifecycle Issues
@@ -518,8 +583,10 @@ For multi-event-loop scenarios, see [enrichment/README.md - Pattern C](../enrich
   - Used by all API helpers for consistent caching
 
 - `libs/http_cache/src/http_cache/config.py` - Cache configuration and environment variables
-  - Pydantic-based config with env var support
+  - Pydantic BaseSettings with automatic env var loading
+  - `.env` file support for local development
   - Service-specific TTLs and storage backend configuration
+  - Singleton pattern with `@lru_cache` for efficient config reuse
 
 ## Summary
 
