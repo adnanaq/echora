@@ -65,9 +65,6 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      - TEXT_VECTOR_SIZE=1024
-      - IMAGE_VECTOR_SIZE=768
-
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
       - IMAGE_EMBEDDING_PROVIDER=openclip
@@ -82,10 +79,9 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration
-      - ENABLE_HTTP_CACHE=false
-      - HTTP_CACHE_STORAGE=redis
-      - REDIS_CACHE_URL=redis://redis:6379/0
+      # HTTP Cache Configuration (for Enrichment Pipeline)
+      - CACHE_ENABLE=false
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - vector-network
     volumes:

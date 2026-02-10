@@ -44,6 +44,21 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # RedisInsight (GUI for Redis debugging and monitoring)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: echora-redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight-data:/data
+    networks:
+      - vector-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Anime Vector Service
   # Build with Pants: pants package apps/service:service-dev
   # Or use docker-compose build with updated path:
@@ -67,10 +82,6 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      # Multi-Vector Configuration
-      - TEXT_VECTOR_SIZE=1024
-      - IMAGE_VECTOR_SIZE=768
-
       # Modern Embedding Configuration
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
@@ -87,10 +98,10 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration
-      - ENABLE_HTTP_CACHE=true
-      - HTTP_CACHE_STORAGE=redis
-      - REDIS_CACHE_URL=redis://redis:6379/0
+      # HTTP Cache Configuration (for Enrichment Pipeline)
+      - CACHE_ENABLE=true
+      - REDIS_URL=redis://redis:6379/0
+      - FORCE_CACHE=true
     volumes:
       - model_cache:/app/cache
     networks:
@@ -116,6 +127,8 @@ volumes:
   qdrant_data:
     driver: local
   redis-data:
+    driver: local
+  redisinsight-data:
     driver: local
   model_cache:
     driver: local
