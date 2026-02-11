@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+// Internal-only operations service for service metadata and diagnostics.
+service ServiceOps {
+  rpc GetServiceInfo(google.protobuf.Empty) returns (GetServiceInfoResponse);
+  rpc GetHealthStatus(google.protobuf.Empty) returns (GetHealthStatusResponse);
+  rpc GetDatabaseStats(google.protobuf.Empty) returns (GetDatabaseStatsResponse);
+  rpc GetCollectionInfo(google.protobuf.Empty) returns (GetCollectionInfoResponse);
+}
+
+message GetServiceInfoResponse {
+  string service = 1;
+  string version = 2;
+  string description = 3;
+  map<string, string> endpoints = 4;
+}
+
+message GetHealthStatusResponse {
+  string status = 1;
+  string timestamp = 2;
+  string service = 3;
+  string version = 4;
+  bool database_healthy = 5;
+  string collection_name = 6;
+  int64 document_count = 7;
+}
+
+message GetDatabaseStatsResponse {
+  string collection_name = 1;
+  int64 total_documents = 2;
+  int32 vector_size = 3;
+  string distance_metric = 4;
+  string status = 5;
+  google.protobuf.Struct additional_stats = 6;
+}
+
+message GetCollectionInfoResponse {
+  string collection_name = 1;
+  int32 vector_size = 2;
+  int32 image_vector_size = 3;
+  string distance_metric = 4;
+  google.protobuf.Struct stats = 5;
+  google.protobuf.Struct processors = 6;
+}

@@ -1,2 +1,1 @@
-"""Internal gRPC Agent Service (SearchAI)."""
-
+"""Internal gRPC Agent Service (SearchAI + operations RPCs)."""

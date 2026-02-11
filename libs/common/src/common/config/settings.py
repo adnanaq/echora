@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .agent_config import AgentConfig
 from .embedding_config import EmbeddingConfig
 from .qdrant_config import QdrantConfig
 from .service_config import ServiceConfig
@@ -63,6 +64,7 @@ def get_environment() -> Environment:
 _QDRANT_FIELDS = frozenset(QdrantConfig.model_fields.keys())
 _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
+_AGENT_FIELDS = frozenset(AgentConfig.model_fields.keys())
 
 # Ensure no field name collisions between sub-configs
 # Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
@@ -74,6 +76,15 @@ assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
 )
 assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
+)
+assert not (_QDRANT_FIELDS & _AGENT_FIELDS), (  # noqa: S101
+    f"Field overlap Qdrant/Agent: {_QDRANT_FIELDS & _AGENT_FIELDS}"
+)
+assert not (_EMBEDDING_FIELDS & _AGENT_FIELDS), (  # noqa: S101
+    f"Field overlap Embedding/Agent: {_EMBEDDING_FIELDS & _AGENT_FIELDS}"
+)
+assert not (_SERVICE_FIELDS & _AGENT_FIELDS), (  # noqa: S101
+    f"Field overlap Service/Agent: {_SERVICE_FIELDS & _AGENT_FIELDS}"
 )
 
 
@@ -97,7 +108,7 @@ def _is_complex_type(annotation: Any) -> bool:
 # Fields that expect complex types (list/dict) and need JSON parsing from env vars
 _JSON_FIELDS: frozenset[str] = frozenset(
     field_name
-    for config_cls in (QdrantConfig, EmbeddingConfig, ServiceConfig)
+    for config_cls in (QdrantConfig, EmbeddingConfig, ServiceConfig, AgentConfig)
     for field_name, field_info in config_cls.model_fields.items()
     if field_info.annotation is not None and _is_complex_type(field_info.annotation)
 )
@@ -135,6 +146,7 @@ class Settings(BaseSettings):
     qdrant: QdrantConfig = Field(default_factory=QdrantConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
 
     @model_validator(mode="before")
     @classmethod
@@ -160,6 +172,7 @@ class Settings(BaseSettings):
         qdrant_data: dict[str, Any] = {}
         embedding_data: dict[str, Any] = {}
         service_data: dict[str, Any] = {}
+        agent_data: dict[str, Any] = {}
 
         # Collect sub-config fields from data (may come from .env file via BaseSettings)
         keys_to_remove: list[str] = []
@@ -174,6 +187,16 @@ class Settings(BaseSettings):
             elif lower_key in _SERVICE_FIELDS:
                 service_data[lower_key] = _maybe_parse_json(lower_key, value)
                 keys_to_remove.append(key)
+            elif lower_key in _AGENT_FIELDS:
+                agent_data[lower_key] = _maybe_parse_json(lower_key, value)
+                keys_to_remove.append(key)
+            elif isinstance(lower_key, str) and lower_key.startswith("agent_"):
+                nested_agent_key = lower_key.removeprefix("agent_")
+                if nested_agent_key in _AGENT_FIELDS:
+                    agent_data[nested_agent_key] = _maybe_parse_json(
+                        nested_agent_key, value
+                    )
+                    keys_to_remove.append(key)
 
         for key in keys_to_remove:
             data.pop(key, None)
@@ -189,11 +212,18 @@ class Settings(BaseSettings):
                 if env_val is not None:
                     target_data[field_name] = _maybe_parse_json(field_name, env_val)
 
+        # Agent config fields use AGENT_ prefix (e.g. AGENT_SERVICE_PORT).
+        for field_name in _AGENT_FIELDS:
+            env_val = os.environ.get(f"AGENT_{field_name.upper()}")
+            if env_val is not None:
+                agent_data[field_name] = _maybe_parse_json(field_name, env_val)
+
         # Merge into existing nested dicts (if any) or create new ones
         for config_key, config_data in [
             ("qdrant", qdrant_data),
             ("embedding", embedding_data),
             ("service", service_data),
+            ("agent", agent_data),
         ]:
             if config_data:
                 existing = data.get(config_key, {})
@@ -266,6 +296,7 @@ _SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
     "qdrant",
     "embedding",
     "service",
+    "agent",
 }
 # Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
 assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
@@ -276,6 +307,9 @@ assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
 )
 assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
     f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
+)
+assert not (_AGENT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+    f"Field overlap Agent/Settings: {_AGENT_FIELDS & _SETTINGS_FIELDS}"
 )
 
 
