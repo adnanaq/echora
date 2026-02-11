@@ -22,24 +22,25 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1b\x61gent/v1/agent_search.proto\x12\x08\x61gent.v1\x1a\x1cgoogle/protobuf/struct.proto\";\n\tEntityRef\x12\"\n\x04type\x18\x01 \x01(\x0e\x32\x14.agent.v1.EntityType\x12\n\n\x02id\x18\x02 \x01(\t\"H\n\x0fSearchAIRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x11\n\tmax_turns\x18\x02 \x01(\x05\x12\x13\n\x0bimage_query\x18\x03 \x01(\t\"\xe2\x01\n\x10SearchAIResponse\x12\x0e\n\x06\x61nswer\x18\x01 \x01(\t\x12,\n\x0fsource_entities\x18\x02 \x03(\x0b\x32\x13.agent.v1.EntityRef\x12,\n\x0fresult_entities\x18\x03 \x03(\x0b\x32\x13.agent.v1.EntityRef\x12)\n\x08\x65vidence\x18\x04 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x11\n\tcitations\x18\x05 \x03(\t\x12\x12\n\nconfidence\x18\x06 \x01(\x02\x12\x10\n\x08warnings\x18\x07 \x03(\t*\x8b\x01\n\nEntityType\x12\x1b\n\x17\x45NTITY_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11\x45NTITY_TYPE_ANIME\x10\x01\x12\x19\n\x15\x45NTITY_TYPE_CHARACTER\x10\x02\x12\x17\n\x13\x45NTITY_TYPE_EPISODE\x10\x03\x12\x15\n\x11\x45NTITY_TYPE_MANGA\x10\x04\x32W\n\x12\x41gentSearchService\x12\x41\n\x08SearchAI\x12\x19.agent.v1.SearchAIRequest\x1a\x1a.agent.v1.SearchAIResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1b\x61gent/v1/agent_search.proto\x12\x08\x61gent.v1\";\n\tEntityRef\x12\"\n\x04type\x18\x01 \x01(\x0e\x32\x14.agent.v1.EntityType\x12\n\n\x02id\x18\x02 \x01(\t\"H\n\x0fSearchAIRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x11\n\tmax_turns\x18\x02 \x01(\x05\x12\x13\n\x0bimage_query\x18\x03 \x01(\t\"}\n\x10SearchAIEvidence\x12\x1f\n\x17search_similarity_score\x18\x01 \x01(\x01\x12\x16\n\x0ellm_confidence\x18\x02 \x01(\x01\x12\x1a\n\x12termination_reason\x18\x03 \x01(\t\x12\x14\n\x0clast_summary\x18\x04 \x01(\t\"\xd1\x01\n\x10SearchAIResponse\x12\x0e\n\x06\x61nswer\x18\x01 \x01(\t\x12,\n\x0fsource_entities\x18\x02 \x03(\x0b\x32\x13.agent.v1.EntityRef\x12,\n\x0fresult_entities\x18\x03 \x03(\x0b\x32\x13.agent.v1.EntityRef\x12,\n\x08\x65vidence\x18\x04 \x01(\x0b\x32\x1a.agent.v1.SearchAIEvidence\x12\x11\n\tcitations\x18\x05 \x03(\t\x12\x10\n\x08warnings\x18\x06 \x03(\t*\x8b\x01\n\nEntityType\x12\x1b\n\x17\x45NTITY_TYPE_UNSPECIFIED\x10\x00\x12\x15\n\x11\x45NTITY_TYPE_ANIME\x10\x01\x12\x19\n\x15\x45NTITY_TYPE_CHARACTER\x10\x02\x12\x17\n\x13\x45NTITY_TYPE_EPISODE\x10\x03\x12\x15\n\x11\x45NTITY_TYPE_MANGA\x10\x04\x32W\n\x12\x41gentSearchService\x12\x41\n\x08SearchAI\x12\x19.agent.v1.SearchAIRequest\x1a\x1a.agent.v1.SearchAIResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'agent.v1.agent_search_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_ENTITYTYPE']._serialized_start=436
-  _globals['_ENTITYTYPE']._serialized_end=575
-  _globals['_ENTITYREF']._serialized_start=71
-  _globals['_ENTITYREF']._serialized_end=130
-  _globals['_SEARCHAIREQUEST']._serialized_start=132
-  _globals['_SEARCHAIREQUEST']._serialized_end=204
-  _globals['_SEARCHAIRESPONSE']._serialized_start=207
-  _globals['_SEARCHAIRESPONSE']._serialized_end=433
-  _globals['_AGENTSEARCHSERVICE']._serialized_start=577
-  _globals['_AGENTSEARCHSERVICE']._serialized_end=664
+  _globals['_ENTITYTYPE']._serialized_start=516
+  _globals['_ENTITYTYPE']._serialized_end=655
+  _globals['_ENTITYREF']._serialized_start=41
+  _globals['_ENTITYREF']._serialized_end=100
+  _globals['_SEARCHAIREQUEST']._serialized_start=102
+  _globals['_SEARCHAIREQUEST']._serialized_end=174
+  _globals['_SEARCHAIEVIDENCE']._serialized_start=176
+  _globals['_SEARCHAIEVIDENCE']._serialized_end=301
+  _globals['_SEARCHAIRESPONSE']._serialized_start=304
+  _globals['_SEARCHAIRESPONSE']._serialized_end=513
+  _globals['_AGENTSEARCHSERVICE']._serialized_start=657
+  _globals['_AGENTSEARCHSERVICE']._serialized_end=744
 # @@protoc_insertion_point(module_scope)

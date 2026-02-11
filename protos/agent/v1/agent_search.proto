@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package agent.v1;
 
-import "google/protobuf/struct.proto";
-
 // Internal-only service. Called by the Rust BFF via gRPC.
 service AgentSearchService {
   rpc SearchAI(SearchAIRequest) returns (SearchAIResponse);
@@ -34,12 +32,22 @@ message SearchAIRequest {
   // TODO(observability): add request_id/trace_id fields to propagate tracing from BFF.
 }
 
+message SearchAIEvidence {
+  // Top score returned by vector search for the accepted retrieval step.
+  double search_similarity_score = 1;
+  // LLM self-reported confidence for the generated draft.
+  double llm_confidence = 2;
+  // Termination reason from orchestrator (for example: sufficient/no_match_after_max_turns).
+  string termination_reason = 3;
+  // Last retrieval summary captured by orchestrator.
+  string last_summary = 4;
+}
+
 message SearchAIResponse {
   string answer = 1;
   repeated EntityRef source_entities = 2;
   repeated EntityRef result_entities = 3;
-  google.protobuf.Struct evidence = 4;
+  SearchAIEvidence evidence = 4;
   repeated string citations = 5;
-  float confidence = 6;
-  repeated string warnings = 7;
+  repeated string warnings = 6;
 }
