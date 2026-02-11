@@ -1408,18 +1408,21 @@ class QdrantClient(VectorDBClient):
             ...     print(f"{result['title']}: {result['similarity_score']:.4f}")
         """
         try:
-            # Direct vector search with raw similarity scores
-            response = await self.client.search(
+            # Direct vector search with raw similarity scores using Query API.
+            response = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=(vector_name, vector_data),
+                query=vector_data,
+                using=vector_name,
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
                 query_filter=filters,
             )
+            points = response.points
+
             # Convert response to our format with raw similarity scores
             results = []
-            for point in response:
+            for point in points:
                 payload = point.payload if point.payload else {}
                 result = {
                     "id": str(point.id),
