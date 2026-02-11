@@ -18,8 +18,8 @@ class PostgresGraphExecutor:
     """
     Stub executor until PostgreSQL is available.
 
-    The planner may still request pg_graph steps; the orchestrator will surface
-    a warning and ask the planner to finalize with limitations.
+    The source selector may request pg_graph steps; the orchestrator surfaces
+    a warning and continues with available retrieval lanes.
 
     # TODO(postgres): Implement real graph primitives (neighbors/k_hop/path/compare)
     using bounded, parameterized SQL (recursive CTE) with hard caps on depth,
@@ -33,7 +33,7 @@ class PostgresGraphExecutor:
         """Executes a graph primitive for the given intent.
 
         Args:
-            intent: Graph traversal/comparison instruction emitted by planner.
+            intent: Graph traversal/comparison instruction emitted by source selection.
 
         Raises:
             GraphNotAvailableError: Always, until the real Postgres implementation is added.

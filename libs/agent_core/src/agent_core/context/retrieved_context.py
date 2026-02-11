@@ -19,7 +19,7 @@ class _Card:
 
 class RetrievedContextProvider(BaseDynamicContextProvider):
     """
-    Dynamic context provider that exposes retrieval "cards" to the planner/sufficiency agents.
+    Dynamic context provider that exposes retrieval "cards" to staged agents.
 
     Keep this compact: it is injected into the system prompt every turn.
     """

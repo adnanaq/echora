@@ -17,7 +17,12 @@ from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
 
 from agent.v1 import agent_search_pb2_grpc, service_ops_pb2_grpc
-from agent_core.agents import build_planner_agent, build_sufficiency_agent
+from agent_core.agents import (
+    build_answer_agent,
+    build_rewrite_agent,
+    build_source_selector_agent,
+    build_sufficiency_agent,
+)
 from agent_core.context import RetrievedContextProvider
 from agent_core.orchestrator import AgentOrchestrator
 from agent_core.retrieval import QdrantExecutor
@@ -114,7 +119,16 @@ class AgentService:
         if self.llm_client is None:
             raise RuntimeError("LLM is disabled; orchestrator should not be used.")
 
-        planner = build_planner_agent(
+        rewrite = build_rewrite_agent(
+            client=self.llm_client,
+            model=self.app_settings.agent.openai_model,
+        )
+        source_selector = build_source_selector_agent(
+            client=self.llm_client,
+            model=self.app_settings.agent.openai_model,
+            retrieved_context=retrieved,
+        )
+        answer = build_answer_agent(
             client=self.llm_client,
             model=self.app_settings.agent.openai_model,
             retrieved_context=retrieved,
@@ -125,11 +139,17 @@ class AgentService:
             retrieved_context=retrieved,
         )
         return AgentOrchestrator(
-            planner=planner,
+            rewrite=rewrite,
+            source_selector=source_selector,
+            answer=answer,
             sufficiency=suff,
             qdrant=self.qdrant_executor,
             max_turns_default=self.app_settings.agent.default_max_turns,
             qdrant_limit=self.app_settings.agent.qdrant_limit,
+            qdrant_context_top_k=self.app_settings.agent.qdrant_context_top_k,
+            qdrant_min_score_text=self.app_settings.agent.qdrant_min_score_text,
+            qdrant_min_score_image=self.app_settings.agent.qdrant_min_score_image,
+            qdrant_min_score_multivector=self.app_settings.agent.qdrant_min_score_multivector,
         )
 
 

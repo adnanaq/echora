@@ -42,3 +42,23 @@ class AgentConfig(BaseModel):
         ge=1,
         description="Max Qdrant hits retrieved per retrieval step",
     )
+    qdrant_context_top_k: int = Field(
+        default=3,
+        ge=1,
+        description="Max threshold-qualified Qdrant hits injected into LLM context per turn",
+    )
+    qdrant_min_score_text: float = Field(
+        default=0.6,
+        ge=0.0,
+        description="Minimum top-hit similarity score required to proceed for text-only searches",
+    )
+    qdrant_min_score_image: float = Field(
+        default=0.45,
+        ge=0.0,
+        description="Minimum top-hit similarity score required to proceed for image-only searches",
+    )
+    qdrant_min_score_multivector: float = Field(
+        default=0.7,
+        ge=0.0,
+        description="Minimum top-hit similarity score required to proceed for text+image fused searches",
+    )

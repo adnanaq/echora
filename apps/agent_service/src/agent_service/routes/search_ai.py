@@ -6,14 +6,18 @@ into protobuf responses consumed by the BFF.
 
 from __future__ import annotations
 
+import logging
+from uuid import uuid4
+
 import grpc
 
 from agent_core.schemas import AgentResponse
 from agent.v1 import agent_search_pb2, agent_search_pb2_grpc
 
 from ..main import AgentService
-from ..utils.mappers import entity_type_to_proto
-from ..utils.proto_utils import struct_from_dict
+from ..utils.mappers import entity_type_to_proto, evidence_to_proto
+
+logger = logging.getLogger(__name__)
 
 
 class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
@@ -48,9 +52,9 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             else ""
         )
         if not text_query and not image_query:
+            logger.info("agent.rpc.search_ai.invalid_empty_query")
             return agent_search_pb2.SearchAIResponse(
                 answer="Empty query (no text and no image).",
-                confidence=0.0,
                 warnings=["Empty query (no text and no image)."],
             )
 
@@ -58,6 +62,15 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             int(request.max_turns)
             if request.max_turns
             else self._rt.app_settings.agent.default_max_turns
+        )
+        request_id = uuid4().hex[:12]
+        logger.info(
+            "agent.rpc.search_ai.start request_id=%s query=%r has_image=%s max_turns=%d llm_enabled=%s",
+            request_id,
+            text_query[:200],
+            bool(image_query),
+            max_turns,
+            self._rt.llm_client is not None,
         )
 
         # No-LLM fallback: do one qdrant search in anime lane.
@@ -77,6 +90,12 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             )
             refs = self._rt.qdrant_executor.extract_entity_refs(res.raw_data)
             evidence = {"mode": "no_llm", "summary": res.summary}
+            logger.debug(
+                "agent.rpc.search_ai.no_llm request_id=%s result_entities=%d summary=%r",
+                request_id,
+                len(refs),
+                res.summary[:300],
+            )
             return agent_search_pb2.SearchAIResponse(
                 answer="Top semantic matches (LLM disabled).",
                 result_entities=[
@@ -85,8 +104,14 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
                     )
                     for r in refs
                 ],
-                evidence=struct_from_dict(evidence),
-                confidence=0.2,
+                evidence=evidence_to_proto(
+                    {
+                        "termination_reason": "no_llm_semantic_search",
+                        "search_similarity_score": 0.0,
+                        "llm_confidence": 0.0,
+                        "last_summary": evidence["summary"],
+                    }
+                ),
                 warnings=["AGENT_LLM_ENABLED=false; returning semantic matches only."],
             )
 
@@ -95,6 +120,14 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             query=text_query,
             image_query=image_query or None,
             max_turns=max_turns,
+            request_id=request_id,
+        )
+        logger.info(
+            "agent.rpc.search_ai.done request_id=%s source_entities=%d result_entities=%d warnings=%s",
+            request_id,
+            len(resp.source_entities),
+            len(resp.result_entities),
+            resp.warnings,
         )
 
         return agent_search_pb2.SearchAIResponse(
@@ -107,8 +140,7 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
                 agent_search_pb2.EntityRef(type=entity_type_to_proto(r.entity_type), id=r.id)
                 for r in resp.result_entities
             ],
-            evidence=struct_from_dict(resp.evidence),
+            evidence=evidence_to_proto(resp.evidence),
             citations=list(resp.citations),
-            confidence=float(resp.confidence),
             warnings=list(resp.warnings),
         )

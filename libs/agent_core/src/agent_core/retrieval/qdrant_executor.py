@@ -38,10 +38,10 @@ class QdrantExecutor:
         self._vision_processor = vision_processor
 
     async def search(self, intent: SearchIntent, limit: int = 10) -> RetrievalResult:
-        """Executes a retrieval step based on planner-provided intent.
+        """Executes a retrieval step based on source-selected intent.
 
         Args:
-            intent: Structured search instruction from planner.
+            intent: Structured search instruction from source selection.
             limit: Maximum number of points to return.
 
         Returns:
