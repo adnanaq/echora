@@ -12,6 +12,12 @@
 
 The **Anime Vector Service** is a specialized microservice extracted from the main anime-mcp-server repository, designed to provide high-performance vector database operations for anime content discovery and search. This service leverages advanced AI embedding technologies to enable semantic search and image-based discovery across anime databases.
 
+The product now follows a **multi-service search architecture**:
+- a **Backend/BFF (GraphQL)** as the single frontend-facing backend,
+- an internal **Agent Service** for natural-language reasoning and multi-step retrieval,
+- **PostgreSQL** as the source of truth for entities and relationships,
+- **Qdrant** for semantic candidate retrieval using text/image embeddings.
+
 ### Key Value Propositions
 
 - **Semantic Understanding**: Natural language search that understands context and meaning
@@ -31,6 +37,16 @@ To provide the most advanced and efficient vector-based search capabilities for 
 ### Mission Statement
 
 Create a robust, scalable, and intelligent vector database service that serves as the foundation for next-generation anime discovery platforms, supporting millions of search operations with sub-second response times.
+
+### Product Scope Clarification (Search Stack)
+
+- Frontend clients do not call vector/agent internals directly.
+- Frontend requests are handled by the GraphQL BFF.
+- The BFF routes queries into two product lanes:
+  - **Direct Search lane** (fast deterministic lookup via PostgreSQL).
+  - **AI Search lane** (natural-language reasoning via Agent Service + retrieval backends).
+- PostgreSQL remains the system of record for identity and relationship correctness.
+- Qdrant remains the semantic retrieval layer and is not the source of relationship truth.
 
 ### Target Market
 
@@ -201,6 +217,37 @@ Create a robust, scalable, and intelligent vector database service that serves a
 - [ ] Query performance scales logarithmically with data size
 - [ ] 99.9% data durability with WAL enabled
 
+#### 4. **Dual Search Lanes & Query Routing**
+
+**Priority**: Critical (P0)  
+**Description**: Route user search intent to the correct lane for speed and correctness.
+
+**Functional Requirements**:
+
+- Provide a **Direct Search lane** for simple lookups (anime/character/episode/manga names and typeahead-like queries).
+- Provide an **AI Search lane** for open-ended natural-language queries (comparison, recommendation, and relationship questions).
+- Support text-only, image-only, and text+image queries in AI Search.
+- Return a consistent response contract for AI Search:
+  - `answer` (natural-language response),
+  - `result_entities` (primary display entities),
+  - `source_entities` (supporting/evidence entities),
+  - `evidence` (structured supporting context).
+- Ensure no-match scenarios return a valid product response (not a transport/internal failure).
+
+**Technical Requirements**:
+
+- BFF performs query routing and response hydration.
+- AI Search executes through internal Agent Service calls.
+- Direct Search prioritizes low latency and deterministic ranking.
+- AI Search supports iterative retrieval and sufficiency checks before final answer.
+
+**Acceptance Criteria**:
+
+- [ ] Direct Search median latency under 100ms for indexed lookups
+- [ ] AI Search returns structured responses for open-ended queries
+- [ ] No-match queries return explicit, user-safe outcomes instead of internal errors
+- [ ] Mixed entity outputs are hydratable by BFF without N+1 regressions
+
 ### Advanced Features
 
 #### 6. **Fine-tuning Infrastructure**
@@ -288,6 +335,17 @@ Create a robust, scalable, and intelligent vector database service that serves a
 
 ### API Endpoints
 
+#### Product Interface Model (Updated)
+
+- **Public Interface (Frontend-facing):**
+  - GraphQL API exposed by the Backend/BFF service.
+  - Search UX can be represented as two operations (or one operation with routing):
+    - direct search behavior,
+    - AI search behavior.
+- **Internal Interface (Service-to-service):**
+  - Agent Service is internal-only and called by BFF for AI search flows.
+  - Internal contracts are not part of public product API guarantees.
+
 #### Implemented APIs (Current)
 
 ```http
@@ -307,6 +365,15 @@ DELETE /api/v1/admin/vectors/{anime_id}     # Delete vectors
 POST /api/v1/search                    # Semantic text search
 ```
 
+#### Planned Product Search Operations (BFF-owned)
+
+- **Direct Search Operation**:
+  - Purpose: fast deterministic lookup and autocomplete.
+  - Backends: PostgreSQL first, optional Qdrant assist where needed.
+- **AI Search Operation**:
+  - Purpose: natural-language reasoning, relationship traversal, and explainable comparisons.
+  - Backends: Agent Service orchestration across Qdrant + PostgreSQL data access.
+
 ---
 
 ## Technical Architecture
@@ -320,49 +387,53 @@ POST /api/v1/search                    # Semantic text search
 └─────────────────┬───────────────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────────────┐
-│              Load Balancer                          │
-│            (Nginx/ALB/Envoy)                       │
+│           Backend/BFF Service (GraphQL)            │
+│  - frontend-facing API                              │
+│  - query routing: direct vs AI                      │
+│  - response hydration from PostgreSQL               │
 └─────────────────┬───────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────┐
-│           Anime Vector Service                      │
-│                (FastAPI)                            │
-│  ┌─────────────┬─────────────┬─────────────────┐   │
-│  │Search APIs  │Similarity   │Admin APIs       │   │
-│  │             │APIs         │                 │   │
-│  └─────────────┴─────────────┴─────────────────┘   │
-└─────────────────┬───────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────┐
-│              Vector Processing Layer                │
-│  ┌──────────────┬──────────────┬─────────────────┐  │
-│  │Text          │Vision        │Multi-Vector     │  │
-│  │Processor     │Processor     │Manager          │  │
-│  │(BGE-m3)      │(OpenCLIP)    │                 │  │
-│  └──────────────┴──────────────┴─────────────────┘  │
-└─────────────────┬───────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────┐
-│                Qdrant Vector Database               │
-│  ┌──────────────┬──────────────┬─────────────────┐  │
-│  │Text Vectors  │Image Vectors │Metadata Index   │  │
-│  │(1024-dim)    │(768-dim)     │(Payload Fields) │  │
-│  └──────────────┴──────────────┴─────────────────┘  │
-└─────────────────────────────────────────────────────┘
+                  ├──────────────────────────┐
+                  │                          │
+┌─────────────────▼───────────────────┐  ┌──▼──────────────────────────┐
+│ Direct Search Lane                  │  │ AI Search Lane              │
+│ - deterministic lookup/ranking      │  │ - Agent Service (internal)  │
+│ - optimized for low latency         │  │ - planner/executor loop     │
+└─────────────────┬───────────────────┘  └──┬──────────────────────────┘
+                  │                          │
+                  └──────────────┬───────────┘
+                                 │
+       ┌─────────────────────────▼─────────────────────────┐
+       │                   Data Layer                       │
+       │  PostgreSQL (source of truth) + Qdrant (semantic) │
+       └────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow Architecture
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Query     │    │  Embedding  │    │   Vector    │
-│ Processing  │────│  Generation │────│   Search    │
-└─────────────┘    └─────────────┘    └─────────────┘
-                                               │
-┌─────────────┐    ┌─────────────┐           │
-│   Result    │    │   Result    │◄──────────┘
-│ Formatting  │◄───│  Ranking    │
-└─────────────┘    └─────────────┘
+┌───────────────────────────────────────────────────────┐
+│ Frontend Query                                        │
+└───────────────────────┬───────────────────────────────┘
+                        │
+            ┌───────────▼───────────┐
+            │ BFF Intent Routing    │
+            │ direct vs AI          │
+            └───────┬───────────────┘
+                    │
+     ┌──────────────▼──────────────┐   ┌──────────────────────────────┐
+     │ Direct Search Lane          │   │ AI Search Lane               │
+     │ PostgreSQL indexed lookup   │   │ Agent loop + retrieval steps │
+     └──────────────┬──────────────┘   └──────────────┬───────────────┘
+                    │                                 │
+                    └───────────────┬─────────────────┘
+                                    │
+                        ┌───────────▼───────────┐
+                        │ BFF Hydration/Compose │
+                        └───────────┬───────────┘
+                                    │
+                         ┌──────────▼───────────┐
+                         │ Frontend Response     │
+                         └───────────────────────┘
 ```
 
 ### Technology Stack
@@ -370,7 +441,10 @@ POST /api/v1/search                    # Semantic text search
 **Core Technologies:**
 
 - **Runtime**: Python 3.12+
-- **Web Framework**: FastAPI 0.115+
+- **Backend Interface**: GraphQL BFF (frontend-facing)
+- **Agent Interface**: Internal gRPC for AI search orchestration
+- **Web Framework (vector/admin service)**: FastAPI 0.115+
+- **Relational Source of Truth**: PostgreSQL
 - **Vector Database**: Qdrant 1.14+
 - **Text Embeddings**: BGE-m3 (BAAI/bge-m3)
 - **Image Embeddings**: OpenCLIP (ViT-L/14)
@@ -458,12 +532,28 @@ class SearchResponse(BaseModel):
     query_info: Dict[str, Any]
 ```
 
+```python
+# AI Search Response (product-level shape)
+class AISearchResponse(BaseModel):
+    answer: str
+    result_entities: List[EntityRef]   # primary entities to display
+    source_entities: List[EntityRef]   # supporting entities used as evidence
+    evidence: Dict[str, Any]           # structured support (paths, rankings, comparisons)
+    confidence: float
+    warnings: List[str]
+```
+
+**Product semantics:**
+- `result_entities` are the primary result set for UI rendering.
+- `source_entities` are supporting evidence IDs and may be broader than `result_entities`.
+- When no confident result is found, AI Search still returns a valid response with an explicit warning state.
+
 ### Performance Requirements
 
 #### Response Time SLAs
 
-- **Text Search**: < 100ms (95th percentile)
-- **Image Search**: < 300ms (95th percentile)
+- **Direct Search lane**: < 100ms (95th percentile)
+- **AI Search lane (text/image/natural language)**: < 1500ms (95th percentile), optimized over time
 - **Batch Operations**: < 50ms per item (95th percentile)
 
 #### Throughput Requirements
@@ -503,6 +593,7 @@ class SearchResponse(BaseModel):
 ### Reliability Requirements
 
 - **Fault Tolerance**: Graceful degradation when dependencies fail
+- **AI No-Match Handling**: return explicit no-match/partial-match outcomes instead of generic internal failures
 - **Data Durability**: 99.99% data durability with WAL enabled
 - **Backup/Recovery**: Automated backups with point-in-time recovery
 - **Health Monitoring**: Comprehensive health checks and alerting
@@ -569,6 +660,8 @@ class SearchResponse(BaseModel):
 - [ ] 📋 Security hardening and authentication
 - [ ] 📋 Load testing and performance validation
 - [ ] 📋 Disaster recovery procedures
+- [ ] 📋 BFF-level search routing and response hydration for direct + AI lanes
+- [ ] 📋 Internal agent service integration for AI search path
 
 **Success Criteria**:
 

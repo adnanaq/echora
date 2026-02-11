@@ -1,6 +1,6 @@
 # Echora
 
-A production-ready semantic search microservice for anime content using a multi-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
+A production-ready anime search platform backend workspace. This repo contains the vector service, an internal agent service for natural-language search orchestration, and shared libraries for retrieval, embeddings, and enrichment.
 
 ## Features
 
@@ -8,6 +8,8 @@ A production-ready semantic search microservice for anime content using a multi-
 - **Advanced Text Search**: BGE-M3 embeddings (1024-dim) for cross-platform semantic matching
 - **Visual Search**: OpenCLIP ViT-L/14 embeddings (768-dim) for multi-source image similarity
 - **Multi-Vector Fusion**: Native Qdrant RRF/DBSF fusion for optimal hybrid results
+- **Internal Agent Service (gRPC)**: Structured planner/executor loop for natural-language `search_ai` flows
+- **Dual Search Lanes (Product Architecture)**: Direct search for fast lookup + agentic search for relationship/comparison queries
 - **Modular Monorepo**: Clean separation of concerns with Pants build system
 
 ## Monorepo Structure
@@ -15,8 +17,12 @@ A production-ready semantic search microservice for anime content using a multi-
 ```text
 echora/
 ├── apps/                          # Applications
-│   └── service/                   # Vector search service
-│       └── src/service/           # FastAPI application (main.py, api/, etc.)
+│   ├── service/                   # Vector search service
+│   │   └── src/service/           # FastAPI application (main.py, api/, etc.)
+│   └── agent_service/             # Internal agent service (gRPC SearchAI)
+│       └── src/
+│           ├── agent_service/     # gRPC server/runtime
+│           └── agent/v1/          # Generated protobuf stubs
 ├── libs/                          # Shared libraries
 │   ├── common/                    # Common models and configuration
 │   │   └── src/common/
@@ -33,6 +39,8 @@ echora/
 │   ├── qdrant_db/                 # Qdrant database client
 │   │   ├── src/qdrant_db/         # Client implementation with retry logic
 │   │   └── tests/                 # Unit and integration tests
+│   ├── agent_core/                # Planner/sufficiency schemas, orchestrator, retrieval executors
+│   │   └── src/agent_core/
 │   ├── vector_db_interface/       # Database-agnostic vector interface
 │   │   └── src/vector_db_interface/
 │   └── vector_processing/         # Vector embedding processing
@@ -55,6 +63,8 @@ echora/
 │   │   └── vector_processing/     # Vector processing tests (unit/)
 │   ├── scripts/                   # Script tests
 │   └── utils/                     # Test utilities
+├── protos/                        # Service contracts
+│   └── agent/v1/agent_search.proto
 └── data/                          # Data storage (Qdrant, anime databases)
 ```
 
@@ -128,6 +138,9 @@ docker compose up -d qdrant
 ```bash
 # Run the service (available at http://localhost:8002)
 ./pants run apps/service:service
+
+# Run internal agent gRPC service (default :50051)
+./pants run apps/agent_service:agent_service
 
 # Run tests
 ./pants test ::
@@ -245,6 +258,14 @@ Qdrant vector database client with retry logic and batch operations.
 - Automatic retry with exponential backoff
 - Multi-vector search support
 - Comprehensive test suite (55 tests)
+
+### `libs/agent_core`
+
+Shared agentic search contracts and orchestration logic.
+
+- Typed schemas for planner/sufficiency/retrieval/final response
+- Orchestrator loop with sufficiency guardrails
+- Qdrant executor integration and PostgreSQL graph executor stub
 
 ### `libs/vector_processing`
 
@@ -390,10 +411,21 @@ pip install -e ".[dev]"
 
 ## API Endpoints
 
+### Vector Service (FastAPI, public within this repo context)
+
 - `GET /health` - Service health status with database diagnostics
 - `GET /api/v1/admin/stats` - Database statistics
 - `GET /api/v1/admin/collection` - Collection configuration and processor info
 - `GET /docs` - Interactive API documentation (Swagger UI)
+
+### Agent Service (gRPC, internal)
+
+- RPC: `agent.v1.AgentSearchService/SearchAI`
+- Proto: `protos/agent/v1/agent_search.proto`
+- Notes:
+  - intended to be called by a Backend/BFF service (in a separate repo),
+  - supports text and image query inputs,
+  - returns `answer`, `result_entities`, `source_entities`, `evidence`, `confidence`, and `warnings`.
 
 ## Architecture
 
@@ -407,11 +439,21 @@ The service uses a unified multi-vector architecture optimized for million-query
 **Image Vectors**:
 - `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
 
+### Service Boundaries
+
+- **BFF/GraphQL backend**: external service (separate repository), frontend-facing entry point.
+- **Agent service (this repo)**: internal reasoning/orchestration over retrieval steps.
+- **Vector service (this repo)**: vector/admin operations and Qdrant-facing APIs.
+- **Data roles**:
+  - Qdrant for semantic retrieval and candidate IDs.
+  - PostgreSQL as source of truth for canonical entities/relationships (integration planned in graph executor).
+
 ### Technology Stack
 
 - **Build System**: Pants 2.29.1
 - **Language**: Python 3.12
 - **Web Framework**: FastAPI + Uvicorn
+- **Internal RPC**: gRPC (`AgentSearchService/SearchAI`)
 - **Vector Database**: Qdrant with HNSW indexing
 - **Text Embeddings**: BGE-M3 (1024-dim, multilingual)
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)

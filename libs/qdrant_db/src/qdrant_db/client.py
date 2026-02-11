@@ -1469,7 +1469,9 @@ class QdrantClient(VectorDBClient):
         # Build filter conditions
         filter_conditions = filters.copy() if filters else {}
         if entity_type:
-            filter_conditions["type"] = entity_type
+            # Payload uses "entity_type" to distinguish anime/character/episode.
+            # "type" is already used by the domain for anime format (TV/MOVIE/OVA...).
+            filter_conditions["entity_type"] = entity_type
 
         qdrant_filter = (
             self._build_filter(filter_conditions) if filter_conditions else None

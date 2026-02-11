@@ -37,6 +37,11 @@ dependencies = [
     "crawl4ai>=0.7.8",
     # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
     "defusedxml>=0.7.1",
+    "atomic-agents==2.6.0",
+    "grpcio==1.78.0",
+    "grpcio-health-checking>=1.78.0",
+    "instructor>=1.9.2",
+    "openai>=2.20.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +58,7 @@ dev = [
     # Note: ty is specified in [dependency-groups] dev for uv/pdm compatibility
     "ruff==0.14.10",
     "types-requests>=2.32.0",
+    "grpcio-tools==1.78.0",
 
     # Pretty output formatting
     "rich>=13.0.0",
