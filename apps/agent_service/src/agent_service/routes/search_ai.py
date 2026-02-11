@@ -141,6 +141,5 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
                 for r in resp.result_entities
             ],
             evidence=evidence_to_proto(resp.evidence),
-            citations=list(resp.citations),
             warnings=list(resp.warnings),
         )

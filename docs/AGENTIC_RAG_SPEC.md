@@ -302,7 +302,6 @@ class DraftAnswer(BaseIOSchema):
     source_entities: list[EntityRef] = Field(default_factory=list)
     result_entities: list[EntityRef] = Field(default_factory=list)
     evidence: Dict[str, Any] = Field(default_factory=dict)
-    citations: list[str] = Field(default_factory=list)
     confidence: float = Field(..., description="0.0 to 1.0 confidence score.")
 ```
 
@@ -350,7 +349,6 @@ class AgentResponse(BaseIOSchema):
         default_factory=dict,
         description="Structured evidence for the backend/UI (paths, diffs, ranked IDs).",
     )
-    citations: list[str] = Field(default_factory=list, description="List of source titles/items used.")
     confidence: float = Field(..., description="0.0 to 1.0 confidence score.")
     warnings: list[str] = Field(
         default_factory=list,
@@ -492,7 +490,6 @@ All agents are configured using `SystemPromptGenerator` + `RetrievedContextProvi
 
 ### C. Output Instructions
 *   **Accuracy:** Only answer based on the provided context. If data is missing after 3 attempts, state what is missing.
-*   **Citations:** Mention the titles/names of the entities you are referencing.
 *   **UUID Extraction:** Always include canonical UUIDs as `EntityRef` entries in `source_entities` and `result_entities`.
 
 ---
@@ -617,7 +614,6 @@ async def run_search_ai(user_query: str, max_turns: int = 6) -> AgentResponse:
         source_entities=[],
         result_entities=[],
         evidence={"termination_reason": "no_match_after_max_turns", "rewritten_query": rewritten_query},
-        citations=[],
         confidence=0.1,
         warnings=["NO_MATCH_AFTER_MAX_TURNS"],
     )

@@ -134,7 +134,6 @@ class DraftAnswer(BaseIOSchema):
         le=1.0,
         description="LLM self-rated confidence for this draft answer.",
     )
-    citations: list[str] = Field(default_factory=list, description="Source links/strings supporting the draft.")
     warnings: list[str] = Field(
         default_factory=list,
         description="Draft-level warnings about ambiguity, insufficiency, or caveats.",
@@ -173,7 +172,6 @@ class AgentResponse(BaseIOSchema):
             "`termination_reason`, and `last_summary`."
         ),
     )
-    citations: list[str] = Field(default_factory=list, description="Optional source strings/urls.")
     warnings: list[str] = Field(
         default_factory=list,
         description="User-visible caveats describing limitations of the final answer.",

@@ -48,6 +48,5 @@ message SearchAIResponse {
   repeated EntityRef source_entities = 2;
   repeated EntityRef result_entities = 3;
   SearchAIEvidence evidence = 4;
-  repeated string citations = 5;
-  repeated string warnings = 6;
+  repeated string warnings = 5;
 }

@@ -374,13 +374,12 @@ class AgentOrchestrator:
             )
             last_draft = draft
             logger.debug(
-                "agent.search_ai.draft request_id=%s turn=%d llm_confidence=%.3f result_entities=%d source_entities=%d citations=%d answer=%r",
+                "agent.search_ai.draft request_id=%s turn=%d llm_confidence=%.3f result_entities=%d source_entities=%d answer=%r",
                 req,
                 turn,
                 draft.llm_confidence,
                 len(draft.result_entities),
                 len(draft.source_entities),
-                len(draft.citations),
                 (draft.answer or "")[:300],
             )
             retrieved.add_card(
@@ -615,6 +614,5 @@ class AgentOrchestrator:
             source_entities=list(draft.source_entities),
             result_entities=list(draft.result_entities),
             evidence=evidence,
-            citations=list(draft.citations),
             warnings=[*warnings, *draft.warnings],
         )
