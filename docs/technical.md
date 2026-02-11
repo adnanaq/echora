@@ -2,6 +2,17 @@
 
 ## Development Environment and Stack
 
+### Repository Scope and Service Topology
+
+- This repository currently contains:
+  - `apps/service`: FastAPI vector/admin service.
+  - `apps/agent_service`: internal gRPC agent service for `SearchAI`.
+  - shared libraries (`libs/agent_core`, `libs/qdrant_db`, `libs/vector_processing`, etc.).
+- The frontend-facing BFF/GraphQL backend is a separate repository.
+- Data role split:
+  - PostgreSQL is the canonical source of truth for entities and relationships.
+  - Qdrant is the semantic retrieval index (vector search and candidate discovery).
+
 ### Technology Choices
 
 #### Core Framework
@@ -9,6 +20,7 @@
 - **FastAPI 0.115+**: Chosen for high-performance async capabilities, automatic OpenAPI documentation, and excellent type safety with Pydantic
 - **Python 3.12+**: Latest Python for performance improvements, improved type hints, and modern language features
 - **Uvicorn**: ASGI server for production-grade async request handling
+- **gRPC (grpc.aio)**: Internal RPC boundary for the agent service (`SearchAI`)
 
 #### Vector Database Architecture
 
@@ -35,6 +47,7 @@
 - **HTTP**: `aiohttp` for async requests, `hishel` for HTTP caching
 - **Caching**: `redis` for cache backends
 - **Crawling**: `crawl4ai` for web extraction pipelines
+- **Agentic orchestration**: `atomic-agents` + `instructor` + OpenAI-compatible client
 
 ### Development Setup
 
@@ -58,6 +71,7 @@
 3. Start Qdrant database using Docker Compose
 4. Run service using Python module execution
 5. Access API documentation at localhost:8002/docs
+6. (Optional) Run internal agent service for gRPC `SearchAI` flows
 
 #### Docker Development
 
@@ -94,6 +108,16 @@ The service uses Pydantic Settings for type-safe configuration:
 - QDRANT_ENABLE_QUANTIZATION: Enable quantization (default: false)
 - MODEL_WARM_UP: Pre-load models (default: false)
 
+**Agent Service Configuration (internal gRPC):**
+
+- AGENT_SERVICE_HOST: gRPC bind host (default: 0.0.0.0)
+- AGENT_SERVICE_PORT: gRPC bind port (default: 50051)
+- AGENT_LLM_ENABLED: Enable planner/sufficiency LLM loop
+- AGENT_OPENAI_BASE_URL: OpenAI-compatible endpoint for agent model calls
+- AGENT_OPENAI_MODEL: Model identifier (for example: gpt-5)
+- AGENT_QDRANT_LIMIT: per-step retrieval limit
+- AGENT_DEFAULT_MAX_TURNS: loop turn budget
+
 #### Configuration Validation
 
 - **Field Validation**: Pydantic validators ensure valid distance metrics, embedding providers, and log levels
@@ -101,6 +125,18 @@ The service uses Pydantic Settings for type-safe configuration:
 - **Environment Override**: Settings can be overridden via environment variables or `.env` file
 
 ### Key Technical Decisions
+
+#### Search Lane Separation
+
+- **Decision**: Keep two product lanes:
+  - Direct search for deterministic low-latency lookups.
+  - AI search for natural-language reasoning and relationship exploration.
+- **Rationale**: Preserves low latency for simple queries while supporting complex, open-ended queries through orchestration.
+
+#### Source-of-Truth Split
+
+- **Decision**: PostgreSQL is canonical for identity and relationships; Qdrant is semantic index only.
+- **Rationale**: Vector DB does not provide relational integrity/joins required for authoritative relationship queries.
 
 #### Multi-Vector Architecture
 
@@ -119,6 +155,7 @@ The service uses Pydantic Settings for type-safe configuration:
 - **FastAPI Async**: All endpoints are async for non-blocking I/O
 - **Qdrant Async Client**: Ensures database operations don't block request handling
 - **Lifespan Management**: Proper async initialization and cleanup
+- **gRPC Async**: Agent service uses `grpc.aio` for internal RPC handling
 
 #### Error Handling Strategy
 
@@ -126,6 +163,7 @@ The service uses Pydantic Settings for type-safe configuration:
 - **Validation Errors**: Pydantic automatically handles request validation
 - **Database Errors**: Graceful degradation when Qdrant is unavailable
 - **Logging**: Structured logging with configurable levels
+- **AI No-Match Behavior**: no-match/partial-match is returned as a valid business outcome (warnings + low confidence), not as a generic internal error.
 
 ### Design Patterns in Use
 
