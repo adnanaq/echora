@@ -1,7 +1,9 @@
 # Agentic RAG System Technical Specification
 
 **Date:** January 24, 2026
-**Framework:** Atomic Agents + Qdrant
+**Framework:** Atomic Agents + Qdrant + PostgreSQL
+**Atomic Agents Version:** `2.6.0` (pinned in `pyproject.toml` / `uv.lock`)
+**Version Verification Note:** Use `importlib.metadata.version("atomic-agents")` as the authoritative runtime check. `atomic_agents.__version__` may be stale in some releases.
 **Pattern:** Self-Reflective Feedback Loop (Agentic RAG)
 
 ---
@@ -25,19 +27,21 @@ This system implements a **Self-Correcting RAG Loop** with explicit, code-owned 
 - **PostgreSQL:** Source of truth for entities + relationships (normalized + JSONB for long-tail fields).
 - **Qdrant:** Semantic index for similarity search and candidate ID retrieval.
 
-### The Feedback Loop (Planner/Executor + Sufficiency)
-This design intentionally does **not** depend on a framework-specific “tool_calls” runtime. Instead, Atomic Agents produces typed decisions; our code executes retrieval.
+### The Feedback Loop (Diagram-Exact Target Flow)
+This design intentionally does **not** depend on framework-specific hidden autonomy. Atomic Agents produces typed outputs; application code owns orchestration.
 
-1. **Plan:** `PlannerAgent` returns a `NextStep` (bounded action + structured intent).
-2. **Execute:** Orchestrator executes one step:
-   - `qdrant_search` via Qdrant client (semantic/entity resolution)
-   - `pg_graph` via PostgreSQL graph primitives (recursive CTE / fixed DSL)
-3. **Observe:** Orchestrator stores `RetrievalResult` / `GraphResult` cards into `RetrievedContextProvider`.
-4. **Reflect:** `SufficiencyAgent` returns `SufficiencyReport`.
-   - If insufficient: loop back to **Plan**
-   - If sufficient: ask `PlannerAgent` to finalize (`NextStep.action="final"`) and return `AgentResponse`
+1. **Rewrite:** `QueryRewriteAgent` rewrites the initial query.
+2. **Gate:** Rewrite output includes `needs_external_context`.
+3. **Source Plan:** If external context is needed, `SourceSelectorAgent` chooses sources (`qdrant`, `pg_graph`, optional tools/APIs).
+4. **Retrieve:** Orchestrator executes selected retrieval primitives (bounded).
+5. **Observe:** Orchestrator appends retrieval cards to `RetrievedContextProvider`.
+6. **Answer Draft:** `AnswerAgent` synthesizes a draft response from updated query + retrieved context.
+7. **Validate:** `RelevanceAgent` evaluates whether the draft is relevant/sufficient for the user query.
+8. **Loop:** If not relevant/sufficient, iterate from source planning/retrieval with updated context.
+9. **Finalize:** If relevant/sufficient, return `AgentResponse`.
+10. **Budget Guard:** If `max_turns` is reached, finalize best-effort with explicit warnings and evidence.
 
-Assumption (current): the sufficiency agent runs **after every retrieval step** for correctness. We can optimize later.
+Current implementation note: planner/sufficiency loop is already in place; this spec section defines the target orchestrator shape to match the reference flow exactly.
 
 ---
 
@@ -69,7 +73,55 @@ Important rule: the agent must not generate raw SQL. It can only call fixed quer
 
 These Pydantic models define the interface between the agents, the orchestrator, and the retrieval executors.
 
-### A. Search Intent (Planner Agent $\rightarrow$ Orchestrator)
+### A. Rewrite Intent/Result (Rewrite Agent -> Orchestrator)
+Defines normalized user intent before retrieval routing.
+
+```python
+from pydantic import Field
+from atomic_agents import BaseIOSchema
+
+class QueryRewrite(BaseIOSchema):
+    """
+    Rewritten query plus routing hints produced from the raw user input.
+    """
+    rewritten_query: str = Field(
+        ..., description="Normalized query text used for downstream retrieval."
+    )
+    needs_external_context: bool = Field(
+        ..., description="Whether retrieval is required before answering."
+    )
+    rationale: str = Field(
+        ..., description="Short operational reason (no chain-of-thought)."
+    )
+```
+
+### A2. Next Step (Source Selector Agent -> Orchestrator)
+Defines one bounded retrieval action for the current turn.
+
+```python
+from pydantic import Field
+from atomic_agents import BaseIOSchema
+from typing import Literal
+
+class NextStep(BaseIOSchema):
+    """
+    One bounded action selected for the current turn.
+    """
+    action: Literal["qdrant_search", "pg_graph"] = Field(
+        ..., description="Bounded action to execute this turn."
+    )
+    rationale: str = Field(
+        ..., description="Short operational reason (for logs)."
+    )
+    search_intent: SearchIntent | None = Field(
+        None, description="Present only when action=qdrant_search."
+    )
+    graph_intent: GraphIntent | None = Field(
+        None, description="Present only when action=pg_graph."
+    )
+```
+
+### B. Search Intent (Planner/Source Stage $\rightarrow$ Orchestrator)
 Defines *what* the agent wants to find and *why*.
 
 ```python
@@ -113,7 +165,7 @@ class SearchIntent(BaseIOSchema):
     )
 ```
 
-### A2. Graph Intent (Planner Agent $\rightarrow$ Orchestrator)
+### B2. Graph Intent (Planner/Source Stage $\rightarrow$ Orchestrator)
 
 Defines relationship/path/comparison operations against PostgreSQL as a bounded set of supported primitives.
 
@@ -159,7 +211,7 @@ class GraphIntent(BaseIOSchema):
     )
 ```
 
-### A3. Next Step (Planner Agent $\rightarrow$ Orchestrator)
+### B3. Next Step (Planner Agent $\rightarrow$ Orchestrator)
 
 The planner does not execute retrieval. It outputs a single bounded action per turn.
 
@@ -187,7 +239,7 @@ class NextStep(BaseIOSchema):
     )
 ```
 
-### B. Retrieval Result (Executor $\rightarrow$ Context)
+### C. Retrieval Result (Executor $\rightarrow$ Context)
 Standardizes the output for the Agent's consumption.
 
 ```python
@@ -206,7 +258,7 @@ class RetrievalResult(BaseIOSchema):
     count: int = Field(..., description="Number of items found.")
 ```
 
-### B2. Graph Result (Executor $\rightarrow$ Context)
+### C2. Graph Result (Executor $\rightarrow$ Context)
 
 ```python
 from pydantic import Field
@@ -236,7 +288,25 @@ class GraphResult(BaseIOSchema):
     meta: Dict[str, Any] = Field(default_factory=dict)
 ```
 
-### B3. Sufficiency Report (Sufficiency Agent $\rightarrow$ Orchestrator)
+### C3. Answer Draft (Answer Agent $\rightarrow$ Orchestrator)
+
+Produces an intermediate response candidate before final relevance/sufficiency validation.
+
+```python
+from pydantic import Field
+from atomic_agents import BaseIOSchema
+from typing import Any, Dict
+
+class DraftAnswer(BaseIOSchema):
+    answer: str = Field(..., description="Candidate natural language answer.")
+    source_entities: list[EntityRef] = Field(default_factory=list)
+    result_entities: list[EntityRef] = Field(default_factory=list)
+    evidence: Dict[str, Any] = Field(default_factory=dict)
+    citations: list[str] = Field(default_factory=list)
+    confidence: float = Field(..., description="0.0 to 1.0 confidence score.")
+```
+
+### C4. Relevance/Sufficiency Report (Validation Agent $\rightarrow$ Orchestrator)
 
 The sufficiency agent decides whether we have enough context to produce a final answer. It may suggest the next step,
 but the planner remains the source of truth for the actual `NextStep` emitted.
@@ -282,6 +352,10 @@ class AgentResponse(BaseIOSchema):
     )
     citations: list[str] = Field(default_factory=list, description="List of source titles/items used.")
     confidence: float = Field(..., description="0.0 to 1.0 confidence score.")
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal warnings (e.g., best-effort fallback due to turn budget).",
+    )
 ```
 
 ---
@@ -389,12 +463,16 @@ Safety invariants (must remain true):
 
 ## 5. Agent Strategy & Prompting
 
-We use two Atomic Agents:
+We use a staged multi-agent pipeline (typed outputs at each boundary):
 
-- **PlannerAgent**: outputs `NextStep` only (bounded action + intent). No direct DB access.
-- **SufficiencyAgent**: outputs `SufficiencyReport` only (is context sufficient?).
+- **QueryRewriteAgent**: outputs `QueryRewrite` only.
+- **SourceSelectorAgent**: outputs bounded `NextStep` only.
+- **AnswerAgent**: outputs `DraftAnswer` only.
+- **RelevanceAgent**: outputs `SufficiencyReport` only (final relevance/sufficiency gate).
 
-Both are configured using `SystemPromptGenerator` + `RetrievedContextProvider` to ensure they see the current context.
+`PlannerAgent` can still exist as a supervisor that emits `NextStep`; however, its decisions must remain bounded and schema-validated.
+
+All agents are configured using `SystemPromptGenerator` + `RetrievedContextProvider` so every stage sees current retrieval context.
 
 ### A. Background
 *   You are an expert anime research agent specializing in deep metadata retrieval.
@@ -403,13 +481,14 @@ Both are configured using `SystemPromptGenerator` + `RetrievedContextProvider` t
 
 ### B. Steps (The Cognitive Loop)
 1.  **Analyze Context:** Read the `Active Investigation Context` provided by your context providers.
-2.  **Plan Next Step:** Output exactly one `NextStep` action.
-3.  **Prefer Small Steps:** Resolve entity IDs first (Qdrant), then traverse relationships (Postgres), then finalize.
-4.  **Sufficiency-Aware Finalization:** If the latest sufficiency signal indicates the context is sufficient, you MUST output `NextStep(action="final")`.
-5.  **Zero Results Protocol:**
+2.  **Rewrite + Route:** Normalize the query and decide if retrieval is needed.
+3.  **Source Selection:** Choose one bounded source action per turn (`qdrant_search` or `pg_graph`).
+4.  **Prefer Small Steps:** Resolve entity IDs first (Qdrant), then traverse relationships (Postgres), then synthesize.
+5.  **Validation-Aware Finalization:** Return final answer only when relevance/sufficiency gate is `true`.
+6.  **Zero Results Protocol:**
     - If a step returns **0 results**, broaden or change approach on next step.
     - After N failed steps (e.g., 3), finalize with an explicit “not found” response.
-6.  **Finalize:** Only finalize when `SufficiencyAgent` deems context sufficient, or when loop limits are reached.
+7.  **Finalize:** Only finalize when validation gate deems context sufficient/relevant, or when loop limits are reached.
 
 ### C. Output Instructions
 *   **Accuracy:** Only answer based on the provided context. If data is missing after 3 attempts, state what is missing.
@@ -422,14 +501,16 @@ Both are configured using `SystemPromptGenerator` + `RetrievedContextProvider` t
 
 | Step | Component | File Path | Description |
 | :--- | :--- | :--- | :--- |
-| **1** | **Schema** | `libs/agent_core/src/agent_core/schemas.py` | Define `SearchIntent`, `GraphIntent`, `NextStep`, `SufficiencyReport`, `AgentResponse`. |
+| **1** | **Schema** | `libs/agent_core/src/agent_core/schemas.py` | Define `QueryRewrite`, `NextStep`, `SearchIntent`, `GraphIntent`, `DraftAnswer`, `SufficiencyReport`, `AgentResponse`. |
 | **2** | **Context** | `libs/agent_core/src/agent_core/context/retrieved_context.py` | Implement `RetrievedContextProvider` (`BaseDynamicContextProvider`). |
 | **3** | **Retrieval** | `libs/agent_core/src/agent_core/retrieval/qdrant_executor.py` | Implement `execute_qdrant_search(intent) -> RetrievalResult` (async). |
 | **4** | **Retrieval** | `libs/agent_core/src/agent_core/retrieval/postgres_graph_executor.py` | Implement bounded graph primitives against Postgres (async), preserving the existing `execute(intent)` contract so orchestrator does not change. |
-| **5** | **Agent** | `libs/agent_core/src/agent_core/agents/planner.py` | Planner agent: Input = query + context, Output = `NextStep`. |
-| **6** | **Agent** | `libs/agent_core/src/agent_core/agents/sufficiency.py` | Sufficiency agent: Input = query + context, Output = `SufficiencyReport`. |
-| **7** | **Orchestrator** | `libs/agent_core/src/agent_core/orchestrator.py` | Glue code: loop, execute steps, update context, enforce caps/timeouts. |
-| **8** | **Service** | `apps/agent_service/src/agent_service/server.py` | Expose internal gRPC `SearchAI` RPC to backend/BFF. |
+| **5** | **Agent** | `libs/agent_core/src/agent_core/agents/rewrite.py` | Rewrite agent: Input = raw query, Output = `QueryRewrite`. |
+| **6** | **Agent** | `libs/agent_core/src/agent_core/agents/source_selector.py` | Source selector: Input = rewritten query + context, Output = bounded `NextStep`. |
+| **7** | **Agent** | `libs/agent_core/src/agent_core/agents/answer.py` | Answer agent: Input = query + retrieved context, Output = `DraftAnswer`. |
+| **8** | **Agent** | `libs/agent_core/src/agent_core/agents/sufficiency.py` | Relevance/sufficiency gate: Input = query + draft + context, Output = `SufficiencyReport`. |
+| **9** | **Orchestrator** | `libs/agent_core/src/agent_core/orchestrator.py` | Stage loop: rewrite -> source select -> retrieve -> answer -> validate -> loop/finalize. |
+| **10** | **Service** | `apps/agent_service/src/agent_service/main.py` | Expose internal gRPC `SearchAI` RPC to backend/BFF. |
 
 ---
 
@@ -471,39 +552,51 @@ class RetrievedContextProvider(BaseDynamicContextProvider):
         return "\n\n---\n\n".join(self.cards)
 ```
 
-### B. Orchestrator Loop (Planner/Executor + Sufficiency)
+### B. Orchestrator Loop (Rewrite -> Source Plan -> Retrieve -> Answer -> Validate)
 ```python
 from atomic_agents import AtomicAgent, AgentConfig, BaseIOSchema
 from atomic_agents.context import SystemPromptGenerator
 
-class PlannerInput(BaseIOSchema):
+class RewriteInput(BaseIOSchema):
     user_query: str
 
-class SufficiencyInput(BaseIOSchema):
+class SourceInput(BaseIOSchema):
+    rewritten_query: str
+
+class AnswerInput(BaseIOSchema):
+    rewritten_query: str
+
+class RelevanceInput(BaseIOSchema):
     user_query: str
 
 async def run_search_ai(user_query: str, max_turns: int = 6) -> AgentResponse:
     context = RetrievedContextProvider()
-    prompt = SystemPromptGenerator(context_providers=[context])
+    prompt = SystemPromptGenerator(context_providers={"retrieved": context})
 
-    planner = AtomicAgent[PlannerInput, NextStep](
+    rewrite_agent = AtomicAgent[RewriteInput, QueryRewrite](
         config=AgentConfig(system_prompt_generator=prompt)
     )
-    sufficiency = AtomicAgent[SufficiencyInput, SufficiencyReport](
+    source_selector = AtomicAgent[SourceInput, NextStep](
         config=AgentConfig(system_prompt_generator=prompt)
     )
+    answer_agent = AtomicAgent[AnswerInput, DraftAnswer](
+        config=AgentConfig(system_prompt_generator=prompt)
+    )
+    relevance_agent = AtomicAgent[RelevanceInput, SufficiencyReport](
+        config=AgentConfig(system_prompt_generator=prompt)
+    )
+
+    rewrite = await rewrite_agent.run_async(RewriteInput(user_query=user_query))
+    rewritten_query = rewrite.rewritten_query
+
+    if not rewrite.needs_external_context:
+        draft = await answer_agent.run_async(AnswerInput(rewritten_query=rewritten_query))
+        report = await relevance_agent.run_async(RelevanceInput(user_query=user_query))
+        if report.sufficient:
+            return AgentResponse(**draft.model_dump())
 
     for _ in range(max_turns):
-        step = await planner.run_async(PlannerInput(user_query=user_query))
-
-        if step.action == "final":
-            # If the planner tries to finalize early, we still run sufficiency as a guard.
-            report = await sufficiency.run_async(SufficiencyInput(user_query=user_query))
-            if report.sufficient and step.final is not None:
-                return step.final
-            # Not sufficient -> continue loop (planner will be called again with same context)
-            context.add_card(f"SUFFICIENCY: insufficient ({report.missing})")
-            continue
+        step = await source_selector.run_async(SourceInput(rewritten_query=rewritten_query))
 
         if step.action == "qdrant_search":
             result = await execute_qdrant_search(step.search_intent)  # type: ignore[arg-type]
@@ -513,27 +606,17 @@ async def run_search_ai(user_query: str, max_turns: int = 6) -> AgentResponse:
             graph = await execute_postgres_graph(step.graph_intent)  # type: ignore[arg-type]
             context.add_card(f"POSTGRES GRAPH:\n{graph.summary}")
 
-        # After every retrieval, check sufficiency.
-        report = await sufficiency.run_async(SufficiencyInput(user_query=user_query))
-        context.add_card(f"SUFFICIENCY: {report.sufficient} missing={report.missing}")
-
+        draft = await answer_agent.run_async(AnswerInput(rewritten_query=rewritten_query))
+        report = await relevance_agent.run_async(RelevanceInput(user_query=user_query))
+        context.add_card(f"VALIDATION: {report.sufficient} missing={report.missing}")
         if report.sufficient:
-            final_step = await planner.run_async(
-                PlannerInput(user_query=user_query)
-            )
-            if final_step.action == "final" and final_step.final is not None:
-                return final_step.final
+            return AgentResponse(**draft.model_dump())
 
-    # Safety fallback: ask the planner to finalize with what it has.
-    final_step = await planner.run_async(PlannerInput(user_query=user_query))
-    if final_step.action == "final" and final_step.final is not None:
-        return final_step.final
-    # No-match is a business outcome, not a system error.
     return AgentResponse(
         answer="I couldn’t find a confident match for this query yet.",
         source_entities=[],
         result_entities=[],
-        evidence={"termination_reason": "no_match_after_max_turns"},
+        evidence={"termination_reason": "no_match_after_max_turns", "rewritten_query": rewritten_query},
         citations=[],
         confidence=0.1,
         warnings=["NO_MATCH_AFTER_MAX_TURNS"],
@@ -544,27 +627,30 @@ async def run_search_ai(user_query: str, max_turns: int = 6) -> AgentResponse:
 
 ## 8. Example Trace: "Which anime is Luffy in?"
 
-1. **Turn 1 (Plan):** Planner emits `NextStep(action="qdrant_search", entity_type="character", query="Luffy")`.
-2. **Turn 1 (Execute):** Orchestrator queries Qdrant; stores result card with canonical character UUID.
-3. **Turn 1 (Reflect):** Sufficiency is false: missing anime names.
-4. **Turn 2 (Plan):** Planner emits `NextStep(action="qdrant_search", entity_type="anime", filters={"id":[...]})`.
-5. **Turn 2 (Execute):** Orchestrator retrieves anime rows from Qdrant by UUID; stores result card with titles.
-6. **Turn 2 (Reflect):** Sufficiency becomes true.
-7. **Finalize:** Planner emits `NextStep(action="final", final=AgentResponse(...))`.
-
-```
+1. **Rewrite:** `QueryRewriteAgent` normalizes query -> `"Which anime features Monkey D. Luffy?"`, `needs_external_context=true`.
+2. **Turn 1 (Source Select):** Selector emits
+   `NextStep(action="qdrant_search", search_intent={entity_type:"character", query:"Luffy", ...})`.
+3. **Turn 1 (Execute):** Orchestrator queries Qdrant; stores result card with canonical character UUID.
+4. **Turn 1 (Answer + Validate):** Draft is incomplete; relevance/sufficiency is false (missing anime names).
+5. **Turn 2 (Source Select):** Selector emits
+   `NextStep(action="qdrant_search", search_intent={entity_type:"anime", filters:{"id":[...]}, ...})`.
+6. **Turn 2 (Execute):** Orchestrator retrieves anime rows from Qdrant by UUID; stores result card with titles.
+7. **Turn 2 (Answer + Validate):** Validation becomes true.
+8. **Finalize:** Return `AgentResponse` with answer + `result_entities` + evidence.
 
 ## 9. Relationship Query Trace (Postgres Graph)
 
 Example: "How is Luffy related to Nami?"
 
-1. **Resolve entities:** Planner requests two Qdrant lookups (Luffy, Nami) to obtain canonical UUIDs.
-2. **Traverse:** Planner requests `pg_graph` with `query_type="path"`:
+1. **Rewrite:** `QueryRewriteAgent` normalizes relation question and sets `needs_external_context=true`.
+2. **Resolve entities:** Source selector emits Qdrant lookups (Luffy, Nami) to obtain canonical UUIDs.
+3. **Traverse:** Source selector emits `pg_graph` with `query_type="path"`:
    - `start={entity_type:"character", id:"<luffy_uuid>"}`
    - `end={entity_type:"character", id:"<nami_uuid>"}`
    - `max_hops=3`
    - `edge_types=[...]` (bounded allowlist)
-3. **Final Response:** Planner returns:
+4. **Answer + Validate:** Answer agent drafts a path explanation; relevance agent validates.
+5. **Final Response:** Return:
    - `answer`: step-by-step chain explanation
    - `source_entities`: all node IDs in the returned path
    - `result_entities`: the two characters
@@ -577,20 +663,20 @@ The backend/BFF hydrates the final objects from PostgreSQL using batched GraphQL
 ## 10. Design Considerations & Optimization Opportunities
 
 ### 10.1 Latency vs. Correctness
-The current loop executes the `SufficiencyAgent` after every retrieval step. While this ensures high quality, it doubles the LLM overhead.
-- **Optimization:** Consider a "Fast-Path" where the `PlannerAgent` can self-signal completion, using the `SufficiencyAgent` only for complex queries or after a minimum turn threshold.
+The staged loop performs answer synthesis + relevance validation each turn. This improves quality but increases LLM cost.
+- **Optimization:** Add a fast-path for obvious entity lookups where one retrieval step can directly finalize with a lightweight validator pass.
 
 ### 10.2 Structured Metadata Filtering
 The `SearchIntent.filters` is currently a generic dictionary.
 - **Optimization:** If the schema remains stable, transition to a structured `QdrantFilters` Pydantic model. This provides the LLM with better "hints" about available metadata fields (e.g., `year`, `genre`, `score_threshold`), improving filter accuracy.
 
 ### 10.3 Explicit Failure Rationale
-If a search step returns zero results, the planner may get stuck or repeat the same query.
-- **Optimization:** Update `PlannerInput` to include a `last_step_status` field. If the previous turn failed, provide the agent with a `RetryRationale` (e.g., "The previous search for 'Luffy' in 'manga' returned 0 results. Suggest broadening search to 'anime' or checking ID.")
+If a retrieval step returns zero results, source selection can stall or repeat.
+- **Optimization:** Include `last_step_status` + `retry_rationale` in source-selection input so the next plan broadens search deterministically.
 
 ### 10.4 Response Handshake
-Currently, if `SufficiencyAgent` deems context sufficient, the `PlannerAgent` is called again to format the `AgentResponse`.
-- **Optimization:** For simple queries, allow the `SufficiencyAgent` to trigger a lightweight `ResponseAgent` that specializes in synthesis, bypassing the complex Planner logic for the final turn.
+Currently, `AnswerAgent` drafts and `RelevanceAgent` validates before final response.
+- **Optimization:** For simple direct answers (`needs_external_context=false`), allow a single-pass `AnswerAgent` + lightweight validator without full retrieval stage.
 
 ### 10.5 Resource Safety
 Graph traversals in PostgreSQL can be expensive.
