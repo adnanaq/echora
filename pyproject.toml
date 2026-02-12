@@ -90,6 +90,7 @@ relative_files = true
 omit = [
     "*/tests/*",
     "**/test_*.py",
+    "_remote_module_non_scriptable",
 ]
 
 [tool.coverage.report]
