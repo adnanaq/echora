@@ -14,6 +14,8 @@ import pytest
 import pytest_asyncio
 from common.config import get_settings
 from qdrant_db import QdrantClient
+from qdrant_db.client import DuplicateUpdateError
+from qdrant_client.models import OverwritePayloadOperation, SetPayloadOperation
 
 
 class TestUpdateSinglePointVectorRetry:
@@ -315,6 +317,297 @@ class TestUpdateBatchPointVectorsRetry:
         # Total should be at least 0.3s
         assert elapsed >= 0.3
         assert result["success"] == 1
+
+
+class TestUpdateSinglePointPayload:
+    """Test suite for single-point payload updates."""
+
+    @pytest_asyncio.fixture
+    async def mock_client(self):
+        """Create a mock QdrantClient instance."""
+        settings = get_settings()
+        mock_async_client = AsyncMock()
+
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+            client = await QdrantClient.create(
+                config=settings.qdrant,
+                async_qdrant_client=mock_async_client,
+            )
+
+        return client
+
+    @pytest.mark.asyncio
+    async def test_update_single_point_payload_merge_success(self, mock_client):
+        """Update payload in merge mode using set_payload."""
+        mock_client.client.set_payload = AsyncMock(return_value=None)
+        mock_client.client.overwrite_payload = AsyncMock(return_value=None)
+
+        result = await mock_client.update_single_point_payload(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
+            payload={"title": "Updated Title"},
+            mode="merge",
+            key="anime",
+        )
+
+        assert result is True
+        mock_client.client.set_payload.assert_called_once_with(
+            collection_name=mock_client.collection_name,
+            payload={"title": "Updated Title"},
+            points=["550e8400-e29b-41d4-a716-446655440000"],
+            key="anime",
+            wait=True,
+        )
+        mock_client.client.overwrite_payload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_single_point_payload_overwrite_success(self, mock_client):
+        """Update payload in overwrite mode using overwrite_payload."""
+        mock_client.client.set_payload = AsyncMock(return_value=None)
+        mock_client.client.overwrite_payload = AsyncMock(return_value=None)
+
+        result = await mock_client.update_single_point_payload(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
+            payload={"title": "Replaced"},
+            mode="overwrite",
+            key="ignored",
+        )
+
+        assert result is True
+        mock_client.client.overwrite_payload.assert_called_once_with(
+            collection_name=mock_client.collection_name,
+            payload={"title": "Replaced"},
+            points=["550e8400-e29b-41d4-a716-446655440000"],
+            wait=True,
+        )
+        mock_client.client.set_payload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_single_point_payload_merge_nested_key(self, mock_client):
+        """Pass nested payload key through to set_payload in merge mode."""
+        mock_client.client.set_payload = AsyncMock(return_value=None)
+        mock_client.client.overwrite_payload = AsyncMock(return_value=None)
+
+        result = await mock_client.update_single_point_payload(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
+            payload={"name": "nested-value"},
+            mode="merge",
+            key="metadata.debug_info",
+        )
+
+        assert result is True
+        mock_client.client.set_payload.assert_called_once_with(
+            collection_name=mock_client.collection_name,
+            payload={"name": "nested-value"},
+            points=["550e8400-e29b-41d4-a716-446655440000"],
+            key="metadata.debug_info",
+            wait=True,
+        )
+        mock_client.client.overwrite_payload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_single_point_payload_invalid_mode(self, mock_client):
+        """Return False and skip RPC calls for invalid mode."""
+        mock_client.client.set_payload = AsyncMock(return_value=None)
+        mock_client.client.overwrite_payload = AsyncMock(return_value=None)
+
+        result = await mock_client.update_single_point_payload(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
+            payload={"title": "Updated"},
+            mode="replace",
+        )
+
+        assert result is False
+        mock_client.client.set_payload.assert_not_called()
+        mock_client.client.overwrite_payload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_single_point_payload_invalid_payload(self, mock_client):
+        """Return False for invalid payload and skip RPC calls."""
+        mock_client.client.set_payload = AsyncMock(return_value=None)
+        mock_client.client.overwrite_payload = AsyncMock(return_value=None)
+
+        result = await mock_client.update_single_point_payload(
+            point_id="550e8400-e29b-41d4-a716-446655440000",
+            payload={},
+            mode="merge",
+        )
+
+        assert result is False
+        mock_client.client.set_payload.assert_not_called()
+        mock_client.client.overwrite_payload.assert_not_called()
+
+
+class TestUpdateBatchPointPayload:
+    """Test suite for batch payload updates."""
+
+    @pytest_asyncio.fixture
+    async def mock_client(self):
+        """Create a mock QdrantClient instance."""
+        settings = get_settings()
+        mock_async_client = AsyncMock()
+
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+            client = await QdrantClient.create(
+                config=settings.qdrant,
+                async_qdrant_client=mock_async_client,
+            )
+
+        return client
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_merge_success(self, mock_client):
+        """Batch merge payload updates via batch_update_points."""
+        mock_client.client.batch_update_points = AsyncMock(return_value=None)
+
+        updates = [
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                "payload": {"title": "A"},
+            },
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440002",
+                "payload": {"title": "B"},
+                "key": "anime",
+            },
+        ]
+
+        result = await mock_client.update_batch_point_payload(
+            updates=updates,
+            mode="merge",
+        )
+
+        assert result["success"] == 2
+        assert result["failed"] == 0
+        assert result["duplicates_removed"] == 0
+        mock_client.client.batch_update_points.assert_called_once()
+        call = mock_client.client.batch_update_points.call_args.kwargs
+        operations = call["update_operations"]
+        assert len(operations) == 2
+        assert all(isinstance(op, SetPayloadOperation) for op in operations)
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_overwrite_success(self, mock_client):
+        """Batch overwrite payload updates via batch_update_points."""
+        mock_client.client.batch_update_points = AsyncMock(return_value=None)
+
+        updates = [
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                "payload": {"title": "A"},
+            }
+        ]
+
+        result = await mock_client.update_batch_point_payload(
+            updates=updates,
+            mode="overwrite",
+        )
+
+        assert result["success"] == 1
+        assert result["failed"] == 0
+        mock_client.client.batch_update_points.assert_called_once()
+        call = mock_client.client.batch_update_points.call_args.kwargs
+        operations = call["update_operations"]
+        assert len(operations) == 1
+        assert isinstance(operations[0], OverwritePayloadOperation)
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_merge_nested_keys(self, mock_client):
+        """Build merge operations with per-item nested payload keys."""
+        mock_client.client.batch_update_points = AsyncMock(return_value=None)
+
+        updates = [
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                "payload": {"name": "A"},
+                "key": "meta.aliases",
+            },
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440002",
+                "payload": {"name": "B"},
+                "key": "meta.tags",
+            },
+        ]
+
+        result = await mock_client.update_batch_point_payload(
+            updates=updates,
+            mode="merge",
+        )
+
+        assert result["success"] == 2
+        assert result["failed"] == 0
+        mock_client.client.batch_update_points.assert_called_once()
+
+        call = mock_client.client.batch_update_points.call_args.kwargs
+        operations = call["update_operations"]
+        assert len(operations) == 2
+        assert all(isinstance(op, SetPayloadOperation) for op in operations)
+        assert operations[0].set_payload is not None
+        assert operations[1].set_payload is not None
+        assert operations[0].set_payload.key == "meta.aliases"
+        assert operations[1].set_payload.key == "meta.tags"
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_dedup_fail(self, mock_client):
+        """Raise DuplicateUpdateError when dedup policy is fail."""
+        updates = [
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                "payload": {"title": "A"},
+            },
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                "payload": {"title": "B"},
+            },
+        ]
+
+        with pytest.raises(DuplicateUpdateError):
+            await mock_client.update_batch_point_payload(
+                updates=updates,
+                dedup_policy="fail",
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_invalid_mode_raises(self, mock_client):
+        """Raise ValueError for unsupported payload update mode."""
+        with pytest.raises(ValueError, match="Invalid mode"):
+            await mock_client.update_batch_point_payload(
+                updates=[
+                    {
+                        "point_id": "550e8400-e29b-41d4-a716-446655440001",
+                        "payload": {"title": "A"},
+                    }
+                ],
+                mode="replace",
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_batch_point_payload_mixed_valid_invalid(self, mock_client):
+        """Process valid payload updates and report invalid rows as failures."""
+        mock_client.client.batch_update_points = AsyncMock(return_value=None)
+
+        updates = [
+            {
+                "point_id": "",  # invalid
+                "payload": {"title": "A"},
+            },
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440002",
+                "payload": {},  # invalid payload
+            },
+            {
+                "point_id": "550e8400-e29b-41d4-a716-446655440003",
+                "payload": {"title": "Valid"},
+            },
+        ]
+
+        result = await mock_client.update_batch_point_payload(
+            updates=updates,
+            mode="merge",
+        )
+
+        assert result["success"] == 1
+        assert result["failed"] == 2
+        mock_client.client.batch_update_points.assert_called_once()
 
 
 class TestUnifiedSearch:
