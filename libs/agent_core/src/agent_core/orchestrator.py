@@ -82,7 +82,7 @@ class AgentOrchestrator:
 
         Args:
             query: User text query.
-            image_query: Optional image query (URL, data URL, or base64).
+            image_query: Optional image query (data URL or raw base64 string).
             max_turns: Optional override for the loop turn cap.
             request_id: Optional request correlation id for stage-level logging.
 
@@ -490,10 +490,7 @@ class AgentOrchestrator:
         """Builds the rewrite stage input prompt."""
         parts = [f"User query: {query}"]
         if image_query:
-            if image_query.startswith("http://") or image_query.startswith("https://"):
-                parts.append(f"Image query URL: {image_query}")
-            else:
-                parts.append("Image query provided (base64/data-url omitted).")
+            parts.append("Image query provided (base64/data-url omitted).")
         parts.append("Rewrite this query and decide whether external retrieval is required.")
         return "\n\n".join(parts)
 
@@ -525,10 +522,7 @@ class AgentOrchestrator:
         parts = [f"User query: {query}", f"Rewritten query: {rewritten_query}", f"Turn: {turn}"]
         if image_query:
             # Avoid dumping base64 into the prompt.
-            if image_query.startswith("http://") or image_query.startswith("https://"):
-                parts.append(f"User provided an image URL: {image_query}")
-            else:
-                parts.append("User provided an image (base64/data-url omitted).")
+            parts.append("User provided an image (base64/data-url omitted).")
         if warnings:
             parts.append("Warnings so far:\n- " + "\n- ".join(warnings[-5:]))
         if last_step is not None:

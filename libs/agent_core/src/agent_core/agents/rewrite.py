@@ -43,5 +43,11 @@ def build_rewrite_agent(client, model: str) -> AtomicAgent[BasicChatInputSchema,
         history=ChatHistory(max_messages=20),
         system_prompt_generator=system,
         assistant_role="assistant",
+        model_api_parameters={
+            "temperature": 0,
+            "reasoning_effort": "minimal",
+            "max_completion_tokens": 220,
+            "max_retries": 1,
+        },
     )
     return AtomicAgent[BasicChatInputSchema, QueryRewrite](cfg)

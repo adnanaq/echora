@@ -12,7 +12,7 @@ import tempfile
 
 from agent_core.schemas import EntityRef, EntityType, RetrievalResult, SearchIntent
 from qdrant_db import QdrantClient
-from vector_processing import TextProcessor
+from vector_processing import TextProcessor, VisionProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,14 @@ class QdrantExecutor:
         self,
         qdrant: QdrantClient,
         text_processor: TextProcessor,
-        vision_processor=None,
+        vision_processor: VisionProcessor,
     ) -> None:
         """Initializes dependencies for vector retrieval.
 
         Args:
             qdrant: Async Qdrant client wrapper.
             text_processor: Text embedding processor.
-            vision_processor: Optional image embedding processor.
+            vision_processor: Image embedding processor.
         """
         self._qdrant = qdrant
         self._text_processor = text_processor
@@ -56,16 +56,16 @@ class QdrantExecutor:
             )
 
         # Special-case filter-only lookup by ids (canonical UUIDs = Qdrant point IDs).
-        ids = None
+        entity_ids = None
         if "id" in intent.filters and isinstance(intent.filters["id"], list):
-            ids = [str(x) for x in intent.filters["id"] if x]
+            entity_ids = [str(entity_id) for entity_id in intent.filters["id"] if entity_id]
 
-        if intent.query is None and ids:
+        if intent.query is None and entity_ids:
             raw: list[dict[str, Any]] = []
-            for pid in ids[:limit]:
-                payload = await self._qdrant.get_by_id(pid, with_vectors=False)
+            for point_id in entity_ids[:limit]:
+                payload = await self._qdrant.get_by_id(point_id, with_vectors=False)
                 if payload:
-                    raw.append({"id": pid, **payload})
+                    raw.append({"id": point_id, **payload})
             return self._as_result(raw, note=f"Retrieved {len(raw)} points by id.")
 
         if intent.query is None and not intent.image_query:
@@ -87,12 +87,6 @@ class QdrantExecutor:
 
         image_embedding = None
         if intent.image_query:
-            if self._vision_processor is None:
-                return RetrievalResult(
-                    summary="Image query provided but vision processor is not configured.",
-                    raw_data=[],
-                    count=0,
-                )
             image_embedding = await self._embed_image(intent.image_query)
             if image_embedding is None:
                 return RetrievalResult(
@@ -123,19 +117,19 @@ class QdrantExecutor:
         lines: list[str] = []
         if note:
             lines.append(note)
-        for r in raw[:10]:
-            title = r.get("title") or r.get("name") or r.get("id") or "item"
-            et = r.get("entity_type") or "unknown"
-            score = r.get("similarity_score")
+        for row in raw[:10]:
+            title = row.get("title") or row.get("name") or row.get("id") or "item"
+            entity_type = row.get("entity_type") or "unknown"
+            score = row.get("similarity_score")
             if score is not None:
-                lines.append(f"- {title} ({et}) score={score:.3f}")
+                lines.append(f"- {title} ({entity_type}) score={score:.3f}")
             else:
-                lines.append(f"- {title} ({et})")
+                lines.append(f"- {title} ({entity_type})")
         summary = "\n".join(lines) if lines else "No results."
         return RetrievalResult(summary=summary, raw_data=raw, count=len(raw))
 
     async def _embed_image(self, image_query: str) -> list[float] | None:
-        """Embeds image input from URL, data URL, or raw base64.
+        """Embeds image input from a data URL or raw base64 string.
 
         Args:
             image_query: Image reference string.
@@ -143,17 +137,21 @@ class QdrantExecutor:
         Returns:
             Image embedding vector when successful, else ``None``.
         """
-        q = image_query.strip()
-        if q.startswith("http://") or q.startswith("https://"):
-            matrix = await self._vision_processor.encode_images_batch([q])
-            return matrix[0] if matrix else None
+        normalized_query = image_query.strip()
+        lowered_query = normalized_query.lower()
+        if lowered_query.startswith("http://") or lowered_query.startswith("https://"):
+            logger.warning(
+                "Rejected image URL input; only base64/data URLs are accepted for image_query."
+            )
+            return None
 
         # data:image/png;base64,....
-        if q.startswith("data:"):
+        if normalized_query.startswith("data:"):
             try:
-                header, b64 = q.split(",", 1)
-                _ = header  # unused but keeps format explicit
-                data = base64.b64decode(b64, validate=False)
+                data_url_header, encoded_data = normalized_query.split(",", 1)
+                _ = data_url_header  # unused but keeps format explicit
+                encoded_data = re.sub(r"\s+", "", encoded_data)
+                data = base64.b64decode(encoded_data, validate=True)
             except Exception:
                 logger.exception("Failed to parse data URL image_query")
                 return None
@@ -162,8 +160,8 @@ class QdrantExecutor:
         # Raw base64 (best-effort). If it's not base64, this will likely fail.
         try:
             # Remove whitespace/newlines.
-            b64 = re.sub(r"\s+", "", q)
-            data = base64.b64decode(b64, validate=False)
+            encoded_data = re.sub(r"\s+", "", normalized_query)
+            data = base64.b64decode(encoded_data, validate=True)
         except Exception:
             logger.exception("Failed to decode base64 image_query")
             return None
@@ -180,9 +178,9 @@ class QdrantExecutor:
         """
         tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".img") as f:
-                f.write(data)
-                tmp_path = f.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".img") as temp_file:
+                temp_file.write(data)
+                tmp_path = temp_file.name
             return await self._vision_processor.encode_image(tmp_path)
         finally:
             if tmp_path:
@@ -201,14 +199,16 @@ class QdrantExecutor:
         Returns:
             Validated entity references.
         """
-        refs: list[EntityRef] = []
-        for r in raw:
-            et = r.get("entity_type")
-            rid = r.get("id") or r.get("_id") or r.get("anime_id")
-            if not et or not rid:
+        entity_refs: list[EntityRef] = []
+        for row in raw:
+            entity_type = row.get("entity_type")
+            entity_id = row.get("id") or row.get("_id") or row.get("anime_id")
+            if not entity_type or not entity_id:
                 continue
             try:
-                refs.append(EntityRef(entity_type=EntityType(et), id=str(rid)))
+                entity_refs.append(
+                    EntityRef(entity_type=EntityType(entity_type), id=str(entity_id))
+                )
             except Exception:
                 continue
-        return refs
+        return entity_refs

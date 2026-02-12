@@ -49,5 +49,11 @@ def build_sufficiency_agent(
         history=ChatHistory(max_messages=20),
         system_prompt_generator=system,
         assistant_role="assistant",
+        model_api_parameters={
+            "temperature": 0,
+            "reasoning_effort": "minimal",
+            "max_completion_tokens": 240,
+            "max_retries": 1,
+        },
     )
     return AtomicAgent[BasicChatInputSchema, SufficiencyReport](cfg)

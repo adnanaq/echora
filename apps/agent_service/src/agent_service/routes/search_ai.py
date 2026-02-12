@@ -7,6 +7,7 @@ into protobuf responses consumed by the BFF.
 from __future__ import annotations
 
 import logging
+import re
 from uuid import uuid4
 
 import grpc
@@ -18,6 +19,7 @@ from ..main import AgentService
 from ..utils.mappers import entity_type_to_proto, evidence_to_proto
 
 logger = logging.getLogger(__name__)
+_IMAGE_URL_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
 
 
 class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
@@ -56,6 +58,15 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             return agent_search_pb2.SearchAIResponse(
                 answer="Empty query (no text and no image).",
                 warnings=["Empty query (no text and no image)."],
+            )
+        if image_query and _IMAGE_URL_PATTERN.match(image_query):
+            logger.info("agent.rpc.search_ai.invalid_image_query_url")
+            return agent_search_pb2.SearchAIResponse(
+                answer="Invalid image query. Provide raw base64 or a data URL only.",
+                warnings=[
+                    "Image URLs are not accepted for security reasons. "
+                    "Use raw base64 bytes or a data URL."
+                ],
             )
 
         max_turns = (

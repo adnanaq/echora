@@ -46,14 +46,14 @@ class SearchIntent(BaseIOSchema):
     )
     image_query: str | None = Field(
         None,
-        description="Image query (URL, data-url, or raw base64).",
+        description="Image query payload (data URL or raw base64 only).",
     )
     filters: dict[str, Any] = Field(
         default_factory=dict,
         description="Qdrant payload filters (bounded by indexed payload keys); do not encode filter semantics into query text.",
     )
     # TODO(vector): If we want stricter contracts, replace image_query with a structured
-    # payload (mime_type + bytes or URL) instead of a free-form string.
+    # payload (mime_type + bytes) instead of a free-form string.
 
 
 class GraphIntent(BaseIOSchema):
