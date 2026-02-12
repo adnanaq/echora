@@ -59,6 +59,6 @@ class RetrievedContextProvider(BaseDynamicContextProvider):
             return "No retrievals yet."
 
         parts: list[str] = []
-        for i, c in enumerate(self._cards[-self._max_cards :], start=1):
-            parts.append(f"[{i}] {c.title}\n{c.body}".strip())
+        for card_index, card in enumerate(self._cards[-self._max_cards :], start=1):
+            parts.append(f"[{card_index}] {card.title}\n{card.body}".strip())
         return "\n\n".join(parts)
