@@ -12,6 +12,9 @@ import tempfile
 
 from agent_core.schemas import EntityRef, EntityType, RetrievalResult, SearchIntent
 from qdrant_db import QdrantClient
+
+from langfuse import observe
+
 from vector_processing import TextProcessor, VisionProcessor
 
 logger = logging.getLogger(__name__)
@@ -37,6 +40,7 @@ class QdrantExecutor:
         self._text_processor = text_processor
         self._vision_processor = vision_processor
 
+    @observe()
     async def search(self, intent: SearchIntent, limit: int = 10) -> RetrievalResult:
         """Executes a retrieval step based on source-selected intent.
 

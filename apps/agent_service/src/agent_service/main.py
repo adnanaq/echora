@@ -14,6 +14,7 @@ import grpc
 import instructor
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from openai import AsyncOpenAI
+from langfuse import get_client, Langfuse
 from qdrant_client import AsyncQdrantClient
 
 from agent.v1 import agent_search_pb2_grpc, service_ops_pb2_grpc
@@ -45,6 +46,7 @@ class AgentService:
             settings: Common application settings from ``common.config``.
         """
         self.app_settings = settings
+        self.langfuse = None
         self._initialized = False
 
     async def init(self) -> None:
@@ -92,6 +94,9 @@ class AgentService:
             vision_processor=self.vision_processor,
         )
 
+        if self.app_settings.agent.langfuse_enabled:
+            self.langfuse = get_client()
+
         self.llm_client = None
         if self.app_settings.agent.llm_enabled:
             openai_client = AsyncOpenAI(
@@ -101,7 +106,6 @@ class AgentService:
             self.llm_client = instructor.from_openai(
                 openai_client, mode=instructor.Mode.TOOLS
             )
-
         self._initialized = True
 
     async def close(self) -> None:
@@ -111,6 +115,8 @@ class AgentService:
                 await self.async_qdrant.close()
             except Exception:
                 logger.exception("Failed to close AsyncQdrantClient")
+        if self.app_settings.agent.langfuse_enabled and self.langfuse is not None:
+            self.langfuse.shutdown()
 
     def build_orchestrator(self) -> AgentOrchestrator:
         """Build a fully wired orchestrator for one request flow."""

@@ -31,8 +31,9 @@ from agent_core.schemas import (
     SufficiencyOutput,
 )
 
-logger = logging.getLogger(__name__)
+from langfuse import observe
 
+logger = logging.getLogger(__name__)
 
 class AgentOrchestrator:
     """Runs the staged bounded loop for ``SearchAI`` requests."""
@@ -82,6 +83,7 @@ class AgentOrchestrator:
         self._qdrant_min_score_image = qdrant_min_score_image
         self._qdrant_min_score_multivector = qdrant_min_score_multivector
 
+    @observe()
     async def run_search_ai(
         self,
         query: str,
@@ -121,17 +123,10 @@ class AgentOrchestrator:
         attempted_actions: list[str] = []
         last_search_similarity_score: float | None = None
 
-        rewrite: RewriteOutput = await self._rewrite.run_async(
+        rewrite: RewriteOutput = await self._call_rewrite_agent(
             build_rewrite_stage_input(query=query, image_query=image_query)
         )
         rewritten_query = (rewrite.rewritten_query or "").strip() or query
-        logger.debug(
-            "agent.search_ai.rewrite request_id=%s needs_external_context=%s rewritten_query=%r rationale=%r",
-            req,
-            rewrite.needs_external_context,
-            rewritten_query[:200],
-            rewrite.rationale[:200],
-        )
         retrieved.add_card(
             title="Rewrite",
             body=f"rewritten_query={rewritten_query}\nneeds_external_context={rewrite.needs_external_context}",
@@ -143,37 +138,21 @@ class AgentOrchestrator:
 
         # Fast path: if rewrite says retrieval is not required, draft and validate directly.
         if not rewrite.needs_external_context:
-            draft = await self._answer.run_async(
+            draft = await self._call_answer_agent(
                 build_answer_stage_input(query=query, rewritten_query=rewritten_query)
             )
             last_draft = draft
-            logger.debug(
-                "agent.search_ai.draft.fastpath request_id=%s llm_confidence=%.3f result_entities=%d source_entities=%d answer=%r",
-                req,
-                draft.llm_confidence,
-                len(draft.result_entities),
-                len(draft.source_entities),
-                (draft.answer or "")[:300],
-            )
-            report: SufficiencyOutput = await self._sufficiency.run_async(
+            report: SufficiencyOutput = await self._call_sufficient_agent(
                 build_sufficiency_stage_input(
                     query=query,
                     draft_answer=draft.answer,
                 )
             )
             if report.sufficient:
-                logger.info(
-                    "agent.search_ai.final.fastpath request_id=%s sufficient=true warnings=%d",
-                    req,
-                    len(warnings),
-                )
                 return self._finalize_from_draft(draft, warnings)
+
             warnings.append("Direct-answer path was insufficient; switching to retrieval loop.")
-            logger.debug(
-                "agent.search_ai.fastpath_insufficient request_id=%s missing=%s",
-                req,
-                report.missing,
-            )
+
 
         for turn in range(1, turns + 1):
             step_input = build_source_selection_stage_input(
@@ -185,7 +164,7 @@ class AgentOrchestrator:
                 last_summary=last_summary,
                 warnings=warnings,
             )
-            step: SourceSelectionOutput = await self._source_selector.run_async(step_input)
+            step: SourceSelectionOutput = await self._call_selector_agent(step_input)
             normalized_step, step_warning = normalize_step_for_turn(
                 step=step,
                 rewritten_query=rewritten_query,
@@ -193,39 +172,17 @@ class AgentOrchestrator:
             )
             if step_warning:
                 warnings.append(step_warning)
-                logger.warning(
-                    "agent.search_ai.step_invalid request_id=%s turn=%d action=%r warning=%r",
-                    req,
-                    turn,
-                    step.action,
-                    step_warning,
-                )
                 continue
 
             if normalized_step is None:
                 continue
             step = normalized_step
             last_step = step
-            logger.debug(
-                "agent.search_ai.step request_id=%s turn=%d action=%s rationale=%r",
-                req,
-                turn,
-                step.action,
-                step.rationale[:200],
-            )
 
             if step.action == "qdrant_search":
                 assert step.search_intent is not None  # validated in normalize_step_for_turn
                 attempted_actions.append("qdrant_search")
-                logger.debug(
-                    "agent.search_ai.qdrant.intent request_id=%s turn=%d entity_type=%s query=%r has_image=%s filters=%s",
-                    req,
-                    turn,
-                    step.search_intent.entity_type.value,
-                    (step.search_intent.query or "")[:200],
-                    bool(step.search_intent.image_query),
-                    step.search_intent.filters,
-                )
+                
                 result = await self._qdrant.search(step.search_intent, limit=self._qdrant_limit)
                 last_qdrant_result = result
                 last_summary = result.summary
@@ -254,18 +211,7 @@ class AgentOrchestrator:
                     str(r.get("title") or r.get("name") or r.get("id") or "item")
                     for r in result.raw_data[:5]
                 ]
-                logger.debug(
-                    "agent.search_ai.qdrant.result request_id=%s turn=%d mode=%s threshold=%.3f top_score=%s count=%d qualified=%d top_hits=%s summary=%r",
-                    req,
-                    turn,
-                    search_mode,
-                    score_threshold,
-                    f"{top_score:.3f}" if top_score is not None else "n/a",
-                    result.count,
-                    len(qualified_rows),
-                    top_hits,
-                    result.summary[:300],
-                )
+
                 retrieved.add_card(
                     title=f"Qdrant search ({step.search_intent.entity_type.value})",
                     body=self._qdrant_context_body(
@@ -290,53 +236,22 @@ class AgentOrchestrator:
                             f"is below threshold {score_threshold:.3f} ({search_mode}); retrying."
                         )
                     )
-                    logger.debug(
-                        "agent.search_ai.qdrant.low_score request_id=%s turn=%d mode=%s threshold=%.3f top_score=%s",
-                        req,
-                        turn,
-                        search_mode,
-                        score_threshold,
-                        f"{top_score:.3f}" if top_score is not None else "n/a",
-                    )
                     continue
                 if not qualified_rows:
                     warnings.append("No Qdrant rows met the score threshold; retrying.")
-                    logger.debug(
-                        "agent.search_ai.qdrant.no_qualified_rows request_id=%s turn=%d mode=%s threshold=%.3f",
-                        req,
-                        turn,
-                        search_mode,
-                        score_threshold,
-                    )
                     continue
 
             elif step.action == "pg_graph":
                 assert step.graph_intent is not None  # validated in normalize_step_for_turn
                 attempted_actions.append("pg_graph")
-                logger.debug(
-                    "agent.search_ai.pg_graph.intent request_id=%s turn=%d query_type=%s start=%s end=%s max_hops=%d edge_types=%s limits=%s",
-                    req,
-                    turn,
-                    step.graph_intent.query_type,
-                    step.graph_intent.start,
-                    step.graph_intent.end,
-                    step.graph_intent.max_hops,
-                    step.graph_intent.edge_types,
-                    step.graph_intent.limits,
-                )
+                
                 try:
                     graph: GraphResult = await self._graph.execute(step.graph_intent)
                     last_summary = graph.summary
                     if graph.count > 0:
                         any_hits = True
                         max_hit_count = max(max_hit_count, graph.count)
-                    logger.debug(
-                        "agent.search_ai.pg_graph.result request_id=%s turn=%d count=%d summary=%r",
-                        req,
-                        turn,
-                        graph.count,
-                        graph.summary[:300],
-                    )
+
                     retrieved.add_card(title="Postgres graph", body=graph.summary, data={"count": graph.count})
                 except GraphNotAvailableError:
                     warnings.append("PostgreSQL graph executor not available yet; answering without graph traversal.")
@@ -352,19 +267,10 @@ class AgentOrchestrator:
                 # Unreachable because ``normalize_step_for_turn`` gates action values.
                 continue
 
-            draft: AnswerOutput = await self._answer.run_async(
+            draft: AnswerOutput = await self._call_answer_agent(
                 build_answer_stage_input(query=query, rewritten_query=rewritten_query)
             )
             last_draft = draft
-            logger.debug(
-                "agent.search_ai.draft request_id=%s turn=%d llm_confidence=%.3f result_entities=%d source_entities=%d answer=%r",
-                req,
-                turn,
-                draft.llm_confidence,
-                len(draft.result_entities),
-                len(draft.source_entities),
-                (draft.answer or "")[:300],
-            )
             retrieved.add_card(
                 title="Draft answer",
                 body=(draft.answer or "")[:500],
@@ -375,7 +281,7 @@ class AgentOrchestrator:
                 },
             )
 
-            suff: SufficiencyOutput = await self._sufficiency.run_async(
+            suff: SufficiencyOutput = await self._call_sufficient_agent(
                 build_sufficiency_stage_input(
                     query=query,
                     draft_answer=draft.answer,
@@ -386,20 +292,8 @@ class AgentOrchestrator:
                 body=f"sufficient={suff.sufficient} missing={suff.missing}",
                 data={"sufficient": suff.sufficient, "missing": suff.missing},
             )
-            logger.debug(
-                "agent.search_ai.sufficiency request_id=%s turn=%d sufficient=%s missing=%s rationale=%r",
-                req,
-                turn,
-                suff.sufficient,
-                suff.missing,
-                suff.rationale[:200],
-            )
+           
             if suff.sufficient:
-                logger.info(
-                    "agent.search_ai.final.sufficient request_id=%s turn=%d",
-                    req,
-                    turn,
-                )
                 return self._finalize_from_draft(
                     draft,
                     warnings,
@@ -419,13 +313,6 @@ class AgentOrchestrator:
                 best_effort.source_entities = list(best_effort.result_entities)
             if not best_effort.warnings:
                 best_effort.warnings = [f"Reached max_turns={turns}."]
-            logger.info(
-                "agent.search_ai.final.best_effort request_id=%s attempted_actions=%s max_hit_count=%d warnings=%s",
-                req,
-                attempted_actions,
-                max_hit_count,
-                best_effort.warnings,
-            )
             return best_effort
 
         # No-match is a business outcome, not a system error.
@@ -440,13 +327,6 @@ class AgentOrchestrator:
         if any_hits:
             answer = "I found partial signals, but not enough confident evidence to answer this reliably yet."
             warning_code = "BEST_EFFORT_PARTIAL_AFTER_MAX_TURNS"
-        logger.info(
-            "agent.search_ai.final.no_match request_id=%s attempted_actions=%s max_hit_count=%d warning=%s",
-            req,
-            attempted_actions,
-            max_hit_count,
-            warning_code,
-        )
 
         return AgentResponse(
             answer=answer,
@@ -466,6 +346,22 @@ class AgentOrchestrator:
                 f"got: {type(provider)!r}"
             )
         return provider
+    
+    @observe()
+    async def _call_rewrite_agent(self, input):
+        return await self._rewrite.run_async(input)
+
+    @observe()
+    async def _call_answer_agent(self, input):
+        return await self._answer.run_async(input)
+
+    @observe()
+    async def _call_sufficient_agent(self, input):
+        return await self._sufficiency.run_async(input)
+
+    @observe()
+    async def _call_selector_agent(self, input):
+        return await self._source_selector.run_async(input)
 
     @staticmethod
     def _search_mode(*, text_query: str | None, image_query: str | None) -> str:

@@ -1,5 +1,7 @@
 """Agent service configuration."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -30,6 +32,22 @@ class AgentConfig(BaseModel):
     openai_model: str = Field(
         default="gpt-5",
         description="Model name used by planner/sufficiency agents",
+    )
+    langfuse_enabled: bool = Field(
+        default=False,
+        description="Enable langfuse tracing for agent operations",
+    )
+    langfuse_base_url: Optional[str] = Field(
+        default=None,
+        description="Langfuse base URL (defaults to LANGFUSE_BASE_URL env var)",
+    )
+    langfuse_public_key: Optional[str] = Field(
+        default=None,
+        description="Langfuse public key used by the agent runtime",
+    )
+    langfuse_secret_key: Optional[str] = Field(
+        default=None,
+        description="Langfuse secret key used by the agent runtime",
     )
 
     default_max_turns: int = Field(
