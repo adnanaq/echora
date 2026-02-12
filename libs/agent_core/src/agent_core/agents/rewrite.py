@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
+from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
-from agent_core.schemas import QueryRewrite
+from agent_core.schemas import RewriteOutput, RewriteInput
 
 
-def build_rewrite_agent(client, model: str) -> AtomicAgent[BasicChatInputSchema, QueryRewrite]:
+def build_rewrite_agent(client, model: str) -> AtomicAgent[RewriteInput, RewriteOutput]:
     """Builds the rewrite/gating stage agent.
 
     Args:
@@ -16,7 +16,7 @@ def build_rewrite_agent(client, model: str) -> AtomicAgent[BasicChatInputSchema,
         model: Model identifier passed to Atomic Agents.
 
     Returns:
-        AtomicAgent configured to emit ``QueryRewrite``.
+        AtomicAgent configured to emit ``RewriteOutput``.
     """
     system = SystemPromptGenerator(
         background=[
@@ -31,7 +31,7 @@ def build_rewrite_agent(client, model: str) -> AtomicAgent[BasicChatInputSchema,
             "Set needs_external_context=false only when a direct answer is possible without retrieval.",
         ],
         output_instructions=[
-            "Return QueryRewrite only.",
+            "Return RewriteOutput only.",
             "Do not answer the user question here.",
             "Do not synthesize labels like 'anime_id:', 'uuid:', or 'title:' in rewritten_query unless they were explicitly in user text.",
         ],
@@ -50,4 +50,4 @@ def build_rewrite_agent(client, model: str) -> AtomicAgent[BasicChatInputSchema,
             "max_retries": 1,
         },
     )
-    return AtomicAgent[BasicChatInputSchema, QueryRewrite](cfg)
+    return AtomicAgent[RewriteInput, RewriteOutput](cfg)

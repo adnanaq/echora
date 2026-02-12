@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
+from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
 from agent_core.context import RetrievedContextProvider
-from agent_core.schemas import DraftAnswer
+from agent_core.schemas import AnswerInput, AnswerOutput
 
 
 def build_answer_agent(
     client,
     model: str,
     retrieved_context: RetrievedContextProvider,
-) -> AtomicAgent[BasicChatInputSchema, DraftAnswer]:
+) -> AtomicAgent[AnswerInput, AnswerOutput]:
     """Builds the answer-drafting stage agent.
 
     Args:
@@ -22,7 +22,7 @@ def build_answer_agent(
         retrieved_context: Dynamic context provider injected into prompts.
 
     Returns:
-        AtomicAgent configured to emit ``DraftAnswer``.
+        AtomicAgent configured to emit ``AnswerOutput``.
     """
     system = SystemPromptGenerator(
         background=[
@@ -36,7 +36,7 @@ def build_answer_agent(
             "Populate source_entities with all supporting entities and result_entities with primary display results.",
         ],
         output_instructions=[
-            "Return DraftAnswer only.",
+            "Return AnswerOutput only.",
             "Always set llm_confidence in the range [0.0, 1.0] based on support in retrieved context.",
             "If context is thin, still draft best-effort answer and add warning(s).",
         ],
@@ -56,4 +56,4 @@ def build_answer_agent(
             "max_retries": 1,
         },
     )
-    return AtomicAgent[BasicChatInputSchema, DraftAnswer](cfg)
+    return AtomicAgent[AnswerInput, AnswerOutput](cfg)

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
+from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
 from agent_core.context import RetrievedContextProvider
-from agent_core.schemas import NextStep
+from agent_core.schemas import SourceSelectionOutput, SourceSelectionInput
 
 
 def build_source_selector_agent(
     client,
     model: str,
     retrieved_context: RetrievedContextProvider,
-) -> AtomicAgent[BasicChatInputSchema, NextStep]:
+) -> AtomicAgent[SourceSelectionInput, SourceSelectionOutput]:
     """Builds the source-selection stage agent.
 
     Args:
@@ -22,7 +22,7 @@ def build_source_selector_agent(
         retrieved_context: Dynamic context provider injected into prompts.
 
     Returns:
-        AtomicAgent configured to emit bounded ``NextStep`` actions.
+        AtomicAgent configured to emit bounded ``SourceSelectionOutput`` actions.
     """
     system = SystemPromptGenerator(
         background=[
@@ -37,7 +37,7 @@ def build_source_selector_agent(
             "Use pg_graph only for relationship/path/comparison operations.",
         ],
         output_instructions=[
-            "Return NextStep only.",
+            "Return SourceSelectionOutput only.",
             "Choose only action=qdrant_search or action=pg_graph.",
             "If action=qdrant_search, populate search_intent.",
             "For text-only requests: set search_intent.query and leave image_query null.",
@@ -63,4 +63,4 @@ def build_source_selector_agent(
             "max_retries": 1,
         },
     )
-    return AtomicAgent[BasicChatInputSchema, NextStep](cfg)
+    return AtomicAgent[SourceSelectionInput, SourceSelectionOutput](cfg)

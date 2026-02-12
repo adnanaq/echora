@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from atomic_agents import AtomicAgent
-from atomic_agents import AgentConfig, BasicChatInputSchema
+from atomic_agents import AgentConfig
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
 from agent_core.context import RetrievedContextProvider
-from agent_core.schemas import SufficiencyReport
+from agent_core.schemas import SufficiencyOutput, SufficiencyInput
 
 
 def build_sufficiency_agent(
     client,
     model: str,
     retrieved_context: RetrievedContextProvider,
-) -> AtomicAgent[BasicChatInputSchema, SufficiencyReport]:
+) -> AtomicAgent[SufficiencyInput, SufficiencyOutput]:
     """Builds the sufficiency checker agent used after retrieval steps.
 
     Args:
@@ -23,7 +23,7 @@ def build_sufficiency_agent(
         retrieved_context: Dynamic context provider injected into sufficiency prompts.
 
     Returns:
-        AtomicAgent configured to emit only ``SufficiencyReport`` outputs.
+        AtomicAgent configured to emit only ``SufficiencyOutput`` outputs.
     """
     system = SystemPromptGenerator(
         background=[
@@ -38,7 +38,7 @@ def build_sufficiency_agent(
             "If insufficient, list what's missing.",
         ],
         output_instructions=[
-            "Return a SufficiencyReport object only.",
+            "Return a SufficiencyOutput object only.",
         ],
         context_providers={"retrieved": retrieved_context},
     )
@@ -56,4 +56,4 @@ def build_sufficiency_agent(
             "max_retries": 1,
         },
     )
-    return AtomicAgent[BasicChatInputSchema, SufficiencyReport](cfg)
+    return AtomicAgent[SufficiencyInput, SufficiencyOutput](cfg)

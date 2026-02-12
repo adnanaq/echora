@@ -25,12 +25,60 @@ class EntityRef(BaseIOSchema):
     id: str = Field(..., description="Canonical UUID string (also used as Qdrant point id).")
 
 
-class QueryRewrite(BaseIOSchema):
+class RewriteOutput(BaseIOSchema):
     """Normalized query rewrite and retrieval gate decision."""
 
     rewritten_query: str = Field(..., description="Normalized query used by downstream stages.")
     needs_external_context: bool = Field(..., description="Whether retrieval is required before answering.")
     rationale: str = Field(..., description="Short operational reason (no chain-of-thought).")
+
+
+class RewriteInput(BaseIOSchema):
+    """Structured input for the rewrite stage."""
+
+    user_query: str = Field(..., description="Original user query text.")
+    has_image_query: bool = Field(
+        default=False,
+        description="Whether the request also includes an image query payload.",
+    )
+
+
+class SourceSelectionInput(BaseIOSchema):
+    """Structured input for source-selection at a specific turn."""
+
+    user_query: str = Field(..., description="Original user query text.")
+    rewritten_query: str = Field(..., description="Normalized query emitted by rewrite stage.")
+    turn: int = Field(..., ge=1, description="Current 1-based loop turn.")
+    has_image_query: bool = Field(
+        default=False,
+        description="Whether the request includes an image query payload.",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Recent warning messages accumulated in orchestration.",
+    )
+    last_action: Literal["qdrant_search", "pg_graph"] | None = Field(
+        None,
+        description="Previous retrieval action, if any.",
+    )
+    last_summary: str | None = Field(
+        None,
+        description="Summary of the previous retrieval result, if any.",
+    )
+
+
+class AnswerInput(BaseIOSchema):
+    """Structured input for answer drafting."""
+
+    user_query: str = Field(..., description="Original user query text.")
+    rewritten_query: str = Field(..., description="Normalized query emitted by rewrite stage.")
+
+
+class SufficiencyInput(BaseIOSchema):
+    """Structured input for sufficiency validation."""
+
+    user_query: str = Field(..., description="Original user query text.")
+    draft_answer: str = Field(..., description="Latest draft answer to evaluate.")
 
 
 class SearchIntent(BaseIOSchema):
@@ -108,7 +156,7 @@ class GraphResult(BaseIOSchema):
     meta: dict[str, Any] = Field(default_factory=dict, description="Additional structured metadata for debugging/UI.")
 
 
-class DraftAnswer(BaseIOSchema):
+class AnswerOutput(BaseIOSchema):
     """Intermediate answer candidate generated before sufficiency validation."""
 
     answer: str = Field(..., description="Candidate natural language answer.")
@@ -140,16 +188,12 @@ class DraftAnswer(BaseIOSchema):
     )
 
 
-class SufficiencyReport(BaseIOSchema):
+class SufficiencyOutput(BaseIOSchema):
     """Sufficiency decision: whether retrieved context is enough to answer."""
 
     sufficient: bool = Field(..., description="Whether the current context is sufficient to answer.")
     rationale: str = Field(..., description="Short operational reason (no chain-of-thought).")
     missing: list[str] = Field(default_factory=list, description="Key missing facts/entities needed.")
-    suggested_next_action: Literal["qdrant_search", "pg_graph"] | None = Field(
-        None,
-        description="Optional hint for the orchestrator; source selection remains authoritative.",
-    )
 
 
 class AgentResponse(BaseIOSchema):
@@ -178,7 +222,7 @@ class AgentResponse(BaseIOSchema):
     )
 
 
-class NextStep(BaseIOSchema):
+class SourceSelectionOutput(BaseIOSchema):
     """Source-selector output: one bounded retrieval action plus intent payload."""
 
     action: Literal["qdrant_search", "pg_graph"] = Field(

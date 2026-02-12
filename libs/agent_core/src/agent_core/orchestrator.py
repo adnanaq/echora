@@ -6,18 +6,29 @@ import json
 import logging
 from typing import Any
 
-from atomic_agents import BasicChatInputSchema
+from atomic_agents import AtomicAgent
 
 from agent_core.context import RetrievedContextProvider
+from agent_core.orchestration_inputs import (
+    build_answer_stage_input,
+    build_rewrite_stage_input,
+    build_source_selection_stage_input,
+    build_sufficiency_stage_input,
+)
+from agent_core.orchestration_validation import normalize_step_for_turn
 from agent_core.retrieval import GraphNotAvailableError, PostgresGraphExecutor, QdrantExecutor
 from agent_core.schemas import (
     AgentResponse,
-    DraftAnswer,
+    AnswerInput,
+    AnswerOutput,
     GraphResult,
-    NextStep,
-    QueryRewrite,
+    RewriteInput,
+    SourceSelectionInput,
+    SourceSelectionOutput,
+    RewriteOutput,
     RetrievalResult,
-    SufficiencyReport,
+    SufficiencyInput,
+    SufficiencyOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,10 +39,10 @@ class AgentOrchestrator:
 
     def __init__(
         self,
-        rewrite,
-        source_selector,
-        answer,
-        sufficiency,
+        rewrite: AtomicAgent[RewriteInput, RewriteOutput],
+        source_selector: AtomicAgent[SourceSelectionInput, SourceSelectionOutput],
+        answer: AtomicAgent[AnswerInput, AnswerOutput],
+        sufficiency: AtomicAgent[SufficiencyInput, SufficiencyOutput],
         qdrant: QdrantExecutor,
         graph: PostgresGraphExecutor | None = None,
         *,
@@ -45,10 +56,10 @@ class AgentOrchestrator:
         """Initializes staged dependencies and safety limits.
 
         Args:
-            rewrite: Atomic rewrite agent producing ``QueryRewrite``.
-            source_selector: Atomic source-selector producing ``NextStep``.
-            answer: Atomic answer agent producing ``DraftAnswer``.
-            sufficiency: Atomic sufficiency agent producing ``SufficiencyReport``.
+            rewrite: Atomic rewrite agent producing ``RewriteOutput``.
+            source_selector: Atomic source-selector producing ``SourceSelectionOutput``.
+            answer: Atomic answer agent producing ``AnswerOutput``.
+            sufficiency: Atomic sufficiency agent producing ``SufficiencyOutput``.
             qdrant: Qdrant retrieval executor.
             graph: Optional Postgres graph executor.
             max_turns_default: Default loop turn cap when request does not provide one.
@@ -103,17 +114,15 @@ class AgentOrchestrator:
         )
         last_qdrant_result: RetrievalResult | None = None
         last_summary: str | None = None
-        last_step: NextStep | None = None
-        last_draft: DraftAnswer | None = None
+        last_step: SourceSelectionOutput | None = None
+        last_draft: AnswerOutput | None = None
         any_hits = False
         max_hit_count = 0
         attempted_actions: list[str] = []
         last_search_similarity_score: float | None = None
 
-        rewrite: QueryRewrite = await self._rewrite.run_async(
-            BasicChatInputSchema(
-                chat_message=self._rewrite_prompt(query=query, image_query=image_query)
-            )
+        rewrite: RewriteOutput = await self._rewrite.run_async(
+            build_rewrite_stage_input(query=query, image_query=image_query)
         )
         rewritten_query = (rewrite.rewritten_query or "").strip() or query
         logger.debug(
@@ -135,13 +144,7 @@ class AgentOrchestrator:
         # Fast path: if rewrite says retrieval is not required, draft and validate directly.
         if not rewrite.needs_external_context:
             draft = await self._answer.run_async(
-                BasicChatInputSchema(
-                    chat_message=(
-                        f"User query: {query}\n"
-                        f"Rewritten query: {rewritten_query}\n"
-                        "Draft the best direct answer from available context."
-                    )
-                )
+                build_answer_stage_input(query=query, rewritten_query=rewritten_query)
             )
             last_draft = draft
             logger.debug(
@@ -152,13 +155,10 @@ class AgentOrchestrator:
                 len(draft.source_entities),
                 (draft.answer or "")[:300],
             )
-            report: SufficiencyReport = await self._sufficiency.run_async(
-                BasicChatInputSchema(
-                    chat_message=(
-                        f"User query: {query}\n"
-                        f"Draft answer: {draft.answer}\n"
-                        "Decide if the draft answer is relevant and sufficient."
-                    )
+            report: SufficiencyOutput = await self._sufficiency.run_async(
+                build_sufficiency_stage_input(
+                    query=query,
+                    draft_answer=draft.answer,
                 )
             )
             if report.sufficient:
@@ -176,7 +176,7 @@ class AgentOrchestrator:
             )
 
         for turn in range(1, turns + 1):
-            prompt = self._source_prompt(
+            step_input = build_source_selection_stage_input(
                 query=query,
                 rewritten_query=rewritten_query,
                 image_query=image_query,
@@ -185,7 +185,26 @@ class AgentOrchestrator:
                 last_summary=last_summary,
                 warnings=warnings,
             )
-            step: NextStep = await self._source_selector.run_async(BasicChatInputSchema(chat_message=prompt))
+            step: SourceSelectionOutput = await self._source_selector.run_async(step_input)
+            normalized_step, step_warning = normalize_step_for_turn(
+                step=step,
+                rewritten_query=rewritten_query,
+                request_image_query=image_query,
+            )
+            if step_warning:
+                warnings.append(step_warning)
+                logger.warning(
+                    "agent.search_ai.step_invalid request_id=%s turn=%d action=%r warning=%r",
+                    req,
+                    turn,
+                    step.action,
+                    step_warning,
+                )
+                continue
+
+            if normalized_step is None:
+                continue
+            step = normalized_step
             last_step = step
             logger.debug(
                 "agent.search_ai.step request_id=%s turn=%d action=%s rationale=%r",
@@ -196,25 +215,8 @@ class AgentOrchestrator:
             )
 
             if step.action == "qdrant_search":
-                if step.search_intent is None:
-                    warnings.append("Source selector emitted qdrant_search without search_intent; skipping.")
-                    logger.warning(
-                        "agent.search_ai.step_invalid request_id=%s turn=%d action=qdrant_search missing=search_intent",
-                        req,
-                        turn,
-                    )
-                    continue
+                assert step.search_intent is not None  # validated in normalize_step_for_turn
                 attempted_actions.append("qdrant_search")
-                # If an image was provided at request level, make it available to the executor even if
-                # the selector forgot to copy it into the intent. We avoid overriding id-lookups.
-                if (
-                    image_query
-                    and not step.search_intent.image_query
-                    and not (isinstance(step.search_intent.filters.get("id"), list) and step.search_intent.filters.get("id"))
-                ):
-                    step.search_intent.image_query = image_query
-                if rewritten_query and step.search_intent.query is None and not step.search_intent.filters.get("id"):
-                    step.search_intent.query = rewritten_query
                 logger.debug(
                     "agent.search_ai.qdrant.intent request_id=%s turn=%d entity_type=%s query=%r has_image=%s filters=%s",
                     req,
@@ -309,14 +311,7 @@ class AgentOrchestrator:
                     continue
 
             elif step.action == "pg_graph":
-                if step.graph_intent is None:
-                    warnings.append("Source selector emitted pg_graph without graph_intent; skipping.")
-                    logger.warning(
-                        "agent.search_ai.step_invalid request_id=%s turn=%d action=pg_graph missing=graph_intent",
-                        req,
-                        turn,
-                    )
-                    continue
+                assert step.graph_intent is not None  # validated in normalize_step_for_turn
                 attempted_actions.append("pg_graph")
                 logger.debug(
                     "agent.search_ai.pg_graph.intent request_id=%s turn=%d query_type=%s start=%s end=%s max_hops=%d edge_types=%s limits=%s",
@@ -354,23 +349,11 @@ class AgentOrchestrator:
                     retrieved.add_card(title="Postgres graph", body="Not available.", data={})
 
             else:
-                warnings.append(f"Unknown source action '{step.action}'; skipping.")
-                logger.warning(
-                    "agent.search_ai.step_invalid request_id=%s turn=%d action=%r",
-                    req,
-                    turn,
-                    step.action,
-                )
+                # Unreachable because ``normalize_step_for_turn`` gates action values.
                 continue
 
-            draft: DraftAnswer = await self._answer.run_async(
-                BasicChatInputSchema(
-                    chat_message=(
-                        f"User query: {query}\n"
-                        f"Rewritten query: {rewritten_query}\n"
-                        "Draft an answer using the current Retrieved Context."
-                    )
-                )
+            draft: AnswerOutput = await self._answer.run_async(
+                build_answer_stage_input(query=query, rewritten_query=rewritten_query)
             )
             last_draft = draft
             logger.debug(
@@ -392,13 +375,10 @@ class AgentOrchestrator:
                 },
             )
 
-            suff: SufficiencyReport = await self._sufficiency.run_async(
-                BasicChatInputSchema(
-                    chat_message=(
-                        f"User query: {query}\n"
-                        f"Draft answer: {draft.answer}\n"
-                        "Decide if this draft is relevant and sufficiently supported by Retrieved Context."
-                    )
+            suff: SufficiencyOutput = await self._sufficiency.run_async(
+                build_sufficiency_stage_input(
+                    query=query,
+                    draft_answer=draft.answer,
                 )
             )
             retrieved.add_card(
@@ -479,58 +459,13 @@ class AgentOrchestrator:
     def _get_retrieved_provider(self) -> RetrievedContextProvider:
         """Returns the dynamic retrieved-context provider from source selector state."""
         # Agents are built with the same context provider instance. Pull from one of them.
-        return self._source_selector.get_context_provider("retrieved")
-
-    @staticmethod
-    def _rewrite_prompt(
-        *,
-        query: str,
-        image_query: str | None,
-    ) -> str:
-        """Builds the rewrite stage input prompt."""
-        parts = [f"User query: {query}"]
-        if image_query:
-            parts.append("Image query provided (base64/data-url omitted).")
-        parts.append("Rewrite this query and decide whether external retrieval is required.")
-        return "\n\n".join(parts)
-
-    @staticmethod
-    def _source_prompt(
-        *,
-        query: str,
-        rewritten_query: str,
-        image_query: str | None,
-        turn: int,
-        last_step: NextStep | None,
-        last_summary: str | None,
-        warnings: list[str],
-    ) -> str:
-        """Builds the source-selector input prompt for the current turn.
-
-        Args:
-            query: User text query.
-            rewritten_query: Normalized query produced by rewrite stage.
-            image_query: Optional image query.
-            turn: Current loop turn number.
-            last_step: Previous source step, if any.
-            last_summary: Previous retrieval summary, if any.
-            warnings: Accumulated warning messages.
-
-        Returns:
-            Prompt text for the next source-selector invocation.
-        """
-        parts = [f"User query: {query}", f"Rewritten query: {rewritten_query}", f"Turn: {turn}"]
-        if image_query:
-            # Avoid dumping base64 into the prompt.
-            parts.append("User provided an image (base64/data-url omitted).")
-        if warnings:
-            parts.append("Warnings so far:\n- " + "\n- ".join(warnings[-5:]))
-        if last_step is not None:
-            parts.append(f"Last action: {last_step.action}")
-        if last_summary:
-            parts.append("Last retrieval summary:\n" + last_summary)
-        parts.append("Decide the next retrieval action now (qdrant_search or pg_graph).")
-        return "\n\n".join(parts)
+        provider = self._source_selector.get_context_provider("retrieved")
+        if not isinstance(provider, RetrievedContextProvider):
+            raise TypeError(
+                "Expected RetrievedContextProvider for key 'retrieved', "
+                f"got: {type(provider)!r}"
+            )
+        return provider
 
     @staticmethod
     def _search_mode(*, text_query: str | None, image_query: str | None) -> str:
@@ -584,7 +519,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _finalize_from_draft(
-        draft: DraftAnswer,
+        draft: AnswerOutput,
         warnings: list[str],
         search_similarity_score: float | None = None,
     ) -> AgentResponse:
