@@ -414,3 +414,18 @@ class TestAgentSettings:
             assert settings.agent.service_port == 51111
             assert settings.agent.llm_enabled is False
             assert settings.agent.openai_model == "local-model"
+
+    def test_agent_default_max_turns_must_be_positive(self):
+        """AGENT_DEFAULT_MAX_TURNS <= 0 should fail settings validation."""
+        from pydantic import ValidationError
+
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "AGENT_DEFAULT_MAX_TURNS": "0",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValidationError):
+                Settings()
