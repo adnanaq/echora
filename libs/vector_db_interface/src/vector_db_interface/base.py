@@ -92,7 +92,23 @@ class VectorDBClient(ABC):
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> Any:
-        """Batch update vectors for existing points."""
+        """Batch update vectors for existing points.
+
+        Args:
+            updates: List of vector update items (implementation-specific type).
+            dedup_policy: Deduplication policy ("last-wins" or "fail").
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
+
+        Returns:
+            Operation result (implementation-specific type).
+
+        Note:
+            Implementations SHOULD override with stricter types for type safety
+            (e.g., list[BatchVectorUpdateItem] -> BatchOperationResult).
+            Type checkers may warn about LSP violations - these are safe to ignore
+            as runtime behavior accepts the stricter contract.
+        """
         pass
 
     @abstractmethod
@@ -104,7 +120,24 @@ class VectorDBClient(ABC):
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> Any:
-        """Batch update payload for existing points."""
+        """Batch update payload for existing points.
+
+        Args:
+            updates: List of payload update items (implementation-specific type).
+            mode: Update mode ("merge" or "overwrite").
+            dedup_policy: Deduplication policy ("last-wins" or "fail").
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
+
+        Returns:
+            Operation result (implementation-specific type).
+
+        Note:
+            Implementations SHOULD override with stricter types for type safety
+            (e.g., list[BatchPayloadUpdateItem] -> BatchOperationResult).
+            Type checkers may warn about LSP violations - these are safe to ignore
+            as runtime behavior accepts the stricter contract.
+        """
         pass
 
     # ==================== Health & Statistics ====================

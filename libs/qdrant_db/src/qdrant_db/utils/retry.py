@@ -17,8 +17,9 @@ try:
         ResponseHandlingException,
     )
 except Exception:  # pragma: no cover - import guard for optional runtime shapes
-    ApiException = tuple()  # type: ignore[assignment]
-    ResponseHandlingException = tuple()  # type: ignore[assignment]
+    # Fallback to empty tuple for isinstance checks when qdrant_client unavailable
+    ApiException = type("ApiException", (), {})  # type: ignore[misc,assignment]
+    ResponseHandlingException = type("ResponseHandlingException", (), {})  # type: ignore[misc,assignment]
 
 
 def _extract_status_code(error: Exception) -> int | None:

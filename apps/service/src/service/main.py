@@ -27,6 +27,7 @@ from vector_db_interface import VectorDBClient
 from vector_processing import (
     AnimeFieldMapper,
     MultiVectorEmbeddingManager,
+    RerankerProcessor,
     TextProcessor,
     VisionProcessor,
 )
@@ -105,12 +106,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Embedding models loaded successfully")
 
+        # Initialize reranker if enabled
+        reranker_processor = None
+        if settings.embedding.reranking_enabled:
+            try:
+                logger.info("Initializing reranker...")
+                reranker_model = EmbeddingModelFactory.create_reranker_model(
+                    settings.embedding
+                )
+                reranker_processor = RerankerProcessor(reranker_model, settings.embedding)
+                logger.info("Reranker initialized: %s", settings.embedding.reranking_model)
+            except Exception:
+                logger.exception("Failed to initialize reranker")
+                logger.warning("Continuing without reranking support")
+                # Reranking is optional, continue without it
+
         # Initialize QdrantClient
         qdrant_client_instance = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
             url=settings.qdrant.qdrant_url,
             collection_name=settings.qdrant.qdrant_collection_name,
+            reranker=reranker_processor,
         )
 
         # Store all clients and processors on app state
@@ -120,6 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.text_processor = text_processor
         app.state.vision_processor = vision_processor
         app.state.field_mapper = field_mapper
+        app.state.reranker_processor = reranker_processor
 
         # Health check
         healthy = await app.state.vector_db_client.health_check()

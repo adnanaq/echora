@@ -6,9 +6,12 @@ All write and search entry points use explicit contract models and domain errors
 """
 
 import logging
-from typing import Any, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 from common.config import QdrantConfig
+
+if TYPE_CHECKING:
+    from vector_processing.processors import RerankerProcessor
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     BinaryQuantization,
@@ -21,9 +24,9 @@ from qdrant_client.models import (
     HnswConfigDiff,
     MatchAny,
     MatchValue,
+    Modifier,
     MultiVectorComparator,
     MultiVectorConfig,
-    Modifier,
     OptimizersConfigDiff,
     OverwritePayloadOperation,
     PayloadSchemaType,
@@ -115,6 +118,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        reranker: "RerankerProcessor | None" = None,
     ):
         """Initialize a strict-contract Qdrant client instance.
 
@@ -123,6 +127,7 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
+            reranker: Optional reranker processor for cross-encoder reranking.
         """
         self.config = config
         self.url = url or config.qdrant_url
@@ -137,6 +142,12 @@ class QdrantClient(VectorDBClient):
 
         self._vector_size = config.vector_names[self._text_vector_name]
         self._image_vector_size = config.vector_names[self._image_vector_name]
+        
+        self.reranker = reranker
+        if reranker:
+            logger.info("Reranking enabled: %s", reranker.model.model_name)
+        else:
+            logger.info("Reranking disabled")
 
     @property
     def collection_name(self) -> str:
@@ -185,6 +196,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        reranker: "RerankerProcessor | None" = None,
     ) -> "QdrantClient":
         """Create a client and ensure collection state is initialized.
 
@@ -193,11 +205,12 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
+            reranker: Optional reranker processor for cross-encoder reranking.
 
         Returns:
             Initialized :class:`QdrantClient`.
         """
-        client = cls(config, async_qdrant_client, url, collection_name)
+        client = cls(config, async_qdrant_client, url, collection_name, reranker)
         await client._initialize_collection()
         return client
 
@@ -397,9 +410,7 @@ class QdrantClient(VectorDBClient):
             Mapping of sparse vector name to :class:`SparseVectorParams` when
             sparse vectors are enabled, otherwise ``None``.
         """
-        modifier = (
-            Modifier.IDF if self.config.sparse_vector_modifier == "idf" else None
-        )
+        modifier = Modifier.IDF if self.config.sparse_vector_modifier == "idf" else None
         sparse_vectors_config: dict[str, SparseVectorParams] = {}
         for vector_name in self.config.sparse_vector_names:
             params_kwargs: dict[str, Any] = {
@@ -454,7 +465,10 @@ class QdrantClient(VectorDBClient):
                     )
                 )
             if quantization_type == "product":
-                from qdrant_client.models import CompressionRatio, ProductQuantizationConfig
+                from qdrant_client.models import (
+                    CompressionRatio,
+                    ProductQuantizationConfig,
+                )
 
                 return ProductQuantization(
                     product=ProductQuantizationConfig(compression=CompressionRatio.X16)
@@ -499,7 +513,9 @@ class QdrantClient(VectorDBClient):
             await self.client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name=field_name,
-                field_schema=type_mapping.get(field_type.lower(), PayloadSchemaType.KEYWORD),
+                field_schema=type_mapping.get(
+                    field_type.lower(), PayloadSchemaType.KEYWORD
+                ),
             )
 
     async def health_check(self) -> bool:
@@ -633,7 +649,9 @@ class QdrantClient(VectorDBClient):
             failed=0,
         )
 
-    def _to_sparse_vector_data(self, vector_data: Any, vector_name: str) -> SparseVectorData:
+    def _to_sparse_vector_data(
+        self, vector_data: Any, vector_name: str
+    ) -> SparseVectorData:
         """Validate and coerce sparse vector payload.
 
         Args:
@@ -947,7 +965,7 @@ class QdrantClient(VectorDBClient):
                     )
                 )
 
-        return Filter(must=conditions) if conditions else None
+        return Filter(must=cast(Any, conditions)) if conditions else None
 
     async def get_by_id(
         self,
@@ -1133,13 +1151,13 @@ class QdrantClient(VectorDBClient):
         )
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
-        """Execute strict-contract search request.
+        """Execute strict-contract search request with optional reranking.
 
         Args:
             request: Typed search request model.
 
         Returns:
-            List of normalized search hits.
+            List of normalized search hits, optionally reranked.
 
         Raises:
             ValidationError: If request implies invalid fusion combination.
@@ -1155,78 +1173,179 @@ class QdrantClient(VectorDBClient):
             )
         qdrant_filter = self._build_filter(filter_conditions)
 
+        # Execute vector search based on request type
+        hits: list[SearchHit]
+        
         if (
             request.text_embedding is not None
             and request.image_embedding is None
             and request.sparse_embedding is None
         ):
-            return await self._search_single_vector(
+            hits = await self._search_single_vector(
                 vector_name=self._text_vector_name,
                 vector_data=request.text_embedding,
                 limit=request.limit,
                 filters=qdrant_filter,
             )
 
-        if (
+        elif (
             request.image_embedding is not None
             and request.text_embedding is None
             and request.sparse_embedding is None
         ):
-            return await self._search_single_vector(
+            hits = await self._search_single_vector(
                 vector_name=self._image_vector_name,
                 vector_data=request.image_embedding,
                 limit=request.limit,
                 filters=qdrant_filter,
             )
 
-        if (
+        elif (
             request.sparse_embedding is not None
             and request.text_embedding is None
             and request.image_embedding is None
         ):
-            return await self._search_single_vector(
+            hits = await self._search_single_vector(
                 vector_name=self._primary_sparse_vector_name,
                 vector_data=self._build_sparse_query(request.sparse_embedding),
                 limit=request.limit,
                 filters=qdrant_filter,
             )
 
-        prefetch_queries: list[Prefetch] = []
-        if request.text_embedding is not None:
-            prefetch_queries.append(
-                Prefetch(
-                    using=self._text_vector_name,
-                    query=request.text_embedding,
-                    limit=request.limit * 2,
-                    filter=qdrant_filter,
+        else:
+            # Fusion search (multiple embeddings)
+            prefetch_queries: list[Prefetch] = []
+            if request.text_embedding is not None:
+                prefetch_queries.append(
+                    Prefetch(
+                        using=self._text_vector_name,
+                        query=request.text_embedding,
+                        limit=request.limit * 2,
+                        filter=qdrant_filter,
+                    )
                 )
-            )
-        if request.image_embedding is not None:
-            prefetch_queries.append(
-                Prefetch(
-                    using=self._image_vector_name,
-                    query=request.image_embedding,
-                    limit=request.limit * 2,
-                    filter=qdrant_filter,
+            if request.image_embedding is not None:
+                prefetch_queries.append(
+                    Prefetch(
+                        using=self._image_vector_name,
+                        query=request.image_embedding,
+                        limit=request.limit * 2,
+                        filter=qdrant_filter,
+                    )
                 )
-            )
-        if request.sparse_embedding is not None:
-            prefetch_queries.append(
-                Prefetch(
-                    using=self._primary_sparse_vector_name,
-                    query=self._build_sparse_query(request.sparse_embedding),
-                    limit=request.limit * 2,
-                    filter=qdrant_filter,
+            if request.sparse_embedding is not None:
+                prefetch_queries.append(
+                    Prefetch(
+                        using=self._primary_sparse_vector_name,
+                        query=self._build_sparse_query(request.sparse_embedding),
+                        limit=request.limit * 2,
+                        filter=qdrant_filter,
+                    )
                 )
+
+            if len(prefetch_queries) < 2:
+                raise ValidationError(
+                    "Fusion search requires at least two embeddings from text/image/sparse"
+                )
+
+            hits = await self._search_fusion(
+                prefetch_queries=prefetch_queries,
+                limit=request.limit,
+                fusion_method=request.fusion_method,
             )
 
-        if len(prefetch_queries) < 2:
-            raise ValidationError(
-                "Fusion search requires at least two embeddings from text/image/sparse"
-            )
+        # Apply reranking if enabled and query text is available
+        should_rerank = self._should_apply_reranking(request)
 
-        return await self._search_fusion(
-            prefetch_queries=prefetch_queries,
-            limit=request.limit,
-            fusion_method=request.fusion_method,
-        )
+        if should_rerank and hits and request.query_text:
+            hits = await self._rerank_results(request.query_text, hits)
+            logger.debug("Applied reranking to %d results", len(hits))
+
+        return hits
+
+    def _should_apply_reranking(self, request: SearchRequest) -> bool:
+        """Determine if reranking should be applied for this request.
+
+        Args:
+            request: Search request with optional apply_reranking override.
+
+        Returns:
+            True if reranking should be applied.
+        """
+        # No reranker available
+        if not self.reranker:
+            return False
+
+        # Explicit per-request override
+        if request.apply_reranking is not None:
+            return request.apply_reranking
+
+        # Use config default (reranker exists, so it's enabled in config)
+        return True
+
+    def _extract_searchable_text(self, payload: dict[str, Any]) -> str:
+        """Extract searchable text from payload for reranking.
+
+        Combines multiple text fields to create comprehensive content
+        for cross-encoder scoring.
+
+        Args:
+            payload: Document payload from search hit.
+
+        Returns:
+            Combined text content for reranking.
+        """
+        parts = []
+
+        # Title (highest priority)
+        if title := payload.get("title"):
+            parts.append(str(title))
+
+        # Synopsis/description
+        if synopsis := payload.get("synopsis"):
+            parts.append(str(synopsis))
+
+        # Genres (keyword relevance)
+        if genres := payload.get("genres"):
+            if isinstance(genres, list):
+                parts.append(" ".join(str(g) for g in genres))
+
+        # Tags
+        if tags := payload.get("tags"):
+            if isinstance(tags, list):
+                parts.append(" ".join(str(t) for t in tags))
+
+        return " ".join(parts)
+
+    async def _rerank_results(
+        self,
+        query: str,
+        hits: list[SearchHit],
+    ) -> list[SearchHit]:
+        """Rerank search results using cross-encoder.
+
+        Args:
+            query: Original search query text.
+            hits: Initial search results from vector search.
+
+        Returns:
+            Reranked search results with reranking_score populated.
+        """
+        if not self.reranker or not hits:
+            return hits
+
+        # Extract text content for each hit
+        documents = [
+            (hit, self._extract_searchable_text(hit.payload))
+            for hit in hits
+        ]
+
+        # Rerank using cross-encoder
+        reranked = await self.reranker.rerank(query, documents)
+
+        # Update hits with reranking scores and new order
+        for hit, rerank_score in reranked:
+            hit.reranking_score = rerank_score
+
+        # Return reranked hits (already sorted by rerank score)
+        return [hit for hit, _ in reranked]

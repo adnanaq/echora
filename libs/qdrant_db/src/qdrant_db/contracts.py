@@ -89,7 +89,58 @@ class SearchFilterCondition(BaseModel):
 
 
 class SparseVectorData(BaseModel):
-    """Sparse vector represented by index/value pairs."""
+    """Sparse vector represented by index/value pairs for keyword-based search.
+
+    Sparse vectors are used for keyword/term-based search in Qdrant, typically
+    generated from tokenizers or BM25 algorithms. Unlike dense vectors, sparse
+    vectors only store non-zero dimensions using index/value pairs, making them
+    memory-efficient for high-dimensional vocabulary spaces.
+
+    This model enforces strict validation to ensure compatibility with Qdrant's
+    sparse vector requirements, catching errors that the qdrant-client library
+    does not validate.
+
+    Attributes:
+        indices: List of dimension indices where values are non-zero. Must be
+            unique, non-negative, and within u32 bounds (0 to 4,294,967,295).
+            Order is not enforced - Qdrant sorts internally.
+        values: List of float values corresponding to each index. Must have
+            same length as indices.
+
+    Raises:
+        ValueError: If validation constraints are violated (see validate_sparse_shape).
+
+    Examples:
+        Create a sparse vector for keyword search:
+            >>> sparse = SparseVectorData(
+            ...     indices=[42, 108, 555],
+            ...     values=[0.8, 0.5, 0.3]
+            ... )
+
+        Use in search request:
+            >>> from qdrant_db.contracts import SearchRequest
+            >>> request = SearchRequest(
+            ...     sparse_embedding=SparseVectorData(
+            ...         indices=[10, 20, 30],
+            ...         values=[0.9, 0.6, 0.4]
+            ...     ),
+            ...     limit=10
+            ... )
+
+        Convert from dict format:
+            >>> data = {"indices": [1, 5, 10], "values": [0.5, 0.3, 0.2]}
+            >>> sparse = SparseVectorData(**data)
+
+    Note:
+        The qdrant-client library accepts invalid sparse vectors (duplicates,
+        negative indices, values exceeding u32) without validation. This model
+        prevents such data from reaching the Qdrant server and causing runtime
+        errors.
+
+    See Also:
+        - SearchRequest: For using sparse vectors in search queries
+        - BatchVectorUpdateItem: For batch vector updates including sparse vectors
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -98,18 +149,49 @@ class SparseVectorData(BaseModel):
 
     @model_validator(mode="after")
     def validate_sparse_shape(self) -> "SparseVectorData":
-        """Validate sparse vector indices/values alignment.
+        """Validate sparse vector indices/values alignment and constraints.
+
+        This validator ensures that sparse vector data conforms to Qdrant's
+        requirements:
+        - Indices and values arrays must have matching lengths
+        - All indices must be non-negative (>= 0)
+        - All indices must be unique (no duplicates)
+        - All indices must fit within u32 bounds (0 to 4,294,967,295)
+
+        Note:
+            Indices do not need to be sorted - Qdrant handles sorting internally.
+            The qdrant-client library does not validate these constraints, so
+            validation here prevents runtime errors when data reaches the server.
 
         Returns:
-            The validated sparse vector.
+            SparseVectorData: The validated sparse vector instance.
 
         Raises:
-            ValueError: If sparse vector indices are invalid or not aligned.
+            ValueError: If indices and values lengths don't match.
+            ValueError: If any index is negative.
+            ValueError: If indices contain duplicates.
+            ValueError: If any index exceeds the u32 maximum (4,294,967,295).
+
+        Examples:
+            Valid sparse vector:
+                >>> SparseVectorData(indices=[1, 5, 10], values=[0.5, 0.3, 0.2])
+
+            Invalid - duplicate indices:
+                >>> SparseVectorData(indices=[1, 1, 2], values=[0.5, 0.3, 0.2])
+                ValueError: indices must be unique (no duplicates)
+
+            Invalid - exceeds u32 max:
+                >>> SparseVectorData(indices=[4294967296], values=[0.5])
+                ValueError: indices must not exceed u32 maximum (4,294,967,295)
         """
         if len(self.indices) != len(self.values):
             raise ValueError("indices and values must have the same length")
         if any(index < 0 for index in self.indices):
             raise ValueError("indices must be non-negative")
+        if len(self.indices) != len(set(self.indices)):
+            raise ValueError("indices must be unique (no duplicates)")
+        if any(index > 4294967295 for index in self.indices):
+            raise ValueError("indices must not exceed u32 maximum (4,294,967,295)")
         return self
 
 
@@ -125,6 +207,19 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=1000)
     filters: list[SearchFilterCondition] = Field(default_factory=list)
     fusion_method: FusionMethod = "rrf"
+    
+    # Reranking support
+    query_text: str | None = Field(
+        default=None,
+        description="Original query text (required for reranking)",
+    )
+    apply_reranking: bool | None = Field(
+        default=None,
+        description=(
+            "Override reranking behavior for this request. "
+            "None = use config default, True = force enable, False = force disable"
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_embeddings(self) -> "SearchRequest":
@@ -161,7 +256,8 @@ class SearchHit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    score: float
+    score: float  # Vector similarity score
+    reranking_score: float | None = None  # Cross-encoder relevance score (if reranking applied)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

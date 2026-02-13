@@ -87,6 +87,10 @@ omit = [
 ]
 
 [tool.coverage.report]
+omit = [
+    "*_remote_module_non_scriptable",
+    "*_remote_module_non_scriptable.py",
+]
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
@@ -170,4 +174,3 @@ indent-style = "space"
 
 # Respect magic trailing commas (Black default)
 skip-magic-trailing-comma = false
-

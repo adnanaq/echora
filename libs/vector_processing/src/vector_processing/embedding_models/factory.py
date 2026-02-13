@@ -1,6 +1,7 @@
 import logging
 
 from common.config import EmbeddingConfig
+from vector_processing.reranking import RerankerModel, SentenceTransformerReranker
 
 from .text.base import TextEmbeddingModel
 from .text.fastembed_model import FastEmbedModel
@@ -61,3 +62,27 @@ class EmbeddingModelFactory:
             return OpenClipModel(model_name, cache_dir=cache_dir, batch_size=batch_size)
         else:
             raise ValueError(f"Unsupported vision embedding provider: {provider}")
+
+    @staticmethod
+    def create_reranker_model(config: EmbeddingConfig) -> RerankerModel:
+        """Create reranker model from configuration.
+
+        Args:
+            config: Embedding configuration.
+
+        Returns:
+            Initialized reranker model.
+
+        Raises:
+            ValueError: If reranking provider is unsupported.
+        """
+        provider = config.reranking_provider.lower()
+
+        if provider == "sentence-transformers":
+            return SentenceTransformerReranker(
+                model_name=config.reranking_model,
+                cache_dir=config.model_cache_dir,
+                max_length=512,  # Standard for most rerankers
+            )
+
+        raise ValueError(f"Unsupported reranking provider: {provider}")
