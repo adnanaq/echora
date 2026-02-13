@@ -53,8 +53,8 @@ class VectorDBClient(ABC):
         self,
         documents: list[VectorDocument],
         batch_size: int = 100,
-    ) -> dict[str, Any]:
-        """Add documents to the collection in batches."""
+    ) -> Any:
+        """Upsert documents to the collection in batches."""
         pass
 
     @abstractmethod
@@ -64,6 +64,34 @@ class VectorDBClient(ABC):
         with_vectors: bool = False,
     ) -> dict[str, Any] | None:
         """Retrieve a document by its ID."""
+        pass
+
+    @abstractmethod
+    async def search(self, request: Any) -> list[Any]:
+        """Run vector search with a strict request contract."""
+        pass
+
+    @abstractmethod
+    async def update_vectors(
+        self,
+        updates: list[Any],
+        dedup_policy: str = "last-wins",
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> Any:
+        """Batch update vectors for existing points."""
+        pass
+
+    @abstractmethod
+    async def update_payload(
+        self,
+        updates: list[Any],
+        mode: str = "merge",
+        dedup_policy: str = "last-wins",
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> Any:
+        """Batch update payload for existing points."""
         pass
 
     # ==================== Health & Statistics ====================

@@ -28,6 +28,14 @@ class QdrantConfig(BaseModel):
         },
         description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
     )
+    primary_text_vector_name: str = Field(
+        default="text_vector",
+        description="Explicit primary text vector name used for text search routing",
+    )
+    primary_image_vector_name: str = Field(
+        default="image_vector",
+        description="Explicit primary image vector name used for image search routing",
+    )
     multivector_vectors: list[str] = Field(
         default=["image_vector"],
         description="Vector names that use multivector storage (list of vectors per point)",
@@ -192,3 +200,16 @@ class QdrantConfig(BaseModel):
                 f"Valid vectors: {list(vector_names.keys())}"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_primary_vector_names(self) -> "QdrantConfig":
+        """Validate explicit primary vector names against vector_names."""
+        if self.primary_text_vector_name not in self.vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_text_vector_name must be a key in vector_names"
+            )
+        if self.primary_image_vector_name not in self.vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_image_vector_name must be a key in vector_names"
+            )
+        return self
