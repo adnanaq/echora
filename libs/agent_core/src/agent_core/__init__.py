@@ -2,7 +2,6 @@
 
 from agent_core.orchestrator import AgentOrchestrator
 from agent_core.schemas import (
-    AgentResponse,
     AnswerInput,
     AnswerOutput,
     EntityRef,
@@ -22,7 +21,6 @@ from agent_core.schemas import (
 
 __all__ = [
     "AgentOrchestrator",
-    "AgentResponse",
     "AnswerInput",
     "AnswerOutput",
     "EntityRef",

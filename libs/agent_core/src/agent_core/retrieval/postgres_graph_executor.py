@@ -22,8 +22,10 @@ class PostgresGraphExecutor:
     a warning and continues with available retrieval lanes.
 
     # TODO(postgres): Implement real graph primitives (neighbors/k_hop/path/compare)
-    using bounded, parameterized SQL (recursive CTE) with hard caps on depth,
-    fanout, and total results. Do not accept raw SQL from the LLM.
+    using bounded, parameterized SQL (recursive CTE). Enforce hard caps on depth,
+    fanout, and total results in the executor constructor (e.g., max_hops=3,
+    max_results=50, max_fanout_per_hop=50). GraphIntent no longer specifies
+    limits - they are enforced here for safety.
 
     # TODO(postgres): Add DB connectivity (async pool) via app settings, and
     unit/integration tests for traversal correctness + safety limits.
