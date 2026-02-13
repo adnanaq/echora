@@ -36,9 +36,14 @@ def build_answer_agent(
             "Populate source_entities with all supporting entities and result_entities with primary display results.",
         ],
         output_instructions=[
-            "Return AnswerOutput only.",
-            "Always set llm_confidence in the range [0.0, 1.0] based on support in retrieved context.",
-            "If context is thin, still draft best-effort answer and add warning(s).",
+            "Return AnswerOutput matching schema exactly.",
+            "answer: natural language response to the user (concise but complete).",
+            "evidence.num_sources: count of distinct entities/sources used (from Retrieved Context).",
+            "evidence.search_similarity_score: use top_score from Retrieved Context if available.",
+            "evidence.termination_reason: LEAVE EMPTY (orchestrator controls loop termination).",
+            "source_entities: all EntityRef used for context (supporting evidence).",
+            "result_entities: primary EntityRef to return as final results (main answer entities).",
+            "If context is thin, draft best-effort answer and add warning.",
         ],
         context_providers={"retrieved": retrieved_context},
     )
