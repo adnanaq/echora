@@ -177,8 +177,12 @@ async def main() -> None:
                 points,
                 batch_size=64,  # Use a reasonable batch size for efficiency
             )
-            if result["success"]:
-                print(f"\nSuccessfully indexed {len(points)} documents.")
+            if result.successful > 0:
+                print(
+                    f"\nSuccessfully indexed {result.successful}/{result.total} documents."
+                )
+                if result.failed > 0:
+                    print(f"   Failed documents: {result.failed}")
 
                 # Save updated anime data with generated IDs using atomic write
                 print(
