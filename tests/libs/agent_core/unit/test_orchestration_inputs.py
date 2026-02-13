@@ -2,22 +2,9 @@
 
 from agent_core.orchestration_inputs import (
     build_answer_stage_input,
-    build_rewrite_stage_input,
-    build_source_selection_stage_input,
-    build_sufficiency_stage_input,
+    build_source_selection_stage_input
 )
-from agent_core.schemas import EntityRef, EntityType, GraphIntent, SourceSelectionOutput
-
-
-def test_build_rewrite_stage_input() -> None:
-    """Build rewrite input with image presence metadata."""
-    stage_input = build_rewrite_stage_input(
-        query="What is ID: INVADED about?",
-        image_query="data:image/png;base64,abcd",
-    )
-
-    assert stage_input.user_query == "What is ID: INVADED about?"
-    assert stage_input.has_image_query is True
+from agent_core.schemas import EntityRef, EntityType, GraphIntent, SourceSelectionOutput, SufficiencyInput
 
 
 def test_build_source_selection_stage_input_trims_warning_tail() -> None:
@@ -59,8 +46,8 @@ def test_build_answer_and_sufficiency_inputs() -> None:
         query="Tell me about Cowboy Bebop",
         rewritten_query="cowboy bebop synopsis",
     )
-    sufficiency_input = build_sufficiency_stage_input(
-        query="Tell me about Cowboy Bebop",
+    sufficiency_input = SufficiencyInput(
+        user_query="Tell me about Cowboy Bebop",
         draft_answer="Cowboy Bebop is a space western anime.",
     )
 
