@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import grpc
 
-from agent_core.schemas import AgentResponse
+from agent_core.schemas import AnswerOutput
 from agent.v1 import agent_search_pb2, agent_search_pb2_grpc
 
 from ..main import AgentService
@@ -119,7 +119,6 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
                     {
                         "termination_reason": "no_llm_semantic_search",
                         "search_similarity_score": 0.0,
-                        "llm_confidence": 0.0,
                         "last_summary": evidence["summary"],
                     }
                 ),
@@ -127,7 +126,7 @@ class AgentSearchService(agent_search_pb2_grpc.AgentSearchServiceServicer):
             )
 
         orch = self._rt.build_orchestrator()
-        resp: AgentResponse = await orch.run_search_ai(
+        resp: AnswerOutput = await orch.run_search_ai(
             query=text_query,
             image_query=image_query or None,
             max_turns=max_turns,

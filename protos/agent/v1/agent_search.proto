@@ -35,12 +35,10 @@ message SearchAIRequest {
 message SearchAIEvidence {
   // Top score returned by vector search for the accepted retrieval step.
   double search_similarity_score = 1;
-  // LLM self-reported confidence for the generated draft.
-  double llm_confidence = 2;
   // Termination reason from orchestrator (for example: sufficient/no_match_after_max_turns).
-  string termination_reason = 3;
+  string termination_reason = 2;
   // Last retrieval summary captured by orchestrator.
-  string last_summary = 4;
+  string last_summary = 3;
 }
 
 message SearchAIResponse {

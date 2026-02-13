@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from agent.v1 import agent_search_pb2
-from agent_core.schemas import EntityType
+from agent_core.schemas import EntityType, SearchAIEvidence
 
 
 def entity_type_to_proto(entity_type: EntityType) -> int:
@@ -29,15 +29,21 @@ def entity_type_to_proto(entity_type: EntityType) -> int:
     return agent_search_pb2.ENTITY_TYPE_UNSPECIFIED
 
 
-def evidence_to_proto(evidence: dict[str, Any]) -> agent_search_pb2.SearchAIEvidence:
-    """Map flexible internal evidence dict to typed ``SearchAIEvidence`` proto.
+def evidence_to_proto(
+    evidence: Mapping[str, Any] | SearchAIEvidence,
+) -> agent_search_pb2.SearchAIEvidence:
+    """Map internal evidence payload to typed ``SearchAIEvidence`` proto.
 
     Args:
-        evidence: Internal evidence dictionary from agent-core.
+        evidence: Internal evidence payload from agent-core.
 
     Returns:
         Typed protobuf evidence message with stable, flat fields.
     """
+    if isinstance(evidence, SearchAIEvidence):
+        evidence_data: Mapping[str, Any] = evidence.model_dump()
+    else:
+        evidence_data = evidence
 
     def to_float(value: Any, default: float = 0.0) -> float:
         try:
@@ -46,8 +52,7 @@ def evidence_to_proto(evidence: dict[str, Any]) -> agent_search_pb2.SearchAIEvid
             return default
 
     return agent_search_pb2.SearchAIEvidence(
-        search_similarity_score=to_float(evidence.get("search_similarity_score"), 0.0),
-        llm_confidence=to_float(evidence.get("llm_confidence"), 0.0),
-        termination_reason=str(evidence.get("termination_reason") or ""),
-        last_summary=str(evidence.get("last_summary") or ""),
+        search_similarity_score=to_float(evidence_data.get("search_similarity_score"), 0.0),
+        termination_reason=str(evidence_data.get("termination_reason") or ""),
+        last_summary=str(evidence_data.get("last_summary") or ""),
     )
