@@ -1417,17 +1417,14 @@ class QdrantClient(VectorDBClient):
                 with_vectors=False,
                 query_filter=filters,
             )
-            # Convert response to our format with raw similarity scores
+            # Convert response to a Qdrant-like shape.
             results = []
             for point in response:
                 payload = point.payload if point.payload else {}
                 result = {
                     "id": str(point.id),
-                    "anime_id": str(point.id),
-                    "_id": str(point.id),
-                    **payload,
-                    # Vector similarity score from Qdrant search
-                    "similarity_score": point.score,
+                    "score": point.score,
+                    "payload": payload,
                 }
                 results.append(result)
 
@@ -1456,7 +1453,7 @@ class QdrantClient(VectorDBClient):
         Args:
             text_embedding: Optional text query embedding (1024-dim BGE-M3)
             image_embedding: Optional image query embedding (768-dim OpenCLIP)
-            entity_type: Optional filter by type ("anime", "character", "episode")
+                entity_type: Optional filter by entity_type ("anime", "character", "episode")
             limit: Maximum number of results to return
             filters: Additional payload filters
 
@@ -1469,7 +1466,7 @@ class QdrantClient(VectorDBClient):
         # Build filter conditions
         filter_conditions = filters.copy() if filters else {}
         if entity_type:
-            filter_conditions["type"] = entity_type
+            filter_conditions["entity_type"] = entity_type
 
         qdrant_filter = (
             self._build_filter(filter_conditions) if filter_conditions else None
@@ -1592,17 +1589,14 @@ class QdrantClient(VectorDBClient):
                 with_payload=True,
                 with_vectors=False,
             )
-            # Convert response to our format
+            # Convert response to a Qdrant-like shape.
             results = []
             for point in response.points:
                 payload = point.payload if point.payload else {}
                 result = {
                     "id": str(point.id),
-                    "anime_id": str(point.id),
-                    "_id": str(point.id),
-                    **payload,
-                    # Vector similarity score from Qdrant search
-                    "similarity_score": point.score,
+                    "score": point.score,
+                    "payload": payload,
                 }
                 results.append(result)
 

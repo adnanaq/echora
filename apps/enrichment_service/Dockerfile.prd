@@ -1,0 +1,22 @@
+# Production Dockerfile for enrichment_service
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY apps.enrichment_service/enrichment_service.pex /app/enrichment_service.pex
+
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --no-create-home appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=production
+
+EXPOSE 8010
+
+ENTRYPOINT ["/app/enrichment_service.pex"]

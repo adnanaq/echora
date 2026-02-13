@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package enrichment_service.v1;
+
+service EnrichmentService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+}
+
+message ErrorDetails {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+  string details_json = 4;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string service = 2;
+  string details_json = 3;
+  ErrorDetails error = 4;
+}
+
+message RunPipelineRequest {
+  string file_path = 1;
+  optional int32 index = 2;
+  string title = 3;
+  string agent_dir = 4;
+  repeated string skip_services = 5;
+  repeated string only_services = 6;
+}
+
+message RunPipelineResponse {
+  bool success = 1;
+  string output_path = 2;
+  string result_json = 3;
+  ErrorDetails error = 4;
+}

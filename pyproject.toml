@@ -37,6 +37,9 @@ dependencies = [
     "crawl4ai>=0.7.8",
     # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
     "defusedxml>=0.7.1",
+    "grpcio==1.78.0",
+    "grpcio-health-checking>=1.78.0",
+    "grpcio-tools==1.78.0",
 ]
 
 [project.optional-dependencies]
@@ -119,7 +122,7 @@ extra-paths = [
     "libs/qdrant_db/src",
     "libs/vector_db_interface/src",
     "libs/vector_processing/src",
-    "apps/service/src",
+    "apps/vector_service/src",
     "stubs",  # Custom third-party type stubs (crawl4ai, fastembed, etc.)
 ]
 
@@ -170,4 +173,3 @@ indent-style = "space"
 
 # Respect magic trailing commas (Black default)
 skip-magic-trailing-comma = false
-

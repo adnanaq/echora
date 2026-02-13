@@ -3,6 +3,6 @@ python_tests(
     dependencies=[
         "//:reqs0#pytest",
         "//:reqs0#pytest-asyncio",
-        "apps/service/src/service:service",
+        "//apps/vector_service/src/vector_service:vector_service",
     ],
 )

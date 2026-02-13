@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package vector_service.v1;
+
+message ErrorDetails {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+  string details_json = 4;
+}

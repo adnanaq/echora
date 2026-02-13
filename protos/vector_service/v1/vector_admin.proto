@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vector_service.v1;
+
+import "v1/vector_common.proto";
+
+service VectorAdminService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string timestamp = 2;
+  string service = 3;
+  string version = 4;
+  string database_json = 5;
+  ErrorDetails error = 6;
+}
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  string stats_json = 1;
+  ErrorDetails error = 2;
+}

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vector_service.v1;
+
+import "v1/vector_common.proto";
+
+service VectorSearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  string query_text = 1;
+  bytes image = 2;
+  string entity_type = 3;
+  int32 limit = 4;
+  string filters_json = 5;
+}
+
+message SearchData {
+  string id = 1;
+  double similarity_score = 2;
+  string payload_json = 3;
+}
+
+message SearchResponse {
+  repeated SearchData data = 1;
+  ErrorDetails error = 2;
+}
