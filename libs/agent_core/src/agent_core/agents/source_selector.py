@@ -6,7 +6,7 @@ from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
 from agent_core.context import RetrievedContextProvider
-from agent_core.schemas import SourceSelectionOutput, SourceSelectionInput
+from agent_core.schemas import SourceSelectionInput, SourceSelectionOutput
 
 
 def build_source_selector_agent(
@@ -49,7 +49,6 @@ def build_source_selector_agent(
             "For pg_graph: populate graph_intent with query_type/start/end refs.",
             "Avoid synthetic prefixes in query (no 'anime_id:', 'uuid:', etc.).",
         ],
-        context_providers={"retrieved": retrieved_context},
     )
 
     cfg = AgentConfig(

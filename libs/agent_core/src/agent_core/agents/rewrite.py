@@ -5,7 +5,7 @@ from __future__ import annotations
 from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
-from agent_core.schemas import RewriteOutput, RewriteInput
+from agent_core.schemas import RewriteInput, RewriteOutput
 
 
 def build_rewrite_agent(client, model: str) -> AtomicAgent[RewriteInput, RewriteOutput]:

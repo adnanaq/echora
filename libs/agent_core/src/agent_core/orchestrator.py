@@ -31,6 +31,7 @@ from agent_core.schemas import (
 
 logger = logging.getLogger(__name__)
 
+
 class AgentOrchestrator:
     """Runs the staged bounded loop for ``SearchAI`` requests."""
 
@@ -78,6 +79,11 @@ class AgentOrchestrator:
         self._qdrant_min_score_text = qdrant_min_score_text
         self._qdrant_min_score_image = qdrant_min_score_image
         self._qdrant_min_score_multivector = qdrant_min_score_multivector
+        self._retrieved = RetrievedContextProvider()
+
+        self._source_selector.register_context_provider("retrieved", self._retrieved)
+        self._answer.register_context_provider("retrieved", self._retrieved)
+        self._sufficiency.register_context_provider("retrieved", self._retrieved)
 
     @observe()
     async def run_search_ai(
@@ -98,7 +104,6 @@ class AgentOrchestrator:
         Returns:
             Final response model suitable for the gRPC layer.
         """
-        retrieved = self._get_retrieved_provider()
         warnings: list[str] = []
 
         turns = max_turns or self._max_turns_default
@@ -116,7 +121,7 @@ class AgentOrchestrator:
         )
         rewritten_query = (rewrite.rewritten_query or "").strip() or query
         requires_graph_traversal = rewrite.requires_graph_traversal
-        retrieved.add_card(
+        self._retrieved.add_card(
             title="Rewrite",
             body=f"rewritten_query={rewritten_query}\nneeds_external_context={rewrite.needs_external_context}\nrequires_graph_traversal={requires_graph_traversal}",
             data={
@@ -154,7 +159,9 @@ class AgentOrchestrator:
                 )
 
             # Direct answer insufficient; switch to retrieval loop.
-            warnings.append("Direct-answer path was insufficient; switching to retrieval loop.")
+            warnings.append(
+                "Direct-answer path was insufficient; switching to retrieval loop."
+            )
             rewritten_query = await self._rewrite_with_feedback(
                 query=query,
                 image_query=image_query,
@@ -162,7 +169,7 @@ class AgentOrchestrator:
                 missing_information=self._rewrite_feedback_from_sufficiency(report),
                 last_retrieval_summary=last_summary,
             )
-            retrieved.add_card(
+            self._retrieved.add_card(
                 title="Rewrite refinement",
                 body=f"rewritten_query={rewritten_query}",
                 data={"rewritten_query": rewritten_query},
@@ -198,9 +205,13 @@ class AgentOrchestrator:
             if step.action == "qdrant_search":
                 attempted_actions.append("qdrant_search")
 
-                last_summary, top_score, qualified_rows = await self._process_qdrant_retrieval(
+                (
+                    last_summary,
+                    top_score,
+                    qualified_rows,
+                ) = await self._process_qdrant_retrieval(
                     step=step,
-                    retrieved=retrieved,
+                    retrieved=self._retrieved,
                 )
                 last_search_similarity_score = top_score
                 if qualified_rows:
@@ -209,16 +220,16 @@ class AgentOrchestrator:
                 # Calculate threshold for feedback messages
                 search_mode = self._search_mode(
                     text_query=step.search_intent.query if step.search_intent else None,
-                    image_query=step.search_intent.image_query if step.search_intent else None,
+                    image_query=step.search_intent.image_query
+                    if step.search_intent
+                    else None,
                 )
                 score_threshold = self._score_threshold(search_mode)
 
                 if top_score is None or top_score < score_threshold:
                     warnings.append(
-
-                            f"Top similarity score {top_score if top_score is not None else 'n/a'} "
-                            f"is below threshold {score_threshold:.3f} ({search_mode}); retrying."
-
+                        f"Top similarity score {top_score if top_score is not None else 'n/a'} "
+                        f"is below threshold {score_threshold:.3f} ({search_mode}); retrying."
                     )
                     rewritten_query = await self._rewrite_with_feedback(
                         query=query,
@@ -248,14 +259,16 @@ class AgentOrchestrator:
 
                 last_summary, graph_success = await self._process_graph_retrieval(
                     step=step,
-                    retrieved=retrieved,
+                    retrieved=self._retrieved,
                     request_id=req,
                     turn=turn,
                 )
                 if graph_success:
                     any_hits = True
                 else:
-                    warnings.append("PostgreSQL graph executor not available yet; answering without graph traversal.")
+                    warnings.append(
+                        "PostgreSQL graph executor not available yet; answering without graph traversal."
+                    )
 
             else:
                 # Unreachable because ``normalize_step_for_turn`` gates action values.
@@ -265,7 +278,7 @@ class AgentOrchestrator:
                 AnswerInput(user_query=query, rewritten_query=rewritten_query)
             )
             last_draft = draft
-            retrieved.add_card(
+            self._retrieved.add_card(
                 title="Draft answer",
                 body=(draft.answer or "")[:500],
                 data={
@@ -283,7 +296,7 @@ class AgentOrchestrator:
                     attempted_actions=[a for a in attempted_actions],
                 )
             )
-            retrieved.add_card(
+            self._retrieved.add_card(
                 title="Sufficiency",
                 body=f"sufficient={suff.sufficient} missing={suff.missing}",
                 data={"sufficient": suff.sufficient, "missing": suff.missing},
@@ -294,7 +307,9 @@ class AgentOrchestrator:
                     "termination_reason": "sufficient_with_retrieval"
                 }
                 if last_search_similarity_score is not None:
-                    evidence_update["search_similarity_score"] = last_search_similarity_score
+                    evidence_update["search_similarity_score"] = (
+                        last_search_similarity_score
+                    )
                 evidence = draft.evidence.model_copy(update=evidence_update)
                 return draft.model_copy(
                     update={
@@ -329,10 +344,13 @@ class AgentOrchestrator:
             else:
                 rewritten_query_stagnation = 0
                 rewritten_query = rewritten_candidate
-                retrieved.add_card(
+                self._retrieved.add_card(
                     title="Rewrite refinement",
                     body=f"rewritten_query={rewritten_query}",
-                    data={"rewritten_query": rewritten_query, "missing_information": rewrite_feedback},
+                    data={
+                        "rewritten_query": rewritten_query,
+                        "missing_information": rewrite_feedback,
+                    },
                 )
 
             if rewritten_query_stagnation >= 2 and len(attempted_actions) >= 2:
@@ -346,12 +364,18 @@ class AgentOrchestrator:
                 "termination_reason": "max_turns_best_effort"
             }
             if last_search_similarity_score is not None:
-                evidence_update["search_similarity_score"] = last_search_similarity_score
+                evidence_update["search_similarity_score"] = (
+                    last_search_similarity_score
+                )
             evidence = last_draft.evidence.model_copy(update=evidence_update)
             return last_draft.model_copy(
                 update={
                     "evidence": evidence,
-                    "warnings": [*warnings, f"Reached max_turns={turns}.", *last_draft.warnings],
+                    "warnings": [
+                        *warnings,
+                        f"Reached max_turns={turns}.",
+                        *last_draft.warnings,
+                    ],
                 }
             )
 
@@ -376,17 +400,6 @@ class AgentOrchestrator:
             warnings=[*warnings, warning_code],
         )
 
-    def _get_retrieved_provider(self) -> RetrievedContextProvider:
-        """Returns the dynamic retrieved-context provider from source selector state."""
-        # Agents are built with the same context provider instance. Pull from one of them.
-        provider = self._source_selector.get_context_provider("retrieved")
-        if not isinstance(provider, RetrievedContextProvider):
-            raise TypeError(
-                "Expected RetrievedContextProvider for key 'retrieved', "
-                f"got: {type(provider)!r}"
-            )
-        return provider
-
     async def _process_qdrant_retrieval(
         self,
         *,
@@ -394,11 +407,11 @@ class AgentOrchestrator:
         retrieved: RetrievedContextProvider,
     ) -> tuple[str, float | None, list[dict[str, Any]]]:
         """Executes Qdrant search and returns summary, top score, and qualified rows.
-        
+
         Args:
             step: Source selection output with search intent.
             retrieved: Context provider for logging.
-            
+
         Returns:
             Tuple of (summary, top_score, qualified_rows).
         """
@@ -453,13 +466,13 @@ class AgentOrchestrator:
         turn: int,
     ) -> tuple[str, bool]:
         """Executes graph traversal and returns summary and success flag.
-        
+
         Args:
             step: Source selection output with graph intent.
             retrieved: Context provider for logging.
             request_id: Request correlation ID.
             turn: Current turn number.
-            
+
         Returns:
             Tuple of (summary, success).
         """
@@ -468,9 +481,7 @@ class AgentOrchestrator:
         try:
             graph: GraphResult = await self._graph.execute(step.graph_intent)
             retrieved.add_card(
-                title="Postgres graph",
-                body=graph.summary,
-                data={"count": graph.count}
+                title="Postgres graph", body=graph.summary, data={"count": graph.count}
             )
             return graph.summary, True
         except GraphNotAvailableError:
@@ -479,11 +490,7 @@ class AgentOrchestrator:
                 request_id,
                 turn,
             )
-            retrieved.add_card(
-                title="Postgres graph",
-                body="Not available.",
-                data={}
-            )
+            retrieved.add_card(title="Postgres graph", body="Not available.", data={})
             return "Graph step skipped (not available).", False
 
     async def _rewrite_with_feedback(
@@ -496,14 +503,12 @@ class AgentOrchestrator:
         last_retrieval_summary: str | None = None,
     ) -> str:
         """Runs rewrite stage using sufficiency/retrieval feedback and returns next query.
-        
         Args:
             query: Original user query.
             image_query: Optional image query payload.
             current_rewritten_query: Current query to refine.
             missing_information: List of missing facts/constraints from feedback.
             last_retrieval_summary: Optional summary from last retrieval.
-            
         Returns:
             Refined query string.
         """
@@ -515,7 +520,9 @@ class AgentOrchestrator:
             last_retrieval_summary=last_retrieval_summary,
         )
         rewrite = await self._call_rewrite_agent(rewrite_input)
-        return (rewrite.rewritten_query or "").strip() or current_rewritten_query or query
+        return (
+            (rewrite.rewritten_query or "").strip() or current_rewritten_query or query
+        )
 
     @staticmethod
     def _rewrite_feedback_from_sufficiency(sufficiency: SufficiencyOutput) -> list[str]:
@@ -586,10 +593,13 @@ class AgentOrchestrator:
         return await self._answer.run_async(input)
 
     @observe()
-    async def _call_sufficient_agent(self, input: SufficiencyInput) -> SufficiencyOutput:
+    async def _call_sufficient_agent(
+        self, input: SufficiencyInput
+    ) -> SufficiencyOutput:
         return await self._sufficiency.run_async(input)
 
     @observe()
-    async def _call_selector_agent(self, input: SourceSelectionInput) -> SourceSelectionOutput:
+    async def _call_selector_agent(
+        self, input: SourceSelectionInput
+    ) -> SourceSelectionOutput:
         return await self._source_selector.run_async(input)
-

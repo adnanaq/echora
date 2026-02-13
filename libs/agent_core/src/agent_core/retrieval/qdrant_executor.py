@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 import base64
+import logging
 import os
 import re
 import tempfile
-
-from agent_core.schemas import EntityRef, EntityType, RetrievalResult, SearchIntent
-from qdrant_db import QdrantClient
+from typing import Any
 
 from langfuse import observe
-
+from qdrant_db import QdrantClient
 from vector_processing import TextProcessor, VisionProcessor
+
+from agent_core.schemas import EntityRef, EntityType, RetrievalResult, SearchIntent
 
 logger = logging.getLogger(__name__)
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from atomic_agents import AtomicAgent
-from atomic_agents import AgentConfig
+from atomic_agents import AgentConfig, AtomicAgent
 from atomic_agents.context import ChatHistory, SystemPromptGenerator
 
 from agent_core.context import RetrievedContextProvider
-from agent_core.schemas import SufficiencyOutput, SufficiencyInput
+from agent_core.schemas import SufficiencyInput, SufficiencyOutput
 
 
 def build_sufficiency_agent(
@@ -56,7 +55,6 @@ def build_sufficiency_agent(
             "missing: list concrete gaps (max 5 items, each under 10 words).",
             "need_graph_traversal: True only if relationship query AND pg_graph not in attempted_actions.",
         ],
-        context_providers={"retrieved": retrieved_context},
     )
 
     cfg = AgentConfig(

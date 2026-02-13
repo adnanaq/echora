@@ -45,7 +45,6 @@ def build_answer_agent(
             "result_entities: primary EntityRef to return as final results (main answer entities).",
             "If context is thin, draft best-effort answer and add warning.",
         ],
-        context_providers={"retrieved": retrieved_context},
     )
 
     cfg = AgentConfig(

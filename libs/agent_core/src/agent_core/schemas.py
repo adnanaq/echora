@@ -8,7 +8,6 @@ from typing import Any, Literal
 from atomic_agents import BaseIOSchema
 from pydantic import Field
 
-
 # ============================================================================
 # Common/Shared Schemas
 # ============================================================================
@@ -26,8 +25,12 @@ class EntityType(str, Enum):
 class EntityRef(BaseIOSchema):
     """Reference to a canonical entity ID (UUID) plus its entity type."""
 
-    entity_type: EntityType = Field(..., description="Canonical entity category for the referenced ID.")
-    id: str = Field(..., description="Canonical UUID string (also used as Qdrant point id).")
+    entity_type: EntityType = Field(
+        ..., description="Canonical entity category for the referenced ID."
+    )
+    id: str = Field(
+        ..., description="Canonical UUID string (also used as Qdrant point id)."
+    )
 
 
 class SearchAIEvidence(BaseIOSchema):
@@ -85,11 +88,11 @@ class RewriteOutput(BaseIOSchema):
 
     rewritten_query: str = Field(
         ...,
-        description="Normalized query optimized for retrieval. Examples: 'Boruto character relationships' → 'Boruto AND relationship'; 'anime like Death Note' → 'psychological thriller anime mystery'"
+        description="Normalized query optimized for retrieval. Examples: 'Boruto character relationships' → 'Boruto AND relationship'; 'anime like Death Note' → 'psychological thriller anime mystery'",
     )
     needs_external_context: bool = Field(
         ...,
-        description="Whether retrieval is required. Set to False only for general knowledge questions (e.g., 'What is anime?'). Set to True for specific entity queries, comparisons, recommendations, or relationship questions."
+        description="Whether retrieval is required. Set to False only for general knowledge questions (e.g., 'What is anime?'). Set to True for specific entity queries, comparisons, recommendations, or relationship questions.",
     )
     requires_graph_traversal: bool = Field(
         default=False,
@@ -100,11 +103,11 @@ class RewriteOutput(BaseIOSchema):
             "Set to False for: semantic/content search ('anime with X and Y', 'anime about Z'), "
             "character search ('shows with dog character'), entity lookups, or recommendations. "
             "DEFAULT to False - be conservative, most queries are semantic search."
-        )
+        ),
     )
     rationale: str = Field(
         ...,
-        description="One-sentence operational reason for decisions (max 20 words). Example: 'Requires graph traversal to compare relationships across two separate anime universes.'"
+        description="One-sentence operational reason for decisions (max 20 words). Example: 'Requires graph traversal to compare relationships across two separate anime universes.'",
     )
 
 
@@ -117,7 +120,9 @@ class SourceSelectionInput(BaseIOSchema):
     """Structured input for source-selection at a specific turn."""
 
     user_query: str = Field(..., description="Original user query text.")
-    rewritten_query: str = Field(..., description="Normalized query emitted by rewrite stage.")
+    rewritten_query: str = Field(
+        ..., description="Normalized query emitted by rewrite stage."
+    )
     turn: int = Field(..., ge=1, description="Current 1-based loop turn.")
     has_image_query: bool = Field(
         default=False,
@@ -144,15 +149,20 @@ class SourceSelectionInput(BaseIOSchema):
         description=(
             "Whether the rewrite agent detected that this query requires graph traversal for relationships/comparisons. "
             "Use this as a hint: if True and pg_graph not yet attempted, consider trying pg_graph."
-        )
+        ),
     )
 
 
 class SearchIntent(BaseIOSchema):
     """Source-selection instruction for a bounded Qdrant retrieval step."""
 
-    rationale: str = Field(..., description="Short operational reason for this step (for logs).")
-    entity_type: EntityType = Field(..., description="Which entity type to search (maps to Qdrant payload entity_type).")
+    rationale: str = Field(
+        ..., description="Short operational reason for this step (for logs)."
+    )
+    entity_type: EntityType = Field(
+        ...,
+        description="Which entity type to search (maps to Qdrant payload entity_type).",
+    )
     query: str | None = Field(
         None,
         description=(
@@ -178,13 +188,20 @@ class GraphIntent(BaseIOSchema):
     executor, not specified by the LLM.
     """
 
-    rationale: str = Field(..., description="Short operational reason for this traversal/comparison (for logs).")
+    rationale: str = Field(
+        ...,
+        description="Short operational reason for this traversal/comparison (for logs).",
+    )
     query_type: Literal["neighbors", "k_hop", "path", "compare"] = Field(
         ...,
         description="Graph primitive to execute (neighbors, k-hop expansion, path, or comparison).",
     )
-    start: EntityRef = Field(..., description="Start node reference for traversal/path/comparison.")
-    end: EntityRef | None = Field(None, description="Optional end node for path/comparison queries.")
+    start: EntityRef = Field(
+        ..., description="Start node reference for traversal/path/comparison."
+    )
+    end: EntityRef | None = Field(
+        None, description="Optional end node for path/comparison queries."
+    )
     edge_types: list[str] = Field(
         default_factory=list,
         description="Optional relationship type allowlist to constrain traversal.",
@@ -218,7 +235,9 @@ class AnswerInput(BaseIOSchema):
     """Structured input for answer drafting."""
 
     user_query: str = Field(..., description="Original user query text.")
-    rewritten_query: str = Field(..., description="Normalized query emitted by rewrite stage.")
+    rewritten_query: str = Field(
+        ..., description="Normalized query emitted by rewrite stage."
+    )
 
 
 class AnswerOutput(BaseIOSchema):
@@ -252,12 +271,11 @@ class SufficiencyInput(BaseIOSchema):
     """Input for sufficiency validation with retrieval context."""
 
     user_query: str = Field(
-        ...,
-        description="Original user query text exactly as the user asked it."
+        ..., description="Original user query text exactly as the user asked it."
     )
     draft_answer: str = Field(
         ...,
-        description="Latest draft answer generated from retrieved context. Evaluate whether this answer fully addresses the user_query."
+        description="Latest draft answer generated from retrieved context. Evaluate whether this answer fully addresses the user_query.",
     )
     last_search_similarity_score: float | None = Field(
         None,
@@ -269,7 +287,7 @@ class SufficiencyInput(BaseIOSchema):
             "Scores <0.5 suggest weak matches. "
             "Use this to assess retrieval confidence, but do NOT use score alone to decide sufficiency—"
             "always check if the draft_answer actually addresses the user_query."
-        )
+        ),
     )
     attempted_actions: list[Literal["qdrant_search", "pg_graph"]] = Field(
         default_factory=list,
@@ -278,7 +296,7 @@ class SufficiencyInput(BaseIOSchema):
             "If query EXPLICITLY asks about relationships ('how is X related to Y') but only 'qdrant_search' was tried, request pg_graph. "
             "Do NOT request pg_graph for content/theme searches ('anime with X and Y') - those are semantic search. "
             "Example: ['qdrant_search', 'qdrant_search'] means only semantic search was used."
-        )
+        ),
     )
 
 
@@ -293,7 +311,7 @@ class SufficiencyOutput(BaseIOSchema):
             "(2) draft_answer fully addresses user_query even with lower score. "
             "Set to False ONLY if: answer is clearly incomplete, vague, or query EXPLICITLY asks for relationships but pg_graph not attempted. "
             "Be generous - if Qdrant found good matches (score >0.7), accept the answer."
-        )
+        ),
     )
     rationale: str = Field(
         ...,
@@ -301,7 +319,7 @@ class SufficiencyOutput(BaseIOSchema):
             "One-sentence operational reason (max 25 words). "
             "Examples: 'Sufficient: high similarity (0.85) and draft covers all entities.' OR "
             "'Insufficient: relationship query needs pg_graph but only qdrant_search attempted.'"
-        )
+        ),
     )
     missing: list[str] = Field(
         default_factory=list,
@@ -310,7 +328,7 @@ class SufficiencyOutput(BaseIOSchema):
             "Concrete missing facts, entities, or retrieval methods. "
             "Examples: 'relationship between Boruto and Naruto characters', 'pg_graph traversal', "
             "'episode-level details', 'character family tree'. Keep each item under 10 words."
-        )
+        ),
     )
     need_graph_traversal: bool = Field(
         default=False,
@@ -319,7 +337,7 @@ class SufficiencyOutput(BaseIOSchema):
             "AND pg_graph was not yet attempted (check attempted_actions). "
             "Do NOT set to True for content/theme searches - those are semantic search, not graph traversal. "
             "DEFAULT to False - be very conservative."
-        )
+        ),
     )
 
 
@@ -331,23 +349,41 @@ class SufficiencyOutput(BaseIOSchema):
 class RetrievalResult(BaseIOSchema):
     """Standardized output of a retrieval step (Qdrant)."""
 
-    summary: str = Field(..., description="Compact summary of the retrieved results for the LLM.")
-    raw_data: list[dict[str, Any]] = Field(..., description="Structured payloads returned by the executor.")
+    summary: str = Field(
+        ..., description="Compact summary of the retrieved results for the LLM."
+    )
+    raw_data: list[dict[str, Any]] = Field(
+        ..., description="Structured payloads returned by the executor."
+    )
     count: int = Field(..., description="Number of items returned.")
 
 
 class GraphPath(BaseIOSchema):
     """A single graph path represented as node IDs and relationship labels."""
 
-    nodes: list[EntityRef] = Field(default_factory=list, description="Ordered node IDs in the path.")
-    rels: list[str] = Field(default_factory=list, description="Ordered relationship types between nodes.")
+    nodes: list[EntityRef] = Field(
+        default_factory=list, description="Ordered node IDs in the path."
+    )
+    rels: list[str] = Field(
+        default_factory=list, description="Ordered relationship types between nodes."
+    )
 
 
 class GraphResult(BaseIOSchema):
     """Standardized output of a graph step (PostgreSQL)."""
 
-    summary: str = Field(..., description="Compact summary of the traversal/comparison results for the LLM.")
-    paths: list[GraphPath] = Field(default_factory=list, description="Optional explanation paths.")
-    node_ids: list[EntityRef] = Field(default_factory=list, description="All unique nodes referenced by this result.")
+    summary: str = Field(
+        ...,
+        description="Compact summary of the traversal/comparison results for the LLM.",
+    )
+    paths: list[GraphPath] = Field(
+        default_factory=list, description="Optional explanation paths."
+    )
+    node_ids: list[EntityRef] = Field(
+        default_factory=list, description="All unique nodes referenced by this result."
+    )
     count: int = Field(..., description="Number of paths or nodes returned.")
-    meta: dict[str, Any] = Field(default_factory=dict, description="Additional structured metadata for debugging/UI.")
+    meta: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional structured metadata for debugging/UI.",
+    )

@@ -24,7 +24,7 @@ class RetrievedContextProvider(BaseDynamicContextProvider):
     Keep this compact: it is injected into the system prompt every turn.
     """
 
-    def __init__(self, title: str = "Retrieved Context", max_cards: int = 12) -> None:
+    def __init__(self, title: str = "Retrieved Context", max_cards: int = 10) -> None:
         """Initializes the context provider with a bounded card buffer.
 
         Args:
