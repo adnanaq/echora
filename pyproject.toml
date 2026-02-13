@@ -42,6 +42,7 @@ dependencies = [
     "grpcio-health-checking>=1.78.0",
     "instructor>=1.9.2",
     "openai>=2.20.0",
+    "langfuse==3.14.1",
 ]
 
 [project.optional-dependencies]
