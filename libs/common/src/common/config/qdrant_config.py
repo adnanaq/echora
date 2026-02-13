@@ -40,6 +40,22 @@ class QdrantConfig(BaseModel):
         default=["image_vector"],
         description="Vector names that use multivector storage (list of vectors per point)",
     )
+    sparse_vector_names: list[str] = Field(
+        default=["text_sparse_vector"],
+        description="Named sparse vectors configured for the collection",
+    )
+    primary_sparse_vector_name: str = Field(
+        default="text_sparse_vector",
+        description="Primary sparse vector used for sparse and hybrid text search",
+    )
+    sparse_vector_modifier: str = Field(
+        default="none",
+        description="Sparse vector modifier: none or idf",
+    )
+    sparse_index_on_disk: bool = Field(
+        default=False,
+        description="Store sparse index on disk instead of RAM",
+    )
     vector_priorities: dict[str, list[str]] = Field(
         default={
             "high": [
@@ -186,6 +202,15 @@ class QdrantConfig(BaseModel):
             raise ValueError(f"Quantization type must be one of: {valid_types}")
         return v.lower()
 
+    @field_validator("sparse_vector_modifier")
+    @classmethod
+    def validate_sparse_vector_modifier(cls, v: str) -> str:
+        """Validate sparse vector modifier."""
+        valid_modifiers = ["none", "idf"]
+        if v.lower() not in valid_modifiers:
+            raise ValueError(f"Sparse vector modifier must be one of: {valid_modifiers}")
+        return v.lower()
+
     @field_validator("multivector_vectors")
     @classmethod
     def validate_multivector_vectors(
@@ -211,5 +236,13 @@ class QdrantConfig(BaseModel):
         if self.primary_image_vector_name not in self.vector_names:
             raise ValueError(  # noqa: TRY003
                 "primary_image_vector_name must be a key in vector_names"
+            )
+        if not self.sparse_vector_names:
+            raise ValueError(  # noqa: TRY003
+                "sparse_vector_names must contain at least one entry"
+            )
+        if self.primary_sparse_vector_name not in self.sparse_vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_sparse_vector_name must be a key in sparse_vector_names"
             )
         return self

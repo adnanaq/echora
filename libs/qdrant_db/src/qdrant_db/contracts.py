@@ -88,13 +88,39 @@ class SearchFilterCondition(BaseModel):
         raise ValueError(f"Unsupported filter operator: {self.operator}")
 
 
+class SparseVectorData(BaseModel):
+    """Sparse vector represented by index/value pairs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    indices: list[int] = Field(min_length=1)
+    values: list[float] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_sparse_shape(self) -> "SparseVectorData":
+        """Validate sparse vector indices/values alignment.
+
+        Returns:
+            The validated sparse vector.
+
+        Raises:
+            ValueError: If sparse vector indices are invalid or not aligned.
+        """
+        if len(self.indices) != len(self.values):
+            raise ValueError("indices and values must have the same length")
+        if any(index < 0 for index in self.indices):
+            raise ValueError("indices must be non-negative")
+        return self
+
+
 class SearchRequest(BaseModel):
-    """Search request across text/image embeddings."""
+    """Search request across dense (text/image) and sparse embeddings."""
 
     model_config = ConfigDict(extra="forbid")
 
     text_embedding: list[float] | None = None
     image_embedding: list[float] | None = None
+    sparse_embedding: SparseVectorData | None = None
     entity_type: str | None = None
     limit: int = Field(default=10, ge=1, le=1000)
     filters: list[SearchFilterCondition] = Field(default_factory=list)
@@ -110,19 +136,21 @@ class SearchRequest(BaseModel):
         Raises:
             ValueError: If embeddings are missing, empty, or non-numeric.
         """
-        if self.text_embedding is None and self.image_embedding is None:
-            raise ValueError("At least one of text_embedding or image_embedding is required")
+        if (
+            self.text_embedding is None
+            and self.image_embedding is None
+            and self.sparse_embedding is None
+        ):
+            raise ValueError(
+                "At least one of text_embedding, image_embedding, or sparse_embedding is required"
+            )
 
         for name, vector in (
             ("text_embedding", self.text_embedding),
             ("image_embedding", self.image_embedding),
         ):
-            if vector is None:
-                continue
-            if len(vector) == 0:
+            if vector is not None and len(vector) == 0:
                 raise ValueError(f"{name} must not be empty")
-            if not all(isinstance(item, int | float) for item in vector):
-                raise ValueError(f"{name} must contain numeric values")
 
         return self
 
@@ -144,7 +172,7 @@ class BatchVectorUpdateItem(BaseModel):
 
     point_id: str = Field(min_length=1)
     vector_name: str = Field(min_length=1)
-    vector_data: list[float] | list[list[float]]
+    vector_data: list[float] | list[list[float]] | SparseVectorData
 
     @model_validator(mode="after")
     def validate_vector_data(self) -> "BatchVectorUpdateItem":
@@ -156,6 +184,8 @@ class BatchVectorUpdateItem(BaseModel):
         Raises:
             ValueError: If vector payload is empty or not list-like.
         """
+        if isinstance(self.vector_data, SparseVectorData):
+            return self
         if not isinstance(self.vector_data, list) or len(self.vector_data) == 0:
             raise ValueError("vector_data must be a non-empty list")
         return self

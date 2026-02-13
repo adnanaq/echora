@@ -39,6 +39,16 @@ class EmbeddingConfig(BaseModel):
         default=77, description="OpenCLIP maximum text sequence length"
     )
 
+    # Sparse Text Embedding
+    sparse_embedding_provider: str = Field(
+        default="fastembed",
+        description="Sparse embedding provider: fastembed",
+    )
+    sparse_embedding_model: str = Field(
+        default="Qdrant/bm25",
+        description="Sparse embedding model name for lexical retrieval",
+    )
+
     # Image Processing
     image_batch_size: int = Field(
         default=16,
@@ -88,6 +98,17 @@ class EmbeddingConfig(BaseModel):
         if v.lower() not in valid_providers:
             raise ValueError(
                 f"Image embedding provider must be one of: {valid_providers}"
+            )
+        return v.lower()
+
+    @field_validator("sparse_embedding_provider")
+    @classmethod
+    def validate_sparse_provider(cls, v: str) -> str:
+        """Validate sparse embedding provider."""
+        valid_providers = ["fastembed"]
+        if v.lower() not in valid_providers:
+            raise ValueError(
+                f"Sparse embedding provider must be one of: {valid_providers}"
             )
         return v.lower()
 
