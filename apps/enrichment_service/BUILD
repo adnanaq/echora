@@ -15,6 +15,7 @@ pex_binary(
     name="enrichment_service",
     entry_point="enrichment_service.main",
     dependencies=[":lib"],
+    layout="packed",
 )
 
 docker_image(
