@@ -7,6 +7,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    case "$arch" in \
+      amd64) probe_arch="amd64" ;; \
+      arm64) probe_arch="arm64" ;; \
+      *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/grpc_health_probe \
+      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
+    chmod +x /usr/local/bin/grpc_health_probe
+
 COPY apps.enrichment_service/enrichment_service.pex /app/enrichment_service.pex
 
 RUN groupadd --gid 1000 appuser && \
@@ -18,5 +30,15 @@ ENV PYTHONUNBUFFERED=1
 ENV ENVIRONMENT=development
 
 EXPOSE 8010
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD grpc_health_probe -addr=localhost:8010 || exit 1
+
+# Development workflow:
+# PEX files are self-contained archives - volume mounts won't override the code inside.
+# To see code changes:
+#   1. Rebuild the PEX: pants package apps/enrichment_service:enrichment-service-dev
+#   2. Rebuild the image: docker compose build enrichment-service
+#   3. Restart the container: docker compose up -d enrichment-service
 
 ENTRYPOINT ["/app/enrichment_service.pex"]

@@ -2,7 +2,7 @@ services:
   # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: echora_vector_service
+    container_name: echora_qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -95,7 +95,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -127,6 +127,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8010"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
 networks:

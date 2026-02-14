@@ -5,10 +5,22 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (curl for healthcheck)
+# Install runtime dependencies and gRPC health probe
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    case "$arch" in \
+      amd64) probe_arch="amd64" ;; \
+      arm64) probe_arch="arm64" ;; \
+      *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/grpc_health_probe \
+      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
+    chmod +x /usr/local/bin/grpc_health_probe
 
 # Copy the self-contained PEX binary built by Pants
 COPY apps.vector_service/vector_service.pex /app/vector_service.pex
@@ -28,14 +40,14 @@ EXPOSE 8002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8002/health || exit 1
+  CMD grpc_health_probe -addr=localhost:8002 || exit 1
 
 # Development workflow:
 # PEX files are self-contained archives - volume mounts won't override the code inside.
 # To see code changes:
 #   1. Rebuild the PEX: pants package apps/vector_service:vector_service
-#   2. Rebuild the image: docker compose build service
-#   3. Restart the container: docker compose up -d service
+#   2. Rebuild the image: docker compose build vector-service
+#   3. Restart the container: docker compose up -d vector-service
 # For faster iteration, consider running the service directly: uv run python -m src.main
 
 # Run the PEX binary
