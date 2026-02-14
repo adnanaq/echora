@@ -5,40 +5,62 @@ Generate checked-in Python gRPC stubs for vector and enrichment services.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
-import shutil
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROTO_ROOT = REPO_ROOT / "protos"
 
 TARGETS = [
     {
+        "name": "shared_proto",
+        "protos": [
+            PROTO_ROOT / "shared_proto" / "v1" / "error.proto",
+        ],
+        "proto_include": PROTO_ROOT,
+        "out_root": REPO_ROOT / "libs" / "common" / "src" / "shared_proto",
+        "relocate_shared_proto_v1_to_v1": True,
+        "rewrites": (
+            ("from v1 import", "from shared_proto.v1 import"),
+            ("import v1.", "import shared_proto.v1."),
+            ("from common.v1 import", "from shared_proto.v1 import"),
+        ),
+    },
+    {
         "name": "vector_service",
         "protos": [
-            PROTO_ROOT / "vector_service" / "v1" / "vector_common.proto",
             PROTO_ROOT / "vector_service" / "v1" / "vector_admin.proto",
             PROTO_ROOT / "vector_service" / "v1" / "vector_search.proto",
         ],
         "proto_include": PROTO_ROOT / "vector_service",
+        "proto_extra_includes": [PROTO_ROOT],
         "out_root": REPO_ROOT / "apps" / "vector_service" / "src" / "vector_proto",
         "rewrites": (
             ("from v1 import", "from vector_proto.v1 import"),
             ("import v1.", "import vector_proto.v1."),
             ("from vector_service.v1 import", "from vector_proto.v1 import"),
+            ("from common.v1 import", "from shared_proto.v1 import"),
         ),
     },
     {
         "name": "enrichment_service",
-        "proto": PROTO_ROOT / "enrichment_service" / "v1" / "enrichment_service.proto",
+        "protos": [
+            PROTO_ROOT / "enrichment_service" / "v1" / "enrichment_service.proto",
+        ],
         "proto_include": PROTO_ROOT / "enrichment_service",
-        "out_root": REPO_ROOT / "apps" / "enrichment_service" / "src" / "enrichment_proto",
+        "proto_extra_includes": [PROTO_ROOT],
+        "out_root": REPO_ROOT
+        / "apps"
+        / "enrichment_service"
+        / "src"
+        / "enrichment_proto",
         "rewrites": (
             ("from v1 import", "from enrichment_proto.v1 import"),
             ("import v1.", "import enrichment_proto.v1."),
             ("from enrichment_service.v1 import", "from enrichment_proto.v1 import"),
+            ("from common.v1 import", "from shared_proto.v1 import"),
         ),
     },
     # Agent proto generation is disabled for now.
@@ -61,7 +83,7 @@ TARGETS = [
 
 
 def _run(cmd: list[str]) -> None:
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
+    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)  # noqa: S603
     if proc.returncode != 0:
         raise SystemExit(proc.returncode)
 
@@ -86,11 +108,7 @@ def main() -> int:
     missing_required: list[Path] = []
     per_target_protos: dict[str, list[Path]] = {}
     for entry in TARGETS:
-        protos: list[Path]
-        if "protos" in entry:
-            protos = [Path(p) for p in entry["protos"]]
-        else:
-            protos = [Path(entry["proto"])]
+        protos = [Path(p) for p in entry["protos"]]
         missing = [p for p in protos if not p.exists()]
         if missing:
             if entry.get("optional", False):
@@ -115,10 +133,17 @@ def main() -> int:
         out_root = Path(entry["out_root"])
         protos = per_target_protos[entry["name"]]
         proto_include = Path(entry["proto_include"])
+        proto_extra_includes = [
+            Path(include) for include in entry.get("proto_extra_includes", [])
+        ]
         proto_rel = [p.relative_to(proto_include) for p in protos]
         v1_dir = out_root / "v1"
         if v1_dir.exists():
             shutil.rmtree(v1_dir)
+        if entry.get("relocate_shared_proto_v1_to_v1", False):
+            shared_dir = out_root / "shared_proto"
+            if shared_dir.exists():
+                shutil.rmtree(shared_dir)
         out_root.mkdir(parents=True, exist_ok=True)
         cmd = [
             sys.executable,
@@ -126,14 +151,25 @@ def main() -> int:
             "grpc_tools.protoc",
             "-I",
             str(proto_include),
+            *(
+                include_arg
+                for include in proto_extra_includes
+                for include_arg in ("-I", str(include))
+            ),
             f"--python_out={out_root}",
             f"--grpc_python_out={out_root}",
             *(str(p) for p in proto_rel),
         ]
         _run(cmd)
+        if entry.get("relocate_shared_proto_v1_to_v1", False):
+            generated_shared_v1 = out_root / "shared_proto" / "v1"
+            if generated_shared_v1.exists():
+                shutil.move(str(generated_shared_v1), str(v1_dir))
+                shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
         _rewrite_generated_imports(out_root, entry.get("rewrites", ()))
         init_root = out_root / "__init__.py"
-        init_v1 = out_root / "v1" / "__init__.py"
+        v1_dir.mkdir(parents=True, exist_ok=True)
+        init_v1 = v1_dir / "__init__.py"
         if not init_root.exists():
             init_root.write_text('"""Generated proto package."""\n', encoding="utf-8")
         if not init_v1.exists():

@@ -38,12 +38,15 @@ dependencies = [
     # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
     "defusedxml>=0.7.1",
     "grpcio==1.78.0",
-    "grpcio-health-checking>=1.78.0",
-    "grpcio-tools==1.78.0",
+    "grpcio-health-checking==1.78.0",
+    "protobuf==6.33.5",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # Build tooling
+    "grpcio-tools==1.78.0",
+
     # Testing dependencies
     # Note: pytest 8.4.1 is bundled with Pants, but we declare it explicitly
     # for version control and to allow BUILD files to reference it
