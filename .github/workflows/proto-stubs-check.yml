@@ -1,0 +1,51 @@
+name: Proto Stubs Check
+
+on:
+  pull_request:
+    paths:
+      - "protos/**/*.proto"
+      - "scripts/gen_protos.py"
+      - "libs/common/src/shared_proto/**"
+      - "apps/vector_service/src/vector_proto/**"
+      - "apps/enrichment_service/src/enrichment_proto/**"
+      - "scripts/BUILD"
+      - "pants.toml"
+      - "pyproject.toml"
+      - "uv.lock"
+  push:
+    branches: ["main"]
+    paths:
+      - "protos/**/*.proto"
+      - "scripts/gen_protos.py"
+      - "libs/common/src/shared_proto/**"
+      - "apps/vector_service/src/vector_proto/**"
+      - "apps/enrichment_service/src/enrichment_proto/**"
+      - "scripts/BUILD"
+      - "pants.toml"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  proto-stubs-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate protobuf stubs
+        run: ./pants run scripts/gen_protos.py
+
+      - name: Fail on generated stub drift
+        run: |
+          git diff --exit-code -- \
+            libs/common/src/shared_proto \
+            apps/vector_service/src/vector_proto \
+            apps/enrichment_service/src/enrichment_proto
