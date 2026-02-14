@@ -12,16 +12,19 @@ from datetime import UTC, datetime
 
 import grpc
 from common.config import Settings
-
+from common.grpc.error_details import build_error_details as error
+from google.protobuf.struct_pb2 import Struct
+from google.protobuf.timestamp_pb2 import Timestamp
 from vector_proto.v1 import vector_admin_pb2
 
 from ..runtime import VectorRuntime
-from .shared import error
 
 logger = logging.getLogger(__name__)
 
 
-def _health_database_payload(stats: dict[str, object], db_healthy: bool) -> dict[str, object]:
+def _health_database_payload(
+    stats: dict[str, object], db_healthy: bool
+) -> dict[str, object]:
     """Build compact health payload for fast readiness checks.
 
     Args:
@@ -38,7 +41,9 @@ def _health_database_payload(stats: dict[str, object], db_healthy: bool) -> dict
     }
 
 
-def _build_stats_payload(runtime: VectorRuntime, stats: dict[str, object]) -> dict[str, object]:
+def _build_stats_payload(
+    runtime: VectorRuntime, stats: dict[str, object]
+) -> dict[str, object]:
     """Build rich admin stats payload for diagnostics.
 
     Args:
@@ -86,20 +91,24 @@ async def health(
         stats: dict[str, object] = {}
         if db_healthy:
             stats = await runtime.qdrant_client.get_stats()
+        ts = Timestamp()
+        ts.FromDatetime(datetime.now(UTC))
+        database = Struct()
+        database.update(_health_database_payload(stats, db_healthy))
         return vector_admin_pb2.HealthResponse(
             healthy=db_healthy,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=ts,
             service="vector_service",
             version=settings.service.api_version,
-            database_json=json.dumps(
-                _health_database_payload(stats, db_healthy)
-            ),
+            database=database,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Health RPC failed")
+        ts = Timestamp()
+        ts.FromDatetime(datetime.now(UTC))
         return vector_admin_pb2.HealthResponse(
             healthy=False,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=ts,
             service="vector_service",
             version=settings.service.api_version,
             error=error(
@@ -130,8 +139,12 @@ async def get_stats(
         stats = await runtime.qdrant_client.get_stats()
         payload = _build_stats_payload(runtime, stats)
         return vector_admin_pb2.GetStatsResponse(stats_json=json.dumps(payload))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("GetStats RPC failed")
         return vector_admin_pb2.GetStatsResponse(
-            error=error("GET_STATS_FAILED", str(exc))
+            error=error(
+                code="GET_STATS_FAILED",
+                message=str(exc),
+                retryable=True,
+            )
         )

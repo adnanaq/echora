@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import grpc
 from common.config import Settings
-
 from vector_proto.v1 import (
     vector_admin_pb2,
     vector_admin_pb2_grpc,
@@ -17,7 +16,8 @@ from vector_proto.v1 import (
 )
 
 from ..runtime import VectorRuntime
-from . import admin, search as search_route
+from . import admin
+from . import search as search_route
 
 
 class VectorAdminRoutes(vector_admin_pb2_grpc.VectorAdminServiceServicer):

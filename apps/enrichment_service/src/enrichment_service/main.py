@@ -9,25 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 
 import grpc
-from grpc_health.v1 import health, health_pb2, health_pb2_grpc
-
 from common.config import get_settings
-
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from .routes import EnrichmentRoutes
 from .runtime import build_runtime
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
-
-logging.basicConfig(
-    level=getattr(logging, settings.service.log_level),
-    format=settings.service.log_format,
-)
 
 
 async def serve() -> None:
@@ -36,11 +27,19 @@ async def serve() -> None:
     This function builds runtime dependencies, registers gRPC handlers and
     health checks, and blocks until termination.
     """
+    settings = get_settings()
+    logging.basicConfig(
+        level=getattr(logging, settings.service.log_level),
+        format=settings.service.log_format,
+    )
+
     runtime = await build_runtime(settings)
     server = grpc.aio.server()
 
     servicer = EnrichmentRoutes(runtime=runtime)
-    enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(servicer, server)
+    enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
+        servicer, server
+    )
 
     health_servicer = health.aio.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
@@ -50,14 +49,18 @@ async def serve() -> None:
         health_pb2.HealthCheckResponse.SERVING,
     )
 
-    host = os.getenv("ENRICHMENT_SERVICE_HOST", settings.service.vector_service_host)
-    port = int(os.getenv("ENRICHMENT_SERVICE_PORT", "8010"))
+    host = settings.service.enrichment_service_host
+    port = settings.service.enrichment_service_port
     bind = f"{host}:{port}"
     server.add_insecure_port(bind)
     logger.info("Starting enrichment_service gRPC server on %s", bind)
 
-    await server.start()
-    await server.wait_for_termination()
+    try:
+        await server.start()
+        await server.wait_for_termination()
+    finally:
+        logger.info("Shutting down enrichment_service gRPC server")
+        await server.stop(grace=5)
 
 
 if __name__ == "__main__":

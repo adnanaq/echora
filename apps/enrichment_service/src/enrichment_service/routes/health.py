@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import grpc
-
 from enrichment_proto.v1 import enrichment_service_pb2
 
 from ..runtime import EnrichmentRuntime

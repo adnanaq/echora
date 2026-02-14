@@ -2,18 +2,19 @@ syntax = "proto3";
 
 package vector_service.v1;
 
-import "v1/vector_common.proto";
+import "shared_proto/v1/error.proto";
+import "google/protobuf/struct.proto";
 
 service VectorSearchService {
   rpc Search(SearchRequest) returns (SearchResponse);
 }
 
 message SearchRequest {
-  string query_text = 1;
+  optional string query_text = 1;
   bytes image = 2;
-  string entity_type = 3;
-  int32 limit = 4;
-  string filters_json = 5;
+  optional string entity_type = 3;
+  optional int32 limit = 4;
+  google.protobuf.Struct filters = 5;
 }
 
 message SearchData {
@@ -24,5 +25,5 @@ message SearchData {
 
 message SearchResponse {
   repeated SearchData data = 1;
-  ErrorDetails error = 2;
+  shared_proto.v1.ErrorDetails error = 2;
 }

@@ -1387,12 +1387,10 @@ class QdrantClient(VectorDBClient):
             filters: Optional Qdrant filter conditions
 
         Returns:
-            List of anime result dictionaries with keys:
-                - id: Anime ID (string)
-                - anime_id: Same as id (string)
-                - _id: Same as id (string)
-                - similarity_score: Raw vector similarity score (float, higher is better)
-                - ...additional payload fields (title, genres, etc.)
+            List of result dictionaries with keys:
+                - id: Point ID (string)
+                - score: Raw vector similarity score (float, higher is better)
+                - payload: Dictionary of stored payload fields
 
         Raises:
             Exception: If Qdrant API call fails
@@ -1405,7 +1403,7 @@ class QdrantClient(VectorDBClient):
             ...     limit=5
             ... )
             >>> for result in results:
-            ...     print(f"{result['title']}: {result['similarity_score']:.4f}")
+            ...     print(f"{result['id']}: {result['score']:.4f}")
         """
         try:
             # Direct vector search with raw similarity scores
@@ -1525,12 +1523,10 @@ class QdrantClient(VectorDBClient):
             filters: Optional Qdrant filter conditions
 
         Returns:
-            List of anime result dictionaries with keys:
-                - id: Anime ID (string)
-                - anime_id: Same as id (string)
-                - _id: Same as id (string)
-                - similarity_score: Fusion score (float, higher is better)
-                - ...additional payload fields (title, genres, etc.)
+            List of result dictionaries with keys:
+                - id: Point ID (string)
+                - score: Fusion score (float, higher is better)
+                - payload: Dictionary of stored payload fields
 
         Raises:
             EmptyVectorQueriesError: If vector_queries list is empty
@@ -1547,7 +1543,7 @@ class QdrantClient(VectorDBClient):
             ...     fusion_method="rrf"
             ... )
             >>> for result in results:
-            ...     print(result["title"], result["similarity_score"])
+            ...     print(result["id"], result["score"])
         """
         try:
             if not vector_queries:

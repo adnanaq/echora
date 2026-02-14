@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import grpc
-
 from enrichment_proto.v1 import enrichment_service_pb2, enrichment_service_pb2_grpc
 
 from ..runtime import EnrichmentRuntime

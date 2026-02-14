@@ -2,7 +2,9 @@ syntax = "proto3";
 
 package vector_service.v1;
 
-import "v1/vector_common.proto";
+import "shared_proto/v1/error.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 
 service VectorAdminService {
   rpc Health(HealthRequest) returns (HealthResponse);
@@ -13,16 +15,16 @@ message HealthRequest {}
 
 message HealthResponse {
   bool healthy = 1;
-  string timestamp = 2;
+  google.protobuf.Timestamp timestamp = 2;
   string service = 3;
   string version = 4;
-  string database_json = 5;
-  ErrorDetails error = 6;
+  google.protobuf.Struct database = 5;
+  shared_proto.v1.ErrorDetails error = 6;
 }
 
 message GetStatsRequest {}
 
 message GetStatsResponse {
   string stats_json = 1;
-  ErrorDetails error = 2;
+  shared_proto.v1.ErrorDetails error = 2;
 }

@@ -13,13 +13,69 @@ import tempfile
 from typing import Any
 
 import grpc
-
+from common.grpc.error_details import build_error_details as error
+from google.protobuf import json_format
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
-from .shared import error
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidFiltersPayloadError(ValueError):
+    """Raised when incoming gRPC filters cannot be represented safely."""
+
+    def __init__(self, message: str = "Invalid filter payload.") -> None:
+        super().__init__(message)
+
+
+def _raise_invalid_filters() -> None:
+    """Raise canonical invalid-filters exception."""
+    raise InvalidFiltersPayloadError()
+
+
+def _normalize_struct_numbers(value: Any) -> Any:
+    """Normalize numbers parsed from protobuf Struct payloads.
+
+    Protobuf Struct uses floating-point representation for all numeric values.
+    This converts whole-number floats (for example `2006.0`) back to integers.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {k: _normalize_struct_numbers(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_struct_numbers(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_normalize_struct_numbers(v) for v in value)
+    return value
+
+
+def _is_valid_filter_payload(filters: dict[str, Any]) -> bool:
+    """Return whether filter payload shape is supported."""
+    for key, value in filters.items():
+        if value is None:
+            continue
+
+        if isinstance(value, dict):
+            is_range = any(bound in value for bound in ("gte", "lte", "gt", "lt"))
+            if is_range:
+                continue
+            if "any" in value:
+                any_values = value["any"]
+                if not isinstance(any_values, list | tuple):
+                    return False
+                continue
+            return False
+
+        if isinstance(value, list | tuple):
+            continue
+
+        if isinstance(value, str | int | float | bool):
+            continue
+
+        return False
+    return True
 
 
 def _clean_filter_payload(raw_filters: Any) -> dict[str, Any]:
@@ -33,7 +89,7 @@ def _clean_filter_payload(raw_filters: Any) -> dict[str, Any]:
     """
     if not isinstance(raw_filters, dict):
         return {}
-    return {key: value for key, value in raw_filters.items() if key != "type"}
+    return raw_filters
 
 
 def _normalize_limit(raw_limit: int) -> int:
@@ -50,7 +106,9 @@ def _normalize_limit(raw_limit: int) -> int:
     return min(raw_limit, 100)
 
 
-async def _encode_image_bytes(runtime: VectorRuntime, image_bytes: bytes) -> list[float] | None:
+async def _encode_image_bytes(
+    runtime: VectorRuntime, image_bytes: bytes
+) -> list[float] | None:
     """Generate image embedding from raw bytes.
 
     Args:
@@ -62,7 +120,7 @@ async def _encode_image_bytes(runtime: VectorRuntime, image_bytes: bytes) -> lis
     """
     temp_path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".img", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(image_bytes)
             temp_path = tmp.name
         return await runtime.vision_processor.encode_image(temp_path)
@@ -88,7 +146,9 @@ async def search(
     """
     del context
     try:
-        query_text = request.query_text.strip()
+        query_text = (
+            request.query_text.strip() if request.HasField("query_text") else ""
+        )
         has_image = bool(request.image)
         if not query_text and not has_image:
             return vector_search_pb2.SearchResponse(
@@ -100,9 +160,25 @@ async def search(
             )
 
         filters: dict[str, Any] | None = None
-        if request.filters_json:
-            parsed = json.loads(request.filters_json)
-            filters = _clean_filter_payload(parsed)
+        if request.HasField("filters"):
+            invalid_filters = False
+            try:
+                parsed = json_format.MessageToDict(
+                    request.filters, preserving_proto_field_name=True
+                )
+                normalized = _normalize_struct_numbers(parsed)
+                filters = _clean_filter_payload(normalized)
+                invalid_filters = not _is_valid_filter_payload(filters)
+            except Exception:
+                invalid_filters = True
+
+            if invalid_filters:
+                _raise_invalid_filters()
+
+        entity_type = (
+            request.entity_type.strip() if request.HasField("entity_type") else ""
+        )
+        raw_limit = request.limit if request.HasField("limit") else 10
 
         text_embedding: list[float] | None = None
         if query_text:
@@ -131,23 +207,25 @@ async def search(
         raw_hits = await runtime.qdrant_client.search(
             text_embedding=text_embedding,
             image_embedding=image_embedding,
-            entity_type=request.entity_type or None,
-            limit=_normalize_limit(request.limit),
+            entity_type=entity_type or None,
+            limit=_normalize_limit(raw_limit),
             filters=filters,
         )
 
         data = [
             vector_search_pb2.SearchData(
                 id=str(hit.get("id", "")),
-                similarity_score=float(hit.get("score", hit.get("similarity_score", 0.0))),
+                similarity_score=float(
+                    hit.get("score", hit.get("similarity_score", 0.0))
+                ),
                 payload_json=json.dumps(hit.get("payload", hit), ensure_ascii=False),
             )
             for hit in raw_hits
         ]
         return vector_search_pb2.SearchResponse(data=data)
-    except json.JSONDecodeError as exc:
+    except InvalidFiltersPayloadError as exc:
         return vector_search_pb2.SearchResponse(
-            error=error("INVALID_FILTERS_JSON", str(exc))
+            error=error("INVALID_FILTERS", str(exc), retryable=False)
         )
     except ValueError as exc:
         return vector_search_pb2.SearchResponse(

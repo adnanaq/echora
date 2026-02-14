@@ -51,38 +51,46 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
     """
     logger.info("Initializing vector_service runtime dependencies")
 
-    if os.getenv("ENABLE_GPU", "false").lower() != "true":
+    if not settings.service.enable_gpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-    if settings.qdrant.qdrant_api_key:
-        async_qdrant_client = AsyncQdrantClient(
-            url=settings.qdrant.qdrant_url,
-            api_key=settings.qdrant.qdrant_api_key,
-        )
-    else:
-        async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
+    async_qdrant_client: AsyncQdrantClient | None = None
+    try:
+        if settings.qdrant.qdrant_api_key:
+            async_qdrant_client = AsyncQdrantClient(
+                url=settings.qdrant.qdrant_url,
+                api_key=settings.qdrant.qdrant_api_key,
+            )
+        else:
+            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
-    text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
-    vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
-    image_downloader = ImageDownloader(cache_dir=settings.embedding.model_cache_dir)
-    field_mapper = AnimeFieldMapper()
-    text_processor = TextProcessor(text_model, settings.embedding)
-    vision_processor = VisionProcessor(vision_model, image_downloader, settings.embedding)
-    embedding_manager = MultiVectorEmbeddingManager(
-        text_processor=text_processor,
-        vision_processor=vision_processor,
-        field_mapper=field_mapper,
-    )
-    qdrant_client = await QdrantClient.create(
-        config=settings.qdrant,
-        async_qdrant_client=async_qdrant_client,
-        url=settings.qdrant.qdrant_url,
-        collection_name=settings.qdrant.qdrant_collection_name,
-    )
-    return VectorRuntime(
-        qdrant_client=qdrant_client,
-        async_qdrant_client=async_qdrant_client,
-        text_processor=text_processor,
-        vision_processor=vision_processor,
-        embedding_manager=embedding_manager,
-    )
+        text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
+        vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
+        image_downloader = ImageDownloader(cache_dir=settings.embedding.model_cache_dir)
+        field_mapper = AnimeFieldMapper()
+        text_processor = TextProcessor(text_model, settings.embedding)
+        vision_processor = VisionProcessor(
+            vision_model, image_downloader, settings.embedding
+        )
+        embedding_manager = MultiVectorEmbeddingManager(
+            text_processor=text_processor,
+            vision_processor=vision_processor,
+            field_mapper=field_mapper,
+        )
+        qdrant_client = await QdrantClient.create(
+            config=settings.qdrant,
+            async_qdrant_client=async_qdrant_client,
+            url=settings.qdrant.qdrant_url,
+            collection_name=settings.qdrant.qdrant_collection_name,
+        )
+        return VectorRuntime(
+            qdrant_client=qdrant_client,
+            async_qdrant_client=async_qdrant_client,
+            text_processor=text_processor,
+            vision_processor=vision_processor,
+            embedding_manager=embedding_manager,
+        )
+    except Exception:
+        if async_qdrant_client is not None:
+            await async_qdrant_client.close()
+        raise

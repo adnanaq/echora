@@ -6,12 +6,11 @@ import json
 import logging
 
 import grpc
-
+from common.grpc.error_details import build_error_details as error
 from enrichment_proto.v1 import enrichment_service_pb2
 
 from ..pipeline_runner import run_pipeline_and_write_artifact
 from ..runtime import EnrichmentRuntime
-from .shared import error
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ async def run_pipeline(
             output_path=output_path,
             result_json=json.dumps(result, ensure_ascii=False),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("RunPipeline RPC failed")
         return enrichment_service_pb2.RunPipelineResponse(
             success=False,

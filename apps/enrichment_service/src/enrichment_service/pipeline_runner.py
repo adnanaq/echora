@@ -10,7 +10,7 @@ from typing import Any
 from enrichment.programmatic.enrichment_pipeline import ProgrammaticEnrichmentPipeline
 
 
-def load_database(file_path: str) -> dict[str, Any]:
+def load_database(file_path: str | Path) -> dict[str, Any]:
     """Load a JSON anime database from disk.
 
     Args:
@@ -23,7 +23,8 @@ def load_database(file_path: str) -> dict[str, Any]:
         OSError: If the file cannot be read.
         json.JSONDecodeError: If the file content is not valid JSON.
     """
-    with open(file_path, encoding="utf-8") as f:
+    path = Path(file_path)
+    with path.open(encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -66,6 +67,8 @@ def get_anime_by_title(database: dict[str, Any], title: str) -> dict[str, Any]:
     exact = [entry for entry in data if entry.get("title", "").lower() == title_lower]
     if len(exact) == 1:
         return exact[0]
+    if len(exact) > 1:
+        raise ValueError(f"Multiple exact matches found for title '{title}'")
     partial = [entry for entry in data if title_lower in entry.get("title", "").lower()]
     if len(partial) == 1:
         return partial[0]
@@ -113,13 +116,13 @@ def _artifact_payload(
 
 async def run_pipeline_and_write_artifact(
     *,
-    file_path: str,
+    file_path: str | Path,
     index: int | None,
     title: str | None,
     agent_dir: str | None,
     skip_services: list[str] | None,
     only_services: list[str] | None,
-    output_dir: str = "assets/seed_data",
+    output_dir: str | Path = "assets/seed_data",
 ) -> tuple[str, dict[str, Any]]:
     """Run enrichment for one anime entry and persist an artifact.
 
@@ -137,12 +140,14 @@ async def run_pipeline_and_write_artifact(
 
     Raises:
         ValueError: If neither `index` nor `title` is provided, or selection fails.
+        OSError: If input database cannot be read or output artifact cannot be written.
         Exception: Propagates pipeline execution failures.
     """
     if index is None and not title:
         raise ValueError("Either index or title must be provided")
 
-    database = load_database(file_path)
+    file_path_obj = Path(file_path)
+    database = load_database(file_path_obj)
     if index is not None:
         anime_data = get_anime_by_index(database, index)
     else:
@@ -162,7 +167,7 @@ async def run_pipeline_and_write_artifact(
     output_path = output_root / _artifact_name(title_for_name)
     payload = _artifact_payload(
         request={
-            "file_path": file_path,
+            "file_path": str(file_path_obj),
             "index": index,
             "title": title,
             "agent_dir": agent_dir,
@@ -171,7 +176,7 @@ async def run_pipeline_and_write_artifact(
         },
         result=result,
     )
-    with open(output_path, "w", encoding="utf-8") as f:
+    with output_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
     return str(output_path), result

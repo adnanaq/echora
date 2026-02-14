@@ -7,7 +7,6 @@ artifact output locations.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from common.config import Settings
@@ -30,13 +29,7 @@ async def build_runtime(settings: Settings) -> EnrichmentRuntime:
     Returns:
         Runtime values used by route handlers.
     """
-    del settings
-    default_file_path = os.getenv(
-        "ENRICHMENT_DEFAULT_FILE_PATH",
-        "data/qdrant_storage/anime-offline-database.json",
-    )
-    output_dir = os.getenv("ENRICHMENT_OUTPUT_DIR", "assets/seed_data")
     return EnrichmentRuntime(
-        default_file_path=default_file_path,
-        output_dir=output_dir,
+        default_file_path=settings.service.enrichment_default_file_path,
+        output_dir=settings.service.enrichment_output_dir,
     )
