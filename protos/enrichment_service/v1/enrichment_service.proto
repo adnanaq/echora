@@ -4,32 +4,50 @@ package enrichment_service.v1;
 
 import "shared_proto/v1/error.proto";
 
+// RPCs for enrichment pipeline health and execution.
 service EnrichmentService {
+  // Returns service health/readiness information.
   rpc Health(HealthRequest) returns (HealthResponse);
+  // Runs the enrichment pipeline for one selected anime record.
   rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
 }
 
+// Empty request for health checks.
 message HealthRequest {}
 
 message HealthResponse {
+  // True when the service is ready to process requests.
   bool healthy = 1;
+  // Logical service identifier.
   string service = 2;
+  // Optional JSON payload with runtime or dependency details.
   string details_json = 3;
+  // Populated when a health-check operation fails.
   shared_proto.v1.ErrorDetails error = 4;
 }
 
 message RunPipelineRequest {
+  // Input file path for the anime dataset.
   string file_path = 1;
+  // Optional row index to process; ignored when invalid or absent.
   optional int32 index = 2;
+  // Anime title used to locate the target entry.
   string title = 3;
+  // Optional base directory for agent outputs/artifacts.
   string agent_dir = 4;
+  // Service names to skip during pipeline execution.
   repeated string skip_services = 5;
+  // If provided, run only these service names.
   repeated string only_services = 6;
 }
 
 message RunPipelineResponse {
+  // True when enrichment completed successfully.
   bool success = 1;
+  // Absolute or relative path to the generated output artifact.
   string output_path = 2;
+  // JSON-encoded enrichment result payload.
   string result_json = 3;
+  // Populated when pipeline execution fails.
   shared_proto.v1.ErrorDetails error = 4;
 }

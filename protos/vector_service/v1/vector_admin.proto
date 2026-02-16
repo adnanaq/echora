@@ -6,25 +6,38 @@ import "shared_proto/v1/error.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+// Administrative RPCs for health and runtime diagnostics.
 service VectorAdminService {
+  // Returns service and dependency readiness information.
   rpc Health(HealthRequest) returns (HealthResponse);
+  // Returns operational vector database statistics as JSON.
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
 }
 
+// Empty request for health checks.
 message HealthRequest {}
 
 message HealthResponse {
+  // True when the service considers itself ready to serve traffic.
   bool healthy = 1;
+  // Server-side timestamp for this health assessment (UTC).
   google.protobuf.Timestamp timestamp = 2;
+  // Logical service identifier.
   string service = 3;
+  // Service version string.
   string version = 4;
+  // Structured database health/status metadata.
   google.protobuf.Struct database = 5;
+  // Populated when a health-check substep encounters an error.
   shared_proto.v1.ErrorDetails error = 6;
 }
 
+// Empty request for statistics retrieval.
 message GetStatsRequest {}
 
 message GetStatsResponse {
+  // JSON-encoded statistics document returned by the backend.
   string stats_json = 1;
+  // Populated when stats collection fails.
   shared_proto.v1.ErrorDetails error = 2;
 }
