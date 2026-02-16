@@ -1,352 +1,274 @@
-"""Unit tests for retry utility function."""
+"""Unit tests for retry utility helpers."""
 
-import asyncio
+import importlib.util
+from pathlib import Path
+from types import ModuleType
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from qdrant_db.utils.retry import default_is_transient_error, retry_with_backoff
+from qdrant_db.utils import retry as retry_module
+from qdrant_db.utils.retry import (
+    _extract_status_code,
+    default_is_transient_error,
+    retry_with_backoff,
+)
 
 
-class TestRetryWithBackoff:
-    """Test suite for retry_with_backoff utility function."""
+class _StatusError(Exception):
+    """Exception carrying optional status-like fields."""
 
-    @pytest.mark.asyncio
-    async def test_success_on_first_attempt(self):
-        """Test that successful operation on first attempt doesn't retry."""
-        mock_operation = AsyncMock(return_value="success")
+    def __init__(
+        self,
+        *,
+        status: int | None = None,
+        status_code: int | None = None,
+        code: int | None = None,
+        message: str = "status error",
+    ) -> None:
+        super().__init__(message)
+        if status is not None:
+            self.status = status
+        if status_code is not None:
+            self.status_code = status_code
+        if code is not None:
+            self.code = code
 
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=3,
-            retry_delay=0.1,
-        )
 
-        assert result == "success"
-        assert mock_operation.call_count == 1
+@pytest.mark.asyncio
+async def test_retry_with_backoff_rejects_negative_max_retries() -> None:
+    """Negative max_retries must be rejected."""
+    with pytest.raises(ValueError, match="max_retries must be >= 0"):
+        await retry_with_backoff(operation=AsyncMock(return_value="ok"), max_retries=-1)
 
-    @pytest.mark.asyncio
-    async def test_success_after_transient_errors(self):
-        """Test that operation retries on transient errors and eventually succeeds."""
-        mock_operation = AsyncMock()
-        # Fail twice with transient errors, then succeed
-        mock_operation.side_effect = [
-            Exception("Connection timeout"),
-            Exception("Network error"),
-            "success",
-        ]
 
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=3,
-            retry_delay=0.01,  # Small delay for fast tests
-        )
+@pytest.mark.asyncio
+async def test_retry_with_backoff_rejects_negative_retry_delay() -> None:
+    """Negative retry_delay must be rejected."""
+    with pytest.raises(ValueError, match="retry_delay must be >= 0"):
+        await retry_with_backoff(operation=AsyncMock(return_value="ok"), retry_delay=-0.1)
 
-        assert result == "success"
-        assert mock_operation.call_count == 3
 
-    @pytest.mark.asyncio
-    async def test_non_transient_error_fails_immediately(self):
-        """Test that non-transient errors don't trigger retries."""
-        mock_operation = AsyncMock(side_effect=ValueError("Invalid data"))
+@pytest.mark.asyncio
+async def test_retry_with_backoff_passes_operation_args_and_kwargs() -> None:
+    """Operation args and kwargs should be forwarded to the callable."""
 
-        with pytest.raises(ValueError, match="Invalid data"):
-            await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=3,
-                retry_delay=0.01,
-            )
+    async def operation(a: int, b: int, *, c: int) -> int:
+        return a + b + c
 
-        # Should only be called once since non-transient error
-        assert mock_operation.call_count == 1
+    result = await retry_with_backoff(
+        operation=operation,
+        operation_args=(2, 3),
+        operation_kwargs={"c": 5},
+    )
+    assert result == 10
 
-    @pytest.mark.asyncio
-    async def test_max_retries_exceeded(self):
-        """Test that operation fails after max retries are exceeded."""
-        mock_operation = AsyncMock(side_effect=Exception("Connection timeout"))
 
-        with pytest.raises(Exception, match="Connection timeout"):
-            await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=2,
-                retry_delay=0.01,
-            )
+@pytest.mark.asyncio
+async def test_retry_with_backoff_retries_transient_error_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transient errors should trigger retries and exponential delays."""
+    sleep_calls: list[float] = []
 
-        # Should be called max_retries + 1 times (initial + retries)
-        assert mock_operation.call_count == 3
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
 
-    @pytest.mark.asyncio
-    async def test_exponential_backoff(self):
-        """Test that retry delays follow exponential backoff pattern."""
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [
-            Exception("timeout"),
-            Exception("timeout"),
-            "success",
-        ]
+    monkeypatch.setattr(retry_module.asyncio, "sleep", fake_sleep)
 
-        start_time = asyncio.get_running_loop().time()
+    operation = AsyncMock(
+        side_effect=[ConnectionError("network"), TimeoutError("timeout"), "ok"]
+    )
+    on_retry = Mock()
 
+    result = await retry_with_backoff(
+        operation=operation,
+        max_retries=3,
+        retry_delay=0.5,
+        on_retry=on_retry,
+    )
+
+    assert result == "ok"
+    assert operation.call_count == 3
+    assert sleep_calls == [0.5, 1.0]
+    assert on_retry.call_count == 2
+    first_retry = on_retry.call_args_list[0].kwargs
+    second_retry = on_retry.call_args_list[1].kwargs
+    assert first_retry["attempt"] == 1
+    assert second_retry["attempt"] == 2
+    assert first_retry["max_retries"] == 3
+    assert second_retry["max_retries"] == 3
+    assert first_retry["delay"] == 0.5
+    assert second_retry["delay"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_retry_with_backoff_non_transient_error_fails_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-transient errors should fail immediately without sleeping."""
+    sleep = AsyncMock()
+    monkeypatch.setattr(retry_module.asyncio, "sleep", sleep)
+    operation = AsyncMock(side_effect=ValueError("bad input"))
+
+    with pytest.raises(ValueError, match="bad input"):
+        await retry_with_backoff(operation=operation, max_retries=5, retry_delay=0.1)
+
+    assert operation.call_count == 1
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_with_backoff_honors_custom_transient_checker() -> None:
+    """Custom transient checker should control retry behavior."""
+    operation = AsyncMock(side_effect=RuntimeError("temporary issue"))
+    checker = Mock(return_value=False)
+
+    with pytest.raises(RuntimeError, match="temporary issue"):
         await retry_with_backoff(
-            operation=mock_operation,
+            operation=operation,
             max_retries=3,
-            retry_delay=0.1,
+            is_transient_error=checker,
         )
 
-        end_time = asyncio.get_running_loop().time()
-        elapsed = end_time - start_time
-
-        # First retry: 0.1s, second retry: 0.2s
-        # Total should be at least 0.3s
-        assert elapsed >= 0.3
-        assert mock_operation.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_transient_error_detection(self):
-        """Test that transient errors are correctly identified."""
-        transient_errors = [
-            Exception("Connection timeout occurred"),
-            Exception("Network unreachable"),
-            Exception("Service temporarily unavailable"),
-            Exception("Connection refused"),
-        ]
-
-        for error in transient_errors:
-            mock_operation = AsyncMock()
-            mock_operation.side_effect = [error, "success"]
-
-            result = await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=2,
-                retry_delay=0.01,
-            )
-
-            assert result == "success"
-            assert mock_operation.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_operation_with_args_and_kwargs(self):
-        """Test that operation receives correct args and kwargs."""
-        mock_operation = AsyncMock(return_value="success")
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=3,
-            retry_delay=0.01,
-            operation_args=("arg1", "arg2"),
-            operation_kwargs={"key1": "value1", "key2": "value2"},
-        )
-
-        assert result == "success"
-        mock_operation.assert_called_once_with(
-            "arg1", "arg2", key1="value1", key2="value2"
-        )
-
-    @pytest.mark.asyncio
-    async def test_custom_error_checker(self):
-        """Test that custom error checker can override default transient detection."""
-
-        def is_retryable(error: Exception) -> bool:
-            return "RETRY_ME" in str(error)
-
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [Exception("RETRY_ME please"), "success"]
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=2,
-            retry_delay=0.01,
-            is_transient_error=is_retryable,
-        )
-
-        assert result == "success"
-        assert mock_operation.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_zero_retries(self):
-        """Test that max_retries=0 means no retries."""
-        mock_operation = AsyncMock(side_effect=Exception("timeout"))
-
-        with pytest.raises(Exception, match="timeout"):
-            await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=0,
-                retry_delay=0.01,
-            )
-
-        assert mock_operation.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_callback_on_retry(self):
-        """Test that callback is called on each retry attempt."""
-        retry_callback = Mock()
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [
-            Exception("timeout"),
-            Exception("timeout"),
-            "success",
-        ]
-
-        await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=3,
-            retry_delay=0.01,
-            on_retry=retry_callback,
-        )
-
-        # Callback should be called twice (for 2 retries)
-        assert retry_callback.call_count == 2
-
-        # Check callback was called with correct arguments
-        first_call = retry_callback.call_args_list[0]
-        assert first_call[1]["attempt"] == 1
-        assert first_call[1]["max_retries"] == 3
-        assert isinstance(first_call[1]["error"], Exception)
-
-    @pytest.mark.asyncio
-    async def test_negative_max_retries_validation(self):
-        """Test that negative max_retries raises ValueError."""
-        mock_operation = AsyncMock(return_value="success")
-
-        with pytest.raises(ValueError, match="max_retries must be >= 0"):
-            await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=-1,
-                retry_delay=0.01,
-            )
-
-        # Operation should never be called due to validation failure
-        assert mock_operation.call_count == 0
-
-    @pytest.mark.asyncio
-    async def test_negative_retry_delay_validation(self):
-        """Test that negative retry_delay raises ValueError."""
-        mock_operation = AsyncMock(return_value="success")
-
-        with pytest.raises(ValueError, match="retry_delay must be >= 0"):
-            await retry_with_backoff(
-                operation=mock_operation,
-                max_retries=3,
-                retry_delay=-0.5,
-            )
-
-        # Operation should never be called due to validation failure
-        assert mock_operation.call_count == 0
-
-    @pytest.mark.asyncio
-    async def test_type_based_transient_error_detection(self):
-        """Test that common transient exception types are detected."""
-        # Test TimeoutError
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [TimeoutError(), "success"]
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=2,
-            retry_delay=0.01,
-        )
-
-        assert result == "success"
-        assert mock_operation.call_count == 2
-
-        # Test ConnectionError
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [ConnectionError("Connection failed"), "success"]
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=2,
-            retry_delay=0.01,
-        )
-
-        assert result == "success"
-        assert mock_operation.call_count == 2
-
-        # Test TimeoutError
-        mock_operation = AsyncMock()
-        mock_operation.side_effect = [TimeoutError("Timeout occurred"), "success"]
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=2,
-            retry_delay=0.01,
-        )
-
-        assert result == "success"
-        assert mock_operation.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_none_args_and_kwargs_normalization(self):
-        """Test that None args and kwargs are properly normalized."""
-        mock_operation = AsyncMock(return_value="success")
-
-        result = await retry_with_backoff(
-            operation=mock_operation,
-            max_retries=1,
-            retry_delay=0.01,
-            operation_args=None,
-            operation_kwargs=None,
-        )
-
-        assert result == "success"
-        mock_operation.assert_called_once_with()
+    assert operation.call_count == 1
+    checker.assert_called_once()
 
 
-class TestDefaultIsTransientError:
-    """Test suite for default_is_transient_error function."""
+@pytest.mark.asyncio
+async def test_retry_with_backoff_raises_after_max_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry loop should re-raise after max retry attempts are exhausted."""
+    sleep_calls: list[float] = []
 
-    def test_type_based_detection_timeout(self):
-        """Test that TimeoutError is detected as transient."""
-        error = TimeoutError()
-        assert default_is_transient_error(error) is True
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
 
-    def test_type_based_detection_connection_error(self):
-        """Test that ConnectionError is detected as transient."""
-        error = ConnectionError("Connection failed")
-        assert default_is_transient_error(error) is True
+    monkeypatch.setattr(retry_module.asyncio, "sleep", fake_sleep)
+    exception_logger = Mock()
+    monkeypatch.setattr(retry_module.logger, "exception", exception_logger)
 
-    def test_type_based_detection_timeout_error(self):
-        """Test that TimeoutError is detected as transient."""
-        error = TimeoutError("Timeout occurred")
-        assert default_is_transient_error(error) is True
+    operation = AsyncMock(side_effect=ConnectionError("still down"))
 
-    def test_keyword_based_detection_timeout(self):
-        """Test that errors with 'timeout' keyword are detected as transient."""
-        error = Exception("Connection timeout occurred")
-        assert default_is_transient_error(error) is True
+    with pytest.raises(ConnectionError, match="still down"):
+        await retry_with_backoff(operation=operation, max_retries=1, retry_delay=0.25)
 
-    def test_keyword_based_detection_connection(self):
-        """Test that errors with 'connection' keyword are detected as transient."""
-        error = Exception("Connection refused")
-        assert default_is_transient_error(error) is True
+    assert operation.call_count == 2
+    assert sleep_calls == [0.25]
+    exception_logger.assert_called_once()
 
-    def test_keyword_based_detection_network(self):
-        """Test that errors with 'network' keyword are detected as transient."""
-        error = Exception("Network unreachable")
-        assert default_is_transient_error(error) is True
 
-    def test_keyword_based_detection_temporary(self):
-        """Test that errors with 'temporary' keyword are detected as transient."""
-        error = Exception("Service temporarily unavailable")
-        assert default_is_transient_error(error) is True
+def test_extract_status_code_prefers_status_field() -> None:
+    """Status extraction should prefer status before status_code/code."""
+    error = _StatusError(status=503, status_code=400, code=401)
+    assert _extract_status_code(error) == 503
 
-    def test_keyword_based_detection_unavailable(self):
-        """Test that errors with 'unavailable' keyword are detected as transient."""
-        error = Exception("Resource unavailable")
-        assert default_is_transient_error(error) is True
 
-    def test_case_insensitive_keyword_matching(self):
-        """Test that keyword matching is case-insensitive."""
-        error = Exception("CONNECTION TIMEOUT")
-        assert default_is_transient_error(error) is True
+def test_extract_status_code_uses_status_code_then_code() -> None:
+    """Status extraction should fall back to status_code and then code."""
+    assert _extract_status_code(_StatusError(status_code=429)) == 429
+    assert _extract_status_code(_StatusError(code=504)) == 504
 
-    def test_non_transient_error_detection(self):
-        """Test that non-transient errors are not detected as transient."""
-        non_transient_errors = [
-            ValueError("Invalid value"),
-            TypeError("Wrong type"),
-            KeyError("Missing key"),
-            Exception("Something went wrong"),
-        ]
 
-        for error in non_transient_errors:
-            assert default_is_transient_error(error) is False
+def test_extract_status_code_returns_none_when_missing() -> None:
+    """Status extraction should return None if no recognized fields exist."""
+    assert _extract_status_code(Exception("no status")) is None
+
+
+def test_default_is_transient_error_for_timeout_and_connection() -> None:
+    """Built-in timeout/connection exceptions should be transient."""
+    assert default_is_transient_error(TimeoutError("timeout"))
+    assert default_is_transient_error(ConnectionError("connection error"))
+
+
+def test_default_is_transient_error_for_response_handling_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Response handling exceptions should be considered transient."""
+
+    class _FakeResponseHandlingException(Exception):
+        pass
+
+    monkeypatch.setattr(
+        retry_module,
+        "ResponseHandlingException",
+        _FakeResponseHandlingException,
+    )
+
+    assert default_is_transient_error(_FakeResponseHandlingException("decode error"))
+
+
+def test_default_is_transient_error_for_api_exception_retryable_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ApiException with retryable status should be classified as transient."""
+
+    class _FakeApiException(Exception):
+        def __init__(self, status: int) -> None:
+            super().__init__(f"status {status}")
+            self.status = status
+
+    monkeypatch.setattr(retry_module, "ApiException", _FakeApiException)
+
+    assert default_is_transient_error(_FakeApiException(429))
+    assert default_is_transient_error(_FakeApiException(503))
+
+
+def test_default_is_transient_error_for_api_exception_non_retryable_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ApiException with non-retryable status should not be transient."""
+
+    class _FakeApiException(Exception):
+        def __init__(self, status: int) -> None:
+            super().__init__(f"status {status}")
+            self.status = status
+
+    monkeypatch.setattr(retry_module, "ApiException", _FakeApiException)
+
+    assert not default_is_transient_error(_FakeApiException(400))
+
+
+def test_default_is_transient_error_for_generic_status_code() -> None:
+    """Generic exceptions with retryable status_code should be transient."""
+    assert default_is_transient_error(_StatusError(status_code=504))
+    assert not default_is_transient_error(_StatusError(status_code=422))
+
+
+def test_default_is_transient_error_keyword_fallback() -> None:
+    """Keyword fallback should classify clearly transient error messages."""
+    assert default_is_transient_error(Exception("temporary network unavailable"))
+    assert not default_is_transient_error(Exception("invalid payload schema"))
+
+
+def test_retry_module_import_guard_fallback_creates_placeholder_exception_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Import-guard fallback should define placeholder ApiException classes."""
+    retry_path = Path(retry_module.__file__).resolve()
+    spec = importlib.util.spec_from_file_location("qdrant_retry_fallback_test", retry_path)
+    assert spec is not None and spec.loader is not None
+
+    loaded_module = ModuleType("qdrant_retry_fallback_test")
+
+    import builtins
+
+    original_import = builtins.__import__
+
+    def fake_import(
+        name: str,
+        globals_dict: dict[str, Any] | None = None,
+        locals_dict: dict[str, Any] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> Any:
+        if name == "qdrant_client.http.exceptions":
+            raise ImportError("forced import failure for fallback branch")
+        return original_import(name, globals_dict, locals_dict, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    spec.loader.exec_module(loaded_module)
+
+    assert isinstance(loaded_module.ApiException, type)
+    assert isinstance(loaded_module.ResponseHandlingException, type)

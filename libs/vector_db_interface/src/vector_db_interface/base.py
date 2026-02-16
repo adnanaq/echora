@@ -2,7 +2,19 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
+
+
+class SparseVectorData(TypedDict):
+    """Sparse vector payload represented as explicit index/value pairs.
+
+    Attributes:
+        indices: Dimension indices for non-zero values.
+        values: Non-zero values aligned by position with ``indices``.
+    """
+
+    indices: list[int]
+    values: list[float]
 
 
 @dataclass
@@ -13,12 +25,13 @@ class VectorDocument:
         id: Unique identifier for the document
         vectors: Named vectors for multi-vector search. Supports single vectors
             (e.g., {"text": [0.1, 0.2, ...]}) or multivectors for hierarchical
-            embeddings (e.g., {"episodes": [[0.1, ...], [0.2, ...]]})
+            embeddings (e.g., {"episodes": [[0.1, ...], [0.2, ...]]}), and sparse
+            vectors (e.g., {"text_sparse": {"indices": [1, 7], "values": [0.2, 1.1]}})
         payload: Metadata and searchable fields
     """
 
     id: str
-    vectors: dict[str, list[float] | list[list[float]]]
+    vectors: dict[str, list[float] | list[list[float]] | SparseVectorData]
     payload: dict[str, Any]
 
 
@@ -53,8 +66,8 @@ class VectorDBClient(ABC):
         self,
         documents: list[VectorDocument],
         batch_size: int = 100,
-    ) -> dict[str, Any]:
-        """Add documents to the collection in batches."""
+    ) -> Any:
+        """Upsert documents to the collection in batches."""
         pass
 
     @abstractmethod
@@ -64,6 +77,67 @@ class VectorDBClient(ABC):
         with_vectors: bool = False,
     ) -> dict[str, Any] | None:
         """Retrieve a document by its ID."""
+        pass
+
+    @abstractmethod
+    async def search(self, request: Any) -> list[Any]:
+        """Run vector search with a strict request contract."""
+        pass
+
+    @abstractmethod
+    async def update_vectors(
+        self,
+        updates: list[Any],
+        dedup_policy: str = "last-wins",
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> Any:
+        """Batch update vectors for existing points.
+
+        Args:
+            updates: List of vector update items (implementation-specific type).
+            dedup_policy: Deduplication policy ("last-wins" or "fail").
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
+
+        Returns:
+            Operation result (implementation-specific type).
+
+        Note:
+            Implementations SHOULD override with stricter types for type safety
+            (e.g., list[BatchVectorUpdateItem] -> BatchOperationResult).
+            Type checkers may warn about LSP violations - these are safe to ignore
+            as runtime behavior accepts the stricter contract.
+        """
+        pass
+
+    @abstractmethod
+    async def update_payload(
+        self,
+        updates: list[Any],
+        mode: str = "merge",
+        dedup_policy: str = "last-wins",
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> Any:
+        """Batch update payload for existing points.
+
+        Args:
+            updates: List of payload update items (implementation-specific type).
+            mode: Update mode ("merge" or "overwrite").
+            dedup_policy: Deduplication policy ("last-wins" or "fail").
+            max_retries: Maximum number of retry attempts.
+            retry_delay: Delay between retries in seconds.
+
+        Returns:
+            Operation result (implementation-specific type).
+
+        Note:
+            Implementations SHOULD override with stricter types for type safety
+            (e.g., list[BatchPayloadUpdateItem] -> BatchOperationResult).
+            Type checkers may warn about LSP violations - these are safe to ignore
+            as runtime behavior accepts the stricter contract.
+        """
         pass
 
     # ==================== Health & Statistics ====================

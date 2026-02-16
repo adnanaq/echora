@@ -1,62 +1,28 @@
-# QdrantClient Tests
+# Qdrant Client Tests
 
-## Integration Tests
+## Unit Tests
+Unit tests now cover strict contract behavior for:
+- `SearchRequest`-driven search
+- Batch vector updates (`last-wins`, `fail`)
+- Batch payload updates (`merge`, `overwrite`)
+- Retry utility transient detection and backoff behavior
 
-**File**: `test_qdrant_client_integration.py`
-
-All tests in this file are **integration tests** that require:
-- Running Qdrant database (default: http://localhost:6333)
-- ML models downloaded (BGE-M3, OpenCLIP)
-- Test data file: `./assets/seed_data/anime_database.json`
-
-### Running Integration Tests
-
+Run:
 ```bash
-# Run all integration tests
-pytest -m integration
-
-# Skip integration tests (run only unit tests)
-pytest -m "not integration"
-
-# Run specific integration test
-pytest tests/vector/client/test_qdrant_client_integration.py::test_name
+./pants test tests/libs/qdrant_db/unit:: --test-use-coverage=false
 ```
 
-### Why Tests May Skip
+## Integration Tests
+Integration tests in `tests/libs/qdrant_db/integration/` require:
+- Running Qdrant database (default: `http://localhost:6333`)
+- ML models downloaded (BGE-M3, OpenCLIP)
+- Seed data file: `./assets/seed_data/anime_database.json`
 
-Tests will automatically skip if:
-- Qdrant database is not reachable
-- Database connection fails during setup
-- Required data files are missing
+Run:
+```bash
+./pants test tests/libs/qdrant_db/integration:: --test-use-coverage=false
+```
 
-This is expected behavior - integration tests require infrastructure.
-
-### Setting Up for Integration Tests
-
-1. **Start Qdrant**:
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d qdrant
-   ```
-
-2. **Verify Connection**:
-   ```bash
-   curl http://localhost:6333/health
-   ```
-
-3. **Run Tests**:
-   ```bash
-   pytest tests/vector/client/test_qdrant_client_integration.py --no-cov
-   ```
-
-## Test Coverage
-
-- **36 integration tests** covering:
-  - Vector update operations (single and batch)
-  - Deduplication policies
-  - Error handling and retries
-  - Validation
-  - End-to-end workflows with embedding generation
-
-- **No unit tests yet** - all current tests require database
-  - Future: Add unit tests with mocked AsyncQdrantClient
-  - Future: Add unit tests for validation logic
+## Notes
+This codebase now uses a strict, exception-driven API contract in `qdrant_db.client`.
+If you are migrating older test scenarios, use `SearchRequest`, `BatchVectorUpdateItem`, and `BatchPayloadUpdateItem`.

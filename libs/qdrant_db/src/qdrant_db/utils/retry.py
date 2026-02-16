@@ -1,4 +1,4 @@
-"""Retry utility for handling transient errors with exponential backoff."""
+"""Retry helpers for transient Qdrant-related failures."""
 
 import asyncio
 import logging
@@ -9,35 +9,60 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
+_RETRYABLE_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
-def default_is_transient_error(error: Exception) -> bool:
-    """Check if an error is transient and worth retrying.
+try:
+    from qdrant_client.http.exceptions import (  # type: ignore[attr-defined]
+        ApiException,
+        ResponseHandlingException,
+    )
+except Exception:  # pragma: no cover - import guard for optional runtime shapes
+    # Fallback to empty tuple for isinstance checks when qdrant_client unavailable
+    ApiException = type("ApiException", (), {})  # type: ignore[misc,assignment]
+    ResponseHandlingException = type("ResponseHandlingException", (), {})  # type: ignore[misc,assignment]
 
-    Detects common transient errors using type checking and keyword matching.
-    Type-based detection covers standard Python exceptions (asyncio.TimeoutError,
-    ConnectionError, TimeoutError). Keyword matching handles library-specific errors
-    from HTTP clients, database drivers, etc.
 
-    For library-specific exceptions (e.g., qdrant_client.http.exceptions, httpx errors),
-    consider passing a custom is_transient_error function to retry_with_backoff that
-    checks for specific exception types relevant to your use case.
+def _extract_status_code(error: Exception) -> int | None:
+    """Extract best-effort HTTP-like status code from an exception.
 
     Args:
-        error: Exception to check
+        error: Exception instance to inspect.
 
     Returns:
-        True if error is transient, False otherwise
+        Integer status code when available, otherwise ``None``.
     """
-    # Check common transient exception types
-    transient_types = (
-        asyncio.TimeoutError,
-        ConnectionError,
-        TimeoutError,
-    )
-    if isinstance(error, transient_types):
+    for attr in ("status", "status_code", "code"):
+        value = getattr(error, attr, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def default_is_transient_error(error: Exception) -> bool:
+    """Check if an exception is retryable.
+
+    Args:
+        error: Exception raised by an operation.
+
+    Returns:
+        ``True`` when the error is likely transient/retryable, otherwise
+        ``False``.
+    """
+    if isinstance(error, (asyncio.TimeoutError, ConnectionError, TimeoutError)):
         return True
 
-    # Fallback to keyword matching for library-specific errors
+    if isinstance(error, ResponseHandlingException):
+        return True
+
+    if isinstance(error, ApiException):
+        status_code = _extract_status_code(error)
+        if status_code in _RETRYABLE_HTTP_STATUS_CODES:
+            return True
+
+    status_code = _extract_status_code(error)
+    if status_code in _RETRYABLE_HTTP_STATUS_CODES:
+        return True
+
     error_str = str(error).lower()
     transient_keywords = [
         "timeout",
@@ -58,46 +83,29 @@ async def retry_with_backoff(
     is_transient_error: Callable[[Exception], bool] | None = None,
     on_retry: Callable[..., None] | None = None,
 ) -> T:
-    """Execute an async operation with retry logic and exponential backoff.
-
-    This utility function handles transient errors by retrying the operation
-    with exponential backoff. It's designed to be reusable across different
-    parts of the codebase that need retry functionality.
+    """Execute an async operation with exponential backoff retries.
 
     Args:
-        operation: Async function to execute
-        max_retries: Maximum number of retry attempts (default: 3)
-        retry_delay: Initial delay in seconds between retries, doubles each retry (default: 1.0)
-        operation_args: Tuple of positional arguments to pass to operation
-        operation_kwargs: Dictionary of keyword arguments to pass to operation
-        is_transient_error: Optional custom function to determine if error is transient
-        on_retry: Optional callback called on each retry with (attempt, max_retries, error, delay)
+        operation: Async callable to execute.
+        max_retries: Number of retry attempts after initial call.
+        retry_delay: Initial backoff delay in seconds.
+        operation_args: Optional positional args passed to operation.
+        operation_kwargs: Optional keyword args passed to operation.
+        is_transient_error: Optional predicate to classify retryable errors.
+        on_retry: Optional callback invoked before each retry.
 
     Returns:
-        Result of the operation if successful
+        Result returned by ``operation``.
 
     Raises:
-        ValueError: If max_retries or retry_delay are negative
-        Exception: The last exception if all retries are exhausted or if non-transient error
-
-    Example:
-        >>> async def update_db(id: str, value: int):
-        ...     await db.update(id, value)
-        ...
-        >>> result = await retry_with_backoff(
-        ...     operation=update_db,
-        ...     max_retries=3,
-        ...     retry_delay=1.0,
-        ...     operation_kwargs={"id": "123", "value": 456}
-        ... )
+        ValueError: If retry configuration is invalid.
+        Exception: Re-raises terminal operation exception.
     """
-    # Validate input parameters
     if max_retries < 0:
-        raise ValueError("max_retries must be >= 0")  # noqa: TRY003
+        raise ValueError("max_retries must be >= 0")
     if retry_delay < 0:
-        raise ValueError("retry_delay must be >= 0")  # noqa: TRY003
+        raise ValueError("retry_delay must be >= 0")
 
-    # Normalize optional arguments for type checker
     if operation_args is None:
         operation_args = ()
     if operation_kwargs is None:
@@ -108,47 +116,31 @@ async def retry_with_backoff(
     while retry_count <= max_retries:
         try:
             result = await operation(*operation_args, **operation_kwargs)
-        except Exception as e:
+        except Exception as error:
             retry_count += 1
-
-            # Check if this is a transient error worth retrying
-            # Use provided error checker or default
-            if is_transient_error is not None:
-                is_transient = is_transient_error(e)
-            else:
-                is_transient = default_is_transient_error(e)
-
-            if is_transient and retry_count <= max_retries:
-                # Exponential backoff
+            checker = is_transient_error or default_is_transient_error
+            if checker(error) and retry_count <= max_retries:
                 delay = retry_delay * (2 ** (retry_count - 1))
-
                 logger.warning(
-                    f"Transient error on attempt {retry_count}/{max_retries + 1}: {e}. "
-                    f"Retrying in {delay}s..."
+                    "Transient error on attempt %s/%s: %s. Retrying in %ss...",
+                    retry_count,
+                    max_retries + 1,
+                    error,
+                    delay,
                 )
-
-                # Call retry callback if provided
                 if on_retry:
                     on_retry(
                         attempt=retry_count,
                         max_retries=max_retries,
-                        error=e,
+                        error=error,
                         delay=delay,
                     )
-
                 await asyncio.sleep(delay)
             else:
-                # Non-transient error or max retries exceeded
                 if retry_count > max_retries:
-                    logger.exception(f"Max retries ({max_retries}) exceeded")
-                else:
-                    logger.exception("Non-transient error")
-
+                    logger.exception("Max retries (%s) exceeded", max_retries)
                 raise
         else:
-            # Success - return result
             return result
 
-    # pragma: no cover - This is truly unreachable with validation in place
-    # The loop always returns on success or raises on error
-    raise RuntimeError
+    raise RuntimeError  # pragma: no cover - unreachable by construction
