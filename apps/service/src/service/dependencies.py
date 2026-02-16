@@ -4,6 +4,8 @@ from fastapi import Request
 from vector_db_interface import VectorDBClient
 from vector_processing import (
     MultiVectorEmbeddingManager,
+    RerankerProcessor,
+    SearchableContentExtractor,
     TextProcessor,
     VisionProcessor,
 )
@@ -113,3 +115,41 @@ async def get_vision_processor(request: Request) -> VisionProcessor:
         logger.error("VisionProcessor not initialized in app state.")
         raise RuntimeError("VisionProcessor not available.")
     return request.app.state.vision_processor
+
+
+async def get_reranker_processor(request: Request) -> RerankerProcessor | None:
+    """
+    Dependency that provides a RerankerProcessor instance.
+
+    Returns None if reranking is disabled in configuration.
+    Routes should check for None before using.
+
+    Args:
+        request: FastAPI request object containing app state
+
+    Returns:
+        Initialized RerankerProcessor instance or None
+    """
+    return getattr(request.app.state, "reranker_processor", None)
+
+
+async def get_content_extractor(request: Request) -> SearchableContentExtractor:
+    """
+    Dependency that provides a SearchableContentExtractor instance.
+
+    Args:
+        request: FastAPI request object containing app state
+
+    Returns:
+        Initialized SearchableContentExtractor instance
+
+    Raises:
+        RuntimeError: If ContentExtractor not available in app state
+    """
+    if (
+        not hasattr(request.app.state, "content_extractor")
+        or request.app.state.content_extractor is None
+    ):
+        logger.error("ContentExtractor not initialized in app state.")
+        raise RuntimeError("ContentExtractor not available.")
+    return request.app.state.content_extractor

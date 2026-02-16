@@ -28,6 +28,7 @@ from vector_processing import (
     AnimeFieldMapper,
     MultiVectorEmbeddingManager,
     RerankerProcessor,
+    SearchableContentExtractor,
     TextProcessor,
     VisionProcessor,
 )
@@ -106,6 +107,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Embedding models loaded successfully")
 
+        # Initialize content extractor (pure logic, no heavy dependencies)
+        content_extractor = SearchableContentExtractor()
+        logger.info("Content extractor initialized")
+
         # Initialize reranker if enabled
         reranker_processor = None
         if settings.embedding.reranking_enabled:
@@ -121,13 +126,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.warning("Continuing without reranking support")
                 # Reranking is optional, continue without it
 
-        # Initialize QdrantClient
+        # Initialize QdrantClient (without reranker - reranking applied at route layer)
         qdrant_client_instance = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
             url=settings.qdrant.qdrant_url,
             collection_name=settings.qdrant.qdrant_collection_name,
-            reranker=reranker_processor,
         )
 
         # Store all clients and processors on app state
@@ -137,6 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.text_processor = text_processor
         app.state.vision_processor = vision_processor
         app.state.field_mapper = field_mapper
+        app.state.content_extractor = content_extractor
         app.state.reranker_processor = reranker_processor
 
         # Health check
