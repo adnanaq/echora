@@ -208,7 +208,9 @@ class QdrantConfig(BaseModel):
         """Validate sparse vector modifier."""
         valid_modifiers = ["none", "idf"]
         if v.lower() not in valid_modifiers:
-            raise ValueError(f"Sparse vector modifier must be one of: {valid_modifiers}")
+            raise ValueError(
+                f"Sparse vector modifier must be one of: {valid_modifiers}"
+            )
         return v.lower()
 
     @field_validator("multivector_vectors")

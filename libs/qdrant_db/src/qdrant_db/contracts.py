@@ -207,18 +207,11 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=1000)
     filters: list[SearchFilterCondition] = Field(default_factory=list)
     fusion_method: FusionMethod = "rrf"
-    
+
     # Reranking support
     query_text: str | None = Field(
         default=None,
-        description="Original query text (required for reranking)",
-    )
-    apply_reranking: bool | None = Field(
-        default=None,
-        description=(
-            "Override reranking behavior for this request. "
-            "None = use config default, True = force enable, False = force disable"
-        ),
+        description="Original query text (required for reranking if enabled in config)",
     )
 
     @model_validator(mode="after")
@@ -257,7 +250,9 @@ class SearchHit(BaseModel):
 
     id: str
     score: float  # Vector similarity score
-    reranking_score: float | None = None  # Cross-encoder relevance score (if reranking applied)
+    reranking_score: float | None = (
+        None  # Cross-encoder relevance score (if reranking applied)
+    )
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
