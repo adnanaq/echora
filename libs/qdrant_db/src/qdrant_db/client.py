@@ -6,12 +6,9 @@ All write and search entry points use explicit contract models and domain errors
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, TypeGuard, cast
+from typing import Any, TypeGuard, cast
 
 from common.config import QdrantConfig
-
-if TYPE_CHECKING:
-    from vector_processing.processors import RerankerProcessor
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     BinaryQuantization,
@@ -118,7 +115,6 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
-        reranker: "RerankerProcessor | None" = None,
     ):
         """Initialize a strict-contract Qdrant client instance.
 
@@ -127,7 +123,6 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
-            reranker: Optional reranker processor for cross-encoder reranking.
         """
         self.config = config
         self.url = url or config.qdrant_url
@@ -142,12 +137,6 @@ class QdrantClient(VectorDBClient):
 
         self._vector_size = config.vector_names[self._text_vector_name]
         self._image_vector_size = config.vector_names[self._image_vector_name]
-
-        self.reranker = reranker
-        if reranker:
-            logger.info("Reranking enabled: %s", reranker.model.model_name)
-        else:
-            logger.info("Reranking disabled")
 
     @property
     def collection_name(self) -> str:
@@ -196,7 +185,6 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
-        reranker: "RerankerProcessor | None" = None,
     ) -> "QdrantClient":
         """Create a client and ensure collection state is initialized.
 
@@ -205,12 +193,11 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
-            reranker: Optional reranker processor for cross-encoder reranking.
 
         Returns:
             Initialized :class:`QdrantClient`.
         """
-        client = cls(config, async_qdrant_client, url, collection_name, reranker)
+        client = cls(config, async_qdrant_client, url, collection_name)
         await client._initialize_collection()
         return client
 
@@ -1151,13 +1138,16 @@ class QdrantClient(VectorDBClient):
         )
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
-        """Execute strict-contract search request with optional reranking.
+        """Execute strict-contract search request.
+
+        Returns raw vector search results with vector similarity scores only.
+        Reranking should be applied at the application layer if needed.
 
         Args:
             request: Typed search request model.
 
         Returns:
-            List of normalized search hits, optionally reranked.
+            List of normalized search hits with vector similarity scores.
 
         Raises:
             ValidationError: If request implies invalid fusion combination.
@@ -1254,192 +1244,4 @@ class QdrantClient(VectorDBClient):
                 fusion_method=request.fusion_method,
             )
 
-        # Apply reranking if enabled and query text is available
-        should_rerank = self._should_apply_reranking(request)
-
-        if should_rerank and hits and request.query_text:
-            hits = await self._rerank_results(request.query_text, hits)
-            logger.debug("Applied reranking to %d results", len(hits))
-
         return hits
-
-    def _should_apply_reranking(self, request: SearchRequest) -> bool:
-        """Determine if reranking should be applied for this request.
-
-        Reranking is controlled solely through environment configuration
-        (RERANKING_ENABLED=true). If a reranker is initialized, reranking
-        will be applied to all search requests with query_text.
-
-        Args:
-            request: Search request (unused, kept for API consistency).
-
-        Returns:
-            True if reranker is available (enabled in config).
-        """
-        return self.reranker is not None
-
-    def _extract_searchable_text(self, payload: dict[str, Any]) -> str:
-        """Extract searchable text from payload for reranking.
-
-        Uses entity-type-aware extraction to build semantically rich text
-        from different entity structures (anime, character, episode).
-
-        Args:
-            payload: Document payload from search hit.
-
-        Returns:
-            Combined text content for reranking.
-        """
-        entity_type = payload.get("entity_type", "anime")
-
-        if entity_type == "anime":
-            return self._extract_anime_text(payload)
-        elif entity_type == "character":
-            return self._extract_character_text(payload)
-        elif entity_type == "episode":
-            return self._extract_episode_text(payload)
-        else:
-            # Fallback for unknown types
-            return str(payload.get("title") or payload.get("name", ""))
-
-    def _extract_anime_text(self, payload: dict[str, Any]) -> str:
-        """Extract text from anime entity for reranking.
-
-        Priority fields:
-        - title, title_english, title_japanese, synonyms (identity/aliases)
-        - synopsis, background (primary semantic content)
-        - genres, tags, demographics (contextual signals)
-        - themes (thematic content)
-        """
-        parts = []
-
-        # Primary identity (title and all variations)
-        if title := payload.get("title"):
-            parts.append(str(title))
-        if title_english := payload.get("title_english"):
-            parts.append(str(title_english))
-        if title_japanese := payload.get("title_japanese"):
-            parts.append(str(title_japanese))
-        if synonyms := payload.get("synonyms"):
-            if isinstance(synonyms, list):
-                parts.append(" ".join(str(s) for s in synonyms))
-
-        # Primary semantic content
-        if synopsis := payload.get("synopsis"):
-            parts.append(str(synopsis))
-        if background := payload.get("background"):
-            parts.append(str(background))
-
-        # Contextual signals
-        if genres := payload.get("genres"):
-            if isinstance(genres, list):
-                parts.append(" ".join(str(g) for g in genres))
-        if tags := payload.get("tags"):
-            if isinstance(tags, list):
-                parts.append(" ".join(str(t) for t in tags))
-        if demographics := payload.get("demographics"):
-            if isinstance(demographics, list):
-                parts.append(" ".join(str(d) for d in demographics))
-
-        # Thematic content
-        if themes := payload.get("themes"):
-            if isinstance(themes, list):
-                theme_texts = [
-                    theme.get("name", "") for theme in themes if isinstance(theme, dict)
-                ]
-                parts.append(" ".join(theme_texts))
-
-        return " ".join(parts)
-
-    def _extract_character_text(self, payload: dict[str, Any]) -> str:
-        """Extract text from character entity for reranking.
-
-        Priority fields:
-        - name, name_native, nicknames, name_variations (identity/aliases)
-        - description (primary semantic content)
-        - character_traits (personality/behavior tags)
-        - role (character importance context)
-        """
-        parts = []
-
-        # Primary identity (name and all variations)
-        if name := payload.get("name"):
-            parts.append(str(name))
-        if name_native := payload.get("name_native"):
-            parts.append(str(name_native))
-        if nicknames := payload.get("nicknames"):
-            if isinstance(nicknames, list):
-                parts.append(" ".join(str(n) for n in nicknames))
-        if name_variations := payload.get("name_variations"):
-            if isinstance(name_variations, list):
-                parts.append(" ".join(str(v) for v in name_variations))
-
-        # Primary semantic content
-        if description := payload.get("description"):
-            parts.append(str(description))
-
-        # Semantic traits
-        if traits := payload.get("character_traits"):
-            if isinstance(traits, list):
-                parts.append(" ".join(str(t) for t in traits))
-
-        # Role context
-        if role := payload.get("role"):
-            parts.append(f"{role} character")
-
-        return " ".join(parts)
-
-    def _extract_episode_text(self, payload: dict[str, Any]) -> str:
-        """Extract text from episode entity for reranking.
-
-        Priority fields:
-        - title, synopsis, description (primary semantic content)
-        - title_japanese, title_romaji (alternative titles)
-        """
-        parts = []
-
-        # Primary content
-        if title := payload.get("title"):
-            parts.append(str(title))
-        if synopsis := payload.get("synopsis"):
-            parts.append(str(synopsis))
-        if description := payload.get("description"):
-            parts.append(str(description))
-
-        # Alternative titles
-        if title_jp := payload.get("title_japanese"):
-            parts.append(str(title_jp))
-        if title_romaji := payload.get("title_romaji"):
-            parts.append(str(title_romaji))
-
-        return " ".join(parts)
-
-    async def _rerank_results(
-        self,
-        query: str,
-        hits: list[SearchHit],
-    ) -> list[SearchHit]:
-        """Rerank search results using cross-encoder.
-
-        Args:
-            query: Original search query text.
-            hits: Initial search results from vector search.
-
-        Returns:
-            Reranked search results with reranking_score populated.
-        """
-        if not self.reranker or not hits:
-            return hits
-
-        # Extract text content for each hit
-        documents = [(hit, self._extract_searchable_text(hit.payload)) for hit in hits]
-
-        # Rerank using cross-encoder
-        reranked = await self.reranker.rerank(query, documents)
-
-        # Update hits with reranking scores and new order
-        for hit, rerank_score in reranked:
-            hit.reranking_score = rerank_score
-
-        # Return reranked hits (already sorted by rerank score)
-        return [hit for hit, _ in reranked]

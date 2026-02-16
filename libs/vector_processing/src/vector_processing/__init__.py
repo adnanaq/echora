@@ -1,6 +1,7 @@
 """Vector processing library for embeddings and multi-vector generation."""
 
 from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
+from vector_processing.processors.content_extractor import SearchableContentExtractor
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
 from vector_processing.processors.reranker_processor import RerankerProcessor
 from vector_processing.processors.sparse_text_processor import SparseTextProcessor
@@ -14,4 +15,5 @@ __all__ = [
     "MultiVectorEmbeddingManager",
     "AnimeFieldMapper",
     "RerankerProcessor",
+    "SearchableContentExtractor",
 ]
