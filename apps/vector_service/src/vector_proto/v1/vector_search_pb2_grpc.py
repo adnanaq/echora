@@ -26,7 +26,8 @@ if _version_not_supported:
 
 
 class VectorSearchServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """Search RPCs for semantic and multimodal vector retrieval.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -42,10 +43,12 @@ class VectorSearchServiceStub(object):
 
 
 class VectorSearchServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """Search RPCs for semantic and multimodal vector retrieval.
+    """
 
     def Search(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Executes vector search against the configured index.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -67,7 +70,8 @@ def add_VectorSearchServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class VectorSearchService(object):
-    """Missing associated documentation comment in .proto file."""
+    """Search RPCs for semantic and multimodal vector retrieval.
+    """
 
     @staticmethod
     def Search(request,

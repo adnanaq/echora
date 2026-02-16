@@ -26,7 +26,8 @@ if _version_not_supported:
 
 
 class EnrichmentServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """RPCs for enrichment pipeline health and execution.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -47,16 +48,19 @@ class EnrichmentServiceStub(object):
 
 
 class EnrichmentServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """RPCs for enrichment pipeline health and execution.
+    """
 
     def Health(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Returns service health/readiness information.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def RunPipeline(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Runs the enrichment pipeline for one selected anime record.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -83,7 +87,8 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class EnrichmentService(object):
-    """Missing associated documentation comment in .proto file."""
+    """RPCs for enrichment pipeline health and execution.
+    """
 
     @staticmethod
     def Health(request,

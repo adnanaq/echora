@@ -26,7 +26,8 @@ if _version_not_supported:
 
 
 class VectorAdminServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """Administrative RPCs for health and runtime diagnostics.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -47,16 +48,19 @@ class VectorAdminServiceStub(object):
 
 
 class VectorAdminServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """Administrative RPCs for health and runtime diagnostics.
+    """
 
     def Health(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Returns service and dependency readiness information.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetStats(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Returns operational vector database statistics as JSON.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -83,7 +87,8 @@ def add_VectorAdminServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class VectorAdminService(object):
-    """Missing associated documentation comment in .proto file."""
+    """Administrative RPCs for health and runtime diagnostics.
+    """
 
     @staticmethod
     def Health(request,
