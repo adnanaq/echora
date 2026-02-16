@@ -53,7 +53,7 @@ def _normalize_struct_numbers(value: Any) -> Any:
 
 def _is_valid_filter_payload(filters: dict[str, Any]) -> bool:
     """Return whether filter payload shape is supported."""
-    for key, value in filters.items():
+    for _key, value in filters.items():
         if value is None:
             continue
 
@@ -231,7 +231,7 @@ async def search(
         return vector_search_pb2.SearchResponse(
             error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Search RPC failed")
         return vector_search_pb2.SearchResponse(
             error=error("SEARCH_FAILED", str(exc), retryable=True)

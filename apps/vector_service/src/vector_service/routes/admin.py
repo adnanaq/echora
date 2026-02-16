@@ -68,6 +68,25 @@ def _build_stats_payload(
     }
 
 
+def _extract_stats_error(stats: object) -> str | None:
+    """Extract a Qdrant-level error from a stats payload when present."""
+    if not isinstance(stats, dict):
+        return None
+
+    raw_error = stats.get("error")
+    if raw_error:
+        return raw_error if isinstance(raw_error, str) else json.dumps(raw_error)
+
+    status = stats.get("status")
+    if isinstance(status, str) and status.lower() == "error":
+        message = stats.get("message")
+        if isinstance(message, str) and message:
+            return message
+        return "Qdrant stats request returned status=error"
+
+    return None
+
+
 async def health(
     runtime: VectorRuntime,
     settings: Settings,
@@ -90,7 +109,13 @@ async def health(
         db_healthy = await runtime.qdrant_client.health_check()
         stats: dict[str, object] = {}
         if db_healthy:
-            stats = await runtime.qdrant_client.get_stats()
+            try:
+                stats = await runtime.qdrant_client.get_stats()
+            except Exception:
+                logger.warning(
+                    "Stats fetch failed during health check; reporting degraded database payload",
+                    exc_info=True,
+                )
         ts = Timestamp()
         ts.FromDatetime(datetime.now(UTC))
         database = Struct()
@@ -137,6 +162,19 @@ async def get_stats(
     del request, context
     try:
         stats = await runtime.qdrant_client.get_stats()
+        stats_error = _extract_stats_error(stats)
+        if stats_error:
+            logger.warning(
+                "GetStats RPC received Qdrant error payload: %s", stats_error
+            )
+            return vector_admin_pb2.GetStatsResponse(
+                error=error(
+                    code="GET_STATS_FAILED",
+                    message=stats_error,
+                    retryable=True,
+                )
+            )
+
         payload = _build_stats_payload(runtime, stats)
         return vector_admin_pb2.GetStatsResponse(stats_json=json.dumps(payload))
     except Exception as exc:
