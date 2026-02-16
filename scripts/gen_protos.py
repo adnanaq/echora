@@ -82,6 +82,15 @@ TARGETS = [
 ]
 
 
+class _CommandFailedError(RuntimeError):
+    """Raised when a subprocess command exits with a non-zero code."""
+
+    def __init__(self, cmd: list[str], returncode: int) -> None:
+        self.cmd = cmd
+        self.returncode = returncode
+        super().__init__(f"Command failed (exit {returncode}): {' '.join(cmd)}")
+
+
 def _run(cmd: list[str]) -> None:
     proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)  # noqa: S603
     if proc.returncode != 0:
@@ -89,7 +98,25 @@ def _run(cmd: list[str]) -> None:
             f"Command failed (exit {proc.returncode}): {' '.join(cmd)}",
             file=sys.stderr,
         )
-        raise SystemExit(proc.returncode)
+        raise _CommandFailedError(cmd, proc.returncode)
+
+
+def _validate_rewrite_rules(rewrites: tuple[tuple[str, str], ...]) -> None:
+    """Validate rewrite rule ordering to avoid accidental double rewrites.
+
+    Args:
+        rewrites: Ordered tuple of (before, after) replacement rules.
+
+    Raises:
+        ValueError: If an ``after`` string can match a later rule's ``before``.
+    """
+    for i, (_before_i, after_i) in enumerate(rewrites):
+        for before_j, _after_j in rewrites[i + 1 :]:
+            if before_j in after_i:
+                raise ValueError(
+                    "Invalid rewrite rule order: "
+                    f"after='{after_i}' contains later before='{before_j}'"
+                )
 
 
 def _rewrite_generated_imports(
@@ -133,53 +160,64 @@ def main() -> int:
             print(f"- {path}", file=sys.stderr)
         return 2
 
-    for entry in TARGETS:
-        if entry["name"] not in per_target_protos:
-            continue
-        out_root = Path(entry["out_root"])
-        protos = per_target_protos[entry["name"]]
-        proto_include = Path(entry["proto_include"])
-        proto_extra_includes = [
-            Path(include) for include in entry.get("proto_extra_includes", [])
-        ]
-        proto_rel = [p.relative_to(proto_include) for p in protos]
-        v1_dir = out_root / "v1"
-        if v1_dir.exists():
-            shutil.rmtree(v1_dir)
-        if entry.get("relocate_shared_proto_v1_to_v1", False):
-            shared_dir = out_root / "shared_proto"
-            if shared_dir.exists():
-                shutil.rmtree(shared_dir)
-        out_root.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            sys.executable,
-            "-m",
-            "grpc_tools.protoc",
-            "-I",
-            str(proto_include),
-            *(
-                include_arg
-                for include in proto_extra_includes
-                for include_arg in ("-I", str(include))
-            ),
-            f"--python_out={out_root}",
-            f"--grpc_python_out={out_root}",
-            *(str(p) for p in proto_rel),
-        ]
-        _run(cmd)
-        if entry.get("relocate_shared_proto_v1_to_v1", False):
-            generated_shared_v1 = out_root / "shared_proto" / "v1"
-            if generated_shared_v1.exists():
-                shutil.move(str(generated_shared_v1), str(v1_dir))
-                shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
-        _rewrite_generated_imports(out_root, entry.get("rewrites", ()))
-        init_root = out_root / "__init__.py"
-        v1_dir.mkdir(parents=True, exist_ok=True)
-        init_v1 = v1_dir / "__init__.py"
-        if not init_root.exists():
-            init_root.write_text('"""Generated proto package."""\n', encoding="utf-8")
-        if not init_v1.exists():
-            init_v1.write_text('"""Generated proto v1 package."""\n', encoding="utf-8")
+    try:
+        for entry in TARGETS:
+            if entry["name"] not in per_target_protos:
+                continue
+            out_root = Path(entry["out_root"])
+            protos = per_target_protos[entry["name"]]
+            proto_include = Path(entry["proto_include"])
+            proto_extra_includes = [
+                Path(include) for include in entry.get("proto_extra_includes", [])
+            ]
+            proto_rel = [p.relative_to(proto_include) for p in protos]
+            v1_dir = out_root / "v1"
+            if v1_dir.exists():
+                shutil.rmtree(v1_dir)
+            if entry.get("relocate_shared_proto_v1_to_v1", False):
+                shared_dir = out_root / "shared_proto"
+                if shared_dir.exists():
+                    shutil.rmtree(shared_dir)
+            out_root.mkdir(parents=True, exist_ok=True)
+            rewrites = entry.get("rewrites", ())
+            _validate_rewrite_rules(rewrites)
+            cmd = [
+                sys.executable,
+                "-m",
+                "grpc_tools.protoc",
+                "-I",
+                str(proto_include),
+                *(
+                    include_arg
+                    for include in proto_extra_includes
+                    for include_arg in ("-I", str(include))
+                ),
+                f"--python_out={out_root}",
+                f"--pyi_out={out_root}",
+                f"--grpc_python_out={out_root}",
+                *(str(p) for p in proto_rel),
+            ]
+            _run(cmd)
+            if entry.get("relocate_shared_proto_v1_to_v1", False):
+                generated_shared_v1 = out_root / "shared_proto" / "v1"
+                if generated_shared_v1.exists():
+                    shutil.move(str(generated_shared_v1), str(v1_dir))
+                    shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
+            _rewrite_generated_imports(out_root, rewrites)
+            init_root = out_root / "__init__.py"
+            v1_dir.mkdir(parents=True, exist_ok=True)
+            init_v1 = v1_dir / "__init__.py"
+            if not init_root.exists():
+                init_root.write_text(
+                    '"""Generated proto package."""\n', encoding="utf-8"
+                )
+            if not init_v1.exists():
+                init_v1.write_text('"""Generated proto v1 package."""\n', encoding="utf-8")
+    except _CommandFailedError as exc:
+        return exc.returncode
+    except ValueError as exc:
+        print(f"Proto generation configuration error: {exc}", file=sys.stderr)
+        return 2
 
     return 0
 
