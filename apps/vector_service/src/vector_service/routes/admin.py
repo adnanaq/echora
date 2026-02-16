@@ -139,7 +139,7 @@ async def health(
             error=error(
                 code="HEALTH_FAILED",
                 message=str(exc),
-                retryable=False,
+                retryable=True,
             ),
         )
 

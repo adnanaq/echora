@@ -30,7 +30,11 @@ class InvalidFiltersPayloadError(ValueError):
 
 
 def _raise_invalid_filters() -> None:
-    """Raise canonical invalid-filters exception."""
+    """Raise the canonical invalid-filters exception.
+
+    Raises:
+        InvalidFiltersPayloadError: Always raised to signal invalid filters.
+    """
     raise InvalidFiltersPayloadError()
 
 
@@ -39,6 +43,12 @@ def _normalize_struct_numbers(value: Any) -> Any:
 
     Protobuf Struct uses floating-point representation for all numeric values.
     This converts whole-number floats (for example `2006.0`) back to integers.
+
+    Args:
+        value: Parsed Struct value that may include nested lists and dicts.
+
+    Returns:
+        Normalized value with whole-number floats converted to integers.
     """
     if isinstance(value, float) and value.is_integer():
         return int(value)
@@ -52,7 +62,14 @@ def _normalize_struct_numbers(value: Any) -> Any:
 
 
 def _is_valid_filter_payload(filters: dict[str, Any]) -> bool:
-    """Return whether filter payload shape is supported."""
+    """Return whether a filter payload shape is supported.
+
+    Args:
+        filters: Candidate filter payload to validate.
+
+    Returns:
+        True when the payload only contains supported scalar/list/range shapes.
+    """
     for _key, value in filters.items():
         if value is None:
             continue
@@ -86,6 +103,8 @@ def _clean_filter_payload(raw_filters: Any) -> dict[str, Any]:
 
     Returns:
         Filter map supported by qdrant_db search helper.
+        This currently passes through valid dict payloads unchanged and acts as
+        a single extension point for future sanitization.
     """
     if not isinstance(raw_filters, dict):
         return {}
@@ -169,7 +188,8 @@ async def search(
                 normalized = _normalize_struct_numbers(parsed)
                 filters = _clean_filter_payload(normalized)
                 invalid_filters = not _is_valid_filter_payload(filters)
-            except Exception:
+            except (json_format.Error, TypeError, ValueError) as exc:
+                logger.debug("Filter parsing failed: %s", exc)
                 invalid_filters = True
 
             if invalid_filters:
@@ -218,7 +238,7 @@ async def search(
                 similarity_score=float(
                     hit.get("score", hit.get("similarity_score", 0.0))
                 ),
-                payload_json=json.dumps(hit.get("payload", hit), ensure_ascii=False),
+                payload_json=json.dumps(hit.get("payload", {}), ensure_ascii=False),
             )
             for hit in raw_hits
         ]
@@ -231,8 +251,12 @@ async def search(
         return vector_search_pb2.SearchResponse(
             error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Search RPC failed")
         return vector_search_pb2.SearchResponse(
-            error=error("SEARCH_FAILED", str(exc), retryable=True)
+            error=error(
+                "SEARCH_FAILED",
+                "An internal error occurred.",
+                retryable=True,
+            )
         )
