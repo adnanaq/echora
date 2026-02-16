@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a specialized microservice for semantic search over anime content using vector embeddings and Qdrant database. The service provides text, image, and multimodal search capabilities with production-ready features including health checks, monitoring, and CORS support.
+This repository contains backend search services and shared libraries for anime discovery:
+
+- `apps/agent_service`: internal gRPC agent service (`SearchAI`) for natural-language orchestration.
+- `apps/service`: FastAPI vector/admin service for vector operations and management.
+- Shared libraries for Qdrant access, embeddings, enrichment, and agent orchestration.
+
+Data roles:
+- PostgreSQL is the canonical source of truth for identities and relationships.
+- Qdrant is the semantic retrieval index for text/image vector search.
 
 ## Development Commands
 
@@ -18,23 +26,26 @@ uv sync
 uv sync --extra dev
 
 # Start Qdrant database only
-docker compose -f docker/docker-compose.yml up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
-# Run service locally for development
-uv run python -m src.main
+# Primary entrypoint (internal agent service)
+./pants run apps/agent_service:agent_service
+
+# Secondary vector/admin service
+./pants run apps/service:service
 ```
 
 ### Docker Development (Recommended)
 
 ```bash
 # Start full stack (service + database)
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.dev.yml up -d
 
 # View logs
-docker compose -f docker/docker-compose.yml logs -f vector-service
+docker compose -f docker/docker-compose.dev.yml logs -f vector-service
 
 # Stop services
-docker compose -f docker/docker-compose.yml down
+docker compose -f docker/docker-compose.dev.yml down
 ```
 
 ### Testing
@@ -104,7 +115,7 @@ uv run ty check libs/http_cache/
 ### Service Health Checks
 
 ```bash
-# Check service health
+# Check vector service health
 curl http://localhost:8002/health
 
 # Check Qdrant health
@@ -112,46 +123,59 @@ curl http://localhost:6333/health
 
 # Get database statistics
 curl http://localhost:8002/api/v1/admin/stats
+
+# Agent service runs on gRPC (default :50051)
+# Use grpcurl or a gRPC client to call: agent.v1.AgentSearchService/SearchAI
 ```
 
 ## Architecture Overview
 
 ### Core Architecture Pattern
 
-The service follows a layered microservice architecture with clear separation of concerns:
+The repository follows a multi-service architecture with clear separation of concerns:
 
-**API Layer** (`src/api/`) → **Processing Layer** (`src/vector/`) → **Database Layer** (Qdrant)
+**External BFF (separate repo)** → **Internal services (`apps/agent_service`, `apps/service`)** → **Data Layer (PostgreSQL + Qdrant)**
 
 ### Key Architectural Components
 
-#### 1. FastAPI Application (`src/main.py`)
+#### 1. Agent Service (`apps/agent_service/src/agent_service/server.py`)
+
+- Internal gRPC `SearchAI` endpoint for natural-language queries
+- Planner/executor/sufficiency orchestration loop via `libs/agent_core`
+- Executes retrieval against Qdrant and (when available) PostgreSQL graph executor
+
+#### 2. FastAPI Application (`apps/service/src/service/main.py`)
 
 - Async application with lifespan management
 - Global Qdrant client initialization with health checks
 - CORS middleware and structured logging
 - Graceful startup/shutdown with dependency validation
 
-#### 2. Configuration System (`src/config/settings.py`)
+#### 3. Configuration System (`libs/common/src/common/config/settings.py`)
 
 - Pydantic-based settings with environment variable support
 - Comprehensive validation for all configuration parameters
 - Support for multiple embedding providers and models
 - Performance tuning parameters (quantization, HNSW, batch sizes)
 
-#### 3. Multi-Vector Processing (`src/vector/`)
+#### 4. Multi-Vector Processing (`libs/vector_processing/src/vector_processing/`)
 
 - **QdrantClient**: Advanced vector database operations with quantization support
 - **TextProcessor**: BGE-M3 embeddings for semantic text search (1024-dim)
 - **VisionProcessor**: OpenCLIP ViT-L/14 embeddings for image search (768-dim)
 - **Fine-tuning modules**: Character recognition, art style classification, genre enhancement
 
-#### 4. API Endpoints (`src/api/`)
+#### 5. Vector Service Operational Endpoints (`apps/service/src/service/routes/`)
 
-- **Search Router**: Text, image, and multimodal search endpoints
-- **Similarity Router**: Content-based and visual similarity operations
 - **Admin Router**: Database management, statistics, and reindexing
 
-#### 5. Data Enrichment Pipeline (`src/enrichment/`)
+#### 6. Agent Service RPC Endpoint (`apps/agent_service/src/agent_service/server.py`)
+
+- **gRPC Service**: `agent.v1.AgentSearchService`
+- **Method**: `SearchAI`
+- **Role**: Internal natural-language orchestration endpoint for BFF calls
+
+#### 7. Data Enrichment Pipeline (`libs/enrichment/src/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)
 - **Crawlers**: Heavy-duty browser automation using crawl4ai for robust data extraction

@@ -182,6 +182,208 @@ async def test_update_single_vector_invalid_name(
 
 
 @pytest.mark.asyncio
+async def test_update_single_payload_merge(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test single payload merge preserves existing fields and adds new fields."""
+    anime = seeded_test_data[0]
+    anime_id = anime.anime.id
+
+    before = await client.get_by_id(anime_id)
+    assert before is not None, "Point should exist before payload update"
+    assert "title" in before, "Seeded payload should include title"
+
+    payload_patch = {
+        "_integration_payload_merge_marker": "single-merge",
+        "_integration_payload_merge_flag": True,
+    }
+    success = await client.update_single_point_payload(
+        point_id=anime_id,
+        payload=payload_patch,
+        mode="merge",
+    )
+
+    assert success is True, "Single payload merge should succeed"
+
+    after = await client.get_by_id(anime_id)
+    assert after is not None, "Point should still exist after payload update"
+    assert after.get("_integration_payload_merge_marker") == "single-merge"
+    assert after.get("_integration_payload_merge_flag") is True
+    assert "title" in after, "Merge should preserve existing payload fields"
+
+
+@pytest.mark.asyncio
+async def test_update_single_payload_merge_nested_key(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test single payload merge writes payload to nested path via key."""
+    anime = seeded_test_data[0]
+    anime_id = anime.anime.id
+
+    success = await client.update_single_point_payload(
+        point_id=anime_id,
+        payload={"marker": "nested-single"},
+        mode="merge",
+        key="_integration_nested.single",
+    )
+    assert success is True, "Single nested payload merge should succeed"
+
+    after = await client.get_by_id(anime_id)
+    assert after is not None, "Point should still exist after nested payload update"
+    assert isinstance(after.get("_integration_nested"), dict), (
+        "Nested root should be created as a dictionary"
+    )
+    assert isinstance(after["_integration_nested"].get("single"), dict), (
+        "Nested key should contain dictionary payload"
+    )
+    assert after["_integration_nested"]["single"].get("marker") == "nested-single"
+
+
+@pytest.mark.asyncio
+async def test_update_single_payload_overwrite(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test single payload overwrite replaces existing payload fields."""
+    anime = seeded_test_data[0]
+    anime_id = anime.anime.id
+
+    before = await client.get_by_id(anime_id)
+    assert before is not None, "Point should exist before payload update"
+    assert "title" in before, "Seeded payload should include title"
+
+    replacement_payload = {
+        "_integration_payload_overwrite_marker": "single-overwrite",
+        "_integration_payload_overwrite_flag": True,
+    }
+    success = await client.update_single_point_payload(
+        point_id=anime_id,
+        payload=replacement_payload,
+        mode="overwrite",
+    )
+
+    assert success is True, "Single payload overwrite should succeed"
+
+    after = await client.get_by_id(anime_id)
+    assert after is not None, "Point should still exist after payload update"
+    assert after.get("_integration_payload_overwrite_marker") == "single-overwrite"
+    assert after.get("_integration_payload_overwrite_flag") is True
+    assert "title" not in after, "Overwrite should replace previous payload fields"
+
+
+@pytest.mark.asyncio
+async def test_update_batch_payload_merge(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test batch payload merge updates multiple points and preserves old fields."""
+    anime1 = seeded_test_data[0]
+    anime2 = seeded_test_data[1]
+
+    updates = [
+        {
+            "point_id": anime1.anime.id,
+            "payload": {"_integration_batch_merge_marker": "anime-1"},
+        },
+        {
+            "point_id": anime2.anime.id,
+            "payload": {"_integration_batch_merge_marker": "anime-2"},
+        },
+    ]
+
+    result = await client.update_batch_point_payload(
+        updates=updates,
+        mode="merge",
+        dedup_policy="last-wins",
+    )
+
+    assert result["success"] == 2, "Both batch payload merge updates should succeed"
+    assert result["failed"] == 0, "No batch payload merge updates should fail"
+
+    after_1 = await client.get_by_id(anime1.anime.id)
+    after_2 = await client.get_by_id(anime2.anime.id)
+    assert after_1 is not None and after_2 is not None
+    assert after_1.get("_integration_batch_merge_marker") == "anime-1"
+    assert after_2.get("_integration_batch_merge_marker") == "anime-2"
+    assert "title" in after_1 and "title" in after_2, (
+        "Merge should preserve existing payload fields"
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_batch_payload_merge_nested_keys(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test batch payload merge writes each update to its nested key path."""
+    anime1 = seeded_test_data[0]
+    anime2 = seeded_test_data[1]
+
+    updates = [
+        {
+            "point_id": anime1.anime.id,
+            "payload": {"marker": "nested-batch-1"},
+            "key": "_integration_nested.batch.anime1",
+        },
+        {
+            "point_id": anime2.anime.id,
+            "payload": {"marker": "nested-batch-2"},
+            "key": "_integration_nested.batch.anime2",
+        },
+    ]
+
+    result = await client.update_batch_point_payload(
+        updates=updates,
+        mode="merge",
+        dedup_policy="last-wins",
+    )
+
+    assert result["success"] == 2, "Both nested batch payload merge updates should succeed"
+    assert result["failed"] == 0, "No nested batch payload merge updates should fail"
+
+    after_1 = await client.get_by_id(anime1.anime.id)
+    after_2 = await client.get_by_id(anime2.anime.id)
+    assert after_1 is not None and after_2 is not None
+    assert after_1["_integration_nested"]["batch"]["anime1"]["marker"] == "nested-batch-1"
+    assert after_2["_integration_nested"]["batch"]["anime2"]["marker"] == "nested-batch-2"
+
+
+@pytest.mark.asyncio
+async def test_update_batch_payload_overwrite(
+    client: QdrantClient, seeded_test_data: list[AnimeRecord]
+):
+    """Test batch payload overwrite replaces payload for multiple points."""
+    anime1 = seeded_test_data[0]
+    anime2 = seeded_test_data[1]
+
+    updates = [
+        {
+            "point_id": anime1.anime.id,
+            "payload": {"_integration_batch_overwrite_marker": "anime-1"},
+        },
+        {
+            "point_id": anime2.anime.id,
+            "payload": {"_integration_batch_overwrite_marker": "anime-2"},
+        },
+    ]
+
+    result = await client.update_batch_point_payload(
+        updates=updates,
+        mode="overwrite",
+        dedup_policy="last-wins",
+    )
+
+    assert result["success"] == 2, "Both batch payload overwrite updates should succeed"
+    assert result["failed"] == 0, "No batch payload overwrite updates should fail"
+
+    after_1 = await client.get_by_id(anime1.anime.id)
+    after_2 = await client.get_by_id(anime2.anime.id)
+    assert after_1 is not None and after_2 is not None
+    assert after_1.get("_integration_batch_overwrite_marker") == "anime-1"
+    assert after_2.get("_integration_batch_overwrite_marker") == "anime-2"
+    assert "title" not in after_1 and "title" not in after_2, (
+        "Overwrite should replace previous payload fields"
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_batch_vectors(
     client: QdrantClient, embedding_manager, seeded_test_data: list[AnimeRecord]
 ):
@@ -2023,19 +2225,22 @@ async def test_dimension_edge_cases(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_non_existent_anime_ids(client: QdrantClient):
     """Test updates to anime IDs that don't exist in Qdrant."""
+    # Use valid UUID-form IDs that are extremely unlikely to exist in test collection.
+    unknown_ids = [str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())]
+
     batch_updates = [
         {
-            "point_id": "non-existent-1",
+            "point_id": unknown_ids[0],
             "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
         {
-            "point_id": "non-existent-2",
+            "point_id": unknown_ids[1],
             "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
         {
-            "point_id": "non-existent-3",
+            "point_id": unknown_ids[2],
             "vector_name": "text_vector",
             "vector_data": [0.1] * 1024,
         },
@@ -2043,15 +2248,13 @@ async def test_non_existent_anime_ids(client: QdrantClient):
 
     result = await client.update_batch_point_vectors(batch_updates)
 
-    # Qdrant's update_vectors accepts updates for non-existent points without error,
-    # so our client reports all 3 as successful (no exception raised by Qdrant).
-    assert result["success"] == 3, (
-        "All updates should succeed (Qdrant doesn't reject non-existent IDs)"
-    )
-    assert result["failed"] == 0, "No updates should fail"
+    # Current Qdrant behavior (v1.16.x): update_vectors returns 404 when points
+    # do not exist, even for valid UUID-form IDs.
+    assert result["success"] == 0, "No updates should succeed for missing point IDs"
+    assert result["failed"] == 3, "All updates should fail for missing point IDs"
     assert len(result["results"]) == 3, "Should have one result per update"
-    assert all(r["success"] for r in result["results"]), (
-        "Each result should be marked successful"
+    assert all(not r["success"] for r in result["results"]), (
+        "Each result should be marked failed"
     )
 
 

@@ -378,3 +378,54 @@ class TestDistributeEnvVarsEdgeCases:
                 "Failed to parse JSON for field 'vector_names'" in record.message
                 for record in caplog.records
             ), "Expected warning about JSON parse failure"
+
+
+class TestAgentSettings:
+    """Test agent-specific settings distributed via common Settings."""
+
+    def test_agent_prefixed_env_vars_are_loaded(self):
+        """AGENT_* environment variables should map into settings.agent.* fields."""
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "AGENT_SERVICE_PORT": "50123",
+                "AGENT_LLM_ENABLED": "false",
+                "AGENT_OPENAI_MODEL": "gpt-5",
+            },
+            clear=True,
+        ):
+            settings = Settings()
+            assert settings.agent.service_port == 50123
+            assert settings.agent.llm_enabled is False
+            assert settings.agent.openai_model == "gpt-5"
+
+    def test_agent_constructor_values_preserved_without_env_override(self):
+        """Explicit agent sub-config values should be preserved if env vars are unset."""
+        from common.config.agent_config import AgentConfig
+
+        custom_agent = AgentConfig(
+            service_port=51111,
+            llm_enabled=False,
+            openai_model="local-model",
+        )
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
+            settings = Settings(agent=custom_agent)
+            assert settings.agent.service_port == 51111
+            assert settings.agent.llm_enabled is False
+            assert settings.agent.openai_model == "local-model"
+
+    def test_agent_default_max_turns_must_be_positive(self):
+        """AGENT_DEFAULT_MAX_TURNS <= 0 should fail settings validation."""
+        from pydantic import ValidationError
+
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "development",
+                "AGENT_DEFAULT_MAX_TURNS": "0",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValidationError):
+                Settings()

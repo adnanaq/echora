@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package agent.v1;
+
+// Internal-only service. Called by the Rust BFF via gRPC.
+service AgentSearchService {
+  rpc SearchAI(SearchAIRequest) returns (SearchAIResponse);
+}
+
+enum EntityType {
+  ENTITY_TYPE_UNSPECIFIED = 0;
+  ENTITY_TYPE_ANIME = 1;
+  ENTITY_TYPE_CHARACTER = 2;
+  ENTITY_TYPE_EPISODE = 3;
+  ENTITY_TYPE_MANGA = 4;
+}
+
+message EntityRef {
+  EntityType type = 1;
+  string id = 2; // canonical UUID
+}
+
+message SearchAIRequest {
+  string query = 1;
+  int32 max_turns = 2; // 0 means "use server default"
+  // Optional image input for similarity search.
+  // Supports:
+  // - URL: https://...
+  // - data URL: data:image/png;base64,...
+  // - raw base64 (best-effort)
+  string image_query = 3;
+  // TODO(observability): add request_id/trace_id fields to propagate tracing from BFF.
+}
+
+message SearchAIEvidence {
+  // Top score returned by vector search for the accepted retrieval step.
+  double search_similarity_score = 1;
+  // Termination reason from orchestrator (for example: sufficient/no_match_after_max_turns).
+  string termination_reason = 2;
+  // Last retrieval summary captured by orchestrator.
+  string last_summary = 3;
+}
+
+message SearchAIResponse {
+  string answer = 1;
+  repeated EntityRef source_entities = 2;
+  repeated EntityRef result_entities = 3;
+  SearchAIEvidence evidence = 4;
+  repeated string warnings = 5;
+}

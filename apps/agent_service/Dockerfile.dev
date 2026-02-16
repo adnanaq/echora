@@ -1,0 +1,27 @@
+# Development Dockerfile using Pants-built PEX binary.
+# Build with: pants package apps/agent_service:agent-service-dev
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy self-contained PEX binary built by Pants.
+COPY apps.agent_service/agent_service.pex /app/agent_service.pex
+
+# Run as non-root user for security.
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --no-create-home appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=development
+
+# gRPC port (Agent service).
+EXPOSE 50051
+
+# Basic health check: verify service port is listening.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 50051)); s.close()" || exit 1
+
+ENTRYPOINT ["/app/agent_service.pex"]

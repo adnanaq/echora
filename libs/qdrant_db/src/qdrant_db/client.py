@@ -36,12 +36,15 @@ from qdrant_client.models import (  # Qdrant optimization models; Multi-vector s
     ScalarQuantization,
     ScalarQuantizationConfig,
     ScalarType,
+    SetPayload,
+    SetPayloadOperation,
+    OverwritePayloadOperation,
     VectorParams,
     WalConfigDiff,
 )
 from vector_db_interface import VectorDBClient, VectorDocument
 
-from qdrant_db.utils import retry_with_backoff
+from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -833,6 +836,43 @@ class QdrantClient(VectorDBClient):
 
             return True, None
 
+    def _validate_payload_update(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[bool, str | None]:
+        """Validate payload update input.
+
+        Args:
+            payload: Payload dictionary to validate.
+
+        Returns:
+            A tuple `(is_valid, error_message)`.
+            - `(True, None)` when valid.
+            - `(False, error_message)` when invalid.
+        """
+        if not isinstance(payload, dict):
+            return False, "Payload must be a dictionary"
+
+        if not payload:
+            return False, "Payload must not be empty"
+
+        return True, None
+
+    def _normalize_payload_mode(self, mode: str) -> tuple[bool, str]:
+        """Normalize and validate payload update mode.
+
+        Args:
+            mode: Requested update mode.
+
+        Returns:
+            A tuple `(is_valid, normalized_mode)`, where normalized mode is either
+            `"merge"` or `"overwrite"` when valid.
+        """
+        normalized = mode.lower().strip()
+        if normalized not in {"merge", "overwrite"}:
+            return False, normalized
+        return True, normalized
+
     async def update_single_point_vector(
         self,
         point_id: str,
@@ -899,6 +939,81 @@ class QdrantClient(VectorDBClient):
             logger.debug(f"Updated {vector_name} for point {point_id}")
             return True
 
+    async def update_single_point_payload(
+        self,
+        point_id: str,
+        payload: dict[str, Any],
+        mode: str = "merge",
+        key: str | None = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> bool:
+        """Update payload for a single point.
+
+        This method updates only payload fields and does not modify vectors.
+
+        Args:
+            point_id: Point ID to update.
+            payload: Payload dictionary to apply.
+            mode: Payload update mode:
+                - `"merge"`: Merge keys into existing payload (`set_payload`).
+                - `"overwrite"`: Replace existing payload (`overwrite_payload`).
+            key: Optional nested payload path for merge updates.
+            max_retries: Maximum number of retry attempts for transient failures.
+            retry_delay: Initial delay in seconds between retries.
+
+        Returns:
+            True when payload update succeeds, otherwise False.
+        """
+        if not point_id or not point_id.strip():
+            logger.error("Payload update failed: point_id must be a non-empty string")
+            return False
+
+        payload_valid, payload_error = self._validate_payload_update(payload)
+        if not payload_valid:
+            logger.error(f"Payload update failed for {point_id}: {payload_error}")
+            return False
+
+        mode_valid, normalized_mode = self._normalize_payload_mode(mode)
+        if not mode_valid:
+            logger.error(
+                f"Payload update failed for {point_id}: invalid mode '{mode}'. "
+                "Supported values are 'merge' and 'overwrite'."
+            )
+            return False
+
+        try:
+            async def _perform_update() -> None:
+                if normalized_mode == "merge":
+                    await self.client.set_payload(
+                        collection_name=self.collection_name,
+                        payload=payload,
+                        points=[point_id],
+                        key=key,
+                        wait=True,
+                    )
+                else:
+                    await self.client.overwrite_payload(
+                        collection_name=self.collection_name,
+                        payload=payload,
+                        points=[point_id],
+                        wait=True,
+                    )
+
+            await retry_with_backoff(
+                operation=_perform_update,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to {normalized_mode} payload for point {point_id}"
+            )
+            return False
+        else:
+            logger.debug(f"{normalized_mode.title()} payload update succeeded for {point_id}")
+            return True
+
     async def update_batch_point_vectors(
         self,
         updates: list[dict[str, Any]],
@@ -947,60 +1062,34 @@ class QdrantClient(VectorDBClient):
                     "duplicates_removed": 0,
                 }
 
-            # Check for duplicates and apply deduplication policy
-            seen_keys: dict[
-                tuple[str, str], int
-            ] = {}  # (point_id, vector_name) -> first index
-            duplicates: list[tuple[str, str]] = []
-            deduplicated_updates: list[dict[str, Any]] = []
+            def _warn_vector_duplicate(key: tuple[str, str]) -> None:
+                logger.warning(
+                    "Duplicate update for (%s, %s), using last occurrence",
+                    key[0],
+                    key[1],
+                )
 
-            for idx, update in enumerate(updates):
-                key = (update["point_id"], update["vector_name"])
+            try:
+                deduplicated_updates, duplicates_removed = deduplicate_items(
+                    items=updates,
+                    key_fn=lambda u: (u["point_id"], u["vector_name"]),
+                    dedup_policy=dedup_policy,
+                    on_warn=_warn_vector_duplicate,
+                )
+            except DuplicateKeyError as error:
+                duplicate_key = error.key
+                if isinstance(duplicate_key, tuple) and len(duplicate_key) == 2:
+                    raise DuplicateUpdateError(
+                        point_id=str(duplicate_key[0]),
+                        vector_name=str(duplicate_key[1]),
+                    ) from error
+                raise
 
-                if key in seen_keys:
-                    duplicates.append(key)
-                    if dedup_policy == "first-wins":
-                        # Skip this duplicate, keep first occurrence
-                        continue
-                    elif dedup_policy == "last-wins":
-                        # Remove previous occurrence, keep this one
-                        deduplicated_updates = [
-                            u
-                            for u in deduplicated_updates
-                            if not (
-                                u["point_id"] == update["point_id"]
-                                and u["vector_name"] == update["vector_name"]
-                            )
-                        ]
-                    elif dedup_policy == "warn":
-                        # Same as last-wins but log warning
-                        logger.warning(
-                            f"Duplicate update for ({update['point_id']}, {update['vector_name']}), "
-                            f"using last occurrence"
-                        )
-                        deduplicated_updates = [
-                            u
-                            for u in deduplicated_updates
-                            if not (
-                                u["point_id"] == update["point_id"]
-                                and u["vector_name"] == update["vector_name"]
-                            )
-                        ]
-                    elif dedup_policy == "fail":
-                        raise DuplicateUpdateError(
-                            point_id=update["point_id"],
-                            vector_name=update["vector_name"],
-                        )
-
-                seen_keys[key] = idx
-                deduplicated_updates.append(update)
-
-            duplicates_removed = len(updates) - len(deduplicated_updates)
-
-            if duplicates and dedup_policy not in ["fail", "warn"]:
+            if duplicates_removed > 0 and dedup_policy not in {"warn", "fail"}:
                 logger.debug(
-                    f"Removed {duplicates_removed} duplicate updates "
-                    f"(policy: {dedup_policy})"
+                    "Removed %s duplicate updates (policy: %s)",
+                    duplicates_removed,
+                    dedup_policy,
                 )
 
             # Track detailed results for each update
@@ -1125,6 +1214,221 @@ class QdrantClient(VectorDBClient):
                 "success": 0,
                 "failed": len(updates),
                 "results": results,
+                "duplicates_removed": 0,
+            }
+
+    async def update_batch_point_payload(
+        self,
+        updates: list[dict[str, Any]],
+        mode: str = "merge",
+        dedup_policy: str = "last-wins",
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ) -> dict[str, Any]:
+        """Update payloads for multiple points in a single batch operation.
+
+        Args:
+            updates: List of update dictionaries. Each item requires:
+                - `point_id`: Point ID to update.
+                - `payload`: Payload dictionary to apply.
+              Optional per-item:
+                - `key`: Nested payload path for merge updates.
+            mode: Payload update mode:
+                - `"merge"`: Merge keys into existing payload (`set_payload`).
+                - `"overwrite"`: Replace existing payload (`overwrite_payload`).
+            dedup_policy: Duplicate handling for repeated `point_id` updates:
+                - `"last-wins"` (default)
+                - `"first-wins"`
+                - `"warn"` (last-wins + warning)
+                - `"fail"` (raise `DuplicateUpdateError`)
+            max_retries: Maximum number of retry attempts for transient failures.
+            retry_delay: Initial delay in seconds between retries.
+
+        Returns:
+            Dictionary containing:
+                - `success`: Number of successful updates.
+                - `failed`: Number of failed updates.
+                - `results`: Per-update status dictionaries.
+                - `duplicates_removed`: Number of duplicates removed.
+
+        Raises:
+            ValueError: If `dedup_policy` is invalid.
+            DuplicateUpdateError: If policy is `"fail"` and duplicates are found.
+        """
+        if dedup_policy not in {"last-wins", "first-wins", "warn", "fail"}:
+            raise ValueError(  # noqa: TRY003
+                "dedup_policy must be one of: last-wins, first-wins, warn, fail"
+            )
+
+        mode_valid, normalized_mode = self._normalize_payload_mode(mode)
+        if not mode_valid:
+            raise ValueError(  # noqa: TRY003
+                f"Invalid mode '{mode}'. Supported values: merge, overwrite"
+            )
+
+        if not updates:
+            return {
+                "success": 0,
+                "failed": 0,
+                "results": [],
+                "duplicates_removed": 0,
+            }
+
+        try:
+            invalid_updates: list[dict[str, Any]] = []
+            valid_updates: list[dict[str, Any]] = []
+
+            for update in updates:
+                point_id = update.get("point_id")
+                if not isinstance(point_id, str) or not point_id.strip():
+                    invalid_updates.append(
+                        {
+                            "point_id": str(point_id),
+                            "payload": None,
+                            "_invalid_error": "point_id must be a non-empty string",
+                        }
+                    )
+                    continue
+                valid_updates.append(update)
+
+            def _warn_payload_duplicate(key: str) -> None:
+                logger.warning(
+                    "Duplicate payload update for point_id=%s; using last occurrence",
+                    key,
+                )
+
+            try:
+                deduplicated_valid_updates, duplicates_removed = deduplicate_items(
+                    items=valid_updates,
+                    key_fn=lambda u: cast(str, u["point_id"]),
+                    dedup_policy=dedup_policy,
+                    on_warn=_warn_payload_duplicate,
+                )
+            except DuplicateKeyError as error:
+                raise DuplicateUpdateError(
+                    point_id=str(error.key),
+                    vector_name="payload",
+                ) from error
+
+            deduplicated_updates = [*invalid_updates, *deduplicated_valid_updates]
+            results: list[dict[str, Any]] = []
+            operations: list[SetPayloadOperation | OverwritePayloadOperation] = []
+
+            for update in deduplicated_updates:
+                point_id = update.get("point_id")
+                payload = update.get("payload")
+                key = update.get("key")
+
+                invalid_error = update.get("_invalid_error")
+                if invalid_error:
+                    results.append(
+                        {
+                            "point_id": point_id,
+                            "success": False,
+                            "error": invalid_error,
+                        }
+                    )
+                    continue
+
+                payload_valid, payload_error = self._validate_payload_update(payload)
+                if not payload_valid:
+                    results.append(
+                        {
+                            "point_id": point_id,
+                            "success": False,
+                            "error": payload_error,
+                        }
+                    )
+                    continue
+
+                payload_update = SetPayload(
+                    payload=payload,
+                    points=[point_id],
+                    key=key if normalized_mode == "merge" else None,
+                )
+
+                if normalized_mode == "merge":
+                    operations.append(SetPayloadOperation(set_payload=payload_update))
+                else:
+                    operations.append(
+                        OverwritePayloadOperation(overwrite_payload=payload_update)
+                    )
+
+            if operations:
+                async def _perform_batch_update() -> None:
+                    await self.client.batch_update_points(
+                        collection_name=self.collection_name,
+                        update_operations=operations,
+                        wait=True,
+                    )
+
+                try:
+                    await retry_with_backoff(
+                        operation=_perform_batch_update,
+                        max_retries=max_retries,
+                        retry_delay=retry_delay,
+                    )
+                    for update in deduplicated_updates:
+                        if update.get("_invalid_error"):
+                            continue
+                        payload = update.get("payload")
+                        payload_valid, _ = self._validate_payload_update(payload)
+                        if payload_valid:
+                            results.append(
+                                {
+                                    "point_id": update.get("point_id"),
+                                    "success": True,
+                                }
+                            )
+                except Exception as e:
+                    logger.exception("Batch payload update failed after retries")
+                    for update in deduplicated_updates:
+                        if update.get("_invalid_error"):
+                            continue
+                        payload = update.get("payload")
+                        payload_valid, _ = self._validate_payload_update(payload)
+                        if payload_valid:
+                            results.append(
+                                {
+                                    "point_id": update.get("point_id"),
+                                    "success": False,
+                                    "error": f"Payload update failed after {max_retries} retries: {e!s}",
+                                }
+                            )
+
+            success_count = sum(1 for r in results if r["success"])
+            failed_count = len(results) - success_count
+
+            logger.info(
+                "Batch payload update complete: %s success, %s failed, %s duplicates removed",
+                success_count,
+                failed_count,
+                duplicates_removed,
+            )
+
+            return {
+                "success": success_count,
+                "failed": failed_count,
+                "results": results,
+                "duplicates_removed": duplicates_removed,
+            }
+        except ValueError:
+            logger.exception("Payload batch update failed due to invalid configuration")
+            raise
+        except Exception as e:
+            logger.exception("Failed to batch update payloads")
+            fallback_results = [
+                {
+                    "point_id": update.get("point_id", "unknown"),
+                    "success": False,
+                    "error": f"Batch payload update failed: {e!s}",
+                }
+                for update in updates
+            ]
+            return {
+                "success": 0,
+                "failed": len(updates),
+                "results": fallback_results,
                 "duplicates_removed": 0,
             }
 
@@ -1408,18 +1712,21 @@ class QdrantClient(VectorDBClient):
             ...     print(f"{result['title']}: {result['similarity_score']:.4f}")
         """
         try:
-            # Direct vector search with raw similarity scores
-            response = await self.client.search(
+            # Direct vector search with raw similarity scores using Query API.
+            response = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=(vector_name, vector_data),
+                query=vector_data,
+                using=vector_name,
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
                 query_filter=filters,
             )
+            points = response.points
+
             # Convert response to our format with raw similarity scores
             results = []
-            for point in response:
+            for point in points:
                 payload = point.payload if point.payload else {}
                 result = {
                     "id": str(point.id),
@@ -1469,7 +1776,9 @@ class QdrantClient(VectorDBClient):
         # Build filter conditions
         filter_conditions = filters.copy() if filters else {}
         if entity_type:
-            filter_conditions["type"] = entity_type
+            # Payload uses "entity_type" to distinguish anime/character/episode.
+            # "type" is already used by the domain for anime format (TV/MOVIE/OVA...).
+            filter_conditions["entity_type"] = entity_type
 
         qdrant_filter = (
             self._build_filter(filter_conditions) if filter_conditions else None

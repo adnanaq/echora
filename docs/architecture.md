@@ -4,7 +4,41 @@
 
 The Anime Vector Service is a specialized microservice designed for high-performance vector database operations, extracted from the main anime-mcp-server repository. It provides semantic search and image-based discovery capabilities for anime databases.
 
+Current architecture context:
+- This repository contains two backend services:
+  - `apps/service`: FastAPI vector/admin service.
+  - `apps/agent_service`: internal gRPC agent service for natural-language search orchestration.
+- The frontend-facing BFF/GraphQL backend lives in a separate repository and is out of implementation scope for this document.
+- Data responsibilities are split as:
+  - PostgreSQL: canonical source of truth for identities and relationships.
+  - Qdrant: semantic retrieval index for vector search.
+
+## Service Boundaries (Current)
+
+- **External BFF (separate repository)**:
+  - Public API boundary for frontend clients.
+  - Routes requests to direct-search vs AI-search lanes.
+- **Vector Service (`apps/service`)**:
+  - FastAPI endpoints for vector/admin operations.
+  - Owns vector ingestion/search operational APIs.
+- **Agent Service (`apps/agent_service`)**:
+  - Internal gRPC `SearchAI` endpoint.
+  - Executes planner/retrieval/sufficiency loop and returns structured response payloads.
+
+## High-Level Service Topology
+
+```mermaid
+graph LR
+    FE[Frontend Clients] --> BFF[Backend/BFF (External)]
+    BFF -->|Direct Search| PG[(PostgreSQL)]
+    BFF -->|AI Search| AG[Agent Service (gRPC)]
+    AG --> QD[(Qdrant)]
+    AG --> PG
+```
+
 ## Architecture Diagram
+
+The following diagram focuses on the internal architecture of the vector service.
 
 ```mermaid
 graph TB
@@ -142,7 +176,37 @@ graph TB
 - **Features**: Multi-vector storage, HNSW indexing, payload filtering
 - **Performance**: Quantization, caching, connection pooling
 
+#### 6. Agent Service (`apps/agent_service/src/agent_service/server.py`)
+
+- **Purpose**: Internal natural-language search orchestration endpoint.
+- **Interface**: gRPC `agent.v1.AgentSearchService/SearchAI`.
+- **Execution model**: Planner -> retrieval execution (Qdrant / Postgres graph) -> sufficiency check -> finalize.
+- **Current state**: PostgreSQL graph executor is a contract/stub and is wired when PostgreSQL is available.
+
 ## Data Flow Architecture
+
+### Product-Level Search Routing Flow
+
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant BFF as BFF (External)
+    participant Agent as Agent Service
+    participant PG as PostgreSQL
+    participant QD as Qdrant
+
+    Frontend->>BFF: Search query
+    alt Direct Search lane
+        BFF->>PG: Indexed lookup
+        PG-->>BFF: Canonical entities
+    else AI Search lane
+        BFF->>Agent: SearchAI(text/image query)
+        Agent->>QD: Semantic retrieval steps
+        Agent->>PG: Relationship/graph steps (when configured)
+        Agent-->>BFF: answer + entities + evidence
+    end
+    BFF-->>Frontend: Hydrated response
+```
 
 ### Search Request Flow
 
@@ -294,15 +358,14 @@ sequenceDiagram
 ### Development
 
 ```
-localhost:8002 ’ FastAPI ’ Qdrant (Docker)
+localhost:8002 -> Vector Service (FastAPI) -> Qdrant (Docker)
+localhost:50051 -> Agent Service (gRPC) -> Qdrant
 ```
 
 ### Production (Recommended)
 
 ```
-Load Balancer ’ [Vector Service Instances] ’ Qdrant Cluster
-     |                      |                      |
-   Nginx              Kubernetes              Persistent Storage
+Frontend -> External BFF -> [Vector Service, Agent Service] -> [PostgreSQL, Qdrant]
 ```
 
 ## Future Architecture Considerations
@@ -313,6 +376,7 @@ Load Balancer ’ [Vector Service Instances] ’ Qdrant Cluster
 - **Redis Caching**: Query result caching layer
 - **Message Queue**: Async processing with Celery/RQ
 - **Prometheus Metrics**: Detailed performance monitoring
+- **PostgreSQL Graph Executor**: Replace current graph stub with bounded recursive CTE/graph primitives
 
 ### Phase 3 Scalability
 
@@ -320,4 +384,3 @@ Load Balancer ’ [Vector Service Instances] ’ Qdrant Cluster
 - **Auto-scaling**: Kubernetes HPA based on CPU/memory/queue depth
 - **Model Serving**: Dedicated model inference services
 - **Data Pipeline**: Stream processing for real-time updates
-
