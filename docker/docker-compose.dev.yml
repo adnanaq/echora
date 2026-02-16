@@ -2,7 +2,7 @@ services:
   # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: echora_qdrant
+    container_name: echora-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -28,7 +28,7 @@ services:
   # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
     image: redis:7-alpine
-    container_name: anime-vector-redis
+    container_name: echora-redis
     ports:
       - "6379:6379"
     volumes:
@@ -51,7 +51,7 @@ services:
     build:
       context: ..
       dockerfile: apps/vector_service/Dockerfile.dev
-    container_name: anime-vector-service
+    container_name: echora-vector-service
     ports:
       - "8002:8002"
     environment:
@@ -140,8 +140,6 @@ networks:
     driver: bridge
 
 volumes:
-  qdrant_data:
-    driver: local
   redis-data:
     driver: local
   model_cache:

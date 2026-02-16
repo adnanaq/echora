@@ -85,6 +85,10 @@ TARGETS = [
 def _run(cmd: list[str]) -> None:
     proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)  # noqa: S603
     if proc.returncode != 0:
+        print(
+            f"Command failed (exit {proc.returncode}): {' '.join(cmd)}",
+            file=sys.stderr,
+        )
         raise SystemExit(proc.returncode)
 
 
@@ -93,6 +97,8 @@ def _rewrite_generated_imports(
 ) -> None:
     if not rewrites:
         return
+    # NOTE: rewrite order is significant. Ensure each "after" string does not
+    # match any later rule's "before" pattern to avoid double rewriting.
     for generated_file in list(out_root.rglob("*_pb2.py")) + list(
         out_root.rglob("*_pb2_grpc.py")
     ):
