@@ -40,6 +40,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore Pants cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pants
+          key: ${{ runner.os }}-pants-${{ hashFiles('pants.toml', 'pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pants-
+
       - name: Regenerate protobuf stubs
         run: ./pants run scripts/gen_protos.py
 
