@@ -43,7 +43,9 @@ def get_anime_by_index(database: dict[str, Any], index: int) -> dict[str, Any]:
     """
     data = database.get("data", [])
     if not (0 <= index < len(data)):
-        raise ValueError(f"Index {index} out of range for database size {len(data)}")
+        raise ValueError(
+            f"Index {index} out of range for database size {len(data)}"
+        )
     return data[index]
 
 
@@ -62,6 +64,7 @@ def get_anime_by_title(database: dict[str, Any], title: str) -> dict[str, Any]:
     Raises:
         ValueError: If no match or multiple matches are found.
     """
+
     data = database.get("data", [])
     title_lower = title.lower()
     exact = [entry for entry in data if entry.get("title", "").lower() == title_lower]
@@ -123,7 +126,7 @@ async def run_pipeline_and_write_artifact(
     skip_services: list[str] | None,
     only_services: list[str] | None,
     output_dir: str | Path = "assets/seed_data",
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Run enrichment for one anime entry and persist an artifact.
 
     Args:
@@ -136,7 +139,8 @@ async def run_pipeline_and_write_artifact(
         output_dir: Directory where artifact files are written.
 
     Returns:
-        Tuple of output artifact path and enrichment result payload.
+        Tuple of output artifact path, raw enrichment result, and full
+        artifact payload.
 
     Raises:
         ValueError: If neither `index` nor `title` is provided, or selection fails.
@@ -179,4 +183,4 @@ async def run_pipeline_and_write_artifact(
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    return str(output_path), result
+    return str(output_path), result, payload

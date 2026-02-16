@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 
 import grpc
 from common.config import get_settings
@@ -19,6 +20,27 @@ from .routes import EnrichmentRoutes
 from .runtime import build_runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _register_sigterm_shutdown(
+    server: grpc.aio.Server,
+    *,
+    grace: int = 5,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> None:
+    """Register SIGTERM handler to trigger graceful gRPC shutdown."""
+    if loop is None:
+        loop = asyncio.get_running_loop()
+
+    def _handle_sigterm() -> None:
+        asyncio.create_task(server.stop(grace=grace))
+
+    try:
+        loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
+    except NotImplementedError:
+        logger.warning("SIGTERM handler is not supported on this platform")
+    except RuntimeError:
+        logger.warning("Unable to register SIGTERM handler without a running loop")
 
 
 async def serve() -> None:
@@ -57,6 +79,7 @@ async def serve() -> None:
 
     try:
         await server.start()
+        _register_sigterm_shutdown(server, grace=5)
         await server.wait_for_termination()
     finally:
         logger.info("Shutting down enrichment_service gRPC server")

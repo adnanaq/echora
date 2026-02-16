@@ -34,10 +34,10 @@ async def run_pipeline(
     try:
         file_path = request.file_path or runtime.default_file_path
         index = request.index if request.HasField("index") else None
-        if request.index < 0:
+        if index is not None and index < 0:
             index = None
 
-        output_path, result = await run_pipeline_and_write_artifact(
+        output_path, result, _payload = await run_pipeline_and_write_artifact(
             file_path=file_path,
             index=index,
             title=request.title or None,
