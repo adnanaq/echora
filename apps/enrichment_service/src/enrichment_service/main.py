@@ -28,12 +28,23 @@ def _register_sigterm_shutdown(
     grace: int = 5,
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> None:
-    """Register SIGTERM handler to trigger graceful gRPC shutdown."""
+    """Register a SIGTERM handler that initiates graceful shutdown.
+
+    Args:
+        server: Running gRPC server instance to stop when SIGTERM is received.
+        grace: Grace period in seconds passed to ``server.stop``.
+        loop: Event loop used to register the signal handler. When omitted, the
+            current running loop is used.
+    """
     if loop is None:
         loop = asyncio.get_running_loop()
 
+    _shutdown_task: asyncio.Task[None] | None = None
+
     def _handle_sigterm() -> None:
-        asyncio.create_task(server.stop(grace=grace))
+        nonlocal _shutdown_task
+        if _shutdown_task is None or _shutdown_task.done():
+            _shutdown_task = asyncio.create_task(server.stop(grace=grace))
 
     try:
         loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
@@ -48,6 +59,9 @@ async def serve() -> None:
 
     This function builds runtime dependencies, registers gRPC handlers and
     health checks, and blocks until termination.
+
+    Returns:
+        None. This coroutine runs until the server receives termination.
     """
     settings = get_settings()
     logging.basicConfig(

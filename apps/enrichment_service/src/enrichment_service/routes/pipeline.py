@@ -42,8 +42,8 @@ async def run_pipeline(
             index=index,
             title=request.title or None,
             agent_dir=request.agent_dir or None,
-            skip_services=list(request.skip_services) or None,
-            only_services=list(request.only_services) or None,
+            skip_services=list(request.skip_services),
+            only_services=list(request.only_services),
             output_dir=runtime.output_dir,
         )
         return enrichment_service_pb2.RunPipelineResponse(

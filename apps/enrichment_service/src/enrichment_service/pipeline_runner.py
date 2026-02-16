@@ -10,6 +10,26 @@ from typing import Any
 from enrichment.programmatic.enrichment_pipeline import ProgrammaticEnrichmentPipeline
 
 
+def _require_data_list(database: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return validated database data list.
+
+    Args:
+        database: Parsed database payload.
+
+    Returns:
+        Database ``data`` list.
+
+    Raises:
+        ValueError: If ``data`` is missing or not a list.
+    """
+    if "data" not in database:
+        raise ValueError("Database payload missing required 'data' key")
+    data = database["data"]
+    if not isinstance(data, list):
+        raise ValueError("Database payload 'data' must be a list")
+    return data
+
+
 def load_database(file_path: str | Path) -> dict[str, Any]:
     """Load a JSON anime database from disk.
 
@@ -39,9 +59,9 @@ def get_anime_by_index(database: dict[str, Any], index: int) -> dict[str, Any]:
         Selected anime entry.
 
     Raises:
-        ValueError: If the index is outside the available range.
+        ValueError: If `data` is missing/invalid or index is out of range.
     """
-    data = database.get("data", [])
+    data = _require_data_list(database)
     if not (0 <= index < len(data)):
         raise ValueError(
             f"Index {index} out of range for database size {len(data)}"
@@ -62,10 +82,9 @@ def get_anime_by_title(database: dict[str, Any], title: str) -> dict[str, Any]:
         Selected anime entry.
 
     Raises:
-        ValueError: If no match or multiple matches are found.
+        ValueError: If `data` is missing/invalid, or title matching is ambiguous.
     """
-
-    data = database.get("data", [])
+    data = _require_data_list(database)
     title_lower = title.lower()
     exact = [entry for entry in data if entry.get("title", "").lower() == title_lower]
     if len(exact) == 1:
@@ -91,6 +110,7 @@ def _artifact_name(title: str) -> str:
     """
     clean = "".join(c.lower() if c.isalnum() else "_" for c in title).strip("_")
     clean = "_".join(filter(None, clean.split("_")))
+    clean = clean or "unknown"
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{clean}_{ts}.json"
 
@@ -143,12 +163,14 @@ async def run_pipeline_and_write_artifact(
         artifact payload.
 
     Raises:
-        ValueError: If neither `index` nor `title` is provided, or selection fails.
+        ValueError: If selector inputs are invalid or source selection fails.
         OSError: If input database cannot be read or output artifact cannot be written.
         Exception: Propagates pipeline execution failures.
     """
     if index is None and not title:
         raise ValueError("Either index or title must be provided")
+    if index is not None and title:
+        raise ValueError("Provide either index or title, not both")
 
     file_path_obj = Path(file_path)
     database = load_database(file_path_obj)
