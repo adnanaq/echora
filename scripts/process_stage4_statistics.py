@@ -10,7 +10,7 @@ Key Features:
 - Normalize all scores to 0-10 scale
 - Handle missing fields gracefully
 - Source-specific field mappings
-- Standard StatisticsEntry format
+- Standard Statistics format
 """
 
 import argparse
