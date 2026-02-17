@@ -1,6 +1,6 @@
 # Echora
 
-A production-ready semantic search microservice for anime content using a multi-vector architecture with Qdrant vector database. Built as a Pants monorepo with modular libraries for vector processing, database operations, and enrichment pipelines.
+A production-ready anime data/search platform built as gRPC services on top of Qdrant and enrichment pipelines. The repo is a Pants monorepo with modular libraries for vector processing, database operations, and enrichment workflows.
 
 ## Features
 
@@ -15,8 +15,10 @@ A production-ready semantic search microservice for anime content using a multi-
 ```text
 echora/
 ├── apps/                          # Applications
-│   └── service/                   # Vector search service
-│       └── src/service/           # FastAPI application (main.py, api/, etc.)
+│   ├── vector_service/            # gRPC search/admin service
+│   │   └── src/vector_service/
+│   └── enrichment_service/        # gRPC enrichment orchestration service
+│       └── src/enrichment_service/
 ├── libs/                          # Shared libraries
 │   ├── common/                    # Common models and configuration
 │   │   └── src/common/
@@ -45,7 +47,7 @@ echora/
 ├── tests/                         # Test suite (mirrors source structure)
 │   ├── conftest.py                # Root fixtures (settings, clients)
 │   ├── integration/               # Cross-library integration tests
-│   ├── apps/service/              # Service tests (unit/, integration/)
+│   ├── apps/vector_service/       # Service tests (unit/, integration/)
 │   ├── libs/                      # Per-library test suites
 │   │   ├── common/                # Common library tests
 │   │   ├── enrichment/            # Enrichment tests (unit/, integration/)
@@ -72,8 +74,9 @@ echora/
 # Start all services
 docker compose up -d
 
-# Service available at http://localhost:8002
-curl http://localhost:8002/health
+# Services:
+# - vector_service gRPC: localhost:8002
+# - enrichment_service gRPC: localhost:8010
 ```
 
 ### Local Development
@@ -126,8 +129,11 @@ docker compose up -d qdrant
 **Using Pants (Recommended)** — handles monorepo dependencies automatically:
 
 ```bash
-# Run the service (available at http://localhost:8002)
-./pants run apps/service:service
+# Run vector service (gRPC on :8002)
+./pants run apps/vector_service/:vector_service
+
+# Run enrichment service (gRPC on :8010)
+./pants run apps/enrichment_service/:enrichment_service
 
 # Run tests
 ./pants test ::
@@ -388,12 +394,24 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-## API Endpoints
+## Services And gRPC Contracts
 
-- `GET /health` - Service health status with database diagnostics
-- `GET /api/v1/admin/stats` - Database statistics
-- `GET /api/v1/admin/collection` - Collection configuration and processor info
-- `GET /docs` - Interactive API documentation (Swagger UI)
+- Services in this repo:
+  - `apps/vector_service` (gRPC on `:8002`)
+  - `apps/enrichment_service` (gRPC on `:8010`)
+- Active vector gRPC methods:
+  - `VectorAdminService`: `Health`, `GetStats`
+  - `VectorSearchService`: `Search`
+- Active enrichment gRPC methods:
+  - `EnrichmentService`: `Health`, `RunPipeline`
+- Proto sources:
+  - `protos/vector_service/v1/`
+  - `protos/enrichment_service/v1/`
+- After any `.proto` change, regenerate checked-in stubs:
+
+```bash
+./pants run scripts/generate-proto.py
+```
 
 ## Architecture
 
@@ -411,7 +429,7 @@ The service uses a unified multi-vector architecture optimized for million-query
 
 - **Build System**: Pants 2.29.1
 - **Language**: Python 3.12
-- **Web Framework**: FastAPI + Uvicorn
+- **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing
 - **Text Embeddings**: BGE-M3 (1024-dim, multilingual)
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)
@@ -433,6 +451,6 @@ The service uses a unified multi-vector architecture optimized for million-query
 
 - [Pants Documentation](https://www.pantsbuild.org/)
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [gRPC Documentation](https://grpc.io/docs/)
 - [Ruff Documentation](https://docs.astral.sh/ruff/)
 - [Ty Documentation](https://docs.astral.sh/ty/)

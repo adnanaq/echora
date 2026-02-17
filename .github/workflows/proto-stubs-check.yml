@@ -1,0 +1,101 @@
+name: Proto Stubs Check
+
+on:
+  pull_request:
+    paths:
+      - "protos/**/*.proto"
+      - "scripts/generate-proto.py"
+      - "scripts/check_anime_model_proto_contract.py"
+      - "libs/common/src/common/models/anime.py"
+      - "libs/common/src/shared_proto/**"
+      - "apps/vector_service/src/vector_proto/**"
+      - "apps/enrichment_service/src/enrichment_proto/**"
+      - "scripts/BUILD"
+      - "pants.toml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "buf.yaml"
+  push:
+    branches: ["main"]
+    paths:
+      - "protos/**/*.proto"
+      - "scripts/generate-proto.py"
+      - "scripts/check_anime_model_proto_contract.py"
+      - "libs/common/src/common/models/anime.py"
+      - "libs/common/src/shared_proto/**"
+      - "apps/vector_service/src/vector_proto/**"
+      - "apps/enrichment_service/src/enrichment_proto/**"
+      - "scripts/BUILD"
+      - "pants.toml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "buf.yaml"
+
+jobs:
+  proto-stubs-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install buf
+        run: |
+          BUF_VERSION="1.50.0"
+          curl -sSL "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-x86_64" \
+            -o /usr/local/bin/buf
+          chmod +x /usr/local/bin/buf
+
+      - name: Lint proto files
+        run: buf lint
+
+      - name: Restore Pants cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pants
+          key: ${{ runner.os }}-pants-${{ hashFiles('pants.toml', 'pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pants-
+
+      - name: Enforce anime model/proto co-change
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+
+          MODEL_PATH="libs/common/src/common/models/anime.py"
+          PROTO_PATH="protos/shared_proto/v1/anime.proto"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_FILES="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+
+          if echo "${CHANGED_FILES}" | grep -Fxq "${MODEL_PATH}"; then
+            if ! echo "${CHANGED_FILES}" | grep -Fxq "${PROTO_PATH}"; then
+              echo "Detected '${MODEL_PATH}' change without '${PROTO_PATH}' update."
+              echo "Please update proto contract alongside anime model changes."
+              exit 1
+            fi
+          fi
+
+      - name: Regenerate protobuf stubs
+        run: ./pants run scripts/generate-proto.py
+
+      - name: Validate anime model/proto contract
+        run: ./pants run scripts/check_anime_model_proto_contract.py
+
+      - name: Fail on generated stub drift
+        run: |
+          git diff --exit-code -- \
+            libs/common/src/shared_proto \
+            apps/vector_service/src/vector_proto \
+            apps/enrichment_service/src/enrichment_proto
+
