@@ -128,7 +128,7 @@ def _rewrite_generated_imports(
     # match any later rule's "before" pattern to avoid double rewriting.
     for generated_file in list(out_root.rglob("*_pb2.py")) + list(
         out_root.rglob("*_pb2_grpc.py")
-    ):
+    ) + list(out_root.rglob("*_pb2.pyi")):
         text = generated_file.read_text(encoding="utf-8")
         updated = text
         for before, after in rewrites:
