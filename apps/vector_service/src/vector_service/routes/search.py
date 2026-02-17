@@ -214,7 +214,12 @@ async def search(
 
         image_embedding: list[float] | None = None
         if has_image:
-            image_embedding = await _encode_image_bytes(runtime, request.image)
+            try:
+                image_embedding = await _encode_image_bytes(runtime, request.image)
+            except ValueError as exc:
+                return vector_search_pb2.SearchResponse(
+                    error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
+                )
             if not image_embedding:
                 return vector_search_pb2.SearchResponse(
                     error=error(
@@ -246,10 +251,6 @@ async def search(
     except InvalidFiltersPayloadError as exc:
         return vector_search_pb2.SearchResponse(
             error=error("INVALID_FILTERS", str(exc), retryable=False)
-        )
-    except ValueError as exc:
-        return vector_search_pb2.SearchResponse(
-            error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
         )
     except Exception:
         logger.exception("Search RPC failed")
