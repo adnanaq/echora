@@ -473,8 +473,9 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
         temp_dir: Path to temp directory with data files (e.g., temp/One/)
     """
     # Load all data sources from the specified temp directory
-    with open(f"{temp_dir}/mal.json", encoding="utf-8") as f:
-        mal_data = json.load(f)
+    with open(f"{temp_dir}/mal.jsonl", encoding="utf-8") as f:
+        mal_records = [json.loads(line) for line in f if line.strip()]
+        mal_data = mal_records[0] if mal_records else {}
 
     with open(f"{temp_dir}/anime_planet.json", encoding="utf-8") as f:
         animeplanet_data = json.load(f)

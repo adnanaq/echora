@@ -55,8 +55,17 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     """Load all external source data files."""
     sources = {}
 
+    def load_json_or_jsonl(file_path: str) -> Any:
+        with open(file_path, encoding="utf-8") as f:
+            if file_path.endswith(".jsonl"):
+                records = [json.loads(line) for line in f if line.strip()]
+                if len(records) == 1:
+                    return records[0]
+                return records
+            return json.load(f)
+
     source_files = {
-        "mal": f"{temp_dir}/mal.json",
+        "mal": f"{temp_dir}/mal.jsonl",
         "animeschedule": f"{temp_dir}/animeschedule.json",
         "kitsu": f"{temp_dir}/kitsu.json",
         "anime_planet": f"{temp_dir}/anime_planet.json",
@@ -67,9 +76,8 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path, encoding="utf-8") as f:
-                sources[source_name] = json.load(f)
-                print(f"Loaded {source_name} data")
+            sources[source_name] = load_json_or_jsonl(file_path)
+            print(f"Loaded {source_name} data")
         except FileNotFoundError as e:
             print(f"Warning: Could not find {source_name} data: {e}")
             sources[source_name] = {}

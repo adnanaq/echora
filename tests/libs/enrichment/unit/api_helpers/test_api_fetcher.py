@@ -164,9 +164,12 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_anime = AsyncMock(return_value=mock_anime_response["data"])
-        helper.fetch_characters_basic = AsyncMock(
-            return_value=mock_characters_response["data"]
+        helper.fetch_all_data = AsyncMock(
+            return_value={
+                "anime": mock_anime_response["data"],
+                "episodes": [],
+                "characters": mock_characters_response["data"],
+            }
         )
 
         helper_cm = AsyncMock()
@@ -191,6 +194,10 @@ class TestFetchMALComplete:
         # Characters should use basic data from API
         assert len(result["characters"]) == 1
         assert result["characters"][0]["character"]["mal_id"] == 1
+        helper.fetch_all_data.assert_awaited_once_with(
+            include_details=False,
+            fallback_episode_count=12,
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_mal_complete_with_temp_dir(
@@ -205,15 +212,12 @@ class TestFetchMALComplete:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             helper = AsyncMock()
-            helper.fetch_anime = AsyncMock(return_value=mock_anime_response["data"])
-            helper.fetch_characters_basic = AsyncMock(
-                return_value=mock_characters_response["data"]
-            )
-            helper.fetch_episodes = AsyncMock(
-                return_value=[{"mal_id": 1, "title": "Episode 1"}]
-            )
-            helper.fetch_characters_detailed = AsyncMock(
-                return_value=[{"mal_id": 1, "name": "Detailed Character"}]
+            helper.fetch_all_data = AsyncMock(
+                return_value={
+                    "anime": mock_anime_response["data"],
+                    "episodes": [{"mal_id": 1, "title": "Episode 1"}],
+                    "characters": [{"mal_id": 1, "name": "Detailed Character"}],
+                }
             )
 
             helper_cm = AsyncMock()
@@ -225,6 +229,10 @@ class TestFetchMALComplete:
                 return_value=helper_cm,
             ):
                 result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
+            helper.fetch_all_data.assert_awaited_once_with(
+                include_details=True,
+                fallback_episode_count=12,
+            )
 
             # Verify result structure
             assert result is not None
@@ -239,8 +247,8 @@ class TestFetchMALComplete:
             assert len(result["characters"]) == 1
             assert result["characters"][0]["mal_id"] == 1
 
-            # Verify mal.json was saved
-            mal_file = os.path.join(temp_dir, "mal.json")
+            # Verify mal.jsonl was saved
+            mal_file = os.path.join(temp_dir, "mal.jsonl")
             assert os.path.exists(mal_file)
             with open(mal_file) as f:
                 saved_data = json.load(f)
@@ -264,9 +272,12 @@ class TestFetchMALComplete:
         }
 
         helper = AsyncMock()
-        helper.fetch_anime = AsyncMock(return_value=anime_response_no_episodes["data"])
-        helper.fetch_characters_basic = AsyncMock(
-            return_value=mock_characters_response["data"]
+        helper.fetch_all_data = AsyncMock(
+            return_value={
+                "anime": anime_response_no_episodes["data"],
+                "episodes": [],
+                "characters": mock_characters_response["data"],
+            }
         )
 
         helper_cm = AsyncMock()
@@ -284,6 +295,10 @@ class TestFetchMALComplete:
         assert result["anime"]["episodes"] is None
         # No episodes should be fetched
         assert result["episodes"] == []
+        helper.fetch_all_data.assert_awaited_once_with(
+            include_details=False,
+            fallback_episode_count=12,
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_mal_complete_api_failure(self, offline_data: dict[str, Any]):
@@ -292,7 +307,7 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_anime = AsyncMock(return_value=None)
+        helper.fetch_all_data = AsyncMock(return_value=None)
 
         helper_cm = AsyncMock()
         helper_cm.__aenter__ = AsyncMock(return_value=helper)
@@ -318,7 +333,7 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_anime = AsyncMock(side_effect=Exception("Network error"))
+        helper.fetch_all_data = AsyncMock(side_effect=Exception("Network error"))
 
         helper_cm = AsyncMock()
         helper_cm.__aenter__ = AsyncMock(return_value=helper)
@@ -365,6 +380,6 @@ class TestSaveTempFiles:
             ) as mock_to_thread:
                 await fetcher._save_temp_files(results, temp_dir)
 
-            assert os.path.exists(os.path.join(temp_dir, "mal.json"))
+            assert os.path.exists(os.path.join(temp_dir, "mal.jsonl"))
             assert os.path.exists(os.path.join(temp_dir, "anilist.json"))
             mock_to_thread.assert_awaited()

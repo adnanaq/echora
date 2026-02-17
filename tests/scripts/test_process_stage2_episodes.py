@@ -358,7 +358,7 @@ class TestEpisodeProcessing:
 
     @pytest.fixture
     def mock_episodes_detailed(self):
-        """Create mock episodes_detailed.json data."""
+        """Create mock episodes_detailed.jsonl data."""
         return [
             {
                 "episode_number": 1,
@@ -402,7 +402,7 @@ class TestEpisodeProcessing:
     def complete_test_env(self, mock_episodes_detailed, tmp_path):
         """Create complete test environment with all data sources."""
         # Episodes detailed
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(mock_episodes_detailed, f)
 
@@ -570,7 +570,7 @@ class TestEpisodeProcessing:
             }
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
@@ -616,7 +616,7 @@ class TestEpisodeProcessing:
             for i in range(1, 5)
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
@@ -685,13 +685,13 @@ class TestEdgeCases:
     """Test edge cases and error handling."""
 
     def test_missing_episodes_detailed_file(self, tmp_path):
-        """Test handling when episodes_detailed.json is missing."""
+        """Test handling when episodes_detailed.jsonl is missing."""
         with pytest.raises(FileNotFoundError):
             process_all_episodes(str(tmp_path))
 
     def test_empty_episodes_list(self, tmp_path):
         """Test processing empty episodes list."""
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump([], f)
 
@@ -723,7 +723,7 @@ class TestEdgeCases:
             }
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
@@ -754,7 +754,7 @@ class TestEdgeCases:
             }
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
@@ -778,7 +778,7 @@ class TestEdgeCases:
             }
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w", encoding="utf-8") as f:
             json.dump(episodes_data, f, ensure_ascii=False)
 
@@ -803,7 +803,7 @@ class TestEdgeCases:
             }
         ]
 
-        episodes_file = tmp_path / "episodes_detailed.json"
+        episodes_file = tmp_path / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(episodes_data, f)
 
@@ -836,7 +836,7 @@ class TestMainExecution:
         anime_dir = tmp_path / "test_agent"
         anime_dir.mkdir()
 
-        episodes_file = anime_dir / "episodes_detailed.json"
+        episodes_file = anime_dir / "episodes_detailed.jsonl"
         with open(episodes_file, "w") as f:
             json.dump(
                 [
@@ -887,7 +887,7 @@ class TestMainExecution:
         assert "does not exist" in result.stdout
 
     def test_main_with_missing_episodes_file(self, tmp_path):
-        """Test main execution when episodes_detailed.json is missing."""
+        """Test main execution when episodes_detailed.jsonl is missing."""
         anime_dir = tmp_path / "test_agent"
         anime_dir.mkdir()
 

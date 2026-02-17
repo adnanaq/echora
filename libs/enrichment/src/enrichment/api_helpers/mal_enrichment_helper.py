@@ -176,3 +176,52 @@ class MalEnrichmentHelper:
                 characters.append(detail)
         return characters
 
+    async def fetch_all_data(
+        self,
+        *,
+        include_details: bool = True,
+        fallback_episode_count: int = 0,
+    ) -> dict[str, Any] | None:
+        """Fetch MAL data with the same behavior expected by the pipeline.
+
+        Behavior:
+        - Always fetch anime full payload and basic character list.
+        - Fetch detailed episodes/characters only when `include_details` is True.
+        - If anime episode count is missing, use `fallback_episode_count`.
+        - If detailed character fetch returns empty, keep basic character list.
+
+        Args:
+            include_details: Whether to fetch detailed episodes and character payloads.
+            fallback_episode_count: Episode count fallback when anime payload has no
+                `episodes` value.
+
+        Returns:
+            Dict with keys `anime`, `episodes`, `characters`, or None when anime fetch
+            fails.
+        """
+        anime_info = await self.fetch_anime()
+        if not anime_info:
+            return None
+
+        episode_count = anime_info.get("episodes")
+        if episode_count is None:
+            episode_count = fallback_episode_count
+        episode_count = int(episode_count or 0)
+
+        characters_basic = await self.fetch_characters_basic()
+        episodes_data: list[dict[str, Any]] = []
+        characters_data: list[dict[str, Any]] = characters_basic
+
+        if include_details:
+            if episode_count > 0:
+                episodes_data = await self.fetch_episodes(episode_count)
+
+            if characters_basic:
+                detailed_chars = await self.fetch_characters_detailed(characters_basic)
+                characters_data = detailed_chars or characters_basic
+
+        return {
+            "anime": anime_info,
+            "episodes": episodes_data,
+            "characters": characters_data,
+        }

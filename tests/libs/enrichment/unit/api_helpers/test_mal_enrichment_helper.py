@@ -131,3 +131,52 @@ async def test_fetch_characters_detailed_returns_full_character_data():
     assert chars[0]["anime"][0]["role"] == "Main"
     # No character_id or role merging from basic!
     assert "character_id" not in chars[0]
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_data_without_details_keeps_basic_characters():
+    helper = MalEnrichmentHelper("1", session=MagicMock(), limiter=AsyncMock())
+    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episodes": 12})
+    helper.fetch_characters_basic = AsyncMock(
+        return_value=[{"character": {"mal_id": 10}, "role": "Main"}]
+    )
+    helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
+    helper.fetch_characters_detailed = AsyncMock(return_value=[{"mal_id": 10}])
+
+    result = await helper.fetch_all_data(
+        include_details=False,
+        fallback_episode_count=0,
+    )
+
+    assert result is not None
+    assert result["anime"]["mal_id"] == 1
+    assert result["episodes"] == []
+    assert result["characters"] == [{"character": {"mal_id": 10}, "role": "Main"}]
+    helper.fetch_episodes.assert_not_awaited()
+    helper.fetch_characters_detailed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_data_with_details_uses_fallback_and_character_fallback():
+    helper = MalEnrichmentHelper("1", session=MagicMock(), limiter=AsyncMock())
+    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episodes": None})
+    helper.fetch_characters_basic = AsyncMock(
+        return_value=[{"character": {"mal_id": 10}, "role": "Main"}]
+    )
+    helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
+    # If detailed fetch fails/empty, helper should keep basic characters.
+    helper.fetch_characters_detailed = AsyncMock(return_value=[])
+
+    result = await helper.fetch_all_data(
+        include_details=True,
+        fallback_episode_count=3,
+    )
+
+    assert result is not None
+    assert result["anime"]["mal_id"] == 1
+    assert result["episodes"] == [{"episode_number": 1}]
+    assert result["characters"] == [{"character": {"mal_id": 10}, "role": "Main"}]
+    helper.fetch_episodes.assert_awaited_once_with(3)
+    helper.fetch_characters_detailed.assert_awaited_once_with(
+        [{"character": {"mal_id": 10}, "role": "Main"}]
+    )

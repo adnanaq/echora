@@ -75,7 +75,16 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
     """
     try:
         with open(stage_file, encoding="utf-8") as f:
-            data = json.load(f)
+            if stage_file.suffix == ".jsonl":
+                raw_records = [json.loads(line) for line in f if line.strip()]
+                data = []
+                for record in raw_records:
+                    if isinstance(record, list):
+                        data.extend(record)
+                    else:
+                        data.append(record)
+            else:
+                data = json.load(f)
 
         if isinstance(data, list):
             return data
@@ -302,7 +311,7 @@ async def process_stage5_ai_characters(
 
     # Load data from all sources
     stage_files = {
-        "mal": agent_dir / "characters_detailed.json",
+        "mal": agent_dir / "characters_detailed.jsonl",
         "anilist": agent_dir / "anilist.json",
         "anidb": agent_dir / "anidb.json",
         "animeplanet": agent_dir / "anime_planet.json",

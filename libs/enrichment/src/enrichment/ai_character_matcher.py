@@ -1257,7 +1257,7 @@ class AICharacterMatcher:
             char_data.get("mal_id")
             mal_url = char_data.get("url", "")
         else:
-            # Processed format (from characters_detailed.json)
+            # Processed format (from characters_detailed.jsonl)
             mal_name = mal_char.get("name", "")
             # MAL uses 'character_id' field, not 'mal_id'
             mal_char.get("character_id") or mal_char.get("mal_id")

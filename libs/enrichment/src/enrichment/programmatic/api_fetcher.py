@@ -47,6 +47,24 @@ def _write_json_sync(path: str, data: Any) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2, default=json_serial)
 
 
+def _write_jsonl_sync(path: str, data: Any) -> None:
+    """Sync JSONL write used via asyncio.to_thread in async paths."""
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    def json_serial(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    records = data if isinstance(data, list) else [data]
+    with open(path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False, default=json_serial))
+            f.write("\n")
+
+
 class ParallelAPIFetcher:
     """
     Fetches data from all anime APIs in parallel.
@@ -203,76 +221,59 @@ class ParallelAPIFetcher:
                 f"🔍 [MAL DEBUG] Starting _fetch_mal_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
             )
             start = time.time()
+            include_details = bool(temp_dir)
+            fallback_episode_count = int(offline_data.get("episodes", 0) or 0)
 
             async def _write_json(path: str, data: Any) -> None:
                 await asyncio.to_thread(_write_json_sync, path, data)
 
+            async def _write_jsonl(path: str, data: Any) -> None:
+                await asyncio.to_thread(_write_jsonl_sync, path, data)
+
             async with MalEnrichmentHelper(
                 mal_id, session=self.mal_session
             ) as helper:
-                logger.info("🔍 [MAL DEBUG] Fetching anime full data...")
-                anime_info = await helper.fetch_anime()
-                if not anime_info:
+                result = await helper.fetch_all_data(
+                    include_details=include_details,
+                    fallback_episode_count=fallback_episode_count,
+                )
+                if not result:
                     logger.warning(
                         f"Failed to fetch MAL anime data for MAL ID {mal_id}"
                     )
                     return None
 
-                logger.info("🔍 [MAL DEBUG] Anime full data fetched successfully")
+                anime_info = result["anime"]
+                episodes_data = result["episodes"]
+                characters_data = result["characters"]
+                logger.info("🔍 [MAL DEBUG] MAL helper fetch_all_data completed")
 
                 if temp_dir:
-                    mal_file = os.path.join(temp_dir, "mal.json")
-                    await _write_json(mal_file, anime_info)
+                    mal_file = os.path.join(temp_dir, "mal.jsonl")
+                    await _write_jsonl(mal_file, anime_info)
                     logger.info(
-                        f"🔍 [MAL DEBUG] ✓ Saved mal.json with anime full data to {mal_file}"
+                        f"🔍 [MAL DEBUG] ✓ Saved mal.jsonl with anime full data to {mal_file}"
                     )
 
                 episode_count = anime_info.get("episodes")
                 if episode_count is None:
-                    episode_count = offline_data.get("episodes", 0)
+                    episode_count = fallback_episode_count
                 episode_count = int(episode_count or 0)
                 logger.info(f"🔍 [MAL DEBUG] Episode count: {episode_count}")
 
-                logger.info("🔍 [MAL DEBUG] Fetching character list...")
-                characters_basic = await helper.fetch_characters_basic()
-                logger.info(
-                    f"🔍 [MAL DEBUG] Character list fetched: {len(characters_basic)} characters"
-                )
-
-                episodes_data: list[dict[str, Any]] = []
-                characters_data: list[dict[str, Any]] = characters_basic
-
-                # Fetch detailed episodes/characters only when temp_dir is provided.
-                if temp_dir:
+                # Persist detailed outputs with the same conditions as before.
+                if include_details:
                     if episode_count > 0:
-                        logger.info(
-                            f"🔍 [MAL DEBUG] Fetching detailed episodes: {episode_count}..."
-                        )
-                        episodes_data = await helper.fetch_episodes(episode_count)
-                        await _write_json(
-                            os.path.join(temp_dir, "episodes_detailed.json"),
+                        await _write_jsonl(
+                            os.path.join(temp_dir, "episodes_detailed.jsonl"),
                             episodes_data,
                         )
 
-                    if characters_basic:
-                        logger.info(
-                            f"🔍 [MAL DEBUG] Fetching detailed characters: {len(characters_basic)}..."
-                        )
-                        detailed_chars = await helper.fetch_characters_detailed(
-                            characters_basic
-                        )
-                        # If detail fetch fails and returns empty, keep basic list.
-                        characters_data = detailed_chars or characters_basic
-                        await _write_json(
-                            os.path.join(temp_dir, "characters_detailed.json"),
+                    if characters_data:
+                        await _write_jsonl(
+                            os.path.join(temp_dir, "characters_detailed.jsonl"),
                             characters_data,
                         )
-
-            result = {
-                "anime": anime_info,
-                "episodes": episodes_data,
-                "characters": characters_data,
-            }
 
             self.api_timings["mal"] = time.time() - start
             logger.info(
@@ -545,10 +546,15 @@ class ParallelAPIFetcher:
 
         for api_name, data in results.items():
             if data:
-                file_path = os.path.join(temp_dir, f"{api_name}.json")
                 try:
-                    # Offload sync file I/O so this async method doesn't block the event loop.
-                    await asyncio.to_thread(_write_json_sync, file_path, data)
+                    # MAL canonical artifacts are JSONL.
+                    if api_name == "mal":
+                        file_path = os.path.join(temp_dir, "mal.jsonl")
+                        mal_data = data.get("anime") if isinstance(data, dict) else data
+                        await asyncio.to_thread(_write_jsonl_sync, file_path, mal_data)
+                    else:
+                        file_path = os.path.join(temp_dir, f"{api_name}.json")
+                        await asyncio.to_thread(_write_json_sync, file_path, data)
                     logger.debug(f"Saved {api_name} response to {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to save {api_name} response: {e}")
