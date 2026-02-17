@@ -1,0 +1,149 @@
+name: Proto Release Assets
+
+on:
+  push:
+    tags:
+      - "proto-v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Existing git tag to publish proto artifacts for"
+        required: true
+        type: string
+
+jobs:
+  release-proto-assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Resolve tag name
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ inputs.tag_name }}"
+          else
+            TAG_NAME="${{ github.ref_name }}"
+          fi
+
+          SAFE_TAG="$(echo "${TAG_NAME}" | tr '/ ' '__')"
+          echo "TAG_NAME=${TAG_NAME}" >> "${GITHUB_ENV}"
+          echo "SAFE_TAG=${SAFE_TAG}" >> "${GITHUB_ENV}"
+
+      - name: Checkout repository at tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG_NAME }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install proto tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install grpcio-tools==1.78.0
+
+      - name: Validate proto source set
+        run: |
+          set -euo pipefail
+          if ! find protos -type f -name '*.proto' | grep -q .; then
+            echo "No .proto files found under protos/"
+            exit 1
+          fi
+
+      - name: Package proto artifacts
+        run: |
+          set -euo pipefail
+
+          ARTIFACTS_ROOT="dist/proto-artifacts"
+          PYTHON_ARTIFACT_ROOT="${ARTIFACTS_ROOT}/python"
+          RUST_ARTIFACT_ROOT="${ARTIFACTS_ROOT}/rust"
+          mkdir -p "${PYTHON_ARTIFACT_ROOT}" "${RUST_ARTIFACT_ROOT}/generated"
+          mkdir -p "${PYTHON_ARTIFACT_ROOT}/generated"
+
+          mapfile -t PROTO_FILES < <(find protos -type f -name '*.proto' | sort)
+
+          cp -R protos "${PYTHON_ARTIFACT_ROOT}/"
+          python -m grpc_tools.protoc \
+            -I protos \
+            --python_out="${PYTHON_ARTIFACT_ROOT}/generated" \
+            --pyi_out="${PYTHON_ARTIFACT_ROOT}/generated" \
+            --grpc_python_out="${PYTHON_ARTIFACT_ROOT}/generated" \
+            "${PROTO_FILES[@]}"
+
+          find "${PYTHON_ARTIFACT_ROOT}/generated" -type d -exec touch {}/__init__.py \;
+
+          cp -R protos "${RUST_ARTIFACT_ROOT}/"
+          python -m grpc_tools.protoc \
+            -I protos \
+            --include_imports \
+            --descriptor_set_out="${RUST_ARTIFACT_ROOT}/generated/echora_descriptor_set.pb" \
+            "${PROTO_FILES[@]}"
+
+          cat > "${PYTHON_ARTIFACT_ROOT}/metadata.json" <<EOF
+          {
+            "generated_at_utc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "artifact_kind": "python",
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "tag_name": "${TAG_NAME}",
+            "sha": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "source_proto_dir": "protos",
+            "generator_command": "python -m grpc_tools.protoc -I protos --python_out=generated --pyi_out=generated --grpc_python_out=generated ..."
+          }
+          EOF
+
+          cat > "${RUST_ARTIFACT_ROOT}/metadata.json" <<EOF
+          {
+            "generated_at_utc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "artifact_kind": "rust",
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "tag_name": "${TAG_NAME}",
+            "sha": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "source_proto_dir": "protos",
+            "descriptor_command": "python -m grpc_tools.protoc -I protos --include_imports --descriptor_set_out=generated/echora_descriptor_set.pb ..."
+          }
+          EOF
+
+          (
+            cd "${PYTHON_ARTIFACT_ROOT}"
+            find . -type f ! -name checksums.txt -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > checksums.txt
+          )
+
+          (
+            cd "${RUST_ARTIFACT_ROOT}"
+            find . -type f ! -name checksums.txt -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > checksums.txt
+          )
+
+          PYTHON_ARCHIVE_PATH="dist/proto-python-artifacts-${SAFE_TAG}.tar.gz"
+          RUST_ARCHIVE_PATH="dist/proto-rust-artifacts-${SAFE_TAG}.tar.gz"
+          tar -czf "${PYTHON_ARCHIVE_PATH}" -C "${ARTIFACTS_ROOT}" python
+          tar -czf "${RUST_ARCHIVE_PATH}" -C "${ARTIFACTS_ROOT}" rust
+          sha256sum "${PYTHON_ARCHIVE_PATH}" > "${PYTHON_ARCHIVE_PATH}.sha256"
+          sha256sum "${RUST_ARCHIVE_PATH}" > "${RUST_ARCHIVE_PATH}.sha256"
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: Proto Artifacts ${{ env.TAG_NAME }}
+          files: |
+            dist/proto-python-artifacts-${{ env.SAFE_TAG }}.tar.gz
+            dist/proto-python-artifacts-${{ env.SAFE_TAG }}.tar.gz.sha256
+            dist/proto-rust-artifacts-${{ env.SAFE_TAG }}.tar.gz
+            dist/proto-rust-artifacts-${{ env.SAFE_TAG }}.tar.gz.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          make_latest: false
