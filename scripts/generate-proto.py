@@ -18,6 +18,7 @@ TARGETS = [
         "name": "shared_proto",
         "protos": [
             PROTO_ROOT / "shared_proto" / "v1" / "error.proto",
+            PROTO_ROOT / "shared_proto" / "v1" / "anime.proto",
         ],
         "proto_include": PROTO_ROOT,
         "out_root": REPO_ROOT / "libs" / "common" / "src" / "shared_proto",
@@ -86,12 +87,26 @@ class _CommandFailedError(RuntimeError):
     """Raised when a subprocess command exits with a non-zero code."""
 
     def __init__(self, cmd: list[str], returncode: int) -> None:
+        """Initialise with the failed command and its exit code.
+
+        Args:
+            cmd: The command list that was executed.
+            returncode: Non-zero exit code returned by the subprocess.
+        """
         self.cmd = cmd
         self.returncode = returncode
         super().__init__(f"Command failed (exit {returncode}): {' '.join(cmd)}")
 
 
 def _run(cmd: list[str]) -> None:
+    """Run a subprocess command relative to the repo root.
+
+    Args:
+        cmd: Command and arguments to execute.
+
+    Raises:
+        _CommandFailedError: If the process exits with a non-zero return code.
+    """
     proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)  # noqa: S603
     if proc.returncode != 0:
         print(
@@ -122,6 +137,13 @@ def _validate_rewrite_rules(rewrites: tuple[tuple[str, str], ...]) -> None:
 def _rewrite_generated_imports(
     out_root: Path, rewrites: tuple[tuple[str, str], ...]
 ) -> None:
+    """Rewrite import statements in generated pb2 files to use package-scoped paths.
+
+    Args:
+        out_root: Directory containing the generated ``*_pb2.py``, ``*_pb2_grpc.py``,
+            and ``*_pb2.pyi`` files.
+        rewrites: Ordered sequence of ``(before, after)`` string replacement pairs.
+    """
     if not rewrites:
         return
     # NOTE: rewrite order is significant. Ensure each "after" string does not
@@ -138,6 +160,12 @@ def _rewrite_generated_imports(
 
 
 def main() -> int:
+    """Validate proto files exist, then regenerate all configured stub targets.
+
+    Returns:
+        0 on success, 2 on a configuration or missing-file error, or the
+        non-zero exit code of a failed ``grpc_tools.protoc`` invocation.
+    """
     missing_required: list[Path] = []
     per_target_protos: dict[str, list[Path]] = {}
     for entry in TARGETS:

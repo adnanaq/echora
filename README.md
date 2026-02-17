@@ -410,7 +410,7 @@ pip install -e ".[dev]"
 - After any `.proto` change, regenerate checked-in stubs:
 
 ```bash
-./pants run scripts/gen_protos.py
+./pants run scripts/generate-proto.py
 ```
 
 ## Architecture

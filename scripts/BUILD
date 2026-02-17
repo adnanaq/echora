@@ -8,7 +8,7 @@ python_sources(
         "//:reqs0#grpcio-tools",
     ],
     overrides={
-        "gen_protos.py": {"run_goal_use_sandbox": False},
+        "generate-proto.py": {"run_goal_use_sandbox": False},
         "reindex_anime_database.py": {"run_goal_use_sandbox": False},
     },
 )
