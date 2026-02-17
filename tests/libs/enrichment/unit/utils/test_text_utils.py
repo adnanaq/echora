@@ -57,7 +57,7 @@ class TestNormalizeJapaneseText:
 
         Real cross-source data shows name order variations:
         - AniDB/Anime-Planet: "Monkey D. Luffy" (family first)
-        - characters_detailed.json: "Luffy Monkey D." (given first)
+        - characters_detailed.jsonl: "Luffy Monkey D." (given first)
 
         normalize_japanese_text() preserves these (ai_character_matcher.py handles matching).
         """
@@ -76,7 +76,7 @@ class TestNormalizeJapaneseText:
 
         result = normalize_japanese_text(
             "Luffy Monkey D."
-        )  # characters_detailed.json format
+        )  # characters_detailed.jsonl format
         assert result == "luffy monkey d."
         # These remain different - character matching logic handles this
 
@@ -180,7 +180,7 @@ class TestRealCharacterData:
 
     def test_one_piece_main_characters(self):
         """Test normalization with main One Piece character names (Katakana)."""
-        # Real data from temp/One_agent1/characters_detailed.json
+        # Real data from temp/One_agent1/characters_detailed.jsonl
         test_cases = [
             (
                 "モンキー・D・ルフィ",
@@ -207,7 +207,7 @@ class TestRealCharacterData:
 
     def test_one_piece_antagonists(self):
         """Test normalization with One Piece antagonist names (mixed scripts)."""
-        # Real data from temp/One_agent1/characters_detailed.json
+        # Real data from temp/One_agent1/characters_detailed.jsonl
         test_cases = [
             ("バギー", "bagii"),  # Buggy - pykakasi uses "ii" for long vowels
             ("ネフェルタリ・ビビ", "neferutari"),  # Vivi Nefertari
@@ -263,12 +263,12 @@ class TestRealCharacterData:
         """Test that multiple calls with different real character names don't interfere.
 
         Also validates cross-source consistency: the same Japanese name from different
-        data sources (anidb.json, anime_planet.json, characters_detailed.json) always
+        data sources (anidb.json, anime_planet.json, characters_detailed.jsonl) always
         produces identical romaji output.
         """
         # Real names from temp/One_agent1/ - various sources use the same Japanese names
         names = [
-            "モンキー・D・ルフィ",  # Luffy - in anidb.json, anime_planet.json, characters_detailed.json
+            "モンキー・D・ルフィ",  # Luffy - in anidb.json, anime_planet.json, characters_detailed.jsonl
             "ニコ・ロビン",  # Robin - consistent across all sources
             "ロロノア・ゾロ",  # Zoro - consistent across all sources
             "サンジ",  # Sanji

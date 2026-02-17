@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -22,12 +23,46 @@ from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
 from enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
-from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+from enrichment.api_helpers.mal_enrichment_helper import MalEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
 from .config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _write_json_sync(path: str, data: Any) -> None:
+    """Sync JSON write used via asyncio.to_thread in async paths."""
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    def json_serial(obj):
+        """JSON serializer for objects not serializable by default json code"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=json_serial)
+
+
+def _write_jsonl_sync(path: str, data: Any) -> None:
+    """Sync JSONL write used via asyncio.to_thread in async paths."""
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    def json_serial(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    records = data if isinstance(data, list) else [data]
+    with open(path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False, default=json_serial))
+            f.write("\n")
 
 
 class ParallelAPIFetcher:
@@ -53,7 +88,7 @@ class ParallelAPIFetcher:
         self.anidb_helper: AniDBEnrichmentHelper | None = None
         self.anime_planet_helper: AnimePlanetEnrichmentHelper | None = None
         self.anisearch_helper: AniSearchEnrichmentHelper | None = None
-        self.jikan_session: Any | None = None
+        self.mal_session: Any | None = None
 
         # Track API performance
         self.api_timings: dict[str, float] = {}
@@ -61,9 +96,9 @@ class ParallelAPIFetcher:
 
     async def initialize_helpers(self) -> None:
         """
-        Lazily initialize enrichment helpers and a shared cached aiohttp session for Jikan.
+        Lazily initialize enrichment helpers and a shared cached aiohttp session for MAL.
 
-        This prepares helper instances for AniList, Kitsu, AniDB, Anime-Planet, and AniSearch only if they are not already created, and obtains a shared cached aiohttp session for Jikan requests to enable connection pooling and reuse.
+        This prepares helper instances for AniList, Kitsu, AniDB, Anime-Planet, and AniSearch only if they are not already created, and obtains a shared cached aiohttp session for MAL requests to enable connection pooling and reuse.
         """
         if not self.anilist_helper:
             self.anilist_helper = AniListEnrichmentHelper()
@@ -75,10 +110,10 @@ class ParallelAPIFetcher:
             self.anime_planet_helper = AnimePlanetEnrichmentHelper()
         if not self.anisearch_helper:
             self.anisearch_helper = AniSearchEnrichmentHelper()
-        if not self.jikan_session:
+        if not self.mal_session:
             from http_cache.instance import http_cache_manager as cache_manager
 
-            self.jikan_session = cache_manager.get_aiohttp_session("jikan")
+            self.mal_session = cache_manager.get_aiohttp_session("mal")
 
     async def fetch_all_data(
         self,
@@ -121,11 +156,11 @@ class ParallelAPIFetcher:
             logger.info(f"Skipping services: {skip_services}")
 
         # Create parallel tasks for each API (only if not filtered out)
-        if ids.get("mal_id") and should_include("jikan"):
+        if ids.get("mal_id") and should_include("mal"):
             tasks.append(
                 (
-                    "jikan",
-                    self._fetch_jikan_complete(ids["mal_id"], offline_data, temp_dir),
+                    "mal",
+                    self._fetch_mal_complete(ids["mal_id"], offline_data, temp_dir),
                 )
             )
 
@@ -165,11 +200,11 @@ class ParallelAPIFetcher:
 
         return results
 
-    async def _fetch_jikan_complete(
+    async def _fetch_mal_complete(
         self, mal_id: str, offline_data: dict[str, Any], temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """
-        Fetch comprehensive Jikan data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
+        Fetch comprehensive MAL data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
 
         Fetches the anime "full" endpoint, attempts to retrieve detailed episodes and character data (respecting rate limits), falls back to offline_data for missing episode counts, and saves/loads temporary JSON files if temp_dir is supplied.
 
@@ -183,278 +218,72 @@ class ParallelAPIFetcher:
         """
         try:
             logger.info(
-                f"🔍 [JIKAN DEBUG] Starting _fetch_jikan_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
+                f"🔍 [MAL DEBUG] Starting _fetch_mal_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
             )
             start = time.time()
+            include_details = bool(temp_dir)
+            fallback_episode_count = int(offline_data.get("episodes", 0) or 0)
 
-            # First, fetch anime full data
-            logger.info("🔍 [JIKAN DEBUG] Fetching anime full data...")
-            anime_url = f"https://api.jikan.moe/v4/anime/{mal_id}/full"
-            anime_data = await self._fetch_jikan_async(anime_url)
+            async def _write_json(path: str, data: Any) -> None:
+                await asyncio.to_thread(_write_json_sync, path, data)
 
-            if not anime_data or not anime_data.get("data"):
-                logger.warning(f"Failed to fetch Jikan anime data for MAL ID {mal_id}")
-                return None
+            async def _write_jsonl(path: str, data: Any) -> None:
+                await asyncio.to_thread(_write_jsonl_sync, path, data)
 
-            logger.info("🔍 [JIKAN DEBUG] Anime full data fetched successfully")
-            anime_info = anime_data["data"]
-
-            # Save jikan.json immediately with the anime full data
-            # This ensures we have the main anime info even if episode/character fetching times out
-            if temp_dir:
-                jikan_file = os.path.join(temp_dir, "jikan.json")
-                with open(jikan_file, "w", encoding="utf-8") as f:
-                    json.dump(anime_data, f, ensure_ascii=False, indent=2)
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] ✓ Saved jikan.json with anime full data to {jikan_file}"
+            async with MalEnrichmentHelper(
+                mal_id, session=self.mal_session
+            ) as helper:
+                result = await helper.fetch_all_data(
+                    include_details=include_details,
+                    fallback_episode_count=fallback_episode_count,
                 )
-
-            # For ongoing series, episodes might be None - use offline data as fallback
-            episode_count = anime_info.get("episodes")
-            if episode_count is None:
-                episode_count = offline_data.get("episodes", 0)
-            logger.info(f"🔍 [JIKAN DEBUG] Episode count: {episode_count}")
-
-            # Fetch character list first (before starting detailed fetches)
-            logger.info("🔍 [JIKAN DEBUG] Fetching character list...")
-            characters_url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
-            characters_basic = await self._fetch_jikan_async(characters_url)
-            char_count = (
-                len(characters_basic.get("data", [])) if characters_basic else 0
-            )
-            logger.info(
-                f"🔍 [JIKAN DEBUG] Character list fetched: {char_count} characters"
-            )
-
-            # Prepare file path variables (only set when temp_dir is provided)
-            episodes_input: str | None = None
-            episodes_output: str | None = None
-            characters_input: str | None = None
-            characters_output: str | None = None
-            if temp_dir:
-                episodes_input = os.path.join(temp_dir, "episodes.json")
-                episodes_output = os.path.join(temp_dir, "episodes_detailed.json")
-                characters_input = os.path.join(temp_dir, "characters.json")
-                characters_output = os.path.join(temp_dir, "characters_detailed.json")
-
-            # Create tasks for parallel execution
-            tasks = []
-
-            # Task 1: Fetch detailed episodes (if any)
-            if (
-                episode_count
-                and episode_count > 0
-                and episodes_input is not None
-                and episodes_output is not None
-            ):
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] Preparing episode task for {episode_count} episodes..."
-                )
-                with open(episodes_input, "w") as f:
-                    json.dump({"episodes": episode_count}, f)
-
-                # Reuse the shared jikan session for caching and connection pooling
-                episode_fetcher = JikanDetailedFetcher(
-                    mal_id, "episodes", session=self.jikan_session
-                )
-                tasks.append(
-                    (
-                        "episodes",
-                        episode_fetcher.fetch_detailed_data(
-                            episodes_input,
-                            episodes_output,
-                        ),
+                if not result:
+                    logger.warning(
+                        f"Failed to fetch MAL anime data for MAL ID {mal_id}"
                     )
-                )
+                    return None
 
-            # Task 2: Fetch detailed characters (if any)
-            if (
-                characters_basic
-                and characters_basic.get("data")
-                and characters_input is not None
-                and characters_output is not None
-            ):
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] Preparing character task for {char_count} characters..."
-                )
-                with open(characters_input, "w") as f:
-                    json.dump(characters_basic, f)
+                anime_info = result["anime"]
+                episodes_data = result["episodes"]
+                characters_data = result["characters"]
+                logger.info("🔍 [MAL DEBUG] MAL helper fetch_all_data completed")
 
-                # Reuse the shared jikan session for caching and connection pooling
-                character_fetcher = JikanDetailedFetcher(
-                    mal_id, "characters", session=self.jikan_session
-                )
-                tasks.append(
-                    (
-                        "characters",
-                        character_fetcher.fetch_detailed_data(
-                            characters_input,
-                            characters_output,
-                        ),
+                if temp_dir:
+                    mal_file = os.path.join(temp_dir, "mal.jsonl")
+                    await _write_jsonl(mal_file, anime_info)
+                    logger.info(
+                        f"🔍 [MAL DEBUG] ✓ Saved mal.jsonl with anime full data to {mal_file}"
                     )
-                )
 
-            # Run tasks SEQUENTIALLY to respect Jikan's 3 req/sec limit
-            # Running in parallel would double the request rate and trigger 429 errors
-            if tasks:
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] Running {len(tasks)} detailed fetch tasks SEQUENTIALLY (to avoid rate limiting)..."
-                )
-                for task_name, task_coro in tasks:
-                    logger.info(f"🔍 [JIKAN DEBUG] Starting {task_name} fetch...")
-                    await task_coro
-                    logger.info(f"🔍 [JIKAN DEBUG] Completed {task_name} fetch")
-                logger.info("🔍 [JIKAN DEBUG] All detailed fetch tasks completed")
+                episode_count = anime_info.get("episodes")
+                if episode_count is None:
+                    episode_count = fallback_episode_count
+                episode_count = int(episode_count or 0)
+                logger.info(f"🔍 [MAL DEBUG] Episode count: {episode_count}")
 
-            # Load results
-            episodes_data = []
-            if episodes_output and os.path.exists(episodes_output):
-                with open(episodes_output) as f:
-                    episodes_data = json.load(f)
-                logger.info(f"🔍 [JIKAN DEBUG] Loaded {len(episodes_data)} episodes")
+                # Persist detailed outputs with the same conditions as before.
+                if include_details:
+                    if episode_count > 0:
+                        await _write_jsonl(
+                            os.path.join(temp_dir, "episodes_detailed.jsonl"),
+                            episodes_data,
+                        )
 
-            characters_data = []
-            if characters_output and os.path.exists(characters_output):
-                with open(characters_output) as f:
-                    characters_data = json.load(f)
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] Loaded {len(characters_data)} characters"
-                )
-            elif characters_basic and characters_basic.get("data"):
-                characters_data = characters_basic.get("data", [])
-                logger.info(
-                    f"🔍 [JIKAN DEBUG] Using basic character data: {len(characters_data)} characters"
-                )
+                    if characters_data:
+                        await _write_jsonl(
+                            os.path.join(temp_dir, "characters_detailed.jsonl"),
+                            characters_data,
+                        )
 
-            result = {
-                "anime": anime_info,
-                "episodes": episodes_data if isinstance(episodes_data, list) else [],
-                "characters": characters_data,
-            }
-
-            self.api_timings["jikan"] = time.time() - start
+            self.api_timings["mal"] = time.time() - start
             logger.info(
-                f"🔍 [JIKAN DEBUG] ✓ Jikan fetch complete: {len(result['episodes'])} episodes, {len(result['characters'])} characters in {self.api_timings['jikan']:.2f}s"
+                f"🔍 [MAL DEBUG] ✓ MAL fetch complete: {len(result['episodes'])} episodes, {len(result['characters'])} characters in {self.api_timings['mal']:.2f}s"
             )
             return result
 
         except Exception as e:
-            logger.exception(f"Jikan fetch failed for MAL ID {mal_id}")
-            self.api_errors["jikan"] = str(e)
-            return None
-
-    async def _fetch_all_jikan_episodes(
-        self, mal_id: str, episode_count: int
-    ) -> list[dict[str, Any]]:
-        """
-        Retrieve all episodes for a Jikan anime entry by following the paginated episodes endpoint until no more pages remain.
-
-        Parameters:
-                mal_id (str): MyAnimeList ID for the anime used to build the Jikan endpoint URL.
-                episode_count (int): Expected total number of episodes; used for progress logging and may be 0.
-
-        Returns:
-                episodes (List[Dict]): Aggregated list of episode objects as returned by the Jikan episodes endpoint.
-        """
-        if episode_count == 0:
-            return []
-
-        all_episodes = []
-        page = 1
-
-        while True:
-            url = f"https://api.jikan.moe/v4/anime/{mal_id}/episodes?page={page}"
-            data = await self._fetch_jikan_async(url)
-
-            if not data or not data.get("data"):
-                break
-
-            all_episodes.extend(data["data"])
-
-            # Check if there are more pages
-            pagination = data.get("pagination", {})
-            if not pagination.get("has_next_page", False):
-                break
-
-            page += 1
-
-            # Log progress for long-running series
-            if len(all_episodes) % 100 == 0:
-                logger.debug(f"Fetched {len(all_episodes)}/{episode_count} episodes...")
-
-        return all_episodes
-
-    async def _fetch_all_jikan_characters(self, mal_id: str) -> list[dict[str, Any]]:
-        """
-        Retrieve the complete list of characters for a MyAnimeList anime from the Jikan API.
-
-        Parameters:
-            mal_id (str): The MyAnimeList anime identifier.
-
-        Returns:
-            List[Dict]: A list of character objects as returned by Jikan; returns an empty list if no character data is available.
-        """
-        all_characters = []
-
-        # First, get initial page to see how many there are
-        url = f"https://api.jikan.moe/v4/anime/{mal_id}/characters"
-        data = await self._fetch_jikan_async(url)
-
-        if data and data.get("data"):
-            all_characters.extend(data["data"])
-
-            # Jikan v4 doesn't paginate characters endpoint directly
-            # It returns all characters in one response
-            # But we should verify we got them all
-            logger.debug(f"Fetched {len(all_characters)} characters from Jikan")
-
-        return all_characters
-
-    async def _fetch_jikan_async(self, url: str) -> dict[str, Any] | None:
-        """
-        Fetches JSON data from a Jikan API URL using a cached aiohttp session.
-
-        Initializes and reuses an internal cached HTTP session if needed. On HTTP 429 the request is retried once after a 2 second delay. Any non-200 response or exceptions result in `None`.
-
-        Returns:
-            dict: Parsed JSON response on success.
-            None: If the request fails, is rate-limited beyond the single retry, or returns a non-200 status.
-        """
-        try:
-            # Use the reusable cached session (initialized in initialize_helpers)
-            if not self.jikan_session:
-                from http_cache.instance import (
-                    http_cache_manager as cache_manager,
-                )
-
-                self.jikan_session = cache_manager.get_aiohttp_session("jikan")
-
-            async with self.jikan_session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    result: dict[str, Any] = await response.json()
-                    return result
-                elif response.status == 429:
-                    # Rate limited - wait and retry once
-                    logger.warning(
-                        f"Jikan rate limited for {url}, waiting 2s and retrying..."
-                    )
-                    await asyncio.sleep(2)
-                    async with self.jikan_session.get(
-                        url, timeout=10
-                    ) as retry_response:
-                        if retry_response.status == 200:
-                            retry_result: dict[str, Any] = await retry_response.json()
-                            return retry_result
-                        else:
-                            logger.error(f"Retry failed: HTTP {retry_response.status}")
-                            return None
-                else:
-                    logger.warning(
-                        f"Jikan API returned status {response.status} for {url}"
-                    )
-                    return None
-        except Exception:
-            logger.exception("Jikan API request failed")
+            logger.error(f"MAL fetch failed for MAL ID {mal_id}: {e}")
+            self.api_errors["mal"] = str(e)
             return None
 
     def _fetch_anilist_sync(
@@ -512,7 +341,7 @@ class ParallelAPIFetcher:
 
             return result
         except Exception as e:
-            logger.exception(f"AniList fetch failed for ID {anilist_id}")
+            logger.error(f"AniList fetch failed for ID {anilist_id}: {e}")
             self.api_errors["anilist"] = str(e)
             return None
 
@@ -575,7 +404,7 @@ class ParallelAPIFetcher:
             self.api_timings["kitsu"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception(f"Kitsu fetch failed for ID {kitsu_id}")
+            logger.error(f"Kitsu fetch failed for ID {kitsu_id}: {e}")
             self.api_errors["kitsu"] = str(e)
             return None
 
@@ -589,7 +418,7 @@ class ParallelAPIFetcher:
             self.api_timings["anidb"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception(f"AniDB fetch failed for ID {anidb_id}")
+            logger.error(f"AniDB fetch failed for ID {anidb_id}: {e}")
             self.api_errors["anidb"] = str(e)
             return None
 
@@ -605,7 +434,7 @@ class ParallelAPIFetcher:
             self.api_timings["anime_planet"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception("Anime-Planet fetch failed")
+            logger.error(f"Anime-Planet fetch failed: {e}")
             self.api_errors["anime_planet"] = str(e)
             return None
 
@@ -619,7 +448,7 @@ class ParallelAPIFetcher:
             self.api_timings["anisearch"] = time.time() - start
             return result
         except Exception as e:
-            logger.exception(f"AniSearch fetch failed for ID {anisearch_id}")
+            logger.error(f"AniSearch fetch failed for ID {anisearch_id}: {e}")
             self.api_errors["anisearch"] = str(e)
             return None
 
@@ -650,7 +479,7 @@ class ParallelAPIFetcher:
             return result
 
         except Exception as e:
-            logger.exception("AnimSchedule fetch failed")
+            logger.error(f"AnimSchedule fetch failed: {e}")
             self.api_errors["animeschedule"] = str(e)
             return None
 
@@ -717,10 +546,15 @@ class ParallelAPIFetcher:
 
         for api_name, data in results.items():
             if data:
-                file_path = os.path.join(temp_dir, f"{api_name}.json")
                 try:
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    # MAL canonical artifacts are JSONL.
+                    if api_name == "mal":
+                        file_path = os.path.join(temp_dir, "mal.jsonl")
+                        mal_data = data.get("anime") if isinstance(data, dict) else data
+                        await asyncio.to_thread(_write_jsonl_sync, file_path, mal_data)
+                    else:
+                        file_path = os.path.join(temp_dir, f"{api_name}.json")
+                        await asyncio.to_thread(_write_json_sync, file_path, data)
                     logger.debug(f"Saved {api_name} response to {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to save {api_name} response: {e}")
@@ -775,7 +609,7 @@ class ParallelAPIFetcher:
         """
         Cleanup and close all initialized helper resources when exiting the async context.
 
-        Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared Jikan session if they were created.
+        Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared MAL session if they were created.
         Resets all attributes to None for safe reusability of the fetcher instance.
 
         Returns:
@@ -797,7 +631,7 @@ class ParallelAPIFetcher:
         if self.anime_planet_helper:
             await self.anime_planet_helper.close()
             self.anime_planet_helper = None
-        if self.jikan_session:
-            await self.jikan_session.close()
-            self.jikan_session = None
+        if self.mal_session:
+            await self.mal_session.close()
+            self.mal_session = None
         return False

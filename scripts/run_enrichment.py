@@ -85,14 +85,14 @@ Examples:
   python run_enrichment.py --file custom.json --index 5 # Use custom database file
 
   # Service filtering
-  python run_enrichment.py --title "Dandadan" --skip jikan anidb          # Skip slow services
+  python run_enrichment.py --title "Dandadan" --skip mal anidb          # Skip slow services
   python run_enrichment.py --title "Dandadan" --only anime_planet         # Only fetch anime_planet
 
   # Agent directory control
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1"   # Use existing agent directory
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1" --only anime_planet  # Combine with filtering
 
-Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
+Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
         """,
     )
 
@@ -116,7 +116,7 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
         "--skip",
         nargs="+",
         metavar="SERVICE",
-        help="Skip specific services (e.g., --skip jikan anidb)",
+        help="Skip specific services (e.g., --skip mal anidb)",
     )
     parser.add_argument(
         "--only",

@@ -22,25 +22,28 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     from environment variables, not a hard-coded localhost URL.
     """
 
-    # Mock cache manager to provide working sessions WITHOUT initializing Redis
-    # Create the actual session mock with HTTP methods
+    # Mock cache manager to provide working sessions WITHOUT initializing Redis.
+    #
+    # aiohttp sessions have sync .get/.post methods returning an async context manager.
+    mock_response = mocker.AsyncMock()
+    mock_response.status = 200
+    mock_response.json = mocker.AsyncMock(return_value={})
+    mock_response.text = mocker.AsyncMock(return_value="")
+    mock_response.from_cache = False
+    mock_response.headers = {}
+
+    mock_get_cm = mocker.AsyncMock(
+        __aenter__=mocker.AsyncMock(return_value=mock_response),
+        __aexit__=mocker.AsyncMock(return_value=False),
+    )
+    mock_post_cm = mocker.AsyncMock(
+        __aenter__=mocker.AsyncMock(return_value=mock_response),
+        __aexit__=mocker.AsyncMock(return_value=False),
+    )
+
     mock_session = mocker.AsyncMock()
-    mock_session.get = mocker.AsyncMock()
-    mock_session.post = mocker.AsyncMock()
-    mock_session.get.return_value.__aenter__.return_value.status = 200
-    mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
-        return_value={}
-    )
-    mock_session.get.return_value.__aenter__.return_value.text = mocker.AsyncMock(
-        return_value=""
-    )
-    mock_session.get.return_value.__aenter__.return_value.from_cache = False
-    mock_session.post.return_value.__aenter__.return_value.status = 200
-    mock_session.post.return_value.__aenter__.return_value.json = mocker.AsyncMock(
-        return_value={}
-    )
-    mock_session.post.return_value.__aenter__.return_value.from_cache = False
-    mock_session.post.return_value.__aenter__.return_value.headers = {}
+    mock_session.get = mocker.MagicMock(return_value=mock_get_cm)
+    mock_session.post = mocker.MagicMock(return_value=mock_post_cm)
     mock_session.close = mocker.AsyncMock()
 
     # Create async context manager wrapper for get_aiohttp_session
@@ -48,7 +51,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     # While other helpers use: self.session = get_aiohttp_session(...)
     # The mock_cm needs to:
     # 1. Act as async context manager (for Kitsu) returning mock_session via __aenter__
-    # 2. Have .get() and .post() methods (for AniList/Jikan/AniDB) that work when stored
+    # 2. Have .get() and .post() methods (for AniList/MAL/AniDB) that work when stored
     mock_cm = mocker.AsyncMock()
     mock_cm.__aenter__.return_value = mock_session
     mock_cm.__aexit__.return_value = False
@@ -84,7 +87,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     # List of all helpers to test
     helpers_to_test = [
         ("enrichment.api_helpers.anilist_helper", "AniListEnrichmentHelper"),
-        ("enrichment.api_helpers.jikan_helper", "JikanDetailedFetcher"),
+        ("enrichment.api_helpers.mal_enrichment_helper", "MalEnrichmentHelper"),
         ("enrichment.api_helpers.kitsu_helper", "KitsuEnrichmentHelper"),
         ("enrichment.api_helpers.anidb_helper", "AniDBEnrichmentHelper"),
     ]
@@ -100,9 +103,9 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             # Clear Redis calls before each helper
             redis_calls_before = len(redis_calls)
 
-            # Create instance (JikanDetailedFetcher needs special args)
-            if class_name == "JikanDetailedFetcher":
-                helper = helper_class(anime_id="1", data_type="episodes")
+            # Create instance (MalEnrichmentHelper requires an anime_id)
+            if class_name == "MalEnrichmentHelper":
+                helper = helper_class("1")
             else:
                 helper = helper_class()
 
@@ -110,8 +113,8 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             try:
                 if class_name == "AniListEnrichmentHelper":
                     await helper.fetch_anime_by_anilist_id(1)
-                elif class_name == "JikanDetailedFetcher":
-                    await helper.fetch_episode_detail(1)
+                elif class_name == "MalEnrichmentHelper":
+                    await helper.fetch_anime()
                 elif class_name == "KitsuEnrichmentHelper":
                     await helper.get_anime_by_id(1)
                 elif class_name == "AniDBEnrichmentHelper":
@@ -204,21 +207,27 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
 
 
 @pytest.mark.asyncio
-async def test_jikan_helper_no_hardcoded_redis(mocker):
-    """Specific test for Jikan helper."""
-    from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
+async def test_mal_helper_no_hardcoded_redis(mocker):
+    """Specific test for MAL helper."""
+    from enrichment.api_helpers.mal_enrichment_helper import MalEnrichmentHelper
 
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager with async context manager wrapper
-    # This properly mocks the async context manager protocol for defensive consistency
-    mock_session = mocker.AsyncMock()
-    mock_session.get = mocker.AsyncMock()
-    mock_session.get.return_value.__aenter__.return_value.status = 200
-    mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
-        return_value={"data": {"mal_id": 1}}
+    # Mock cache manager with async context manager wrapper. aiohttp sessions expose
+    # sync .get returning an async context manager.
+    mock_response = mocker.AsyncMock()
+    mock_response.status = 200
+    mock_response.json = mocker.AsyncMock(return_value={"data": {"mal_id": 1}})
+    mock_response.from_cache = False
+
+    mock_get_cm = mocker.AsyncMock(
+        __aenter__=mocker.AsyncMock(return_value=mock_response),
+        __aexit__=mocker.AsyncMock(return_value=False),
     )
+
+    mock_session = mocker.AsyncMock()
+    mock_session.get = mocker.MagicMock(return_value=mock_get_cm)
     mock_session.close = mocker.AsyncMock()
 
     # Create async context manager wrapper for get_aiohttp_session
@@ -233,14 +242,14 @@ async def test_jikan_helper_no_hardcoded_redis(mocker):
         return_value=mock_cm,
     )
 
-    helper = JikanDetailedFetcher(anime_id="1", data_type="episodes")
+    helper = MalEnrichmentHelper(anime_id="1")
 
     # Make request
     try:
-        await helper.fetch_episode_detail(1)
+        await helper.fetch_anime()
     except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
-        print(f"API error ignored in Jikan helper test: {e}")
+        print(f"API error ignored in MAL helper test: {e}")
 
     # Verify no hard-coded Redis
     mock_redis_from_url.assert_not_called()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Process all episodes from episodes_detailed.json and convert to Stage 2 schema format.
+Process all episodes from episodes_detailed.jsonl and convert to Stage 2 schema format.
 Following the prompt template exactly for all 1,144 episodes.
 Includes proper timezone conversion from JST (+09:00) to UTC (Z format).
 """
@@ -167,8 +167,16 @@ def load_anisearch_episode_data(temp_dir: str):
 
 def process_all_episodes(temp_dir: str):
     # Read the detailed episodes data
-    with open(f"{temp_dir}/episodes_detailed.json") as f:
-        episodes_data = json.load(f)
+    with open(f"{temp_dir}/episodes_detailed.jsonl", encoding="utf-8") as f:
+        raw_records = [json.loads(line) for line in f if line.strip()]
+
+    # Accept both canonical JSONL (one object per line) and a single JSON array line.
+    episodes_data = []
+    for record in raw_records:
+        if isinstance(record, list):
+            episodes_data.extend(record)
+        elif isinstance(record, dict):
+            episodes_data.append(record)
 
     # Load Kitsu episode data for enhancement
     (
@@ -228,21 +236,21 @@ def process_all_episodes(temp_dir: str):
             "filler": episode.get("filler", False),
             "recap": episode.get("recap", False),
             "score": episode.get("score"),
-            "season_number": kitsu_season_number,  # From Kitsu (Jikan doesn't provide this)
+            "season_number": kitsu_season_number,  # From Kitsu (MAL doesn't provide this)
             "synopsis": episode.get("synopsis")
-            or kitsu_synopsis,  # Jikan primary, Kitsu fallback
+            or kitsu_synopsis,  # MAL primary, Kitsu fallback
             "title": episode.get("title")
             or kitsu_title
-            or anisearch_title,  # Jikan → Kitsu → AniSearch
+            or anisearch_title,  # MAL → Kitsu → AniSearch
             "title_japanese": episode.get("title_japanese")
-            or kitsu_title_japanese,  # Jikan primary, Kitsu fallback
+            or kitsu_title_japanese,  # MAL primary, Kitsu fallback
             "title_romaji": episode.get("title_romaji")
-            or kitsu_title_romaji,  # Jikan primary, Kitsu fallback
+            or kitsu_title_romaji,  # MAL primary, Kitsu fallback
             # ARRAY FIELDS (alphabetical)
             "thumbnails": thumbnails,
             # OBJECT/DICT FIELDS (alphabetical)
             "episode_pages": episode_pages,
-            "streaming": {},  # No streaming data from Jikan
+            "streaming": {},  # No streaming data from MAL
         }
 
         episodes.append(processed_episode)
@@ -330,11 +338,11 @@ Examples:
         # Fallback: auto-detect
         temp_dir = auto_detect_temp_dir()
 
-    # Check if episodes_detailed.json exists before processing
-    episodes_file = f"{temp_dir}/episodes_detailed.json"
+    # Check if episodes_detailed.jsonl exists before processing
+    episodes_file = f"{temp_dir}/episodes_detailed.jsonl"
     if not os.path.exists(episodes_file):
         print(f"Error: Required file not found: {episodes_file}")
-        print("Please ensure the API fetcher has created episodes_detailed.json")
+        print("Please ensure the API fetcher has created episodes_detailed.jsonl")
         sys.exit(1)
 
     process_all_episodes(temp_dir)

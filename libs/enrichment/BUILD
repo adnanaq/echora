@@ -2,7 +2,7 @@
 Enrichment - Anime data enrichment library.
 
 Provides:
-- API helpers for external anime data sources (AniList, Kitsu, Jikan, etc.)
+- API helpers for external anime data sources (AniList, Kitsu, MAL, etc.)
 - Character similarity matching (CCIP)
 - Data crawlers and scrapers
 - Multi-stage enrichment pipeline

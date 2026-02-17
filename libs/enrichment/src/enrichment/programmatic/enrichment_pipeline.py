@@ -302,16 +302,16 @@ class ProgrammaticEnrichmentPipeline:
 
     def _process_episodes(self, api_data: dict[str, Any]) -> list[dict[str, Any]]:
         """
-        Extract episode entries from the Jikan response present in `api_data`.
+        Extract episode entries from the MAL response present in `api_data`.
 
         Returns:
-            A list of episode dictionaries from Jikan's `episodes` field (each typically includes title, synopsis, aired date, etc.); returns an empty list if no Jikan data or episodes are present.
+            A list of episode dictionaries from MAL's `episodes` field (each typically includes title, synopsis, aired date, etc.); returns an empty list if no MAL data or episodes are present.
         """
-        # Only use Jikan episodes - they have full details (title, synopsis, aired, etc.)
+        # Only use MAL episodes - they have full details (title, synopsis, aired, etc.)
         # AniList episodes only have episode number and air time, not useful
-        if jikan_data := api_data.get("jikan"):
-            episodes = jikan_data.get("episodes", [])
-            logger.debug(f"Extracted {len(episodes)} episodes from Jikan")
+        if mal_data := api_data.get("mal"):
+            episodes = mal_data.get("episodes", [])
+            logger.debug(f"Extracted {len(episodes)} episodes from MAL")
             return episodes
 
         return []

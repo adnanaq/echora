@@ -502,7 +502,7 @@ class EnsembleFuzzyMatcher:
         name2_repr: dict[str, str],
         candidate_aliases: list[str] | None = None,
         source: str = "generic",
-        jikan_image_url: str | None = None,
+        mal_image_url: str | None = None,
         candidate_image_url: str | None = None,
     ) -> float:
         """
@@ -514,7 +514,7 @@ class EnsembleFuzzyMatcher:
             name2_repr: Candidate character name representations
             candidate_aliases: Additional name aliases for candidate
             source: Source type (anilist, anidb, animeplanet, etc.)
-            jikan_image_url: Image URL from Jikan/MAL for visual verification
+            mal_image_url: Image URL from MAL/MAL for visual verification
             candidate_image_url: Image URL from candidate source for visual verification
 
         Returns:
@@ -581,10 +581,10 @@ class EnsembleFuzzyMatcher:
 
             # 6. Visual similarity (character image verification)
             # Calculate once per best candidate to avoid redundant downloads
-            if jikan_image_url and candidate_image_url:
+            if mal_image_url and candidate_image_url:
                 # Run visual similarity asynchronously
                 visual_score = await self.calculate_visual_similarity(
-                    jikan_image_url, candidate_image_url
+                    mal_image_url, candidate_image_url
                 )
                 scores["visual"] = visual_score
             else:
@@ -696,7 +696,7 @@ class EnsembleFuzzyMatcher:
         """Enhanced semantic similarity testing all name variations and Japanese text.
 
         This function addresses the critical issue where character names are reversed
-        between Jikan/MAL and AniDB sources (e.g., "Robin Nico" vs "Nico Robin").
+        between MAL/MAL and AniDB sources (e.g., "Robin Nico" vs "Nico Robin").
         BGE-M3's multilingual capabilities are leveraged for Japanese text matching.
         """
         if not self.embedding_model:
@@ -918,7 +918,7 @@ class AICharacterMatcher:
 
     async def match_characters(
         self,
-        jikan_chars: list[dict[str, Any]],
+        mal_chars: list[dict[str, Any]],
         anilist_chars: list[dict[str, Any]],
         anidb_chars: list[dict[str, Any]],
         anime_planet_chars: list[dict[str, Any]] | None = None,
@@ -930,15 +930,15 @@ class AICharacterMatcher:
             anime_planet_chars = []
 
         logger.info(
-            f"Starting character matching: Jikan={len(jikan_chars)}, AniList={len(anilist_chars)}, "
+            f"Starting character matching: MAL={len(mal_chars)}, AniList={len(anilist_chars)}, "
             f"AniDB={len(anidb_chars)}, AnimePlanet={len(anime_planet_chars)}"
         )
 
-        # Use Jikan as primary source (most comprehensive)
+        # Use MAL as primary source (most comprehensive)
         processed_characters = []
 
-        for jikan_char in jikan_chars:
-            char_name = self._extract_primary_name(jikan_char, "jikan") or "Unknown"
+        for mal_char in mal_chars:
+            char_name = self._extract_primary_name(mal_char, "mal") or "Unknown"
 
             # Find matches in other sources
             anilist_match = None
@@ -947,16 +947,16 @@ class AICharacterMatcher:
 
             # Test AniList first
             anilist_match = await self._find_best_match(
-                jikan_char, anilist_chars, "anilist"
+                mal_char, anilist_chars, "anilist"
             )
 
             # Always search AniDB (no cross-source termination)
-            anidb_match = await self._find_best_match(jikan_char, anidb_chars, "anidb")
+            anidb_match = await self._find_best_match(mal_char, anidb_chars, "anidb")
 
             # Search AnimePlanet if available
             if anime_planet_chars:
                 anime_planet_match = await self._find_best_match(
-                    jikan_char, anime_planet_chars, "animeplanet"
+                    mal_char, anime_planet_chars, "animeplanet"
                 )
 
             # Log if high-confidence matches were found
@@ -1002,7 +1002,7 @@ class AICharacterMatcher:
 
             # Integrate data from all matched sources
             integrated_char = await self._integrate_character_data(
-                jikan_char, anilist_match, anidb_match, anime_planet_match
+                mal_char, anilist_match, anidb_match, anime_planet_match
             )
 
             # Store match scores for stage5 to use (will be removed before final output)
@@ -1028,7 +1028,7 @@ class AICharacterMatcher:
             return None
 
         primary_name = self._extract_primary_name(
-            primary_char, "jikan", target_source=source
+            primary_char, "mal", target_source=source
         )
         if not primary_name:
             return None
@@ -1037,8 +1037,8 @@ class AICharacterMatcher:
         language = self.language_detector.detect_language(primary_name)
         primary_repr = self.preprocessor.preprocess_name(primary_name, language)
 
-        # Extract Jikan image URL for visual verification
-        jikan_image_url = self._extract_image_url(primary_char, "jikan")
+        # Extract MAL image URL for visual verification
+        mal_image_url = self._extract_image_url(primary_char, "mal")
 
         best_match = None
         best_score = 0.0
@@ -1062,7 +1062,7 @@ class AICharacterMatcher:
                 primary_repr,
                 candidate_repr,
                 source=source,
-                jikan_image_url=jikan_image_url,
+                mal_image_url=mal_image_url,
                 candidate_image_url=candidate_image_url,
             )
 
@@ -1140,11 +1140,11 @@ class AICharacterMatcher:
         Args:
             character: Character data dictionary
             source: Source of this character data (jikan, anilist, anidb)
-            target_source: Target source we're matching against (used for Jikan to decide if Japanese should be included)
+            target_source: Target source we're matching against (used for MAL to decide if Japanese should be included)
         """
 
-        if source == "jikan":
-            # Jikan format: character.name or name (depending on processing stage)
+        if source == "mal":
+            # MAL format: character.name or name (depending on processing stage)
             if "character" in character and "name" in character["character"]:
                 primary_name = str(character["character"]["name"])
                 name_native = character["character"].get("name_kanji")
@@ -1186,7 +1186,7 @@ class AICharacterMatcher:
             Image URL or None if not available
         """
         try:
-            if source == "jikan":
+            if source == "mal":
                 # Try detailed format first (images.jpg.image_url)
                 if "images" in character and isinstance(character["images"], dict):
                     jpg_images = character["images"].get("jpg", {})
@@ -1238,53 +1238,53 @@ class AICharacterMatcher:
 
     async def _integrate_character_data(
         self,
-        jikan_char: dict[str, Any],
+        mal_char: dict[str, Any],
         anilist_match: CharacterMatch | None,
         anidb_match: CharacterMatch | None,
         anime_planet_match: CharacterMatch | None = None,
     ) -> ProcessedCharacter:
         """Integrate character data from multiple sources with hierarchical priority"""
 
-        # Start with Jikan as base (most comprehensive)
-        # Handle Jikan data format (character.name vs name)
-        jikan_name = ""
-        jikan_url = ""
+        # Start with MAL as base (most comprehensive)
+        # Handle MAL data format (character.name vs name)
+        mal_name = ""
+        mal_url = ""
 
-        if "character" in jikan_char:
-            # Raw Jikan API format
-            char_data = jikan_char["character"]
-            jikan_name = char_data.get("name", "")
+        if "character" in mal_char:
+            # Raw MAL API format
+            char_data = mal_char["character"]
+            mal_name = char_data.get("name", "")
             char_data.get("mal_id")
-            jikan_url = char_data.get("url", "")
+            mal_url = char_data.get("url", "")
         else:
-            # Processed format (from characters_detailed.json)
-            jikan_name = jikan_char.get("name", "")
-            # Jikan uses 'character_id' field, not 'mal_id'
-            jikan_char.get("character_id") or jikan_char.get("mal_id")
-            jikan_url = jikan_char.get("url", "")
+            # Processed format (from characters_detailed.jsonl)
+            mal_name = mal_char.get("name", "")
+            # MAL uses 'character_id' field, not 'mal_id'
+            mal_char.get("character_id") or mal_char.get("mal_id")
+            mal_url = mal_char.get("url", "")
 
         logger.debug(
-            f"Integrating Jikan character: {jikan_name} (role: {jikan_char.get('role', 'Unknown')})"
+            f"Integrating MAL character: {mal_name} (role: {mal_char.get('role', 'Unknown')})"
         )
 
         integrated = ProcessedCharacter(
-            name=jikan_name,
-            role=jikan_char.get("role", ""),
+            name=mal_name,
+            role=mal_char.get("role", ""),
             name_variations=[],
-            name_native=jikan_char.get(
+            name_native=mal_char.get(
                 "name_kanji"
-            ),  # From Jikan, fallback to AniList later
-            nicknames=jikan_char.get("nicknames", []),
-            voice_actors=self._extract_voice_actors(jikan_char),
-            character_pages={"mal": jikan_url},
+            ),  # From MAL, fallback to AniList later
+            nicknames=mal_char.get("nicknames", []),
+            voice_actors=self._extract_voice_actors(mal_char),
+            character_pages={"mal": mal_url},
             images=[],
             age=None,
-            description=jikan_char.get("about"),
+            description=mal_char.get("about"),
             gender=None,
             hair_color=None,
             eye_color=None,
             character_traits=[],
-            favorites=jikan_char.get("favorites"),  # MAL favorites count
+            favorites=mal_char.get("favorites"),  # MAL favorites count
             match_confidence=MatchConfidence.HIGH,  # Primary source
             source_count=1,
         )
@@ -1301,13 +1301,13 @@ class AICharacterMatcher:
 
         # Collect all images
         images = []
-        # Handle Jikan image format
-        if "character" in jikan_char and "images" in jikan_char["character"]:
-            char_images = jikan_char["character"]["images"]
+        # Handle MAL image format
+        if "character" in mal_char and "images" in mal_char["character"]:
+            char_images = mal_char["character"]["images"]
             if "jpg" in char_images and "image_url" in char_images["jpg"]:
                 images.append(char_images["jpg"]["image_url"])
-        elif jikan_char.get("images", {}).get("jpg", {}).get("image_url"):
-            images.append(jikan_char["images"]["jpg"]["image_url"])
+        elif mal_char.get("images", {}).get("jpg", {}).get("image_url"):
+            images.append(mal_char["images"]["jpg"]["image_url"])
 
         # Integrate AniList data - ADD name variations and missing data
         if anilist_match:
@@ -1320,7 +1320,7 @@ class AICharacterMatcher:
                 name_variations_dict, anilist_name.get("full")
             )
             if anilist_name.get("native"):
-                # Set native name with fallback: use AniList if Jikan didn't have it
+                # Set native name with fallback: use AniList if MAL didn't have it
                 if not integrated.name_native:
                     integrated.name_native = anilist_name["native"]
                 name_variations_dict = CharacterNamePreprocessor.add_name_variation(
@@ -1455,7 +1455,7 @@ class AICharacterMatcher:
 
 
 async def process_characters_with_ai_matching(
-    jikan_chars: list[dict[str, Any]],
+    mal_chars: list[dict[str, Any]],
     anilist_chars: list[dict[str, Any]],
     anidb_chars: list[dict[str, Any]],
     anime_planet_chars: list[dict[str, Any]] | None = None,
@@ -1464,10 +1464,10 @@ async def process_characters_with_ai_matching(
     """
     Process and integrate character data from multiple sources using AI-powered matching.
 
-    This function runs the ensemble matcher over Jikan, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. If a reusable AICharacterMatcher instance is supplied it will be reused; otherwise a new matcher is created.
+    This function runs the ensemble matcher over MAL, AniList, AniDB, and optionally AnimePlanet character lists, consolidates enriched metadata into the Stage 5 JSON schema, and returns a dictionary with a single "characters" key containing the processed character records. If a reusable AICharacterMatcher instance is supplied it will be reused; otherwise a new matcher is created.
 
     Parameters:
-        jikan_chars (List[Dict[str, Any]]): Character entries from Jikan (primary source).
+        mal_chars (List[Dict[str, Any]]): Character entries from MAL (primary source).
         anilist_chars (List[Dict[str, Any]]): Character entries from AniList.
         anidb_chars (List[Dict[str, Any]]): Character entries from AniDB.
         anime_planet_chars (Optional[List[Dict[str, Any]]]): Character entries from AnimePlanet; may be omitted.
@@ -1487,7 +1487,7 @@ async def process_characters_with_ai_matching(
 
     # Process all characters with AI matching
     processed_chars = await matcher.match_characters(
-        jikan_chars, anilist_chars, anidb_chars, anime_planet_chars
+        mal_chars, anilist_chars, anidb_chars, anime_planet_chars
     )
 
     # Convert to output format
@@ -1554,12 +1554,12 @@ if __name__ == "__main__":  # pragma: no cover
         """
         try:
             # Mock data for testing
-            jikan_chars = [{"name": "Spike Spiegel", "role": "Main", "mal_id": 1}]
+            mal_chars = [{"name": "Spike Spiegel", "role": "Main", "mal_id": 1}]
             anilist_chars = [{"name": {"full": "Spike Spiegel"}, "id": 1}]
             anidb_chars = [{"name": "Spike Spiegel", "id": 118}]
 
             result = await process_characters_with_ai_matching(
-                jikan_chars, anilist_chars, anidb_chars
+                mal_chars, anilist_chars, anidb_chars
             )
 
             print(json.dumps(result, indent=2, ensure_ascii=False))

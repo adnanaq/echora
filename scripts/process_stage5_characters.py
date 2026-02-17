@@ -67,7 +67,7 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
 
     Supports three input shapes and normalizes them to a list of dictionaries:
     - A JSON array -> returned as-is.
-    - A JSON object with a top-level "data" key (Jikan format) -> returns the value of "data".
+    - A JSON object with a top-level "data" key (MAL format) -> returns the value of "data".
     - A single JSON object -> returned wrapped in a one-element list.
 
     Returns:
@@ -75,13 +75,22 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
     """
     try:
         with open(stage_file, encoding="utf-8") as f:
-            data = json.load(f)
+            if stage_file.suffix == ".jsonl":
+                raw_records = [json.loads(line) for line in f if line.strip()]
+                data = []
+                for record in raw_records:
+                    if isinstance(record, list):
+                        data.extend(record)
+                    else:
+                        data.append(record)
+            else:
+                data = json.load(f)
 
         if isinstance(data, list):
             return data
         elif isinstance(data, dict):
             # Handle different data structures
-            if "data" in data:  # Jikan format
+            if "data" in data:  # MAL format
                 return data["data"]
             else:
                 # Single object, return as list (for anilist, anidb, kitsu)
@@ -111,14 +120,14 @@ def get_working_file_paths(anime_id: str, temp_dir: Path) -> dict[str, Path]:
 
     Returns:
         Dict[str, Path]: Mapping of source keys to their working file Path objects:
-            - "jikan": working_jikan.json
+            - "mal": working_mal.json
             - "anilist": working_anilist.json
             - "anidb": working_anidb.json
             - "animeplanet": working_animeplanet.json
     """
     working_dir = temp_dir / anime_id
     return {
-        "jikan": working_dir / "working_jikan.json",
+        "mal": working_dir / "working_mal.json",
         "anilist": working_dir / "working_anilist.json",
         "anidb": working_dir / "working_anidb.json",
         "animeplanet": working_dir / "working_animeplanet.json",
@@ -141,7 +150,7 @@ def working_files_exist(working_paths: dict[str, Path]) -> bool:
 def create_working_files(
     anime_id: str,
     temp_dir: Path,
-    jikan_chars: list[dict[str, Any]],
+    mal_chars: list[dict[str, Any]],
     anilist_chars: list[dict[str, Any]],
     anidb_chars: list[dict[str, Any]],
     anime_planet_chars: list[dict[str, Any]],
@@ -155,14 +164,14 @@ def create_working_files(
     Parameters:
         anime_id (str): Directory name for the anime under `temp_dir`.
         temp_dir (Path): Base temporary directory.
-        jikan_chars (List[Dict[str, Any]]): Character array sourced from Jikan.
+        mal_chars (List[Dict[str, Any]]): Character array sourced from MAL.
         anilist_chars (List[Dict[str, Any]]): Character array sourced from AniList.
         anidb_chars (List[Dict[str, Any]]): Character array sourced from AniDB.
         anime_planet_chars (List[Dict[str, Any]]): Character array sourced from AnimePlanet.
         force_restart (bool): If True, overwrite existing working files; if False, attempt to resume from them.
 
     Returns:
-        Dict[str, Path]: Mapping of source keys ('jikan', 'anilist', 'anidb', 'animeplanet') to their corresponding working file Paths.
+        Dict[str, Path]: Mapping of source keys ('mal', 'anilist', 'anidb', 'animeplanet') to their corresponding working file Paths.
     """
     working_dir = temp_dir / anime_id
     working_dir.mkdir(parents=True, exist_ok=True)
@@ -172,13 +181,13 @@ def create_working_files(
     # Check if working files already exist
     if not force_restart and working_files_exist(working_paths):
         # Resume from existing working files
-        jikan_count = len(load_working_file(working_paths["jikan"]))
+        mal_count = len(load_working_file(working_paths["mal"]))
         anilist_count = len(load_working_file(working_paths["anilist"]))
         anidb_count = len(load_working_file(working_paths["anidb"]))
         animeplanet_count = len(load_working_file(working_paths["animeplanet"]))
 
         logger.info(f"RESUMING from existing working files in {working_dir}")
-        logger.info(f"  - working_jikan.json: {jikan_count} characters remaining")
+        logger.info(f"  - working_mal.json: {mal_count} characters remaining")
         logger.info(f"  - working_anilist.json: {anilist_count} characters remaining")
         logger.info(f"  - working_anidb.json: {anidb_count} characters remaining")
         logger.info(
@@ -187,8 +196,8 @@ def create_working_files(
         return working_paths
 
     # Create fresh working files
-    with open(working_paths["jikan"], "w", encoding="utf-8") as f:
-        json.dump(jikan_chars, f, ensure_ascii=False, indent=2)
+    with open(working_paths["mal"], "w", encoding="utf-8") as f:
+        json.dump(mal_chars, f, ensure_ascii=False, indent=2)
 
     with open(working_paths["anilist"], "w", encoding="utf-8") as f:
         json.dump(anilist_chars, f, ensure_ascii=False, indent=2)
@@ -200,7 +209,7 @@ def create_working_files(
         json.dump(anime_planet_chars, f, ensure_ascii=False, indent=2)
 
     logger.info(f"Created NEW working files in {working_dir}")
-    logger.info(f"  - working_jikan.json: {len(jikan_chars)} characters")
+    logger.info(f"  - working_mal.json: {len(mal_chars)} characters")
     logger.info(f"  - working_anilist.json: {len(anilist_chars)} characters")
     logger.info(f"  - working_anidb.json: {len(anidb_chars)} characters")
     logger.info(f"  - working_animeplanet.json: {len(anime_planet_chars)} characters")
@@ -247,7 +256,7 @@ def remove_matched_entry(
     Remove the entry matching a source-specific identifier from a working character list.
 
     Matches by source:
-    - "jikan": compares against the entry's `character_id`.
+    - "mal": compares against the entry's `character_id`.
     - "anilist": compares against the entry's `id` (numeric).
     - "anidb": compares against the entry's `id` using string comparison.
     - "animeplanet": compares against the entry's `name`.
@@ -255,13 +264,13 @@ def remove_matched_entry(
     Parameters:
         working_data: List of character dictionaries to filter.
         matched_id: Identifier to match and remove (type depends on source).
-        source_type: One of "jikan", "anilist", "anidb", or "animeplanet"; other values return the input unchanged.
+        source_type: One of "mal", "anilist", "anidb", or "animeplanet"; other values return the input unchanged.
 
     Returns:
         List[Dict[str, Any]: A new list of character dictionaries with the matching entry removed, or the original list if no match or unknown source.
     """
-    if source_type == "jikan":
-        # Jikan uses 'character_id' field
+    if source_type == "mal":
+        # MAL uses 'character_id' field
         return [char for char in working_data if char.get("character_id") != matched_id]
     elif source_type == "anilist":
         # AniList uses 'id' field (integer)
@@ -302,14 +311,14 @@ async def process_stage5_ai_characters(
 
     # Load data from all sources
     stage_files = {
-        "jikan": agent_dir / "characters_detailed.json",
+        "mal": agent_dir / "characters_detailed.jsonl",
         "anilist": agent_dir / "anilist.json",
         "anidb": agent_dir / "anidb.json",
         "animeplanet": agent_dir / "anime_planet.json",
     }
 
     # Validate required files exist
-    required_files = ["jikan", "anilist", "anidb"]
+    required_files = ["mal", "anilist", "anidb"]
     missing_files = []
     for source in required_files:
         if not stage_files[source].exists():
@@ -331,7 +340,7 @@ async def process_stage5_ai_characters(
         logger.info(f"Loaded {len(data)} items from {source}")
 
     # Extract character data by source type
-    jikan_chars = source_data["jikan"]  # Already character list
+    mal_chars = source_data["mal"]  # Already character list
 
     # Extract AniList characters from API response
     anilist_chars = []
@@ -372,7 +381,7 @@ async def process_stage5_ai_characters(
             anime_planet_chars = ap_data["characters"]
 
     logger.info(
-        f"Character counts - Jikan: {len(jikan_chars)}, AniList: {len(anilist_chars)}, "
+        f"Character counts - MAL: {len(mal_chars)}, AniList: {len(anilist_chars)}, "
         f"AniDB: {len(anidb_chars)}, AnimePlanet: {len(anime_planet_chars)}"
     )
 
@@ -380,7 +389,7 @@ async def process_stage5_ai_characters(
     working_paths = create_working_files(
         anime_id,
         temp_dir,
-        jikan_chars,
+        mal_chars,
         anilist_chars,
         anidb_chars,
         anime_planet_chars,
@@ -403,27 +412,27 @@ async def process_stage5_ai_characters(
         logger.info("Matcher initialized, models loaded")
 
         matched_count = 0
-        working_jikan = load_working_file(working_paths["jikan"])
+        working_mal = load_working_file(working_paths["mal"])
         working_anilist = load_working_file(working_paths["anilist"])
         working_anidb = load_working_file(working_paths["anidb"])
         working_animeplanet = load_working_file(working_paths["animeplanet"])
 
-        total_jikan = len(working_jikan)
+        total_mal = len(working_mal)
 
         # Process each character one at a time
-        for i, jikan_char in enumerate(working_jikan.copy(), 1):
-            char_name = jikan_char.get("name", "Unknown")
+        for i, mal_char in enumerate(working_mal.copy(), 1):
+            char_name = mal_char.get("name", "Unknown")
 
             # Skip already-processed partial matches (have found_in field)
-            if "found_in" in jikan_char:
+            if "found_in" in mal_char:
                 logger.info(
-                    f"[{i}/{total_jikan}] SKIP '{char_name}' (already processed as partial match)"
+                    f"[{i}/{total_mal}] SKIP '{char_name}' (already processed as partial match)"
                 )
                 continue
 
             # Match this ONE character against current pools (reuse matcher)
             result = await process_characters_with_ai_matching(
-                jikan_chars=[jikan_char],
+                mal_chars=[mal_char],
                 anilist_chars=working_anilist,
                 anidb_chars=working_anidb,
                 anime_planet_chars=working_animeplanet,
@@ -455,7 +464,7 @@ async def process_stage5_ai_characters(
                 anidb_url = matched_char["character_pages"].get("anidb", "")
                 anilist_id = extract_id_from_character_page(anilist_url, "anilist")
                 anidb_id = extract_id_from_character_page(anidb_url, "anidb")
-                jikan_id = jikan_char.get("character_id")
+                mal_id = mal_char.get("character_id")
                 # AnimePlanet uses name as identifier (extract from URL)
                 animeplanet_name = (
                     matched_char["character_pages"]
@@ -475,16 +484,16 @@ async def process_stage5_ai_characters(
                 working_animeplanet = remove_matched_entry(
                     working_animeplanet, animeplanet_name, "animeplanet"
                 )
-                working_jikan = remove_matched_entry(working_jikan, jikan_id, "jikan")
+                working_mal = remove_matched_entry(working_mal, mal_id, "mal")
 
                 # Save updated working files immediately
-                save_working_file(working_paths["jikan"], working_jikan)
+                save_working_file(working_paths["mal"], working_mal)
                 save_working_file(working_paths["anilist"], working_anilist)
                 save_working_file(working_paths["anidb"], working_anidb)
                 save_working_file(working_paths["animeplanet"], working_animeplanet)
 
                 logger.info(
-                    f"[{i}/{total_jikan}] MATCHED '{char_name}' - Pools: Jikan={len(working_jikan)}, AniList={len(working_anilist)}, AniDB={len(working_anidb)}, AnimePlanet={len(working_animeplanet)}"
+                    f"[{i}/{total_mal}] MATCHED '{char_name}' - Pools: MAL={len(working_mal)}, AniList={len(working_anilist)}, AniDB={len(working_anidb)}, AnimePlanet={len(working_animeplanet)}"
                 )
 
             else:
@@ -550,21 +559,21 @@ async def process_stage5_ai_characters(
                     # Add found_in field to integrated character
                     matched_char["found_in"] = found_in
 
-                    # REPLACE in working_jikan with integrated object
-                    jikan_id = jikan_char.get("character_id")
-                    for idx, char in enumerate(working_jikan):
-                        if char.get("character_id") == jikan_id:
-                            working_jikan[idx] = matched_char
+                    # REPLACE in working_mal with integrated object
+                    mal_id = mal_char.get("character_id")
+                    for idx, char in enumerate(working_mal):
+                        if char.get("character_id") == mal_id:
+                            working_mal[idx] = matched_char
                             break
 
-                    # Save updated working_jikan
-                    save_working_file(working_paths["jikan"], working_jikan)
+                    # Save updated working_mal
+                    save_working_file(working_paths["mal"], working_mal)
 
                     logger.info(
-                        f"[{i}/{total_jikan}] PARTIAL '{char_name}' (found in {len(found_in)}/4 sources) - integrated data saved"
+                        f"[{i}/{total_mal}] PARTIAL '{char_name}' (found in {len(found_in)}/4 sources) - integrated data saved"
                     )
                 else:
-                    logger.info(f"[{i}/{total_jikan}] NO MATCH '{char_name}'")
+                    logger.info(f"[{i}/{total_mal}] NO MATCH '{char_name}'")
 
         # Convert JSONL to final JSON format
         output_file = temp_dir / f"{anime_id}" / "stage5_characters.json"
@@ -588,21 +597,21 @@ async def process_stage5_ai_characters(
         # output_jsonl.unlink()
 
         # Final statistics
-        partial_matches = sum(1 for char in working_jikan if "found_in" in char)
-        no_matches = len(working_jikan) - partial_matches
+        partial_matches = sum(1 for char in working_mal if "found_in" in char)
+        no_matches = len(working_mal) - partial_matches
 
         logger.info("=" * 80)
         logger.info(f"AI character processing complete for {anime_id}")
         logger.info("=" * 80)
-        logger.info(f"Total processed: {total_jikan} characters")
+        logger.info(f"Total processed: {total_mal} characters")
         logger.info(
             f"  Fully matched: {matched_count} (saved to stage5_characters.json)"
         )
         logger.info(
-            f"  Partial matches: {partial_matches} (in working_jikan.json with 'found_in' field)"
+            f"  Partial matches: {partial_matches} (in working_mal.json with 'found_in' field)"
         )
         logger.info(
-            f"  No matches: {no_matches} (in working_jikan.json, no 'found_in' field)"
+            f"  No matches: {no_matches} (in working_mal.json, no 'found_in' field)"
         )
         logger.info("=" * 80)
         logger.info("Pool reduction:")

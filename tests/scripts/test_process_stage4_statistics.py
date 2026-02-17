@@ -134,7 +134,7 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_complete_data(self):
         """Test extraction with all fields present."""
-        jikan_data = {
+        mal_data = {
             "data": {
                 "score": 8.47,
                 "scored_by": 503637,
@@ -144,7 +144,7 @@ class TestExtractMALStatistics:
                 "favorites": 13839,
             }
         }
-        result = extract_mal_statistics(jikan_data)
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] == 8.47
         assert result["scored_by"] == 503637
@@ -155,8 +155,8 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_missing_fields(self):
         """Test extraction with missing fields."""
-        jikan_data = {"data": {"score": 8.0}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {"score": 8.0}}
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] == 8.0
         assert result["scored_by"] is None
@@ -164,22 +164,22 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_empty_data(self):
         """Test extraction with empty data object."""
-        jikan_data = {"data": {}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {}}
+        result = extract_mal_statistics(mal_data)
 
         assert all(v is None for v in result.values())
 
     def test_extract_mal_no_data_key(self):
         """Test extraction when data key is missing."""
-        jikan_data = {}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {}
+        result = extract_mal_statistics(mal_data)
 
         assert all(v is None for v in result.values())
 
     def test_extract_mal_zero_score(self):
         """Test that zero score is treated as None."""
-        jikan_data = {"data": {"score": 0}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {"score": 0}}
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] is None
 
@@ -555,8 +555,8 @@ class TestLoadSourceData:
 
     def test_load_source_data_partial_files(self, tmp_path):
         """Test loading when only some files are present."""
-        jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, "w") as f:
+        mal_file = tmp_path / "jikan.json"
+        with open(mal_file, "w") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         result = load_source_data(str(tmp_path))
@@ -566,8 +566,8 @@ class TestLoadSourceData:
 
     def test_load_source_data_malformed_json(self, tmp_path):
         """Test handling of malformed JSON files."""
-        jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, "w") as f:
+        mal_file = tmp_path / "jikan.json"
+        with open(mal_file, "w") as f:
             f.write("{invalid json")
 
         result = load_source_data(str(tmp_path))
@@ -734,8 +734,8 @@ class TestMainExecution:
         agent_dir.mkdir()
 
         # Only create jikan file
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
+        mal_file = agent_dir / "jikan.json"
+        with open(mal_file, "w") as f:
             json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
 
         # Run script
@@ -771,8 +771,8 @@ class TestMainExecution:
         agent_dir.mkdir()
 
         # Create minimal data
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
+        mal_file = agent_dir / "jikan.json"
+        with open(mal_file, "w") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         # Run script with custom temp dir
@@ -799,8 +799,8 @@ class TestMainExecution:
         agent_dir.mkdir()
 
         # Create minimal data
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
+        mal_file = agent_dir / "jikan.json"
+        with open(mal_file, "w") as f:
             json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
 
         import subprocess
@@ -831,8 +831,8 @@ class TestMainExecution:
         agent_dir.mkdir()
 
         # Create data with unicode
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w", encoding="utf-8") as f:
+        mal_file = agent_dir / "jikan.json"
+        with open(mal_file, "w", encoding="utf-8") as f:
             json.dump({"data": {"score": 8.0}}, f)
 
         import subprocess

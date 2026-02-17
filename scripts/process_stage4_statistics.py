@@ -22,8 +22,17 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
     """Load all external source data files."""
     sources = {}
 
+    def load_json_or_jsonl(file_path: str) -> Any:
+        with open(file_path, encoding="utf-8") as f:
+            if file_path.endswith(".jsonl"):
+                records = [json.loads(line) for line in f if line.strip()]
+                if len(records) == 1:
+                    return records[0]
+                return records
+            return json.load(f)
+
     source_files = {
-        "jikan": f"{temp_dir}/jikan.json",
+        "mal": f"{temp_dir}/mal.jsonl",
         "animeschedule": f"{temp_dir}/animeschedule.json",
         "kitsu": f"{temp_dir}/kitsu.json",
         "anime_planet": f"{temp_dir}/anime_planet.json",
@@ -33,9 +42,8 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
 
     for source_name, file_path in source_files.items():
         try:
-            with open(file_path, encoding="utf-8") as f:
-                sources[source_name] = json.load(f)
-                print(f"Loaded {source_name} data")
+            sources[source_name] = load_json_or_jsonl(file_path)
+            print(f"Loaded {source_name} data")
         except FileNotFoundError as e:
             print(f"Warning: Could not load {source_name}: {e}")
             sources[source_name] = {}
@@ -86,9 +94,9 @@ def normalize_score(score: Any, scale_factor: float = 1.0) -> float | None:
         return None
 
 
-def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
+def extract_mal_statistics(mal_data: dict[str, Any]) -> dict[str, Any]:
     """
-    Extract MAL statistics from Jikan data.
+    Extract MAL statistics from MAL data.
 
     Field mappings:
     - data.score → score (already 0-10 scale)
@@ -98,7 +106,7 @@ def extract_mal_statistics(jikan_data: dict[str, Any]) -> dict[str, Any]:
     - data.members → members
     - data.favorites → favorites
     """
-    data = safe_get(jikan_data, "data", default={})
+    data = safe_get(mal_data, "data", default={})
     return {
         "score": normalize_score(safe_get(data, "score")),
         "scored_by": safe_get(data, "scored_by"),
@@ -251,7 +259,7 @@ def extract_all_statistics(sources: dict[str, dict[str, Any]]) -> dict[str, Any]
 
     # Extract statistics from each source
     extractors = {
-        "mal": ("jikan", extract_mal_statistics),
+        "mal": ("mal", extract_mal_statistics),
         "animeschedule": ("animeschedule", extract_animeschedule_statistics),
         "kitsu": ("kitsu", extract_kitsu_statistics),
         "animeplanet": ("anime_planet", extract_animeplanet_statistics),
