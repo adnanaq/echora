@@ -87,6 +87,7 @@ async def test_run_pipeline_and_write_artifact_returns_full_payload(
     assert payload["schema_version"] == "1.0"
     assert payload["data"] == result
     assert Path(output_path).exists()
+    assert Path(output_path).parent == tmp_path / "out"
 
 
 @pytest.mark.asyncio
@@ -104,6 +105,28 @@ async def test_run_pipeline_and_write_artifact_rejects_conflicting_selectors(
             file_path=input_path,
             index=0,
             title="Cowboy Bebop",
+            agent_dir=None,
+            skip_services=None,
+            only_services=None,
+            output_dir=tmp_path / "out",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_and_write_artifact_rejects_missing_selectors(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "anime.json"
+    input_path.write_text(
+        json.dumps({"data": [{"title": "Cowboy Bebop"}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Either index or title must be provided"):
+        await pipeline_runner.run_pipeline_and_write_artifact(
+            file_path=input_path,
+            index=None,
+            title=None,
             agent_dir=None,
             skip_services=None,
             only_services=None,
