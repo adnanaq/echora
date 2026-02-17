@@ -415,3 +415,45 @@ The service supports multiple embedding providers through configuration:
 - `VECTOR_SERVICE_PORT`: Service port (default: 8002)
 - `DEBUG`: Enable debug mode (default: true)
 - `LOG_LEVEL`: Logging level (default: INFO)
+
+## Code Conventions
+
+### Class Member Ordering
+
+Order class members top to bottom as follows:
+
+```
+ 1. ClassVar / class-level constants     (TYPE_MAPPING = {...}, etc.)
+ 2. __slots__
+ 3. __init__                             (always first method)
+ 4. Representation dunders              (__repr__, __str__, __eq__, __hash__, __len__)
+ 5. @property                           (getter → setter → deleter as a unit, one property at a time)
+ 6. @classmethod
+ 7. @staticmethod                        (rare; prefer classmethod or plain function)
+ 8. Public instance methods             (async before sync when both exist for same operation)
+ 9. Protected methods  (_name)          (async before sync when both exist)
+10. Private methods   (__name)          (very rare in this codebase)
+11. Context-manager protocol last       (__enter__/__exit__, __aenter__/__aexit__)
+```
+
+**Key rules:**
+
+- **Visibility grouping over decorator grouping.** All public methods go in section 8, all protected in section 9 — regardless of whether they're async. Do not scatter protected helpers between public methods.
+
+- **Logical cohesion within a section.** Within sections 8 and 9, group related operations together (e.g. `encode_text` followed by `encode_texts_batch`, not separated by unrelated methods). No strict alphabetical ordering inside a section.
+
+- **Async before sync for the same operation.** When an async and sync variant exist in the same section, put async first:
+  ```python
+  async def encode_text(self, text: str) -> list[float]: ...
+  def encode_text_sync(self, text: str) -> list[float]: ...  # sync variant
+  ```
+
+- **`@property` pairs stay together.** Getter, setter, and deleter for the same property must be adjacent.
+
+**Special cases:**
+
+- **Pydantic `BaseModel`**: Field declarations come first (no `__init__`). Validator methods after fields. Regular methods after validators.
+- **`@dataclass`**: Fields are the class body; if methods are added follow sections 3–11.
+- **gRPC servicers**: Thin adapter classes — method order should mirror the proto service definition order, no reordering needed.
+
+> **Enforcement**: ruff has no class-member-order rule; enforce via PR review.
