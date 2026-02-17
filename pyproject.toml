@@ -102,6 +102,7 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "grpc-stubs>=1.53.0.6",
     "ruff==0.14.10",
     "scikit-learn-stubs>=0.0.3",
     "scipy-stubs>=1.16.2.0",
@@ -125,8 +126,17 @@ extra-paths = [
     "libs/qdrant_db/src",
     "libs/vector_db_interface/src",
     "libs/vector_processing/src",
+    "apps/enrichment_service/src",
     "apps/vector_service/src",
     "stubs",  # Custom third-party type stubs (crawl4ai, fastembed, etc.)
+]
+
+[tool.ty.src]
+# Exclude generated protobuf code from type checking
+exclude = [
+    "**/*_pb2.py",
+    "**/*_pb2.pyi",
+    "**/*_pb2_grpc.py",
 ]
 
 [tool.ty.analysis]
@@ -166,6 +176,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101", "TRY003"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions, assert statements, long exception messages in mocks
 "stubs/**/*.pyi" = ["N801", "N803", "UP046"]  # Stub files: allow non-CapWords names, uppercase args, Generic subclass patterns
+"**/*_pb2.py" = ["ALL"]    # Generated protobuf code — do not lint
+"**/*_pb2.pyi" = ["ALL"]   # Generated protobuf type stubs — do not lint
+"**/*_pb2_grpc.py" = ["ALL"]  # Generated gRPC stubs — do not lint
+"**/routes/adapter.py" = ["N802"]  # gRPC servicer methods must match proto PascalCase RPC names
 
 [tool.ruff.format]
 # Use double quotes (Black default)

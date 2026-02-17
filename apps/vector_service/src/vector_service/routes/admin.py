@@ -9,12 +9,13 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import grpc
 from common.config import Settings
 from common.grpc.error_details import build_error_details as error
-from google.protobuf.struct_pb2 import Struct
-from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.struct_pb2 import Struct  # ty: ignore[unresolved-import]
+from google.protobuf.timestamp_pb2 import Timestamp  # ty: ignore[unresolved-import]
 from vector_proto.v1 import vector_admin_pb2
 
 from ..runtime import VectorRuntime
@@ -68,11 +69,8 @@ def _build_stats_payload(
     }
 
 
-def _extract_stats_error(stats: object) -> str | None:
+def _extract_stats_error(stats: dict[str, Any]) -> str | None:
     """Extract a Qdrant-level error from a stats payload when present."""
-    if not isinstance(stats, dict):
-        return None
-
     raw_error = stats.get("error")
     if raw_error:
         return raw_error if isinstance(raw_error, str) else json.dumps(raw_error)

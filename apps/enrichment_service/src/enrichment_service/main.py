@@ -77,7 +77,7 @@ async def serve() -> None:
         servicer, server
     )
 
-    health_servicer = health.aio.HealthServicer()
+    health_servicer = health.aio.HealthServicer()  # ty: ignore[unresolved-attribute]
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     await health_servicer.set(

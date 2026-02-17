@@ -16,7 +16,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from vector_proto.v1 import vector_admin_pb2_grpc, vector_search_pb2_grpc
 
 from .routes import VectorAdminRoutes, VectorSearchRoutes
-from .runtime import build_runtime
+from .runtime import VectorRuntime, build_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,16 @@ _SERVICE_NAMES = (
 
 
 async def _set_health_statuses(
-    health_servicer: health.aio.HealthServicer, status: int
+    health_servicer: health.aio.HealthServicer,  # ty: ignore[unresolved-attribute]
+    status: int,
 ) -> None:
     for service_name in _SERVICE_NAMES:
         await health_servicer.set(service_name, status)
 
 
 async def _publish_initial_readiness(
-    runtime: object, health_servicer: health.aio.HealthServicer
+    runtime: VectorRuntime,
+    health_servicer: health.aio.HealthServicer,  # ty: ignore[unresolved-attribute]
 ) -> None:
     try:
         db_healthy = await runtime.qdrant_client.health_check()
@@ -78,7 +80,7 @@ async def serve() -> None:
         search_servicer, server
     )
 
-    health_servicer = health.aio.HealthServicer()
+    health_servicer = health.aio.HealthServicer()  # ty: ignore[unresolved-attribute]
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     await _set_health_statuses(
         health_servicer, health_pb2.HealthCheckResponse.NOT_SERVING
