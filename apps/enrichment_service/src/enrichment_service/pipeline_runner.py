@@ -20,13 +20,14 @@ def _require_data_list(database: dict[str, Any]) -> list[dict[str, Any]]:
         Database ``data`` list.
 
     Raises:
-        ValueError: If ``data`` is missing or not a list.
+        ValueError: If ``data`` key is missing from the database payload.
+        TypeError: If ``data`` is present but not a list.
     """
     if "data" not in database:
         raise ValueError("Database payload missing required 'data' key")
     data = database["data"]
     if not isinstance(data, list):
-        raise ValueError("Database payload 'data' must be a list")
+        raise TypeError("Database payload 'data' must be a list")
     return data
 
 
@@ -63,9 +64,7 @@ def get_anime_by_index(database: dict[str, Any], index: int) -> dict[str, Any]:
     """
     data = _require_data_list(database)
     if not (0 <= index < len(data)):
-        raise ValueError(
-            f"Index {index} out of range for database size {len(data)}"
-        )
+        raise ValueError(f"Index {index} out of range for database size {len(data)}")
     return data[index]
 
 
