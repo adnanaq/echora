@@ -63,9 +63,13 @@ jobs:
       # Check 2: Proto backward-compatibility — fails if any breaking change is
       # introduced: field removed, type changed, field number reused, message renamed.
       # Runs on PRs only; compares branch against main. Requires fetch-depth: 0.
+      - name: Fetch main for breaking check
+        if: github.event_name == 'pull_request'
+        run: git fetch origin main
+
       - name: Check for breaking proto changes
         if: github.event_name == 'pull_request'
-        run: buf breaking protos/ --against ".git#branch=main"
+        run: buf breaking protos/ --against ".git#branch=origin/main"
 
       - name: Restore Pants cache
         uses: actions/cache@v5
