@@ -1,12 +1,12 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:v1.14.3 # Match qdrant-client version for compatibility
-    container_name: echora_qdrant
+    image: qdrant/qdrant:v1.16.2
+    container_name: anime-vector-qdrant
     ports:
       - "6333:6333"
     volumes:
-      - ../data/qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
@@ -22,7 +22,7 @@ services:
   # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
     image: redis:7-alpine
-    container_name: anime-vector-redis
+    container_name: echora_redis
     ports:
       - "6379:6379"
     volumes:
@@ -65,9 +65,6 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      - TEXT_VECTOR_SIZE=1024
-      - IMAGE_VECTOR_SIZE=768
-
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
       - IMAGE_EMBEDDING_PROVIDER=openclip
@@ -82,6 +79,9 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
+      # HTTP Cache Configuration (for Enrichment Pipeline)
+      - CACHE_ENABLED=false
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - vector-network
     volumes:
@@ -142,6 +142,8 @@ networks:
   vector-network:
     driver: bridge
 volumes:
+  qdrant_data:
+    driver: local
   redis-data:
     driver: local
   model_cache:

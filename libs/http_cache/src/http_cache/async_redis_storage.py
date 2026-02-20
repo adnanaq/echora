@@ -20,10 +20,16 @@ from typing import (
 )
 
 # Import Hishel core types
-from hishel._core._storages._async_base import AsyncBaseStorage
+from hishel import AsyncBaseStorage
 from hishel._core._storages._packing import pack, unpack
 from hishel._core.models import Entry, EntryMeta, Request, Response
 from redis.asyncio import Redis
+
+from .exceptions import (
+    EntryMismatchError,
+    InvalidStreamTypeError,
+    InvalidTTLError,
+)
 
 
 class AsyncRedisStorage(AsyncBaseStorage):
@@ -83,7 +89,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 health_check_interval=config.redis_health_check_interval,
             )
         if default_ttl is not None and default_ttl < 0:
-            raise ValueError("default_ttl must be non-negative")
+            raise InvalidTTLError(field_name="default_ttl")
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix
@@ -175,9 +181,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Replace response stream with saving wrapper
         if not isinstance(response.stream, AsyncIterator):
-            raise TypeError(
-                f"Expected AsyncIterator for response.stream, got {type(response.stream).__name__}"
-            )
+            raise InvalidStreamTypeError(type(response.stream).__name__)
         response_with_stream = Response(
             status_code=response.status_code,
             headers=response.headers,
@@ -354,7 +358,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             complete_entry = new_entry(current_entry)
 
         if current_entry.id != complete_entry.id:
-            raise ValueError("Entry ID mismatch")
+            raise EntryMismatchError()
 
         # Serialize and store
         entry_data = pack(complete_entry, kind="pair")
@@ -491,7 +495,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             Optional[float]: TTL in seconds as a float if configured, or `None` when no TTL is set.
 
         Raises:
-            ValueError: If `hishel_ttl` is present and is a negative number.
+            InvalidTTLError: If `hishel_ttl` is present and is a negative number.
         """
         # Check for per-request TTL
         if "hishel_ttl" in request.metadata:
@@ -499,7 +503,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             if isinstance(ttl_value, int | float):
                 ttl_float = float(ttl_value)
                 if ttl_float < 0:
-                    raise ValueError(f"TTL must be non-negative, got {ttl_float}")
+                    raise InvalidTTLError(ttl_float)
                 return ttl_float
 
         # Use default TTL

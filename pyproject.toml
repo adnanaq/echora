@@ -11,7 +11,7 @@ dependencies = [
     "pydantic-settings==2.10.0",
     "python-dotenv>=1.1.0",
     # Vector database
-    "qdrant-client[fastembed]==1.14.3",
+    "qdrant-client[fastembed]==1.16.2",
     # Embedding models
     "sentence-transformers==5.0.0",
     "transformers==4.55.0",

@@ -7,13 +7,17 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ../data/qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
       - vector-network
     healthcheck:
-      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,6 +48,21 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # RedisInsight (GUI for Redis debugging and monitoring)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: echora-redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight-data:/data
+    networks:
+      - vector-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Anime Vector Service
   # Build with Pants: pants package apps/vector_service:vector-service-dev
   # Or use docker-compose build with updated path:
@@ -67,10 +86,6 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      # Multi-Vector Configuration
-      - TEXT_VECTOR_SIZE=1024
-      - IMAGE_VECTOR_SIZE=768
-
       # Modern Embedding Configuration
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
@@ -87,12 +102,18 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
+      # HTTP Cache Configuration (for Enrichment Pipeline)
+      - CACHE_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
+      - FORCE_CACHE=true
     volumes:
       - model_cache:/app/cache
     networks:
       - vector-network
     depends_on:
       qdrant:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
@@ -141,6 +162,10 @@ networks:
 
 volumes:
   redis-data:
+    driver: local
+  qdrant_data:
+    driver: local
+  redisinsight-data:
     driver: local
   model_cache:
     driver: local

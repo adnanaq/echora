@@ -72,7 +72,7 @@ echora/
 
 ```bash
 # Start all services
-docker compose up -d
+docker compose -f docker/docker-compose.dev.yml up -d
 
 # Services:
 # - vector_service gRPC: localhost:8002
@@ -118,7 +118,7 @@ uv sync
 #### 4. Start Qdrant Database
 
 ```bash
-docker compose up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Access Qdrant UI dashboard
 # http://localhost:6333/dashboard
@@ -271,7 +271,7 @@ Vector embedding generation and processing.
 ./pants test :: -- -m "not integration"
 
 # Run ONLY integration tests (requires Qdrant + ML models)
-docker compose up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 ./pants test :: -- -m integration
 
 # Run tests for specific library
@@ -420,9 +420,11 @@ pip install -e ".[dev]"
 The service uses a unified multi-vector architecture optimized for million-query scale:
 
 **Text Vectors**:
+
 - `text_vector`: 1024-dimensional BGE-M3 embeddings covering titles, synopses, and metadata across all entity types (Anime, Characters, Episodes).
 
 **Image Vectors**:
+
 - `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
 
 ### Technology Stack

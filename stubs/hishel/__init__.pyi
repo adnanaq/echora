@@ -1,4 +1,4 @@
-"""Type stubs for hishel HTTP caching library (v1.0)."""
+"""Type stubs for hishel HTTP caching library (v1.1.9)."""
 
 import uuid
 from collections.abc import Callable
@@ -147,6 +147,46 @@ class AsyncBaseStorage:
 
         Parameters:
             id (uuid.UUID): Entry identifier to remove.
+        """
+        ...
+
+    async def close(self) -> None:
+        """Optional cleanup method for async storage."""
+        ...
+
+    def is_soft_deleted(self, entry: Entry) -> bool:
+        """
+        Determine whether a cache entry is marked as soft deleted.
+
+        Parameters:
+            entry (Entry): Cache entry to inspect.
+
+        Returns:
+            True if the entry is marked as soft deleted, False otherwise.
+        """
+        ...
+
+    def is_safe_to_hard_delete(self, entry: Entry) -> bool:
+        """
+        Determine whether a stored cache entry can be permanently (hard) deleted.
+
+        Parameters:
+            entry (Entry): The cache entry to evaluate.
+
+        Returns:
+            True if the entry can be hard deleted, False otherwise.
+        """
+        ...
+
+    def mark_pair_as_deleted(self, entry: Entry) -> Entry:
+        """
+        Mark a cache entry as soft deleted.
+
+        Parameters:
+            entry (Entry): The entry to mark as deleted.
+
+        Returns:
+            The marked entry with deleted_at timestamp.
         """
         ...
 
@@ -354,21 +394,23 @@ class SyncCacheProxy:
         ...
 
 class AsyncCacheProxy:
-    """Asynchronous cache proxy for aiohttp/httpx."""
+    """Asynchronous cache proxy for aiohttp/httpx with request_sender pattern (v1.1.9+)."""
 
     def __init__(
         self,
-        client: Any,
+        request_sender: Callable[[Request], Any],  # Async callable returning Response
         storage: AsyncBaseStorage,
-        options: CacheOptions | None = None,
+        policy: Any | None = None,  # CachePolicy
     ) -> None:
         """
-        Initialize an asynchronous cache proxy for an HTTP client.
+        Initialize an asynchronous cache proxy with request_sender callback.
 
         Parameters:
-            client (Any): The HTTP client instance used to send requests (e.g., aiohttp or httpx client).
+            request_sender (Callable[[Request], Awaitable[Response]]): Async callback that sends requests to origin server.
+                Called by Hishel on cache miss or revalidation. Must accept Request and return Response.
             storage (AsyncBaseStorage): Asynchronous storage backend used to persist and retrieve cache entries.
-            options (Optional[CacheOptions]): Optional cache configuration and behavior overrides.
+            policy (Optional[CachePolicy]): Cache policy controlling RFC 9111 compliance and filtering.
+                Common policies: SpecificationPolicy (default RFC 9111), FilterPolicy (with body-key support).
         """
         ...
 
@@ -381,5 +423,60 @@ class AsyncCacheProxy:
 
         Returns:
             Response: The HTTP response, either from cache or from the underlying client.
+        """
+        ...
+
+
+# Cache Policy Classes (v1.1.9+)
+class CachePolicy:
+    """Base class for cache policies controlling RFC 9111 behavior."""
+
+    use_body_key: bool
+    """Include request body in cache key computation (for GraphQL/POST caching)."""
+
+    def __init__(self) -> None: ...
+
+
+class BaseFilter[T]:
+    """Base class for request/response filters in FilterPolicy."""
+
+    def needs_body(self) -> bool:
+        """Return True if filter needs response/request body to make decision."""
+        ...
+
+    def apply(self, item: T, body: bytes | None) -> bool:
+        """
+        Determine if item should be cached.
+
+        Parameters:
+            item: Request or Response object to filter.
+            body: Request/response body bytes (None if needs_body() returns False).
+
+        Returns:
+            True to allow caching, False to prevent caching.
+        """
+        ...
+
+
+class FilterPolicy(CachePolicy):
+    """Cache policy with request/response filtering support (v1.1.9+)."""
+
+    request_filters: list[BaseFilter[Request]]
+    """Filters applied to requests before caching."""
+
+    response_filters: list[BaseFilter[Response]]
+    """Filters applied to responses before caching."""
+
+    def __init__(
+        self,
+        request_filters: list[BaseFilter[Request]] | None = None,
+        response_filters: list[BaseFilter[Response]] | None = None,
+    ) -> None:
+        """
+        Initialize FilterPolicy with optional request/response filters.
+
+        Parameters:
+            request_filters: List of filters applied to requests.
+            response_filters: List of filters applied to responses (e.g., NeverCacheErrorsFilter).
         """
         ...

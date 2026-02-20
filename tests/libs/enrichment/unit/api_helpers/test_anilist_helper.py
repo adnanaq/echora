@@ -16,6 +16,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 import pytest
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+from enrichment.exceptions import (
+    AniListGraphQLError,
+    AniListNetworkError,
+    AniListRateLimitError,
+)
 
 
 class TestAniListEnrichmentHelperInit:
@@ -429,7 +434,8 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper2 = AniListEnrichmentHelper()
         cm_429_persistent = AsyncMock()
         cm_429_persistent.__aenter__ = AsyncMock(return_value=mock_response_429)
-        cm_429_persistent.__aexit__ = AsyncMock()
+        # Must return False so exceptions raised inside async-with propagate
+        cm_429_persistent.__aexit__ = AsyncMock(return_value=False)
 
         mock_session2 = MagicMock()
         mock_session2.post = MagicMock(return_value=cm_429_persistent)
@@ -438,10 +444,10 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper2._session_event_loop = asyncio.get_running_loop()
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            result2 = await helper2._make_request("query { test }")
+            with pytest.raises(AniListRateLimitError):
+                await helper2._make_request("query { test }")
 
             # Should give up after 3 attempts
-            assert result2 == {"_from_cache": False}
             assert mock_session2.post.call_count == 3
 
     @pytest.mark.asyncio
@@ -495,17 +501,17 @@ class TestAniListEnrichmentHelperMakeRequest:
         mock_session = MagicMock()
         mock_session.post = MagicMock(
             return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+                __aenter__=AsyncMock(return_value=mock_response),
+                __aexit__=AsyncMock(return_value=False),
             )
         )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        result = await helper._make_request("query { test }")
-
-        # Should return empty dict with cache metadata
-        assert result == {"_from_cache": False}
+        # Should raise AniListGraphQLError on GraphQL errors
+        with pytest.raises(AniListGraphQLError):
+            await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
     async def test_make_request_http_error(self):
@@ -536,10 +542,9 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        result = await helper._make_request("query { test }")
-
-        # Should return empty dict with cache metadata
-        assert result == {"_from_cache": False}
+        # Should raise AniListNetworkError on HTTP errors
+        with pytest.raises(AniListNetworkError):
+            await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
     async def test_make_request_exception(self):
@@ -554,10 +559,9 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        result = await helper._make_request("query { test }")
-
-        # Should return empty dict
-        assert result == {"_from_cache": False}
+        # Should raise AniListNetworkError on network exception
+        with pytest.raises(AniListNetworkError):
+            await helper._make_request("query { test }")
 
 
 class TestAniListEnrichmentHelperQueryBuilders:
@@ -1112,10 +1116,9 @@ class TestAniListEnrichmentHelperEdgeCases:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        result = await helper._make_request("query { test }")
-
-        # Should return empty dict on JSON parse error
-        assert result == {"_from_cache": False}
+        # Should raise on JSON parse error
+        with pytest.raises(AniListNetworkError):
+            await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
     async def test_very_large_paginated_results(self):
@@ -1258,17 +1261,17 @@ class TestAniListEnrichmentHelperEdgeCases:
         mock_session = MagicMock()
         mock_session.post = MagicMock(
             return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+                __aenter__=AsyncMock(return_value=mock_response),
+                __aexit__=AsyncMock(return_value=False),
             )
         )
 
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        result = await helper._make_request("query { test }")
-
-        # Should return empty dict when errors exist
-        assert result == {"_from_cache": False}
+        # Should raise on GraphQL errors
+        with pytest.raises(AniListGraphQLError):
+            await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
     async def test_429_retry_with_very_long_wait(self):
@@ -1311,7 +1314,12 @@ class TestAniListEnrichmentHelperCacheIntegration:
 
     @pytest.mark.asyncio
     async def test_anilist_helper_uses_cache_manager(self, mocker):
-        """Test that AniListEnrichmentHelper uses centralized cache manager."""
+        """Test that AniListEnrichmentHelper uses centralized cache manager.
+
+        Body-key caching (for GraphQL POST requests) is enabled globally via
+        FilterPolicy.use_body_key = True on the HTTPCacheManager policy, not via
+        per-session X-Hishel-Body-Key headers.
+        """
         from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
         from http_cache.instance import http_cache_manager
 
@@ -1348,8 +1356,9 @@ class TestAniListEnrichmentHelperCacheIntegration:
         call_args = mock_get_session.call_args
         assert call_args[0][0] == "anilist"  # service name
         assert "timeout" in call_args[1]
-        assert "headers" in call_args[1]
-        assert call_args[1]["headers"]["X-Hishel-Body-Key"] == "true"
+        # Body-key caching is handled globally by FilterPolicy.use_body_key = True
+        # on the HTTPCacheManager, not via per-session X-Hishel-Body-Key headers.
+        assert "headers" not in call_args[1]
 
         # Verify the session was used for the request
         assert result is not None

@@ -6,6 +6,7 @@ http_cache unit test files to reduce code duplication and ensure consistency.
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -146,29 +147,25 @@ class MockAsyncStorage:
             key: Cache key to look up.
 
         Returns:
-            list: The list of cache entries associated with `key`, or `None`
-            if no entries exist.
+            list: The list of cache entries associated with `key`.
         """
-        return self._storage.get(key)
+        return self._storage.get(key, [])
 
-    async def create_entry(self, _request, response, key):
+    async def create_entry(self, request, response, key):
         """
         Create and store a mock cache entry by consuming the provided response
         stream and materializing its body.
 
         Parameters:
-            _request: The original request object (kept for interface compatibility;
-                not inspected by this helper).
-            response: An object exposing `status_code`, `headers`, and `stream`
-                (an async or sync iterable of bytes) whose stream will be consumed
-                and materialized.
+            request: The original request object.
+            response: An object exposing `status_code`, `headers`, and `stream`.
             key: The storage key under which the created entry will be inserted.
 
         Returns:
-            MagicMock: A mock entry whose `.response` has `status_code`, `headers`,
-            and a `.stream` set to a list containing the full body bytes; the entry
-            is inserted at the front of the storage list for the given key.
+            MagicMock: A mock entry whose `.response` is a hishel Response and has metadata.
         """
+        from hishel._core.models import EntryMeta, Request, Response
+
         body_chunks = []
         # Consume the stream
         stream = response.stream
@@ -182,12 +179,30 @@ class MockAsyncStorage:
 
         body = b"".join(body_chunks)
 
+        async def body_stream():
+            yield body
+
+        # Create hishel Response
+        hishel_response = Response(
+            status_code=response.status_code,
+            headers=response.headers,
+            stream=body_stream(),
+        )
+
+        # Create hishel Request
+        hishel_request = Request(
+            method=request.method,
+            url=request.url,
+            headers=Headers(dict(request.headers)),
+            stream=request.stream,
+            metadata=getattr(request, "metadata", {}),
+        )
+
         # Create mock entry
         entry = MagicMock()
-        entry.response = MagicMock()
-        entry.response.status_code = response.status_code
-        entry.response.headers = response.headers
-        entry.response.stream = [body]  # Store as list of full body
+        entry.request = hishel_request
+        entry.response = hishel_response
+        entry.meta = EntryMeta(created_at=time.time())
 
         # Add to storage
         if key not in self._storage:

@@ -1,5 +1,7 @@
 """Type stubs for hishel._core._headers module."""
 
+from collections.abc import Iterable, Iterator
+
 class Headers:
     """HTTP headers wrapper."""
 
@@ -7,12 +9,12 @@ class Headers:
         tuple[str, str]
     ]  # List of (key, value) tuples for multivalue support
 
-    def __init__(self, headers: dict[str, str]) -> None:
+    def __init__(self, headers: dict[str, str] | list[tuple[str, str]]) -> None:
         """
         Create a Headers instance populated from the given mapping of header names to values.
 
         Parameters:
-            headers (Dict[str, str]): Mapping of header names to header values used to initialize the internal list of (name, value) header pairs.
+            headers: Mapping of header names to header values, or list of (name, value) tuples.
         """
         ...
 
@@ -47,5 +49,41 @@ class Headers:
 
         Returns:
             str | None: The header value if found, otherwise `default`.
+        """
+        ...
+
+    def items(self) -> Iterable[tuple[str, str]]:
+        """
+        Return an iterable over (key, value) header pairs.
+
+        Returns:
+            Iterable of (header_name, header_value) tuples.
+        """
+        ...
+
+    def __iter__(self) -> Iterator[str]:
+        """
+        Return an iterator over header names.
+
+        Returns:
+            Iterator of header names.
+        """
+        ...
+
+    def keys(self) -> Iterable[str]:
+        """
+        Return an iterable over header names.
+
+        Returns:
+            Iterable of header names.
+        """
+        ...
+
+    def values(self) -> Iterable[str]:
+        """
+        Return an iterable over header values.
+
+        Returns:
+            Iterable of header values.
         """
         ...

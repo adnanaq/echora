@@ -24,6 +24,11 @@ from enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_dat
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from enrichment.api_helpers.jikan_helper import JikanDetailedFetcher
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+from enrichment.exceptions import (
+    AniListGraphQLError,
+    AniListNetworkError,
+    AniListRateLimitError,
+)
 
 from .config import EnrichmentConfig
 
@@ -511,6 +516,18 @@ class ParallelAPIFetcher:
                 logger.warning(f"AniList returned no data for ID {anilist_id}")
 
             return result
+        except AniListRateLimitError as e:
+            logger.error(f"AniList rate limit exhausted for ID {anilist_id}: {e}")
+            self.api_errors["anilist"] = f"Rate limit exhausted: {e}"
+            return None
+        except AniListGraphQLError as e:
+            logger.error(f"AniList GraphQL error for ID {anilist_id}: {e}")
+            self.api_errors["anilist"] = f"GraphQL error: {e}"
+            return None
+        except AniListNetworkError as e:
+            logger.error(f"AniList network error for ID {anilist_id}: {e}")
+            self.api_errors["anilist"] = f"Network error: {e}"
+            return None
         except Exception as e:
             logger.exception(f"AniList fetch failed for ID {anilist_id}")
             self.api_errors["anilist"] = str(e)

@@ -65,31 +65,96 @@ flowchart TB
 
 ### Environment Variables
 
-```bash
-# Enable/disable caching (enabled by default)
-ENABLE_HTTP_CACHE=true
+The library uses Pydantic BaseSettings for configuration, supporting both environment variables and `.env` files.
 
-# Redis connection (required for caching)
-REDIS_CACHE_URL=redis://localhost:6379/0
+**Core Configuration:**
+
+```bash
+# Enable/disable caching (default: true)
+CACHE_ENABLED=true
+
+# Redis connection URL (default: redis://localhost:6379/0)
+REDIS_URL=redis://localhost:6379/0
+
+# Override RFC 9111 cache headers (default: true)
+# When true, forces caching even if API returns no-cache headers
+FORCE_CACHE=true
+
+# Always revalidate cached responses (default: false)
+ALWAYS_REVALIDATE=false
+
+# Max cache key length before hashing (default: 200)
+MAX_CACHE_KEY_LENGTH=200
 ```
 
-### TTL Configuration
+**Redis Connection Pool Configuration:**
 
-Configure cache expiration via `CacheConfig` in `http_cache/config.py`:
+```bash
+# Maximum Redis connections (default: 100)
+# Tuned for multi-agent concurrency (20 agents × 10 concurrent ops)
+REDIS_MAX_CONNECTIONS=100
+
+# Enable TCP keepalive (default: true)
+REDIS_SOCKET_KEEPALIVE=true
+
+# Connection timeout in seconds (default: 5)
+REDIS_SOCKET_CONNECT_TIMEOUT=5
+
+# Socket read/write timeout in seconds (default: 10)
+REDIS_SOCKET_TIMEOUT=10
+
+# Retry operations on timeout (default: true)
+REDIS_RETRY_ON_TIMEOUT=true
+
+# Health check interval in seconds (default: 30, 0=disabled)
+REDIS_HEALTH_CHECK_INTERVAL=30
+```
+
+**Service-Specific TTLs (all default to 86400 seconds / 24 hours):**
+
+```bash
+TTL_JIKAN=86400
+TTL_ANILIST=86400
+TTL_ANIDB=86400
+TTL_KITSU=86400
+TTL_ANIME_PLANET=86400
+TTL_ANISEARCH=86400
+TTL_ANIMESCHEDULE=86400
+```
+
+### .env File Support
+
+Create a `.env` file in your working directory for local development:
+
+```bash
+# .env
+CACHE_ENABLED=false
+REDIS_URL=redis://prod-redis:6379/2
+FORCE_CACHE=false
+TTL_JIKAN=3600
+TTL_ANILIST=7200
+```
+
+### Programmatic Configuration (Optional)
 
 ```python
 from http_cache.config import CacheConfig
 
 config = CacheConfig(
-    service_ttls={
-        "my_api": 3600,      # 1 hour
-        "slow_api": 86400,   # 24 hours
-        "fast_api": 300,     # 5 minutes
-    }
+    cache_enabled=False,
+    redis_url="redis://custom:6379/1",
+    ttl_jikan=3600,
+    force_cache=False,
 )
 ```
 
-**Default TTL**: 86400 seconds (24 hours)
+### Configuration Precedence
+
+**Priority order (highest to lowest):**
+1. Programmatic `CacheConfig()` constructor arguments
+2. Environment variables
+3. `.env` file values
+4. Field defaults
 
 For service-specific configurations in the enrichment pipeline, see [enrichment/README.md](../enrichment/README.md).
 
@@ -183,11 +248,14 @@ await close_result_cache_redis_client()  # Close singleton Redis client
 
 **Signature:**
 ```python
-@cached_result(ttl: int = 86400, key_prefix: str = "result_cache")
-async def my_function(arg1: str, arg2: int) -> Dict[str, Any]:
+@cached_result(ttl=86400, key_prefix="my_prefix")
+async def my_function(arg1: str, arg2: int) -> dict[str, Any]:
     # Function implementation
     pass
 ```
+
+- `ttl`: Cache TTL in seconds (default: `86400` — 24 hours)
+- `key_prefix`: Cache key prefix (default: the decorated function's name)
 
 **Features:**
 - Automatic cache key generation from function name + schema hash + arguments
@@ -254,7 +322,7 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 - **Multiple async tasks in same event loop** - Concurrent HTTP requests via `asyncio.gather()`
 - **Multiple agents with shared Redis cache** - Multiple session instances safely share Redis storage
 - **Multiple processes** - Redis atomic operations coordinate cache access across processes
-- **Concurrent cache reads/writes** - Redis connection pooling (50 connections) handles concurrent operations
+- **Concurrent cache reads/writes** - Redis connection pooling (100 connections) handles concurrent operations
 
 **Not Thread-Safe:**
 
@@ -333,7 +401,7 @@ pytest tests/libs/http_cache/ --cov=http_cache
 docker compose up -d redis
 
 # Run integration tests
-REDIS_CACHE_URL=redis://localhost:6379/1 pytest tests/cache_manager/integration/
+REDIS_URL=redis://localhost:6379/1 pytest tests/libs/http_cache/integration/
 
 # Stop Redis
 docker compose down redis
@@ -343,13 +411,13 @@ docker compose down redis
 
 **Use separate Redis database for tests:**
 ```bash
-REDIS_CACHE_URL=redis://localhost:6379/1  # DB 1 for tests
-REDIS_CACHE_URL=redis://localhost:6379/0  # DB 0 for dev/production
+REDIS_URL=redis://localhost:6379/1  # DB 1 for tests
+REDIS_URL=redis://localhost:6379/0  # DB 0 for dev/production
 ```
 
 **Disable caching in tests when needed:**
 ```bash
-ENABLE_HTTP_CACHE=false pytest tests/
+CACHE_ENABLED=false pytest tests/
 ```
 
 For enrichment pipeline-specific tests, see [enrichment/README.md - Testing](../enrichment/README.md#testing).
@@ -380,38 +448,11 @@ async def process(x: int) -> int:
     return x * 3  # Changed logic = new schema hash = old cache ignored
 ```
 
-**Built-in/Lambda Functions Use Name-Based Hashing:**
-```python
-# Lambda functions can't retrieve source code
-lambda_func = lambda x: x + 1  # Uses hash of "lambda" name
-# Built-in functions
-len_func = len  # Uses hash of "len" name
-```
-
-**Cache Key Length Optimization:**
-```python
-# Long keys are automatically hashed
-@cached_result()
-async def long_args(very_long_dict: dict, another_dict: dict) -> dict:
-    # If key > 200 chars, becomes: result_cache:long_args:{schema}:{sha256_hash}
-    pass
-```
-
 ### HTTP Caching (Hishel + Redis)
 
-**Per-Event-Loop Redis Client Management:**
-```python
-# Each asyncio event loop gets its own Redis client
-# Automatic cleanup when event loop changes
-# Prevents "Event loop is closed" errors
-```
-
 **Body-Based Caching for GraphQL/POST:**
-```python
-# X-Hishel-Body-Key header automatically added
-# POST requests with different bodies = different cache entries
-# Essential for GraphQL APIs (AniList, etc.)
-```
+
+`HTTPCacheManager` sets `FilterPolicy(use_body_key=True)` globally, which instructs Hishel to include the request body in the cache key. This means POST requests with different bodies (e.g., different GraphQL queries) are cached as separate entries — essential for AniList and other GraphQL APIs.
 
 **Graceful Degradation on Errors:**
 ```python
@@ -430,7 +471,7 @@ async def long_args(very_long_dict: dict, another_dict: dict) -> dict:
 
 ```bash
 # Check if cache enabled
-echo $ENABLE_HTTP_CACHE  # Should be "true"
+echo $CACHE_ENABLED  # Should be "true"
 
 # Check Redis connection
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
@@ -443,9 +484,9 @@ docker exec -it anime-vector-redis redis-cli
 
 **Solutions:**
 
-1. Verify `ENABLE_HTTP_CACHE=true` in environment
+1. Verify `CACHE_ENABLED=true` in environment or `.env` file
 2. Check Redis is running: `docker compose ps redis`
-3. Validate `REDIS_CACHE_URL=redis://localhost:6379/0`
+3. Validate `REDIS_URL=redis://localhost:6379/0` in environment
 4. Check application logs for cache-related warnings
 
 ### Redis Connection Failed
@@ -464,7 +505,7 @@ docker compose up -d redis
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
 
 # Check connection string format
-echo $REDIS_CACHE_URL  # Should be: redis://host:port/db
+echo $REDIS_URL  # Should be: redis://host:port/db
 ```
 
 ### Session Lifecycle Issues
@@ -491,35 +532,6 @@ finally:
 ```
 
 For multi-event-loop scenarios, see [enrichment/README.md - Pattern C](../enrichment/README.md#pattern-c-per-event-loop-session-anilist_helper).
-
-## Key Files
-
-- `libs/http_cache/src/http_cache/result_cache.py` - Result-level caching decorator for crawlers
-  - Provides `@cached_result` decorator with automatic schema invalidation
-  - Singleton Redis client with `close_result_cache_redis_client()` cleanup
-
-- `libs/http_cache/src/http_cache/manager.py` - HTTP cache manager for API sources
-  - Provides `get_aiohttp_session()` factory method
-  - Has `close_async()` for closing async Redis connections
-  - NOT a context manager itself (returns context managers)
-
-- `libs/http_cache/src/http_cache/aiohttp_adapter.py` - Cached aiohttp session wrapper
-  - **CachedAiohttpSession**: Async context manager implementing `__aenter__` and `__aexit__`
-  - `close()` method for manual cleanup (closes session + storage)
-  - Wraps `aiohttp.ClientSession` with Redis caching via Hishel
-
-- `libs/http_cache/src/http_cache/async_redis_storage.py` - Async Redis storage backend
-  - Implements Hishel's `AsyncBaseStorage` interface
-  - Has `close()` method (closes Redis client if owned)
-  - Manages ownership via `_owns_client` flag
-
-- `libs/http_cache/src/http_cache/instance.py` - Singleton instance of the cache manager
-  - Global `http_cache_manager` instance (fully type annotated)
-  - Used by all API helpers for consistent caching
-
-- `libs/http_cache/src/http_cache/config.py` - Cache configuration and environment variables
-  - Pydantic-based config with env var support
-  - Service-specific TTLs and storage backend configuration
 
 ## Summary
 
