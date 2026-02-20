@@ -83,10 +83,12 @@ class EnrichmentAssembler:
         "streaming_info",
         "opening_themes",
         "ending_themes",
-        "relations",
+        "producers",
+        "related_source_material",
         "related_anime",
         "content_warnings",
         "licensors",
+        "studios",
         "synonyms",
         "tags",
         "trailers",
@@ -98,12 +100,10 @@ class EnrichmentAssembler:
         "staff_data",
         "aired_dates",
         "broadcast",
-        "broadcast_schedule",
         "anime_season",
         "duration",
-        "premiere_dates",
+        "hiatus",
         "score",
-        "delay_information",
         "episode_overrides",
         "popularity_trends",
     }
@@ -311,11 +311,10 @@ class EnrichmentAssembler:
             "aired_dates",
             "anime_season",
             "broadcast",
-            "broadcast_schedule",
-            "delay_information",
             "duration",
             "episode_overrides",
             "external_links",
+            "hiatus",
         ]
 
         for field in object_fields:
@@ -369,9 +368,9 @@ class EnrichmentAssembler:
             if len(stage3_data["related_anime"]) > 0:
                 entry["related_anime"] = stage3_data["related_anime"]
 
-        if "relations" in stage3_data and isinstance(stage3_data["relations"], list):
-            if len(stage3_data["relations"]) > 0:
-                entry["relations"] = stage3_data["relations"]
+        if "related_source_material" in stage3_data and isinstance(stage3_data["related_source_material"], list):
+            if len(stage3_data["related_source_material"]) > 0:
+                entry["related_source_material"] = stage3_data["related_source_material"]
 
         return entry
 
@@ -407,8 +406,29 @@ class EnrichmentAssembler:
             return entry
 
         if "staff_data" in stage6_data and isinstance(stage6_data["staff_data"], dict):
-            if not self._is_empty_object(stage6_data["staff_data"]):
-                entry["staff_data"] = stage6_data["staff_data"]
+            staff = stage6_data["staff_data"]
+
+            # Move studios and producers to top-level anime fields, transforming
+            # CompanyEntry shape: remove 'type', rename 'url' → 'sources' (list[str])
+            for field in ("studios", "producers"):
+                companies = staff.get(field)
+                if companies:
+                    entry[field] = [
+                        {
+                            "name": c["name"],
+                            "description": c.get("description"),
+                            "sources": [c["url"]] if c.get("url") else [],
+                        }
+                        for c in companies
+                        if isinstance(c, dict) and c.get("name")
+                    ]
+
+            # Remaining staff_data (without studios/producers)
+            remaining = {
+                k: v for k, v in staff.items() if k not in ("studios", "producers")
+            }
+            if remaining and not self._is_empty_object(remaining):
+                entry["staff_data"] = remaining
 
         return entry
 
@@ -485,7 +505,7 @@ class EnrichmentAssembler:
             "licensors",
             "opening_themes",
             "related_anime",
-            "relations",
+            "related_source_material",
             "sources",
             "streaming_info",
             "synonyms",
@@ -498,13 +518,11 @@ class EnrichmentAssembler:
             "aired_dates",
             "anime_season",
             "broadcast",
-            "broadcast_schedule",
-            "delay_information",
             "duration",
             "external_links",
+            "hiatus",
             "images",
             "popularity_trends",
-            "premiere_dates",
             "score",
             "staff_data",
             "statistics",

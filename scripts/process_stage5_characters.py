@@ -61,6 +61,11 @@ def extract_id_from_character_page(url: str, source: str) -> int | str | None:
     return None
 
 
+def find_source_url(sources: list[str], domain: str) -> str | None:
+    """Return the first URL in sources whose hostname contains domain."""
+    return next((u for u in sources if domain in u), None)
+
+
 def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
     """
     Load and normalize character data from a stage JSON file.
@@ -433,11 +438,10 @@ async def process_stage5_ai_characters(
             matched_char = result["characters"][0]
 
             # Check if found in ALL sources (AniList, AniDB, AND AnimePlanet)
-            has_anilist = matched_char["character_pages"].get("anilist") is not None
-            has_anidb = matched_char["character_pages"].get("anidb") is not None
-            has_animeplanet = (
-                matched_char["character_pages"].get("animeplanet") is not None
-            )
+            char_sources = matched_char.get("sources", [])
+            has_anilist = find_source_url(char_sources, "anilist.co") is not None
+            has_anidb = find_source_url(char_sources, "anidb.net") is not None
+            has_animeplanet = find_source_url(char_sources, "anime-planet.com") is not None
 
             if has_anilist and has_anidb and has_animeplanet:
                 # FULL MATCH - integrate and delete from all pools
@@ -450,18 +454,15 @@ async def process_stage5_ai_characters(
                     f.write(json.dumps(matched_char, ensure_ascii=False) + "\n")
                 matched_count += 1
 
-                # Remove from working pools - extract IDs from character_pages URLs
-                anilist_url = matched_char["character_pages"].get("anilist", "")
-                anidb_url = matched_char["character_pages"].get("anidb", "")
+                # Remove from working pools - extract IDs from sources URLs
+                anilist_url = find_source_url(char_sources, "anilist.co") or ""
+                anidb_url = find_source_url(char_sources, "anidb.net") or ""
                 anilist_id = extract_id_from_character_page(anilist_url, "anilist")
                 anidb_id = extract_id_from_character_page(anidb_url, "anidb")
                 jikan_id = jikan_char.get("character_id")
                 # AnimePlanet uses name as identifier (extract from URL)
-                animeplanet_name = (
-                    matched_char["character_pages"]
-                    .get("animeplanet", "")
-                    .split("/characters/")[-1]
-                )
+                ap_url = find_source_url(char_sources, "anime-planet.com") or ""
+                animeplanet_name = ap_url.split("/characters/")[-1]
                 # Find the actual name from the matched character
                 for ap_char in working_animeplanet:
                     if ap_char.get("url", "").endswith(animeplanet_name):
@@ -492,7 +493,7 @@ async def process_stage5_ai_characters(
                 found_in = []
 
                 if has_anilist:
-                    anilist_url = matched_char["character_pages"].get("anilist", "")
+                    anilist_url = find_source_url(char_sources, "anilist.co") or ""
                     anilist_id = extract_id_from_character_page(anilist_url, "anilist")
                     found_in.append(
                         {
@@ -509,7 +510,7 @@ async def process_stage5_ai_characters(
                     )
 
                 if has_anidb:
-                    anidb_url = matched_char["character_pages"].get("anidb", "")
+                    anidb_url = find_source_url(char_sources, "anidb.net") or ""
                     anidb_id = extract_id_from_character_page(anidb_url, "anidb")
                     found_in.append(
                         {
@@ -527,9 +528,7 @@ async def process_stage5_ai_characters(
                     found_in.append(
                         {
                             "source": "animeplanet",
-                            "matched_page": matched_char["character_pages"][
-                                "animeplanet"
-                            ],
+                            "matched_page": find_source_url(char_sources, "anime-planet.com") or "",
                             "score": (
                                 matched_char.get("_match_scores", {}).get(
                                     "animeplanet", 0.0

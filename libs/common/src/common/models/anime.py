@@ -36,18 +36,6 @@ class AnimeType(str, Enum):
     PV = "PV"
 
 
-class AnimeSourceMaterial(str, Enum):
-    """Anime source material classification."""
-
-    ORIGINAL = "ORIGINAL"
-    LIGHT_NOVEL = "LIGHT NOVEL"
-    MANGA = "MANGA"
-    OTHER = "OTHER"
-    MIXED_MEDIA = "MIXED MEDIA"
-    UNKNOWN = "UNKNOWN"
-    GAME = "GAME"
-
-
 class AnimeRating(str, Enum):
     """Anime content rating classification."""
 
@@ -66,6 +54,55 @@ class AnimeSeason(str, Enum):
     SUMMER = "SUMMER"
     FALL = "FALL"
     WINTER = "WINTER"
+
+
+class CharacterRole(str, Enum):
+    """Character role in an anime — stored on anime_character junction table."""
+
+    MAIN = "MAIN"
+    SUPPORTING = "SUPPORTING"
+    BACKGROUND = "BACKGROUND"
+
+
+class SourceMaterialType(str, Enum):
+    """Source material type — used for both anime.source_material and original_work.type."""
+
+    MANGA = "MANGA"
+    LIGHT_NOVEL = "LIGHT_NOVEL"
+    NOVEL = "NOVEL"
+    VISUAL_NOVEL = "VISUAL_NOVEL"
+    GAME = "GAME"
+    WEB_MANGA = "WEB_MANGA"
+    WEB_NOVEL = "WEB_NOVEL"
+    OTHER = "OTHER"
+    ORIGINAL = "ORIGINAL"
+    MIXED_MEDIA = "MIXED_MEDIA"
+    UNKNOWN = "UNKNOWN"
+
+
+class SourceMaterialRelationType(str, Enum):
+    """Relation type between an anime and its original source work — stored on anime_original_work_relation.relation_type."""
+
+    ADAPTATION = "ADAPTATION"
+    SOURCE = "SOURCE"
+    ALTERNATIVE = "ALTERNATIVE"
+    SPIN_OFF = "SPIN_OFF"
+    OTHER = "OTHER"
+
+
+class AnimeRelationType(str, Enum):
+    """Relation type between two anime — stored on anime_relation.relation_type."""
+
+    SEQUEL = "SEQUEL"
+    PREQUEL = "PREQUEL"
+    SIDE_STORY = "SIDE_STORY"
+    ALTERNATIVE = "ALTERNATIVE"
+    SUMMARY = "SUMMARY"
+    FULL_STORY = "FULL_STORY"
+    CHARACTER = "CHARACTER"
+    SPIN_OFF = "SPIN_OFF"
+    ADAPTATION = "ADAPTATION"
+    OTHER = "OTHER"
 
 
 # =============================================================================
@@ -120,13 +157,9 @@ class Character(BaseModel):
     voice_actors: list["SimpleVoiceActor"] = Field(
         default_factory=list, description="Voice actor information"
     )
-
-    # =====================================================================
-    # OBJECT/DICT FIELDS (alphabetical)
-    # =====================================================================
-    character_pages: dict[str, str] = Field(
-        default_factory=dict,
-        description="Character profile page URLs from different platforms (platform: url)",
+    sources: list[str] = Field(
+        default_factory=list,
+        description="Character profile URLs from different platforms",
     )
 
 
@@ -161,17 +194,17 @@ class Episode(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
-    thumbnails: list[str] = Field(
-        default_factory=list, description="Episode thumbnail URLs"
+    images: list[str] = Field(
+        default_factory=list, description="Episode image URLs"
+    )
+    sources: list[str] = Field(
+        default_factory=list,
+        description="Episode page URLs from different platforms",
     )
 
     # =====================================================================
     # OBJECT/DICT FIELDS (alphabetical)
     # =====================================================================
-    episode_pages: dict[str, str] = Field(
-        default_factory=dict,
-        description="Episode page URLs from different platforms (mal, anilist, etc.)",
-    )
     streaming: dict[str, str] = Field(
         default_factory=dict, description="Streaming platforms and URLs {platform: url}"
     )
@@ -190,35 +223,6 @@ class TrailerEntry(BaseModel):
     thumbnail_url: str | None = Field(None, description="Trailer thumbnail URL")
 
 
-class BroadcastSchedule(BaseModel):
-    """Broadcast timing for different versions"""
-
-    jpn_time: str | None = Field(
-        None, description="Japanese broadcast time with timezone"
-    )
-    sub_time: str | None = Field(
-        None, description="Subtitle broadcast time with timezone"
-    )
-    dub_time: str | None = Field(None, description="Dub broadcast time with timezone")
-
-
-class DelayInformation(BaseModel):
-    """Current delay status and reasons"""
-
-    delayed_timetable: bool = Field(
-        default=False, description="Whether timetable is delayed"
-    )
-    delayed_from: str | None = Field(None, description="Delay start date")
-    delayed_until: str | None = Field(None, description="Delay end date")
-    delay_reason: str | None = Field(None, description="Reason for delay")
-
-
-class PremiereDates(BaseModel):
-    """Premiere dates for different versions"""
-
-    original: str | None = Field(None, description="Original premiere date")
-    sub: str | None = Field(None, description="Subtitle premiere date")
-    dub: str | None = Field(None, description="Dub premiere date")
 
 
 class AiredDates(BaseModel):
@@ -232,11 +236,32 @@ class AiredDates(BaseModel):
 
 
 class Broadcast(BaseModel):
-    """Broadcast schedule information"""
+    """Recurring broadcast schedule and premiere dates — maps to anime_broadcast table"""
 
-    day: str | None = Field(None, description="Broadcast day")
-    time: str | None = Field(None, description="Broadcast time")
-    timezone: str | None = Field(None, description="Broadcast timezone")
+    # Weekly recurring slot (from Jikan)
+    day: str | None = Field(None, description="Broadcast day (e.g. 'Sunday')")
+    time: str | None = Field(None, description="Broadcast time in JP timezone")
+    timezone: str | None = Field(None, description="Broadcast timezone (e.g. 'Asia/Tokyo')")
+
+    # Per-version airtimes (from AnimSchedule)
+    jp_time: str | None = Field(None, description="Japanese broadcast time with timezone")
+    sub_time: str | None = Field(None, description="Subtitle broadcast time with timezone")
+    dub_time: str | None = Field(None, description="Dub broadcast time with timezone")
+    sub_delay_days: int | None = Field(None, description="Days after JP that sub drops")
+    dub_delay_days: int | None = Field(None, description="Days after JP that dub drops")
+
+    # Per-version premiere dates (from AnimSchedule)
+    premiere_jp: str | None = Field(None, description="Original JP premiere date")
+    premiere_sub: str | None = Field(None, description="Subtitle premiere date")
+    premiere_dub: str | None = Field(None, description="Dub premiere date")
+
+
+class AnimeHiatus(BaseModel):
+    """Current hiatus snapshot from AnimSchedule — maps to anime_hiatus table"""
+
+    reason: str | None = Field(None, description="Reason for hiatus or delay")
+    hiatus_from: str | None = Field(None, description="Hiatus start date")
+    hiatus_until: str | None = Field(None, description="Hiatus end date (null = still on hiatus)")
 
 
 class EnrichmentMetadata(BaseModel):
@@ -252,22 +277,22 @@ class EnrichmentMetadata(BaseModel):
     )
 
 
-class RelationEntry(BaseModel):
-    """Related anime entry with multi-platform URLs"""
+class SourceMaterial(BaseModel):
+    """Source work (manga, light novel, visual novel, game, etc.) entry with platform URLs"""
 
-    title: str = Field(..., description="Related anime title")
-    relation_type: str = Field(..., description="Relation type (sequel, prequel, etc.)")
-    url: str = Field(..., description="Related anime URL")
+    title: str = Field(..., description="Original work title")
+    relation_type: SourceMaterialRelationType = Field(..., description="Relation type (ADAPTATION, SOURCE, etc.)")
+    url: str = Field(..., description="Original work URL")
+    type: SourceMaterialType | None = Field(None, description="Source material type")
 
 
 class RelatedAnimeEntry(BaseModel):
     """Related anime entry from URL processing"""
 
     title: str = Field(..., description="Related anime title extracted from URL")
-    relation_type: str = Field(
-        ..., description="Relation type (Sequel, Prequel, Other, etc.)"
-    )
+    relation_type: AnimeRelationType = Field(..., description="Relation type (SEQUEL, PREQUEL, etc.)")
     url: str = Field(..., description="Original URL")
+    type: AnimeType | None = Field(None, description="Type of the related anime (TV, MOVIE, OVA, etc.)")
 
 
 class StreamingEntry(BaseModel):
@@ -369,10 +394,8 @@ class CompanyEntry(BaseModel):
     """Studio/Producer/Licensor company entry"""
 
     name: str = Field(..., description="Company name")
-    type: str = Field(
-        ..., description="Company type (animation_studio, producer, licensor)"
-    )
-    url: str | None = Field(None, description="Company URL")
+    description: str | None = Field(default=None, description="Company bio/description")
+    sources: list[str] = Field(default_factory=list, description="Canonical source URLs")
 
 
 class ProductionStaff(BaseModel):
@@ -413,10 +436,6 @@ class StaffData(BaseModel):
     production_staff: ProductionStaff = Field(
         default_factory=ProductionStaff, description="Production staff by role"
     )
-    studios: list[CompanyEntry] = Field(
-        default_factory=list, description="Animation studios"
-    )
-    producers: list[CompanyEntry] = Field(default_factory=list, description="Producers")
     licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
     voice_actors: VoiceActors = Field(
         default_factory=VoiceActors, description="Voice actors by language"
@@ -499,7 +518,7 @@ class Anime(BaseModel):
         description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
         exclude=True,
     )
-    source_material: AnimeSourceMaterial | None = Field(
+    source_material: SourceMaterialType | None = Field(
         None, description="Source material (manga, light novel, etc.)"
     )
     status: AnimeStatus = Field(..., description="Airing status")
@@ -530,11 +549,12 @@ class Anime(BaseModel):
     opening_themes: list[ThemeSong] = Field(
         default_factory=list, description="Opening theme songs"
     )
+    producers: list[CompanyEntry] = Field(default_factory=list, description="Producers")
     related_anime: list[RelatedAnimeEntry] = Field(
         default_factory=list, description="Related anime entries from URL processing"
     )
-    relations: list[RelationEntry] = Field(
-        default_factory=list, description="Related anime with platform URLs"
+    related_source_material: list[SourceMaterial] = Field(
+        default_factory=list, description="Source work relations (manga, light novel, visual novel, game, etc.)"
     )
     sources: list[str] = Field(..., description="Source URLs from various providers")
     streaming_info: list[StreamingEntry] = Field(
@@ -542,6 +562,9 @@ class Anime(BaseModel):
     )
     streaming_licenses: list[str] = Field(
         default_factory=list, description="Streaming licenses"
+    )
+    studios: list[CompanyEntry] = Field(
+        default_factory=list, description="Animation studios"
     )
     synonyms: list[str] = Field(default_factory=list, description="Alternative titles")
     tags: list[str] = Field(
@@ -559,14 +582,7 @@ class Anime(BaseModel):
     # =====================================================================
     aired_dates: AiredDates | None = Field(None, description="Detailed airing dates")
     broadcast: Broadcast | None = Field(
-        None, description="Broadcast schedule information"
-    )
-    broadcast_schedule: BroadcastSchedule | None = Field(
-        None,
-        description="Broadcast timing for different versions (jpn_time, sub_time, dub_time)",
-    )
-    delay_information: DelayInformation | None = Field(
-        None, description="Current delay status and reasons"
+        None, description="Recurring broadcast schedule and premiere dates"
     )
     enrichment_metadata: EnrichmentMetadata | None = Field(
         None, description="Metadata about enrichment process"
@@ -574,15 +590,15 @@ class Anime(BaseModel):
     external_links: dict[str, str] = Field(
         default_factory=dict, description="External links (official site, social media)"
     )
+    hiatus: AnimeHiatus | None = Field(
+        None, description="Current hiatus snapshot from AnimSchedule"
+    )
     images: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Images organized by type (covers, posters, banners) with URLs only",
     )
     popularity_trends: dict[str, Any] | None = Field(
         None, description="Popularity trend data"
-    )
-    premiere_dates: PremiereDates | None = Field(
-        None, description="Premiere dates for different versions (original, sub, dub)"
     )
     score: ScoreCalculations | None = Field(
         None,

@@ -150,7 +150,7 @@ class TestKitsuDataLoading:
         result = load_kitsu_episode_data(temp_dir_with_kitsu)
 
         (
-            thumbnails,
+            images,
             descriptions,
             synopses,
             titles,
@@ -160,10 +160,10 @@ class TestKitsuDataLoading:
             episode_urls,
         ) = result
 
-        # Check thumbnails
-        assert len(thumbnails) == 2
-        assert thumbnails[1] == "https://example.com/thumb1.jpg"
-        assert thumbnails[2] == "https://example.com/thumb2.jpg"
+        # Check images
+        assert len(images) == 2
+        assert images[1] == "https://example.com/thumb1.jpg"
+        assert images[2] == "https://example.com/thumb2.jpg"
 
         # Check descriptions (should be stripped)
         assert len(descriptions) == 1
@@ -271,10 +271,10 @@ class TestKitsuDataLoading:
             json.dump(data, f)
 
         result = load_kitsu_episode_data(str(tmp_path))
-        thumbnails = result[0]
+        images = result[0]
 
-        # No thumbnails should be extracted
-        assert len(thumbnails) == 0
+        # No images should be extracted
+        assert len(images) == 0
 
 
 class TestAniSearchDataLoading:
@@ -469,8 +469,8 @@ class TestEpisodeProcessing:
         assert ep1["filler"] is False
         assert ep1["recap"] is False
         assert (
-            ep1["episode_pages"]["mal"]
-            == "https://myanimelist.net/anime/21/One_Piece/episode/1"
+            "https://myanimelist.net/anime/21/One_Piece/episode/1"
+            in ep1["sources"]
         )
         assert ep1["streaming"] == {}
 
@@ -485,12 +485,8 @@ class TestEpisodeProcessing:
         assert ep2["season_number"] == 1
         assert ep2["aired"] == "1999-10-26T15:00:00Z"  # Converted to UTC
         assert ep2["filler"] is True
-        assert ep2["thumbnails"] == ["https://kitsu.io/thumb2.jpg"]
-        assert "kitsu" in ep2["episode_pages"]
-        assert (
-            ep2["episode_pages"]["kitsu"]
-            == "https://kitsu.app/anime/one-piece/episodes/2"
-        )
+        assert ep2["images"] == ["https://kitsu.io/thumb2.jpg"]
+        assert "https://kitsu.app/anime/one-piece/episodes/2" in ep2["sources"]
 
         # Test Episode 3: AniSearch fallback for title
         ep3 = episodes[2]
@@ -498,7 +494,7 @@ class TestEpisodeProcessing:
         assert ep3["title"] == "AniSearch Title 3"  # Fallback to AniSearch
         assert ep3["aired"] == "1999-11-02T15:00:00Z"  # Converted to UTC
         assert ep3["recap"] is True
-        assert ep3["episode_pages"] == {}  # No URL
+        assert ep3["sources"] == []  # No URL
 
     def test_process_all_episodes_title_fallback_priority(self, complete_test_env):
         """Test that title fallback follows Jikan → Kitsu → AniSearch priority."""
@@ -519,8 +515,8 @@ class TestEpisodeProcessing:
         # Episode 3: No Jikan or Kitsu, has AniSearch
         assert episodes[2]["title"] == "AniSearch Title 3"
 
-    def test_process_all_episodes_episode_pages(self, complete_test_env):
-        """Test episode_pages object construction."""
+    def test_process_all_episodes_sources(self, complete_test_env):
+        """Test sources list construction."""
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
@@ -530,14 +526,14 @@ class TestEpisodeProcessing:
         episodes = output["episodes"]
 
         # Episode 1: Has MAL URL
-        assert "mal" in episodes[0]["episode_pages"]
+        assert any("myanimelist.net" in u for u in episodes[0]["sources"])
 
         # Episode 2: Has both MAL and Kitsu URLs
-        assert "mal" in episodes[1]["episode_pages"]
-        assert "kitsu" in episodes[1]["episode_pages"]
+        assert any("myanimelist.net" in u for u in episodes[1]["sources"])
+        assert any("kitsu" in u for u in episodes[1]["sources"])
 
         # Episode 3: No URL in original data
-        assert episodes[2]["episode_pages"] == {}
+        assert episodes[2]["sources"] == []
 
     def test_process_all_episodes_timezone_conversion(self, complete_test_env):
         """Test that all episode aired dates are converted to UTC."""
@@ -739,8 +735,8 @@ class TestEdgeCases:
         assert ep["aired"] is None
         assert ep["filler"] is False  # Default value
         assert ep["recap"] is False  # Default value
-        assert ep["thumbnails"] == []
-        assert ep["episode_pages"] == {}
+        assert ep["images"] == []
+        assert ep["sources"] == []
 
     def test_episode_with_null_aired_date(self, tmp_path):
         """Test episode with null aired date."""
