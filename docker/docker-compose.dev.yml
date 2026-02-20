@@ -13,7 +13,11 @@ services:
     networks:
       - vector-network
     healthcheck:
-      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -156,6 +160,8 @@ networks:
 
 volumes:
   redis-data:
+    driver: local
+  qdrant_data:
     driver: local
   redisinsight-data:
     driver: local
