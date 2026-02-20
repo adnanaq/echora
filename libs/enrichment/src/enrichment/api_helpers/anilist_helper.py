@@ -16,6 +16,12 @@ from typing import Any
 import aiohttp
 from http_cache.instance import http_cache_manager
 
+from ..exceptions import (
+    AniListGraphQLError,
+    AniListNetworkError,
+    AniListRateLimitError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,13 +113,15 @@ class AniListEnrichmentHelper:
                         self.rate_limit_remaining = int(
                             response.headers["X-RateLimit-Remaining"]
                         )
-                    # Do not apply client-side throttling for cache hits.
-                    # For misses, rely on server-provided 429 Retry-After for correctness.
+                    # Apply client-side throttling for non-cache responses approaching the limit.
+                    # Cache hits are instant and don't consume rate limit quota.
                     if not from_cache and self.rate_limit_remaining < 5:
-                        logger.info(
-                            "Rate limit low (%s) for non-cache response; continuing and relying on 429 handling if needed.",
+                        logger.warning(
+                            "Rate limit low (%s), sleeping 60s to avoid hitting limit.",
                             self.rate_limit_remaining,
                         )
+                        await asyncio.sleep(60)
+                        self.rate_limit_remaining = 90  # Reset after waiting
 
                     if response.status == 429:
                         if attempt < max_retries - 1:
@@ -127,13 +135,17 @@ class AniListEnrichmentHelper:
                             logger.error(
                                 f"Rate limit exceeded after {max_retries} attempts. Giving up."
                             )
-                            return {"_from_cache": from_cache}
+                            raise AniListRateLimitError(
+                                f"AniList rate limit exceeded after {max_retries} retry attempts"
+                            )
 
                     response.raise_for_status()
                     data: Any = await response.json()
                     if "errors" in data:
                         logger.error(f"AniList GraphQL errors: {data['errors']}")
-                        return {"_from_cache": from_cache}
+                        raise AniListGraphQLError(
+                            f"AniList GraphQL errors: {data['errors']}"
+                        )
                     result: dict[str, Any] = data.get("data", {})
                     # Add cache metadata to result
                     result["_from_cache"] = from_cache
@@ -143,13 +155,13 @@ class AniListEnrichmentHelper:
                 aiohttp.ClientError,
                 aiohttp.ClientResponseError,
                 json.JSONDecodeError,
-            ):
-                # Network/JSON errors: log and return empty result
+            ) as exc:
+                # Network/JSON errors: log and raise
                 logger.exception("AniList API request failed")
-                return {"_from_cache": False}
+                raise AniListNetworkError(f"AniList API request failed: {exc}") from exc
 
-        # Should not reach here, but defensive fallback
-        return {"_from_cache": False}
+        # Should not reach here due to raises above, but defensive fallback
+        raise AniListNetworkError("AniList API request exhausted retries unexpectedly")
 
     def _get_media_query_fields(self) -> str:
         """
