@@ -893,38 +893,37 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     else:
         output["aired_dates"] = None
 
-    # Broadcast from Jikan
-    broadcast = jikan_data.get("broadcast", {})
-    if broadcast:
-        output["broadcast"] = {
-            "day": broadcast.get("day"),
-            "time": broadcast.get("time"),
-            "timezone": broadcast.get("timezone"),
-        }
-    else:
-        output["broadcast"] = None
+    # Broadcast: consolidated from Jikan (weekly slot) + AnimSchedule (per-version times,
+    # premiere dates, hiatus)
+    jikan_broadcast = jikan_data.get("broadcast", {})
+    broadcast_fields = {
+        # Weekly recurring slot (Jikan)
+        "day": jikan_broadcast.get("day") if jikan_broadcast else None,
+        "time": jikan_broadcast.get("time") if jikan_broadcast else None,
+        "timezone": jikan_broadcast.get("timezone") if jikan_broadcast else None,
+        # Per-version airtimes (AnimSchedule)
+        "jp_time": animeschedule_data.get("jpnTime"),
+        "sub_time": animeschedule_data.get("subTime"),
+        "dub_time": animeschedule_data.get("dubTime"),
+        "sub_delay_days": None,
+        "dub_delay_days": None,
+        # Per-version premiere dates (AnimSchedule)
+        "premiere_jp": animeschedule_data.get("premier"),
+        "premiere_sub": animeschedule_data.get("subPremier"),
+        "premiere_dub": animeschedule_data.get("dubPremier"),
+    }
+    output["broadcast"] = broadcast_fields if any(v for v in broadcast_fields.values() if v) else None
 
-    # Broadcast schedule from AnimSchedule
-    if any(animeschedule_data.get(k) for k in ["jpnTime", "subTime", "dubTime"]):
-        output["broadcast_schedule"] = {
-            "jpn_time": animeschedule_data.get("jpnTime"),
-            "sub_time": animeschedule_data.get("subTime"),
-            "dub_time": animeschedule_data.get("dubTime"),
-        }
-    else:
-        output["broadcast_schedule"] = None
-
-    # Delay information from AnimSchedule
+    # Hiatus snapshot (AnimSchedule) — separate from broadcast schedule
     delay_fields = ["delayedTimetable", "delayedFrom", "delayedUntil", "delayedDesc"]
     if any(animeschedule_data.get(k) for k in delay_fields):
-        output["delay_information"] = {
-            "delayed_timetable": animeschedule_data.get("delayedTimetable", False),
-            "delayed_from": animeschedule_data.get("delayedFrom"),
-            "delayed_until": animeschedule_data.get("delayedUntil"),
-            "delay_reason": animeschedule_data.get("delayedDesc"),
+        output["hiatus"] = {
+            "reason": animeschedule_data.get("delayedDesc"),
+            "hiatus_from": animeschedule_data.get("delayedFrom"),
+            "hiatus_until": animeschedule_data.get("delayedUntil"),
         }
     else:
-        output["delay_information"] = None
+        output["hiatus"] = None
 
     # Duration (cross-validated)
     output["duration"] = cross_validate_with_offline(offline_data, sources, "duration")
@@ -934,17 +933,6 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
 
     # Images organized by type
     output["images"] = organize_images_by_type(sources)
-
-    # Premiere dates from AnimSchedule
-    premiere_fields = ["premier", "subPremier", "dubPremier"]
-    if any(animeschedule_data.get(k) for k in premiere_fields):
-        output["premiere_dates"] = {
-            "original": animeschedule_data.get("premier"),
-            "sub": animeschedule_data.get("subPremier"),
-            "dub": animeschedule_data.get("dubPremier"),
-        }
-    else:
-        output["premiere_dates"] = None
 
     # Score calculations from offline database (convert camelCase to snake_case)
     offline_score = offline_data.get("score")

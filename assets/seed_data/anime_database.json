@@ -42,7 +42,6 @@
           ],
           "description": "__Height:__ 168 cm (5'6\")\n__Instrument:__ Pearl Reference Twilight Fade Drums\n\nA second-year high school student. She goes by the moniker MASKING and is the drummer for the band RAISE A SUILEN. Despite her sharp gaze and rough, delinquent-like appearance, she likes cute things and is skilled at baking cakes.\n\nShe is the daughter of the owner of Galaxy Live House. Masuki's longing for her father made her start playing the drums, which she plays violently and is called a \"mad dog\" because of that.\n\n(Source: BanG Dream Wikia, edited)",
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Natsume",
@@ -50,7 +49,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2df",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Chiyu Tamade",
@@ -75,7 +75,6 @@
           "description": "__Height:__ 140 cm (4'7\")\n__Instruments:__ Pioneer DJ XDJ-RX2 DJ System + PIONEER DJ TORAIZ SP-16\n\nA returnee who attends an international school. She goes by the moniker CHU² (read as CHUCHU) and is the leader and DJ for the band RAISE A SUILEN. She is also a music producer who uses DTM (Desktop Music) to compose music, and she's the one who scouted PAREO as a keyboardist.\n\nChiyu is 14 years old but due to her excellent grades, she is currently a 10th grader or a first year high school student. Chiyu is both very professional and confident of her band and ideas, and although she tends to be arrogant sometimes, she's not rude. She dreams of changing the world with the strongest music.\n\nAs a result of her studying in an international school, Chiyu often talks in English or adds English words to her sentences.",
           "age": "14",
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Risa Tsumugi",
@@ -83,7 +82,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e0",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Rei Wakana",
@@ -105,7 +105,6 @@
           ],
           "description": "__Height:__ 172 cm (5'8\")\n__Instrument:__ Spector EURO 4 LX RAS LAYER -Twilight Amber-\n\nA second-year high school student. She goes by the moniker LAYER and is the vocalist and bassist for the band RAISE A SUILEN. She is Tae's childhood friend. Due to Rei's mature attitude, she has a tendency keep a certain feeling of distance with others.\n\nShe has liked singing since she was young, and now she is a professional singer who can sing any song. In addition to temporary part-time singing jobs, she used to play bass in a back up band for famous artists. Rei had also attended the same music school as Tae and Arisa.\n\n(Source: BanG Dream Wikia, edited)",
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Raychell",
@@ -113,7 +112,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e1",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Rokka Asahi",
@@ -135,7 +135,6 @@
           ],
           "description": "__Height:__ 155 cm (5'1\")\n__Instrument:__ .strandberg* Boden J6 RAS LOCK Caribbean Light Blue Guitar\n\nA first year high-school student at Haneoka Girls' High School. She goes by the moniker LOCK as the guitarist for the band RAISE A SUILEN. She is a Poppin'Party fan. Rokka usually wears large glasses, but takes them off when she performs.\n\nShe is from Gifu Prefecture. She attends Haneoka instead of Hanasakigawa, the closer school, due to Haneoka's scholarship program. She in the same class as Asuka and Ako. Rokka works at Galaxy Live House, as well as her relative's bath house where she lives.\n\nEver since she was at elementary school, Rokka failed at everything she tried, including her studies. Playing guitar was the only thing she had worked hard at. Because of that, she formed a band with her fellow schoolmates Toriko, Berry, and Pat (all monikers). However, after Rokka went to see SPACE live house's last show in Tokyo, she fell in love with Poppin'Party (who performed their song \"Mae e Susume!\" there) and began dreaming of moving to Tokyo. Rokka's middle school band disbanded when she was finally able to move to Tokyo and make her dream come true.\n\nHer father was at first against her decision to study in Tokyo, but Rokka persuaded him by finding a place to live and a school that offered a scholarship that made the tuition cheaper than that her local high school's. After intense studying and hard work, Rokka later passed Haneoka High School's entrance exam and moved to Tokyo.\n\n(Source: BanG Dream Wikia, edited)",
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Riko Kohara",
@@ -143,7 +142,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e2",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Reona Nyubara",
@@ -165,7 +165,6 @@
           ],
           "description": "__Height:__ 162 cm (5'4\")\n__Instruments:__ ROLAND FA-06 / ROLAND FA-08\n\nAn energetic second-year middle school student. She goes by the moniker PAREO and is the keyboardist for the band RAISE A SUILEN. She adores CHU² and has said she admires her deeply, calling her \"CHU²-sama\" and sometimes even \"Goshujinsama\" (lit. Master).\n\nReona was originally learning the Electone, but switched to the keyboard when she was scouted by CHU². Reona's favorite band is Pastel*Palettes. \n\n(Source: BanG Dream Wikia, edited)",
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Reo Kurachi",
@@ -173,7 +172,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e3",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -188,11 +188,11 @@
           "title": "!NVADE SHOW!",
           "title_japanese": "!NVADE SHOW!",
           "title_romaji": "!NVADE SHOW!",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "7bd23426-424b-803f-3d35-12938b3523a8",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -281,9 +281,6 @@
           "from": "2020-10-07T00:00:00Z",
           "string": "Oct 7, 2020"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 120,
         "episode_overrides": {
           "main_override": {
@@ -309,9 +306,6 @@
             "https://cdn.anime-planet.com/anime/primary/raise-a-suilen-nvade-show-1.webp?t=1670863100"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2020-10-07T00:00:00Z"
         },
         "score": {
           "arithmetic_geometric_mean": 6.310053602130257,
@@ -441,13 +435,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "SANZIGEN",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/537/SANZIGEN"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -545,7 +532,18 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2de",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2020-10-07T00:00:00Z"
+        },
+        "studios": [
+          {
+            "name": "SANZIGEN",
+            "sources": [
+              "https://myanimelist.net/anime/producer/537/SANZIGEN"
+            ]
+          }
+        ]
       }
     },
     {
@@ -564,9 +562,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/223671.jpg"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/93863/Chiaki_Kuriyama"
-          },
           "voice_actors": [
             {
               "name": "Kuriyama, Chiaki",
@@ -574,7 +569,10 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e5",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/93863/Chiaki_Kuriyama"
+          ]
         }
       ],
       "episodes": [],
@@ -688,20 +686,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "Minakata Laboratory",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/1725/Minakata_Laboratory"
-            }
-          ],
-          "producers": [
-            {
-              "name": "Sony Music Entertainment",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/757/Sony_Music_Entertainment"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -755,7 +739,23 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2e4",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "studios": [
+          {
+            "name": "Minakata Laboratory",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1725/Minakata_Laboratory"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "Sony Music Entertainment",
+            "sources": [
+              "https://myanimelist.net/anime/producer/757/Sony_Music_Entertainment"
+            ]
+          }
+        ]
       }
     },
     {
@@ -775,7 +775,6 @@
             "https://cdn.anisearch.com/images/character/cover/133/133080_400.webp"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Hikaru Isshiki",
@@ -783,7 +782,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e7",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Momoka HANAOKA",
@@ -800,7 +800,6 @@
             "https://cdn.anisearch.com/images/character/cover/133/133115_400.webp"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "三浦さとみ",
@@ -808,7 +807,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e8",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Ryouta OCHI",
@@ -825,7 +825,6 @@
             "https://cdn.anisearch.com/images/character/cover/133/133114_400.webp"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "豆坊主",
@@ -833,7 +832,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2e9",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -845,13 +845,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "ecb3ba13-a2fc-735e-cf18-57f589d75e36",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/1"
+          ]
         },
         {
           "episode_number": 2,
@@ -860,13 +860,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "b3bad16e-6ef0-a92f-5ca6-81a5f2b65af7",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/2"
+          ]
         },
         {
           "episode_number": 3,
@@ -875,13 +875,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/3"
-          },
+          "images": [],
           "streaming": {},
           "id": "ac1afa59-52bc-ab39-a271-80bf4f3e913a",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/3"
+          ]
         },
         {
           "episode_number": 4,
@@ -890,13 +890,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/4"
-          },
+          "images": [],
           "streaming": {},
           "id": "63d73901-1c4e-456c-0c25-ac5b880f40c8",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/4"
+          ]
         },
         {
           "episode_number": 5,
@@ -905,13 +905,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/5"
-          },
+          "images": [],
           "streaming": {},
           "id": "0e0c71f5-eaec-a454-8417-a444fc952477",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/5"
+          ]
         },
         {
           "episode_number": 6,
@@ -920,13 +920,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/6"
-          },
+          "images": [],
           "streaming": {},
           "id": "5cdf46f1-618b-e3f3-6ea0-d963a810cb47",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/6"
+          ]
         },
         {
           "episode_number": 7,
@@ -935,13 +935,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/7"
-          },
+          "images": [],
           "streaming": {},
           "id": "66f1055f-9149-604e-efc7-fe2b31f5c4fc",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/7"
+          ]
         },
         {
           "episode_number": 8,
@@ -950,13 +950,13 @@
           "season_number": 1,
           "title": "My Roommates Are Way Too Cute",
           "title_japanese": "可愛すぎろシェアメイトたち",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/8"
-          },
+          "images": [],
           "streaming": {},
           "id": "68bc80b4-7931-40a5-5e00-9c556c93556c",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/60629/1-punkan_dake_Furete_mo_Ii_yo_Share_House_no_Himitsu_Rule/episode/8"
+          ]
         }
       ],
       "anime": {
@@ -979,7 +979,7 @@
         "genres": [
           "Hentai"
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "The Share House's Secret Rule",
             "relation_type": "ORIGINAL WORK",
@@ -1031,21 +1031,7 @@
           "median": 5.554081632653061
         },
         "staff_data": {
-          "production_staff": {},
-          "studios": [
-            {
-              "name": "Studio LEO",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/2139/Studio_LEO"
-            }
-          ],
-          "producers": [
-            {
-              "name": "Suiseisha",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/1365/Suiseisha"
-            }
-          ]
+          "production_staff": {}
         },
         "statistics": {},
         "enrichment_metadata": {
@@ -1055,7 +1041,23 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2e6",
         "episode_count": 8,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "studios": [
+          {
+            "name": "Studio LEO",
+            "sources": [
+              "https://myanimelist.net/anime/producer/2139/Studio_LEO"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "Suiseisha",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1365/Suiseisha"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1071,13 +1073,13 @@
           "title": "\"Aesop\" no Ohanashi yori: Ushi to Kaeru, Yokubatta Inu",
           "title_japanese": "\"いそっぷ\"のおはなしより 牛とかえる, よくばった犬",
           "title_romaji": "\"Aesop\" no Ohanashi yori: Ushi to Kaeru, Yokubatta Inu",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/25627/Aesop_no_Ohanashi_yori__Ushi_to_Kaeru_Yokubatta_Inu"
-          },
+          "images": [],
           "streaming": {},
           "id": "66d81f4b-05ae-71e3-3550-67b969a85013",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/25627/Aesop_no_Ohanashi_yori__Ushi_to_Kaeru_Yokubatta_Inu"
+          ]
         }
       ],
       "anime": {
@@ -1148,9 +1150,6 @@
           "from": "1970-03-21T00:00:00Z",
           "to": "1970-03-21T00:00:00Z",
           "string": "Mar 21, 1970"
-        },
-        "delay_information": {
-          "delayed_timetable": false
         },
         "duration": 720,
         "external_links": {
@@ -1234,7 +1233,8 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2ea",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {}
       }
     },
     {
@@ -1250,13 +1250,13 @@
           "title": "Movie",
           "title_japanese": "「あい」をたべる",
           "title_romaji": "\"Ai\" wo Taberu",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/54496/Ai_wo_Taberu"
-          },
+          "images": [],
           "streaming": {},
           "id": "5528d134-a0db-d579-a012-428cbf5a43ec",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/54496/Ai_wo_Taberu"
+          ]
         }
       ],
       "anime": {
@@ -1315,14 +1315,7 @@
           "banners": []
         },
         "staff_data": {
-          "production_staff": {},
-          "producers": [
-            {
-              "name": "Tokyo Polytechnic University",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/2707/Tokyo_Polytechnic_University"
-            }
-          ]
+          "production_staff": {}
         },
         "statistics": {
           "mal": {
@@ -1344,7 +1337,15 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2eb",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "producers": [
+          {
+            "name": "Tokyo Polytechnic University",
+            "sources": [
+              "https://myanimelist.net/anime/producer/2707/Tokyo_Polytechnic_University"
+            ]
+          }
+        ]
       }
     },
     {
@@ -1367,9 +1368,6 @@
             "https://cdn.anidb.net/images/main/268755.jpg"
           ],
           "gender": "Female",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/205191/Michiru"
-          },
           "voice_actors": [
             {
               "name": "Kitou, Akari",
@@ -1377,7 +1375,10 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2ed",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/205191/Michiru"
+          ]
         },
         {
           "name": "Yuuki",
@@ -1397,9 +1398,6 @@
             "https://cdn.anidb.net/images/main/268756.jpg"
           ],
           "gender": "Male",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/205187/Yuuki"
-          },
           "voice_actors": [
             {
               "name": "Shimono, Hiro",
@@ -1407,7 +1405,10 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2ee",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/205187/Yuuki"
+          ]
         },
         {
           "name": "Ryoushi",
@@ -1420,7 +1421,6 @@
           "character_ids": {
             "anilist": 346277
           },
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Katsuhisa Houki",
@@ -1428,7 +1428,8 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2ef",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -1440,13 +1441,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 1",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/50762"
-          },
+          "images": [],
           "streaming": {},
           "id": "dcaa21b2-0e84-29c6-d764-20580ceb558f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/50762"
+          ]
         }
       ],
       "anime": {
@@ -1573,9 +1574,6 @@
           "from": "2022-01-11T00:00:00Z",
           "string": "Jan 11, 2022"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 300,
         "external_links": {
           "officialsite": "https://www.kyocera.co.jp/animation/anahito/"
@@ -1593,11 +1591,6 @@
             "https://cdn.anidb.net/images/main/268744.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2022-01-11",
-          "sub": "0001-01-01",
-          "dub": "0001-01-01"
         },
         "score": {
           "arithmetic_geometric_mean": 6.204015433344115,
@@ -1735,19 +1728,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "Sunrise",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/14/Sunrise"
-            }
-          ],
-          "producers": [
-            {
-              "name": "kyocera",
-              "type": "producer"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -1828,7 +1808,26 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2ec",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2022-01-11",
+          "premiere_sub": "0001-01-01",
+          "premiere_dub": "0001-01-01"
+        },
+        "studios": [
+          {
+            "name": "Sunrise",
+            "sources": [
+              "https://myanimelist.net/anime/producer/14/Sunrise"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "kyocera",
+            "sources": []
+          }
+        ]
       }
     },
     {
@@ -1839,13 +1838,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 1",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "9ec3ce35-261e-6ecf-89a8-44bcb451333b",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/1"
+          ]
         },
         {
           "episode_number": 2,
@@ -1853,13 +1852,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 2",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "889bd06d-a512-6f98-8d80-ef37bd1df68c",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/2"
+          ]
         },
         {
           "episode_number": 3,
@@ -1867,13 +1866,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 3",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/3"
-          },
+          "images": [],
           "streaming": {},
           "id": "5e2aa683-8600-f40b-df8b-a09cf7337500",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/3"
+          ]
         },
         {
           "episode_number": 4,
@@ -1881,13 +1880,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 4",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/4"
-          },
+          "images": [],
           "streaming": {},
           "id": "e5f9f136-5e6a-797f-d85c-271d9006fb15",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/4"
+          ]
         },
         {
           "episode_number": 5,
@@ -1895,13 +1894,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 5",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/5"
-          },
+          "images": [],
           "streaming": {},
           "id": "e087d37b-ebb8-9d5f-10bf-cb1866b28612",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/5"
+          ]
         },
         {
           "episode_number": 6,
@@ -1909,13 +1908,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 6",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/6"
-          },
+          "images": [],
           "streaming": {},
           "id": "e56e9da2-4d9a-2918-e84c-2d5f3eb625aa",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/6"
+          ]
         },
         {
           "episode_number": 7,
@@ -1923,13 +1922,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 7",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/7"
-          },
+          "images": [],
           "streaming": {},
           "id": "3a9fbd25-1c6f-5dd7-761c-f36a326adefc",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/7"
+          ]
         },
         {
           "episode_number": 8,
@@ -1937,13 +1936,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 8",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/8"
-          },
+          "images": [],
           "streaming": {},
           "id": "76bde9ff-91e1-baa5-b5a3-2bd8311a0791",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/8"
+          ]
         },
         {
           "episode_number": 9,
@@ -1951,13 +1950,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 9",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/9"
-          },
+          "images": [],
           "streaming": {},
           "id": "0402cf0d-ca45-4e3f-416b-5c1c1cb2482b",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/9"
+          ]
         },
         {
           "episode_number": 10,
@@ -1965,13 +1964,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 10",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/10"
-          },
+          "images": [],
           "streaming": {},
           "id": "22e5b7b9-73a0-557f-429f-16e832cfd4a9",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/10"
+          ]
         },
         {
           "episode_number": 11,
@@ -1979,13 +1978,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 11",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/11"
-          },
+          "images": [],
           "streaming": {},
           "id": "96e3fcef-1316-7ab1-20d2-8502ae610804",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/11"
+          ]
         },
         {
           "episode_number": 12,
@@ -1993,13 +1992,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 12",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/12"
-          },
+          "images": [],
           "streaming": {},
           "id": "86c71f0c-5081-9cc0-3151-d6e941dac30e",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/12"
+          ]
         },
         {
           "episode_number": 13,
@@ -2007,13 +2006,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 13",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/13"
-          },
+          "images": [],
           "streaming": {},
           "id": "9b6b84fa-47a2-6394-b6f1-296ee20d2394",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/13"
+          ]
         },
         {
           "episode_number": 14,
@@ -2021,13 +2020,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 14",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/14"
-          },
+          "images": [],
           "streaming": {},
           "id": "ebbf152a-ab11-1a5d-38b7-5441b86b12ed",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/14"
+          ]
         },
         {
           "episode_number": 15,
@@ -2035,13 +2034,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 15",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/15"
-          },
+          "images": [],
           "streaming": {},
           "id": "f5cddea4-49c5-ac5c-7503-0456fcd70021",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/15"
+          ]
         },
         {
           "episode_number": 16,
@@ -2049,13 +2048,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 16",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/16"
-          },
+          "images": [],
           "streaming": {},
           "id": "af486342-9227-ede6-5fb1-f342deaf8b22",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/55754/Ayakai_Shima_e_Youkoso_Mitaman_no_Ayakashima_Kankou_Annai/episode/16"
+          ]
         }
       ],
       "anime": {
@@ -2141,9 +2140,6 @@
           "to": "2023-10-03T00:00:00Z",
           "string": "Jun 23, 2023 to Oct 3, 2023"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 120,
         "external_links": {
           "@ayaka_animepr": "https://twitter.com/AYAKA_animePR"
@@ -2164,14 +2160,7 @@
           "median": 5.85
         },
         "staff_data": {
-          "production_staff": {},
-          "studios": [
-            {
-              "name": "AQUA ARIS",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/2071/AQUA_ARIS"
-            }
-          ]
+          "production_staff": {}
         },
         "statistics": {
           "mal": {
@@ -2201,7 +2190,16 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2f0",
         "episode_count": 16,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {},
+        "studios": [
+          {
+            "name": "AQUA ARIS",
+            "sources": [
+              "https://myanimelist.net/anime/producer/2071/AQUA_ARIS"
+            ]
+          }
+        ]
       }
     },
     {
@@ -2217,9 +2215,6 @@
             "https://cdn.myanimelist.net/images/characters/12/98993.jpg?s=e678bc09b1f6610d9d59d1e58f9c9fe4",
             "https://cdn.anidb.net/images/main/40614.jpg"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28451/Tooko_Amano"
-          },
           "voice_actors": [
             {
               "name": "Hanazawa, Kana",
@@ -2227,7 +2222,10 @@
             }
           ],
           "id": "019bce3b-d48e-3d81-61ba-518ea655b2f2",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28451/Tooko_Amano"
+          ]
         },
         {
           "name": "Inoue, Konoha",
@@ -2240,9 +2238,6 @@
             "https://cdn.myanimelist.net/images/characters/15/101327.jpg?s=63c7a553c67b49b1abaa94e7837bd96a",
             "https://cdn.anidb.net/images/main/40613.jpg"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/24792/Konoha_Inoue"
-          },
           "voice_actors": [
             {
               "name": "Irino, Miyu",
@@ -2250,7 +2245,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b90",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/24792/Konoha_Inoue"
+          ]
         }
       ],
       "episodes": [
@@ -2265,13 +2263,13 @@
           "synopsis": "Short episode bundled with the limited edition release of \"Bungaku Shoujo\" Minarai no, Shoushin.",
           "title": "\"Bungaku Shoujo\" Kyou no Oyatsu: Hatsukoi",
           "title_japanese": "“文学少女”今日のおやつ 〜はつ恋〜",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/7669/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "ce7496af-dfe5-cc2b-7533-b9289e015f0f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/7669/episode/1"
+          ]
         }
       ],
       "anime": {
@@ -2382,7 +2380,7 @@
             "url": "https://anisearch.com/anime/6169"
           }
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Bungaku Shoujo\" to Shinitagari no Pierrot",
             "relation_type": "ADAPTATION",
@@ -2622,9 +2620,6 @@
             "https://cdn.anidb.net/images/main/288282.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2009-12-26T00:00:00Z"
         },
         "score": {
           "arithmetic_geometric_mean": 6.81263149311991,
@@ -4182,40 +4177,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "Production I.G",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/10/Production_IG"
-            }
-          ],
-          "producers": [
-            {
-              "name": "Lantis",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/104/Lantis"
-            },
-            {
-              "name": "Pony Canyon",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/144/Pony_Canyon"
-            },
-            {
-              "name": "Enterbrain",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/392/Enterbrain"
-            },
-            {
-              "name": "Kadokawa Contents Gate",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
-            },
-            {
-              "name": "T.O Entertainment",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -4307,7 +4268,50 @@
         },
         "id": "019bce3b-d48e-3d81-61ba-518ea655b2f1",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2009-12-26T00:00:00Z"
+        },
+        "studios": [
+          {
+            "name": "Production I.G",
+            "sources": [
+              "https://myanimelist.net/anime/producer/10/Production_IG"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "Lantis",
+            "sources": [
+              "https://myanimelist.net/anime/producer/104/Lantis"
+            ]
+          },
+          {
+            "name": "Pony Canyon",
+            "sources": [
+              "https://myanimelist.net/anime/producer/144/Pony_Canyon"
+            ]
+          },
+          {
+            "name": "Enterbrain",
+            "sources": [
+              "https://myanimelist.net/anime/producer/392/Enterbrain"
+            ]
+          },
+          {
+            "name": "Kadokawa Contents Gate",
+            "sources": [
+              "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
+            ]
+          },
+          {
+            "name": "T.O Entertainment",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
+            ]
+          }
+        ]
       }
     },
     {
@@ -4328,9 +4332,6 @@
             "https://cdn.myanimelist.net/images/characters/15/101327.jpg"
           ],
           "description": "He used to write a novel called \"Sora ni Niteiru\" (Looks Alike to the Sky) using penname Miu Inoue when he was in junior high school and sent to a magazine.  The novel was received an award and too famous that it became drama and movie.  The name was very feminine that people thought it was written by a mysterious girl.\n\nThere was an accident happened to a girl he likes (Miu Asakura) that caused him to have difficulty in breathing so he closed himself until he met Touko in high school, who was reading and eating what she read, so she forced him to join literature club.\n\n\n\nBungaku Shoujo Series is in his point of view, while Bungaku Shoujo: Minarai Series is in Nano Hinosaka's point of view.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/24792/Konoha_Inoue"
-          },
           "voice_actors": [
             {
               "name": "Saitou, Chiwa",
@@ -4342,7 +4343,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b92",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/24792/Konoha_Inoue"
+          ]
         },
         {
           "name": "Miu Asakura",
@@ -4360,9 +4364,6 @@
             "https://cdn.myanimelist.net/images/characters/13/85718.jpg"
           ],
           "description": "She is a childhood friend of Konoha, who he loved very much until she attempted suicide by falling off the school building.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/30494/Miu_Asakura"
-          },
           "voice_actors": [
             {
               "name": "Hirano, Aya",
@@ -4370,7 +4371,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b93",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/30494/Miu_Asakura"
+          ]
         },
         {
           "name": "Nanase Kotobuki",
@@ -4388,9 +4392,6 @@
             "https://cdn.myanimelist.net/images/characters/13/101326.jpg"
           ],
           "description": "Kotobuki is a girl in Konoha's class.  She doesn't like Konoha's way of being nice to people.  She thinks that he's faking.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28937/Nanase_Kotobuki"
-          },
           "voice_actors": [
             {
               "name": "Mizuki, Nana",
@@ -4398,7 +4399,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b94",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28937/Nanase_Kotobuki"
+          ]
         },
         {
           "name": "Tooko Amano",
@@ -4412,9 +4416,6 @@
             "https://cdn.myanimelist.net/images/characters/12/98993.jpg"
           ],
           "description": "Birthdate: March 15\n\nTooko is Konoha's upperclassman that's one year older than him and the president of the literature club. She likes literature to the extent that she eats what she reads and cannot taste normal food. When Konoha saw her eating the pages of a novel, she forced him to join the literature club so that she could \"watch over him\" and keep him from telling others about it.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28451/Tooko_Amano"
-          },
           "voice_actors": [
             {
               "name": "Hanazawa, Kana",
@@ -4422,7 +4423,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b95",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28451/Tooko_Amano"
+          ]
         },
         {
           "name": " Haruguchi",
@@ -4432,9 +4436,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140297/Haruguchi"
-          },
           "voice_actors": [
             {
               "name": "Yahagi, Sayuri",
@@ -4442,7 +4443,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b96",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140297/Haruguchi"
+          ]
         },
         {
           "name": " Sasaki",
@@ -4461,9 +4465,6 @@
             "https://cdn.myanimelist.net/images/characters/4/99158.jpg",
             "https://cdn.anidb.net/images/main/238836.jpg"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/36481/Sasaki"
-          },
           "voice_actors": [
             {
               "name": "Chiba, Susumu",
@@ -4471,7 +4472,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b97",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/36481/Sasaki"
+          ]
         },
         {
           "name": "Chia Takeda",
@@ -4492,9 +4496,6 @@
             "https://cdn.myanimelist.net/images/characters/14/101328.jpg"
           ],
           "description": "A girl who requested to literature club to write a love letter for her. She's a first year. She works as a librarian.\n\nHer nickname is Chee (ちぃ).",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28933/Chia_Takeda"
-          },
           "voice_actors": [
             {
               "name": "Toyosaki, Aki",
@@ -4502,7 +4503,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b98",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28933/Chia_Takeda"
+          ]
         },
         {
           "name": "Eri",
@@ -4512,9 +4516,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140293/Eri"
-          },
           "voice_actors": [
             {
               "name": "Nishigaki, Yuka",
@@ -4522,7 +4523,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b99",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140293/Eri"
+          ]
         },
         {
           "name": "Father Asakura",
@@ -4532,9 +4536,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140296/Father_Asakura"
-          },
           "voice_actors": [
             {
               "name": "Umezu, Hideyuki",
@@ -4542,7 +4543,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9a",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140296/Father_Asakura"
+          ]
         },
         {
           "name": "Fumiharu Amano",
@@ -4560,9 +4564,6 @@
             "https://cdn.myanimelist.net/images/characters/5/99159.jpg"
           ],
           "description": "Touko's father.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/36482/Fumiharu_Amano"
-          },
           "voice_actors": [
             {
               "name": "Fujiwara, Keiji",
@@ -4570,7 +4571,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9b",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/36482/Fumiharu_Amano"
+          ]
         },
         {
           "name": "Kanako Sakurai",
@@ -4587,9 +4591,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/3/99157.jpg"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/36480/Kanako_Sakurai"
-          },
           "voice_actors": [
             {
               "name": "Mitsuishi, Kotono",
@@ -4597,7 +4598,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9c",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/36480/Kanako_Sakurai"
+          ]
         },
         {
           "name": "Kurara Mori",
@@ -4615,9 +4619,6 @@
             "https://cdn.myanimelist.net/images/characters/13/109246.jpg"
           ],
           "description": "Kotobuki's friend and classmate.  She doesn't want people to call her by her first name, so she goes by her nickname \"Mori-chan\".",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28934/Kurara_Mori"
-          },
           "voice_actors": [
             {
               "name": "Shimoda, Asami",
@@ -4625,7 +4626,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9d",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28934/Kurara_Mori"
+          ]
         },
         {
           "name": "Miki",
@@ -4635,9 +4639,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140294/Miki"
-          },
           "voice_actors": [
             {
               "name": "Tamura, Chika",
@@ -4645,7 +4646,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9e",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140294/Miki"
+          ]
         },
         {
           "name": "Mother Asakura",
@@ -4655,9 +4659,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140290/Mother_Asakura"
-          },
           "voice_actors": [
             {
               "name": "Yamagata, Kaori",
@@ -4665,7 +4666,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688b9f",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140290/Mother_Asakura"
+          ]
         },
         {
           "name": "Mother Inoue",
@@ -4675,9 +4679,6 @@
           "character_ids": {
             "mal": 0
           },
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/140291/Mother_Inoue"
-          },
           "voice_actors": [
             {
               "name": "Hisakawa, Aya",
@@ -4685,7 +4686,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba0",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/140291/Mother_Inoue"
+          ]
         },
         {
           "name": "Ryuuto Sakurai",
@@ -4703,9 +4707,6 @@
             "https://cdn.myanimelist.net/images/characters/5/99156.jpg"
           ],
           "description": "He is like a brother to Touko.  He's from a family who adopted Touko.  He is actually a 1st year in high school who likes to play with multiple girls at the same time.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/28936/Ryuuto_Sakurai"
-          },
           "voice_actors": [
             {
               "name": "Miyano, Mamoru",
@@ -4713,7 +4714,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba1",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/28936/Ryuuto_Sakurai"
+          ]
         },
         {
           "name": "Yui Amano",
@@ -4731,9 +4735,6 @@
             "https://cdn.myanimelist.net/images/characters/3/99160.jpg"
           ],
           "description": "Touko's mother.",
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/36483/Yui_Amano"
-          },
           "voice_actors": [
             {
               "name": "Inoue, Kikuko",
@@ -4741,7 +4742,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba2",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/36483/Yui_Amano"
+          ]
         }
       ],
       "episodes": [
@@ -4756,13 +4760,13 @@
           "title": "Prelude to the Dreaming Girl",
           "title_japanese": "夢見る少女の前奏曲（プレリュード）",
           "title_romaji": "Yumemiru Shoujo no Prelude",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "55bccfd7-c95a-346d-8b21-c7ba4a169480",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/1"
+          ]
         },
         {
           "aired": "2010-10-28T15:00:00Z",
@@ -4775,13 +4779,13 @@
           "title": "Requiem of the Angel Dancing in the Sky",
           "title_japanese": "ソラ舞う天使の鎮魂曲（レクイエム）",
           "title_romaji": "Sora Mau Tenshi no Requiem",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "788d860a-7d5b-a44c-eca0-a1949fee037f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/2"
+          ]
         },
         {
           "aired": "2010-12-23T15:00:00Z",
@@ -4794,13 +4798,13 @@
           "title": "Rhapsody of the Maiden in Love",
           "title_japanese": "恋する乙女のラプソディー",
           "title_romaji": "Koisuru Otome no Rhapsody",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/3"
-          },
+          "images": [],
           "streaming": {},
           "id": "77e2e478-4c79-0052-9eff-a276ff3a8d71",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/8481/Bungaku_Shoujo_Memoire/episode/3"
+          ]
         }
       ],
       "anime": {
@@ -4911,7 +4915,7 @@
             "url": "https://myanimelist.net/anime/6408/Bungaku_Shoujo_Movie"
           }
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Bungaku Shoujo\" to Shinitagari no Pierrot",
             "relation_type": "ADAPTATION",
@@ -5038,9 +5042,6 @@
           "to": "2010-12-24T00:00:00Z",
           "string": "Jun 25, 2010 to Dec 24, 2010"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 1460,
         "images": {
           "posters": [
@@ -5052,9 +5053,6 @@
             "https://cdn.anidb.net/images/main/288281.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2010-06-25T00:00:00Z"
         },
         "score": {
           "arithmetic_geometric_mean": 7.1869361406374255,
@@ -5288,44 +5286,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "Production I.G",
-              "type": "Animation Studio",
-              "url": "https://myanimelist.net/anime/producer/10/Production_IG"
-            }
-          ],
-          "producers": [
-            {
-              "name": "enterbrain",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/392/Enterbrain"
-            },
-            {
-              "name": "kadokawa contents gate",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
-            },
-            {
-              "name": "lantis",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/104/Lantis"
-            },
-            {
-              "name": "pony canyon",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/144/Pony_Canyon"
-            },
-            {
-              "name": "production i.g",
-              "type": "producer"
-            },
-            {
-              "name": "t.o entertainment",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -5545,7 +5505,54 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688b91",
         "episode_count": 3,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2010-06-25T00:00:00Z"
+        },
+        "studios": [
+          {
+            "name": "Production I.G",
+            "sources": [
+              "https://myanimelist.net/anime/producer/10/Production_IG"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "enterbrain",
+            "sources": [
+              "https://myanimelist.net/anime/producer/392/Enterbrain"
+            ]
+          },
+          {
+            "name": "kadokawa contents gate",
+            "sources": [
+              "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
+            ]
+          },
+          {
+            "name": "lantis",
+            "sources": [
+              "https://myanimelist.net/anime/producer/104/Lantis"
+            ]
+          },
+          {
+            "name": "pony canyon",
+            "sources": [
+              "https://myanimelist.net/anime/producer/144/Pony_Canyon"
+            ]
+          },
+          {
+            "name": "production i.g",
+            "sources": []
+          },
+          {
+            "name": "t.o entertainment",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
+            ]
+          }
+        ]
       }
     },
     {
@@ -5566,7 +5573,6 @@
             "https://cdn.anidb.net/images/main/40614.jpg"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Hanazawa, Kana",
@@ -5574,7 +5580,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba4",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Inoue, Konoha",
@@ -5592,7 +5599,6 @@
             "https://cdn.anidb.net/images/main/40613.jpg"
           ],
           "gender": "Male",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Irino, Miyu",
@@ -5600,7 +5606,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba5",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Asakura, Miu",
@@ -5618,7 +5625,6 @@
             "https://cdn.anidb.net/images/main/49496.jpg"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Hirano, Aya",
@@ -5626,7 +5632,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba6",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Kotobuki, Nanase",
@@ -5644,7 +5651,6 @@
             "https://cdn.anidb.net/images/main/40612.jpg"
           ],
           "gender": "Female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Mizuki, Nana",
@@ -5652,7 +5658,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba7",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Akutagawa, Kazushi",
@@ -5670,7 +5677,6 @@
             "https://cdn.anidb.net/images/main/40611.jpg"
           ],
           "gender": "Male",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Ono, Daisuke",
@@ -5678,7 +5684,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688ba8",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -5690,11 +5697,11 @@
           "recap": false,
           "title": "\"Bungaku Shoujo\" Movie",
           "title_japanese": "劇場版\"文学少女\"",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "b4496095-936f-e178-6381-16a7d1ebcee8",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -5737,7 +5744,7 @@
             "url": "https://myanimelist.net/anime/7669"
           }
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Bungaku Shoujo\" to Shinitagari no Pierrot",
             "relation_type": "ADAPTATION",
@@ -5888,9 +5895,6 @@
           "from": "2010-05-01T00:00:00Z",
           "string": "May 1, 2010"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 6000,
         "external_links": {
           "official": "http://www.bungakushoujo.jp/",
@@ -5916,9 +5920,6 @@
             "https://cdn.anidb.net/images/main/33980.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2010-05-01"
         },
         "score": {
           "arithmetic_geometric_mean": 7.438897515292618,
@@ -6072,40 +6073,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "Production I.G",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/10/Production_IG"
-            }
-          ],
-          "producers": [
-            {
-              "name": "Lantis",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/104/Lantis"
-            },
-            {
-              "name": "Pony Canyon",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/144/Pony_Canyon"
-            },
-            {
-              "name": "Enterbrain",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/392/Enterbrain"
-            },
-            {
-              "name": "Kadokawa Contents Gate",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
-            },
-            {
-              "name": "T.O Entertainment",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -6186,7 +6153,50 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688ba3",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2010-05-01"
+        },
+        "studios": [
+          {
+            "name": "Production I.G",
+            "sources": [
+              "https://myanimelist.net/anime/producer/10/Production_IG"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "Lantis",
+            "sources": [
+              "https://myanimelist.net/anime/producer/104/Lantis"
+            ]
+          },
+          {
+            "name": "Pony Canyon",
+            "sources": [
+              "https://myanimelist.net/anime/producer/144/Pony_Canyon"
+            ]
+          },
+          {
+            "name": "Enterbrain",
+            "sources": [
+              "https://myanimelist.net/anime/producer/392/Enterbrain"
+            ]
+          },
+          {
+            "name": "Kadokawa Contents Gate",
+            "sources": [
+              "https://myanimelist.net/anime/producer/685/Kadokawa_Contents_Gate"
+            ]
+          },
+          {
+            "name": "T.O Entertainment",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1015/TO_Entertainment"
+            ]
+          }
+        ]
       }
     },
     {
@@ -6202,13 +6212,13 @@
           "title": "\"Calpis\" Hakkou Monogatari",
           "title_japanese": "「カルピス」発酵ものがたり",
           "title_romaji": "\"Calpis\" Hakkou Monogatari",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/38045/Calpis_Hakkou_Monogatari"
-          },
+          "images": [],
           "streaming": {},
           "id": "9cb41d4f-7907-b982-3886-058bcc901483",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/38045/Calpis_Hakkou_Monogatari"
+          ]
         }
       ],
       "anime": {
@@ -6348,7 +6358,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/7/378274.jpg?s=79d27db061477a29ff2e125a16928cba"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Horikawa, Ryo",
@@ -6356,7 +6365,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bab",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Akagi, Koujiro",
@@ -6367,7 +6377,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/7/559475.jpg?s=7c2ba58de19381e8b6c09d5b440524e3"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Hori, Hideyuki",
@@ -6375,7 +6384,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bac",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Akagi, Kimie",
@@ -6386,7 +6396,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/559474.jpg?s=51592172e5e65fbf8dd9653de4668fd2"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Yokoo, Mari",
@@ -6394,7 +6403,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bad",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Kusanagi, Aya",
@@ -6405,7 +6415,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/13/378275.jpg?s=490a0f651403c9131875523b3095947d"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Orikasa, Ai",
@@ -6413,7 +6422,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bae",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Kusanagi, Naoya",
@@ -6424,7 +6434,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/14/378276.jpg?s=585dd987da5a77c6b16137de67e6362f"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Kosugi, Juurouta",
@@ -6432,7 +6441,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688baf",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Nogi, Daigo",
@@ -6443,7 +6453,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/16/559473.jpg?s=3d8d6ca583aa8f525fb134823bf06dd2"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Miyauchi, Kouhei",
@@ -6451,7 +6460,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb0",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Takasugi, Marina",
@@ -6462,7 +6472,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/559472.jpg?s=7012b30c38d04f9bccaf1c989dd20ee4"
           ],
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Mizutani, Yuuko",
@@ -6470,7 +6479,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb1",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -6484,13 +6494,13 @@
           "title": "\"Eiji\"",
           "title_japanese": "「エイジ」",
           "title_romaji": "\"Eiji\"",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/6076/Eiji"
-          },
+          "images": [],
           "streaming": {},
           "id": "c585dee0-1f68-afb2-4f20-f2860a5e21c9",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/6076/Eiji"
+          ]
         }
       ],
       "anime": {
@@ -6514,7 +6524,7 @@
           "Drama",
           "Sports"
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Eiji\"",
             "relation_type": "ADAPTATION",
@@ -6582,9 +6592,6 @@
           "from": "1990-08-25T00:00:00Z",
           "string": "Aug 25, 1990"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 2880,
         "external_links": {
           "official": "http://www.production-ig.co.jp/contents/works_sp/0080_/index.html",
@@ -6604,9 +6611,6 @@
             "https://cdn.anidb.net/images/main/239576.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "1990-08-25"
         },
         "score": {
           "arithmetic_geometric_mean": 5.875847412893119,
@@ -6651,35 +6655,7 @@
                 }
               }
             ]
-          },
-          "studios": [
-            {
-              "name": "animate film",
-              "type": "animation_studio"
-            },
-            {
-              "name": "production i.g",
-              "type": "animation_studio"
-            }
-          ],
-          "producers": [
-            {
-              "name": "animate film",
-              "type": "producer"
-            },
-            {
-              "name": "movic",
-              "type": "producer"
-            },
-            {
-              "name": "pony canyon",
-              "type": "producer"
-            },
-            {
-              "name": "shueisha",
-              "type": "producer"
-            }
-          ]
+          }
         },
         "statistics": {
           "mal": {
@@ -6720,7 +6696,38 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688baa",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "1990-08-25"
+        },
+        "studios": [
+          {
+            "name": "animate film",
+            "sources": []
+          },
+          {
+            "name": "production i.g",
+            "sources": []
+          }
+        ],
+        "producers": [
+          {
+            "name": "animate film",
+            "sources": []
+          },
+          {
+            "name": "movic",
+            "sources": []
+          },
+          {
+            "name": "pony canyon",
+            "sources": []
+          },
+          {
+            "name": "shueisha",
+            "sources": []
+          }
+        ]
       }
     },
     {
@@ -6732,13 +6739,13 @@
           "recap": false,
           "season_number": 1,
           "title": "",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/35025/Eikou_Naki_Tensai-tachi_Kara_no_Monogatari/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "b7230d22-852d-9f61-af56-eb81f7c87d16",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/35025/Eikou_Naki_Tensai-tachi_Kara_no_Monogatari/episode/1"
+          ]
         },
         {
           "duration": 2940,
@@ -6747,13 +6754,13 @@
           "recap": false,
           "season_number": 1,
           "title": "",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/35025/Eikou_Naki_Tensai-tachi_Kara_no_Monogatari/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "5fa0ee5c-4df9-95b5-39a8-3b888b1734ad",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/35025/Eikou_Naki_Tensai-tachi_Kara_no_Monogatari/episode/2"
+          ]
         }
       ],
       "anime": {
@@ -6924,25 +6931,7 @@
                 }
               }
             ]
-          },
-          "studios": [
-            {
-              "name": "J.C.Staff",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/7/JCStaff"
-            }
-          ],
-          "producers": [
-            {
-              "name": "NHK",
-              "type": "producer",
-              "url": "https://myanimelist.net/anime/producer/111/NHK"
-            },
-            {
-              "name": "NHK Enterprises",
-              "type": "producer"
-            }
-          ]
+          }
         },
         "statistics": {
           "anidb": {
@@ -6968,7 +6957,27 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bb2",
         "episode_count": 2,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "studios": [
+          {
+            "name": "J.C.Staff",
+            "sources": [
+              "https://myanimelist.net/anime/producer/7/JCStaff"
+            ]
+          }
+        ],
+        "producers": [
+          {
+            "name": "NHK",
+            "sources": [
+              "https://myanimelist.net/anime/producer/111/NHK"
+            ]
+          },
+          {
+            "name": "NHK Enterprises",
+            "sources": []
+          }
+        ]
       }
     },
     {
@@ -6994,7 +7003,6 @@
             "https://cdn.anidb.net/images/main/307364.jpg"
           ],
           "gender": "male",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Umehara, Yuuichirou",
@@ -7002,7 +7010,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb4",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Karon Yamada",
@@ -7024,7 +7033,6 @@
             "https://cdn.anidb.net/images/main/307366.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Seto, Asami",
@@ -7032,7 +7040,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb5",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Airo Kurashiki",
@@ -7054,7 +7063,6 @@
             "https://cdn.anidb.net/images/main/307367.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Uesaka, Sumire",
@@ -7062,7 +7070,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb6",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Reca Kanae",
@@ -7084,7 +7093,6 @@
             "https://cdn.anidb.net/images/main/307365.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Satou, Satomi",
@@ -7092,7 +7100,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb7",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Hakua Tsuranari",
@@ -7114,7 +7123,6 @@
             "https://cdn.anidb.net/images/main/307362.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Uchiyama, Yumi",
@@ -7122,7 +7130,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb8",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Kougyoku Tsuranari",
@@ -7144,7 +7153,6 @@
             "https://cdn.anidb.net/images/main/307363.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Komatsu, Mikako",
@@ -7152,7 +7160,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bb9",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Megane",
@@ -7173,7 +7182,6 @@
             "https://cdn.anidb.net/images/main/307368.jpg"
           ],
           "gender": "male",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Namikawa, Daisuke",
@@ -7181,7 +7189,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bba",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Alice",
@@ -7202,7 +7211,6 @@
             "https://cdn.anidb.net/images/main/307219.jpg"
           ],
           "gender": "female",
-          "character_pages": {},
           "voice_actors": [
             {
               "name": "Kitamura, Eri",
@@ -7210,7 +7218,8 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bbb",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -7224,13 +7233,13 @@
           "title": "\"Eiyuu\" Kaitai",
           "title_japanese": "「英雄」解体",
           "title_romaji": "\"Eiyuu\" Kaitai",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/33363/Eiyuu_Kaitai"
-          },
+          "images": [],
           "streaming": {},
           "id": "be31d8f6-9509-3c95-e11f-979201814b96",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/33363/Eiyuu_Kaitai"
+          ]
         }
       ],
       "anime": {
@@ -7257,7 +7266,7 @@
           "Siblings",
           "Slice of Life"
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Eiyuu\" Kaitai",
             "relation_type": "ADAPTATION",
@@ -7460,13 +7469,6 @@
               }
             ]
           },
-          "studios": [
-            {
-              "name": "ZEXCS",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/218/Zexcs"
-            }
-          ],
           "voice_actors": {
             "japanese": [
               {
@@ -7599,7 +7601,15 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bb3",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "studios": [
+          {
+            "name": "ZEXCS",
+            "sources": [
+              "https://myanimelist.net/anime/producer/218/Zexcs"
+            ]
+          }
+        ]
       }
     },
     {
@@ -7672,9 +7682,6 @@
           "from": "2021-08-18T00:00:00Z",
           "string": "Aug 18, 2021"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 120,
         "external_links": {
           "official": "https://100years-movie.smarthr.jp/"
@@ -7691,9 +7698,6 @@
             "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/b140882-PGlyYvG4bNco.png"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2021-08-18"
         },
         "score": {
           "arithmetic_geometric_mean": 5.857452738666607,
@@ -7714,14 +7718,7 @@
                 }
               }
             ]
-          },
-          "studios": [
-            {
-              "name": "Gyorai Eizo Inc.",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/2311/Gyorai_Eizo_Inc"
-            }
-          ]
+          }
         },
         "statistics": {
           "anilist": {
@@ -7761,7 +7758,18 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bbc",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2021-08-18"
+        },
+        "studios": [
+          {
+            "name": "Gyorai Eizo Inc.",
+            "sources": [
+              "https://myanimelist.net/anime/producer/2311/Gyorai_Eizo_Inc"
+            ]
+          }
+        ]
       }
     },
     {
@@ -7774,11 +7782,11 @@
           "recap": false,
           "season_number": 1,
           "title": "\"hitman\" bang: I=Fantasy",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "647ae266-c886-7e96-2526-f4eeb11b4c2f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -7838,9 +7846,6 @@
           "to": "2011-10-21T00:00:00Z",
           "string": "Oct 21, 2011"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 240,
         "external_links": {
           "official": "https://kmzktmm.tumblr.com/"
@@ -7899,7 +7904,8 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bbd",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {}
       }
     },
     {
@@ -7911,11 +7917,11 @@
           "recap": false,
           "title": "\"Hitori de Ikirare Sou\" tte Sore tte Nee, Homete Iru no?",
           "title_japanese": "「ひとりで生きられそう」って それってねえ、褒めているの？",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "234494df-8d22-7282-5e77-dcd33ad6e6fa",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -7987,11 +7993,11 @@
           "synopsis": "A collaboration between Inochi Sketch and Mameshiba.",
           "title": "\"Inochi Sketch\" Movie Jabow x Mameshiba Collab CM",
           "title_japanese": "映画『いのちスケッチ』ジャー坊×豆しばコラボCM",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "f4da61c3-d969-9c6f-9800-d4b814fa5257",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -8058,9 +8064,6 @@
           "from": "2019-10-02T00:00:00Z",
           "string": "Oct 2, 2019"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 30,
         "external_links": {
           "official": "https://dogatch.jp/feature/mameshiba/movie.html"
@@ -8106,7 +8109,8 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bbf",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {}
       }
     },
     {
@@ -8222,13 +8226,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 1",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/37843/Kiss_Dekiru_Gyouza_Movie_x_Mameshiba/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "660b3111-72c8-6a61-52b9-466fc1c1409f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/37843/Kiss_Dekiru_Gyouza_Movie_x_Mameshiba/episode/1"
+          ]
         },
         {
           "episode_number": 2,
@@ -8236,13 +8240,13 @@
           "recap": false,
           "season_number": 1,
           "title": "Episode 2",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/37843/Kiss_Dekiru_Gyouza_Movie_x_Mameshiba/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "bb0bd622-189a-2c76-2901-39dfc67b92ec",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/37843/Kiss_Dekiru_Gyouza_Movie_x_Mameshiba/episode/2"
+          ]
         }
       ],
       "anime": {
@@ -8355,9 +8359,9 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/16/236781.jpg?s=9f7943dd885f0d2a4ad7fa63c3f110eb"
           ],
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bc3",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Shiba, Miyuki",
@@ -8365,9 +8369,9 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/4/240187.jpg?s=8b2f548a4b9bd2dfbd7d06720c06c02a"
           ],
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bc4",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [],
@@ -8535,9 +8539,6 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/15/597780.jpg?s=ba30d6423a9f97223da7354d4b2bfc06"
           ],
-          "character_pages": {
-            "mal": "https://myanimelist.net/character/187661/Flum_Apricot"
-          },
           "voice_actors": [
             {
               "name": "Nanase, Ayaka",
@@ -8545,7 +8546,10 @@
             }
           ],
           "id": "019bce3b-d48f-21b1-f024-2090b4688bc7",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": [
+            "https://myanimelist.net/character/187661/Flum_Apricot"
+          ]
         },
         {
           "name": "Milkit",
@@ -8553,9 +8557,9 @@
           "character_ids": {
             "anilist": 219038
           },
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bc8",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -8564,156 +8568,156 @@
           "filler": false,
           "recap": false,
           "title": "Episode 1",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/1"
-          },
+          "images": [],
           "streaming": {},
           "id": "c66ac4fa-2c29-f9c4-56d2-d25f1778f47c",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/1"
+          ]
         },
         {
           "episode_number": 2,
           "filler": false,
           "recap": false,
           "title": "Episode 2",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/2"
-          },
+          "images": [],
           "streaming": {},
           "id": "0ba5eb9f-8dde-4492-2436-c0fafe938bfb",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/2"
+          ]
         },
         {
           "episode_number": 3,
           "filler": false,
           "recap": false,
           "title": "Episode 3",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/3"
-          },
+          "images": [],
           "streaming": {},
           "id": "f86280ab-f132-56a4-f745-6f9986bc61dc",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/3"
+          ]
         },
         {
           "episode_number": 4,
           "filler": false,
           "recap": false,
           "title": "Episode 4",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/4"
-          },
+          "images": [],
           "streaming": {},
           "id": "9a3de408-dff8-f4b5-14f3-294bd84e1b68",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/4"
+          ]
         },
         {
           "episode_number": 5,
           "filler": false,
           "recap": false,
           "title": "Episode 5",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/5"
-          },
+          "images": [],
           "streaming": {},
           "id": "25ae8f12-40ce-9981-63a5-804a610b83e5",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/5"
+          ]
         },
         {
           "episode_number": 6,
           "filler": false,
           "recap": false,
           "title": "Episode 6",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/6"
-          },
+          "images": [],
           "streaming": {},
           "id": "167b0191-8216-4c1a-4ce0-79e56f3f97d3",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/6"
+          ]
         },
         {
           "episode_number": 7,
           "filler": false,
           "recap": false,
           "title": "Episode 7",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/7"
-          },
+          "images": [],
           "streaming": {},
           "id": "d4c79977-d543-d37b-f544-53d4db82a4de",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/7"
+          ]
         },
         {
           "episode_number": 8,
           "filler": false,
           "recap": false,
           "title": "Episode 8",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/8"
-          },
+          "images": [],
           "streaming": {},
           "id": "51dc12eb-0b27-ad47-be1e-ea03cd9a11e5",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/8"
+          ]
         },
         {
           "episode_number": 9,
           "filler": false,
           "recap": false,
           "title": "Episode 9",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/9"
-          },
+          "images": [],
           "streaming": {},
           "id": "2736e0e6-5de0-b902-4d0d-6a89f16c346b",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/9"
+          ]
         },
         {
           "episode_number": 10,
           "filler": false,
           "recap": false,
           "title": "Episode 10",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/10"
-          },
+          "images": [],
           "streaming": {},
           "id": "e92a83c9-8dc9-e2e5-5a7a-29f6cbb4fb52",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/10"
+          ]
         },
         {
           "episode_number": 11,
           "filler": false,
           "recap": false,
           "title": "Episode 11",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/11"
-          },
+          "images": [],
           "streaming": {},
           "id": "eee4af98-1e75-4094-e12e-67a9b673650f",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/11"
+          ]
         },
         {
           "episode_number": 12,
           "filler": false,
           "recap": false,
           "title": "Episode 12",
-          "thumbnails": [],
-          "episode_pages": {
-            "mal": "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/12"
-          },
+          "images": [],
           "streaming": {},
           "id": "536bcca9-c916-b3e2-890e-cb10d29de98d",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": [
+            "https://myanimelist.net/anime/61587/Omae_Gotoki_ga_Maou_ni_Kateru_to_Omouna_to_Yuusha_Party_wo_Tsuihou_sareta_node_Outo_de_Kimama_ni_Kurashitai/episode/12"
+          ]
         }
       ],
       "anime": {
@@ -8739,7 +8743,7 @@
           "Prophecy",
           "Shoujo-ai"
         ],
-        "relations": [
+        "related_source_material": [
           {
             "title": "\"Omae Gotoki ga Maou ni Kateru to Omouna\" to Yuusha Party wo Tsuihou sareta node, Outo de Kimama ni Kurashitai the Comic",
             "relation_type": "ADAPTATION",
@@ -8937,11 +8941,11 @@
           "filler": false,
           "recap": false,
           "title": "\"Parade\" de Satie",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "92e8e16b-de9d-e892-75f0-430fa5019a78",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -9059,9 +9063,6 @@
           "from": "2016-05-01T00:00:00Z",
           "string": "May 2016"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 840,
         "external_links": {
           "official": "http://www.yamamura-animation.jp/parade.html",
@@ -9080,9 +9081,6 @@
             "https://cdn.anidb.net/images/main/228791.jpg"
           ],
           "banners": []
-        },
-        "premiere_dates": {
-          "original": "2016-05-01"
         },
         "score": {
           "arithmetic_geometric_mean": 5.596835011311798,
@@ -9164,14 +9162,7 @@
                 }
               }
             ]
-          },
-          "studios": [
-            {
-              "name": "Yamamura Animation, Inc.",
-              "type": "animation_studio",
-              "url": "https://myanimelist.net/anime/producer/1055/Yamamura_Animation_Inc"
-            }
-          ]
+          }
         },
         "statistics": {
           "mal": {
@@ -9213,7 +9204,18 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bc9",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2016-05-01"
+        },
+        "studios": [
+          {
+            "name": "Yamamura Animation, Inc.",
+            "sources": [
+              "https://myanimelist.net/anime/producer/1055/Yamamura_Animation_Inc"
+            ]
+          }
+        ]
       }
     },
     {
@@ -9227,9 +9229,9 @@
           "images": [
             "https://cdn.myanimelist.net/images/characters/10/289627.jpg?s=b97db39e3126c4cc184a764059abe0f6"
           ],
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bcb",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -9238,11 +9240,11 @@
           "filler": false,
           "recap": false,
           "title": "Episode 1",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "adc79e72-6222-a2f2-0e68-bc683c30ae15",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -9307,9 +9309,6 @@
           "from": "2022-11-04T00:00:00Z",
           "string": "Nov 4, 2022"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 60,
         "external_links": {
           "youtube": "https://www.youtube.com/watch?v=JGUJB37z14M"
@@ -9360,13 +9359,7 @@
                 }
               }
             ]
-          },
-          "studios": [
-            {
-              "name": "pie in the sky",
-              "type": "animation_studio"
-            }
-          ]
+          }
         },
         "statistics": {
           "mal": {
@@ -9392,7 +9385,14 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bca",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {},
+        "studios": [
+          {
+            "name": "pie in the sky",
+            "sources": []
+          }
+        ]
       }
     },
     {
@@ -9404,11 +9404,11 @@
           "recap": false,
           "season_number": 1,
           "title": "\"R100\" x Mameshiba Original Manners",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "56dcdac7-4992-e14a-6ec7-e8331c305767",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -9530,30 +9530,30 @@
         {
           "name": "Hana KATSURAGI",
           "role": "Main",
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bce",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Minae ONO",
           "role": "Main",
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bcf",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Nadeshiko IGARASHI",
           "role": "Main",
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bd0",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         },
         {
           "name": "Nanase HAGIWARA",
           "role": "Main",
-          "character_pages": {},
           "id": "019bce3b-d48f-21b1-f024-2090b4688bd1",
-          "entity_type": "character"
+          "entity_type": "character",
+          "sources": []
         }
       ],
       "episodes": [
@@ -9564,11 +9564,11 @@
           "filler": false,
           "recap": false,
           "title": "\"Star\"t",
-          "thumbnails": [],
-          "episode_pages": {},
+          "images": [],
           "streaming": {},
           "id": "729c681c-3488-dff1-88fa-c73044cea980",
-          "entity_type": "episode"
+          "entity_type": "episode",
+          "sources": []
         }
       ],
       "anime": {
@@ -9853,13 +9853,7 @@
           "median": 5.959183673469387
         },
         "staff_data": {
-          "production_staff": {},
-          "studios": [
-            {
-              "name": "Akatsuki",
-              "type": "Animation Studio"
-            }
-          ]
+          "production_staff": {}
         },
         "statistics": {
           "mal": {
@@ -9883,7 +9877,13 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bcd",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "studios": [
+          {
+            "name": "Akatsuki",
+            "sources": []
+          }
+        ]
       }
     },
     {
@@ -9929,9 +9929,6 @@
           "from": "2017-10-05T00:00:00Z",
           "string": "Oct 5, 2017"
         },
-        "delay_information": {
-          "delayed_timetable": false
-        },
         "duration": 60,
         "external_links": {
           "officialsite": "https://vimeo.com/236906001",
@@ -9949,11 +9946,6 @@
           "banners": [
             "https://s4.anilist.co/file/anilistcdn/media/anime/banner/113199-PCDcpY5xAgNI.jpg"
           ]
-        },
-        "premiere_dates": {
-          "original": "2017-10-05",
-          "sub": "2017-10-05",
-          "dub": "2017-10-05"
         },
         "score": {
           "arithmetic_geometric_mean": 4.1432847839681575,
@@ -10018,7 +10010,12 @@
         },
         "id": "019bce3b-d48f-21b1-f024-2090b4688bd2",
         "episode_count": 1,
-        "entity_type": "anime"
+        "entity_type": "anime",
+        "broadcast": {
+          "premiere_jp": "2017-10-05",
+          "premiere_sub": "2017-10-05",
+          "premiere_dub": "2017-10-05"
+        }
       }
     }
   ]

@@ -19,7 +19,7 @@ related:
 The Echora backend uses event-driven architecture to decouple services and eliminate schema duplication. Two event publishers exist with distinct responsibilities:
 
 - **Ingestion Pipeline**: one-time full enrichment only — publishes `anime.enriched` after all 5 stages complete
-- **Update Worker**: ongoing partial updates — publishes `anime.episode.aired` and `anime.updated` on schedule
+- **Update Service**: ongoing partial updates — publishes `anime.episode.aired`, `anime.updated`, and `character.updated` on schedule (Temporal-based)
 
 > [!important] Key Benefit
 > **Zero schema duplication** - Only PostgreSQL Service owns SQL models. Both pipeline and worker work purely with Protobuf events.
@@ -29,7 +29,7 @@ The Echora backend uses event-driven architecture to decouple services and elimi
 ```mermaid
 graph TB
     Ingestion[Ingestion Pipeline<br/>Python<br/>⟨initial enrichment only⟩]
-    UpdateWorker[Update Worker<br/>Python<br/>⟨ongoing partial updates⟩]
+    UpdateService[Update Service<br/>Python + Temporal<br/>⟨ongoing partial updates⟩]
     NATS[NATS JetStream<br/>Message Bus]
     PG[(PostgreSQL<br/>Database)]
     Qdrant[Qdrant Service<br/>Python]
@@ -42,8 +42,8 @@ graph TB
     end
 
     Ingestion -->|anime.enriched| NATS
-    UpdateWorker -->|anime.episode.aired<br/>anime.updated| NATS
-    UpdateWorker -->|query schedule\nGraphQL| Consumer
+    UpdateService -->|anime.episode.aired<br/>anime.updated<br/>character.updated| NATS
+    UpdateService -->|query schedule\nGraphQL| Consumer
     NATS -->|consume| Consumer
     Consumer -->|write + insert outbox\nsame transaction| PG
     Consumer --> Outbox
@@ -53,7 +53,7 @@ graph TB
     Qdrant -->|update payload / vector| QD
 
     style Ingestion fill:#e1f5ff
-    style UpdateWorker fill:#e1f5ff
+    style UpdateService fill:#e1f5ff
     style NATS fill:#fff4e1
     style Qdrant fill:#f0e1ff
     style Outbox fill:#ffe1e1
@@ -284,10 +284,11 @@ async def consume_anime_created_events():
 ## Event Subjects Hierarchy
 
 ```
-# Published by Ingestion Pipeline / Update Worker → consumed by PostgreSQL Service
+# Published by Ingestion Pipeline / Update Service → consumed by PostgreSQL Service
 anime.enriched          # Initial full enrichment (ingestion pipeline)
-anime.updated           # Score/status change request (update worker)
-anime.episode.aired     # New episode verified (update worker)
+anime.updated           # Score/status change request (update service)
+anime.episode.aired     # New episode verified (update service)
+character.updated       # Character data change (update service)
 
 # Published by PostgreSQL Service → consumed by Qdrant Service
 anime.created           # After initial ingest committed to DB
@@ -378,7 +379,7 @@ Consumer: qdrant-consumer
   Batch size:   10
   DLQ subject:  anime.dlq.sync
   # Only consumes events published by PostgreSQL Service (via outbox)
-  # Never consumes Update Worker events directly
+  # Never consumes Update Service events directly
 ```
 
 ## Error Handling
@@ -744,20 +745,18 @@ fn validate_anime_update(
 
 ---
 
-## Partial Update Worker
+## Update Service
 
-`apps/update_worker/` handles all ongoing partial updates — new episodes, score changes, and status transitions. The ingestion pipeline handles initial full enrichment only.
+The [[update_service|Update Service]] (Temporal-based) handles all ongoing partial updates — new episodes, score changes, status transitions, character data, and more. The ingestion pipeline handles initial full enrichment only.
 
-See [[update_worker|Update Worker]] for full details: sliding window logic, score sync job, configuration, and error handling.
-
-**Publishes**: `anime.episode.aired` (episode verified aired), `anime.updated` (score or status changed)
-**Queries**: PostgreSQL Service (GraphQL) for broadcast schedules
+**Publishes**: `anime.episode.aired`, `anime.updated`, `character.updated`
+**Queries**: PostgreSQL Service (GraphQL) for broadcast schedules and entity state
 
 ---
 
 ## Related Documentation
 
-- [[update_worker|Update Worker]] - Sliding window, score sync, episode air tracking
+- [[update_service|Update Service]] - All partial update workflows (Temporal-based)
 - [[Database Schema|Database Schema]] - Complete DDL and outbox table
 - [[event_schema_specification|Event Schema Specification]] - Complete protobuf definitions
 - [[postgres_integration_architecture_decision|PostgreSQL Architecture]] - Service design and rationale

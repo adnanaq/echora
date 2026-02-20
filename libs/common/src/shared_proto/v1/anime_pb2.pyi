@@ -38,16 +38,20 @@ class AnimeType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ANIME_TYPE_MUSIC: _ClassVar[AnimeType]
     ANIME_TYPE_PV: _ClassVar[AnimeType]
 
-class AnimeSourceMaterial(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+class SourceMaterialType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
-    ANIME_SOURCE_MATERIAL_UNSPECIFIED: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_ORIGINAL: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_LIGHT_NOVEL: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_MANGA: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_OTHER: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_MIXED_MEDIA: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_UNKNOWN: _ClassVar[AnimeSourceMaterial]
-    ANIME_SOURCE_MATERIAL_GAME: _ClassVar[AnimeSourceMaterial]
+    SOURCE_MATERIAL_TYPE_UNSPECIFIED: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_MANGA: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_LIGHT_NOVEL: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_NOVEL: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_VISUAL_NOVEL: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_GAME: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_WEB_MANGA: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_WEB_NOVEL: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_OTHER: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_ORIGINAL: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_MIXED_MEDIA: _ClassVar[SourceMaterialType]
+    SOURCE_MATERIAL_TYPE_UNKNOWN: _ClassVar[SourceMaterialType]
 
 class AnimeRating(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -66,6 +70,36 @@ class AnimeSeason(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ANIME_SEASON_SUMMER: _ClassVar[AnimeSeason]
     ANIME_SEASON_FALL: _ClassVar[AnimeSeason]
     ANIME_SEASON_WINTER: _ClassVar[AnimeSeason]
+
+class CharacterRole(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CHARACTER_ROLE_UNSPECIFIED: _ClassVar[CharacterRole]
+    CHARACTER_ROLE_MAIN: _ClassVar[CharacterRole]
+    CHARACTER_ROLE_SUPPORTING: _ClassVar[CharacterRole]
+    CHARACTER_ROLE_BACKGROUND: _ClassVar[CharacterRole]
+
+class AnimeRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    ANIME_RELATION_TYPE_UNSPECIFIED: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SEQUEL: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_PREQUEL: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SIDE_STORY: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_ALTERNATIVE: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SUMMARY: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_FULL_STORY: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_CHARACTER: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_SPIN_OFF: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_ADAPTATION: _ClassVar[AnimeRelationType]
+    ANIME_RELATION_TYPE_OTHER: _ClassVar[AnimeRelationType]
+
+class SourceMaterialRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    SOURCE_MATERIAL_RELATION_TYPE_UNSPECIFIED: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_ADAPTATION: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_SOURCE: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF: _ClassVar[SourceMaterialRelationType]
+    SOURCE_MATERIAL_RELATION_TYPE_OTHER: _ClassVar[SourceMaterialRelationType]
 ANIME_STATUS_UNSPECIFIED: AnimeStatus
 ANIME_STATUS_FINISHED: AnimeStatus
 ANIME_STATUS_UPCOMING: AnimeStatus
@@ -84,14 +118,18 @@ ANIME_TYPE_TV: AnimeType
 ANIME_TYPE_UNKNOWN: AnimeType
 ANIME_TYPE_MUSIC: AnimeType
 ANIME_TYPE_PV: AnimeType
-ANIME_SOURCE_MATERIAL_UNSPECIFIED: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_ORIGINAL: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_LIGHT_NOVEL: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_MANGA: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_OTHER: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_MIXED_MEDIA: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_UNKNOWN: AnimeSourceMaterial
-ANIME_SOURCE_MATERIAL_GAME: AnimeSourceMaterial
+SOURCE_MATERIAL_TYPE_UNSPECIFIED: SourceMaterialType
+SOURCE_MATERIAL_TYPE_MANGA: SourceMaterialType
+SOURCE_MATERIAL_TYPE_LIGHT_NOVEL: SourceMaterialType
+SOURCE_MATERIAL_TYPE_NOVEL: SourceMaterialType
+SOURCE_MATERIAL_TYPE_VISUAL_NOVEL: SourceMaterialType
+SOURCE_MATERIAL_TYPE_GAME: SourceMaterialType
+SOURCE_MATERIAL_TYPE_WEB_MANGA: SourceMaterialType
+SOURCE_MATERIAL_TYPE_WEB_NOVEL: SourceMaterialType
+SOURCE_MATERIAL_TYPE_OTHER: SourceMaterialType
+SOURCE_MATERIAL_TYPE_ORIGINAL: SourceMaterialType
+SOURCE_MATERIAL_TYPE_MIXED_MEDIA: SourceMaterialType
+SOURCE_MATERIAL_TYPE_UNKNOWN: SourceMaterialType
 ANIME_RATING_UNSPECIFIED: AnimeRating
 ANIME_RATING_G: AnimeRating
 ANIME_RATING_PG: AnimeRating
@@ -104,6 +142,27 @@ ANIME_SEASON_SPRING: AnimeSeason
 ANIME_SEASON_SUMMER: AnimeSeason
 ANIME_SEASON_FALL: AnimeSeason
 ANIME_SEASON_WINTER: AnimeSeason
+CHARACTER_ROLE_UNSPECIFIED: CharacterRole
+CHARACTER_ROLE_MAIN: CharacterRole
+CHARACTER_ROLE_SUPPORTING: CharacterRole
+CHARACTER_ROLE_BACKGROUND: CharacterRole
+ANIME_RELATION_TYPE_UNSPECIFIED: AnimeRelationType
+ANIME_RELATION_TYPE_SEQUEL: AnimeRelationType
+ANIME_RELATION_TYPE_PREQUEL: AnimeRelationType
+ANIME_RELATION_TYPE_SIDE_STORY: AnimeRelationType
+ANIME_RELATION_TYPE_ALTERNATIVE: AnimeRelationType
+ANIME_RELATION_TYPE_SUMMARY: AnimeRelationType
+ANIME_RELATION_TYPE_FULL_STORY: AnimeRelationType
+ANIME_RELATION_TYPE_CHARACTER: AnimeRelationType
+ANIME_RELATION_TYPE_SPIN_OFF: AnimeRelationType
+ANIME_RELATION_TYPE_ADAPTATION: AnimeRelationType
+ANIME_RELATION_TYPE_OTHER: AnimeRelationType
+SOURCE_MATERIAL_RELATION_TYPE_UNSPECIFIED: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_ADAPTATION: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_SOURCE: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF: SourceMaterialRelationType
+SOURCE_MATERIAL_RELATION_TYPE_OTHER: SourceMaterialRelationType
 
 class StringList(_message.Message):
     __slots__ = ("values",)
@@ -121,38 +180,6 @@ class TrailerEntry(_message.Message):
     thumbnail_url: str
     def __init__(self, url: _Optional[str] = ..., title: _Optional[str] = ..., thumbnail_url: _Optional[str] = ...) -> None: ...
 
-class BroadcastSchedule(_message.Message):
-    __slots__ = ("jpn_time", "sub_time", "dub_time")
-    JPN_TIME_FIELD_NUMBER: _ClassVar[int]
-    SUB_TIME_FIELD_NUMBER: _ClassVar[int]
-    DUB_TIME_FIELD_NUMBER: _ClassVar[int]
-    jpn_time: str
-    sub_time: str
-    dub_time: str
-    def __init__(self, jpn_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ...) -> None: ...
-
-class DelayInformation(_message.Message):
-    __slots__ = ("delayed_timetable", "delayed_from", "delayed_until", "delay_reason")
-    DELAYED_TIMETABLE_FIELD_NUMBER: _ClassVar[int]
-    DELAYED_FROM_FIELD_NUMBER: _ClassVar[int]
-    DELAYED_UNTIL_FIELD_NUMBER: _ClassVar[int]
-    DELAY_REASON_FIELD_NUMBER: _ClassVar[int]
-    delayed_timetable: bool
-    delayed_from: str
-    delayed_until: str
-    delay_reason: str
-    def __init__(self, delayed_timetable: bool = ..., delayed_from: _Optional[str] = ..., delayed_until: _Optional[str] = ..., delay_reason: _Optional[str] = ...) -> None: ...
-
-class PremiereDates(_message.Message):
-    __slots__ = ("original", "sub", "dub")
-    ORIGINAL_FIELD_NUMBER: _ClassVar[int]
-    SUB_FIELD_NUMBER: _ClassVar[int]
-    DUB_FIELD_NUMBER: _ClassVar[int]
-    original: str
-    sub: str
-    dub: str
-    def __init__(self, original: _Optional[str] = ..., sub: _Optional[str] = ..., dub: _Optional[str] = ...) -> None: ...
-
 class AiredDates(_message.Message):
     __slots__ = ("from_date", "to", "string")
     FROM_DATE_FIELD_NUMBER: _ClassVar[int]
@@ -164,14 +191,40 @@ class AiredDates(_message.Message):
     def __init__(self, from_date: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., to: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., string: _Optional[str] = ...) -> None: ...
 
 class Broadcast(_message.Message):
-    __slots__ = ("day", "time", "timezone")
+    __slots__ = ("day", "time", "timezone", "jp_time", "sub_time", "dub_time", "sub_delay_days", "dub_delay_days", "premiere_jp", "premiere_sub", "premiere_dub")
     DAY_FIELD_NUMBER: _ClassVar[int]
     TIME_FIELD_NUMBER: _ClassVar[int]
     TIMEZONE_FIELD_NUMBER: _ClassVar[int]
+    JP_TIME_FIELD_NUMBER: _ClassVar[int]
+    SUB_TIME_FIELD_NUMBER: _ClassVar[int]
+    DUB_TIME_FIELD_NUMBER: _ClassVar[int]
+    SUB_DELAY_DAYS_FIELD_NUMBER: _ClassVar[int]
+    DUB_DELAY_DAYS_FIELD_NUMBER: _ClassVar[int]
+    PREMIERE_JP_FIELD_NUMBER: _ClassVar[int]
+    PREMIERE_SUB_FIELD_NUMBER: _ClassVar[int]
+    PREMIERE_DUB_FIELD_NUMBER: _ClassVar[int]
     day: str
     time: str
     timezone: str
-    def __init__(self, day: _Optional[str] = ..., time: _Optional[str] = ..., timezone: _Optional[str] = ...) -> None: ...
+    jp_time: str
+    sub_time: str
+    dub_time: str
+    sub_delay_days: int
+    dub_delay_days: int
+    premiere_jp: str
+    premiere_sub: str
+    premiere_dub: str
+    def __init__(self, day: _Optional[str] = ..., time: _Optional[str] = ..., timezone: _Optional[str] = ..., jp_time: _Optional[str] = ..., sub_time: _Optional[str] = ..., dub_time: _Optional[str] = ..., sub_delay_days: _Optional[int] = ..., dub_delay_days: _Optional[int] = ..., premiere_jp: _Optional[str] = ..., premiere_sub: _Optional[str] = ..., premiere_dub: _Optional[str] = ...) -> None: ...
+
+class AnimeHiatus(_message.Message):
+    __slots__ = ("reason", "hiatus_from", "hiatus_until")
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    HIATUS_FROM_FIELD_NUMBER: _ClassVar[int]
+    HIATUS_UNTIL_FIELD_NUMBER: _ClassVar[int]
+    reason: str
+    hiatus_from: str
+    hiatus_until: str
+    def __init__(self, reason: _Optional[str] = ..., hiatus_from: _Optional[str] = ..., hiatus_until: _Optional[str] = ...) -> None: ...
 
 class EnrichmentMetadata(_message.Message):
     __slots__ = ("source", "enriched_at", "success", "error_message")
@@ -185,25 +238,29 @@ class EnrichmentMetadata(_message.Message):
     error_message: str
     def __init__(self, source: _Optional[str] = ..., enriched_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., success: bool = ..., error_message: _Optional[str] = ...) -> None: ...
 
-class RelationEntry(_message.Message):
-    __slots__ = ("title", "relation_type", "url")
+class SourceMaterial(_message.Message):
+    __slots__ = ("title", "relation_type", "url", "type")
     TITLE_FIELD_NUMBER: _ClassVar[int]
     RELATION_TYPE_FIELD_NUMBER: _ClassVar[int]
     URL_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
     title: str
-    relation_type: str
+    relation_type: SourceMaterialRelationType
     url: str
-    def __init__(self, title: _Optional[str] = ..., relation_type: _Optional[str] = ..., url: _Optional[str] = ...) -> None: ...
+    type: SourceMaterialType
+    def __init__(self, title: _Optional[str] = ..., relation_type: _Optional[_Union[SourceMaterialRelationType, str]] = ..., url: _Optional[str] = ..., type: _Optional[_Union[SourceMaterialType, str]] = ...) -> None: ...
 
 class RelatedAnimeEntry(_message.Message):
-    __slots__ = ("title", "relation_type", "url")
+    __slots__ = ("title", "relation_type", "url", "type")
     TITLE_FIELD_NUMBER: _ClassVar[int]
     RELATION_TYPE_FIELD_NUMBER: _ClassVar[int]
     URL_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
     title: str
-    relation_type: str
+    relation_type: AnimeRelationType
     url: str
-    def __init__(self, title: _Optional[str] = ..., relation_type: _Optional[str] = ..., url: _Optional[str] = ...) -> None: ...
+    type: AnimeType
+    def __init__(self, title: _Optional[str] = ..., relation_type: _Optional[_Union[AnimeRelationType, str]] = ..., url: _Optional[str] = ..., type: _Optional[_Union[AnimeType, str]] = ...) -> None: ...
 
 class StreamingEntry(_message.Message):
     __slots__ = ("platform", "url", "region", "free", "premium_required", "dub_available", "subtitle_languages")
@@ -328,14 +385,14 @@ class VoiceActor(_message.Message):
     def __init__(self, staff_ids: _Optional[_Mapping[str, int]] = ..., name: _Optional[str] = ..., native_name: _Optional[str] = ..., character_assignments: _Optional[_Iterable[str]] = ..., image: _Optional[str] = ..., biography: _Optional[str] = ..., birth_date: _Optional[str] = ..., blood_type: _Optional[str] = ...) -> None: ...
 
 class CompanyEntry(_message.Message):
-    __slots__ = ("name", "type", "url")
+    __slots__ = ("name", "sources", "description")
     NAME_FIELD_NUMBER: _ClassVar[int]
-    TYPE_FIELD_NUMBER: _ClassVar[int]
-    URL_FIELD_NUMBER: _ClassVar[int]
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     name: str
-    type: str
-    url: str
-    def __init__(self, name: _Optional[str] = ..., type: _Optional[str] = ..., url: _Optional[str] = ...) -> None: ...
+    sources: _containers.RepeatedScalarFieldContainer[str]
+    description: str
+    def __init__(self, name: _Optional[str] = ..., sources: _Optional[_Iterable[str]] = ..., description: _Optional[str] = ...) -> None: ...
 
 class StaffMemberList(_message.Message):
     __slots__ = ("items",)
@@ -363,18 +420,14 @@ class VoiceActors(_message.Message):
     def __init__(self, japanese: _Optional[_Iterable[_Union[VoiceActor, _Mapping]]] = ...) -> None: ...
 
 class StaffData(_message.Message):
-    __slots__ = ("production_staff", "studios", "producers", "licensors", "voice_actors")
+    __slots__ = ("production_staff", "licensors", "voice_actors")
     PRODUCTION_STAFF_FIELD_NUMBER: _ClassVar[int]
-    STUDIOS_FIELD_NUMBER: _ClassVar[int]
-    PRODUCERS_FIELD_NUMBER: _ClassVar[int]
     LICENSORS_FIELD_NUMBER: _ClassVar[int]
     VOICE_ACTORS_FIELD_NUMBER: _ClassVar[int]
     production_staff: ProductionStaff
-    studios: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
-    producers: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
     licensors: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
     voice_actors: VoiceActors
-    def __init__(self, production_staff: _Optional[_Union[ProductionStaff, _Mapping]] = ..., studios: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., producers: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., licensors: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., voice_actors: _Optional[_Union[VoiceActors, _Mapping]] = ...) -> None: ...
+    def __init__(self, production_staff: _Optional[_Union[ProductionStaff, _Mapping]] = ..., licensors: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., voice_actors: _Optional[_Union[VoiceActors, _Mapping]] = ...) -> None: ...
 
 class ContextualRank(_message.Message):
     __slots__ = ("rank", "type", "format", "year", "season", "all_time")
@@ -421,14 +474,7 @@ class ScoreCalculations(_message.Message):
     def __init__(self, arithmetic_geometric_mean: _Optional[float] = ..., arithmetic_mean: _Optional[float] = ..., median: _Optional[float] = ...) -> None: ...
 
 class Character(_message.Message):
-    __slots__ = ("age", "description", "eye_color", "favorites", "gender", "hair_color", "id", "entity_type", "name", "name_native", "role", "anime_ids", "character_traits", "images", "name_variations", "nicknames", "voice_actors", "character_pages")
-    class CharacterPagesEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    __slots__ = ("age", "description", "eye_color", "favorites", "gender", "hair_color", "id", "entity_type", "name", "name_native", "role", "anime_ids", "character_traits", "images", "name_variations", "nicknames", "voice_actors", "sources")
     AGE_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     EYE_COLOR_FIELD_NUMBER: _ClassVar[int]
@@ -446,7 +492,7 @@ class Character(_message.Message):
     NAME_VARIATIONS_FIELD_NUMBER: _ClassVar[int]
     NICKNAMES_FIELD_NUMBER: _ClassVar[int]
     VOICE_ACTORS_FIELD_NUMBER: _ClassVar[int]
-    CHARACTER_PAGES_FIELD_NUMBER: _ClassVar[int]
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
     age: str
     description: str
     eye_color: str
@@ -464,18 +510,11 @@ class Character(_message.Message):
     name_variations: _containers.RepeatedScalarFieldContainer[str]
     nicknames: _containers.RepeatedScalarFieldContainer[str]
     voice_actors: _containers.RepeatedCompositeFieldContainer[SimpleVoiceActor]
-    character_pages: _containers.ScalarMap[str, str]
-    def __init__(self, age: _Optional[str] = ..., description: _Optional[str] = ..., eye_color: _Optional[str] = ..., favorites: _Optional[int] = ..., gender: _Optional[str] = ..., hair_color: _Optional[str] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., role: _Optional[str] = ..., anime_ids: _Optional[_Iterable[str]] = ..., character_traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[SimpleVoiceActor, _Mapping]]] = ..., character_pages: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    sources: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, age: _Optional[str] = ..., description: _Optional[str] = ..., eye_color: _Optional[str] = ..., favorites: _Optional[int] = ..., gender: _Optional[str] = ..., hair_color: _Optional[str] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., role: _Optional[str] = ..., anime_ids: _Optional[_Iterable[str]] = ..., character_traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[SimpleVoiceActor, _Mapping]]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Episode(_message.Message):
-    __slots__ = ("aired", "anime_id", "description", "duration", "episode_number", "filler", "id", "entity_type", "recap", "score", "season_number", "synopsis", "title", "title_japanese", "title_romaji", "thumbnails", "episode_pages", "streaming")
-    class EpisodePagesEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    __slots__ = ("aired", "anime_id", "description", "duration", "episode_number", "filler", "id", "entity_type", "recap", "score", "season_number", "synopsis", "title", "title_japanese", "title_romaji", "images", "streaming", "sources")
     class StreamingEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -498,9 +537,9 @@ class Episode(_message.Message):
     TITLE_FIELD_NUMBER: _ClassVar[int]
     TITLE_JAPANESE_FIELD_NUMBER: _ClassVar[int]
     TITLE_ROMAJI_FIELD_NUMBER: _ClassVar[int]
-    THUMBNAILS_FIELD_NUMBER: _ClassVar[int]
-    EPISODE_PAGES_FIELD_NUMBER: _ClassVar[int]
+    IMAGES_FIELD_NUMBER: _ClassVar[int]
     STREAMING_FIELD_NUMBER: _ClassVar[int]
+    SOURCES_FIELD_NUMBER: _ClassVar[int]
     aired: _timestamp_pb2.Timestamp
     anime_id: str
     description: str
@@ -516,13 +555,13 @@ class Episode(_message.Message):
     title: str
     title_japanese: str
     title_romaji: str
-    thumbnails: _containers.RepeatedScalarFieldContainer[str]
-    episode_pages: _containers.ScalarMap[str, str]
+    images: _containers.RepeatedScalarFieldContainer[str]
     streaming: _containers.ScalarMap[str, str]
-    def __init__(self, aired: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., anime_id: _Optional[str] = ..., description: _Optional[str] = ..., duration: _Optional[int] = ..., episode_number: _Optional[int] = ..., filler: bool = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., recap: bool = ..., score: _Optional[float] = ..., season_number: _Optional[int] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_japanese: _Optional[str] = ..., title_romaji: _Optional[str] = ..., thumbnails: _Optional[_Iterable[str]] = ..., episode_pages: _Optional[_Mapping[str, str]] = ..., streaming: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    sources: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, aired: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., anime_id: _Optional[str] = ..., description: _Optional[str] = ..., duration: _Optional[int] = ..., episode_number: _Optional[int] = ..., filler: bool = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., recap: bool = ..., score: _Optional[float] = ..., season_number: _Optional[int] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_japanese: _Optional[str] = ..., title_romaji: _Optional[str] = ..., images: _Optional[_Iterable[str]] = ..., streaming: _Optional[_Mapping[str, str]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Anime(_message.Message):
-    __slots__ = ("background", "duration", "episode_count", "id", "entity_type", "month", "nsfw", "rating", "season", "similarity_score", "source_material", "status", "synopsis", "title", "title_english", "title_japanese", "type", "year", "content_warnings", "demographics", "ending_themes", "genres", "opening_themes", "related_anime", "relations", "sources", "streaming_info", "streaming_licenses", "synonyms", "tags", "themes", "trailers", "aired_dates", "broadcast", "broadcast_schedule", "delay_information", "enrichment_metadata", "external_links", "images", "popularity_trends", "premiere_dates", "score", "staff_data", "statistics")
+    __slots__ = ("background", "duration", "episode_count", "id", "entity_type", "month", "nsfw", "rating", "season", "similarity_score", "source_material", "status", "synopsis", "title", "title_english", "title_japanese", "type", "year", "content_warnings", "demographics", "ending_themes", "genres", "opening_themes", "related_anime", "related_source_material", "sources", "streaming_info", "streaming_licenses", "synonyms", "tags", "themes", "trailers", "producers", "studios", "aired_dates", "broadcast", "enrichment_metadata", "external_links", "hiatus", "images", "popularity_trends", "score", "staff_data", "statistics")
     class ExternalLinksEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -568,7 +607,7 @@ class Anime(_message.Message):
     GENRES_FIELD_NUMBER: _ClassVar[int]
     OPENING_THEMES_FIELD_NUMBER: _ClassVar[int]
     RELATED_ANIME_FIELD_NUMBER: _ClassVar[int]
-    RELATIONS_FIELD_NUMBER: _ClassVar[int]
+    RELATED_SOURCE_MATERIAL_FIELD_NUMBER: _ClassVar[int]
     SOURCES_FIELD_NUMBER: _ClassVar[int]
     STREAMING_INFO_FIELD_NUMBER: _ClassVar[int]
     STREAMING_LICENSES_FIELD_NUMBER: _ClassVar[int]
@@ -576,15 +615,15 @@ class Anime(_message.Message):
     TAGS_FIELD_NUMBER: _ClassVar[int]
     THEMES_FIELD_NUMBER: _ClassVar[int]
     TRAILERS_FIELD_NUMBER: _ClassVar[int]
+    PRODUCERS_FIELD_NUMBER: _ClassVar[int]
+    STUDIOS_FIELD_NUMBER: _ClassVar[int]
     AIRED_DATES_FIELD_NUMBER: _ClassVar[int]
     BROADCAST_FIELD_NUMBER: _ClassVar[int]
-    BROADCAST_SCHEDULE_FIELD_NUMBER: _ClassVar[int]
-    DELAY_INFORMATION_FIELD_NUMBER: _ClassVar[int]
     ENRICHMENT_METADATA_FIELD_NUMBER: _ClassVar[int]
     EXTERNAL_LINKS_FIELD_NUMBER: _ClassVar[int]
+    HIATUS_FIELD_NUMBER: _ClassVar[int]
     IMAGES_FIELD_NUMBER: _ClassVar[int]
     POPULARITY_TRENDS_FIELD_NUMBER: _ClassVar[int]
-    PREMIERE_DATES_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
     STAFF_DATA_FIELD_NUMBER: _ClassVar[int]
     STATISTICS_FIELD_NUMBER: _ClassVar[int]
@@ -598,7 +637,7 @@ class Anime(_message.Message):
     rating: AnimeRating
     season: AnimeSeason
     similarity_score: float
-    source_material: AnimeSourceMaterial
+    source_material: SourceMaterialType
     status: AnimeStatus
     synopsis: str
     title: str
@@ -612,7 +651,7 @@ class Anime(_message.Message):
     genres: _containers.RepeatedScalarFieldContainer[str]
     opening_themes: _containers.RepeatedCompositeFieldContainer[ThemeSong]
     related_anime: _containers.RepeatedCompositeFieldContainer[RelatedAnimeEntry]
-    relations: _containers.RepeatedCompositeFieldContainer[RelationEntry]
+    related_source_material: _containers.RepeatedCompositeFieldContainer[SourceMaterial]
     sources: _containers.RepeatedScalarFieldContainer[str]
     streaming_info: _containers.RepeatedCompositeFieldContainer[StreamingEntry]
     streaming_licenses: _containers.RepeatedScalarFieldContainer[str]
@@ -620,19 +659,19 @@ class Anime(_message.Message):
     tags: _containers.RepeatedScalarFieldContainer[str]
     themes: _containers.RepeatedCompositeFieldContainer[ThemeEntry]
     trailers: _containers.RepeatedCompositeFieldContainer[TrailerEntry]
+    producers: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
+    studios: _containers.RepeatedCompositeFieldContainer[CompanyEntry]
     aired_dates: AiredDates
     broadcast: Broadcast
-    broadcast_schedule: BroadcastSchedule
-    delay_information: DelayInformation
     enrichment_metadata: EnrichmentMetadata
     external_links: _containers.ScalarMap[str, str]
+    hiatus: AnimeHiatus
     images: _containers.MessageMap[str, StringList]
     popularity_trends: _struct_pb2.Struct
-    premiere_dates: PremiereDates
     score: ScoreCalculations
     staff_data: StaffData
     statistics: _containers.MessageMap[str, Statistics]
-    def __init__(self, background: _Optional[str] = ..., duration: _Optional[int] = ..., episode_count: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., month: _Optional[str] = ..., nsfw: bool = ..., rating: _Optional[_Union[AnimeRating, str]] = ..., season: _Optional[_Union[AnimeSeason, str]] = ..., similarity_score: _Optional[float] = ..., source_material: _Optional[_Union[AnimeSourceMaterial, str]] = ..., status: _Optional[_Union[AnimeStatus, str]] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_english: _Optional[str] = ..., title_japanese: _Optional[str] = ..., type: _Optional[_Union[AnimeType, str]] = ..., year: _Optional[int] = ..., content_warnings: _Optional[_Iterable[str]] = ..., demographics: _Optional[_Iterable[str]] = ..., ending_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., genres: _Optional[_Iterable[str]] = ..., opening_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., related_anime: _Optional[_Iterable[_Union[RelatedAnimeEntry, _Mapping]]] = ..., relations: _Optional[_Iterable[_Union[RelationEntry, _Mapping]]] = ..., sources: _Optional[_Iterable[str]] = ..., streaming_info: _Optional[_Iterable[_Union[StreamingEntry, _Mapping]]] = ..., streaming_licenses: _Optional[_Iterable[str]] = ..., synonyms: _Optional[_Iterable[str]] = ..., tags: _Optional[_Iterable[str]] = ..., themes: _Optional[_Iterable[_Union[ThemeEntry, _Mapping]]] = ..., trailers: _Optional[_Iterable[_Union[TrailerEntry, _Mapping]]] = ..., aired_dates: _Optional[_Union[AiredDates, _Mapping]] = ..., broadcast: _Optional[_Union[Broadcast, _Mapping]] = ..., broadcast_schedule: _Optional[_Union[BroadcastSchedule, _Mapping]] = ..., delay_information: _Optional[_Union[DelayInformation, _Mapping]] = ..., enrichment_metadata: _Optional[_Union[EnrichmentMetadata, _Mapping]] = ..., external_links: _Optional[_Mapping[str, str]] = ..., images: _Optional[_Mapping[str, StringList]] = ..., popularity_trends: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., premiere_dates: _Optional[_Union[PremiereDates, _Mapping]] = ..., score: _Optional[_Union[ScoreCalculations, _Mapping]] = ..., staff_data: _Optional[_Union[StaffData, _Mapping]] = ..., statistics: _Optional[_Mapping[str, Statistics]] = ...) -> None: ...
+    def __init__(self, background: _Optional[str] = ..., duration: _Optional[int] = ..., episode_count: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., month: _Optional[str] = ..., nsfw: bool = ..., rating: _Optional[_Union[AnimeRating, str]] = ..., season: _Optional[_Union[AnimeSeason, str]] = ..., similarity_score: _Optional[float] = ..., source_material: _Optional[_Union[SourceMaterialType, str]] = ..., status: _Optional[_Union[AnimeStatus, str]] = ..., synopsis: _Optional[str] = ..., title: _Optional[str] = ..., title_english: _Optional[str] = ..., title_japanese: _Optional[str] = ..., type: _Optional[_Union[AnimeType, str]] = ..., year: _Optional[int] = ..., content_warnings: _Optional[_Iterable[str]] = ..., demographics: _Optional[_Iterable[str]] = ..., ending_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., genres: _Optional[_Iterable[str]] = ..., opening_themes: _Optional[_Iterable[_Union[ThemeSong, _Mapping]]] = ..., related_anime: _Optional[_Iterable[_Union[RelatedAnimeEntry, _Mapping]]] = ..., related_source_material: _Optional[_Iterable[_Union[SourceMaterial, _Mapping]]] = ..., sources: _Optional[_Iterable[str]] = ..., streaming_info: _Optional[_Iterable[_Union[StreamingEntry, _Mapping]]] = ..., streaming_licenses: _Optional[_Iterable[str]] = ..., synonyms: _Optional[_Iterable[str]] = ..., tags: _Optional[_Iterable[str]] = ..., themes: _Optional[_Iterable[_Union[ThemeEntry, _Mapping]]] = ..., trailers: _Optional[_Iterable[_Union[TrailerEntry, _Mapping]]] = ..., producers: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., studios: _Optional[_Iterable[_Union[CompanyEntry, _Mapping]]] = ..., aired_dates: _Optional[_Union[AiredDates, _Mapping]] = ..., broadcast: _Optional[_Union[Broadcast, _Mapping]] = ..., enrichment_metadata: _Optional[_Union[EnrichmentMetadata, _Mapping]] = ..., external_links: _Optional[_Mapping[str, str]] = ..., hiatus: _Optional[_Union[AnimeHiatus, _Mapping]] = ..., images: _Optional[_Mapping[str, StringList]] = ..., popularity_trends: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., score: _Optional[_Union[ScoreCalculations, _Mapping]] = ..., staff_data: _Optional[_Union[StaffData, _Mapping]] = ..., statistics: _Optional[_Mapping[str, Statistics]] = ...) -> None: ...
 
 class AnimeRecord(_message.Message):
     __slots__ = ("anime", "characters", "episodes")

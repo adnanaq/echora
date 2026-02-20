@@ -58,7 +58,7 @@ message AnimeCreatedEvent {
 
 ### EpisodeAiredEvent
 
-Published by **Update Worker** when a new episode is verified as aired.
+Published by **Update Service** when a new episode is verified as aired.
 
 ```protobuf
 message EpisodeAiredEvent {
@@ -71,11 +71,11 @@ message EpisodeAiredEvent {
 }
 ```
 
-**Subject**: `anime.episode.aired` | **Publisher**: Update Worker | **Consumer**: PostgreSQL Service
+**Subject**: `anime.episode.aired` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service
 
 ### AnimeUpdatedEvent
 
-Published by **Update Worker** when score or status changes. Contains only the changed fields.
+Published by **Update Service** when score or status changes. Contains only the changed fields.
 
 ```protobuf
 message AnimeUpdatedEvent {
@@ -90,7 +90,7 @@ message AnimeUpdatedEvent {
 }
 ```
 
-**Subject**: `anime.updated` | **Publisher**: Update Worker | **Consumer**: PostgreSQL Service only
+**Subject**: `anime.updated` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service only
 
 > [!important] Qdrant does NOT consume this event
 > Qdrant syncs only after PostgreSQL commits, via `anime.synced` (see below). This enforces the SAGA pattern — PostgreSQL is always the source of truth.
@@ -144,8 +144,8 @@ message EpisodeData {
   bool   recap           = 8;
   float  score           = 9;
   string aired           = 10;                   // ISO 8601
-  repeated string thumbnails          = 11;
-  map<string, string> episode_pages   = 12;
+  repeated string images              = 11;
+  repeated string     sources          = 12;
   map<string, string> streaming       = 13;
 }
 ```
@@ -185,152 +185,52 @@ service PostgresGraphService {
 
 ## Schema Evolution
 
+> [!note] Full Details in [[echora_contracts|Schema Ownership & Contracts]]
+> See [[echora_contracts]] for the complete schema ownership model, toolchain, CI pipeline, distribution approach, and change type rules. The key rules are summarised below.
+
 ### Canonical Source of Truth
 
-**`.proto` files are the single source of truth** for all data shapes. `libs/common/src/common/models/anime.py` and Rust structs in `postgres_service` are **generated outputs** — never hand-edited.
-
-```
-echora-contracts repo
-  protos/echora/v1/anime.proto    ← only place you ever edit data shapes
-          ↓  buf generate
-          ├── Python (betterproto)
-          │   → libs/common/models/anime.py   (generated, DO NOT EDIT)
-          └── Rust (prost)
-              → postgres_service/src/models/  (generated, DO NOT EDIT)
-```
-
-This eliminates the model drift problem: if the `.proto` changes, all consumers regenerate automatically. If a consumer doesn't regenerate, it won't compile.
-
-### Toolchain
-
-| Tool | Role |
-|------|------|
-| `buf` | Proto linting, breaking change detection, code generation |
-| `buf generate` | Produces Python + Rust types from `.proto` |
-| `buf breaking` | CI check — fails PR if breaking change introduced |
-| `buf lint` | Enforces naming conventions in proto files |
-| `buf push` | Publishes versioned proto schema to buf.build registry |
-| `betterproto` | buf plugin — generates Pydantic-compatible Python dataclasses |
-| `prost` + `tonic` | buf plugin — generates Rust structs + gRPC stubs |
-
-### Contracts Repository
-
-Proto files live in a **separate `echora-contracts` repo** — not owned by any single service. This keeps the contract neutral: any team can submit a PR, breaking change detection runs in one place.
-
-```
-echora-contracts/
-  protos/
-    echora/v1/
-      anime.proto       ← Anime, Character, Episode, enums
-      events.proto      ← AnimeEnrichedEvent, AnimeSyncedEvent, etc.
-      services.proto    ← gRPC service definitions
-  buf.yaml
-  buf.gen.yaml
-```
-
-**CI on merge to main:**
-
-```
-buf push → buf.build/echora/contracts (versioned proto registry)
-
-buf generate (Python)
-  → publish `echora-types` Python package → GitHub Packages (PyPI)
-
-buf generate (Rust)
-  → publish `echora-types` Rust crate → GitHub Packages (crates.io compatible)
-```
-
-### Distribution — How Each Service Gets Types
-
-Each service consumes the generated package as a normal dependency. No service ever clones the contracts repo or runs `buf generate` itself.
-
-**Python services** (`echora`, `update_worker`, `qdrant_service`, `ingestion_pipeline`):
-```toml
-# pyproject.toml
-[dependencies]
-echora-types = "1.2.0"   # from GitHub Packages
-```
-
-**Rust services** (`postgres_service`, `backend`):
-```toml
-# Cargo.toml
-[dependencies]
-echora-types = { version = "1.2.0", registry = "github-packages" }
-```
-
-To update to a new schema version: `uv lock --upgrade-package echora-types` or `cargo update echora-types`. A major version bump (breaking change) will fail the build explicitly — forcing a conscious update.
-
-### PostgreSQL DDL — The One Manual Step
-
-PostgreSQL migration files (`sqlx migrate`) cannot be auto-generated from proto. However, the compile-time chain catches missing migrations before runtime:
-
-```
-proto field added → Rust struct regenerated → sqlx FromRow requires DB column
-                                            → cargo sqlx prepare fails
-                                            → CI build fails
-                                            → developer knows a migration is needed
-```
-
-**Result:** Adding a field without a migration is a compile error, not a silent runtime bug.
-
-### Qdrant Payload Index
-
-Qdrant payload indexing (which fields are filterable/sortable) is declared in a small config file in the contracts repo:
-
-```yaml
-# qdrant_payload_index.yaml
-indexed_fields:
-  - name: status           type: keyword
-  - name: year             type: integer
-  - name: score            type: float
-  - name: genres           type: keyword[]
-  - name: entity_type      type: keyword
-  - name: episode_count    type: integer
-```
-
-CI validates that every field listed here exists in `anime.proto`. If you remove a proto field that's still in this YAML, the contracts repo CI fails — catching Qdrant drift before any code ships.
+`libs/common/src/common/models/anime.py` (hand-written Pydantic) is the source of truth.
+`protos/shared_proto/v1/anime.proto` is a manually maintained mirror — a PR touching
+`anime.py` must also update `anime.proto`. Generated stubs (`_pb2.py`, `_pb2.pyi`,
+`_pb2_grpc.py`) are checked into `libs/common/src/shared_proto/v1/` and regenerated
+by `scripts/generate-proto.py`.
 
 ### Change Type Rules
 
-**Adding an optional field** ✅ safe — do this:
-1. Add to `anime.proto` as `optional` with a new field number
-2. Run `buf generate` → Python + Rust types update automatically
+**Adding an optional field** ✅ safe:
+1. Add field to `anime.py` and `anime.proto` in the same PR (assign a new field number)
+2. Run `scripts/generate-proto.py` to regenerate stubs
 3. DB migration: `ALTER TABLE ... ADD COLUMN ... NULL`
 4. Old NATS events in flight: missing field → protobuf default → null (safe)
 5. Old Qdrant points: missing payload field → null (safe, no re-index needed)
 
-**Removing a field** ⚠️ breaking — follow this sequence:
-1. Mark the field number as `reserved` in the proto — **never reuse field numbers**
-2. `buf breaking` will flag this as a major version bump
-3. Keep DB column until all historical events are processed, then drop
-4. Old Qdrant points retain the stale payload field until next full re-index
-5. Bump major version in the published package
+**Removing a field** ⚠️ breaking:
+1. Remove from `anime.py` and `anime.proto` in the same PR
+2. Mark the field number as `reserved` in the proto — **never reuse field numbers**
+3. Update all consumers before or in the same PR
 
-**Renaming or changing a field type** ❌ always breaking — use add + deprecate:
-1. Add new field (new name/type, new field number) alongside old one
-2. Dual-write both in producing services during transition
-3. Once all consumers read the new field, remove the old one (follow removal rules)
+**Renaming or changing a field type** ❌ always breaking — add new, deprecate old:
+1. Add new field (new name/type, new field number) alongside old in both files
+2. Dual-write during transition if consumers are external
+3. Remove old field once all consumers are migrated (follow removal rules)
 
-### Versioning
+### PostgreSQL DDL
 
-**Versioning**: Major.Minor.Patch (semantic versioning) on the published package
+Migration files cannot be auto-generated from proto. Drift is caught at compile time:
 
-| Bump | When |
-|------|------|
-| **Patch** | Docs/comment changes, no schema change |
-| **Minor** | Add optional fields (backward compatible) |
-| **Major** | Remove field, change type, rename — any breaking change |
-
-`buf breaking --against buf.build/echora/contracts:latest` runs on every PR to the contracts repo and automatically enforces this.
+```
+anime.py field added → proto updated → stubs regenerated → sqlx FromRow needs DB column
+                                                         → cargo sqlx prepare fails
+                                                         → CI build fails
+```
 
 ## Related Documentation
 
+- [[echora_contracts|Schema Ownership & Contracts]] - toolchain, CI pipeline, distribution, change type rules
 - [[event_driven_architecture|Event-Driven Architecture]] - NATS setup, consumer config, event flow
 - [[postgres_integration_architecture_decision|PostgreSQL Architecture]] - Service design and rationale
 - [[Architecture Index|Architecture Index]] - Services overview
-- [buf.build documentation](https://buf.build/docs)
-- [betterproto (Python codegen)](https://github.com/danielgtaylor/python-betterproto)
-- [prost (Rust codegen)](https://docs.rs/prost/)
 - [Protocol Buffers field number rules](https://protobuf.dev/programming-guides/proto3/#reserved)
 
 ---

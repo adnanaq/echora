@@ -55,8 +55,17 @@ jobs:
             -o /usr/local/bin/buf
           chmod +x /usr/local/bin/buf
 
+      # Check 1: Proto style — enforces STANDARD naming/style rules (field names,
+      # message names, enum conventions) defined in buf.yaml.
       - name: Lint proto files
         run: buf lint
+
+      # Check 2: Proto backward-compatibility — fails if any breaking change is
+      # introduced: field removed, type changed, field number reused, message renamed.
+      # Runs on PRs only; compares branch against main. Requires fetch-depth: 0.
+      - name: Check for breaking proto changes
+        if: github.event_name == 'pull_request'
+        run: buf breaking protos/ --against ".git#branch=main"
 
       - name: Restore Pants cache
         uses: actions/cache@v5
@@ -66,6 +75,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pants-
 
+      # Check 3: Co-change policy — anime.py (Pydantic source of truth) and
+      # anime.proto (manually maintained mirror) must always move together.
+      # Fails if anime.py is changed in this PR without a matching proto update.
       - name: Enforce anime model/proto co-change
         if: github.event_name == 'pull_request'
         run: |
@@ -86,12 +98,21 @@ jobs:
             fi
           fi
 
+      # Check 4: Generation health — runs grpcio-tools against all proto targets.
+      # Fails if any proto file is missing or has a syntax error that prevents
+      # stub generation. Also produces fresh stubs for checks 5 and 6.
       - name: Regenerate protobuf stubs
         run: ./pants run scripts/generate-proto.py
 
+      # Check 5: Semantic parity — compares Pydantic model field names against
+      # proto message field names at runtime. Catches drift that buf cannot see:
+      # a field present in anime.py but absent from the proto (or vice versa).
       - name: Validate anime model/proto contract
         run: ./pants run scripts/check_anime_model_proto_contract.py
 
+      # Check 6: Stub freshness — fails if the checked-in stubs differ from what
+      # generate-proto.py just produced. Catches the case where proto was changed
+      # but the regenerated stubs were never committed.
       - name: Fail on generated stub drift
         run: |
           git diff --exit-code -- \

@@ -35,16 +35,20 @@ enum AnimeType {
   ANIME_TYPE_PV = 8;
 }
 
-// Enum representation for AnimeSourceMaterial.
-enum AnimeSourceMaterial {
-  ANIME_SOURCE_MATERIAL_UNSPECIFIED = 0;
-  ANIME_SOURCE_MATERIAL_ORIGINAL = 1;
-  ANIME_SOURCE_MATERIAL_LIGHT_NOVEL = 2;
-  ANIME_SOURCE_MATERIAL_MANGA = 3;
-  ANIME_SOURCE_MATERIAL_OTHER = 4;
-  ANIME_SOURCE_MATERIAL_MIXED_MEDIA = 5;
-  ANIME_SOURCE_MATERIAL_UNKNOWN = 6;
-  ANIME_SOURCE_MATERIAL_GAME = 7;
+// Enum representation for SourceMaterialType — used for both anime.source_material and source_material.type.
+enum SourceMaterialType {
+  SOURCE_MATERIAL_TYPE_UNSPECIFIED = 0;
+  SOURCE_MATERIAL_TYPE_MANGA = 1;
+  SOURCE_MATERIAL_TYPE_LIGHT_NOVEL = 2;
+  SOURCE_MATERIAL_TYPE_NOVEL = 3;
+  SOURCE_MATERIAL_TYPE_VISUAL_NOVEL = 4;
+  SOURCE_MATERIAL_TYPE_GAME = 5;
+  SOURCE_MATERIAL_TYPE_WEB_MANGA = 6;
+  SOURCE_MATERIAL_TYPE_WEB_NOVEL = 7;
+  SOURCE_MATERIAL_TYPE_OTHER = 8;
+  SOURCE_MATERIAL_TYPE_ORIGINAL = 9;
+  SOURCE_MATERIAL_TYPE_MIXED_MEDIA = 10;
+  SOURCE_MATERIAL_TYPE_UNKNOWN = 11;
 }
 
 // Enum representation for AnimeRating.
@@ -67,6 +71,40 @@ enum AnimeSeason {
   ANIME_SEASON_WINTER = 4;
 }
 
+// Enum representation for CharacterRole.
+enum CharacterRole {
+  CHARACTER_ROLE_UNSPECIFIED = 0;
+  CHARACTER_ROLE_MAIN = 1;
+  CHARACTER_ROLE_SUPPORTING = 2;
+  CHARACTER_ROLE_BACKGROUND = 3;
+}
+
+// Enum representation for AnimeRelationType.
+enum AnimeRelationType {
+  ANIME_RELATION_TYPE_UNSPECIFIED = 0;
+  ANIME_RELATION_TYPE_SEQUEL = 1;
+  ANIME_RELATION_TYPE_PREQUEL = 2;
+  ANIME_RELATION_TYPE_SIDE_STORY = 3;
+  ANIME_RELATION_TYPE_ALTERNATIVE = 4;
+  ANIME_RELATION_TYPE_SUMMARY = 5;
+  ANIME_RELATION_TYPE_FULL_STORY = 6;
+  ANIME_RELATION_TYPE_CHARACTER = 7;
+  ANIME_RELATION_TYPE_SPIN_OFF = 8;
+  ANIME_RELATION_TYPE_ADAPTATION = 9;
+  ANIME_RELATION_TYPE_OTHER = 10;
+}
+
+// Enum representation for SourceMaterialRelationType.
+enum SourceMaterialRelationType {
+  SOURCE_MATERIAL_RELATION_TYPE_UNSPECIFIED = 0;
+  SOURCE_MATERIAL_RELATION_TYPE_ADAPTATION = 1;
+  SOURCE_MATERIAL_RELATION_TYPE_SOURCE = 2;
+  SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE = 3;
+  SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF = 4;
+  SOURCE_MATERIAL_RELATION_TYPE_OTHER = 5;
+}
+
+
 // Helper for map<string, repeated string>.
 message StringList {
   repeated string values = 1;
@@ -78,25 +116,6 @@ message TrailerEntry {
   optional string thumbnail_url = 3;
 }
 
-message BroadcastSchedule {
-  optional string jpn_time = 1;
-  optional string sub_time = 2;
-  optional string dub_time = 3;
-}
-
-message DelayInformation {
-  bool delayed_timetable = 1;
-  optional string delayed_from = 2;
-  optional string delayed_until = 3;
-  optional string delay_reason = 4;
-}
-
-message PremiereDates {
-  optional string original = 1;
-  optional string sub = 2;
-  optional string dub = 3;
-}
-
 message AiredDates {
   optional google.protobuf.Timestamp from_date = 1;
   optional google.protobuf.Timestamp to = 2;
@@ -104,9 +123,30 @@ message AiredDates {
 }
 
 message Broadcast {
+  reserved 12, 13, 14, 15;  // removed: is_on_hiatus, hiatus_reason, hiatus_from, hiatus_until
+
+  // Weekly recurring slot (from Jikan)
   optional string day = 1;
   optional string time = 2;
   optional string timezone = 3;
+
+  // Per-version airtimes (from AnimSchedule)
+  optional string jp_time = 4;
+  optional string sub_time = 5;
+  optional string dub_time = 6;
+  optional int32 sub_delay_days = 7;
+  optional int32 dub_delay_days = 8;
+
+  // Per-version premiere dates (from AnimSchedule)
+  optional string premiere_jp = 9;
+  optional string premiere_sub = 10;
+  optional string premiere_dub = 11;
+}
+
+message AnimeHiatus {
+  optional string reason = 1;
+  optional string hiatus_from = 2;
+  optional string hiatus_until = 3;  // absent = currently on hiatus
 }
 
 message EnrichmentMetadata {
@@ -116,16 +156,18 @@ message EnrichmentMetadata {
   optional string error_message = 4;
 }
 
-message RelationEntry {
+message SourceMaterial {
   string title = 1;
-  string relation_type = 2;
+  SourceMaterialRelationType relation_type = 2;
   string url = 3;
+  optional SourceMaterialType type = 4;
 }
 
 message RelatedAnimeEntry {
   string title = 1;
-  string relation_type = 2;
+  AnimeRelationType relation_type = 2;
   string url = 3;
+  optional AnimeType type = 4;
 }
 
 message StreamingEntry {
@@ -191,8 +233,8 @@ message VoiceActor {
 
 message CompanyEntry {
   string name = 1;
-  string type = 2;
-  optional string url = 3;
+  repeated string sources = 2;
+  optional string description = 3;
 }
 
 message StaffMemberList {
@@ -210,10 +252,8 @@ message VoiceActors {
 
 message StaffData {
   ProductionStaff production_staff = 1;
-  repeated CompanyEntry studios = 2;
-  repeated CompanyEntry producers = 3;
-  repeated CompanyEntry licensors = 4;
-  VoiceActors voice_actors = 5;
+  repeated CompanyEntry licensors = 2;
+  VoiceActors voice_actors = 3;
 }
 
 message ContextualRank {
@@ -259,7 +299,7 @@ message Character {
   repeated string name_variations = 15;
   repeated string nicknames = 16;
   repeated SimpleVoiceActor voice_actors = 17;
-  map<string, string> character_pages = 18;
+  repeated string sources = 18;
 }
 
 message Episode {
@@ -278,9 +318,9 @@ message Episode {
   string title = 13;
   optional string title_japanese = 14;
   optional string title_romaji = 15;
-  repeated string thumbnails = 16;
-  map<string, string> episode_pages = 17;
-  map<string, string> streaming = 18;
+  repeated string images = 16;
+  map<string, string> streaming = 17;
+  repeated string sources = 18;
 }
 
 message Anime {
@@ -294,7 +334,7 @@ message Anime {
   optional AnimeRating rating = 8;
   optional AnimeSeason season = 9;
   optional float similarity_score = 10;
-  optional AnimeSourceMaterial source_material = 11;
+  optional SourceMaterialType source_material = 11;
   AnimeStatus status = 12;
   optional string synopsis = 13;
   string title = 14;
@@ -308,7 +348,7 @@ message Anime {
   repeated string genres = 22;
   repeated ThemeSong opening_themes = 23;
   repeated RelatedAnimeEntry related_anime = 24;
-  repeated RelationEntry relations = 25;
+  repeated SourceMaterial related_source_material = 25;
   repeated string sources = 26;
   repeated StreamingEntry streaming_info = 27;
   repeated string streaming_licenses = 28;
@@ -316,15 +356,16 @@ message Anime {
   repeated string tags = 30;
   repeated ThemeEntry themes = 31;
   repeated TrailerEntry trailers = 32;
+  repeated CompanyEntry producers = 46;
+  repeated CompanyEntry studios = 47;
+  reserved 35, 36, 41;  // removed: broadcast_schedule, delay_information, premiere_dates
   AiredDates aired_dates = 33;
   Broadcast broadcast = 34;
-  BroadcastSchedule broadcast_schedule = 35;
-  DelayInformation delay_information = 36;
   EnrichmentMetadata enrichment_metadata = 37;
   map<string, string> external_links = 38;
+  optional AnimeHiatus hiatus = 45;
   map<string, StringList> images = 39;
   google.protobuf.Struct popularity_trends = 40;
-  PremiereDates premiere_dates = 41;
   ScoreCalculations score = 42;
   StaffData staff_data = 43;
   map<string, Statistics> statistics = 44;
