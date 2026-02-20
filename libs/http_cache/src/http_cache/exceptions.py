@@ -34,7 +34,7 @@ class RedisInitializationError(CacheStorageError):
         super().__init__("Failed to initialize Redis client for result cache")
 
 
-class InvalidTTLError(CacheError):
+class InvalidTTLError(CacheError, ValueError):
     """Raised when TTL value is invalid (negative or incorrect type)."""
 
     def __init__(self, ttl_value: float | None = None, field_name: str = "TTL"):
@@ -44,14 +44,14 @@ class InvalidTTLError(CacheError):
             super().__init__(f"{field_name} must be non-negative")
 
 
-class EntryMismatchError(CacheStorageError):
+class EntryMismatchError(CacheStorageError, ValueError):
     """Raised when cache entry ID does not match expected value."""
 
     def __init__(self):
         super().__init__("Entry ID mismatch")
 
 
-class InvalidStreamTypeError(CacheStorageError):
+class InvalidStreamTypeError(CacheStorageError, TypeError):
     """Raised when response stream is not an AsyncIterator."""
 
     def __init__(self, actual_type: str):

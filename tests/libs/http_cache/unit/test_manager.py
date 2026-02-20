@@ -24,7 +24,7 @@ class TestHTTPCacheManagerInit:
 
     def test_init_with_config_disabled(self) -> None:
         """Test initialization with caching disabled."""
-        config = CacheConfig(cache_enable=False)
+        config = CacheConfig(cache_enabled=False)
         manager = HTTPCacheManager(config)
 
         assert manager.config == config
@@ -38,7 +38,7 @@ class TestHTTPCacheManagerInit:
 
     def test_init_with_config_enabled_redis(self) -> None:
         """Test initialization with Redis storage enabled (lazy initialization)."""
-        config = CacheConfig(cache_enable=True, storage_type="redis")
+        config = CacheConfig(cache_enabled=True, storage_type="redis")
         manager = HTTPCacheManager(config)
 
         assert manager.config == config
@@ -54,7 +54,7 @@ class TestHTTPCacheManagerInit:
 
     def test_init_redis_url_missing_logs_warning(self) -> None:
         """Test that missing redis_url logs warning and does not crash."""
-        config = CacheConfig(cache_enable=True, storage_type="redis", redis_url=None)
+        config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url=None)
 
         with patch("http_cache.manager.logger") as mock_logger:
             manager = HTTPCacheManager(config)
@@ -67,7 +67,7 @@ class TestHTTPCacheManagerInit:
         """Test that invalid storage type raises ValueError."""
         # We bypass Pydantic validation via MagicMock to test internal guard
         config = MagicMock(spec=CacheConfig)
-        config.cache_enable = True
+        config.cache_enabled = True
         config.storage_type = "invalid"
         config.force_cache = False
         config.always_revalidate = False
@@ -81,7 +81,7 @@ class TestGetAiohttpSession:
 
     def test_get_aiohttp_session_cache_disabled(self) -> None:
         """Test that regular aiohttp session is returned when cache disabled."""
-        config = CacheConfig(cache_enable=False)
+        config = CacheConfig(cache_enabled=False)
         manager = HTTPCacheManager(config)
 
         with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
@@ -95,7 +95,7 @@ class TestGetAiohttpSession:
 
     def test_get_aiohttp_session_redis_connection_failure_fallback(self) -> None:
         """Test graceful fallback to regular session when Redis connection fails."""
-        config = CacheConfig(cache_enable=True, storage_type="redis")
+        config = CacheConfig(cache_enabled=True, storage_type="redis")
 
         with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             # Simulate Redis connection failure
@@ -115,7 +115,7 @@ class TestGetAiohttpSession:
     @pytest.mark.asyncio
     async def test_get_aiohttp_session_with_redis_success(self) -> None:
         """Test aiohttp session creation with Redis caching."""
-        config = CacheConfig(cache_enable=True, storage_type="redis")
+        config = CacheConfig(cache_enabled=True, storage_type="redis")
 
         with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
@@ -137,7 +137,7 @@ class TestGetAiohttpSession:
     @pytest.mark.asyncio
     async def test_get_aiohttp_session_service_specific_ttl(self) -> None:
         """Test that service-specific TTL is used."""
-        config = CacheConfig(cache_enable=True, storage_type="redis", ttl_jikan=7200)
+        config = CacheConfig(cache_enabled=True, storage_type="redis", ttl_jikan=7200)
 
         with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
@@ -158,13 +158,13 @@ class TestServiceTTL:
 
     def test_get_service_ttl_known_service(self) -> None:
         """Test TTL retrieval for known services."""
-        config = CacheConfig(cache_enable=True, ttl_jikan=3600)
+        config = CacheConfig(cache_enabled=True, ttl_jikan=3600)
         manager = HTTPCacheManager(config)
         assert manager._get_service_ttl("jikan") == 3600
 
     def test_get_service_ttl_unknown_service_default(self) -> None:
         """Test that unknown service returns default 24h TTL."""
-        config = CacheConfig(cache_enable=True)
+        config = CacheConfig(cache_enabled=True)
         manager = HTTPCacheManager(config)
         assert manager._get_service_ttl("unknown") == 86400
 
@@ -175,7 +175,7 @@ class TestCacheManagerClose:
     @pytest.mark.asyncio
     async def test_close_async_with_redis_client(self) -> None:
         """Test async closing manager with Redis client."""
-        config = CacheConfig(cache_enable=True, storage_type="redis")
+        config = CacheConfig(cache_enabled=True, storage_type="redis")
 
         with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = AsyncMock()
@@ -195,14 +195,14 @@ class TestGetStats:
 
     def test_get_stats_disabled(self) -> None:
         """Test stats when caching is disabled."""
-        config = CacheConfig(cache_enable=False)
+        config = CacheConfig(cache_enabled=False)
         manager = HTTPCacheManager(config)
-        assert manager.get_stats() == {"cache_enable": False}
+        assert manager.get_stats() == {"cache_enabled": False}
 
     def test_get_stats_redis(self) -> None:
         """Test stats with Redis storage."""
-        config = CacheConfig(cache_enable=True, storage_type="redis", redis_url="redis://test")
+        config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url="redis://test")
         manager = HTTPCacheManager(config)
         stats = manager.get_stats()
-        assert stats["cache_enable"] is True
+        assert stats["cache_enabled"] is True
         assert stats["redis_url"] == "redis://test"

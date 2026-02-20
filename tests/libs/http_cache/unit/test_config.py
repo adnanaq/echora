@@ -25,7 +25,7 @@ class TestCacheConfigModel:
         config = CacheConfig()
 
         # Core settings
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
 
@@ -41,14 +41,14 @@ class TestCacheConfigModel:
     def test_custom_values_redis(self) -> None:
         """Test CacheConfig with custom Redis configuration."""
         config = CacheConfig(
-            cache_enable=True,
+            cache_enabled=True,
             storage_type="redis",
             redis_url="redis://custom-host:6380/1",
             ttl_jikan=3600,
             ttl_anilist=7200,
         )
 
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://custom-host:6380/1"
         assert config.ttl_jikan == 3600
@@ -56,9 +56,9 @@ class TestCacheConfigModel:
 
     def test_disabled_cache(self) -> None:
         """Test CacheConfig with caching disabled."""
-        config = CacheConfig(cache_enable=False)
+        config = CacheConfig(cache_enabled=False)
 
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
         # Other settings should still have defaults
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
@@ -94,10 +94,10 @@ class TestCacheConfigModel:
         assert len(errors) > 0
         assert "storage_type" in str(errors[0])
 
-    def test_invalid_cache_enable_type(self) -> None:
-        """Test that invalid cache_enable type raises ValidationError."""
+    def test_invalid_cache_enabled_type(self) -> None:
+        """Test that invalid cache_enabled type raises ValidationError."""
         with pytest.raises(ValidationError):
-            CacheConfig(cache_enable="not_a_bool")  # type: ignore
+            CacheConfig(cache_enabled="not_a_bool")  # type: ignore
 
     def test_invalid_ttl_type(self) -> None:
         """Test that invalid TTL type raises ValidationError."""
@@ -150,67 +150,67 @@ class TestGetCacheConfig:
 
         config = get_cache_config()
 
-        assert config.cache_enable is True  # Default from getenv is "true"
+        assert config.cache_enabled is True  # Default from getenv is "true"
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
 
-    def test_get_cache_config_cache_enable_true(
+    def test_get_cache_config_cache_enabled_true(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test get_cache_config() with CACHE_ENABLE=true."""
+        """Test get_cache_config() with CACHE_ENABLED=true."""
         get_cache_config.cache_clear()
-        monkeypatch.setenv("CACHE_ENABLE", "true")
+        monkeypatch.setenv("CACHE_ENABLED", "true")
 
         config = get_cache_config()
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
 
-    def test_get_cache_config_cache_enable_false(
+    def test_get_cache_config_cache_enabled_false(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test get_cache_config() with CACHE_ENABLE=false."""
+        """Test get_cache_config() with CACHE_ENABLED=false."""
         get_cache_config.cache_clear()
-        monkeypatch.setenv("CACHE_ENABLE", "false")
+        monkeypatch.setenv("CACHE_ENABLED", "false")
 
         config = get_cache_config()
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
 
-    def test_get_cache_config_cache_enable_case_insensitive(
+    def test_get_cache_config_cache_enabled_case_insensitive(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test that CACHE_ENABLE is case-insensitive."""
+        """Test that CACHE_ENABLED is case-insensitive."""
         get_cache_config.cache_clear()
         # Test TRUE
-        monkeypatch.setenv("CACHE_ENABLE", "TRUE")
+        monkeypatch.setenv("CACHE_ENABLED", "TRUE")
         config = get_cache_config()
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
 
         get_cache_config.cache_clear()
         # Test False
-        monkeypatch.setenv("CACHE_ENABLE", "False")
+        monkeypatch.setenv("CACHE_ENABLED", "False")
         config = get_cache_config()
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
 
         get_cache_config.cache_clear()
         # Test TrUe
-        monkeypatch.setenv("CACHE_ENABLE", "TrUe")
+        monkeypatch.setenv("CACHE_ENABLED", "TrUe")
         config = get_cache_config()
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
 
-    def test_get_cache_config_cache_enable_invalid_value(
+    def test_get_cache_config_cache_enabled_invalid_value(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test get_cache_config() with invalid CACHE_ENABLE value raises ValidationError."""
+        """Test get_cache_config() with invalid CACHE_ENABLED value raises ValidationError."""
         get_cache_config.cache_clear()
-        monkeypatch.setenv("CACHE_ENABLE", "invalid")
+        monkeypatch.setenv("CACHE_ENABLED", "invalid")
 
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError) as exc_info:
             get_cache_config()
 
-        # Verify the error is about the 'cache_enable' field
+        # Verify the error is about the 'cache_enabled' field
         errors = exc_info.value.errors()
-        assert any(error["loc"] == ("cache_enable",) for error in errors)
+        assert any(error["loc"] == ("cache_enabled",) for error in errors)
 
     def test_get_cache_config_storage_type_is_redis(self) -> None:
         """Test that storage_type is always 'redis' (hardcoded, not configurable)."""
@@ -233,12 +233,12 @@ class TestGetCacheConfig:
     ) -> None:
         """Test get_cache_config() with all environment variables set."""
         get_cache_config.cache_clear()
-        monkeypatch.setenv("CACHE_ENABLE", "false")
+        monkeypatch.setenv("CACHE_ENABLED", "false")
         monkeypatch.setenv("REDIS_URL", "redis://custom:6380/1")
 
         config = get_cache_config()
 
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://custom:6380/1"
 
@@ -270,12 +270,12 @@ class TestGetCacheConfig:
     ) -> None:
         """Test that get_cache_config() preserves default values for unset fields."""
         get_cache_config.cache_clear()
-        monkeypatch.setenv("CACHE_ENABLE", "false")
+        monkeypatch.setenv("CACHE_ENABLED", "false")
         # Only set one env var, others should have defaults
 
         config = get_cache_config()
 
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
         # These should be defaults
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
@@ -399,22 +399,22 @@ class TestCacheConfigIntegration:
     def test_production_redis_setup(self) -> None:
         """Test production-like Redis configuration."""
         config = CacheConfig(
-            cache_enable=True,
+            cache_enabled=True,
             storage_type="redis",
             redis_url="redis://prod-redis.example.com:6379/0",
             ttl_jikan=86400,
             ttl_anilist=86400,
         )
 
-        assert config.cache_enable is True
+        assert config.cache_enabled is True
         assert config.storage_type == "redis"
         assert "prod-redis.example.com" in config.redis_url
 
     def test_disabled_cache_scenario(self) -> None:
         """Test scenario where caching is completely disabled."""
-        config = CacheConfig(cache_enable=False)
+        config = CacheConfig(cache_enabled=False)
 
-        assert config.cache_enable is False
+        assert config.cache_enabled is False
         # Backend settings should still be valid but unused
         assert config.storage_type == "redis"
         assert config.redis_url is not None

@@ -20,7 +20,7 @@ from typing import (
 )
 
 # Import Hishel core types
-from hishel._core._storages._async_base import AsyncBaseStorage
+from hishel import AsyncBaseStorage
 from hishel._core._storages._packing import pack, unpack
 from hishel._core.models import Entry, EntryMeta, Request, Response
 from redis.asyncio import Redis

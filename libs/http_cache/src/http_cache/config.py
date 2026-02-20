@@ -21,7 +21,7 @@ class CacheConfig(BaseSettings):
         extra="ignore",
     )
 
-    cache_enable: bool = Field(
+    cache_enabled: bool = Field(
         default=True,
         description="Enable HTTP caching (enabled by default on feature branch)",
     )
@@ -111,7 +111,7 @@ def get_cache_config() -> CacheConfig:
     """Get cached CacheConfig instance populated from environment variables.
 
     Environment variables are automatically read by Pydantic BaseSettings:
-        CACHE_ENABLE (default: true)
+        CACHE_ENABLED (default: true)
         FORCE_CACHE (default: true)
         ALWAYS_REVALIDATE (default: false)
         MAX_CACHE_KEY_LENGTH (default: 200)

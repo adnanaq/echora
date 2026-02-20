@@ -69,9 +69,8 @@ from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientResponseError, RequestInfo
-from hishel import AsyncCacheProxy, CachePolicy, FilterPolicy
+from hishel import AsyncBaseStorage, AsyncCacheProxy, CachePolicy, FilterPolicy
 from hishel._core._headers import Headers
-from hishel._core._storages._async_base import AsyncBaseStorage
 from hishel._core.models import Request, Response
 from multidict import CIMultiDict, CIMultiDictProxy  # pants: no-infer-dep
 from yarl import URL  # pants: no-infer-dep

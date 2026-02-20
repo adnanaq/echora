@@ -18,7 +18,6 @@ from hishel._core.models import (
 from hishel._core.models import (
     Response as Response,
 )
-from hishel._core._storages._async_base import AsyncBaseStorage as AsyncBaseStorage
 
 # Storage base classes (public API)
 #
@@ -148,6 +147,46 @@ class AsyncBaseStorage:
 
         Parameters:
             id (uuid.UUID): Entry identifier to remove.
+        """
+        ...
+
+    async def close(self) -> None:
+        """Optional cleanup method for async storage."""
+        ...
+
+    def is_soft_deleted(self, entry: Entry) -> bool:
+        """
+        Determine whether a cache entry is marked as soft deleted.
+
+        Parameters:
+            entry (Entry): Cache entry to inspect.
+
+        Returns:
+            True if the entry is marked as soft deleted, False otherwise.
+        """
+        ...
+
+    def is_safe_to_hard_delete(self, entry: Entry) -> bool:
+        """
+        Determine whether a stored cache entry can be permanently (hard) deleted.
+
+        Parameters:
+            entry (Entry): The cache entry to evaluate.
+
+        Returns:
+            True if the entry can be hard deleted, False otherwise.
+        """
+        ...
+
+    def mark_pair_as_deleted(self, entry: Entry) -> Entry:
+        """
+        Mark a cache entry as soft deleted.
+
+        Parameters:
+            entry (Entry): The entry to mark as deleted.
+
+        Returns:
+            The marked entry with deleted_at timestamp.
         """
         ...
 

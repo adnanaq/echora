@@ -1,6 +1,6 @@
 """Type stubs for hishel._core._headers module."""
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 class Headers:
     """HTTP headers wrapper."""
@@ -52,12 +52,12 @@ class Headers:
         """
         ...
 
-    def items(self) -> Iterator[tuple[str, str]]:
+    def items(self) -> Iterable[tuple[str, str]]:
         """
-        Return an iterator over (key, value) header pairs.
+        Return an iterable over (key, value) header pairs.
 
         Returns:
-            Iterator of (header_name, header_value) tuples.
+            Iterable of (header_name, header_value) tuples.
         """
         ...
 
@@ -70,20 +70,20 @@ class Headers:
         """
         ...
 
-    def keys(self) -> Iterator[str]:
+    def keys(self) -> Iterable[str]:
         """
-        Return an iterator over header names.
+        Return an iterable over header names.
 
         Returns:
-            Iterator of header names.
+            Iterable of header names.
         """
         ...
 
-    def values(self) -> Iterator[str]:
+    def values(self) -> Iterable[str]:
         """
-        Return an iterator over header values.
+        Return an iterable over header values.
 
         Returns:
-            Iterator of header values.
+            Iterable of header values.
         """
         ...

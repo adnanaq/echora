@@ -80,7 +80,7 @@ services:
       - MAX_BATCH_SIZE=500
 
       # HTTP Cache Configuration (for Enrichment Pipeline)
-      - CACHE_ENABLE=false
+      - CACHE_ENABLED=false
       - REDIS_URL=redis://redis:6379/0
     networks:
       - vector-network

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 from hishel import BaseFilter, FilterPolicy
@@ -20,6 +21,26 @@ from .config import CacheConfig
 from .exceptions import StorageConfigurationError
 
 logger = logging.getLogger(__name__)
+
+
+def _mask_url_credentials(url: str) -> str:
+    """
+    Mask password in URL for safe logging.
+
+    Replaces password component with '***' to prevent credential exposure in logs.
+
+    Args:
+        url: URL that may contain credentials (e.g., redis://user:password@host:port/db)
+
+    Returns:
+        URL with masked password (e.g., redis://user:***@host:port/db)
+    """
+    parsed = urlparse(url)
+    if parsed.password:
+        # Replace password with masked version
+        masked_netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+        return urlunparse(parsed._replace(netloc=masked_netloc))
+    return url
 
 
 class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
@@ -85,7 +106,7 @@ class HTTPCacheManager:
         Initialize the HTTPCacheManager with the provided cache configuration.
 
         Parameters:
-            config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.cache_enable` is true, storage backend initialization is attempted.
+            config (CacheConfig): Configuration that controls whether caching is enabled and specifies storage backend and Redis-related settings. If `config.cache_enabled` is true, storage backend initialization is attempted.
         """
         self.config = config
         self._async_redis_client: AsyncRedis | None = None
@@ -96,7 +117,7 @@ class HTTPCacheManager:
         self.policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
         self.policy.use_body_key = True  # Include request body in cache key
 
-        if self.config.cache_enable:
+        if self.config.cache_enabled:
             self._init_storage()
 
     def _init_storage(self) -> None:
@@ -130,7 +151,7 @@ class HTTPCacheManager:
 
         # Configuration valid - log success
         logger.info(
-            f"Redis cache configured for aiohttp sessions: {self.config.redis_url}"
+            f"Redis cache configured for aiohttp sessions: {_mask_url_credentials(self.config.redis_url)}"
         )
 
     def _get_or_create_redis_client(self) -> AsyncRedis | None:
@@ -220,7 +241,7 @@ class HTTPCacheManager:
             >>> async with session.post(url, json=payload) as response:
             ...     data = await response.json()
         """
-        if not self.config.cache_enable or self.config.storage_type != "redis":
+        if not self.config.cache_enabled or self.config.storage_type != "redis":
             return aiohttp.ClientSession(**session_kwargs)
 
         # Get or create Redis client for current event loop
@@ -297,16 +318,16 @@ class HTTPCacheManager:
 
         Returns:
             Dictionary with cache configuration. If caching disabled, returns
-            {"cache_enable": False}. If enabled, includes:
-            - "cache_enable": True
+            {"cache_enabled": False}. If enabled, includes:
+            - "cache_enabled": True
             - "storage_type": Backend type (e.g., "redis")
             - "redis_url": Redis connection URL (may be None)
         """
-        if not self.config.cache_enable:
-            return {"cache_enable": False}
+        if not self.config.cache_enabled:
+            return {"cache_enabled": False}
 
         return {
-            "cache_enable": True,
+            "cache_enabled": True,
             "storage_type": self.config.storage_type,
             "redis_url": self.config.redis_url,
         }
