@@ -21,7 +21,7 @@ uv sync --extra dev
 docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Run service locally for development
-./pants run apps/service:service
+./pants run apps/vector_service:vector_service
 ```
 
 ### Docker Development (Recommended)
@@ -147,7 +147,7 @@ The service follows a layered microservice architecture with clear separation of
 
 ### Directory Structure
 
-```
+```text
 echora/
 ├── apps/
 │   └── service/                    # FastAPI microservice
