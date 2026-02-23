@@ -19,7 +19,10 @@ def _mask_url_credentials(url: str) -> str:
     """
     parsed = urlparse(url)
     if parsed.password:
-        # Replace password with masked version
-        masked_netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+        # Split on the first '@' to isolate host:port from credentials.
+        # Avoids decoded vs. encoded mismatch that makes string-replace unreliable
+        # (parsed.password is URL-decoded; parsed.netloc retains percent-encoding).
+        host_part = parsed.netloc.split("@", 1)[-1]
+        masked_netloc = f"{parsed.username}:***@{host_part}"
         return urlunparse(parsed._replace(netloc=masked_netloc))
     return url

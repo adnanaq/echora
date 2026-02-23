@@ -12,7 +12,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from hishel._core.models import Request, Response
+from hishel import Request, Response
 from http_cache.aiohttp_adapter import CachedAiohttpSession, _CachedResponse
 from multidict import CIMultiDictProxy  # pants: no-infer-dep
 from yarl import URL  # pants: no-infer-dep
@@ -135,7 +135,7 @@ class TestCachedAiohttpSessionRequestSender:
             metadata={"hishel_body_key": True},
         )
 
-        hishel_resp = await cached._proxy.send_request(req)
+        hishel_resp = await cached._proxy.handle_request(req)
         assert hishel_resp.status_code == 200
 
         # Verify upstream request did not receive X-Hishel-* header.
