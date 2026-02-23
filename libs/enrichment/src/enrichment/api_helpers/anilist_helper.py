@@ -144,6 +144,10 @@ class AniListEnrichmentHelper:
                 aiohttp.ClientError,
                 json.JSONDecodeError,
             ) as exc:
+                # Don't retry 4xx client errors — they're not transient
+                if isinstance(exc, aiohttp.ClientResponseError) and exc.status < 500:
+                    logger.error(f"AniList API client error {exc.status}: {exc.message}")
+                    raise AniListNetworkError(exc) from exc
                 # Retry transient network/JSON errors with exponential backoff
                 if attempt < max_retries - 1:
                     backoff = 2**attempt

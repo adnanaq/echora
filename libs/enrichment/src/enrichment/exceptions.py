@@ -48,6 +48,6 @@ class AniListNetworkError(AniListAPIError):
         super().__init__(f"AniList API request failed: {cause}")
 
     @classmethod
-    def exhausted_retries(cls) -> "AniListNetworkError":
+    def exhausted_retries(cls) -> AniListNetworkError:
         """Sentinel for the unreachable post-retry fallback path."""
         return cls("exhausted retries unexpectedly")
