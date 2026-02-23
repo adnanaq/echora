@@ -63,6 +63,9 @@ class AniListEnrichmentHelper:
 
         Raises:
             RuntimeError: If an aiohttp session cannot be initialized for the current event loop.
+            AniListRateLimitError: If the rate limit is exceeded after all retry attempts.
+            AniListGraphQLError: If the AniList API response contains GraphQL errors.
+            AniListNetworkError: If a network or JSON decode error occurs during the request.
         """
         headers = {
             "Content-Type": "application/json",
@@ -113,15 +116,6 @@ class AniListEnrichmentHelper:
                         self.rate_limit_remaining = int(
                             response.headers["X-RateLimit-Remaining"]
                         )
-                    # Apply client-side throttling for non-cache responses approaching the limit.
-                    # Cache hits are instant and don't consume rate limit quota.
-                    if not from_cache and self.rate_limit_remaining < 5:
-                        logger.warning(
-                            "Rate limit low (%s), sleeping 60s to avoid hitting limit.",
-                            self.rate_limit_remaining,
-                        )
-                        await asyncio.sleep(60)
-                        self.rate_limit_remaining = 90  # Reset after waiting
 
                     if response.status == 429:
                         if attempt < max_retries - 1:
@@ -135,21 +129,28 @@ class AniListEnrichmentHelper:
                             logger.error(
                                 f"Rate limit exceeded after {max_retries} attempts. Giving up."
                             )
-                            raise AniListRateLimitError(
-                                f"AniList rate limit exceeded after {max_retries} retry attempts"
-                            )
+                            raise AniListRateLimitError(max_retries)
 
                     response.raise_for_status()
                     data: Any = await response.json()
                     if "errors" in data:
                         logger.error(f"AniList GraphQL errors: {data['errors']}")
-                        raise AniListGraphQLError(
-                            f"AniList GraphQL errors: {data['errors']}"
-                        )
+                        raise AniListGraphQLError(data["errors"])
                     result: dict[str, Any] = data.get("data", {})
                     # Add cache metadata to result
                     result["_from_cache"] = from_cache
-                    return result
+
+                # Connection released - now apply throttling if needed
+                # Apply client-side throttling for non-cache responses approaching the limit.
+                # Cache hits are instant and don't consume rate limit quota.
+                if not from_cache and self.rate_limit_remaining < 5:
+                    logger.warning(
+                        f"Rate limit low ({self.rate_limit_remaining}), sleeping 60s to avoid hitting limit."
+                    )
+                    await asyncio.sleep(60)
+                    self.rate_limit_remaining = 90  # Reset after waiting
+
+                return result
             except (
                 TimeoutError,
                 aiohttp.ClientError,
@@ -158,7 +159,7 @@ class AniListEnrichmentHelper:
             ) as exc:
                 # Network/JSON errors: log and raise
                 logger.exception("AniList API request failed")
-                raise AniListNetworkError(f"AniList API request failed: {exc}") from exc
+                raise AniListNetworkError(exc) from exc
 
         # Should not reach here due to raises above, but defensive fallback
         raise AniListNetworkError("AniList API request exhausted retries unexpectedly")

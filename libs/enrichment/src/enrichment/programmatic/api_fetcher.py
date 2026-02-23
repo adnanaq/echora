@@ -517,15 +517,15 @@ class ParallelAPIFetcher:
 
             return result
         except AniListRateLimitError as e:
-            logger.error(f"AniList rate limit exhausted for ID {anilist_id}: {e}")
+            logger.error(f"AniList rate limit exhausted for ID {anilist_id}: {e}")  # noqa: TRY400
             self.api_errors["anilist"] = f"Rate limit exhausted: {e}"
             return None
         except AniListGraphQLError as e:
-            logger.error(f"AniList GraphQL error for ID {anilist_id}: {e}")
+            logger.error(f"AniList GraphQL error for ID {anilist_id}: {e}")  # noqa: TRY400
             self.api_errors["anilist"] = f"GraphQL error: {e}"
             return None
         except AniListNetworkError as e:
-            logger.error(f"AniList network error for ID {anilist_id}: {e}")
+            logger.error(f"AniList network error for ID {anilist_id}: {e}")  # noqa: TRY400
             self.api_errors["anilist"] = f"Network error: {e}"
             return None
         except Exception as e:
