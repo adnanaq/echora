@@ -576,6 +576,11 @@ class CachedAiohttpSession:
         coro = self._request("POST", url, **kwargs)
         return _CachedRequestContextManager(coro)
 
+    async def close(self) -> None:
+        """Close the session and storage."""
+        await self.session.close()
+        await self.storage.close()
+
     async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
         """
         Perform an HTTP request using the wrapped session and return a cached-friendly response, serving from Redis-backed storage when a matching cache entry exists.
@@ -692,11 +697,6 @@ class CachedAiohttpSession:
             request_headers=request_headers,
             from_cache=from_cache,
         )
-
-    async def close(self) -> None:
-        """Close the session and storage."""
-        await self.session.close()
-        await self.storage.close()
 
     async def __aenter__(self) -> "CachedAiohttpSession":
         """

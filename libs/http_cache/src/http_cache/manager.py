@@ -55,12 +55,12 @@ class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
         """
         return False
 
-    def apply(self, item: HishelResponse, body: bytes | None) -> bool:
+    def apply(self, item: HishelResponse, _body: bytes | None) -> bool:
         """Determine if response should be cached based on status code.
 
         Args:
             item: Hishel Response object containing status code and headers.
-            body: Response body bytes (unused, always None since needs_body=False).
+            _body: Response body bytes (unused, always None since needs_body=False).
 
         Returns:
             True to allow caching (2xx/3xx), False to prevent caching (4xx/5xx).
