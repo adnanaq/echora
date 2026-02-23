@@ -139,7 +139,24 @@ class AniListEnrichmentHelper:
                     result: dict[str, Any] = data.get("data", {})
                     # Add cache metadata to result
                     result["_from_cache"] = from_cache
-
+            except (
+                TimeoutError,
+                aiohttp.ClientError,
+                json.JSONDecodeError,
+            ) as exc:
+                # Retry transient network/JSON errors with exponential backoff
+                if attempt < max_retries - 1:
+                    backoff = 2**attempt
+                    logger.warning(
+                        f"AniList request failed (attempt {attempt + 1}/{max_retries}): {exc}. Retrying in {backoff}s..."
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                logger.exception(
+                    f"AniList API request failed after {max_retries} attempts"
+                )
+                raise AniListNetworkError(exc) from exc
+            else:
                 # Connection released - now apply throttling if needed
                 # Apply client-side throttling for non-cache responses approaching the limit.
                 # Cache hits are instant and don't consume rate limit quota.
@@ -151,18 +168,9 @@ class AniListEnrichmentHelper:
                     self.rate_limit_remaining = 90  # Reset after waiting
 
                 return result
-            except (
-                TimeoutError,
-                aiohttp.ClientError,
-                aiohttp.ClientResponseError,
-                json.JSONDecodeError,
-            ) as exc:
-                # Network/JSON errors: log and raise
-                logger.exception("AniList API request failed")
-                raise AniListNetworkError(exc) from exc
 
         # Should not reach here due to raises above, but defensive fallback
-        raise AniListNetworkError("AniList API request exhausted retries unexpectedly")
+        raise AniListNetworkError.exhausted_retries()
 
     def _get_media_query_fields(self) -> str:
         """

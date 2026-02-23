@@ -1,10 +1,12 @@
 """Exceptions for enrichment pipeline API helpers."""
 
+from __future__ import annotations
+
+from typing import Any
+
 
 class AniListAPIError(Exception):
     """Base exception for AniList API errors."""
-
-    pass
 
 
 class AniListRateLimitError(AniListAPIError):
@@ -23,7 +25,7 @@ class AniListRateLimitError(AniListAPIError):
 class AniListGraphQLError(AniListAPIError):
     """Raised when AniList API returns GraphQL errors in response."""
 
-    def __init__(self, errors: object) -> None:
+    def __init__(self, errors: list[dict[str, Any]]) -> None:
         """Initialize GraphQL error with error details.
 
         Args:
@@ -36,7 +38,7 @@ class AniListGraphQLError(AniListAPIError):
 class AniListNetworkError(AniListAPIError):
     """Raised when AniList API request fails due to network or JSON decode errors."""
 
-    def __init__(self, cause: object) -> None:
+    def __init__(self, cause: BaseException | str) -> None:
         """Initialize network error with underlying cause.
 
         Args:
@@ -44,3 +46,8 @@ class AniListNetworkError(AniListAPIError):
         """
         self.cause = cause
         super().__init__(f"AniList API request failed: {cause}")
+
+    @classmethod
+    def exhausted_retries(cls) -> "AniListNetworkError":
+        """Sentinel for the unreachable post-retry fallback path."""
+        return cls("exhausted retries unexpectedly")
