@@ -7,7 +7,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - qdrant-data:/qdrant/storage
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
@@ -107,7 +107,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - FORCE_CACHE=true
     volumes:
-      - model_cache:/app/cache
+      - model-cache:/app/cache
     networks:
       - vector-network
     depends_on:
@@ -162,9 +162,9 @@ networks:
 volumes:
   redis-data:
     driver: local
-  qdrant_data:
+  qdrant-data:
     driver: local
   redisinsight-data:
     driver: local
-  model_cache:
+  model-cache:
     driver: local
