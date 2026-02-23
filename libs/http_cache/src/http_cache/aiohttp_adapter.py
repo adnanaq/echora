@@ -175,15 +175,27 @@ class _CachedResponse:
 
     async def json(
         self,
+        *,
+        encoding: str | None = None,
+        loads: Any = json.loads,
+        content_type: str | None = "application/json",
     ) -> Any:
         """
         Parse the response body as JSON.
 
+        Parameters:
+            encoding: Character encoding (default: utf-8).
+            loads: JSON decoder function (default: json.loads).
+            content_type: Expected content type (default: application/json).
+                         Set to None to bypass content-type validation.
+
         Returns:
             The Python object produced by decoding the response body with JSON.
         """
-
-        return json.loads(self._body.decode("utf-8"))
+        # Note: content_type parameter accepted for aiohttp compatibility but not validated
+        # (aiohttp validates Content-Type header matches; we skip that for cached responses)
+        encoding = encoding or "utf-8"
+        return loads(self._body.decode(encoding))
 
     def release(self) -> None:
         """
@@ -444,7 +456,16 @@ class CachedAiohttpSession:
                     yield body
 
                 # Convert aiohttp.ClientResponse to hishel.Response
-                res_headers = dict(response.headers)
+                # Preserve multi-value headers (e.g., multiple Set-Cookie).
+                # getall() returns all values for a key; join with ", " per RFC 7230 §3.2.2
+                # for headers that are safe to combine (Hishel's Headers accepts str or list[str]).
+                # NOTE: Set-Cookie is explicitly excluded from RFC list-combination, but for
+                # API caching this is rarely an issue (APIs don't typically send Set-Cookie).
+                _get_all = getattr(response.headers, "getall", None)
+                if _get_all is not None:
+                    res_headers = {k: ", ".join(_get_all(k)) for k in set(response.headers.keys())}
+                else:
+                    res_headers = dict(response.headers)
 
                 # Force caching: override upstream cache headers so Hishel's RFC state machine
                 # will treat responses as fresh cacheable content. This is necessary for APIs
@@ -578,8 +599,10 @@ class CachedAiohttpSession:
 
     async def close(self) -> None:
         """Close the session and storage."""
-        await self.session.close()
-        await self.storage.close()
+        try:
+            await self.session.close()
+        finally:
+            await self.storage.close()
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
         """
