@@ -106,7 +106,7 @@ class CacheConfig(BaseSettings):
     )
 
 
-@lru_cache
+@lru_cache(maxsize=1)
 def get_cache_config() -> CacheConfig:
     """Get cached CacheConfig instance populated from environment variables.
 

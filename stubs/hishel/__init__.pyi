@@ -355,11 +355,6 @@ class AsyncSqliteStorage(AsyncBaseStorage):
         """
         ...
 
-class CachePolicy:
-    """Cache policy for Hishel 1.0."""
-
-    ...
-
 class SyncCacheProxy:
     """Synchronous cache proxy for requests library."""
 
@@ -400,7 +395,7 @@ class AsyncCacheProxy:
         self,
         request_sender: Callable[[Request], Any],  # Async callable returning Response
         storage: AsyncBaseStorage,
-        policy: Any | None = None,  # CachePolicy
+        policy: CachePolicy | None = None,
     ) -> None:
         """
         Initialize an asynchronous cache proxy with request_sender callback.

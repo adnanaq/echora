@@ -89,7 +89,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 health_check_interval=config.redis_health_check_interval,
             )
         if default_ttl is not None and default_ttl < 0:
-            raise InvalidTTLError(field_name="default_ttl")
+            raise InvalidTTLError(ttl_value=default_ttl, field_name="default_ttl")
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix
@@ -173,7 +173,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             The persisted Entry with its response.stream wrapped to save chunks to Redis.
 
         Raises:
-            TypeError: If `response.stream` is not an AsyncIterator.
+            InvalidStreamTypeError: If `response.stream` is not an AsyncIterator.
         """
         entry_id = id_ if id_ is not None else uuid.uuid4()
         entry_meta = EntryMeta(created_at=time.time())

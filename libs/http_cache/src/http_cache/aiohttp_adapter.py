@@ -64,18 +64,52 @@ Note:
 
 import json
 import logging
+from collections.abc import AsyncIterator as AsyncIteratorABC
 from types import TracebackType
 from typing import Any, cast
 
 import aiohttp
 from aiohttp import ClientResponseError, RequestInfo
-from hishel import AsyncBaseStorage, AsyncCacheProxy, CachePolicy, FilterPolicy
-from hishel._core._headers import Headers
-from hishel._core.models import Request, Response
+from hishel import (
+    AsyncBaseStorage,
+    AsyncCacheProxy,
+    CachePolicy,
+    FilterPolicy,
+    Headers,
+    Request,
+    Response,
+)
 from multidict import CIMultiDict, CIMultiDictProxy  # pants: no-infer-dep
 from yarl import URL  # pants: no-infer-dep
 
 logger = logging.getLogger(__name__)
+
+
+class ReusableBodyStream(AsyncIteratorABC[bytes]):
+    """Reusable async-iterable stream for HTTP request bodies.
+
+    Solves the stream exhaustion problem when Hishel reads the body twice:
+    1. First read: compute cache key (when use_body_key=True)
+    2. Second read: request_sender sends body to upstream server
+
+    Implementing __aiter__ (not __anext__) creates a fresh generator on each
+    iteration, so the same bytes can be read an arbitrary number of times.
+    The class is AsyncIterable in semantics — __anext__ is a no-op required
+    only to satisfy the AsyncIterator ABC.
+    """
+
+    def __init__(self, body_data: bytes | None) -> None:
+        self.body_data = body_data
+
+    def __aiter__(self):  # type: ignore[override]
+        async def _gen():
+            if self.body_data is not None:
+                yield self.body_data
+
+        return _gen()
+
+    async def __anext__(self) -> bytes:
+        raise StopAsyncIteration
 
 
 class _CachedResponse:
@@ -213,29 +247,14 @@ class _CachedRequestContextManager:
     by implementing the async context manager protocol.
     """
 
-    def __init__(
-        self,
-        coro: Any,  # Coroutine that returns aiohttp.ClientResponse
-        session: "CachedAiohttpSession",
-        method: str,
-        url: str,
-        kwargs: dict[str, Any],
-    ) -> None:
+    def __init__(self, coro: Any) -> None:
         """
         Initialize the async context manager for a pending HTTP request.
 
         Parameters:
-            coro: Coroutine that yields an aiohttp.ClientResponse when awaited.
-            session: Parent CachedAiohttpSession that created this context manager.
-            method: HTTP method for the request (e.g., "GET", "POST").
-            url: Request URL.
-            kwargs: Keyword arguments passed to the underlying request (headers, params, json, etc.).
+            coro: Coroutine that yields a _CachedResponse when awaited.
         """
         self._coro = coro
-        self._session = session
-        self._method = method
-        self._url = url
-        self._kwargs = kwargs
         self._response: _CachedResponse | None = None
 
     async def __aenter__(self) -> "_CachedResponse":
@@ -369,7 +388,7 @@ class CachedAiohttpSession:
             self._session_default_headers: dict[str, str] = dict(  # type: ignore[arg-type]
                 getattr(self.session, "headers", {})  # aiohttp: CIMultiDictProxy
             )
-        except Exception:
+        except (TypeError, AttributeError):
             self._session_default_headers = {}
 
         async def request_sender(request: Request) -> Response:
@@ -437,12 +456,10 @@ class CachedAiohttpSession:
                 # - 401/403: Auth errors should not be cached
                 if self.force_cache and 200 <= response.status < 400:
                     ttl = None
-                    try:
-                        ttl_meta = request.metadata.get("hishel_ttl")  # type: ignore[union-attr]
+                    if request.metadata is not None:
+                        ttl_meta = request.metadata.get("hishel_ttl")
                         if isinstance(ttl_meta, int | float):
                             ttl = int(ttl_meta)
-                    except Exception:
-                        ttl = None
                     if ttl is None:
                         # Fall back to storage default TTL when available.
                         storage_ttl = getattr(self.storage, "default_ttl", None)
@@ -465,7 +482,7 @@ class CachedAiohttpSession:
                     stream=body_stream(),
                 )
             finally:
-                response.close()
+                await response.release()
 
         self._proxy = AsyncCacheProxy(
             request_sender=request_sender,
@@ -543,7 +560,7 @@ class CachedAiohttpSession:
             _CachedRequestContextManager: Async context manager that yields a `_CachedResponse` for the GET request.
         """
         coro = self._request("GET", url, **kwargs)
-        return _CachedRequestContextManager(coro, self, "GET", url, kwargs)
+        return _CachedRequestContextManager(coro)
 
     def post(self, url: str, **kwargs: Any) -> _CachedRequestContextManager:
         """
@@ -557,7 +574,7 @@ class CachedAiohttpSession:
             _CachedRequestContextManager: An async context manager that yields a cached `_CachedResponse` when available or performs the POST and returns a live `_CachedResponse` on cache miss.
         """
         coro = self._request("POST", url, **kwargs)
-        return _CachedRequestContextManager(coro, self, "POST", url, kwargs)
+        return _CachedRequestContextManager(coro)
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
         """
@@ -612,79 +629,13 @@ class CachedAiohttpSession:
                 # Avoid breaking semantics by bypassing cache in that case.
                 unsupported_body = True
 
-        # Create a reusable stream that can be iterated multiple times.
-        # This is critical because Hishel will:
-        # 1. Read the stream to compute cache key (when use_body_key=True)
-        # 2. Pass the request to request_sender which needs to read stream again
-        # Using a class with __aiter__ creates a fresh iterator each time.
-        from collections.abc import AsyncIterator as AsyncIteratorABC
-
-        class ReusableBodyStream(AsyncIteratorABC[bytes]):
-            """Reusable async stream for HTTP request bodies.
-
-            This class solves the stream exhaustion problem that occurs when Hishel
-            needs to read the request body multiple times:
-
-            1. First read: Hishel computes cache key (when use_body_key=True)
-            2. Second read: request_sender needs body to send to upstream server
-
-            A standard async generator can only be iterated once. By implementing
-            __aiter__, this class creates a fresh iterator on each iteration,
-            allowing the same body data to be read multiple times.
-
-            Attributes:
-                body_data: The request body bytes, or None for GET/HEAD requests.
-
-            Examples:
-                >>> stream = ReusableBodyStream(b'{"query": "..."}')
-                >>> # First iteration (Hishel computes cache key)
-                >>> async for chunk in stream:
-                ...     print(len(chunk))  # 15
-                >>> # Second iteration (request_sender sends to server)
-                >>> async for chunk in stream:
-                ...     print(len(chunk))  # 15 (same data!)
-
-            Note:
-                This is an inner class defined in _request() method scope to access
-                the body variable. It's instantiated once per request.
-            """
-
-            def __init__(self, body_data: bytes | None):
-                """Initialize reusable stream with request body data.
-
-                Args:
-                    body_data: Request body bytes, or None for bodyless requests.
-                """
-                self.body_data = body_data
-
-            def __aiter__(self):
-                """Create a fresh async iterator for the body data.
-
-                Returns:
-                    Async generator that yields body_data once if not None.
-
-                Note:
-                    This method is called each time the stream is iterated,
-                    ensuring a fresh iterator every time.
-                """
-
-                async def _gen():
-                    if self.body_data is not None:
-                        yield self.body_data
-
-                return _gen()
-
-            async def __anext__(self) -> bytes:
-                """Compatibility method for AsyncIterator protocol."""
-                raise StopAsyncIteration
-
         if self.always_revalidate:
             # Force hishel to revalidate by adding no-cache to request
             request_headers["Cache-Control"] = "no-cache"
 
         # When body-key is enabled, Hishel requires a stream even for GET requests
         # Provide reusable stream for requests (None body for GET, actual body for POST)
-        needs_stream = body is not None or self.policy.use_body_key
+        needs_stream = body is not None or getattr(self.policy, "use_body_key", False)
 
         # If we can't safely represent the body in the cache key or upstream request,
         # fall back to a non-cached network request.
@@ -722,10 +673,7 @@ class CachedAiohttpSession:
         body_chunks = []
         if hishel_response.stream:
             if hasattr(hishel_response.stream, "__aiter__"):
-                # Cast to AsyncIterator after runtime check
-                from collections.abc import AsyncIterator as AsyncIteratorType
-
-                stream = cast(AsyncIteratorType[bytes], hishel_response.stream)
+                stream = cast(AsyncIteratorABC[bytes], hishel_response.stream)
                 async for chunk in stream:
                     body_chunks.append(chunk)
             else:
@@ -733,7 +681,7 @@ class CachedAiohttpSession:
         response_body = b"".join(body_chunks)
 
         # Detect if it was served from cache
-        from_cache = hishel_response.metadata.get("hishel_from_cache", False)
+        from_cache = (hishel_response.metadata or {}).get("hishel_from_cache", False)
 
         return _CachedResponse(
             status=hishel_response.status_code,

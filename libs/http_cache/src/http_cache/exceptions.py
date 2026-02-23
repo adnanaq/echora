@@ -19,8 +19,7 @@ class RedisConfigurationError(StorageConfigurationError):
     """Raised when Redis storage is misconfigured."""
 
     def __init__(self):
-        super().__init__()
-        self.args = ("redis_url required for Redis storage",)
+        CacheError.__init__(self, "redis_url required for Redis storage")
 
 
 class CacheStorageError(CacheError):

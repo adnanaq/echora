@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
-from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 from hishel import BaseFilter, FilterPolicy
@@ -19,28 +18,9 @@ from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
 from .exceptions import StorageConfigurationError
+from .utils import _mask_url_credentials
 
 logger = logging.getLogger(__name__)
-
-
-def _mask_url_credentials(url: str) -> str:
-    """
-    Mask password in URL for safe logging.
-
-    Replaces password component with '***' to prevent credential exposure in logs.
-
-    Args:
-        url: URL that may contain credentials (e.g., redis://user:password@host:port/db)
-
-    Returns:
-        URL with masked password (e.g., redis://user:***@host:port/db)
-    """
-    parsed = urlparse(url)
-    if parsed.password:
-        # Replace password with masked version
-        masked_netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
-        return urlunparse(parsed._replace(netloc=masked_netloc))
-    return url
 
 
 class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
@@ -329,5 +309,7 @@ class HTTPCacheManager:
         return {
             "cache_enabled": True,
             "storage_type": self.config.storage_type,
-            "redis_url": self.config.redis_url,
+            "redis_url": _mask_url_credentials(self.config.redis_url)
+            if self.config.redis_url
+            else None,
         }
