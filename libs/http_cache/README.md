@@ -313,7 +313,7 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 - **Multiple async tasks in same event loop** - Concurrent HTTP requests via `asyncio.gather()`
 - **Multiple agents with shared Redis cache** - Multiple session instances safely share Redis storage
 - **Multiple processes** - Redis atomic operations coordinate cache access across processes
-- **Concurrent cache reads/writes** - Redis connection pooling (100 connections) handles concurrent operations
+- **Concurrent cache reads/writes** - Redis connection pooling (configurable via `REDIS_MAX_CONNECTIONS`, default 100) handles concurrent operations
 
 **Not Thread-Safe:**
 

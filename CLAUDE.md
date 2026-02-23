@@ -150,12 +150,10 @@ The service follows a layered microservice architecture with clear separation of
 ```text
 echora/
 ├── apps/
-│   └── service/                    # FastAPI microservice
-│       └── src/service/
-│           ├── main.py            # Application entrypoint
-│           ├── dependencies.py    # Dependency injection
-│           └── routes/            # API endpoints
-│               └── admin.py       # Admin operations
+│   ├── vector_service/             # gRPC vector search service
+│   │   └── src/vector_service/
+│   │       └── routes/            # gRPC route handlers
+│   └── enrichment_service/        # Data enrichment service
 │
 ├── libs/                          # Shared libraries (business logic)
 │   ├── common/                    # Shared configuration & models
@@ -177,7 +175,7 @@ echora/
 
 ### Key Components
 
-- **FastAPI Service** (`apps/service/`) - API endpoints with dependency injection
+- **gRPC Service** (`apps/vector_service/`) - Search and admin gRPC endpoints
 - **Configuration** (`libs/common/config/`) - Pydantic BaseSettings (Qdrant, Embedding, Service configs)
 - **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
 - **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
@@ -243,7 +241,7 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 - `agent_id`: Directory name (e.g., `One_agent1`, `Dandadan_agent1`)
 - `--temp-dir`: Base directory path (default: `temp`) - optional
 
-**Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1>/`)
+**Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1/`)
 
 **Note**: When using `run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
 
