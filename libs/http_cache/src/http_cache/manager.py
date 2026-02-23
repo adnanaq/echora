@@ -13,7 +13,7 @@ from typing import Any
 
 import aiohttp
 from hishel import BaseFilter, FilterPolicy
-from hishel._core.models import Response as HishelResponse
+from hishel import Response as HishelResponse
 from redis.asyncio import Redis as AsyncRedis
 
 from .config import CacheConfig
@@ -99,6 +99,111 @@ class HTTPCacheManager:
 
         if self.config.cache_enabled:
             self._init_storage()
+
+    async def close_async(self) -> None:
+        """
+        Close and cleanup the asynchronous Redis client used for HTTP caching.
+
+        If an async Redis client exists, attempts to close it and logs any exception raised during closure.
+        Afterward, clears internal references to the Redis client and its associated event loop.
+        """
+        if self._async_redis_client:
+            try:
+                await self._async_redis_client.aclose()
+            except Exception as e:
+                logger.warning(f"Error closing async Redis client: {e}")
+            finally:
+                self._async_redis_client = None
+                self._redis_event_loop = None
+
+    def get_aiohttp_session(
+        self, service: str, **session_kwargs: Any
+    ) -> Any:  # Returns aiohttp.ClientSession or CachedAiohttpSession
+        """Get an aiohttp session for the specified service with caching support.
+
+        When Redis caching is enabled and available, returns a CachedAiohttpSession
+        with body-aware caching (critical for GraphQL/POST requests). Different
+        request bodies produce separate cache entries. Falls back to standard
+        aiohttp.ClientSession if caching is disabled or unavailable.
+
+        Args:
+            service: Service name used to determine cache TTL (e.g., "anilist", "jikan").
+            **session_kwargs: Additional arguments forwarded to session constructor
+                (e.g., timeout, headers, connector).
+
+        Returns:
+            CachedAiohttpSession with Redis backend if caching enabled, otherwise
+            plain aiohttp.ClientSession.
+
+        Examples:
+            >>> manager = HTTPCacheManager(config)
+            >>> session = manager.get_aiohttp_session("anilist")
+            >>> async with session.post(url, json=payload) as response:
+            ...     data = await response.json()
+        """
+        if not self.config.cache_enabled or self.config.storage_type != "redis":
+            return aiohttp.ClientSession(**session_kwargs)
+
+        # Get or create Redis client for current event loop
+        redis_client = self._get_or_create_redis_client()
+        if not redis_client:
+            return aiohttp.ClientSession(**session_kwargs)
+
+        # Create async Redis storage for aiohttp caching
+        try:
+            from http_cache.aiohttp_adapter import CachedAiohttpSession
+            from http_cache.async_redis_storage import AsyncRedisStorage
+
+            # Get service-specific TTL
+            ttl = self._get_service_ttl(service)
+
+            # Create async storage from event-loop-specific client
+            async_storage = AsyncRedisStorage(
+                client=redis_client,
+                default_ttl=float(ttl),
+                refresh_ttl_on_access=True,
+                key_prefix="hishel_cache",
+            )
+
+            # Return cached session
+            logger.debug(
+                f"Async Redis cache session created for {service} (TTL: {ttl}s, event loop: {id(self._redis_event_loop)})"
+            )
+            return CachedAiohttpSession(
+                storage=async_storage,
+                policy=self.policy,
+                force_cache=self.config.force_cache,
+                always_revalidate=self.config.always_revalidate,
+                **session_kwargs,
+            )
+
+        except ImportError as e:
+            logger.warning(f"Async caching dependencies missing: {e}")
+            return aiohttp.ClientSession(**session_kwargs)
+        except Exception as e:
+            logger.warning(f"Failed to initialize async cache: {e}")
+            return aiohttp.ClientSession(**session_kwargs)
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get summary of cache manager's current configuration and status.
+
+        Returns:
+            Dictionary with cache configuration. If caching disabled, returns
+            {"cache_enabled": False}. If enabled, includes:
+            - "cache_enabled": True
+            - "storage_type": Backend type (e.g., "redis")
+            - "redis_url": Redis connection URL (may be None)
+        """
+        if not self.config.cache_enabled:
+            return {"cache_enabled": False}
+
+        return {
+            "cache_enabled": True,
+            "storage_type": self.config.storage_type,
+            "redis_url": _mask_url_credentials(self.config.redis_url)
+            if self.config.redis_url
+            else None,
+        }
 
     def _init_storage(self) -> None:
         """
@@ -196,74 +301,6 @@ class HTTPCacheManager:
 
         return self._async_redis_client
 
-    def get_aiohttp_session(
-        self, service: str, **session_kwargs: Any
-    ) -> Any:  # Returns aiohttp.ClientSession or CachedAiohttpSession
-        """Get an aiohttp session for the specified service with caching support.
-
-        When Redis caching is enabled and available, returns a CachedAiohttpSession
-        with body-aware caching (critical for GraphQL/POST requests). Different
-        request bodies produce separate cache entries. Falls back to standard
-        aiohttp.ClientSession if caching is disabled or unavailable.
-
-        Args:
-            service: Service name used to determine cache TTL (e.g., "anilist", "jikan").
-            **session_kwargs: Additional arguments forwarded to session constructor
-                (e.g., timeout, headers, connector).
-
-        Returns:
-            CachedAiohttpSession with Redis backend if caching enabled, otherwise
-            plain aiohttp.ClientSession.
-
-        Examples:
-            >>> manager = HTTPCacheManager(config)
-            >>> session = manager.get_aiohttp_session("anilist")
-            >>> async with session.post(url, json=payload) as response:
-            ...     data = await response.json()
-        """
-        if not self.config.cache_enabled or self.config.storage_type != "redis":
-            return aiohttp.ClientSession(**session_kwargs)
-
-        # Get or create Redis client for current event loop
-        redis_client = self._get_or_create_redis_client()
-        if not redis_client:
-            return aiohttp.ClientSession(**session_kwargs)
-
-        # Create async Redis storage for aiohttp caching
-        try:
-            from http_cache.aiohttp_adapter import CachedAiohttpSession
-            from http_cache.async_redis_storage import AsyncRedisStorage
-
-            # Get service-specific TTL
-            ttl = self._get_service_ttl(service)
-
-            # Create async storage from event-loop-specific client
-            async_storage = AsyncRedisStorage(
-                client=redis_client,
-                default_ttl=float(ttl),
-                refresh_ttl_on_access=True,
-                key_prefix="hishel_cache",
-            )
-
-            # Return cached session
-            logger.debug(
-                f"Async Redis cache session created for {service} (TTL: {ttl}s, event loop: {id(self._redis_event_loop)})"
-            )
-            return CachedAiohttpSession(
-                storage=async_storage,
-                policy=self.policy,
-                force_cache=self.config.force_cache,
-                always_revalidate=self.config.always_revalidate,
-                **session_kwargs,
-            )
-
-        except ImportError as e:
-            logger.warning(f"Async caching dependencies missing: {e}")
-            return aiohttp.ClientSession(**session_kwargs)
-        except Exception as e:
-            logger.warning(f"Failed to initialize async cache: {e}")
-            return aiohttp.ClientSession(**session_kwargs)
-
     def _get_service_ttl(self, service: str) -> int:
         """Retrieve cache TTL in seconds for the specified service.
 
@@ -276,40 +313,3 @@ class HTTPCacheManager:
         """
         ttl_attr = f"ttl_{service}"
         return getattr(self.config, ttl_attr, 86400)  # Default 24 hours
-
-    async def close_async(self) -> None:
-        """
-        Close and cleanup the asynchronous Redis client used for HTTP caching.
-
-        If an async Redis client exists, attempts to close it and logs any exception raised during closure.
-        Afterward, clears internal references to the Redis client and its associated event loop.
-        """
-        if self._async_redis_client:
-            try:
-                await self._async_redis_client.aclose()
-            except Exception as e:
-                logger.warning(f"Error closing async Redis client: {e}")
-            finally:
-                self._async_redis_client = None
-                self._redis_event_loop = None
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get summary of cache manager's current configuration and status.
-
-        Returns:
-            Dictionary with cache configuration. If caching disabled, returns
-            {"cache_enabled": False}. If enabled, includes:
-            - "cache_enabled": True
-            - "storage_type": Backend type (e.g., "redis")
-            - "redis_url": Redis connection URL (may be None)
-        """
-        if not self.config.cache_enabled:
-            return {"cache_enabled": False}
-
-        return {
-            "cache_enabled": True,
-            "storage_type": self.config.storage_type,
-            "redis_url": _mask_url_credentials(self.config.redis_url)
-            if self.config.redis_url
-            else None,
-        }
