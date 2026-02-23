@@ -59,7 +59,9 @@ class TestCachedAiohttpSessionRequestBuilding:
             async def stream():
                 yield b"{}"
 
-            return Response(status_code=200, stream=stream(), metadata={"hishel_from_cache": False})
+            return Response(
+                status_code=200, stream=stream(), metadata={"hishel_from_cache": False}
+            )
 
         cached._proxy.handle_request = AsyncMock(side_effect=handle)
 
@@ -73,7 +75,9 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert resp.from_cache is False
 
     @pytest.mark.asyncio
-    async def test_request_includes_params_in_url(self, mock_storage: AsyncMock) -> None:
+    async def test_request_includes_params_in_url(
+        self, mock_storage: AsyncMock
+    ) -> None:
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
@@ -84,7 +88,9 @@ class TestCachedAiohttpSessionRequestBuilding:
             async def stream():
                 yield b"ok"
 
-            return Response(status_code=200, stream=stream(), metadata={"hishel_from_cache": True})
+            return Response(
+                status_code=200, stream=stream(), metadata={"hishel_from_cache": True}
+            )
 
         cached._proxy.handle_request = AsyncMock(side_effect=handle)
 
@@ -115,7 +121,7 @@ class TestCachedAiohttpSessionRequestSender:
         origin_resp.status = 200
         origin_resp.headers = {"Content-Type": "text/plain"}
         origin_resp.read = AsyncMock(return_value=b"hello")
-        origin_resp.close = MagicMock()
+        origin_resp.release = AsyncMock()
         mock_session.request = AsyncMock(return_value=origin_resp)
 
         async def body_stream():

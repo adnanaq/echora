@@ -144,9 +144,10 @@ class TestGetCacheConfig:
 
     def test_get_cache_config_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test get_cache_config() with no environment variables (defaults)."""
-        # Clear all cache-related env vars
-        monkeypatch.delenv("ENABLE_HTTP_CACHE", raising=False)
-        monkeypatch.delenv("REDIS_CACHE_URL", raising=False)
+        # Clear singleton cache and all cache-related env vars
+        get_cache_config.cache_clear()
+        monkeypatch.delenv("CACHE_ENABLED", raising=False)
+        monkeypatch.delenv("REDIS_URL", raising=False)
 
         config = get_cache_config()
 
@@ -202,8 +203,6 @@ class TestGetCacheConfig:
         """Test get_cache_config() with invalid CACHE_ENABLED value raises ValidationError."""
         get_cache_config.cache_clear()
         monkeypatch.setenv("CACHE_ENABLED", "invalid")
-
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError) as exc_info:
             get_cache_config()
@@ -283,9 +282,7 @@ class TestGetCacheConfig:
         assert config.ttl_jikan == 86400
         assert config.ttl_anilist == 86400
 
-    def test_get_cache_config_singleton(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_get_cache_config_singleton(self) -> None:
         """Test that get_cache_config() returns cached singleton instance."""
         get_cache_config.cache_clear()
 

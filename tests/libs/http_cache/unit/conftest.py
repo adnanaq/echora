@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from hishel._core.models import Headers, Request, Response
+from hishel import EntryMeta, Headers, Request, Response
 from http_cache.async_redis_storage import AsyncRedisStorage
 
 # ============================================================================
@@ -164,8 +164,6 @@ class MockAsyncStorage:
         Returns:
             MagicMock: A mock entry whose `.response` is a hishel Response and has metadata.
         """
-        from hishel._core.models import EntryMeta, Request, Response
-
         body_chunks = []
         # Consume the stream
         stream = response.stream

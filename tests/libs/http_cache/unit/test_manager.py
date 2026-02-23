@@ -61,7 +61,10 @@ class TestHTTPCacheManagerInit:
             # Should log warning and not crash - Redis client remains None
             assert manager._async_redis_client is None
             # Check for the warning message
-            assert any("redis_url required" in str(call) for call in mock_logger.warning.call_args_list)
+            assert any(
+                "redis_url required" in str(call)
+                for call in mock_logger.warning.call_args_list
+            )
 
     def test_init_invalid_storage_type_raises_error(self) -> None:
         """Test that invalid storage type raises ValueError."""
@@ -101,7 +104,9 @@ class TestGetAiohttpSession:
             # Simulate Redis connection failure
             mock_async_redis_class.from_url.side_effect = Exception("Redis error")
 
-            with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
+            with patch(
+                "http_cache.manager.aiohttp.ClientSession"
+            ) as mock_session_class:
                 mock_session = MagicMock()
                 mock_session_class.return_value = mock_session
 
@@ -121,8 +126,12 @@ class TestGetAiohttpSession:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            with patch("http_cache.async_redis_storage.AsyncRedisStorage") as mock_async_storage:
-                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession") as mock_cached_session:
+            with patch(
+                "http_cache.async_redis_storage.AsyncRedisStorage"
+            ) as mock_async_storage:
+                with patch(
+                    "http_cache.aiohttp_adapter.CachedAiohttpSession"
+                ) as mock_cached_session:
                     mock_session_instance = MagicMock()
                     mock_cached_session.return_value = mock_session_instance
 
@@ -143,7 +152,9 @@ class TestGetAiohttpSession:
             mock_async_redis = MagicMock()
             mock_async_redis_class.from_url.return_value = mock_async_redis
 
-            with patch("http_cache.async_redis_storage.AsyncRedisStorage") as mock_async_storage:
+            with patch(
+                "http_cache.async_redis_storage.AsyncRedisStorage"
+            ) as mock_async_storage:
                 with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
                     manager.get_aiohttp_session("jikan")
@@ -201,7 +212,9 @@ class TestGetStats:
 
     def test_get_stats_redis(self) -> None:
         """Test stats with Redis storage."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url="redis://test")
+        config = CacheConfig(
+            cache_enabled=True, storage_type="redis", redis_url="redis://test"
+        )
         manager = HTTPCacheManager(config)
         stats = manager.get_stats()
         assert stats["cache_enabled"] is True
