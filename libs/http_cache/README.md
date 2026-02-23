@@ -343,17 +343,17 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 
 ```bash
 # Clear all cached data (HTTP + result caches)
-docker exec anime-vector-redis redis-cli FLUSHALL
+docker exec echora-redis redis-cli FLUSHALL
 
 # Alternative: Clear specific database (DB 0)
-docker exec anime-vector-redis redis-cli FLUSHDB
+docker exec echora-redis redis-cli FLUSHDB
 ```
 
 ### View Cache Statistics
 
 ```bash
 # Connect to Redis CLI
-docker exec -it anime-vector-redis redis-cli
+docker exec -it echora-redis redis-cli
 
 # Check total cache size
 > DBSIZE
@@ -443,7 +443,7 @@ async def process(x: int) -> int:
 
 **Body-Based Caching for GraphQL/POST:**
 
-`HTTPCacheManager` sets `FilterPolicy(use_body_key=True)` globally, which instructs Hishel to include the request body in the cache key. This means POST requests with different bodies (e.g., different GraphQL queries) are cached as separate entries — essential for AniList and other GraphQL APIs.
+`HTTPCacheManager` sets `use_body_key = True` on its `FilterPolicy` instance, which instructs Hishel to include the request body in the cache key. This means POST requests with different bodies (e.g., different GraphQL queries) are cached as separate entries — essential for AniList and other GraphQL APIs.
 
 **Graceful Degradation on Errors:**
 
@@ -465,7 +465,7 @@ echo $CACHE_ENABLED  # Should be "true"
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
 
 # Check cache keys exist
-docker exec -it anime-vector-redis redis-cli
+docker exec -it echora-redis redis-cli
 > KEYS *
 > DBSIZE
 ```

@@ -128,13 +128,13 @@ uv run ty check libs/http_cache/
 
 ```bash
 # Check service health
-curl http://localhost:8002/health
+curl http://localhost:8001/health
 
 # Check Qdrant health
 curl http://localhost:6333/health
 
 # Get database statistics
-curl http://localhost:8002/api/v1/admin/stats
+curl http://localhost:8001/api/v1/admin/stats
 ```
 
 ## Architecture Overview
@@ -412,7 +412,7 @@ The service supports multiple embedding providers through configuration:
 
 ### Service Configuration
 
-- `VECTOR_SERVICE_PORT`: Service port (default: 8002)
+- `VECTOR_SERVICE_PORT`: Service port (default: 8001)
 - `DEBUG`: Enable debug mode (default: true)
 - `LOG_LEVEL`: Logging level (default: INFO)
 
