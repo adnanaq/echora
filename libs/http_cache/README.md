@@ -286,30 +286,21 @@ async def fetch_external_data(item_id: str) -> dict:
 - **Caches:** Raw HTTP responses at the network layer
 - **Implementation:** `CachedAiohttpSession` wrapping `aiohttp.ClientSession`
 - **Transparency:** Automatic caching with no code changes to request logic
-- **Key format:** `hishel_cache:{hash(method+url+headers+body)}`
 
 **2. Result-Level Caching**
 
 - **Technology:** Custom `@cached_result` decorator
 - **Use case:** Non-HTTP operations (web scraping, computations, file I/O)
 - **Caches:** Serialized function return values (JSON)
-- **Implementation:** Python decorator with Redis storage with automatic schema invalidation
-- **Key format:** `result_cache:{function_name}:{schema_hash}:{hash(args)}`
-  - Schema hash: 16-character hex from SHA-256 of function source code
-  - Automatically changes when function implementation changes
-  - Falls back to function name hash for built-ins/lambdas where source is unavailable
-  - Keys exceeding 200 characters are SHA-256 hashed (configurable via `max_cache_key_length`)
+- **Implementation:** Python decorator with Redis storage and automatic schema invalidation
 
 ### Cache Management Features
 
-- **TTL enforcement:** Redis EXPIRE command (configurable per service for HTTP caching; fixed 24h default for result caching)
-- **Schema versioning:** Automatic invalidation via function source code hashing (16-character SHA-256 prefix)
-  - Schema hash recomputed on decorator application (not per-call)
-  - Built-in functions and lambdas use name-based hash fallback
+- **TTL enforcement:** Configurable per service for HTTP caching; 24h default for result caching
+- **Schema versioning:** Automatic cache invalidation when function implementation changes
 - **Graceful degradation:** Falls back to uncached execution on Redis failures (connection errors, timeouts)
 - **Multi-process safe:** Redis atomic operations prevent race conditions
 - **Event loop aware:** Per-event-loop Redis client management (automatic cleanup on loop changes)
-- **Cache key optimization:** Keys > 200 chars are automatically hashed to 64-character SHA-256 hex
 
 ## Thread-Safety and Concurrency
 
@@ -455,11 +446,8 @@ async def process(x: int) -> int:
 `HTTPCacheManager` sets `FilterPolicy(use_body_key=True)` globally, which instructs Hishel to include the request body in the cache key. This means POST requests with different bodies (e.g., different GraphQL queries) are cached as separate entries — essential for AniList and other GraphQL APIs.
 
 **Graceful Degradation on Errors:**
-```python
-# Redis connection failures → falls back to uncached requests
-# TypeError (non-JSON-serializable) → function called without caching
-# No application crashes, only performance impact
-```
+
+On Redis connection failures the library falls back to uncached requests transparently. On serialization errors (`TypeError`) the function is called without caching. Neither case causes application crashes — only a performance impact.
 
 ## Troubleshooting
 
