@@ -4,19 +4,17 @@
 
 The service follows a layered microservice architecture:
 
-`API Layer (apps/service/) -> Business Logic (libs/) -> Database Layer (Qdrant)`
+`API Layer (apps/vector_service/) -> Business Logic (libs/) -> Database Layer (Qdrant)`
 
 ## Directory Structure
 
 ```text
 echora/
 |- apps/
-|  `- service/                    # FastAPI microservice
-|     `- src/service/
-|        |- main.py               # Application entrypoint
-|        |- dependencies.py       # Dependency injection
-|        `- routes/               # API endpoints
-|           `- admin.py           # Admin operations
+|  |- vector_service/             # gRPC vector search service
+|  |  `- src/vector_service/
+|  |     `- routes/               # gRPC route handlers
+|  `- enrichment_service/         # Data enrichment service
 |
 |- libs/                          # Shared libraries (business logic)
 |  |- common/                     # Shared configuration & models
@@ -38,7 +36,8 @@ echora/
 
 ## Key Components
 
-- FastAPI Service (`apps/service/`): API endpoints with dependency injection
+- gRPC Service (`apps/vector_service/`): search and admin gRPC endpoints
+- Enrichment Service (`apps/enrichment_service/`): data enrichment pipeline
 - Configuration (`libs/common/config/`): Pydantic BaseSettings
 - Vector Processing (`libs/vector_processing/`): text/image embedding generation
 - Qdrant Client (`libs/qdrant_db/`): vector DB operations with quantization and multi-vector support

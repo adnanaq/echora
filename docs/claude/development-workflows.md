@@ -12,8 +12,11 @@ uv sync --extra dev
 # Start Qdrant database only
 docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
-# Run service locally for development
-./pants run apps/service:service
+# Run vector service locally for development
+./pants run apps/vector_service:vector_service
+
+# Run enrichment service locally for development
+./pants run apps/enrichment_service:enrichment_service
 ```
 
 ## Docker Development (Recommended)
@@ -118,13 +121,13 @@ uv run ty check libs/http_cache/
 
 ```bash
 # Check service health
-curl http://localhost:8002/health
+curl http://localhost:8001/health
 
 # Check Qdrant health
 curl http://localhost:6333/health
 
 # Get database statistics
-curl http://localhost:8002/api/v1/admin/stats
+curl http://localhost:8001/api/v1/admin/stats
 ```
 
 ## Environment Variables
@@ -145,6 +148,6 @@ curl http://localhost:8002/api/v1/admin/stats
 
 ### Service Configuration
 
-- `VECTOR_SERVICE_PORT`: Service port (default: `8002`)
+- `VECTOR_SERVICE_PORT`: Service port (default: `8001`)
 - `DEBUG`: Enable debug mode (default: `true`)
 - `LOG_LEVEL`: Logging level (default: `INFO`)

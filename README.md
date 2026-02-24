@@ -72,11 +72,14 @@ echora/
 
 ```bash
 # Start all services
-docker compose up -d
+docker compose -f docker/docker-compose.dev.yml up -d
 
 # Services:
-# - vector_service gRPC: localhost:8002
-# - enrichment_service gRPC: localhost:8010
+# - vector_service gRPC:    localhost:8001
+# - enrichment_service gRPC: localhost:8002
+# - Qdrant UI:              http://localhost:6333/dashboard
+# - Redis:                  localhost:6379
+# - RedisInsight UI:        http://localhost:5540
 ```
 
 ### Local Development
@@ -115,13 +118,16 @@ uv sync
 # - uv.lock (dependency lock file)
 ```
 
-#### 4. Start Qdrant Database
+#### 4. Start Infrastructure
 
 ```bash
-docker compose up -d qdrant
+# Qdrant vector database
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
+# UI: http://localhost:6333/dashboard
 
-# Access Qdrant UI dashboard
-# http://localhost:6333/dashboard
+# Redis (HTTP cache for enrichment pipeline)
+docker compose -f docker/docker-compose.dev.yml up -d redis
+# RedisInsight UI: http://localhost:5540 (add host: redis, port: 6379)
 ```
 
 #### 5. Run the Service
@@ -129,10 +135,10 @@ docker compose up -d qdrant
 **Using Pants (Recommended)** — handles monorepo dependencies automatically:
 
 ```bash
-# Run vector service (gRPC on :8002)
+# Run vector service (gRPC on :8001)
 ./pants run apps/vector_service/:vector_service
 
-# Run enrichment service (gRPC on :8010)
+# Run enrichment service (gRPC on :8002)
 ./pants run apps/enrichment_service/:enrichment_service
 
 # Run tests
@@ -270,8 +276,8 @@ Vector embedding generation and processing.
 # Skip integration tests (fast, no DB/models required)
 ./pants test :: -- -m "not integration"
 
-# Run ONLY integration tests (requires Qdrant + ML models)
-docker compose up -d qdrant
+# Run ONLY integration tests (requires Qdrant + Redis + ML models)
+docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
 ./pants test :: -- -m integration
 
 # Run tests for specific library
@@ -340,7 +346,7 @@ ENVIRONMENT=development
 
 # Service
 VECTOR_SERVICE_HOST=0.0.0.0
-VECTOR_SERVICE_PORT=8002
+VECTOR_SERVICE_PORT=8001
 
 # Database
 QDRANT_URL=http://localhost:6333
@@ -397,8 +403,8 @@ pip install -e ".[dev]"
 ## Services And gRPC Contracts
 
 - Services in this repo:
-  - `apps/vector_service` (gRPC on `:8002`)
-  - `apps/enrichment_service` (gRPC on `:8010`)
+  - `apps/vector_service` (gRPC on `:8001`)
+  - `apps/enrichment_service` (gRPC on `:8002`)
 - Active vector gRPC methods:
   - `VectorAdminService`: `Health`, `GetStats`
   - `VectorSearchService`: `Search`
@@ -420,9 +426,11 @@ pip install -e ".[dev]"
 The service uses a unified multi-vector architecture optimized for million-query scale:
 
 **Text Vectors**:
+
 - `text_vector`: 1024-dimensional BGE-M3 embeddings covering titles, synopses, and metadata across all entity types (Anime, Characters, Episodes).
 
 **Image Vectors**:
+
 - `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
 
 ### Technology Stack
@@ -431,6 +439,7 @@ The service uses a unified multi-vector architecture optimized for million-query
 - **Language**: Python 3.12
 - **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing
+- **HTTP Cache**: Redis (RFC 9111-compliant via Hishel, used by enrichment pipeline)
 - **Text Embeddings**: BGE-M3 (1024-dim, multilingual)
 - **Image Embeddings**: OpenCLIP ViT-L/14 (768-dim)
 - **Package Manager**: UV

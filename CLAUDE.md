@@ -9,7 +9,8 @@ It supports text, image, and multimodal search, and includes production-oriented
 
 ## Core Repo Map
 
-- `apps/service/`: FastAPI API layer
+- `apps/vector_service/`: gRPC vector search service
+- `apps/enrichment_service/`: Data enrichment service
 - `libs/`: Shared business/domain libraries
 - `tests/`: Test suite
 - `docker/`: Local dev stack definitions
@@ -43,7 +44,7 @@ uv sync --extra dev
 docker compose -f docker/docker-compose.dev.yml up -d
 
 # Service health
-curl http://localhost:8002/health
+curl http://localhost:8001/health
 
 # Qdrant health
 curl http://localhost:6333/health
@@ -70,4 +71,4 @@ Open these only when relevant to the current task:
 - `QDRANT_COLLECTION_NAME` (default: `anime_database`)
 - `TEXT_EMBEDDING_MODEL` (default: `BAAI/bge-m3`)
 - `IMAGE_EMBEDDING_MODEL` (default: `ViT-L-14/laion2b_s32b_b82k`)
-- `VECTOR_SERVICE_PORT` (default: `8002`)
+- `VECTOR_SERVICE_PORT` (default: `8001`)

@@ -24,10 +24,13 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from .config import get_cache_config
+from .exceptions import RedisInitializationError
+from .utils import _mask_url_credentials
 
 # Type variables for preserving function signatures
 P = ParamSpec("P")
 R = TypeVar("R")
+
 
 # --- Singleton Redis Client for @cached_result ---
 
@@ -45,7 +48,7 @@ async def get_result_cache_redis_client() -> Redis:
         Redis: The initialized singleton Redis client for result caching.
 
     Raises:
-        RuntimeError: If client initialization fails and no Redis instance could be created.
+        RedisInitializationError: If client initialization fails and no Redis instance could be created.
     """
     global _redis_client
     async with _redis_lock:
@@ -55,7 +58,7 @@ async def get_result_cache_redis_client() -> Redis:
             config = get_cache_config()
             redis_url = config.redis_url or "redis://localhost:6379/0"
             logging.info(
-                f"Initializing singleton Redis client for result cache: {redis_url} "
+                f"Initializing singleton Redis client for result cache: {_mask_url_credentials(redis_url)} "
                 f"(max_connections={config.redis_max_connections})"
             )
             # Configure connection pool for multi-agent concurrency and reliability
@@ -71,7 +74,7 @@ async def get_result_cache_redis_client() -> Redis:
             )
         # After initialization, client must be non-None
         if _redis_client is None:
-            raise RuntimeError("Failed to initialize Redis client for result cache")
+            raise RedisInitializationError()
         return _redis_client
 
 
@@ -237,7 +240,7 @@ def cached_result(
             config = get_cache_config()
 
             # Skip caching if disabled
-            if not config.enabled or config.storage_type != "redis":
+            if not config.cache_enabled or config.storage_type != "redis":
                 return await func(*args, **kwargs)
 
             # Generate cache key with schema hash
