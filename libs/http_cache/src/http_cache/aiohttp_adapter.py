@@ -64,7 +64,7 @@ Note:
 
 import json
 import logging
-from collections.abc import AsyncIterator as AsyncIteratorABC
+from collections.abc import AsyncIterator as AsyncIteratorABC, Callable
 from types import TracebackType
 from typing import Any, cast
 
@@ -177,7 +177,7 @@ class _CachedResponse:
         self,
         *,
         encoding: str | None = None,
-        loads: Any = json.loads,
+        loads: Callable[[str | bytes | bytearray], Any] = json.loads,
         content_type: str | None = "application/json",
     ) -> Any:
         """

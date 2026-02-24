@@ -173,8 +173,8 @@ class AniListEnrichmentHelper:
 
                 return result
 
-        # Should not reach here due to raises above, but defensive fallback
-        raise AniListNetworkError.exhausted_retries()
+        # Unreachable: every loop iteration raises or returns
+        raise AssertionError("AniList retry loop exited without raising or returning")
 
     def _get_media_query_fields(self) -> str:
         """

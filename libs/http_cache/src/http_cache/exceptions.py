@@ -15,13 +15,6 @@ class StorageConfigurationError(CacheError):
             super().__init__("Storage configuration error")
 
 
-class RedisConfigurationError(StorageConfigurationError):
-    """Raised when Redis storage is misconfigured."""
-
-    def __init__(self):
-        CacheError.__init__(self, "redis_url required for Redis storage")
-
-
 class CacheStorageError(CacheError):
     """Raised when cache storage operations fail."""
 
