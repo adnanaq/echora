@@ -1,5 +1,21 @@
+# -----------------------------------------------------------------------------
+# Production-Like Application Stack
+#
+# Purpose:
+# - Run Echora app services with production-oriented settings and limits
+# - Suitable for staging/perf-style local validation
+#
+# Run:
+#   docker compose -f docker/docker-compose.prd.yml up -d
+#
+# Docs:
+# - README.md
+# - docs/technical.md
+# -----------------------------------------------------------------------------
 services:
   # Qdrant Vector Database
+  # - Primary vector storage backend
+  # - Exposes API on :6333
   qdrant:
     image: qdrant/qdrant:v1.16.2
     container_name: echora-qdrant
@@ -19,7 +35,9 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # Redis Cache (for HTTP caching in enrichment pipeline)
+  # Redis Cache
+  # - Shared cache backend
+  # - Exposes Redis on :6379
   redis:
     image: redis:7
     container_name: echora-redis
@@ -38,7 +56,9 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Anime Vector Service
+  # Vector Service (gRPC)
+  # - Semantic/vector search and vector admin operations
+  # - Exposes gRPC on :8001
   vector-service:
     build:
       context: ..
@@ -99,7 +119,9 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # Enrichment Service
+  # Enrichment Service (gRPC)
+  # - Metadata enrichment and pipeline orchestration
+  # - Exposes gRPC on :8002
   enrichment-service:
     build:
       context: ..

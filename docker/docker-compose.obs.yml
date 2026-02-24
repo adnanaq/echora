@@ -1,6 +1,24 @@
+# -----------------------------------------------------------------------------
+# Local Observability Stack (single collector topology)
+#
+# Purpose:
+# - Fast local debugging with one OpenTelemetry Collector
+# - Exposes Grafana/Prometheus/Loki/Tempo/Alertmanager on localhost
+#
+# Run:
+#   docker compose -f docker/docker-compose.obs.yml up -d
+#
+# Docs:
+# - docs/observability_local_runbook.md
+# - docs/plan/observabilit_implementation_plan.md
+# -----------------------------------------------------------------------------
 services:
+  # OTel Collector (single instance)
+  # - Receives OTLP from app services
+  # - Routes metrics/logs/traces to backends
+  # - Exposes OTLP :4317/:4318 and Prom scrape endpoint :8889
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.146.0
+    image: otel/opentelemetry-collector-contrib:0.146.1
     container_name: echora-otel-collector
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -16,6 +34,10 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # Prometheus
+  # - Scrapes collector-exported metrics
+  # - Evaluates alert rules and forwards to Alertmanager
+  # - Exposes UI/API on :9090
   prometheus:
     image: prom/prometheus:v3.9.1
     container_name: echora-prometheus
@@ -35,8 +57,12 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # Alertmanager
+  # - Receives firing alerts from Prometheus
+  # - Handles grouping/routing/silencing
+  # - Exposes UI/API on :9093
   alertmanager:
-    image: prom/alertmanager:v0.29.0
+    image: prom/alertmanager:v0.31.1
     container_name: echora-alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -50,6 +76,10 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # Loki
+  # - Log storage/query backend
+  # - Receives logs via OTLP HTTP from collector
+  # - Exposes API on :3100
   loki:
     image: grafana/loki:3.6.7
     container_name: echora-loki
@@ -63,6 +93,10 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # Tempo
+  # - Trace storage/query backend
+  # - Receives traces from collector
+  # - Exposes API on :3200
   tempo:
     image: grafana/tempo:2.10.1
     container_name: echora-tempo
@@ -76,6 +110,9 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # Grafana
+  # - Unified UI for metrics, logs, traces, and alerts
+  # - Exposes UI on :3000
   grafana:
     image: grafana/grafana:12.3.3
     container_name: echora-grafana

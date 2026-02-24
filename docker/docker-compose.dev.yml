@@ -1,5 +1,21 @@
+# -----------------------------------------------------------------------------
+# Development Application Stack
+#
+# Purpose:
+# - Run Echora app services and local data dependencies for development
+# - Supports vector/enrichment services with hot iteration workflow
+#
+# Run:
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#
+# Docs:
+# - README.md
+# - docs/technical.md
+# -----------------------------------------------------------------------------
 services:
   # Qdrant Vector Database
+  # - Primary vector storage backend
+  # - Exposes API/UI on :6333 and gRPC on :6334
   qdrant:
     image: qdrant/qdrant:latest
     container_name: echora-qdrant
@@ -29,7 +45,9 @@ services:
         soft: 65536
         hard: 65536
 
-  # Redis Cache (for HTTP caching in enrichment pipeline)
+  # Redis Cache
+  # - Shared cache backend (HTTP cache + enrichment pipeline caching)
+  # - Exposes Redis on :6379
   redis:
     image: redis:7
     container_name: echora-redis
@@ -48,7 +66,9 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # RedisInsight (GUI for Redis debugging and monitoring)
+  # RedisInsight UI
+  # - Optional Redis debugging/inspection UI
+  # - Exposes UI on :5540
   redisinsight:
     image: redis/redisinsight:latest
     container_name: echora-redisinsight
@@ -63,9 +83,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Anime Vector Service
+  # Vector Service (gRPC)
+  # - Semantic/vector search and vector admin operations
+  # - Exposes gRPC on :8001
   # Build with Pants: pants package apps/vector_service:vector-service-dev
-  # Or use docker-compose build with updated path:
   vector-service:
     build:
       context: ..
@@ -129,7 +150,9 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # Enrichment Service
+  # Enrichment Service (gRPC)
+  # - Metadata enrichment and pipeline orchestration
+  # - Exposes gRPC on :8002
   enrichment-service:
     build:
       context: ..

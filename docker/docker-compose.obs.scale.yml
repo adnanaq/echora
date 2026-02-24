@@ -1,6 +1,27 @@
+# -----------------------------------------------------------------------------
+# Observability Scale Overlay (agent + gateway collector topology)
+#
+# Purpose:
+# - Simulate production-style collector separation:
+#   - agent collector receives OTLP from services
+#   - gateway collector applies policy/routing and exports to backends
+#
+# Use with base stack (do not run alone):
+#   docker compose \
+#     -f docker/docker-compose.obs.yml \
+#     -f docker/docker-compose.obs.scale.yml up -d
+#
+# Docs:
+# - docs/observability_local_runbook.md
+# - docs/plan/observabilit_implementation_plan.md
+# -----------------------------------------------------------------------------
 services:
+  # OTel Collector Agent
+  # - First hop receiver for app telemetry
+  # - Forwards telemetry to gateway collector
+  # - Exposes OTLP endpoints on host :5317/:5318
   otel-collector-agent:
-    image: otel/opentelemetry-collector-contrib:0.146.0
+    image: otel/opentelemetry-collector-contrib:0.146.1
     container_name: echora-otel-collector-agent
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -14,8 +35,12 @@ services:
       - vector-network
     restart: unless-stopped
 
+  # OTel Collector Gateway
+  # - Central policy point (sampling/routing/redaction)
+  # - Exports to Tempo/Loki and exposes metrics for Prometheus scrape
+  # - Exposes OTLP :4317 and metrics :8889
   otel-collector-gateway:
-    image: otel/opentelemetry-collector-contrib:0.146.0
+    image: otel/opentelemetry-collector-contrib:0.146.1
     container_name: echora-otel-collector-gateway
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
