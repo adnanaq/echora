@@ -23,7 +23,7 @@ from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
 from enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
-from enrichment.api_helpers.mal_enrichment_helper import MalEnrichmentHelper
+from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 from enrichment.exceptions import (
     AniListGraphQLError,
