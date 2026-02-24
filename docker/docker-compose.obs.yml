@@ -69,7 +69,7 @@ services:
     command: ["-config.file=/etc/tempo/config.yaml"]
     volumes:
       - ./observability/tempo-config.yaml:/etc/tempo/config.yaml:ro
-      - tempo-data:/tmp/tempo
+      - tempo-data:/var/tempo
     ports:
       - "3200:3200"
     networks:

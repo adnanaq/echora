@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from common import observability
+import observability
 
 
 def _reset_telemetry_state(monkeypatch) -> None:

@@ -2,10 +2,14 @@
   "id": null,
   "uid": "echora-service-overview",
   "title": "Echora Service Overview",
-  "tags": ["echora", "observability", "red"],
+  "tags": [
+    "echora",
+    "observability",
+    "red"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "15s",
   "templating": {
     "list": [
@@ -13,75 +17,121 @@
         "name": "service_name",
         "type": "textbox",
         "label": "service_name",
-        "query": "echora.*",
-        "current": { "text": "echora.*", "value": "echora.*" }
+        "query": "echora-.*",
+        "current": {
+          "text": "echora-.*",
+          "value": "echora-.*"
+        }
       },
       {
         "name": "env",
         "type": "textbox",
         "label": "env",
         "query": ".*",
-        "current": { "text": ".*", "value": ".*" }
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
       }
     ]
   },
   "panels": [
     {
       "type": "timeseries",
-      "title": "Request Rate (gRPC)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Request Rate (RPC)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "sum(rate(grpc_server_handled_total[5m]))",
+          "expr": "sum(rate(echora_vector_service_rpc_requests_total[5m]))",
           "legendFormat": "rps"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Error Rate (gRPC)",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Error Rate (RPC)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "sum(rate(grpc_server_handled_total{grpc_code!=\"OK\"}[5m])) / clamp_min(sum(rate(grpc_server_handled_total[5m])),1)",
+          "expr": "sum(rate(echora_vector_service_rpc_errors_total[5m])) / clamp_min(sum(rate(echora_vector_service_rpc_requests_total[5m])),1)",
           "legendFormat": "error_rate"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Latency P99 (gRPC)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Latency P99 (RPC)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(grpc_server_handling_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum(rate(echora_vector_service_rpc_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "p99"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Log Volume",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Request Rate by Method",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "sum(count_over_time({service=~\"$service_name\", env=~\"$env\"}[5m]))",
+          "expr": "sum by (rpc_method) (rate(echora_vector_service_rpc_requests_total[5m]))",
           "legendFormat": "logs/5m"
         }
       ]
     },
     {
       "type": "logs",
-      "title": "Recent Error Logs",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Error Rate by Code",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
-          "expr": "{service=~\"$service_name\", env=~\"$env\"} |= \"error\""
+          "expr": "sum by (error_code) (rate(echora_vector_service_rpc_errors_total[5m]))"
         }
       ]
     }

@@ -12,8 +12,8 @@ import logging
 
 import grpc
 from common.config import get_settings
-from common.observability import setup_telemetry
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+from observability import setup_telemetry
 from vector_proto.v1 import vector_admin_pb2_grpc, vector_search_pb2_grpc
 
 from .routes import VectorAdminRoutes, VectorSearchRoutes

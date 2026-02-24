@@ -1,15 +1,17 @@
 """Structured logging configuration with structlog and OpenTelemetry integration."""
 
 import logging
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
 from opentelemetry import trace
+from structlog.types import Processor
 
 
 def inject_otel_context(
-    logger: Any, method_name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Injects OpenTelemetry trace and span IDs into the log event."""
     span = trace.get_current_span()
     if span.is_recording():
@@ -33,7 +35,7 @@ def setup_logging(
         service_name: Name of the emitting service.
         environment: Runtime environment label.
     """
-    processors = [
+    processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),

@@ -13,9 +13,9 @@ import signal
 
 import grpc
 from common.config import get_settings
-from common.observability import setup_telemetry
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+from observability import setup_telemetry
 
 from .routes import EnrichmentRoutes
 from .runtime import build_runtime

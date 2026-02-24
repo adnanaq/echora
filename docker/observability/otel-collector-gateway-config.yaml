@@ -42,11 +42,8 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: true
-      job: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
   prometheus:
     endpoint: 0.0.0.0:8889
 
@@ -63,4 +60,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, transform/log-redaction, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]

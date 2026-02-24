@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from common.observability.context import (
+from typing import Any, cast
+
+from observability.context import (
     extract_trace_context,
     inject_context_into_nats_headers,
     inject_context_into_temporal_headers,
@@ -36,10 +38,11 @@ def test_trace_context_round_trip_preserves_parent_child_relationship() -> None:
     with tracer.start_as_current_span("child", context=extracted_context) as child_span:
         child_context = child_span.get_span_context()
         parent_context = parent_span.get_span_context()
+        parent = cast(Any, child_span).parent
 
         assert child_context.trace_id == parent_context.trace_id
-        assert child_span.parent is not None
-        assert child_span.parent.span_id == parent_context.span_id
+        assert parent is not None
+        assert parent.span_id == parent_context.span_id
 
 
 def test_extract_trace_context_handles_missing_headers() -> None:
@@ -47,7 +50,7 @@ def test_extract_trace_context_handles_missing_headers() -> None:
     extracted_context = extract_trace_context({})
 
     with tracer.start_as_current_span("root", context=extracted_context) as span:
-        assert span.parent is None
+        assert cast(Any, span).parent is None
 
 
 def test_extract_trace_context_handles_invalid_traceparent() -> None:
@@ -55,7 +58,7 @@ def test_extract_trace_context_handles_invalid_traceparent() -> None:
     extracted_context = extract_trace_context({"traceparent": "invalid"})
 
     with tracer.start_as_current_span("root", context=extracted_context) as span:
-        assert span.parent is None
+        assert cast(Any, span).parent is None
 
 
 def test_nats_and_temporal_helpers_inject_traceparent() -> None:

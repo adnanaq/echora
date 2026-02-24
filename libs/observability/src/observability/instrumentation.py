@@ -51,13 +51,8 @@ def instrument_aiohttp_client() -> None:
             AioHttpClientInstrumentor,
         )
     except ImportError:
-        try:
-            from opentelemetry.instrumentation.aiohttp import (
-                AioHttpClientInstrumentor,
-            )
-        except ImportError:
-            logger.warning("aiohttp client instrumentation is unavailable")
-            return
+        logger.warning("aiohttp client instrumentation is unavailable")
+        return
 
     AioHttpClientInstrumentor().instrument()
     _AIOHTTP_CLIENT_INSTRUMENTED = True
