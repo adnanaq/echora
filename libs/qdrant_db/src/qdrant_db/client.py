@@ -1406,10 +1406,13 @@ class QdrantClient(VectorDBClient):
             ...     print(f"{result['id']}: {result['score']:.4f}")
         """
         try:
-            # Direct vector search with raw similarity scores
-            response = await self.client.search(
+            # Direct vector search with raw similarity scores.
+            # qdrant-client >= 1.16 removed `search()` from AsyncQdrantClient,
+            # use the universal `query_points()` endpoint instead.
+            response = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=(vector_name, vector_data),
+                query=vector_data,
+                using=vector_name,
                 limit=limit,
                 with_payload=True,
                 with_vectors=False,
@@ -1417,7 +1420,7 @@ class QdrantClient(VectorDBClient):
             )
             # Convert response to a Qdrant-like shape.
             results = []
-            for point in response:
+            for point in response.points:
                 payload = point.payload if point.payload else {}
                 result = {
                     "id": str(point.id),

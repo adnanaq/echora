@@ -7,6 +7,7 @@ This test file uses TDD approach to verify that:
 """
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -397,6 +398,63 @@ class TestUnifiedSearch:
         """Test that search raises error without any embedding."""
         with pytest.raises(ValueError, match="At least one"):
             await mock_qdrant_client.search()
+
+
+class TestSingleVectorSearch:
+    """Test suite for single vector search behavior."""
+
+    @pytest_asyncio.fixture
+    async def mock_qdrant_client(self):
+        """Create a mock QdrantClient instance for single-vector tests."""
+        settings = get_settings()
+        mock_async_client = AsyncMock()
+
+        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+            client = await QdrantClient.create(
+                config=settings.qdrant,
+                async_qdrant_client=mock_async_client,
+            )
+
+        return client
+
+    @pytest.mark.asyncio
+    async def test_search_single_vector_uses_query_points(self, mock_qdrant_client):
+        """search_single_vector should use query_points with the named vector."""
+        mock_qdrant_client.client.query_points = AsyncMock(
+            return_value=SimpleNamespace(
+                points=[
+                    SimpleNamespace(
+                        id="point-1",
+                        score=0.91,
+                        payload={"entity_type": "character"},
+                    )
+                ]
+            )
+        )
+
+        results = await mock_qdrant_client.search_single_vector(
+            vector_name="text_vector",
+            vector_data=[0.1] * 1024,
+            limit=3,
+            filters=None,
+        )
+
+        mock_qdrant_client.client.query_points.assert_called_once_with(
+            collection_name=mock_qdrant_client.collection_name,
+            query=[0.1] * 1024,
+            using="text_vector",
+            limit=3,
+            with_payload=True,
+            with_vectors=False,
+            query_filter=None,
+        )
+        assert results == [
+            {
+                "id": "point-1",
+                "score": 0.91,
+                "payload": {"entity_type": "character"},
+            }
+        ]
 
 
 class TestMultivectorConfiguration:
