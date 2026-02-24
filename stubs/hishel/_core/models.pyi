@@ -28,7 +28,7 @@ class Request:
     method: str
     url: str
     headers: dict[str, str] | Headers
-    stream: Iterator[bytes] | None
+    stream: AsyncIterator[bytes] | None
     metadata: dict[str, Any]
 
     def __init__(
@@ -36,7 +36,7 @@ class Request:
         method: str,
         url: str,
         headers: dict[str, str] | Headers,
-        stream: Iterator[bytes] | None = None,
+        stream: AsyncIterator[bytes] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """
@@ -46,7 +46,7 @@ class Request:
                 method (str): HTTP method (e.g., "GET", "POST").
                 url (str): Request URL.
                 headers (Union[Dict[str, str], Headers]): Header mapping or Headers instance for the request.
-                stream (Optional[Iterator[bytes]]): Optional iterator of raw bytes providing the request body.
+                stream (Optional[AsyncIterator[bytes]]): Optional async iterator of raw bytes providing the request body.
                 metadata (Optional[Dict[str, Any]]): Optional ancillary metadata associated with the request.
         """
         ...
