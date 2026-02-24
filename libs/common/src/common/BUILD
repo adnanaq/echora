@@ -1,8 +1,9 @@
-"""Common package sources - base package with no internal lib dependencies."""
+"""Common package sources."""
 
 python_sources(
     name="common",
     sources=["**/*.py"],
-    # Explicit: No dependencies on other internal libs (base package)
-    dependencies=[],
+    dependencies=[
+        "//libs/common/src/shared_proto:proto",
+    ],
 )

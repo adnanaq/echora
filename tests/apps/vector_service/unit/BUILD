@@ -1,0 +1,13 @@
+python_tests(
+    name="unit",
+    sources=[
+        "**/test_*.py",
+        "**/*_test.py",
+        "**/tests.py",
+    ],
+    dependencies=[
+        "//:reqs0#pytest",
+        "//:reqs0#pytest-asyncio",
+        "//apps/vector_service/src/vector_service:vector_service",
+    ],
+)

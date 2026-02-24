@@ -2,18 +2,22 @@ services:
   # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: anime-vector-qdrant
+    container_name: echora-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ../data/qdrant_storage:/qdrant/storage
+      - qdrant-data:/qdrant/storage
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
       - vector-network
     healthcheck:
-      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -27,8 +31,8 @@ services:
 
   # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
-    image: redis:7-alpine
-    container_name: anime-vector-redis
+    image: redis:7
+    container_name: echora-redis
     ports:
       - "6379:6379"
     volumes:
@@ -44,32 +48,43 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # RedisInsight (GUI for Redis debugging and monitoring)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: echora-redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight-data:/data
+    networks:
+      - vector-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Anime Vector Service
-  # Build with Pants: pants package apps/service:service-dev
+  # Build with Pants: pants package apps/vector_service:vector-service-dev
   # Or use docker-compose build with updated path:
   vector-service:
     build:
       context: ..
-      dockerfile: apps/service/Dockerfile.dev
-    container_name: anime-vector-service
+      dockerfile: apps/vector_service/Dockerfile.dev
+    container_name: echora-vector-service
     ports:
-      - "8002:8002"
+      - "8001:8001"
     environment:
       # Environment (enables development mode: debug=True, log_level=DEBUG)
       - ENVIRONMENT=development
 
       # Vector Service Configuration
       - VECTOR_SERVICE_HOST=0.0.0.0
-      - VECTOR_SERVICE_PORT=8002
+      - VECTOR_SERVICE_PORT=8001
 
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
-
-      # Multi-Vector Configuration
-      - TEXT_VECTOR_SIZE=1024
-      - IMAGE_VECTOR_SIZE=768
 
       # Modern Embedding Configuration
       - TEXT_EMBEDDING_PROVIDER=huggingface
@@ -87,12 +102,12 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration
-      - ENABLE_HTTP_CACHE=true
-      - HTTP_CACHE_STORAGE=redis
-      - REDIS_CACHE_URL=redis://redis:6379/0
+      # HTTP Cache Configuration (for Enrichment Pipeline)
+      - CACHE_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
+      - FORCE_CACHE=true
     volumes:
-      - model_cache:/app/cache
+      - model-cache:/app/cache
     networks:
       - vector-network
     depends_on:
@@ -101,7 +116,39 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Enrichment Service
+  enrichment-service:
+    build:
+      context: ..
+      dockerfile: apps/enrichment_service/Dockerfile.dev
+    container_name: echora-enrichment-service
+    ports:
+      - "8002:8002"
+    environment:
+      - ENVIRONMENT=development
+      - ENRICHMENT_SERVICE_HOST=0.0.0.0
+      - ENRICHMENT_SERVICE_PORT=8002
+      - ENRICHMENT_DEFAULT_FILE_PATH=/app/data/qdrant_storage/anime-offline-database.json
+      - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
+      - CACHE_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ../data:/app/data:ro
+      - ../assets/seed_data:/app/assets/seed_data
+    networks:
+      - vector-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -113,9 +160,11 @@ networks:
     driver: bridge
 
 volumes:
-  qdrant_data:
-    driver: local
   redis-data:
     driver: local
-  model_cache:
+  qdrant-data:
+    driver: local
+  redisinsight-data:
+    driver: local
+  model-cache:
     driver: local

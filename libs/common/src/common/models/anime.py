@@ -1,4 +1,4 @@
-# src/models/anime.py - Pydantic Models for Anime Data
+"""Pydantic models for anime, character, and episode data used across Echora services."""
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -382,7 +382,12 @@ class ProductionStaff(BaseModel):
         extra = "allow"  # Accept any role field name dynamically
 
     def get_all_roles(self) -> dict[str, list[StaffMember]]:
-        """Get all role fields as dictionary for dynamic access"""
+        """Return all non-empty role fields as a dictionary.
+
+        Returns:
+            Mapping of role name to list of ``StaffMember`` objects, including
+            any dynamically added role fields. Empty lists are excluded.
+        """
         roles = {}
         # Use model_dump() to access all fields including dynamic ones
         all_data = self.model_dump()
@@ -433,7 +438,7 @@ class ContextualRank(BaseModel):
     )
 
 
-class StatisticsEntry(BaseModel):
+class Statistics(BaseModel):
     """Standardized statistics entry - AI maps all platforms to these uniform properties"""
 
     score: float | None = Field(
@@ -586,7 +591,7 @@ class Anime(BaseModel):
     staff_data: StaffData | None = Field(
         None, description="Comprehensive staff data with multi-source integration"
     )
-    statistics: dict[str, StatisticsEntry] = Field(
+    statistics: dict[str, Statistics] = Field(
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
     )

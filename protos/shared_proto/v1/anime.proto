@@ -1,0 +1,337 @@
+syntax = "proto3";
+
+package shared_proto.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Enum representation for AnimeStatus.
+enum AnimeStatus {
+  ANIME_STATUS_UNSPECIFIED = 0;
+  ANIME_STATUS_FINISHED = 1;
+  ANIME_STATUS_UPCOMING = 2;
+  ANIME_STATUS_ONGOING = 3;
+  ANIME_STATUS_UNKNOWN = 4;
+}
+
+// Primary entity type for vector indexing/filtering.
+enum EntityType {
+  ENTITY_TYPE_UNSPECIFIED = 0;
+  ENTITY_TYPE_ANIME = 1;
+  ENTITY_TYPE_CHARACTER = 2;
+  ENTITY_TYPE_EPISODE = 3;
+}
+
+// Enum representation for AnimeType.
+enum AnimeType {
+  ANIME_TYPE_UNSPECIFIED = 0;
+  ANIME_TYPE_MOVIE = 1;
+  ANIME_TYPE_ONA = 2;
+  ANIME_TYPE_OVA = 3;
+  ANIME_TYPE_SPECIAL = 4;
+  ANIME_TYPE_TV = 5;
+  ANIME_TYPE_UNKNOWN = 6;
+  ANIME_TYPE_MUSIC = 7;
+  ANIME_TYPE_PV = 8;
+}
+
+// Enum representation for AnimeSourceMaterial.
+enum AnimeSourceMaterial {
+  ANIME_SOURCE_MATERIAL_UNSPECIFIED = 0;
+  ANIME_SOURCE_MATERIAL_ORIGINAL = 1;
+  ANIME_SOURCE_MATERIAL_LIGHT_NOVEL = 2;
+  ANIME_SOURCE_MATERIAL_MANGA = 3;
+  ANIME_SOURCE_MATERIAL_OTHER = 4;
+  ANIME_SOURCE_MATERIAL_MIXED_MEDIA = 5;
+  ANIME_SOURCE_MATERIAL_UNKNOWN = 6;
+  ANIME_SOURCE_MATERIAL_GAME = 7;
+}
+
+// Enum representation for AnimeRating.
+enum AnimeRating {
+  ANIME_RATING_UNSPECIFIED = 0;
+  ANIME_RATING_G = 1;
+  ANIME_RATING_PG = 2;
+  ANIME_RATING_PG13 = 3;
+  ANIME_RATING_R = 4;
+  ANIME_RATING_RPLUS = 5;
+  ANIME_RATING_RX = 6;
+}
+
+// Enum representation for AnimeSeason.
+enum AnimeSeason {
+  ANIME_SEASON_UNSPECIFIED = 0;
+  ANIME_SEASON_SPRING = 1;
+  ANIME_SEASON_SUMMER = 2;
+  ANIME_SEASON_FALL = 3;
+  ANIME_SEASON_WINTER = 4;
+}
+
+// Helper for map<string, repeated string>.
+message StringList {
+  repeated string values = 1;
+}
+
+message TrailerEntry {
+  optional string url = 1;
+  optional string title = 2;
+  optional string thumbnail_url = 3;
+}
+
+message BroadcastSchedule {
+  optional string jpn_time = 1;
+  optional string sub_time = 2;
+  optional string dub_time = 3;
+}
+
+message DelayInformation {
+  bool delayed_timetable = 1;
+  optional string delayed_from = 2;
+  optional string delayed_until = 3;
+  optional string delay_reason = 4;
+}
+
+message PremiereDates {
+  optional string original = 1;
+  optional string sub = 2;
+  optional string dub = 3;
+}
+
+message AiredDates {
+  optional google.protobuf.Timestamp from_date = 1;
+  optional google.protobuf.Timestamp to = 2;
+  optional string string = 3;
+}
+
+message Broadcast {
+  optional string day = 1;
+  optional string time = 2;
+  optional string timezone = 3;
+}
+
+message EnrichmentMetadata {
+  string source = 1;
+  google.protobuf.Timestamp enriched_at = 2;
+  bool success = 3;
+  optional string error_message = 4;
+}
+
+message RelationEntry {
+  string title = 1;
+  string relation_type = 2;
+  string url = 3;
+}
+
+message RelatedAnimeEntry {
+  string title = 1;
+  string relation_type = 2;
+  string url = 3;
+}
+
+message StreamingEntry {
+  string platform = 1;
+  string url = 2;
+  optional string region = 3;
+  optional bool free = 4;
+  optional bool premium_required = 5;
+  optional bool dub_available = 6;
+  repeated string subtitle_languages = 7;
+}
+
+message ThemeEntry {
+  string name = 1;
+  optional string description = 2;
+}
+
+message ThemeSong {
+  string title = 1;
+  optional string artist = 2;
+  optional string episodes = 3;
+}
+
+message SimpleVoiceActor {
+  string name = 1;
+  string language = 2;
+}
+
+message VoiceActorEntry {
+  string name = 1;
+  optional string native_name = 2;
+  string language = 3;
+  optional string image = 4;
+}
+
+message StaffMember {
+  map<string, int64> staff_ids = 1;
+  string name = 2;
+  optional string native_name = 3;
+  string role = 4;
+  optional string image = 5;
+  optional string biography = 6;
+  optional string birth_date = 7;
+  optional string hometown = 8;
+  repeated string primary_occupations = 9;
+  repeated int32 years_active = 10;
+  optional string gender = 11;
+  optional string blood_type = 12;
+  optional int64 community_favorites = 13;
+  optional string enhancement_status = 14;
+}
+
+message VoiceActor {
+  map<string, int64> staff_ids = 1;
+  string name = 2;
+  optional string native_name = 3;
+  repeated string character_assignments = 4;
+  optional string image = 5;
+  optional string biography = 6;
+  optional string birth_date = 7;
+  optional string blood_type = 8;
+}
+
+message CompanyEntry {
+  string name = 1;
+  string type = 2;
+  optional string url = 3;
+}
+
+message StaffMemberList {
+  repeated StaffMember items = 1;
+}
+
+// Dynamic role -> list[StaffMember].
+message ProductionStaff {
+  map<string, StaffMemberList> roles = 1;
+}
+
+message VoiceActors {
+  repeated VoiceActor japanese = 1;
+}
+
+message StaffData {
+  ProductionStaff production_staff = 1;
+  repeated CompanyEntry studios = 2;
+  repeated CompanyEntry producers = 3;
+  repeated CompanyEntry licensors = 4;
+  VoiceActors voice_actors = 5;
+}
+
+message ContextualRank {
+  int32 rank = 1;
+  string type = 2;
+  optional string format = 3;
+  optional int32 year = 4;
+  optional string season = 5;
+  optional bool all_time = 6;
+}
+
+message Statistics {
+  optional float score = 1;
+  optional int64 scored_by = 2;
+  optional int64 rank = 3;
+  optional int64 popularity_rank = 4;
+  optional int64 members = 5;
+  optional int64 favorites = 6;
+  repeated ContextualRank contextual_ranks = 7;
+}
+
+message ScoreCalculations {
+  optional float arithmetic_geometric_mean = 1;
+  optional float arithmetic_mean = 2;
+  optional float median = 3;
+}
+
+message Character {
+  optional string age = 1;
+  optional string description = 2;
+  optional string eye_color = 3;
+  optional int64 favorites = 4;
+  optional string gender = 5;
+  optional string hair_color = 6;
+  optional string id = 7;
+  EntityType entity_type = 8;
+  string name = 9;
+  optional string name_native = 10;
+  string role = 11;
+  repeated string anime_ids = 12;
+  repeated string character_traits = 13;
+  repeated string images = 14;
+  repeated string name_variations = 15;
+  repeated string nicknames = 16;
+  repeated SimpleVoiceActor voice_actors = 17;
+  map<string, string> character_pages = 18;
+}
+
+message Episode {
+  optional google.protobuf.Timestamp aired = 1;
+  optional string anime_id = 2;
+  optional string description = 3;
+  optional int32 duration = 4;
+  int32 episode_number = 5;
+  bool filler = 6;
+  optional string id = 7;
+  EntityType entity_type = 8;
+  bool recap = 9;
+  optional float score = 10;
+  optional int32 season_number = 11;
+  optional string synopsis = 12;
+  string title = 13;
+  optional string title_japanese = 14;
+  optional string title_romaji = 15;
+  repeated string thumbnails = 16;
+  map<string, string> episode_pages = 17;
+  map<string, string> streaming = 18;
+}
+
+message Anime {
+  optional string background = 1;
+  optional int32 duration = 2;
+  int32 episode_count = 3;
+  string id = 4;
+  EntityType entity_type = 5;
+  optional string month = 6;
+  optional bool nsfw = 7;
+  optional AnimeRating rating = 8;
+  optional AnimeSeason season = 9;
+  optional float similarity_score = 10;
+  optional AnimeSourceMaterial source_material = 11;
+  AnimeStatus status = 12;
+  optional string synopsis = 13;
+  string title = 14;
+  optional string title_english = 15;
+  optional string title_japanese = 16;
+  AnimeType type = 17;
+  optional int32 year = 18;
+  repeated string content_warnings = 19;
+  repeated string demographics = 20;
+  repeated ThemeSong ending_themes = 21;
+  repeated string genres = 22;
+  repeated ThemeSong opening_themes = 23;
+  repeated RelatedAnimeEntry related_anime = 24;
+  repeated RelationEntry relations = 25;
+  repeated string sources = 26;
+  repeated StreamingEntry streaming_info = 27;
+  repeated string streaming_licenses = 28;
+  repeated string synonyms = 29;
+  repeated string tags = 30;
+  repeated ThemeEntry themes = 31;
+  repeated TrailerEntry trailers = 32;
+  AiredDates aired_dates = 33;
+  Broadcast broadcast = 34;
+  BroadcastSchedule broadcast_schedule = 35;
+  DelayInformation delay_information = 36;
+  EnrichmentMetadata enrichment_metadata = 37;
+  map<string, string> external_links = 38;
+  map<string, StringList> images = 39;
+  google.protobuf.Struct popularity_trends = 40;
+  PremiereDates premiere_dates = 41;
+  ScoreCalculations score = 42;
+  StaffData staff_data = 43;
+  map<string, Statistics> statistics = 44;
+}
+
+message AnimeRecord {
+  Anime anime = 1;
+  repeated Character characters = 2;
+  repeated Episode episodes = 3;
+}

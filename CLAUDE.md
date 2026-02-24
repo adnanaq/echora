@@ -18,24 +18,47 @@ uv sync
 uv sync --extra dev
 
 # Start Qdrant database only
-docker compose -f docker/docker-compose.yml up -d qdrant
+docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Run service locally for development
-uv run python -m src.main
+./pants run apps/vector_service:vector_service
 ```
 
 ### Docker Development (Recommended)
 
 ```bash
-# Start full stack (service + database)
-docker compose -f docker/docker-compose.yml up -d
+# Start full stack (service + database + redis + redisinsight)
+docker compose -f docker/docker-compose.dev.yml up -d
 
 # View logs
-docker compose -f docker/docker-compose.yml logs -f vector-service
+docker compose -f docker/docker-compose.dev.yml logs -f vector-service
 
 # Stop services
-docker compose -f docker/docker-compose.yml down
+docker compose -f docker/docker-compose.dev.yml down
 ```
+
+### RedisInsight (Redis GUI)
+
+RedisInsight provides a graphical interface for debugging and monitoring the HTTP cache.
+
+```bash
+# Start Redis with RedisInsight
+docker compose -f docker/docker-compose.dev.yml up -d redis redisinsight
+
+# Access RedisInsight GUI
+# Open browser: http://localhost:5540
+
+# First-time setup in RedisInsight:
+# 1. Add Database → Host: redis, Port: 6379
+# 2. Test connection → Connect
+```
+
+**Use cases:**
+- View cached HTTP responses (keys, TTLs, content)
+- Debug cache hit/miss patterns
+- Monitor cache memory usage
+- Manually inspect/delete cache entries
+- Analyze cache key distribution
 
 ### Testing
 
@@ -105,13 +128,13 @@ uv run ty check libs/http_cache/
 
 ```bash
 # Check service health
-curl http://localhost:8002/health
+curl http://localhost:8001/health
 
 # Check Qdrant health
 curl http://localhost:6333/health
 
 # Get database statistics
-curl http://localhost:8002/api/v1/admin/stats
+curl http://localhost:8001/api/v1/admin/stats
 ```
 
 ## Architecture Overview
@@ -120,38 +143,44 @@ curl http://localhost:8002/api/v1/admin/stats
 
 The service follows a layered microservice architecture with clear separation of concerns:
 
-**API Layer** (`src/api/`) → **Processing Layer** (`src/vector/`) → **Database Layer** (Qdrant)
+**API Layer** (`apps/service/`) → **Business Logic** (libs) → **Database Layer** (Qdrant)
 
-### Key Architectural Components
+### Directory Structure
 
-#### 1. FastAPI Application (`src/main.py`)
+```text
+echora/
+├── apps/
+│   ├── vector_service/             # gRPC vector search service
+│   │   └── src/vector_service/
+│   │       └── routes/            # gRPC route handlers
+│   └── enrichment_service/        # Data enrichment service
+│
+├── libs/                          # Shared libraries (business logic)
+│   ├── common/                    # Shared configuration & models
+│   │   ├── config/                # Settings (Qdrant, Embedding, Service)
+│   │   └── models/                # AnimeRecord data model
+│   ├── vector_processing/         # Embedding generation
+│   │   ├── processors/            # Text/Image processors
+│   │   └── embedding_models/      # BGE-M3, OpenCLIP
+│   ├── qdrant_db/                 # Vector database client
+│   ├── http_cache/                # HTTP caching (Hishel + Redis)
+│   ├── enrichment/                # Data enrichment pipeline
+│   └── vector_db_interface/       # Abstract DB interface
+│
+├── tests/                         # Test suite (mirrors libs/)
+├── data/                          # Data files & Qdrant storage
+├── docker/                        # Docker Compose configurations
+└── scripts/                       # Utility scripts
+```
 
-- Async application with lifespan management
-- Global Qdrant client initialization with health checks
-- CORS middleware and structured logging
-- Graceful startup/shutdown with dependency validation
+### Key Components
 
-#### 2. Configuration System (`src/config/settings.py`)
-
-- Pydantic-based settings with environment variable support
-- Comprehensive validation for all configuration parameters
-- Support for multiple embedding providers and models
-- Performance tuning parameters (quantization, HNSW, batch sizes)
-
-#### 3. Multi-Vector Processing (`src/vector/`)
-
-- **QdrantClient**: Advanced vector database operations with quantization support
-- **TextProcessor**: BGE-M3 embeddings for semantic text search (1024-dim)
-- **VisionProcessor**: OpenCLIP ViT-L/14 embeddings for image search (768-dim)
-- **Fine-tuning modules**: Character recognition, art style classification, genre enhancement
-
-#### 4. API Endpoints (`src/api/`)
-
-- **Search Router**: Text, image, and multimodal search endpoints
-- **Similarity Router**: Content-based and visual similarity operations
-- **Admin Router**: Database management, statistics, and reindexing
-
-#### 5. Data Enrichment Pipeline (`src/enrichment/`)
+- **gRPC Service** (`apps/vector_service/`) - Search and admin gRPC endpoints
+- **Configuration** (`libs/common/config/`) - Pydantic BaseSettings (Qdrant, Embedding, Service configs)
+- **Vector Processing** (`libs/vector_processing/`) - BGE-M3 text (1024-dim) + OpenCLIP image (768-dim) embeddings
+- **Qdrant Client** (`libs/qdrant_db/`) - Vector DB operations with quantization & multi-vector support
+- **HTTP Cache** (`libs/http_cache/`) - RFC 9111 compliant caching with Redis backend
+- **Enrichment Pipeline** (`libs/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)
 - **Crawlers**: Heavy-duty browser automation using crawl4ai for robust data extraction
@@ -212,7 +241,7 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 - `agent_id`: Directory name (e.g., `One_agent1`, `Dandadan_agent1`)
 - `--temp-dir`: Base directory path (default: `temp`) - optional
 
-**Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1>/`)
+**Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1/`)
 
 **Note**: When using `run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
 
@@ -381,6 +410,48 @@ The service supports multiple embedding providers through configuration:
 
 ### Service Configuration
 
-- `VECTOR_SERVICE_PORT`: Service port (default: 8002)
+- `VECTOR_SERVICE_PORT`: Service port (default: 8001)
 - `DEBUG`: Enable debug mode (default: true)
 - `LOG_LEVEL`: Logging level (default: INFO)
+
+## Code Conventions
+
+### Class Member Ordering
+
+Order class members top to bottom as follows:
+
+```
+ 1. ClassVar / class-level constants     (TYPE_MAPPING = {...}, etc.)
+ 2. __slots__
+ 3. __init__                             (always first method)
+ 4. Representation dunders              (__repr__, __str__, __eq__, __hash__, __len__)
+ 5. @property                           (getter → setter → deleter as a unit, one property at a time)
+ 6. @classmethod
+ 7. @staticmethod                        (rare; prefer classmethod or plain function)
+ 8. Public instance methods             (async before sync when both exist for same operation)
+ 9. Protected methods  (_name)          (async before sync when both exist)
+10. Private methods   (__name)          (very rare in this codebase)
+11. Context-manager protocol last       (__enter__/__exit__, __aenter__/__aexit__)
+```
+
+**Key rules:**
+
+- **Visibility grouping over decorator grouping.** All public methods go in section 8, all protected in section 9 — regardless of whether they're async. Do not scatter protected helpers between public methods.
+
+- **Logical cohesion within a section.** Within sections 8 and 9, group related operations together (e.g. `encode_text` followed by `encode_texts_batch`, not separated by unrelated methods). No strict alphabetical ordering inside a section.
+
+- **Async before sync for the same operation.** When an async and sync variant exist in the same section, put async first:
+  ```python
+  async def encode_text(self, text: str) -> list[float]: ...
+  def encode_text_sync(self, text: str) -> list[float]: ...  # sync variant
+  ```
+
+- **`@property` pairs stay together.** Getter, setter, and deleter for the same property must be adjacent.
+
+**Special cases:**
+
+- **Pydantic `BaseModel`**: Field declarations come first (no `__init__`). Validator methods after fields. Regular methods after validators.
+- **`@dataclass`**: Fields are the class body; if methods are added follow sections 3–11.
+- **gRPC servicers**: Thin adapter classes — method order should mirror the proto service definition order, no reordering needed.
+
+> **Enforcement**: ruff has no class-member-order rule; enforce via PR review.

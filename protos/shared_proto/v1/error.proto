@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package shared_proto.v1;
+
+// Standardized error payload shared by service responses.
+message ErrorDetails {
+  // Stable application error code for client-side branching.
+  string code = 1;
+  // Human-readable error summary.
+  string message = 2;
+  // Indicates whether retrying the same request may succeed.
+  bool retryable = 3;
+  // Optional JSON-encoded diagnostic details.
+  string details_json = 4;
+}
