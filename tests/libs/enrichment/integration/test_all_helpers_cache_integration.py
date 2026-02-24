@@ -87,7 +87,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
     # List of all helpers to test
     helpers_to_test = [
         ("enrichment.api_helpers.anilist_helper", "AniListEnrichmentHelper"),
-        ("enrichment.api_helpers.mal_enrichment_helper", "MalEnrichmentHelper"),
+        ("enrichment.api_helpers.mal_helper", "MalEnrichmentHelper"),
         ("enrichment.api_helpers.kitsu_helper", "KitsuEnrichmentHelper"),
         ("enrichment.api_helpers.anidb_helper", "AniDBEnrichmentHelper"),
     ]
@@ -209,7 +209,7 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
 @pytest.mark.asyncio
 async def test_mal_helper_no_hardcoded_redis(mocker):
     """Specific test for MAL helper."""
-    from enrichment.api_helpers.mal_enrichment_helper import MalEnrichmentHelper
+    from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
