@@ -14,10 +14,10 @@ class ServiceConfig(BaseModel):
         default="0.0.0.0", description="Enrichment service host address"
     )
     vector_service_port: int = Field(
-        default=8002, ge=1, le=65535, description="Vector service port"
+        default=8001, ge=1, le=65535, description="Vector service port"
     )
     enrichment_service_port: int = Field(
-        default=8010, ge=1, le=65535, description="Enrichment service port"
+        default=8002, ge=1, le=65535, description="Enrichment service port"
     )
     enable_gpu: bool = Field(
         default=False, description="Enable GPU usage for embedding models"

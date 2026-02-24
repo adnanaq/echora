@@ -21,7 +21,7 @@ class TestEnvironmentIntegration:
             assert settings.debug is True
             assert settings.service.log_level == "DEBUG"
             # Other settings should use defaults
-            assert settings.service.vector_service_port == 8002
+            assert settings.service.vector_service_port == 8001
             assert settings.qdrant.qdrant_collection_name == "anime_database"
 
     def test_staging_mode_complete(self):
@@ -34,7 +34,7 @@ class TestEnvironmentIntegration:
             assert settings.service.log_level == "INFO"
             assert settings.qdrant.qdrant_enable_wal is True
             # Other settings should use defaults
-            assert settings.service.vector_service_port == 8002
+            assert settings.service.vector_service_port == 8001
 
     def test_production_mode_complete(self):
         """Verify complete production mode configuration with all enforcements."""
