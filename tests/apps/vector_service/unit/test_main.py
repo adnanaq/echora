@@ -8,6 +8,41 @@ from grpc_health.v1 import health_pb2
 from vector_service import main
 
 
+def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_setup_telemetry(**kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(main, "setup_telemetry", _fake_setup_telemetry)
+
+    settings = SimpleNamespace(
+        service=SimpleNamespace(
+            api_version="9.9.9",
+            log_level="INFO",
+        ),
+        observability=SimpleNamespace(
+            otel_enabled=True,
+            otel_exporter_otlp_endpoint="http://localhost:4317",
+            otel_enable_metrics=True,
+            otel_enable_tracing=True,
+            otel_enable_logging=True,
+            otel_enable_grpc_server_instrumentation=True,
+            otel_enable_grpc_client_instrumentation=True,
+            otel_enable_aiohttp_client_instrumentation=False,
+        ),
+        environment=SimpleNamespace(value="development"),
+    )
+
+    main._setup_observability(settings)
+
+    assert captured["service_name"] == "echora-vector-service"
+    assert captured["version"] == "9.9.9"
+    assert captured["endpoint"] == "http://localhost:4317"
+    assert captured["enable_grpc_server_instrumentation"] is True
+    assert captured["enable_aiohttp_client_instrumentation"] is False
+
+
 @pytest.mark.asyncio
 async def test_publish_initial_readiness_sets_serving_for_healthy_qdrant() -> None:
     runtime = SimpleNamespace(

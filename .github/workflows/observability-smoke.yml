@@ -1,0 +1,94 @@
+name: Observability Smoke
+
+on:
+  pull_request:
+    paths:
+      - "docker/observability/**"
+      - "docker/docker-compose.obs.yml"
+      - "docker/docker-compose.obs.scale.yml"
+      - "scripts/observability_smoke_check.py"
+      - "docs/observability*.md"
+      - "docs/plan/observabilit_implementation_plan.md"
+      - ".github/workflows/observability-smoke.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "docker/observability/**"
+      - "docker/docker-compose.obs.yml"
+      - "docker/docker-compose.obs.scale.yml"
+      - "scripts/observability_smoke_check.py"
+      - "docs/observability*.md"
+      - "docs/plan/observabilit_implementation_plan.md"
+      - ".github/workflows/observability-smoke.yml"
+
+jobs:
+  observability-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate compose files
+        run: |
+          docker compose -f docker/docker-compose.obs.yml config
+          docker compose -f docker/docker-compose.obs.yml -f docker/docker-compose.obs.scale.yml config
+
+      - name: Start observability stack
+        run: docker compose -f docker/docker-compose.obs.yml up -d
+
+      - name: Wait for core services
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:3100/ready >/dev/null \
+              && curl -sf http://localhost:3200/ready >/dev/null \
+              && curl -sf http://localhost:9090/-/ready >/dev/null \
+              && curl -sf http://localhost:9093/-/ready >/dev/null; then
+              echo "Observability stack is ready"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Timed out waiting for observability stack"
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install smoke dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            opentelemetry-api==1.39.1 \
+            opentelemetry-sdk==1.39.1 \
+            opentelemetry-exporter-otlp==1.39.1
+
+      - name: Emit OTLP smoke telemetry
+        run: python scripts/observability_smoke_check.py --endpoint http://localhost:4317
+
+      - name: Validate collector received spans
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            value="$(curl -sf http://localhost:8889/metrics | awk '/^otelcol_receiver_accepted_spans/ {print $2; exit}')"
+            if [ -n "${value}" ] && [ "${value}" != "0" ]; then
+              echo "Collector accepted spans: ${value}"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Collector did not report accepted spans"
+          exit 1
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -f docker/docker-compose.obs.yml logs --no-color
+
+      - name: Shutdown stack
+        if: always()
+        run: docker compose -f docker/docker-compose.obs.yml down -v

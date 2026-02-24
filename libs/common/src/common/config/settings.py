@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .embedding_config import EmbeddingConfig
+from .observability_config import ObservabilityConfig
 from .qdrant_config import QdrantConfig
 from .service_config import ServiceConfig
 
@@ -63,6 +64,7 @@ def get_environment() -> Environment:
 _QDRANT_FIELDS = frozenset(QdrantConfig.model_fields.keys())
 _EMBEDDING_FIELDS = frozenset(EmbeddingConfig.model_fields.keys())
 _SERVICE_FIELDS = frozenset(ServiceConfig.model_fields.keys())
+_OBSERVABILITY_FIELDS = frozenset(ObservabilityConfig.model_fields.keys())
 
 # Ensure no field name collisions between sub-configs
 # Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
@@ -74,6 +76,16 @@ assert not (_QDRANT_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
 )
 assert not (_EMBEDDING_FIELDS & _SERVICE_FIELDS), (  # noqa: S101
     f"Field overlap Embedding/Service: {_EMBEDDING_FIELDS & _SERVICE_FIELDS}"
+)
+assert not (_QDRANT_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
+    f"Field overlap Qdrant/Observability: {_QDRANT_FIELDS & _OBSERVABILITY_FIELDS}"
+)
+assert not (_EMBEDDING_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
+    f"Field overlap Embedding/Observability: "
+    f"{_EMBEDDING_FIELDS & _OBSERVABILITY_FIELDS}"
+)
+assert not (_SERVICE_FIELDS & _OBSERVABILITY_FIELDS), (  # noqa: S101
+    f"Field overlap Service/Observability: {_SERVICE_FIELDS & _OBSERVABILITY_FIELDS}"
 )
 
 
@@ -97,7 +109,12 @@ def _is_complex_type(annotation: Any) -> bool:
 # Fields that expect complex types (list/dict) and need JSON parsing from env vars
 _JSON_FIELDS: frozenset[str] = frozenset(
     field_name
-    for config_cls in (QdrantConfig, EmbeddingConfig, ServiceConfig)
+    for config_cls in (
+        QdrantConfig,
+        EmbeddingConfig,
+        ServiceConfig,
+        ObservabilityConfig,
+    )
     for field_name, field_info in config_cls.model_fields.items()
     if field_info.annotation is not None and _is_complex_type(field_info.annotation)
 )
@@ -135,6 +152,7 @@ class Settings(BaseSettings):
     qdrant: QdrantConfig = Field(default_factory=QdrantConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     service: ServiceConfig = Field(default_factory=ServiceConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
     @model_validator(mode="before")
     @classmethod
@@ -160,6 +178,7 @@ class Settings(BaseSettings):
         qdrant_data: dict[str, Any] = {}
         embedding_data: dict[str, Any] = {}
         service_data: dict[str, Any] = {}
+        observability_data: dict[str, Any] = {}
 
         # Collect sub-config fields from data (may come from .env file via BaseSettings)
         keys_to_remove: list[str] = []
@@ -174,6 +193,9 @@ class Settings(BaseSettings):
             elif lower_key in _SERVICE_FIELDS:
                 service_data[lower_key] = _maybe_parse_json(lower_key, value)
                 keys_to_remove.append(key)
+            elif lower_key in _OBSERVABILITY_FIELDS:
+                observability_data[lower_key] = _maybe_parse_json(lower_key, value)
+                keys_to_remove.append(key)
 
         for key in keys_to_remove:
             data.pop(key, None)
@@ -183,6 +205,7 @@ class Settings(BaseSettings):
             (_QDRANT_FIELDS, qdrant_data),
             (_EMBEDDING_FIELDS, embedding_data),
             (_SERVICE_FIELDS, service_data),
+            (_OBSERVABILITY_FIELDS, observability_data),
         ]:
             for field_name in fields:
                 env_val = os.environ.get(field_name.upper())
@@ -194,6 +217,7 @@ class Settings(BaseSettings):
             ("qdrant", qdrant_data),
             ("embedding", embedding_data),
             ("service", service_data),
+            ("observability", observability_data),
         ]:
             if config_data:
                 existing = data.get(config_key, {})
@@ -266,6 +290,7 @@ _SETTINGS_FIELDS = frozenset(Settings.model_fields.keys()) - {
     "qdrant",
     "embedding",
     "service",
+    "observability",
 }
 # Note: Using assert for import-time structural invariants (acceptable despite -O stripping)
 assert not (_QDRANT_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
@@ -276,6 +301,9 @@ assert not (_EMBEDDING_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
 )
 assert not (_SERVICE_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
     f"Field overlap Service/Settings: {_SERVICE_FIELDS & _SETTINGS_FIELDS}"
+)
+assert not (_OBSERVABILITY_FIELDS & _SETTINGS_FIELDS), (  # noqa: S101
+    f"Field overlap Observability/Settings: {_OBSERVABILITY_FIELDS & _SETTINGS_FIELDS}"
 )
 
 

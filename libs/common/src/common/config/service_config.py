@@ -59,7 +59,6 @@ class ServiceConfig(BaseModel):
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format string",
     )
-
     # CORS
     allowed_origins: list[str] = Field(
         default=["*"], description="Allowed CORS origins"

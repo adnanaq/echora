@@ -1,0 +1,46 @@
+{
+  "id": null,
+  "uid": "echora-trace-journey",
+  "title": "Echora Trace Journey",
+  "tags": ["echora", "tempo", "traces"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "templating": {
+    "list": [
+      {
+        "name": "service_name",
+        "type": "textbox",
+        "label": "service_name",
+        "query": "echora.*",
+        "current": { "text": "echora.*", "value": "echora.*" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Tempo Spans Ingested",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(tempo_distributor_spans_received_total[5m]))",
+          "legendFormat": "spans_received"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Trace-correlated Logs",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"$service_name\"} | json | trace_id != \"\""
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import logging
 
 import grpc
 from common.config import get_settings
+from common.observability import setup_telemetry
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from vector_proto.v1 import vector_admin_pb2_grpc, vector_search_pb2_grpc
 
@@ -25,6 +26,31 @@ _SERVICE_NAMES = (
     "vector_service.v1.VectorAdminService",
     "vector_service.v1.VectorSearchService",
 )
+
+
+def _setup_observability(settings) -> None:
+    if not settings.observability.otel_enabled:
+        return
+
+    setup_telemetry(
+        service_name="echora-vector-service",
+        version=settings.service.api_version,
+        environment=settings.environment.value,
+        endpoint=settings.observability.otel_exporter_otlp_endpoint,
+        log_level=settings.service.log_level,
+        enable_logging=settings.observability.otel_enable_logging,
+        enable_tracing=settings.observability.otel_enable_tracing,
+        enable_metrics=settings.observability.otel_enable_metrics,
+        enable_grpc_server_instrumentation=(
+            settings.observability.otel_enable_grpc_server_instrumentation
+        ),
+        enable_grpc_client_instrumentation=(
+            settings.observability.otel_enable_grpc_client_instrumentation
+        ),
+        enable_aiohttp_client_instrumentation=(
+            settings.observability.otel_enable_aiohttp_client_instrumentation
+        ),
+    )
 
 
 async def _set_health_statuses(
@@ -63,10 +89,8 @@ async def serve() -> None:
     services and health checks, and blocks until termination.
     """
     settings = get_settings()
-    logging.basicConfig(
-        level=getattr(logging, settings.service.log_level),
-        format=settings.service.log_format,
-    )
+    _setup_observability(settings)
+    logging.basicConfig(level=getattr(logging, settings.service.log_level), force=True)
 
     runtime = await build_runtime(settings)
     server = grpc.aio.server()

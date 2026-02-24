@@ -40,6 +40,14 @@ dependencies = [
     "grpcio==1.78.0",
     "grpcio-health-checking==1.78.0",
     "protobuf==6.33.5",
+    # Observability
+    "opentelemetry-api==1.39.1",
+    "opentelemetry-sdk==1.39.1",
+    "opentelemetry-exporter-otlp==1.39.1",
+    "opentelemetry-instrumentation-fastapi==0.60b1",
+    "opentelemetry-instrumentation-grpc==0.60b1",
+    "opentelemetry-instrumentation-aiohttp-client==0.60b1",
+    "structlog>=25.1.0",
 ]
 
 [project.optional-dependencies]

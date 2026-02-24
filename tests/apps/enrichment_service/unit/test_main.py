@@ -8,6 +8,52 @@ import pytest
 from enrichment_service import main
 
 
+def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_setup_telemetry(**kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(main, "setup_telemetry", _fake_setup_telemetry)
+
+    settings = type(
+        "Settings",
+        (),
+        {
+            "service": type(
+                "Service",
+                (),
+                {
+                    "api_version": "1.0.0",
+                    "log_level": "DEBUG",
+                },
+            )(),
+            "observability": type(
+                "Observability",
+                (),
+                {
+                    "otel_enabled": True,
+                    "otel_exporter_otlp_endpoint": "http://otel:4317",
+                    "otel_enable_metrics": True,
+                    "otel_enable_tracing": True,
+                    "otel_enable_logging": True,
+                    "otel_enable_grpc_server_instrumentation": True,
+                    "otel_enable_grpc_client_instrumentation": True,
+                    "otel_enable_aiohttp_client_instrumentation": True,
+                },
+            )(),
+            "environment": type("Env", (), {"value": "staging"})(),
+        },
+    )()
+
+    main._setup_observability(settings)
+
+    assert captured["service_name"] == "echora-enrichment-service"
+    assert captured["environment"] == "staging"
+    assert captured["endpoint"] == "http://otel:4317"
+    assert captured["enable_aiohttp_client_instrumentation"] is True
+
+
 class _FakeLoop:
     def __init__(self) -> None:
         self.handlers: dict[signal.Signals, object] = {}

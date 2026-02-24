@@ -1,0 +1,89 @@
+{
+  "id": null,
+  "uid": "echora-service-overview",
+  "title": "Echora Service Overview",
+  "tags": ["echora", "observability", "red"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "templating": {
+    "list": [
+      {
+        "name": "service_name",
+        "type": "textbox",
+        "label": "service_name",
+        "query": "echora.*",
+        "current": { "text": "echora.*", "value": "echora.*" }
+      },
+      {
+        "name": "env",
+        "type": "textbox",
+        "label": "env",
+        "query": ".*",
+        "current": { "text": ".*", "value": ".*" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate (gRPC)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(grpc_server_handled_total[5m]))",
+          "legendFormat": "rps"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate (gRPC)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(grpc_server_handled_total{grpc_code!=\"OK\"}[5m])) / clamp_min(sum(rate(grpc_server_handled_total[5m])),1)",
+          "legendFormat": "error_rate"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency P99 (gRPC)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(grpc_server_handling_seconds_bucket[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Log Volume",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({service=~\"$service_name\", env=~\"$env\"}[5m]))",
+          "legendFormat": "logs/5m"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent Error Logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"$service_name\", env=~\"$env\"} |= \"error\""
+        }
+      ]
+    }
+  ]
+}

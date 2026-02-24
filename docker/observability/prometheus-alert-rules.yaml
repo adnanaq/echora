@@ -1,0 +1,50 @@
+groups:
+  - name: echora-observability
+    rules:
+      - alert: EchoraHighErrorRate
+        expr: |
+          (
+            sum(rate(grpc_server_handled_total{grpc_code!="OK"}[5m]))
+            /
+            clamp_min(sum(rate(grpc_server_handled_total[5m])), 1)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: echora
+        annotations:
+          summary: "High gRPC error rate"
+          description: "Error rate is above 1% for 5 minutes."
+
+      - alert: EchoraHighLatencyP99
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(grpc_server_handling_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: echora
+        annotations:
+          summary: "High p99 latency"
+          description: "p99 latency is above 2s for 5 minutes."
+
+      - alert: EchoraServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service target down"
+          description: "Prometheus target {{ $labels.instance }} is down."
+
+      - alert: OTelCollectorBackpressure
+        expr: rate(otelcol_exporter_send_failed_spans[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: otel-collector
+        annotations:
+          summary: "OTel exporter failing to send spans"
+          description: "Collector exporter is dropping or failing to send span batches."
