@@ -8,6 +8,7 @@ import grpc
 from enrichment_proto.v1 import enrichment_service_pb2
 
 from ..runtime import EnrichmentRuntime
+from .telemetry import rpc_span
 
 
 async def health(
@@ -26,13 +27,14 @@ async def health(
         Health response with service details.
     """
     del request, context
-    return enrichment_service_pb2.HealthResponse(
-        healthy=True,
-        service="enrichment_service",
-        details_json=json.dumps(
-            {
-                "mode": "sanitization_pipeline",
-                "output_dir": runtime.output_dir,
-            }
-        ),
-    )
+    with rpc_span("Health"):
+        return enrichment_service_pb2.HealthResponse(
+            healthy=True,
+            service="enrichment_service",
+            details_json=json.dumps(
+                {
+                    "mode": "sanitization_pipeline",
+                    "output_dir": runtime.output_dir,
+                }
+            ),
+        )
