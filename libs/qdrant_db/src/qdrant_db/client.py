@@ -5,9 +5,11 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 """
 
 import logging
+import time
 from typing import Any, TypeGuard, cast
 
 from common.config import QdrantConfig
+from vector_db_interface import VectorDBClient, VectorDocument, TelemetryRegistry
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -122,6 +124,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        telemetry: TelemetryRegistry | None = None,
     ):
         """Initialize Qdrant client with injected dependencies and configuration.
 
@@ -130,12 +133,14 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library.
             url: Qdrant server URL (optional, uses config if not provided)
             collection_name: Name of the anime collection (optional, uses config if not provided)
+            telemetry: Optional telemetry registry for recording metrics.
         """
         self.config = config
         self.url = url or config.qdrant_url
         self._collection_name = collection_name or config.qdrant_collection_name
 
         self.client = async_qdrant_client
+        self._telemetry = telemetry
 
         self._distance_metric = config.qdrant_distance_metric
 
@@ -190,6 +195,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        telemetry: TelemetryRegistry | None = None,
     ) -> "QdrantClient":
         """Create and initialize a QdrantClient instance.
 
@@ -202,6 +208,7 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: An initialized AsyncQdrantClient instance from qdrant-client library
             url: Qdrant server URL (optional, uses config if not provided)
             collection_name: Name of the anime collection (optional, uses config if not provided)
+            telemetry: Optional telemetry registry for recording metrics.
 
         Returns:
             Initialized QdrantClient instance with collection ready
@@ -209,7 +216,7 @@ class QdrantClient(VectorDBClient):
         Raises:
             Exception: If collection initialization fails
         """
-        client = cls(config, async_qdrant_client, url, collection_name)
+        client = cls(config, async_qdrant_client, url, collection_name, telemetry)
         await client._initialize_collection()
         return client
 
@@ -1405,6 +1412,7 @@ class QdrantClient(VectorDBClient):
             >>> for result in results:
             ...     print(f"{result['id']}: {result['score']:.4f}")
         """
+        start_time = time.perf_counter()
         try:
             # Direct vector search with raw similarity scores.
             # qdrant-client >= 1.16 removed `search()` from AsyncQdrantClient,
@@ -1432,9 +1440,16 @@ class QdrantClient(VectorDBClient):
             logger.info(
                 f"Single vector search ({vector_name}) returned {len(results)} results with similarity scores"
             )
+            if self._telemetry:
+                self._telemetry.DB_QUERY_DURATION.record(
+                    time.perf_counter() - start_time,
+                    {"operation": "search_single_vector"},
+                )
             return results
 
         except Exception:
+            if self._telemetry:
+                self._telemetry.DB_ERRORS.add(1, {"operation": "search_single_vector"})
             logger.exception("Single vector search failed")
             raise
 
@@ -1548,6 +1563,7 @@ class QdrantClient(VectorDBClient):
             >>> for result in results:
             ...     print(result["id"], result["score"])
         """
+        start_time = time.perf_counter()
         try:
             if not vector_queries:
                 raise EmptyVectorQueriesError()
@@ -1602,8 +1618,15 @@ class QdrantClient(VectorDBClient):
             logger.info(
                 f"Multi-vector search returned {len(results)} results using {fusion_method.upper()}"
             )
+            if self._telemetry:
+                self._telemetry.DB_QUERY_DURATION.record(
+                    time.perf_counter() - start_time,
+                    {"operation": "search_multi_vector"},
+                )
             return results
 
         except Exception:
+            if self._telemetry:
+                self._telemetry.DB_ERRORS.add(1, {"operation": "search_multi_vector"})
             logger.exception("Multi-vector search failed")
             raise

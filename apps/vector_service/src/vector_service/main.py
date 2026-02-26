@@ -89,11 +89,18 @@ async def serve() -> None:
     services and health checks, and blocks until termination.
     """
     settings = get_settings()
+    # 1. Initialize Telemetry (MUST BE FIRST)
     _setup_observability(settings)
-    logging.basicConfig(level=getattr(logging, settings.service.log_level), force=True)
 
     runtime = await build_runtime(settings)
-    server = grpc.aio.server()
+
+    # 2. Configure server with interceptors
+    interceptors = []
+    if settings.observability.otel_enabled:
+        from observability import AioServerInterceptor
+        interceptors.append(AioServerInterceptor())
+
+    server = grpc.aio.server(interceptors=interceptors)
 
     admin_servicer = VectorAdminRoutes(runtime=runtime, settings=settings)
     search_servicer = VectorSearchRoutes(runtime=runtime)
@@ -130,6 +137,8 @@ async def serve() -> None:
             logger.exception("Failed to publish NOT_SERVING during shutdown")
         await server.stop(grace=5)
         await runtime.async_qdrant_client.close()
+        from observability import stop_logging
+        stop_logging()
 
 
 if __name__ == "__main__":

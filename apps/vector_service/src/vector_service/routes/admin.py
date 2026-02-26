@@ -19,7 +19,6 @@ from google.protobuf.timestamp_pb2 import Timestamp  # ty: ignore[unresolved-imp
 from vector_proto.v1 import vector_admin_pb2
 
 from ..runtime import VectorRuntime
-from .telemetry import mark_rpc_error, rpc_span
 
 logger = logging.getLogger(__name__)
 
@@ -104,45 +103,44 @@ async def health(
         Health state and compact database payload for readiness checks.
     """
     del request, context
-    with rpc_span("Health"):
-        try:
-            db_healthy = await runtime.qdrant_client.health_check()
-            stats: dict[str, object] = {}
-            if db_healthy:
-                try:
-                    stats = await runtime.qdrant_client.get_stats()
-                except Exception:
-                    logger.warning(
-                        "Stats fetch failed during health check; reporting degraded database payload",
-                        exc_info=True,
-                    )
-            ts = Timestamp()
-            ts.FromDatetime(datetime.now(UTC))
-            database = Struct()
-            database.update(_health_database_payload(stats, db_healthy))
-            return vector_admin_pb2.HealthResponse(
-                healthy=db_healthy,
-                timestamp=ts,
-                service="vector_service",
-                version=settings.service.api_version,
-                database=database,
-            )
-        except Exception as exc:
-            logger.exception("Health RPC failed")
-            mark_rpc_error("Health", code="HEALTH_FAILED")
-            ts = Timestamp()
-            ts.FromDatetime(datetime.now(UTC))
-            return vector_admin_pb2.HealthResponse(
-                healthy=False,
-                timestamp=ts,
-                service="vector_service",
-                version=settings.service.api_version,
-                error=error(
-                    code="HEALTH_FAILED",
-                    message=str(exc),
-                    retryable=True,
-                ),
-            )
+    # The AioServerInterceptor handles tracing, duration, and metrics.
+    try:
+        db_healthy = await runtime.qdrant_client.health_check()
+        stats: dict[str, object] = {}
+        if db_healthy:
+            try:
+                stats = await runtime.qdrant_client.get_stats()
+            except Exception:
+                logger.warning(
+                    "Stats fetch failed during health check; reporting degraded database payload",
+                    exc_info=True,
+                )
+        ts = Timestamp()
+        ts.FromDatetime(datetime.now(UTC))
+        database = Struct()
+        database.update(_health_database_payload(stats, db_healthy))
+        return vector_admin_pb2.HealthResponse(
+            healthy=db_healthy,
+            timestamp=ts,
+            service="vector_service",
+            version=settings.service.api_version,
+            database=database,
+        )
+    except Exception as exc:
+        logger.exception("Health RPC failed")
+        ts = Timestamp()
+        ts.FromDatetime(datetime.now(UTC))
+        return vector_admin_pb2.HealthResponse(
+            healthy=False,
+            timestamp=ts,
+            service="vector_service",
+            version=settings.service.api_version,
+            error=error(
+                code="HEALTH_FAILED",
+                message=str(exc),
+                retryable=True,
+            ),
+        )
 
 
 async def get_stats(
@@ -161,32 +159,30 @@ async def get_stats(
         JSON payload with collection stats and vector/model metadata.
     """
     del request, context
-    with rpc_span("GetStats"):
-        try:
-            stats = await runtime.qdrant_client.get_stats()
-            stats_error = _extract_stats_error(stats)
-            if stats_error:
-                logger.warning(
-                    "GetStats RPC received Qdrant error payload: %s", stats_error
-                )
-                mark_rpc_error("GetStats", code="GET_STATS_FAILED")
-                return vector_admin_pb2.GetStatsResponse(
-                    error=error(
-                        code="GET_STATS_FAILED",
-                        message=stats_error,
-                        retryable=True,
-                    )
-                )
-
-            payload = _build_stats_payload(runtime, stats)
-            return vector_admin_pb2.GetStatsResponse(stats_json=json.dumps(payload))
-        except Exception as exc:
-            logger.exception("GetStats RPC failed")
-            mark_rpc_error("GetStats", code="GET_STATS_FAILED")
+    # The AioServerInterceptor handles tracing, duration, and metrics.
+    try:
+        stats = await runtime.qdrant_client.get_stats()
+        stats_error = _extract_stats_error(stats)
+        if stats_error:
+            logger.warning(
+                "GetStats RPC received Qdrant error payload: %s", stats_error
+            )
             return vector_admin_pb2.GetStatsResponse(
                 error=error(
                     code="GET_STATS_FAILED",
-                    message=str(exc),
+                    message=stats_error,
                     retryable=True,
                 )
             )
+
+        payload = _build_stats_payload(runtime, stats)
+        return vector_admin_pb2.GetStatsResponse(stats_json=json.dumps(payload))
+    except Exception as exc:
+        logger.exception("GetStats RPC failed")
+        return vector_admin_pb2.GetStatsResponse(
+            error=error(
+                code="GET_STATS_FAILED",
+                message=str(exc),
+                retryable=True,
+            )
+        )

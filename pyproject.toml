@@ -47,6 +47,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi==0.60b1",
     "opentelemetry-instrumentation-grpc==0.60b1",
     "opentelemetry-instrumentation-aiohttp-client==0.60b1",
+    "opentelemetry-instrumentation-qdrant==0.52.4",
     "structlog>=25.1.0",
 ]
 

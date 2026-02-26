@@ -90,11 +90,18 @@ async def serve() -> None:
         None. This coroutine runs until the server receives termination.
     """
     settings = get_settings()
+    # 1. Initialize Telemetry (MUST BE FIRST)
     _setup_observability(settings)
-    logging.basicConfig(level=getattr(logging, settings.service.log_level), force=True)
 
     runtime = await build_runtime(settings)
-    server = grpc.aio.server()
+    
+    # 2. Configure server with interceptors
+    interceptors = []
+    if settings.observability.otel_enabled:
+        from observability import AioServerInterceptor
+        interceptors.append(AioServerInterceptor())
+
+    server = grpc.aio.server(interceptors=interceptors)
 
     servicer = EnrichmentRoutes(runtime=runtime)
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
@@ -122,6 +129,8 @@ async def serve() -> None:
     finally:
         logger.info("Shutting down enrichment_service gRPC server")
         await server.stop(grace=5)
+        from observability import stop_logging
+        stop_logging()
 
 
 if __name__ == "__main__":

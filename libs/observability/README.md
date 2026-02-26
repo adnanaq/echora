@@ -5,35 +5,35 @@ This library provides the shared observability bootstrap for Echora services.
 ## What This Library Does
 
 - Initializes OpenTelemetry traces, metrics, and structured logs in one call.
-- Applies optional runtime instrumentation for gRPC server/client and aiohttp client.
-- Provides trace context propagation helpers for async boundaries (NATS/Temporal style headers).
-- Keeps observability behavior consistent across services.
-
-Primary module path:
-- `libs/observability/src/observability`
+- **Non-blocking Logging:** Uses an internal `QueueHandler` and `QueueListener` thread to prevent logging from blocking the application event loop.
+- **PII Redaction:** Automatically scrubs sensitive data (API keys, passwords, emails) from logs at the source.
+- **Domain Monitoring:** Provides a centralized metric registry (`observability.registry`) for platform-wide RPC and Database signals.
+- **AIO gRPC Interceptors:** Simplifies service instrumentation with `AioServerInterceptor` for automatic RPC duration and success/error tracking.
+- **Qdrant Support:** Native OpenTelemetry instrumentation for Qdrant client calls.
+- **Context Propagation:** Provides trace context propagation helpers for async boundaries (NATS/Temporal style headers).
 
 ## Public API
 
 Main entrypoint:
 - `observability.setup_telemetry(...)`
 
-Signal setup helpers:
+Signal setup & shutdown:
 - `observability.setup_logging(...)`
+- `observability.stop_logging()`
 - `observability.setup_tracing(...)`
 - `observability.setup_metrics(...)`
 
 Instrumentation helpers:
+- `observability.AioServerInterceptor` (gRPC async interceptor)
 - `observability.instrument_grpc_server()`
 - `observability.instrument_grpc_client()`
 - `observability.instrument_aiohttp_client()`
+- `observability.instrument_qdrant_client()`
 
-Context propagation helpers:
-- `observability.inject_trace_context(...)`
-- `observability.extract_trace_context(...)`
-- `observability.inject_context_into_nats_headers(...)`
-- `observability.extract_context_from_nats_headers(...)`
-- `observability.inject_context_into_temporal_headers(...)`
-- `observability.extract_context_from_temporal_headers(...)`
+Centralized Registry:
+- `observability.registry.RPC_DURATION` (Histogram)
+- `observability.registry.RPC_REQUESTS` (Counter)
+- `observability.registry.DB_QUERY_DURATION` (Histogram)
 
 ## Initialization Flow
 

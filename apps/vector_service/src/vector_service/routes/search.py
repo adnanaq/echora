@@ -18,7 +18,6 @@ from google.protobuf import json_format
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
-from .telemetry import mark_rpc_error, rpc_span
 
 logger = logging.getLogger(__name__)
 
@@ -165,107 +164,101 @@ async def search(
         Search results or structured error payload.
     """
     del context
-    with rpc_span("Search"):
-        try:
-            query_text = (
-                request.query_text.strip() if request.HasField("query_text") else ""
-            )
-            has_image = bool(request.image)
-            if not query_text and not has_image:
-                mark_rpc_error("Search", code="MISSING_QUERY_INPUT")
-                return vector_search_pb2.SearchResponse(
-                    error=error(
-                        "MISSING_QUERY_INPUT",
-                        "Provide query_text and/or image.",
-                        retryable=False,
-                    )
-                )
-
-            filters: dict[str, Any] | None = None
-            if request.HasField("filters"):
-                invalid_filters = False
-                try:
-                    parsed = json_format.MessageToDict(
-                        request.filters, preserving_proto_field_name=True
-                    )
-                    normalized = _normalize_struct_numbers(parsed)
-                    filters = _clean_filter_payload(normalized)
-                    invalid_filters = not _is_valid_filter_payload(filters)
-                except (json_format.Error, TypeError, ValueError) as exc:
-                    logger.debug("Filter parsing failed: %s", exc)
-                    invalid_filters = True
-
-                if invalid_filters:
-                    _raise_invalid_filters()
-
-            entity_type = (
-                request.entity_type.strip() if request.HasField("entity_type") else ""
-            )
-            raw_limit = request.limit if request.HasField("limit") else 10
-
-            text_embedding: list[float] | None = None
-            if query_text:
-                text_embedding = await runtime.text_processor.encode_text(query_text)
-                if not text_embedding:
-                    mark_rpc_error("Search", code="TEXT_EMBEDDING_FAILED")
-                    return vector_search_pb2.SearchResponse(
-                        error=error(
-                            "TEXT_EMBEDDING_FAILED",
-                            "Failed to generate text embedding for query_text.",
-                            retryable=True,
-                        )
-                    )
-
-            image_embedding: list[float] | None = None
-            if has_image:
-                try:
-                    image_embedding = await _encode_image_bytes(runtime, request.image)
-                except ValueError as exc:
-                    mark_rpc_error("Search", code="INVALID_IMAGE_INPUT")
-                    return vector_search_pb2.SearchResponse(
-                        error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
-                    )
-                if not image_embedding:
-                    mark_rpc_error("Search", code="IMAGE_EMBEDDING_FAILED")
-                    return vector_search_pb2.SearchResponse(
-                        error=error(
-                            "IMAGE_EMBEDDING_FAILED",
-                            "Failed to generate image embedding from request image data.",
-                            retryable=True,
-                        )
-                    )
-
-            raw_hits = await runtime.qdrant_client.search(
-                text_embedding=text_embedding,
-                image_embedding=image_embedding,
-                entity_type=entity_type or None,
-                limit=_normalize_limit(raw_limit),
-                filters=filters,
-            )
-
-            data = [
-                vector_search_pb2.SearchData(
-                    id=str(hit.get("id", "")),
-                    similarity_score=float(
-                        hit.get("score", hit.get("similarity_score", 0.0))
-                    ),
-                    payload_json=json.dumps(hit.get("payload", {}), ensure_ascii=False),
-                )
-                for hit in raw_hits
-            ]
-            return vector_search_pb2.SearchResponse(data=data)
-        except InvalidFiltersPayloadError as exc:
-            mark_rpc_error("Search", code="INVALID_FILTERS")
-            return vector_search_pb2.SearchResponse(
-                error=error("INVALID_FILTERS", str(exc), retryable=False)
-            )
-        except Exception:
-            logger.exception("Search RPC failed")
-            mark_rpc_error("Search", code="SEARCH_FAILED")
+    # The AioServerInterceptor handles tracing, duration, and success/error metrics.
+    try:
+        query_text = (
+            request.query_text.strip() if request.HasField("query_text") else ""
+        )
+        has_image = bool(request.image)
+        if not query_text and not has_image:
             return vector_search_pb2.SearchResponse(
                 error=error(
-                    "SEARCH_FAILED",
-                    "An internal error occurred.",
-                    retryable=True,
+                    "MISSING_QUERY_INPUT",
+                    "Provide query_text and/or image.",
+                    retryable=False,
                 )
             )
+
+        filters: dict[str, Any] | None = None
+        if request.HasField("filters"):
+            invalid_filters = False
+            try:
+                parsed = json_format.MessageToDict(
+                    request.filters, preserving_proto_field_name=True
+                )
+                normalized = _normalize_struct_numbers(parsed)
+                filters = _clean_filter_payload(normalized)
+                invalid_filters = not _is_valid_filter_payload(filters)
+            except (json_format.Error, TypeError, ValueError) as exc:
+                logger.debug("Filter parsing failed: %s", exc)
+                invalid_filters = True
+
+            if invalid_filters:
+                _raise_invalid_filters()
+
+        entity_type = (
+            request.entity_type.strip() if request.HasField("entity_type") else ""
+        )
+        raw_limit = request.limit if request.HasField("limit") else 10
+
+        text_embedding: list[float] | None = None
+        if query_text:
+            text_embedding = await runtime.text_processor.encode_text(query_text)
+            if not text_embedding:
+                return vector_search_pb2.SearchResponse(
+                    error=error(
+                        "TEXT_EMBEDDING_FAILED",
+                        "Failed to generate text embedding for query_text.",
+                        retryable=True,
+                    )
+                )
+
+        image_embedding: list[float] | None = None
+        if has_image:
+            try:
+                image_embedding = await _encode_image_bytes(runtime, request.image)
+            except ValueError as exc:
+                return vector_search_pb2.SearchResponse(
+                    error=error("INVALID_IMAGE_INPUT", str(exc), retryable=False)
+                )
+            if not image_embedding:
+                return vector_search_pb2.SearchResponse(
+                    error=error(
+                        "IMAGE_EMBEDDING_FAILED",
+                        "Failed to generate image embedding from request image data.",
+                        retryable=True,
+                    )
+                )
+
+        raw_hits = await runtime.qdrant_client.search(
+            text_embedding=text_embedding,
+            image_embedding=image_embedding,
+            entity_type=entity_type or None,
+            limit=_normalize_limit(raw_limit),
+            filters=filters,
+        )
+
+        data = [
+            vector_search_pb2.SearchData(
+                id=str(hit.get("id", "")),
+                similarity_score=float(
+                    hit.get("score", hit.get("similarity_score", 0.0))
+                ),
+                payload_json=json.dumps(hit.get("payload", {}), ensure_ascii=False),
+            )
+            for hit in raw_hits
+        ]
+        return vector_search_pb2.SearchResponse(data=data)
+    except InvalidFiltersPayloadError as exc:
+        return vector_search_pb2.SearchResponse(
+            error=error("INVALID_FILTERS", str(exc), retryable=False)
+        )
+    except Exception:
+        logger.exception("Search RPC failed")
+        return vector_search_pb2.SearchResponse(
+            error=error(
+                "SEARCH_FAILED",
+                "An internal error occurred.",
+                retryable=True,
+            )
+        )

@@ -14,19 +14,24 @@ from .instrumentation import (
     instrument_aiohttp_client,
     instrument_grpc_client,
     instrument_grpc_server,
+    instrument_qdrant_client,
 )
-from .logging import setup_logging
+from .interceptors import AioServerInterceptor
+from .logging import setup_logging, stop_logging
 from .metrics import setup_metrics
-from .tracing import setup_tracing
+from .registry import registry
+from .tracing import create_linked_span, setup_tracing
 
 logger = std_logging.getLogger(__name__)
 _telemetry_initialized = False
 _telemetry_init_signature: tuple[object, ...] | None = None
 
 __all__ = [
+    "AioServerInterceptor",
     "instrument_aiohttp_client",
     "instrument_grpc_client",
     "instrument_grpc_server",
+    "instrument_qdrant_client",
     "extract_context_from_nats_headers",
     "extract_context_from_temporal_headers",
     "extract_trace_context",
@@ -34,9 +39,12 @@ __all__ = [
     "inject_context_into_temporal_headers",
     "inject_trace_context",
     "setup_logging",
+    "stop_logging",
     "setup_metrics",
+    "registry",
     "setup_telemetry",
     "setup_tracing",
+    "create_linked_span",
 ]
 
 
@@ -53,6 +61,8 @@ def setup_telemetry(
     enable_grpc_server_instrumentation: bool = False,
     enable_grpc_client_instrumentation: bool = False,
     enable_aiohttp_client_instrumentation: bool = False,
+    enable_qdrant_client_instrumentation: bool = False,
+    metric_export_interval_millis: int = 60000,
 ) -> None:
     """Initialize logging, tracing, metrics, and optional instrumentation."""
     global _telemetry_initialized, _telemetry_init_signature
@@ -69,6 +79,8 @@ def setup_telemetry(
         enable_grpc_server_instrumentation,
         enable_grpc_client_instrumentation,
         enable_aiohttp_client_instrumentation,
+        enable_qdrant_client_instrumentation,
+        metric_export_interval_millis,
     )
     if _telemetry_initialized:
         if _telemetry_init_signature != init_signature:
@@ -88,6 +100,7 @@ def setup_telemetry(
             level=log_level,
             service_name=service_name,
             environment=environment,
+            endpoint=endpoint,
         )
 
     if enable_tracing:
@@ -102,6 +115,7 @@ def setup_telemetry(
             service_name=service_name,
             endpoint=endpoint,
             resource_attributes=resource_attributes,
+            export_interval_millis=metric_export_interval_millis,
         )
 
     if enable_grpc_server_instrumentation:
@@ -110,6 +124,8 @@ def setup_telemetry(
         instrument_grpc_client()
     if enable_aiohttp_client_instrumentation:
         instrument_aiohttp_client()
+    if enable_qdrant_client_instrumentation:
+        instrument_qdrant_client()
 
     _telemetry_initialized = True
     _telemetry_init_signature = init_signature

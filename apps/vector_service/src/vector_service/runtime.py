@@ -77,11 +77,18 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
             vision_processor=vision_processor,
             field_mapper=field_mapper,
         )
+
+        telemetry_registry = None
+        if settings.observability.otel_enabled:
+            from observability import registry
+            telemetry_registry = registry
+
         qdrant_client = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
             url=settings.qdrant.qdrant_url,
             collection_name=settings.qdrant.qdrant_collection_name,
+            telemetry=telemetry_registry,
         )
         return VectorRuntime(
             qdrant_client=qdrant_client,

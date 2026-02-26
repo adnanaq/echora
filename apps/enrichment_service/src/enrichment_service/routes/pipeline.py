@@ -13,7 +13,6 @@ from enrichment_proto.v1 import enrichment_service_pb2
 
 from ..pipeline_runner import run_pipeline_and_write_artifact
 from ..runtime import EnrichmentRuntime
-from .telemetry import mark_rpc_error, rpc_span
 
 logger = logging.getLogger(__name__)
 
@@ -36,56 +35,53 @@ async def run_pipeline(
         Pipeline result payload or structured error.
     """
     del context
-    with rpc_span("RunPipeline"):
-        try:
-            file_path = request.file_path or runtime.default_file_path
-            resolved = Path(file_path).resolve()
-            allowed = Path(runtime.default_file_path).resolve().parent
-            if not resolved.is_relative_to(allowed):
-                mark_rpc_error("RunPipeline", code="INVALID_FILE_PATH")
-                return enrichment_service_pb2.RunPipelineResponse(
-                    success=False,
-                    error=error(
-                        "INVALID_FILE_PATH",
-                        "file_path outside allowed directory",
-                        retryable=False,
-                    ),
-                )
-            agent_dir = request.agent_dir or None
-            if agent_dir is not None and not _SAFE_AGENT_DIR_RE.match(agent_dir):
-                mark_rpc_error("RunPipeline", code="INVALID_AGENT_DIR")
-                return enrichment_service_pb2.RunPipelineResponse(
-                    success=False,
-                    error=error(
-                        "INVALID_AGENT_DIR",
-                        "agent_dir must be a single path component containing only"
-                        " alphanumerics, hyphens, or underscores",
-                        retryable=False,
-                    ),
-                )
-
-            index = request.index if request.HasField("index") else None
-            if index is not None and index < 0:
-                index = None
-
-            output_path, result, _payload = await run_pipeline_and_write_artifact(
-                file_path=file_path,
-                index=index,
-                title=request.title or None,
-                agent_dir=agent_dir,
-                skip_services=list(request.skip_services),
-                only_services=list(request.only_services),
-                output_dir=runtime.output_dir,
-            )
-            return enrichment_service_pb2.RunPipelineResponse(
-                success=True,
-                output_path=output_path,
-                result_json=json.dumps(result, ensure_ascii=False),
-            )
-        except Exception as exc:
-            logger.exception("RunPipeline RPC failed")
-            mark_rpc_error("RunPipeline", code="RUN_PIPELINE_FAILED")
+    # The AioServerInterceptor handles tracing, duration, and success/error metrics.
+    try:
+        file_path = request.file_path or runtime.default_file_path
+        resolved = Path(file_path).resolve()
+        allowed = Path(runtime.default_file_path).resolve().parent
+        if not resolved.is_relative_to(allowed):
             return enrichment_service_pb2.RunPipelineResponse(
                 success=False,
-                error=error("RUN_PIPELINE_FAILED", str(exc)),
+                error=error(
+                    "INVALID_FILE_PATH",
+                    "file_path outside allowed directory",
+                    retryable=False,
+                ),
             )
+        agent_dir = request.agent_dir or None
+        if agent_dir is not None and not _SAFE_AGENT_DIR_RE.match(agent_dir):
+            return enrichment_service_pb2.RunPipelineResponse(
+                success=False,
+                error=error(
+                    "INVALID_AGENT_DIR",
+                    "agent_dir must be a single path component containing only"
+                    " alphanumerics, hyphens, or underscores",
+                    retryable=False,
+                ),
+            )
+
+        index = request.index if request.HasField("index") else None
+        if index is not None and index < 0:
+            index = None
+
+        output_path, result, _payload = await run_pipeline_and_write_artifact(
+            file_path=file_path,
+            index=index,
+            title=request.title or None,
+            agent_dir=agent_dir,
+            skip_services=list(request.skip_services),
+            only_services=list(request.only_services),
+            output_dir=runtime.output_dir,
+        )
+        return enrichment_service_pb2.RunPipelineResponse(
+            success=True,
+            output_path=output_path,
+            result_json=json.dumps(result, ensure_ascii=False),
+        )
+    except Exception as exc:
+        logger.exception("RunPipeline RPC failed")
+        return enrichment_service_pb2.RunPipelineResponse(
+            success=False,
+            error=error("RUN_PIPELINE_FAILED", str(exc)),
+        )

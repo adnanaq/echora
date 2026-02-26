@@ -8,15 +8,25 @@
 # Run:
 #   docker compose -f docker/docker-compose.obs.yml up -d
 #
-# Docs:
-# - docs/observability_local_runbook.md
-# - docs/plan/observabilit_implementation_plan.md
-# -----------------------------------------------------------------------------
+
 services:
-  # OTel Collector (single instance)
-  # - Receives OTLP from app services
-  # - Routes metrics/logs/traces to backends
-  # - Exposes OTLP :4317/:4318 and Prom scrape endpoint :8889
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    container_name: echora-prometheus
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus-alert-rules.yaml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - vector-network
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.1
     container_name: echora-otel-collector
@@ -24,130 +34,85 @@ services:
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8889:8889"
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Internal Metrics
+      - "8889:8889"   # App Metrics
     depends_on:
+      - prometheus
       - loki
       - tempo
     networks:
       - vector-network
-    restart: unless-stopped
 
-  # Prometheus
-  # - Scrapes collector-exported metrics
-  # - Evaluates alert rules and forwards to Alertmanager
-  # - Exposes UI/API on :9090
-  prometheus:
-    image: prom/prometheus:v3.9.1
-    container_name: echora-prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
-    volumes:
-      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/prometheus-alert-rules.yaml:/etc/prometheus/alert-rules.yml:ro
-      - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
-    depends_on:
-      - otel-collector
-    networks:
-      - vector-network
-    restart: unless-stopped
-
-  # Alertmanager
-  # - Receives firing alerts from Prometheus
-  # - Handles grouping/routing/silencing
-  # - Exposes UI/API on :9093
-  alertmanager:
-    image: prom/alertmanager:v0.31.1
-    container_name: echora-alertmanager
-    command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
-    volumes:
-      - ./observability/alertmanager.yaml:/etc/alertmanager/alertmanager.yml:ro
-      - alertmanager-data:/alertmanager
-    ports:
-      - "9093:9093"
-    networks:
-      - vector-network
-    restart: unless-stopped
-
-  # Loki
-  # - Log storage/query backend
-  # - Receives logs via OTLP HTTP from collector
-  # - Exposes API on :3100
   loki:
     image: grafana/loki:3.6.7
     container_name: echora-loki
-    command: ["-config.file=/etc/loki/config.yaml"]
-    volumes:
-      - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
-      - loki-data:/loki
     ports:
       - "3100:3100"
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
     networks:
       - vector-network
-    restart: unless-stopped
 
-  # Tempo
-  # - Trace storage/query backend
-  # - Receives traces from collector
-  # - Exposes API on :3200
   tempo:
     image: grafana/tempo:2.10.1
     container_name: echora-tempo
-    command: ["-config.file=/etc/tempo/config.yaml"]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
-      - ./observability/tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - ./observability/tempo-config.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
     ports:
-      - "3200:3200"
+      - "3200:3200"   # Tempo
+      - "4317"        # OTLP gRPC
     networks:
       - vector-network
-    restart: unless-stopped
 
-  # Grafana
-  # - Unified UI for metrics, logs, traces, and alerts
-  # - Exposes UI on :3000
   grafana:
-    image: grafana/grafana:12.3.3
+    image: grafana/grafana:12.4.0
     container_name: echora-grafana
+    ports:
+      - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    ports:
-      - "3000:3000"
     depends_on:
       - prometheus
-      - alertmanager
       - loki
       - tempo
     networks:
       - vector-network
-    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.31.1
+    container_name: echora-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager.yaml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - vector-network
 
 networks:
   vector-network:
-    driver: bridge
+    name: docker_vector-network
+    external: true
 
 volumes:
   prometheus-data:
-    driver: local
   loki-data:
-    driver: local
   tempo-data:
-    driver: local
   grafana-data:
-    driver: local
   alertmanager-data:
-    driver: local

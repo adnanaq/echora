@@ -9,53 +9,168 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "15s",
   "panels": [
     {
       "type": "timeseries",
       "title": "RPC Request Rate",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "sum(rate(echora_enrichment_service_rpc_requests_total[5m]))", "legendFormat": "requests/s"}
-      ]
+        {
+          "expr": "sum(rate(echora_rpc_requests_total{exported_job=\"echora-enrichment-service\"}[5m]))",
+          "legendFormat": "requests/s"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "RPC Error Rate",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "sum(rate(echora_enrichment_service_rpc_errors_total[5m])) / clamp_min(sum(rate(echora_enrichment_service_rpc_requests_total[5m])),1)", "legendFormat": "error_ratio"}
-      ]
+        {
+          "expr": "sum(rate(echora_rpc_errors_total{exported_job=\"echora-enrichment-service\"}[5m])) / clamp_min(sum(rate(echora_rpc_requests_total{exported_job=\"echora-enrichment-service\"}[5m])),1)",
+          "legendFormat": "error_ratio"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "RPC Latency P95 by Method",
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "histogram_quantile(0.95, sum(rate(echora_enrichment_service_rpc_duration_seconds_bucket[5m])) by (le, rpc_method))", "legendFormat": "{{rpc_method}}"}
-      ]
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(echora_rpc_duration_seconds_bucket{exported_job=\"echora-enrichment-service\"}[5m])) by (le, rpc_method))",
+          "legendFormat": "{{rpc_method}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "RPC Request Rate by Method",
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 18},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "sum by (rpc_method) (rate(echora_enrichment_service_rpc_requests_total[5m]))", "legendFormat": "{{rpc_method}}"}
-      ]
+        {
+          "expr": "sum by (rpc_method) (rate(echora_rpc_requests_total{exported_job=\"echora-enrichment-service\"}[5m]))",
+          "legendFormat": "{{rpc_method}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "RPC Errors by Code",
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 18},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "sum by (error_code) (rate(echora_enrichment_service_rpc_errors_total[5m]))", "legendFormat": "{{error_code}}"}
-      ]
+        {
+          "expr": "sum by (error_code) (rate(echora_rpc_errors_total{exported_job=\"echora-enrichment-service\"}[5m]))",
+          "legendFormat": "{{error_code}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     }
-  ]
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {}
 }
