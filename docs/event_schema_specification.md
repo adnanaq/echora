@@ -1,13 +1,12 @@
 ---
 title: Event Schema Specification
-date: 2026-02-16
+date: 2026-02-24
 tags:
   - protobuf
   - events
   - schema
   - api
 status: active
-version: 1.1.0
 related:
   - "[[event_driven_architecture]]"
   - "[[postgres_integration_architecture_decision]]"
@@ -19,8 +18,8 @@ related:
 
 Complete Protocol Buffers (protobuf) event schemas for Echora event-driven architecture, based on the enrichment pipeline's `AnimeRecord` structure.
 
-> [!info] Schema Version
-> **Current**: 1.0.0 | **Syntax**: proto3 | **Package**: `echora.events.v1`
+> [!info] Schema
+> **Syntax**: proto3 | **Package**: `echora.events.v1`
 
 ## Top-Level Events
 
@@ -56,41 +55,46 @@ message AnimeCreatedEvent {
 
 **Subject**: `anime.created` | **Publisher**: PostgreSQL Service | **Consumer**: Qdrant Service
 
+Qdrant receives this thin signal and calls `PostgresReadService.GetAnimeRecord` via gRPC to get the full `AnimeRecord` (anime + all characters + all episodes). It then runs `MultiVectorEmbeddingManager.process_anime_vectors` to create all three point types in one pass — anime point, character points, episode points.
+
 ### EpisodeAiredEvent
 
-Published by **Update Service** when a new episode is verified as aired.
+Published by **Update Service** when a new episode is verified as aired. The workflow that confirms the episode also checks the current anime status from the source — if it changed, `status` is included so PG can update both episode and status in a single write.
 
 ```protobuf
 message EpisodeAiredEvent {
   string event_id = 1;                           // UUID
   google.protobuf.Timestamp timestamp = 2;
   string anime_id = 3;                           // UUID
-  string source = 4;                             // "jikan", "anilist"
-  string aired_at = 5;                           // ISO 8601 actual air datetime
-  EpisodeData episode = 6;
+  string aired_at = 4;                           // ISO 8601 actual air datetime
+  EpisodeData episode = 5;
+  optional AnimeStatus status = 6;               // set only if status changed at time of episode confirmation — e.g. ONGOING → FINISHED on last episode
 }
 ```
 
-**Subject**: `anime.episode.aired` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service
+**Subject**: `episode.aired` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service
+
+> [!note] Status absent = status unchanged
+> If `status` is not set, PG keeps the existing anime status as-is. This avoids waiting up to 7 days for the weekly poll to detect a FINISHED transition when the last episode airs.
 
 ### AnimeUpdatedEvent
 
-Published by **Update Service** when score or status changes. Contains only the changed fields.
+Published by **Update Service** when any anime field changes. Carries only the changed values — `changed_fields` is the authoritative list of what PG should write.
 
 ```protobuf
 message AnimeUpdatedEvent {
   string event_id = 1;                           // UUID
   google.protobuf.Timestamp timestamp = 2;
   string anime_id = 3;                           // UUID
-  string source = 4;                             // "mal", "anilist", "kitsu"
-  repeated string changed_fields = 5;            // e.g. ["score", "statistics"]
-  optional string status = 6;                    // if status changed
-  optional ScoreCalculations score = 7;          // if score changed
-  map<string, Statistics> statistics = 8;   // per-platform stats
+  repeated string changed_fields = 4;            // authoritative list of changed fields — e.g. ["score", "broadcast", "status", "synopsis"]
+  AnimeData anime = 5;                           // sparse — only fields listed in changed_fields are populated
 }
 ```
 
 **Subject**: `anime.updated` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service only
+
+> [!note] Sparse payload + `changed_fields`
+> `changed_fields` tells PG exactly which columns to update — the consumer generates a targeted UPDATE for only those columns. Fields absent from `changed_fields` are not touched in PG regardless of what value they carry in the payload.
 
 > [!important] Qdrant does NOT consume this event
 > Qdrant syncs only after PostgreSQL commits, via `anime.synced` (see below). This enforces the SAGA pattern — PostgreSQL is always the source of truth.
@@ -105,62 +109,183 @@ message AnimeSyncedEvent {
   google.protobuf.Timestamp timestamp = 2;
   string anime_id = 3;                           // UUID
   repeated string changed_fields = 4;            // e.g. ["score", "episode_count", "status"]
-  SyncUpdateType update_type = 5;
-}
-
-enum SyncUpdateType {
-  PAYLOAD_ONLY = 0;         // score, status, episode_count — no re-embed needed
-  PAYLOAD_AND_VECTOR = 1;   // synopsis, tags, demographics — full re-embed required
+  map<string, google.protobuf.Value> metadata_updates = 5; // new values for non-embedding fields — omitted when any embedding field changed
 }
 ```
 
 **Subject**: `anime.synced` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Qdrant Service
 
-Qdrant decides what to update based on `changed_fields` and `update_type`:
-- `PAYLOAD_ONLY` → update Qdrant point payload directly (fast, no embedding)
-- `PAYLOAD_AND_VECTOR` → fetch full anime data from PostgreSQL Service (GraphQL), re-embed, update both payload and vector
+Qdrant inspects `changed_fields` to decide the update path:
+- `changed_fields` ∩ `EMBEDDING_FIELDS` non-empty → call `GetAnime` via gRPC, re-embed, `update_single_point_vector` + `update_payload(mode="merge")` — `metadata_updates` is omitted, `GetAnime` response provides all values
+- `changed_fields` all metadata → read `metadata_updates` directly, `update_payload(mode="merge")` — no gRPC call, no re-embed
+
+`EMBEDDING_FIELDS = {"synopsis", "title", "tags", "genres", "demographics"}` — defined in the Qdrant Service, not the event.
+
+### EpisodeUpdatedEvent
+
+Published by **Update Service** when metadata on an existing episode changes — title, synopsis, images, or other fields that were missing or incorrect at initial ingest.
+
+```protobuf
+message EpisodeUpdatedEvent {
+  string event_id = 1;                           // UUID
+  google.protobuf.Timestamp timestamp = 2;
+  string episode_id = 3;                         // UUID
+  repeated string changed_fields = 4;            // authoritative list of changed fields — e.g. ["title", "synopsis"]
+  EpisodeData episode = 5;                       // sparse — only fields listed in changed_fields are populated
+}
+```
+
+**Subject**: `episode.updated` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service only
+
+> [!important] Qdrant does NOT consume this event
+> Qdrant syncs only after PostgreSQL commits, via `episode.synced`. This enforces the SAGA pattern — PostgreSQL is always the source of truth.
+
+### EpisodeSyncedEvent
+
+Published by **PostgreSQL Service** (via outbox) after successfully committing any episode update. This is the event Qdrant consumes to keep episode points in sync.
+
+```protobuf
+message EpisodeSyncedEvent {
+  string event_id = 1;                           // UUID
+  google.protobuf.Timestamp timestamp = 2;
+  string episode_id = 3;                         // UUID
+  repeated string changed_fields = 4;            // e.g. ["title", "synopsis"]
+  map<string, google.protobuf.Value> metadata_updates = 5; // new values for non-embedding fields — omitted when any embedding field changed
+}
+```
+
+**Subject**: `episode.synced` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Qdrant Service
+
+Same update path logic as `AnimeSyncedEvent` — Qdrant inspects `changed_fields` using `EPISODE_EMBEDDING_FIELDS = {"title", "synopsis"}`.
+
+### CharacterUpdatedEvent
+
+Published by **Update Service** when character data changes — description, images, traits, or other fields filled in after initial ingest. Characters can appear in multiple anime so there is no single `anime_id`.
+
+```protobuf
+message CharacterUpdatedEvent {
+  string event_id = 1;                           // UUID
+  google.protobuf.Timestamp timestamp = 2;
+  string character_id = 3;                       // UUID
+  repeated string changed_fields = 4;            // authoritative list of changed fields — e.g. ["description", "images", "character_traits"]
+  CharacterData character = 5;                   // sparse — only fields listed in changed_fields are populated
+}
+```
+
+**Subject**: `character.updated` | **Publisher**: Update Service | **Consumer**: PostgreSQL Service only
+
+> [!important] Qdrant does NOT consume this event
+> Qdrant syncs only after PostgreSQL commits, via `character.synced`. This enforces the SAGA pattern — PostgreSQL is always the source of truth.
+
+### CharacterSyncedEvent
+
+Published by **PostgreSQL Service** (via outbox) after successfully committing any character update. This is the event Qdrant consumes to keep character points in sync.
+
+```protobuf
+message CharacterSyncedEvent {
+  string event_id = 1;                           // UUID
+  google.protobuf.Timestamp timestamp = 2;
+  string character_id = 3;                       // UUID
+  repeated string changed_fields = 4;            // e.g. ["description", "character_traits"]
+  map<string, google.protobuf.Value> metadata_updates = 5; // new values for non-embedding fields — omitted when any embedding field changed
+}
+```
+
+**Subject**: `character.synced` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Qdrant Service
+
+Same update path logic as `AnimeSyncedEvent` — Qdrant inspects `changed_fields` using `CHARACTER_EMBEDDING_FIELDS = {"name", "description", "character_traits"}`.
+
+## Notification Events
+
+Events in the `NOTIFICATION_EVENTS` stream — separate from the data pipeline. Data is always committed to PostgreSQL before any notification fires. Consumers are a future notification service.
+
+> [!note] `anime_title` is denormalised
+> Notification events carry `anime_title` directly so the notification service can render a push notification without querying PostgreSQL.
+
+### EpisodeUpcomingNotification
+
+Published by **Update Service** (Temporal workflow timer) at T-24h and T-1h before the expected episode air time. The workflow ID is `episode-notification-{anime_id}-{episode_number}` — deterministic so it can be cancelled and rescheduled if the air time changes (hiatus, delay).
+
+```protobuf
+message EpisodeUpcomingNotification {
+  string event_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string anime_id = 3;
+  int32 episode_number = 4;                      // expected next episode
+  google.protobuf.Timestamp expected_air_at = 5;
+  string window = 6;                             // "T-24h" or "T-1h"
+  string anime_title = 7;
+}
+```
+
+**Subject**: `notification.episode.upcoming` | **Publisher**: Update Service (Temporal) | **Consumer**: Notification Service (future)
+
+### EpisodeAiredNotification
+
+Published by **PostgreSQL Service outbox worker** after an episode row is committed to the database.
+
+```protobuf
+message EpisodeAiredNotification {
+  string event_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string anime_id = 3;
+  int32 episode_number = 4;
+  google.protobuf.Timestamp aired_at = 5;
+  string anime_title = 6;
+}
+```
+
+**Subject**: `notification.episode.aired` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Notification Service (future)
+
+### AnimeStatusChangedNotification
+
+Published by **PostgreSQL Service outbox worker** after a status change is committed to the database.
+
+```protobuf
+message AnimeStatusChangedNotification {
+  string event_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string anime_id = 3;
+  AnimeStatus old_status = 4;
+  AnimeStatus new_status = 5;
+  string anime_title = 6;
+}
+```
+
+**Subject**: `notification.anime.status.changed` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Notification Service (future)
 
 ## Core Data Models
 
-See [[event_driven_architecture#Event Flow]] for complete protobuf definitions including:
-- `AnimeData` (mirrors Pydantic Anime model - 24 scalar, 14 array, 10 object fields)
-- `CharacterData` (mirrors Pydantic Character model)
-- `EpisodeData` (mirrors Pydantic Episode model — see below)
-- All supporting types (ThemeSong, Statistics, StaffData, etc.)
+> [!info] Defined in shared proto — do not duplicate
+> All domain types (`Anime`, `Character`, `Episode`, and every supporting message and enum) are already defined in `protos/shared_proto/v1/anime.proto` (package `shared_proto.v1`). When creating `protos/events/v1/events.proto`, **import** that package rather than redefining any types here.
 
-### EpisodeData
-
-Mirrors `libs/common/src/common/models/anime.py::Episode`.
+> [!note] File location decided
+> Events proto lives at `protos/events/v1/events.proto` — a **separate file** from `shared_proto/v1/anime.proto`. `anime.proto` is the domain model; `events.proto` is the event contract. They are distinct layers. Events import the domain, not the other way around.
 
 ```protobuf
-message EpisodeData {
-  int32  episode_number  = 1;
-  string title           = 2;
-  string title_japanese  = 3;
-  string title_romaji    = 4;
-  string synopsis        = 5;
-  int32  duration        = 6;                    // seconds
-  bool   filler          = 7;
-  bool   recap           = 8;
-  float  score           = 9;
-  string aired           = 10;                   // ISO 8601
-  repeated string images              = 11;
-  repeated string     sources          = 12;
-  map<string, string> streaming       = 13;
-}
+// protos/events/v1/events.proto  (decided location — file not yet created)
+syntax = "proto3";
+package echora.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";    // provides google.protobuf.Value for metadata_updates maps
+import "shared_proto/v1/anime.proto";     // provides Anime, Character, Episode, AnimeRecord, …
 ```
 
-### ScoreCalculations
+### Type Map
 
-Mirrors `libs/common/src/common/models/anime.py::ScoreCalculations`.
+| Event field type | Shared proto type | Pydantic model |
+|---|---|---|
+| anime payload | `shared_proto.v1.Anime` | `Anime` |
+| character list | `shared_proto.v1.Character` | `Character` |
+| episode list | `shared_proto.v1.Episode` | `Episode` |
+| full record | `shared_proto.v1.AnimeRecord` | `AnimeRecord` |
+| enrichment info | `shared_proto.v1.EnrichmentMetadata` | `EnrichmentMetadata` |
 
-```protobuf
-message ScoreCalculations {
-  float arithmetic_geometric_mean = 1;  // arithmetic-geometric mean across platforms
-  float arithmetic_mean           = 2;
-  float median                    = 3;
-}
-```
+`AnimeRecord` (Anime + repeated Character + repeated Episode) is the ingest shape — used by `AnimeEnrichedEvent` (ingestion → PG) and `GetAnimeRecord` (initial Qdrant index). It is never used for update reads — updates use the targeted `GetAnime`, `GetCharacter`, `GetEpisode` RPCs to avoid pulling characters and episodes unnecessarily.
+
+> [!note] Role normalisation
+> `Character.role` (field 11) is typed as `CharacterRole` in both the proto and the Pydantic model. A `field_validator(mode="before")` on `Character` normalises all upstream strings at ingest time. The full verified vocabulary across all sources is documented in [[anime_relationship_and_format_type_mappings#Character Role Mappings]]. The `ProcessedCharacter` internal dataclass (enrichment only) keeps `role: str` intentionally — it is normalised on the way out when building the final `AnimeRecord`.
 
 ## gRPC Services
 
@@ -173,6 +298,33 @@ service PostgresWriteService {
   rpc DeleteAnime(DeleteAnimeRequest) returns (DeleteResponse);
 }
 ```
+
+### PostgresReadService
+
+Used by Qdrant Service for targeted reads. Always returns the current committed state from PostgreSQL.
+
+```protobuf
+service PostgresReadService {
+  rpc GetAnimeRecord(GetAnimeRequest) returns (AnimeRecord);    // initial index only — full record with characters and episodes
+  rpc GetAnime(GetAnimeRequest) returns (Anime);                // anime entity only — used for anime field updates
+  rpc GetCharacter(GetCharacterRequest) returns (Character);    // character entity — used for character field updates
+  rpc GetEpisode(GetEpisodeRequest) returns (Episode);          // episode entity — used for episode field updates
+}
+
+message GetAnimeRequest {
+  string anime_id = 1;
+}
+
+message GetCharacterRequest {
+  string character_id = 1;
+}
+
+message GetEpisodeRequest {
+  string episode_id = 1;
+}
+```
+
+`GetAnimeRecord` is called once per anime at initial index (`AnimeCreatedEvent`). `GetAnime`, `GetCharacter`, `GetEpisode` are called only when embedding fields change — never for metadata-only updates.
 
 ### PostgresGraphService
 
@@ -234,5 +386,3 @@ anime.py field added → proto updated → stubs regenerated → sqlx FromRow ne
 - [Protocol Buffers field number rules](https://protobuf.dev/programming-guides/proto3/#reserved)
 
 ---
-
-**Version**: 1.2.0 | **Updated**: 2026-02-17
