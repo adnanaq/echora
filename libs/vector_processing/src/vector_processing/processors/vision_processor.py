@@ -8,15 +8,35 @@ files to embedding vectors using OpenCLIP models, with no domain-specific logic.
 import asyncio
 import hashlib
 import logging
+import time
 from typing import Any
 
 import aiohttp
 from common.config import EmbeddingConfig
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
 
 from ..embedding_models.vision.base import VisionEmbeddingModel
 from ..utils.image_downloader import ImageDownloader
 
 logger = logging.getLogger(__name__)
+
+_tracer = otel_trace.get_tracer("echora.vector_processing")
+_meter = otel_metrics.get_meter("echora.vector_processing")
+_embedding_duration = _meter.create_histogram(
+    "echora_embedding_duration_seconds",
+    unit="s",
+    description="Embedding model inference duration in seconds",
+)
+_image_download_duration = _meter.create_histogram(
+    "echora_image_download_duration_seconds",
+    unit="s",
+    description="Image download and cache duration per URL",
+)
+_image_download_failures = _meter.create_counter(
+    "echora_image_download_failures_total",
+    description="Total image download failures after all retries",
+)
 
 
 class VisionProcessor:
@@ -82,18 +102,26 @@ class VisionProcessor:
             A list of floats representing the image embedding vector,
             or None if encoding fails.
         """
-        try:
-            async with self._semaphore:
-                embeddings = await asyncio.to_thread(
-                    self.model.encode_image, [image_path]
-                )
-        except Exception:
-            logger.exception("Image encoding failed")
-            return None
-        else:
-            if embeddings:
-                return embeddings[0]
-            return None
+        with _tracer.start_as_current_span(
+            "vector_processing.vision.encode",
+            attributes={"embedding.model": self.model.model_name},
+        ):
+            try:
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    embeddings = await asyncio.to_thread(
+                        self.model.encode_image, [image_path]
+                    )
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "image"}
+                    )
+            except Exception:
+                logger.exception("Image encoding failed")
+                return None
+            else:
+                if embeddings:
+                    return embeddings[0]
+                return None
 
     async def encode_images_batch(
         self, image_urls: list[str], max_retries: int = 2
@@ -126,11 +154,15 @@ class VisionProcessor:
                 async with semaphore:
                     for attempt in range(max_retries + 1):
                         try:
+                            _dl_start = time.perf_counter()
                             local_path = await self.downloader.download_and_cache_image(
                                 url, session=session
                             )
                             if local_path is None:
                                 raise RuntimeError(f"Download returned None for {url}")  # noqa: TRY003, TRY301
+                            _image_download_duration.record(
+                                time.perf_counter() - _dl_start
+                            )
                         except Exception as e:
                             if attempt < max_retries:
                                 # Exponential backoff: 0.5s, 1s, 2s, ...
@@ -144,6 +176,7 @@ class VisionProcessor:
                                 logger.warning(
                                     f"Failed to download {url} after {max_retries + 1} attempts: {e}"
                                 )
+                                _image_download_failures.add(1)
                                 return (url, None)
                         else:
                             return (url, local_path)
@@ -175,19 +208,30 @@ class VisionProcessor:
             return []
 
         # Single batch encoding (CPU/GPU-bound - leverage model's batch processing)
-        try:
-            async with self._semaphore:
-                embeddings = await asyncio.to_thread(
-                    self.model.encode_image, local_paths
+        with _tracer.start_as_current_span(
+            "vector_processing.vision.encode_batch",
+            attributes={
+                "embedding.model": self.model.model_name,
+                "embedding.batch_size": len(local_paths),
+            },
+        ):
+            try:
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    embeddings = await asyncio.to_thread(
+                        self.model.encode_image, local_paths
+                    )
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "image"}
+                    )
+            except Exception:
+                logger.exception("Batch encoding failed")
+                return []
+            else:
+                logger.info(
+                    f"Batch encoding complete: {len(embeddings)}/{total_urls} images encoded successfully"
                 )
-        except Exception:
-            logger.exception("Batch encoding failed")
-            return []
-        else:
-            logger.info(
-                f"Batch encoding complete: {len(embeddings)}/{total_urls} images encoded successfully"
-            )
-            return embeddings
+                return embeddings
 
     def _hash_embedding(self, embedding: list[float], precision: int = 4) -> str:
         """Create a hash of an embedding vector for duplicate detection.

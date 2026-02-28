@@ -7,13 +7,24 @@ to embedding vectors using configured ML models, with no domain-specific logic.
 
 import asyncio
 import logging
+import time
 from typing import Any, cast
 
 from common.config import EmbeddingConfig
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
 
 from ..embedding_models.text.base import TextEmbeddingModel
 
 logger = logging.getLogger(__name__)
+
+_tracer = otel_trace.get_tracer("echora.vector_processing")
+_meter = otel_metrics.get_meter("echora.vector_processing")
+_embedding_duration = _meter.create_histogram(
+    "echora_embedding_duration_seconds",
+    unit="s",
+    description="Embedding model inference duration in seconds",
+)
 
 
 class TextProcessor:
@@ -65,16 +76,27 @@ class TextProcessor:
         if not text or not text.strip():
             return self.get_zero_embedding()
 
-        try:
-            async with self._semaphore:
-                embeddings = await asyncio.to_thread(self.model.encode, [text])
-        except Exception:
-            logger.exception("Text encoding failed")
-            return None
-        else:
-            if not embeddings:
+        with _tracer.start_as_current_span(
+            "vector_processing.text.encode",
+            attributes={
+                "embedding.model": self.model.model_name,
+                "embedding.input_length": len(text),
+            },
+        ):
+            try:
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    embeddings = await asyncio.to_thread(self.model.encode, [text])
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "text"}
+                    )
+            except Exception:
+                logger.exception("Text encoding failed")
                 return None
-            return embeddings[0]
+            else:
+                if not embeddings:
+                    return None
+                return embeddings[0]
 
     async def encode_texts_batch(self, texts: list[str]) -> list[list[float] | None]:
         """Encode multiple texts in a single batch call.
@@ -105,27 +127,38 @@ class TextProcessor:
         if not valid_texts:
             return [zero_embedding.copy() for _ in texts]
 
-        # Encode only valid texts (CPU/GPU-bound — run in thread)
-        try:
-            async with self._semaphore:
-                encoded_valid = await asyncio.to_thread(self.model.encode, valid_texts)
-        except Exception:
-            logger.exception("Batch text encoding failed")
-            return [None] * len(texts)
+        with _tracer.start_as_current_span(
+            "vector_processing.text.encode_batch",
+            attributes={
+                "embedding.model": self.model.model_name,
+                "embedding.batch_size": len(valid_texts),
+            },
+        ):
+            # Encode only valid texts (CPU/GPU-bound — run in thread)
+            try:
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    encoded_valid = await asyncio.to_thread(self.model.encode, valid_texts)
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "text"}
+                    )
+            except Exception:
+                logger.exception("Batch text encoding failed")
+                return [None] * len(texts)
 
-        # Reconstruct result list with zero vectors for empty inputs
-        result: list[list[float] | None] = []
-        valid_idx = 0
-        valid_index_set = set(valid_indices)
+            # Reconstruct result list with zero vectors for empty inputs
+            result: list[list[float] | None] = []
+            valid_idx = 0
+            valid_index_set = set(valid_indices)
 
-        for i in range(len(texts)):
-            if i in valid_index_set:
-                result.append(cast(list[float] | None, encoded_valid[valid_idx]))
-                valid_idx += 1
-            else:
-                result.append(zero_embedding.copy())
+            for i in range(len(texts)):
+                if i in valid_index_set:
+                    result.append(cast(list[float] | None, encoded_valid[valid_idx]))
+                    valid_idx += 1
+                else:
+                    result.append(zero_embedding.copy())
 
-        return result
+            return result
 
     def get_zero_embedding(self) -> list[float]:
         """Get a zero embedding vector matching model dimensions.
