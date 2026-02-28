@@ -2,6 +2,7 @@
 
 import logging
 import queue
+import random
 import re
 from collections.abc import MutableMapping
 from logging.handlers import QueueHandler, QueueListener
@@ -18,12 +19,49 @@ from structlog.types import Processor
 
 # Common PII patterns for redaction
 _PII_PATTERNS = [
-    (re.compile(r"(?i)(api[_-]?key|authorization|token)\s*[:=]\s*[^\s,;]+"), r"\1: [REDACTED]"),
+    (
+        re.compile(r"(?i)(api[_-]?key|authorization|token)\s*[:=]\s*[^\s,;]+"),
+        r"\1: [REDACTED]",
+    ),
     (re.compile(r"(?i)password\s*[:=]\s*[^\s,;]+"), "password: [REDACTED]"),
     (re.compile(r"(?i)email\s*[:=]\s*[\w\.-]+@[\w\.-]+\.\w+"), "email: [REDACTED]"),
 ]
 
 _LOG_LISTENER: QueueListener | None = None
+
+# Log levels that are always passed through regardless of sample rate.
+_UNSAMPLED_LEVELS = frozenset({"warning", "error", "critical"})
+
+
+def _make_log_sampler(sample_rate: float) -> Processor:
+    """Return a structlog processor that probabilistically drops INFO/DEBUG logs.
+
+    WARN/ERROR/CRITICAL events are always emitted regardless of sample_rate.
+    At millions of requests/day, 10 % INFO sampling (sample_rate=0.1) reduces
+    log volume by ~10× while preserving all actionable signals.
+
+    Args:
+        sample_rate: Fraction of INFO/DEBUG events to keep (0.0–1.0).
+            1.0 means keep all (default for local development).
+    """
+    if sample_rate >= 1.0:
+        # Fast path: return an identity processor — no overhead, no branching.
+        def _passthrough(
+            logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+        ) -> MutableMapping[str, Any]:
+            return event_dict
+
+        return _passthrough
+
+    def _sampler(
+        logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any]:
+        level = event_dict.get("log_level", "info")
+        if level not in _UNSAMPLED_LEVELS and random.random() >= sample_rate:  # noqa: S311
+            raise structlog.DropEvent()
+        return event_dict
+
+    return _sampler
 
 
 def redact_pii(
@@ -56,6 +94,7 @@ def setup_logging(
     service_name: str = "echora-service",
     environment: str = "development",
     endpoint: str = "http://localhost:4317",
+    log_sample_rate: float = 1.0,
 ) -> None:
     """Configures structlog for JSON production-grade logging.
 
@@ -64,12 +103,19 @@ def setup_logging(
         service_name: Name of the emitting service.
         environment: Runtime environment label.
         endpoint: OTLP collector endpoint.
+        log_sample_rate: Fraction of INFO/DEBUG log events to keep (0.0–1.0).
+            WARN/ERROR/CRITICAL are never sampled out. Defaults to 1.0 (keep
+            all). Set to 0.1 in high-throughput production environments to
+            reduce log volume by ~10× without losing actionable signals.
     """
     global _LOG_LISTENER
 
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
+        # Sampling runs after log_level is available but before any I/O or
+        # formatting — dropped events incur zero serialisation cost.
+        _make_log_sampler(log_sample_rate),
         structlog.processors.TimeStamper(fmt="iso"),
         inject_otel_context,
         redact_pii,
@@ -86,41 +132,60 @@ def setup_logging(
     # 1. Setup OpenTelemetry Log Bridge
     resource = get_aggregated_resources(
         detectors=[],
-        initial_resource=Resource.create({"service.name": service_name, "deployment.environment": environment}),
+        initial_resource=Resource.create(
+            {"service.name": service_name, "deployment.environment": environment}
+        ),
     )
     logger_provider = LoggerProvider(resource=resource)
     set_logger_provider(logger_provider)
-    
+
     exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
-    
+
     # This handler bridges Python logging to OpenTelemetry
-    otel_handler = LoggingHandler(level=getattr(logging, level.upper()), logger_provider=logger_provider)
+    otel_handler = LoggingHandler(
+        level=getattr(logging, level.upper()), logger_provider=logger_provider
+    )
 
     # 2. Setup non-blocking logging using QueueHandler
     log_queue: queue.Queue = queue.Queue(-1)
-    
+
     # Base handler that actually writes to stdout
     stdout_handler = logging.StreamHandler()
     stdout_handler.setFormatter(logging.Formatter("%(message)s"))
-    
+
     # root logger configuration
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level.upper()))
-    
+
     # Remove existing handlers to avoid duplicates
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
-    
-    # Add QueueHandler to root logger
+
+    # Silence chatty third-party loggers that self-configure at DEBUG level.
+    # grpc._cython.cygrpc emits "[_cygrpc] Loaded running loop" every 30s.
+    # httpcore/httpx emit per-byte wire-level traces at DEBUG.
+    # for _noisy in ("grpc", "grpc._cython", "grpc._cython.cygrpc", "httpcore", "httpx"):
+    #     logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+    # otel_handler is added directly to the root logger (not via the queue) so
+    # that it fires synchronously in the calling thread/task where the OTel span
+    # context is still active.  BatchLogRecordProcessor queues internally and is
+    # non-blocking, so this does not introduce latency in the hot path.
+    # If otel_handler ran inside QueueListener (a background thread), the span
+    # context would be lost and trace_id/span_id would never be captured.
+    root_logger.addHandler(otel_handler)
+
+    # QueueHandler + QueueListener handles non-blocking stdout output only.
     root_logger.addHandler(QueueHandler(log_queue))
-    
+
     # Start the listener in a background thread
     if _LOG_LISTENER is not None:
         _LOG_LISTENER.stop()
-    
-    # The listener flushes to BOTH stdout and the OTel bridge
-    _LOG_LISTENER = QueueListener(log_queue, stdout_handler, otel_handler, respect_handler_level=True)
+
+    _LOG_LISTENER = QueueListener(
+        log_queue, stdout_handler, respect_handler_level=True
+    )
     _LOG_LISTENER.start()
 
     # Ensure stdlib loggers produce structured output through structlog processors.
