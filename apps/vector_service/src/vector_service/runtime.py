@@ -81,6 +81,7 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
         telemetry_registry = None
         if settings.observability.otel_enabled:
             from observability import registry
+
             telemetry_registry = registry
 
         qdrant_client = await QdrantClient.create(

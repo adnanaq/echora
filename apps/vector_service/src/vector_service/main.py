@@ -98,6 +98,7 @@ async def serve() -> None:
     interceptors = []
     if settings.observability.otel_enabled:
         from observability import AioServerInterceptor
+
         interceptors.append(AioServerInterceptor())
 
     server = grpc.aio.server(interceptors=interceptors)
@@ -138,6 +139,7 @@ async def serve() -> None:
         await server.stop(grace=5)
         await runtime.async_qdrant_client.close()
         from observability import stop_logging
+
         stop_logging()
 
 

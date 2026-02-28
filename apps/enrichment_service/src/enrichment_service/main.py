@@ -94,11 +94,12 @@ async def serve() -> None:
     _setup_observability(settings)
 
     runtime = await build_runtime(settings)
-    
+
     # 2. Configure server with interceptors
     interceptors = []
     if settings.observability.otel_enabled:
         from observability import AioServerInterceptor
+
         interceptors.append(AioServerInterceptor())
 
     server = grpc.aio.server(interceptors=interceptors)
@@ -130,6 +131,7 @@ async def serve() -> None:
         logger.info("Shutting down enrichment_service gRPC server")
         await server.stop(grace=5)
         from observability import stop_logging
+
         stop_logging()
 
 
