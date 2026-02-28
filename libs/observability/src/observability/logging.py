@@ -56,8 +56,10 @@ def _make_log_sampler(sample_rate: float) -> Processor:
     def _sampler(
         logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
     ) -> MutableMapping[str, Any]:
-        level = event_dict.get("log_level", "info")
-        if level not in _UNSAMPLED_LEVELS and random.random() >= sample_rate:  # noqa: S311
+        # method_name is the log method called ("info", "warning", "error", etc.)
+        # — use it directly rather than reading from event_dict to avoid
+        # depending on add_log_level running first.
+        if method_name not in _UNSAMPLED_LEVELS and random.random() >= sample_rate:  # noqa: S311
             raise structlog.DropEvent()
         return event_dict
 
@@ -67,7 +69,19 @@ def _make_log_sampler(sample_rate: float) -> Processor:
 def redact_pii(
     logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
-    """Redacts PII from log events."""
+    """Redact PII patterns from all string values in a log event.
+
+    Applies regex substitutions for common PII patterns (API keys, passwords,
+    email addresses) against every string-valued field in the event dict.
+
+    Args:
+        logger: The bound logger instance (unused, required by structlog API).
+        method_name: Log method name (e.g. ``"info"``). Unused here.
+        event_dict: The mutable structlog event dict to redact in-place.
+
+    Returns:
+        The same ``event_dict`` with PII values replaced by ``[REDACTED]``.
+    """
     for key, value in event_dict.items():
         if isinstance(value, str):
             for pattern, repl in _PII_PATTERNS:
@@ -78,7 +92,22 @@ def redact_pii(
 def inject_otel_context(
     logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
-    """Injects OpenTelemetry trace and span IDs into the log event."""
+    """Inject the active OTel trace and span IDs into the log event dict.
+
+    Adds ``trace_id`` and ``span_id`` fields only when there is a valid,
+    recording span in the current context. This enables log-to-trace
+    correlation in Grafana (Loki → Tempo) without duplicating fields that
+    OTel structured metadata already carries.
+
+    Args:
+        logger: The bound logger instance (unused, required by structlog API).
+        method_name: Log method name (e.g. ``"info"``). Unused here.
+        event_dict: The mutable structlog event dict to enrich.
+
+    Returns:
+        The same ``event_dict``, with ``trace_id`` and ``span_id`` added when
+        a valid active span exists.
+    """
     span = trace.get_current_span()
     if span.is_recording():
         ctx = span.get_span_context()
@@ -113,21 +142,22 @@ def setup_logging(
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
-        # Sampling runs after log_level is available but before any I/O or
+        # Sampling runs after level is available but before any I/O or
         # formatting — dropped events incur zero serialisation cost.
         _make_log_sampler(log_sample_rate),
-        structlog.processors.TimeStamper(fmt="iso"),
         inject_otel_context,
         redact_pii,
-        structlog.stdlib.add_logger_name,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.JSONRenderer(),
     ]
 
-    # Bind common context values once so all future events include service/env.
+    # service, env, timestamp, and logger_name are omitted from the body:
+    # they are captured by OTel as Resource attributes (service.name,
+    # deployment.environment), ObservedTimestamp, and InstrumentationScope
+    # respectively. Duplicating them in the JSON body creates redundant fields
+    # in Loki structured metadata.
     structlog.contextvars.clear_contextvars()
-    structlog.contextvars.bind_contextvars(service=service_name, env=environment)
 
     # 1. Setup OpenTelemetry Log Bridge
     resource = get_aggregated_resources(
@@ -161,12 +191,6 @@ def setup_logging(
     # Remove existing handlers to avoid duplicates
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
-
-    # Silence chatty third-party loggers that self-configure at DEBUG level.
-    # grpc._cython.cygrpc emits "[_cygrpc] Loaded running loop" every 30s.
-    # httpcore/httpx emit per-byte wire-level traces at DEBUG.
-    # for _noisy in ("grpc", "grpc._cython", "grpc._cython.cygrpc", "httpcore", "httpx"):
-    #     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
     # otel_handler is added directly to the root logger (not via the queue) so
     # that it fires synchronously in the calling thread/task where the OTel span
