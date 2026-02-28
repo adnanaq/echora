@@ -34,3 +34,11 @@ build/
 # --- Project Specific ---
 .pants.d/
 pants
+
+# --- Assets & generated docs ---
+assets/
+docs/
+tests/
+
+# --- Model cache (populated at runtime via volume, never bake into image) ---
+model_cache/

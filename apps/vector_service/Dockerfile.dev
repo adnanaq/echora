@@ -1,55 +1,109 @@
-# Development Dockerfile using Pants-built PEX binary
-# This Dockerfile is managed by Pants and should be built with: pants package apps/vector_service:vector-service-dev
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# Vector Service — development image (uv multi-stage)
+#
+# Build:  docker compose -f docker/docker-compose.dev.yml build vector-service
+# Run:    docker compose -f docker/docker-compose.dev.yml up -d vector-service
+#
+# No Pants step required. BuildKit caches the dependency layer separately from
+# source so rebuilds after a code change take ~5-10 s instead of 10-15 min.
+#
+# Model cache
+# -----------
+# BGE-M3 (~1.3 GB) and ViT-L-14 (~900 MB) download on first startup to the
+# named volume mounted at /app/model_cache.  Subsequent starts load from disk.
+#   First run  : 10-15 min (download)
+#   Warm cache : 15-30 s   (load from volume)
+# =============================================================================
 
-FROM python:3.12-slim
+# -----------------------------------------------------------------------------
+# Stage 1 — install Python dependencies
+# Only re-runs when pyproject.toml / uv.lock change, not on source edits.
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS deps
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.18 /uv /usr/local/bin/uv
+
+WORKDIR /build
+
+COPY pyproject.toml uv.lock ./
+
+# Dev uses CPU-only torch to keep the image buildable on constrained root
+# partitions (~2 GB deps layer vs ~7.5 GB with CUDA).  CUDA is disabled in
+# dev compose anyway via CUDA_VISIBLE_DEVICES="".  Prod image keeps full CUDA.
+#
+# How it works: export the frozen lockfile to a flat requirements.txt, strip
+# the CUDA torch stack (torch, triton, nvidia-*), create the venv, install the
+# remainder, then add CPU torch from the PyTorch index.  Everything in one RUN
+# so no CUDA wheel ever lands on disk.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv export --frozen --no-dev --no-hashes --no-annotate \
+        | grep -vE "^(torch|triton|nvidia-|#)" > /tmp/reqs-cpu.txt \
+ && uv venv .venv \
+ && uv pip install --python .venv/bin/python \
+        torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+ && uv pip install --python .venv/bin/python -r /tmp/reqs-cpu.txt
+
+# -----------------------------------------------------------------------------
+# Stage 2 — runtime image
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS app
+
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && set -eux; \
+       arch="${TARGETARCH:-amd64}"; \
+       case "$arch" in \
+         amd64) probe_arch="amd64"; probe_sha256="8302d54fc41d4ffbfea6871b6a04584265d5eabbe738aee2966f9a574b6f17d1" ;; \
+         arm64) probe_arch="arm64"; probe_sha256="8ebe934e7cf29a65ca31d671a97949467fba6977d656b5e6d6c40902ae7402f6" ;; \
+         *) echo "Unsupported arch: $arch"; exit 1 ;; \
+       esac; \
+       curl -fsSL -o /usr/local/bin/grpc_health_probe \
+         "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
+       echo "${probe_sha256}  /usr/local/bin/grpc_health_probe" | sha256sum -c -; \
+       chmod +x /usr/local/bin/grpc_health_probe
 
 WORKDIR /app
 
-# Install runtime dependencies and gRPC health probe
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=deps /build/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
-ARG TARGETARCH
-RUN set -eux; \
-    arch="${TARGETARCH:-amd64}"; \
-    case "$arch" in \
-      amd64) probe_arch="amd64"; probe_sha256="8302d54fc41d4ffbfea6871b6a04584265d5eabbe738aee2966f9a574b6f17d1" ;; \
-      arm64) probe_arch="arm64"; probe_sha256="8ebe934e7cf29a65ca31d671a97949467fba6977d656b5e6d6c40902ae7402f6" ;; \
-      *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /usr/local/bin/grpc_health_probe \
-      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
-    echo "${probe_sha256}  /usr/local/bin/grpc_health_probe" | sha256sum -c -; \
-    chmod +x /usr/local/bin/grpc_health_probe
+# Internal packages — ordered stable → volatile so source changes only
+# invalidate the last layer, not the deps or shared libs.
+COPY libs/common/src/              /app/libs/common/src/
+COPY libs/vector_db_interface/src/ /app/libs/vector_db_interface/src/
+COPY libs/qdrant_db/src/           /app/libs/qdrant_db/src/
+COPY libs/observability/src/       /app/libs/observability/src/
+COPY libs/http_cache/src/          /app/libs/http_cache/src/
+COPY libs/vector_processing/src/   /app/libs/vector_processing/src/
+COPY apps/vector_service/src/      /app/apps/vector_service/src/
 
-# Copy the self-contained PEX binary built by Pants
-COPY apps.vector_service/vector_service.pex /app/vector_service.pex
+# Replaces Pants source-root management
+ENV PYTHONPATH="/app/apps/vector_service/src:/app/libs/common/src:/app/libs/vector_processing/src:/app/libs/observability/src:/app/libs/qdrant_db/src:/app/libs/http_cache/src:/app/libs/vector_db_interface/src"
 
-# Run as non-root user for security (catches permission issues early)
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --no-create-home appuser && \
-    chown -R appuser:appuser /app
+# All three vars must point to the same path so every library agrees on location.
+# Mount a persistent volume at /app/model_cache in your compose / k8s spec.
+ENV HF_HOME="/app/model_cache" \
+    TORCH_HOME="/app/model_cache/torch" \
+    MODEL_CACHE_DIR="/app/model_cache"
+
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --no-create-home appuser \
+    && mkdir -p /app/model_cache \
+    && chown -R appuser:appuser /app
+
 USER appuser
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV ENVIRONMENT=development
+ENV PYTHONUNBUFFERED=1 \
+    ENVIRONMENT=development
 
-# Expose port
-EXPOSE 8002
+EXPOSE 8001
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD grpc_health_probe -addr=localhost:8002 || exit 1
+# start-period covers first-run model download. After the volume is warm this
+# grace period is unused — the service normally passes within 30 s.
+HEALTHCHECK --interval=30s --timeout=15s --start-period=15m --retries=5 \
+  CMD grpc_health_probe -addr=localhost:8001 || exit 1
 
-# Development workflow:
-# PEX files are self-contained archives - volume mounts won't override the code inside.
-# To see code changes:
-#   1. Rebuild the PEX: pants package apps/vector_service:vector_service
-#   2. Rebuild the image: docker compose build vector-service
-#   3. Restart the container: docker compose up -d vector-service
-# For faster iteration, consider running the service directly: uv run python -m src.main
-
-# Run the PEX binary
-ENTRYPOINT ["/app/vector_service.pex"]
+ENTRYPOINT ["python", "-m", "vector_service.main"]
