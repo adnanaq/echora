@@ -42,6 +42,13 @@ class ObservabilityRegistry:
     IMAGE_DOWNLOAD_FAILURES: Counter
 
     def __init__(self) -> None:
+        """Create and register all OTel metric instruments.
+
+        Instruments are created against the global MeterProvider. If
+        ``setup_metrics()`` has not been called yet, the provider is the
+        no-op default and all subsequent ``record``/``add`` calls are
+        silent no-ops.
+        """
         # RPC metrics (interceptor-level, all services)
         self.RPC_REQUESTS = _METER.create_counter(
             "echora_rpc_requests_total",

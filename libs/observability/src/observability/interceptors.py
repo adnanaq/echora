@@ -52,6 +52,18 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
         return handler
 
     def _wrap_unary(self, behavior: Callable, method_name: str) -> Callable:
+        """Wrap a unary RPC handler with telemetry instrumentation.
+
+        Args:
+            behavior: The original unary RPC handler callable.
+            method_name: Short RPC method name (e.g. ``"Search"``), used as
+                the span name suffix and metric label.
+
+        Returns:
+            A new async callable with the same signature as ``behavior`` that
+            records metrics, creates a SERVER span, and emits an error log on
+            RPC failure before delegating to the original handler.
+        """
         async def new_behavior(request: Any, context: grpc.aio.ServicerContext) -> Any:
             attrs = {"rpc_method": method_name}
             registry.RPC_REQUESTS.add(1, attrs)

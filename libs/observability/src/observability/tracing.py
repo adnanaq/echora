@@ -56,11 +56,22 @@ def create_linked_span(
     kind: trace.SpanKind = trace.SpanKind.INTERNAL,
     attributes: dict[str, Any] | None = None,
 ) -> trace.Span:
-    """Create a new root span that is linked to an existing context.
+    """Create a new root span linked to an existing span context.
 
-    This is ideal for long-running batch jobs where you want to separate
-    the individual item traces from the main batch trace to avoid
-    massive, unmanageable trace trees.
+    Unlike child spans, linked spans start a new trace rather than continuing
+    the parent's. This is ideal for long-running batch jobs where individual
+    item traces should be separate from the triggering batch trace to avoid
+    massive, unmanageable trace trees in Tempo.
+
+    Args:
+        name: Name of the new span.
+        link_context: SpanContext to link to (e.g. from the batch root span).
+        kind: SpanKind for the new span. Defaults to INTERNAL.
+        attributes: Optional key/value attributes to set on the span at creation.
+
+    Returns:
+        A new, already-started Span. The caller is responsible for ending it
+        (e.g. via ``with`` statement or explicit ``span.end()``).
     """
     tracer = trace.get_tracer("echora.linked")
     link = trace.Link(context=link_context)

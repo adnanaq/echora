@@ -10,8 +10,14 @@ _QDRANT_CLIENT_INSTRUMENTED = False
 
 
 def instrument_grpc_server() -> None:
-    """Enable gRPC server instrumentation when available.
-    IMPORTANT: This should be called BEFORE creating the grpc.aio.server() instance.
+    """Enable OpenTelemetry auto-instrumentation for the gRPC server.
+
+    Installs ``GrpcInstrumentorServer`` which creates SERVER-kind spans for
+    every inbound RPC automatically. Idempotent — safe to call more than once.
+
+    Note:
+        Must be called **before** ``grpc.aio.server()`` is created. If called
+        after server construction, existing handlers will not be instrumented.
     """
     global _GRPC_SERVER_INSTRUMENTED
     if _GRPC_SERVER_INSTRUMENTED:
@@ -28,7 +34,11 @@ def instrument_grpc_server() -> None:
 
 
 def instrument_grpc_client() -> None:
-    """Enable gRPC client instrumentation when available."""
+    """Enable OpenTelemetry auto-instrumentation for gRPC client stubs.
+
+    Installs ``GrpcInstrumentorClient`` which creates CLIENT-kind spans and
+    injects ``traceparent`` headers into outbound gRPC calls. Idempotent.
+    """
     global _GRPC_CLIENT_INSTRUMENTED
     if _GRPC_CLIENT_INSTRUMENTED:
         return
@@ -44,7 +54,12 @@ def instrument_grpc_client() -> None:
 
 
 def instrument_aiohttp_client() -> None:
-    """Enable aiohttp client instrumentation when available."""
+    """Enable OpenTelemetry auto-instrumentation for aiohttp client sessions.
+
+    Installs ``AioHttpClientInstrumentor`` which creates CLIENT-kind spans for
+    every outbound HTTP request and propagates trace context via headers.
+    Idempotent.
+    """
     global _AIOHTTP_CLIENT_INSTRUMENTED
     if _AIOHTTP_CLIENT_INSTRUMENTED:
         return
@@ -62,7 +77,12 @@ def instrument_aiohttp_client() -> None:
 
 
 def instrument_qdrant_client() -> None:
-    """Enable Qdrant client instrumentation when available."""
+    """Enable OpenTelemetry auto-instrumentation for the Qdrant client.
+
+    Installs ``QdrantInstrumentor`` which creates spans for Qdrant operations
+    (search, upsert, delete, etc.) and records query metadata as span
+    attributes. Idempotent.
+    """
     global _QDRANT_CLIENT_INSTRUMENTED
     if _QDRANT_CLIENT_INSTRUMENTED:
         return
