@@ -105,7 +105,7 @@ services:
     networks:
       - vector-network
     volumes:
-      - model_cache:/app/cache
+      - model_cache:/app/model_cache
     depends_on:
       qdrant:
         condition: service_healthy
@@ -114,9 +114,11 @@ services:
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      timeout: 15s
+      retries: 5
+      # start_period covers first-run model download (BGE-M3 + ViT-L-14 ≈ 2.2 GB).
+      # On subsequent starts with a warm cache this grace period is unused.
+      start_period: 15m
     restart: unless-stopped
 
   # Enrichment Service (gRPC)

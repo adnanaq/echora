@@ -151,8 +151,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - FORCE_CACHE=true
     volumes:
-      # Bind-mount host HuggingFace cache — models already on disk, no download needed.
-      - ${HOME}/.cache/huggingface:/app/model_cache
+      - model-cache:/app/model_cache
     networks:
       - vector-network
     depends_on:
@@ -222,3 +221,14 @@ volumes:
     driver: local
   redisinsight-data:
     driver: local
+  # Model cache for embedding models (BGE-M3 + ViT-L-14, ~4 GB total).
+  # Stored under $HOME to avoid filling the root partition.
+  # Docker manages this as a named volume so lifecycle matches other volumes
+  # (inspect/rm via `docker volume`). In production replace driver_opts with
+  # a real volume on persistent storage.
+  model-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.local/share/echora/model-cache
