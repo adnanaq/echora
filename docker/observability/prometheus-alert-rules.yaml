@@ -1,34 +1,181 @@
 groups:
-  - name: echora-observability
+  # ---------------------------------------------------------------------------
+  # SLO: Vector Search availability (target: 99.9% success rate, 30-day window)
+  #
+  # Allowed error rate = 1 - 0.999 = 0.001 (0.1%)
+  # Multi-window burn rate follows Google SRE Workbook Chapter 5:
+  #   fast burn:  consume 5% of monthly budget in 1h  → burn rate = 14.4×
+  #   slow burn:  consume 10% of monthly budget in 6h → burn rate =  6.0×
+  # ---------------------------------------------------------------------------
+  - name: echora.slo.vector_search
     rules:
-      - alert: EchoraHighErrorRate
+      - alert: VectorSearchErrorBudgetFastBurn
         expr: |
           (
-            sum(rate(grpc_server_handled_total{grpc_code!="OK"}[5m]))
-            /
-            clamp_min(sum(rate(grpc_server_handled_total[5m])), 1)
-          ) > 0.01
-        for: 5m
+            rate(echora_rpc_errors_total{rpc_method="Search"}[1h])
+            / clamp_min(rate(echora_rpc_requests_total{rpc_method="Search"}[1h]), 0.001)
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+          service: vector-service
+          slo: search_availability
+        annotations:
+          summary: "Vector Search fast error budget burn"
+          description: >
+            Error rate {{ $value | humanizePercentage }} is burning the 30-day
+            error budget 14× faster than the allowed rate.
+            At this pace the budget will be exhausted in under 2 hours.
+
+      - alert: VectorSearchErrorBudgetSlowBurn
+        expr: |
+          (
+            rate(echora_rpc_errors_total{rpc_method="Search"}[6h])
+            / clamp_min(rate(echora_rpc_requests_total{rpc_method="Search"}[6h]), 0.001)
+          ) > (6 * 0.001)
+        for: 15m
         labels:
           severity: warning
-          service: echora
+          service: vector-service
+          slo: search_availability
         annotations:
-          summary: "High gRPC error rate"
-          description: "Error rate is above 1% for 5 minutes."
+          summary: "Vector Search slow error budget burn"
+          description: >
+            Error rate {{ $value | humanizePercentage }} is burning the 30-day
+            error budget 6× faster than the allowed rate.
+            At this pace the budget will be exhausted in under 5 days.
 
-      - alert: EchoraHighLatencyP99
+  # ---------------------------------------------------------------------------
+  # SLO: Vector Search latency (target: P99 < 500 ms)
+  # ---------------------------------------------------------------------------
+  - name: echora.slo.vector_latency
+    rules:
+      - alert: VectorSearchP99LatencyHigh
         expr: |
           histogram_quantile(
             0.99,
-            sum by (le) (rate(grpc_server_handling_seconds_bucket[5m]))
-          ) > 2
+            rate(echora_rpc_duration_seconds_bucket{rpc_method="Search"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: vector-service
+          slo: search_latency
+        annotations:
+          summary: "Vector Search P99 latency above 500 ms"
+          description: >
+            P99 search latency is {{ $value | humanizeDuration }}.
+            Investigate embedding model performance and Qdrant query plans.
+
+  # ---------------------------------------------------------------------------
+  # Operational: error rates and business signals
+  # ---------------------------------------------------------------------------
+  - name: echora.operational
+    rules:
+      - alert: EchoraRPCHighErrorRate
+        expr: |
+          (
+            sum(rate(echora_rpc_errors_total[5m]))
+            / clamp_min(sum(rate(echora_rpc_requests_total[5m])), 0.001)
+          ) > 0.05
         for: 5m
         labels:
           severity: warning
           service: echora
         annotations:
-          summary: "High p99 latency"
-          description: "p99 latency is above 2s for 5 minutes."
+          summary: "High overall RPC error rate (>5%)"
+          description: >
+            {{ $value | humanizePercentage }} of all RPC calls are failing.
+            Break down by rpc_method and error_code labels for root cause.
+
+      - alert: EchoraDBErrors
+        expr: rate(echora_db_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: echora
+        annotations:
+          summary: "Qdrant database errors detected"
+          description: >
+            {{ $value | humanize }} DB errors/sec. Check Qdrant health and
+            connection pool status.
+
+      - alert: EchoraEmbeddingErrors
+        expr: |
+          rate(echora_rpc_errors_total{
+            error_code=~"TEXT_EMBEDDING_FAILED|IMAGE_EMBEDDING_FAILED"
+          }[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: vector-service
+        annotations:
+          summary: "Embedding model returning failures"
+          description: >
+            {{ $value | humanize }} embedding failures/sec. The ML model may
+            be OOM, warming up, or receiving malformed input.
+
+      - alert: EchoraHighEmptyResultRate
+        expr: |
+          (
+            rate(echora_search_empty_results_total[10m])
+            / clamp_min(rate(echora_rpc_requests_total{rpc_method="Search"}[10m]), 0.001)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          service: vector-service
+        annotations:
+          summary: "High empty-result rate (>10% of searches)"
+          description: >
+            {{ $value | humanizePercentage }} of searches return zero results.
+            This may indicate index drift, a recently re-created collection,
+            or systematic query/embedding quality degradation.
+
+      - alert: EchoraPipelineHighErrorRate
+        expr: |
+          (
+            rate(echora_pipeline_runs_total{status="error"}[15m])
+            / clamp_min(rate(echora_pipeline_runs_total[15m]), 0.001)
+          ) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          service: enrichment-service
+        annotations:
+          summary: "Enrichment pipeline error rate above 20%"
+          description: >
+            {{ $value | humanizePercentage }} of pipeline runs are failing.
+            Check external API availability (AniList, Jikan, Kitsu, etc.).
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure: OTel Collector and Prometheus targets
+  # ---------------------------------------------------------------------------
+  - name: echora.infrastructure
+    rules:
+      - alert: OTelCollectorBackpressure
+        expr: rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: otel-collector
+        annotations:
+          summary: "OTel Collector failing to export spans"
+          description: >
+            The collector's span exporter is dropping batches.
+            Check Tempo availability and collector memory pressure.
+
+      - alert: OTelCollectorMetricDrops
+        expr: rate(otelcol_exporter_send_failed_metric_points_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: otel-collector
+        annotations:
+          summary: "OTel Collector failing to export metric points"
+          description: >
+            Prometheus exporter is dropping metric points.
+            Alerts and dashboards may show stale or missing data.
 
       - alert: EchoraServiceDown
         expr: up == 0
@@ -36,15 +183,5 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Service target down"
-          description: "Prometheus target {{ $labels.instance }} is down."
-
-      - alert: OTelCollectorBackpressure
-        expr: rate(otelcol_exporter_send_failed_spans[5m]) > 0
-        for: 5m
-        labels:
-          severity: warning
-          component: otel-collector
-        annotations:
-          summary: "OTel exporter failing to send spans"
-          description: "Collector exporter is dropping or failing to send span batches."
+          summary: "Prometheus scrape target down"
+          description: "Target {{ $labels.instance }} (job={{ $labels.job }}) is unreachable."

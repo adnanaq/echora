@@ -24,6 +24,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-remote-write-receiver'
     networks:
       - vector-network
 
@@ -107,7 +108,7 @@ services:
 
 networks:
   vector-network:
-    name: docker_vector-network
+    name: echora_vector-network
     external: true
 
 volumes:
