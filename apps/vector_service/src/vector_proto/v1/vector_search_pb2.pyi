@@ -20,7 +20,14 @@ class SearchRequest(_message.Message):
     entity_type: str
     limit: int
     filters: _struct_pb2.Struct
-    def __init__(self, query_text: _Optional[str] = ..., image: _Optional[bytes] = ..., entity_type: _Optional[str] = ..., limit: _Optional[int] = ..., filters: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(
+        self,
+        query_text: _Optional[str] = ...,
+        image: _Optional[bytes] = ...,
+        entity_type: _Optional[str] = ...,
+        limit: _Optional[int] = ...,
+        filters: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...,
+    ) -> None: ...
 
 class SearchData(_message.Message):
     __slots__ = ("id", "similarity_score", "payload_json")
@@ -30,7 +37,12 @@ class SearchData(_message.Message):
     id: str
     similarity_score: float
     payload_json: str
-    def __init__(self, id: _Optional[str] = ..., similarity_score: _Optional[float] = ..., payload_json: _Optional[str] = ...) -> None: ...
+    def __init__(
+        self,
+        id: _Optional[str] = ...,
+        similarity_score: _Optional[float] = ...,
+        payload_json: _Optional[str] = ...,
+    ) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("data", "error")
@@ -38,4 +50,8 @@ class SearchResponse(_message.Message):
     ERROR_FIELD_NUMBER: _ClassVar[int]
     data: _containers.RepeatedCompositeFieldContainer[SearchData]
     error: _error_pb2.ErrorDetails
-    def __init__(self, data: _Optional[_Iterable[_Union[SearchData, _Mapping]]] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+    def __init__(
+        self,
+        data: _Optional[_Iterable[_Union[SearchData, _Mapping]]] = ...,
+        error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...,
+    ) -> None: ...
