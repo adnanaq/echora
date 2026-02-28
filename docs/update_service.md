@@ -142,17 +142,30 @@ Each external source is implemented as a pluggable adapter. The workflow calls t
 ```
 UpdateWorkflow
   └─ calls SourceAdapter.fetch(entity_id, fields?)
-       └─ JikanAdapter     — Jikan REST API
-       └─ AniListAdapter   — AniList GraphQL
-       └─ MALAdapter       — MAL REST API
-       └─ KitsuAdapter     — Kitsu REST API
-       └─ CrawlerAdapter   — future: site-specific crawler
+       └─ SyoboiCalendarAdapter — Syoboi Calendar API (broadcast schedule, delay tracking)
+       └─ JikanAdapter          — Jikan REST API
+       └─ AniListAdapter        — AniList GraphQL
+       └─ MALAdapter            — MAL REST API
+       └─ KitsuAdapter          — Kitsu REST API
+       └─ CrawlerAdapter        — future: site-specific crawler
 ```
+
+**Adapter responsibilities by data domain:**
+
+| Domain | Primary adapter | Fallback |
+|---|---|---|
+| Broadcast schedule / delay tracking | `SyoboiCalendarAdapter` | `AniListAdapter` (if `syobocal_tid` is null) |
+| Episode airing confirmation (T=0) | `JikanAdapter`, `AniListAdapter` | `MALAdapter` |
+| Score / statistics | `MALAdapter`, `AniListAdapter`, `KitsuAdapter` | — |
+| Character data | `AniListAdapter`, `JikanAdapter` | — |
+| Anime metadata | `JikanAdapter`, `AniListAdapter` | — |
 
 Adapters can be:
 - **Full** — fetch all fields for an entity
 - **Selective** — fetch only specific fields (lower API cost)
 - **Differential** — fetch only what changed since a given timestamp (where API supports it)
+
+See [[syoboi_integration|Syoboi Calendar Integration]] for the full Syoboi API reference, ID mapping chain, and adapter implementation details.
 
 ---
 
@@ -238,6 +251,7 @@ Update Service
 - [[temporal_infrastructure|Temporal Infrastructure]] — Temporal server setup, rationale, and operational guide
 - [[event_driven_architecture|Event-Driven Architecture]] — NATS consumer configuration and outbox pattern
 - [[event_schema_specification|Event Schema Specification]] — Event protobuf definitions
+- [[syoboi_integration|Syoboi Calendar Integration]] — Broadcast schedule source: API reference, ID mapping, adapter details
 ---
 
 **Status**: Planned | **Last Updated**: 2026-02-19

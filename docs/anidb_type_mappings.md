@@ -43,6 +43,21 @@ Found in the `<character>` tag's `charactertype` attribute (or `character_type_i
 
 ---
 
+## Character Cast Role (`characters[].type`)
+
+Found in the parsed `characters[]` list as the `type` string field (e.g. `anidb_back.json`). This is the cast significance of a character **within a specific anime** — distinct from the character category above. Maps to `CharacterRole` when assembly integrates AniDB character data.
+
+| AniDB `type` string    | `CharacterRole` | Notes |
+|:-----------------------|:----------------|:------|
+| `main character in`    | `MAIN`          | Core cast (e.g. Luffy, Zoro, Nami) |
+| `secondary cast in`    | `SUPPORTING`    | Recurring named characters (e.g. Shanks, Garp, Ace) |
+| `appears in`           | `BACKGROUND`    | All other named characters who show up |
+| `cameo appearance in`  | `BACKGROUND`    | Cross-franchise Easter eggs (e.g. Goku, Pandaman) |
+
+> [!note] Filter by `character_type_id = 1` before applying this mapping — Organizations (`3`), Vessels (`4`), and Mecha (`2`) should not be assigned a `CharacterRole`.
+
+---
+
 ## Episode Number (`<epno>`) Types
 
 Found in the `<episode>` tag's `<epno>` element `type` attribute.
