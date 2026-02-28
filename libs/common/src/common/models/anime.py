@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AnimeStatus(str, Enum):
@@ -134,7 +134,44 @@ class Character(BaseModel):
     name_native: str | None = Field(
         None, description="Native language name (Japanese/Kanji)"
     )
-    role: str = Field(..., description="Character role (Main, Supporting, etc.)")
+    role: CharacterRole = Field(..., description="Character role in the anime")
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v: object) -> str:
+        """Normalise free-text role strings from all upstream sources.
+
+        Verified source vocabularies (One Piece + Dandadan agent data):
+          Jikan/MAL    → "Main", "Supporting"
+          AniList      → "MAIN", "SUPPORTING", "BACKGROUND"
+          AnimePlanet  → "Main", "Secondary", "Minor"
+          AniSearch    → "Main", "Secondary", "Extra", "Other"
+          AniDB        → "main character in", "secondary cast in",
+                         "appears in", "cameo appearance in"
+                         (AniDB uses characters[].type, not role; mapped here
+                          for when assembly integrates AniDB character data)
+        """
+        if not isinstance(v, str) or not v:
+            return CharacterRole.BACKGROUND
+        _MAP = {
+            # ── MAIN ──────────────────────────────────────────────
+            "main":                 "MAIN",
+            "main character in":    "MAIN",   # AniDB
+            # ── SUPPORTING ────────────────────────────────────────
+            "supporting":           "SUPPORTING",
+            "secondary":            "SUPPORTING",
+            "secondary cast in":    "SUPPORTING",  # AniDB
+            "sub":                  "SUPPORTING",
+            # ── BACKGROUND ────────────────────────────────────────
+            "background":           "BACKGROUND",
+            "minor":                "BACKGROUND",
+            "extra":                "BACKGROUND",  # AniSearch
+            "other":                "BACKGROUND",  # AniSearch catch-all
+            "appears in":           "BACKGROUND",  # AniDB
+            "cameo appearance in":  "BACKGROUND",  # AniDB (cross-franchise Easter eggs)
+            "unknown":              "BACKGROUND",
+        }
+        return _MAP.get(v.lower(), v.upper())
 
     # =====================================================================
     # ARRAY FIELDS (alphabetical)

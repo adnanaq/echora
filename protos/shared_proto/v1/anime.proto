@@ -292,7 +292,7 @@ message Character {
   EntityType entity_type = 8;
   string name = 9;
   optional string name_native = 10;
-  string role = 11;
+  CharacterRole role = 11;
   repeated string anime_ids = 12;
   repeated string character_traits = 13;
   repeated string images = 14;

@@ -503,7 +503,7 @@ class Character(_message.Message):
     entity_type: EntityType
     name: str
     name_native: str
-    role: str
+    role: CharacterRole
     anime_ids: _containers.RepeatedScalarFieldContainer[str]
     character_traits: _containers.RepeatedScalarFieldContainer[str]
     images: _containers.RepeatedScalarFieldContainer[str]
@@ -511,7 +511,7 @@ class Character(_message.Message):
     nicknames: _containers.RepeatedScalarFieldContainer[str]
     voice_actors: _containers.RepeatedCompositeFieldContainer[SimpleVoiceActor]
     sources: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, age: _Optional[str] = ..., description: _Optional[str] = ..., eye_color: _Optional[str] = ..., favorites: _Optional[int] = ..., gender: _Optional[str] = ..., hair_color: _Optional[str] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., role: _Optional[str] = ..., anime_ids: _Optional[_Iterable[str]] = ..., character_traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[SimpleVoiceActor, _Mapping]]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, age: _Optional[str] = ..., description: _Optional[str] = ..., eye_color: _Optional[str] = ..., favorites: _Optional[int] = ..., gender: _Optional[str] = ..., hair_color: _Optional[str] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., role: _Optional[_Union[CharacterRole, str]] = ..., anime_ids: _Optional[_Iterable[str]] = ..., character_traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[SimpleVoiceActor, _Mapping]]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Episode(_message.Message):
     __slots__ = ("aired", "anime_id", "description", "duration", "episode_number", "filler", "id", "entity_type", "recap", "score", "season_number", "synopsis", "title", "title_japanese", "title_romaji", "images", "streaming", "sources")
