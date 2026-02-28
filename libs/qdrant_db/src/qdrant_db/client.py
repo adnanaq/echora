@@ -6,10 +6,9 @@ with advanced filtering, cross-platform ID lookups, and hybrid search.
 
 import logging
 import time
-from typing import Any, TypeGuard, cast
+from typing import Any, Protocol, TypeGuard, cast
 
 from common.config import QdrantConfig
-from vector_db_interface import VectorDBClient, VectorDocument, TelemetryRegistry
 
 # fastembed import moved to _init_encoder method for lazy loading
 from qdrant_client import AsyncQdrantClient
@@ -46,6 +45,11 @@ from vector_db_interface import VectorDBClient, VectorDocument
 from qdrant_db.utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+
+class _Telemetry(Protocol):
+    DB_QUERY_DURATION: Any
+    DB_ERRORS: Any
 
 
 # Custom exceptions for better error handling and testing
@@ -124,7 +128,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
-        telemetry: TelemetryRegistry | None = None,
+        telemetry: _Telemetry | None = None,
     ):
         """Initialize Qdrant client with injected dependencies and configuration.
 
@@ -195,7 +199,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
-        telemetry: TelemetryRegistry | None = None,
+        telemetry: _Telemetry | None = None,
     ) -> "QdrantClient":
         """Create and initialize a QdrantClient instance.
 
