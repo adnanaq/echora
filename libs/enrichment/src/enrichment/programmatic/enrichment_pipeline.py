@@ -13,11 +13,15 @@ import time
 from types import TracebackType
 from typing import Any, cast
 
+from opentelemetry import trace as otel_trace
+
 from .api_fetcher import ParallelAPIFetcher
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
 logger = logging.getLogger(__name__)
+
+_tracer = otel_trace.get_tracer("echora.enrichment")
 
 
 class ProgrammaticEnrichmentPipeline:
@@ -90,8 +94,12 @@ class ProgrammaticEnrichmentPipeline:
         try:
             # Step 1: Extract platform IDs (instant)
             step1_start = time.time()
-            ids = self.id_extractor.extract_all_ids(offline_data)
-            valid_ids = self.id_extractor.validate_ids(ids)
+            with _tracer.start_as_current_span(
+                "enrichment.id_extraction",
+                attributes={"anime.title": anime_title},
+            ):
+                ids = self.id_extractor.extract_all_ids(offline_data)
+                valid_ids = self.id_extractor.validate_ids(ids)
             self.timing_breakdown["id_extraction"] = time.time() - step1_start
 
             logger.info(
@@ -116,20 +124,25 @@ class ProgrammaticEnrichmentPipeline:
 
             # Step 2: Parallel API fetching (5-10 seconds)
             step2_start = time.time()
-            api_data = await self.api_fetcher.fetch_all_data(
-                valid_ids, offline_data, temp_dir, skip_services, only_services
-            )
+            with _tracer.start_as_current_span("enrichment.api_fetch") as _api_span:
+                api_data = await self.api_fetcher.fetch_all_data(
+                    valid_ids, offline_data, temp_dir, skip_services, only_services
+                )
+                successful_apis = sum(1 for v in api_data.values() if v)
+                _api_span.add_event(
+                    "api_fetch.complete",
+                    {"successful_apis": successful_apis, "total_apis": len(api_data)},
+                )
             self.timing_breakdown["api_fetching"] = time.time() - step2_start
 
-            # Count successful API responses
-            successful_apis = sum(1 for v in api_data.values() if v)
             logger.info(
                 f"Step 2 complete: Fetched data from {successful_apis} APIs in {self.timing_breakdown['api_fetching']:.2f}s"
             )
 
             # Step 3: Process episodes (instant)
             step3_start = time.time()
-            processed_episodes = self._process_episodes(api_data)
+            with _tracer.start_as_current_span("enrichment.episode_processing"):
+                processed_episodes = self._process_episodes(api_data)
             self.timing_breakdown["episode_processing"] = time.time() - step3_start
 
             logger.info(

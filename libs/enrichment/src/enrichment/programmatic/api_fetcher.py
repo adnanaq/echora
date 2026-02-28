@@ -14,6 +14,9 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
+
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
@@ -33,6 +36,18 @@ from enrichment.exceptions import (
 from .config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
+
+_tracer = otel_trace.get_tracer("echora.enrichment")
+_meter = otel_metrics.get_meter("echora.enrichment")
+_api_duration = _meter.create_histogram(
+    "echora_enrichment_api_duration_seconds",
+    unit="s",
+    description="External API fetch duration per service",
+)
+_api_requests = _meter.create_counter(
+    "echora_enrichment_api_requests_total",
+    description="Total external API fetch attempts by service and status",
+)
 
 
 class ParallelAPIFetcher:
@@ -130,28 +145,69 @@ class ParallelAPIFetcher:
             tasks.append(
                 (
                     "jikan",
-                    self._fetch_jikan_complete(ids["mal_id"], offline_data, temp_dir),
+                    self._fetch_with_telemetry(
+                        "jikan",
+                        self._fetch_jikan_complete(ids["mal_id"], offline_data, temp_dir),
+                    ),
                 )
             )
 
         if ids.get("anilist_id") and should_include("anilist"):
-            tasks.append(("anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)))
+            tasks.append(
+                (
+                    "anilist",
+                    self._fetch_with_telemetry(
+                        "anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)
+                    ),
+                )
+            )
 
         if ids.get("kitsu_id") and should_include("kitsu"):
-            tasks.append(("kitsu", self._fetch_kitsu(ids["kitsu_id"])))
+            tasks.append(
+                (
+                    "kitsu",
+                    self._fetch_with_telemetry("kitsu", self._fetch_kitsu(ids["kitsu_id"])),
+                )
+            )
 
         if ids.get("anidb_id") and should_include("anidb"):
-            tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"])))
+            tasks.append(
+                (
+                    "anidb",
+                    self._fetch_with_telemetry("anidb", self._fetch_anidb(ids["anidb_id"])),
+                )
+            )
 
         if ids.get("anime_planet_slug") and should_include("anime_planet"):
-            tasks.append(("anime_planet", self._fetch_anime_planet(offline_data)))
+            tasks.append(
+                (
+                    "anime_planet",
+                    self._fetch_with_telemetry(
+                        "anime_planet", self._fetch_anime_planet(offline_data)
+                    ),
+                )
+            )
 
         if ids.get("anisearch_id") and should_include("anisearch"):
-            tasks.append(("anisearch", self._fetch_anisearch(ids["anisearch_id"])))
+            tasks.append(
+                (
+                    "anisearch",
+                    self._fetch_with_telemetry(
+                        "anisearch", self._fetch_anisearch(ids["anisearch_id"])
+                    ),
+                )
+            )
 
         # Always try AnimSchedule with title search (unless explicitly filtered)
         if should_include("animeschedule"):
-            tasks.append(("animeschedule", self._fetch_animeschedule(offline_data)))
+            tasks.append(
+                (
+                    "animeschedule",
+                    self._fetch_with_telemetry(
+                        "animeschedule", self._fetch_animeschedule(offline_data)
+                    ),
+                )
+            )
 
         # Execute all tasks in parallel with timeout
         results = await self._gather_with_timeout(
@@ -169,6 +225,41 @@ class ParallelAPIFetcher:
         self._log_performance_metrics(elapsed)
 
         return results
+
+    async def _fetch_with_telemetry(self, service: str, coro: Any) -> Any:
+        """Wrap an API fetch coroutine with a child span and per-service metrics.
+
+        Records a CLIENT span named ``enrichment.api.<service>`` and increments
+        ``echora_enrichment_api_requests_total`` / ``echora_enrichment_api_duration_seconds``
+        regardless of whether the fetch succeeded, returned no data, or timed out.
+        """
+        with _tracer.start_as_current_span(
+            f"enrichment.api.{service}",
+            kind=otel_trace.SpanKind.CLIENT,
+            attributes={"api.service": service},
+        ) as span:
+            _start = time.perf_counter()
+            result: Any = None
+            try:
+                result = await coro
+            except Exception as exc:
+                span.set_status(otel_trace.StatusCode.ERROR, str(exc))
+                raise
+            else:
+                if result is None:
+                    span.set_status(
+                        otel_trace.StatusCode.ERROR,
+                        f"{service} returned no data",
+                    )
+                return result
+            finally:
+                _api_duration.record(
+                    time.perf_counter() - _start, {"service": service}
+                )
+                _api_requests.add(
+                    1,
+                    {"service": service, "status": "success" if result is not None else "error"},
+                )
 
     async def _fetch_jikan_complete(
         self, mal_id: str, offline_data: dict[str, Any], temp_dir: str | None = None

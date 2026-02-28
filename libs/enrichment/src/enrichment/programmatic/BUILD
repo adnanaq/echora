@@ -4,6 +4,7 @@ python_sources(
     dependencies=[
         "//libs/enrichment/src/enrichment/api_helpers",
         "//libs/http_cache/src/http_cache",
+        "//:reqs0#opentelemetry-api",
         "//:reqs0#pydantic",
         "//:reqs0#pydantic-settings",
     ],
