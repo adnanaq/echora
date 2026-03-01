@@ -40,7 +40,34 @@ _IMAGE_DOWNLOAD_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.
 
 # Enrichment API: 50 ms → 60 s — external REST/GraphQL/scraper calls range from
 # fast cache hits (~50 ms) to AniDB XML or crawler timeouts (~30–60 s).
-_ENRICHMENT_API_DURATION_BUCKETS = [0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 60.0]
+_ENRICHMENT_API_DURATION_BUCKETS = [
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    20.0,
+    60.0,
+]
+
+# Cache operation: 0.5 ms → 1 s — Redis round-trips are typically sub-ms local,
+# but network issues or pipeline batches can push into 10–100 ms range.
+_CACHE_OP_DURATION_BUCKETS = [
+    0.0005,
+    0.001,
+    0.002,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+]
 
 _HISTOGRAM_VIEWS = [
     View(
@@ -81,6 +108,12 @@ _HISTOGRAM_VIEWS = [
         instrument_name="echora_enrichment_api_duration_seconds",
         aggregation=ExplicitBucketHistogramAggregation(
             boundaries=_ENRICHMENT_API_DURATION_BUCKETS
+        ),
+    ),
+    View(
+        instrument_name="echora_cache_operation_duration_seconds",
+        aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=_CACHE_OP_DURATION_BUCKETS
         ),
     ),
 ]
