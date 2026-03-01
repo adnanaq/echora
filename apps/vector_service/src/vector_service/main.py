@@ -137,6 +137,8 @@ async def serve() -> None:
         except Exception:
             logger.exception("Failed to publish NOT_SERVING during shutdown")
         await server.stop(grace=5)
+        if runtime.embedding_cache is not None:
+            await runtime.embedding_cache.close()
         await runtime.async_qdrant_client.close()
         from observability import stop_logging
 
