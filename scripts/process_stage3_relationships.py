@@ -491,9 +491,9 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print("Processing relationships from 6 sources...")
 
     # Step 1: Process Jikan relations (primary source)
-    jikan_anime, jikan_manga = process_jikan_relations(jikan_data)
+    jikan_anime, jikan_original_work = process_jikan_relations(jikan_data)
     print(
-        f"Jikan: {len(jikan_anime)} anime relations, {len(jikan_manga)} manga relations"
+        f"Jikan: {len(jikan_anime)} anime relations, {len(jikan_original_work)} original work relations"
     )
 
     # Step 2: Process AnimePlanet relations (co-primary source)
@@ -505,9 +505,9 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print(f"AnimSchedule: {len(animeschedule_anime)} anime relations")
 
     # Step 4: Process AniList relations
-    anilist_anime, anilist_manga = process_anilist_relations(anilist_data)
+    anilist_anime, anilist_original_work = process_anilist_relations(anilist_data)
     print(
-        f"AniList: {len(anilist_anime)} anime relations, {len(anilist_manga)} manga relations"
+        f"AniList: {len(anilist_anime)} anime relations, {len(anilist_original_work)} original work relations"
     )
 
     # Step 5: Process AniDB relations
@@ -610,12 +610,12 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
         f"Final total: {len(all_anime_relations)} anime relations (no further deduplication needed)"
     )
 
-    # Combine manga relations from sources that have them
-    all_manga_relations = jikan_manga + anilist_manga
-    print(f"Total manga relations: {len(all_manga_relations)}")
+    # Combine original work relations from sources that have them
+    all_original_work_relations = jikan_original_work + anilist_original_work
+    print(f"Total original work relations: {len(all_original_work_relations)}")
 
     # Create final output
-    output = {"related_anime": all_anime_relations, "relations": all_manga_relations}
+    output = {"related_anime": all_anime_relations, "related_source_material": all_original_work_relations}
 
     # Write output
     output_file = f"{temp_dir}/stage3_relationships.json"
@@ -624,7 +624,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     print("Stage 3 processing complete:")
     print(f"  - Related anime: {len(all_anime_relations)} entries")
-    print(f"  - Relations (manga): {len(all_manga_relations)} entries")
+    print(f"  - Related original work: {len(all_original_work_relations)} entries")
     print(
         "  - Sources processed: Jikan, AnimePlanet, AnimSchedule, AniList, AniDB, Offline URLs"
     )

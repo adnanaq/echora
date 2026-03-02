@@ -82,22 +82,25 @@ class AnimeFieldMapper:
             sections.append(" | ".join(genre_parts))
 
         # 3. Staff & Production
-        if anime.staff_data:
-            staff_parts = []
-            # Studios
-            studios = [s.name for s in anime.staff_data.studios if s.name]
-            if studios:
-                staff_parts.append(f"Studios: {', '.join(studios)}")
+        staff_parts = []
+        # Studios and Producers (top-level on Anime)
+        studios = [s.name for s in anime.studios if s.name]
+        if studios:
+            staff_parts.append(f"Studios: {', '.join(studios)}")
+        producers = [p.name for p in anime.producers if p.name]
+        if producers:
+            staff_parts.append(f"Producers: {', '.join(producers)}")
 
-            # Key Staff (Directors/Composers)
-            if anime.staff_data.production_staff:
-                roles = anime.staff_data.production_staff.get_all_roles()
-                for role, members in roles.items():
-                    names = [m.name for m in members if hasattr(m, "name") and m.name]
-                    if names:
-                        role_name = role.replace("_", " ").title()
-                        staff_parts.append(f"{role_name}: {', '.join(names)}")
+        # Key Staff (Directors/Composers)
+        if anime.staff_data and anime.staff_data.production_staff:
+            roles = anime.staff_data.production_staff.get_all_roles()
+            for role, members in roles.items():
+                names = [m.name for m in members if hasattr(m, "name") and m.name]
+                if names:
+                    role_name = role.replace("_", " ").title()
+                    staff_parts.append(f"{role_name}: {', '.join(names)}")
 
+        if staff_parts:
             sections.append(" | ".join(staff_parts))
 
         # 4. Temporal & Status

@@ -99,7 +99,7 @@ class ProcessedCharacter:
     name_native: str | None
     nicknames: list[str]
     voice_actors: list[dict[str, str]]
-    character_pages: dict[str, str]
+    sources: list[str]
     images: list[str]
     age: str | None
     description: str | None
@@ -1276,7 +1276,7 @@ class AICharacterMatcher:
             ),  # From Jikan, fallback to AniList later
             nicknames=jikan_char.get("nicknames", []),
             voice_actors=self._extract_voice_actors(jikan_char),
-            character_pages={"mal": jikan_url},
+            sources=[jikan_url] if jikan_url else [],
             images=[],
             age=None,
             description=jikan_char.get("about"),
@@ -1352,7 +1352,7 @@ class AICharacterMatcher:
 
             # Add AniList pages and images
             if anilist_char.get("id"):
-                integrated.character_pages["anilist"] = (
+                integrated.sources.append(
                     f"https://anilist.co/character/{anilist_char['id']}"
                 )
             if anilist_char.get("image", {}).get("large"):
@@ -1375,7 +1375,7 @@ class AICharacterMatcher:
 
             # Add AniDB pages
             if anidb_char.get("id"):
-                integrated.character_pages["anidb"] = (
+                integrated.sources.append(
                     f"https://anidb.net/character/{anidb_char['id']}"
                 )
 
@@ -1419,7 +1419,7 @@ class AICharacterMatcher:
             # AnimePlanet URL (character slug)
             ap_url = ap_char.get("url", "")
             if ap_url:
-                integrated.character_pages["animeplanet"] = (
+                integrated.sources.append(
                     f"https://www.anime-planet.com{ap_url}"
                 )
 
@@ -1477,7 +1477,7 @@ async def process_characters_with_ai_matching(
         Dict[str, List[Dict[str, Any]]]: A dictionary with a "characters" list where each entry is a dict containing the integrated fields:
             - age, description, eye_color, favorites, gender, hair_color, name, name_native, role
             - character_traits, images, name_variations, nicknames, voice_actors
-            - character_pages
+            - sources
             - _match_scores (internal per-source match scoring; may be an empty dict)
     """
 
@@ -1516,9 +1516,9 @@ async def process_characters_with_ai_matching(
             "nicknames": char.nicknames,
             "voice_actors": char.voice_actors,
             # =====================================================================
-            # OBJECT/DICT FIELDS (alphabetical)
+            # ARRAY FIELDS (cont.)
             # =====================================================================
-            "character_pages": char.character_pages,
+            "sources": char.sources,
             # Internal field for stage5 to use (not part of final output)
             "_match_scores": char.match_scores if char.match_scores else {},
         }

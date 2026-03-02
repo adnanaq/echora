@@ -47,8 +47,8 @@ N/A
 ## Checklist
 
 - [ ] Code follows conventional commit format
-- [ ] Type checks pass (`uv run mypy --strict src/`)
-- [ ] Code formatted with ruff (`uv run ruff format --check .`)
-- [ ] Linting passes (`uv run ruff check .`)
-- [ ] Tests pass (`uv run pytest`)
+- [ ] Type checks pass (`uv run ty check`)
+- [ ] Code formatted (`./pants fmt ::`)
+- [ ] Linting passes (`./pants lint ::`)
+- [ ] Tests pass (`./pants test ::`)
 - [ ] Documentation updated (if needed)

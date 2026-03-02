@@ -36,7 +36,7 @@ This means the schema change and the enrichment code change are **one atomic PR*
 | **Ingestion Pipeline** | Owner — defines `anime.py` and mirrors it to proto |
 | PostgreSQL Service | Consumer |
 | Backend (BFF) | Consumer |
-| Update Worker | Consumer |
+| Update Service | Consumer |
 | Qdrant Service | Consumer |
 | Agent Service | Consumer |
 
@@ -192,6 +192,39 @@ is enforced by convention: reserve removed field numbers in the proto.
 
 The release tag triggers `proto-release-assets.yml`, which publishes the GitHub Release
 with Python and Rust tarballs for that snapshot.
+
+## Considerations
+
+### buf breaking for automated proto change detection
+
+`buf` is **already installed** in `.github/workflows/proto-stubs-check.yml` (for `buf lint`). Adding `buf breaking` requires one additional step in that workflow, immediately after the lint step:
+
+```yaml
+- name: Lint proto files
+  run: buf lint
+
+- name: Check for breaking proto changes
+  if: github.event_name == 'pull_request'
+  run: buf breaking protos/ --against ".git#branch=main"
+```
+
+No changes to `buf.yaml` or any other file needed. `buf` is version-pinned in the workflow (`BUF_VERSION="1.50.0"`), so this is zero-dependency.
+
+**What it catches vs what the current setup already catches:**
+
+| Check | Current approach | With buf breaking added |
+|-------|-----------------|-------------------------|
+| Field removed without `reserved` | Convention only | ✅ CI failure |
+| Field number reused | Convention only | ✅ CI failure |
+| Field type changed | `check_anime_model_proto_contract.py` catches parity mismatch | ✅ CI failure on proto level too |
+| New field added | No check needed (safe) | ✅ Passes fine |
+| Field renamed | Co-change rule catches missing proto update | ✅ CI failure |
+
+**What it does NOT replace:** `buf breaking` is purely a proto-level gate — it has no knowledge of `anime.py`. The co-change enforcement step and `check_anime_model_proto_contract.py` remain necessary because they validate the Pydantic ↔ proto parity, which `buf` cannot do.
+
+**What about `buf generate`?** `generate-proto.py` cannot be replaced by `buf generate`. The script applies custom import rewrites after generation (e.g. `from v1 import` → `from shared_proto.v1 import`) because `grpcio-tools` emits flat imports that don't match the package structure. `buf generate` has the same flat-import limitation with standard Python protoc plugins. Switching would add complexity without removing any code.
+
+**Verdict:** `buf breaking` is the one meaningful addition — one step, zero new deps, catches the class of drift (proto-level breaking changes) that currently relies on convention. Worth enabling once the proto is past its initial churn phase.
 
 ## Related Documentation
 
