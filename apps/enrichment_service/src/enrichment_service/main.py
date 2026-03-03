@@ -97,7 +97,10 @@ async def serve() -> None:
 
     # 2. Configure server with interceptors
     interceptors = []
-    if settings.observability.otel_enabled:
+    if (
+        settings.observability.otel_enabled
+        and settings.observability.otel_enable_grpc_server_instrumentation
+    ):
         from observability import AioServerInterceptor
 
         interceptors.append(AioServerInterceptor())
