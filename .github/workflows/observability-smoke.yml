@@ -8,7 +8,6 @@ on:
       - "docker/docker-compose.obs.scale.yml"
       - "scripts/observability_smoke_check.py"
       - "docs/observability*.md"
-      - "docs/plan/observabilit_implementation_plan.md"
       - ".github/workflows/observability-smoke.yml"
   push:
     branches: ["main"]
@@ -18,7 +17,6 @@ on:
       - "docker/docker-compose.obs.scale.yml"
       - "scripts/observability_smoke_check.py"
       - "docs/observability*.md"
-      - "docs/plan/observabilit_implementation_plan.md"
       - ".github/workflows/observability-smoke.yml"
 
 jobs:
