@@ -7,7 +7,6 @@ on:
       - "docker/docker-compose.obs.yml"
       - "docker/docker-compose.obs.scale.yml"
       - "scripts/observability_smoke_check.py"
-      - "docs/observability*.md"
       - ".github/workflows/observability-smoke.yml"
   push:
     branches: ["main"]
@@ -16,7 +15,6 @@ on:
       - "docker/docker-compose.obs.yml"
       - "docker/docker-compose.obs.scale.yml"
       - "scripts/observability_smoke_check.py"
-      - "docs/observability*.md"
       - ".github/workflows/observability-smoke.yml"
 
 jobs:
@@ -76,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 20); do
-            value="$(curl -sf http://localhost:8889/metrics | awk '/^otelcol_receiver_accepted_spans/ {print $2; exit}')"
+            value="$(curl -sf http://localhost:8888/metrics | awk '/^otelcol_receiver_accepted_spans/ {print $2; exit}')"
             if [ -n "${value}" ] && [ "${value}" != "0" ]; then
               echo "Collector accepted spans: ${value}"
               exit 0
