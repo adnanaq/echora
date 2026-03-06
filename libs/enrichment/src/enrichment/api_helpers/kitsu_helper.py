@@ -26,7 +26,11 @@ class KitsuEnrichmentHelper:
         self.base_url = "https://kitsu.io/api/edge"
 
     async def _make_request(
-        self, endpoint: str, params: dict[str, Any] | None = None
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        *,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         """
         Perform an HTTP GET request to a Kitsu API endpoint and return the parsed JSON response.
@@ -45,30 +49,45 @@ class KitsuEnrichmentHelper:
 
         url = f"{self.base_url}{endpoint}"
 
+        async def _handle_response(response: Any) -> dict[str, Any]:
+            if response.status == 200:
+                payload = cast(dict[str, Any], await response.json())
+                payload["_from_cache"] = bool(getattr(response, "from_cache", False))
+                return payload
+
+            logger.warning(f"Kitsu API error: HTTP {response.status}")
+            return {}
+
         try:
+            if session is not None:
+                async with session.get(url, headers=headers, params=params) as response:
+                    return await _handle_response(response)
+
             async with _cache_manager.get_aiohttp_session(
                 "kitsu", timeout=aiohttp.ClientTimeout(total=30)
-            ) as session:
-                async with session.get(url, headers=headers, params=params) as response:
-                    if response.status == 200:
-                        return cast(dict[str, Any], await response.json())
-                    else:
-                        logger.warning(f"Kitsu API error: HTTP {response.status}")
-                        return {}
+            ) as owned_session:
+                async with owned_session.get(
+                    url, headers=headers, params=params
+                ) as response:
+                    return await _handle_response(response)
         except Exception:
             logger.exception("Kitsu API request failed")
             return {}
 
-    async def get_anime_by_id(self, anime_id: int) -> dict[str, Any] | None:
+    async def get_anime_by_id(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> dict[str, Any] | None:
         """Get anime by Kitsu ID."""
         try:
-            response = await self._make_request(f"/anime/{anime_id}")
+            response = await self._make_request(f"/anime/{anime_id}", session=session)
             return response.get("data") if response else None
         except Exception:
             logger.exception(f"Kitsu get_anime_by_id failed for ID {anime_id}")
             return None
 
-    async def get_anime_episodes(self, anime_id: int) -> list[dict[str, Any]]:
+    async def get_anime_episodes(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> list[dict[str, Any]]:
         """Get ALL anime episodes by Kitsu ID with pagination."""
         all_episodes = []
         page = 0
@@ -79,7 +98,7 @@ class KitsuEnrichmentHelper:
                 params = {"page[limit]": page_size, "page[offset]": page * page_size}
 
                 response = await self._make_request(
-                    f"/anime/{anime_id}/episodes", params
+                    f"/anime/{anime_id}/episodes", params, session=session
                 )
 
                 if not response or "data" not in response:
@@ -104,8 +123,9 @@ class KitsuEnrichmentHelper:
 
                 page += 1
 
-                # Add small delay to respect rate limits
-                await asyncio.sleep(0.1)
+                # Add small delay only for network fetches (skip for cache hits).
+                if not bool(response.get("_from_cache", False)):
+                    await asyncio.sleep(0.1)
 
             logger.info(
                 f"Total episodes fetched for anime {anime_id}: {len(all_episodes)}"
@@ -116,14 +136,43 @@ class KitsuEnrichmentHelper:
             logger.exception(f"Kitsu get_anime_episodes failed for ID {anime_id}")
             return all_episodes  # Return what we got so far
 
-    async def get_anime_categories(self, anime_id: int) -> list[dict[str, Any]]:
-        """Get anime categories by Kitsu ID."""
+    async def get_anime_categories(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> list[dict[str, Any]]:
+        """Get full anime category payloads by Kitsu ID."""
+        all_categories = []
+        page = 0
+        page_size = 20
         try:
-            response = await self._make_request(f"/anime/{anime_id}/categories")
-            return response.get("data", []) if response else []
+            while True:
+                params = {"page[limit]": page_size, "page[offset]": page * page_size}
+                response = await self._make_request(
+                    f"/anime/{anime_id}/categories", params, session=session
+                )
+                if not response or "data" not in response:
+                    break
+                themes = response["data"]
+                all_categories.extend(themes)
+                logger.info(
+                    f"Fetched page {page + 1}: {len(themes)} categories (total: {len(all_categories)})"
+                )
+                meta = response.get("meta", {})
+                count = meta.get("count", 0)
+                if len(all_categories) >= count or len(themes) < page_size:
+                    # We have all categories or got less than page size (last page)
+                    break
+                page += 1
+                # Add small delay only for network fetches (skip for cache hits).
+                if not bool(response.get("_from_cache", False)):
+                    await asyncio.sleep(0.1)
+            logger.info(
+                f"Total categories fetched for anime {anime_id}: {len(all_categories)}"
+            )
+            return all_categories
+
         except Exception:
             logger.exception(f"Kitsu get_anime_categories failed for ID {anime_id}")
-            return []
+            return all_categories
 
     async def fetch_all_data(self, anime_id: int) -> dict[str, Any]:
         """
@@ -139,13 +188,16 @@ class KitsuEnrichmentHelper:
                 - "categories": A list of category resource objects, or an empty list if unavailable.
         """
         try:
-            # Fetch all data concurrently
-            results = await asyncio.gather(
-                self.get_anime_by_id(anime_id),
-                self.get_anime_episodes(anime_id),
-                self.get_anime_categories(anime_id),
-                return_exceptions=True,
-            )
+            # Fetch all data concurrently using one session per anime fetch.
+            async with _cache_manager.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
+            ) as session:
+                results = await asyncio.gather(
+                    self.get_anime_by_id(anime_id, session=session),
+                    self.get_anime_episodes(anime_id, session=session),
+                    self.get_anime_categories(anime_id, session=session),
+                    return_exceptions=True,
+                )
 
             # Handle exceptions and assign results
             anime_data, episodes_data, categories_data = results

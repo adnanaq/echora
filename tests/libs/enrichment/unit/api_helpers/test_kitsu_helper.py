@@ -9,6 +9,13 @@ import pytest
 # --- Tests for main() function ---
 
 
+def _cm(response):
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=response)
+    cm.__aexit__ = AsyncMock(return_value=None)
+    return cm
+
+
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.kitsu_helper.KitsuEnrichmentHelper")
 async def test_main_function_success(mock_helper_class):
@@ -111,3 +118,99 @@ async def test_context_manager_cleanup_on_exception():
             # close() should be called even when exception raised
             raise ValueError("Test error")
     # If we get here, cleanup happened correctly
+
+
+# --- Tests for cache-aware pagination throttling ---
+
+
+@pytest.mark.asyncio
+async def test_get_anime_episodes_skips_sleep_on_cache_hit():
+    """Cached pages should not trigger artificial throttle sleep."""
+    from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+
+    helper = KitsuEnrichmentHelper()
+
+    page1 = [{"id": str(i)} for i in range(1, 21)]
+    page2 = [{"id": str(i)} for i in range(21, 41)]
+    helper._make_request = AsyncMock(
+        side_effect=[
+            {"data": page1, "meta": {"count": 40}, "_from_cache": True},
+            {"data": page2, "meta": {"count": 40}, "_from_cache": True},
+        ]
+    )
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        episodes = await helper.get_anime_episodes(12)
+
+    assert len(episodes) == 40
+    mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_anime_categories_skips_sleep_on_cache_hit():
+    """Cached category pages should not trigger artificial throttle sleep."""
+    from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+
+    helper = KitsuEnrichmentHelper()
+
+    page1 = [
+        {"attributes": {"title": f"Theme {i}", "description": f"Desc {i}"}}
+        for i in range(1, 21)
+    ]
+    page2 = [{"attributes": {"title": "Theme 21", "description": "Desc 21"}}]
+    helper._make_request = AsyncMock(
+        side_effect=[
+            {"data": page1, "meta": {"count": 21}, "_from_cache": True},
+            {"data": page2, "meta": {"count": 21}, "_from_cache": True},
+        ]
+    )
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        categories = await helper.get_anime_categories(12)
+
+    assert len(categories) == 21
+    mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_data_reuses_one_session_per_anime():
+    """fetch_all_data should open a single cached session for the entire anime fetch."""
+    from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+
+    helper = KitsuEnrichmentHelper()
+
+    def get_side_effect(url, **kwargs):  # type: ignore[no-untyped-def]
+        resp = AsyncMock()
+        resp.status = 200
+        if url.endswith("/anime/12"):
+            payload = {"data": {"id": "12"}}
+        elif "/episodes" in url:
+            payload = {"data": [{"id": "e1"}], "meta": {"count": 1}}
+        elif "/categories" in url:
+            payload = {
+                "data": [
+                    {"attributes": {"title": "Action", "description": "Desc"}}
+                ],
+                "meta": {"count": 1},
+            }
+        else:
+            payload = {}
+        resp.json = AsyncMock(return_value=payload)
+        return _cm(resp)
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(side_effect=get_side_effect)
+
+    def make_session_cm(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        return _cm(mock_session)
+
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        side_effect=make_session_cm,
+    ) as mock_get_session:
+        result = await helper.fetch_all_data(12)
+
+    assert result["anime"] is not None
+    assert len(result["episodes"]) == 1
+    assert len(result["categories"]) == 1
+    assert mock_get_session.call_count == 1

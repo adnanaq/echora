@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
 """MAL enrichment helper (via Jikan v4 API).
 
@@ -13,6 +12,8 @@ CLI:
   python -m enrichment.api_helpers.mal_helper episodes <mal_id> <episode_count> <output_file>
   python -m enrichment.api_helpers.mal_helper characters <mal_id> <output_file>
 """
+
+from __future__ import annotations
 
 import argparse
 import asyncio

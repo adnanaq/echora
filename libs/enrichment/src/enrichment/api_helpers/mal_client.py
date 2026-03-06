@@ -33,7 +33,7 @@ class MalClient:
         self,
         *,
         session: Any,
-        limiter: MalRateLimiter | Any | None = None,
+        limiter: MalRateLimiter | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
         self._session = session
@@ -69,8 +69,8 @@ class MalClient:
                         await asyncio.sleep(5)
                         continue
 
-                    logger.warning("MAL HTTP %s for %s", response.status, url)
+                    logger.warning(f"MAL HTTP {response.status} for {url}")
                     return None
             except Exception:
-                logger.exception("MAL request failed for %s", url)
+                logger.exception(f"MAL request failed for {url}")
                 return None
