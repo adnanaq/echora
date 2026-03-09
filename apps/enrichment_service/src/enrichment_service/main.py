@@ -45,6 +45,9 @@ def _setup_observability(settings) -> None:
         enable_aiohttp_client_instrumentation=(
             settings.observability.otel_enable_aiohttp_client_instrumentation
         ),
+        enable_redis_instrumentation=(
+            settings.observability.otel_enable_redis_instrumentation
+        ),
     )
 
 

@@ -24,6 +24,45 @@ exposes a central metric registry that all platform services write to.
 
 ---
 
+## Data Flow & Infrastructure
+
+The following diagram illustrates how telemetry data flows from your application code to the final visualization in Grafana.
+
+```mermaid
+graph TD
+    subgraph "Application Process"
+        App[Business Logic] --> Interceptor[gRPC Interceptor]
+        Interceptor --> API[OTel API]
+        API --> SDK[OTel SDK / Provider]
+        SDK --> Queue[Batch Processor Queue]
+        Queue -- "Export (Background Thread)" --> Exporter[OTLP gRPC Exporter]
+    end
+
+    Exporter -- "gRPC :4317 (Push)" --> Collector[OTel Collector]
+
+    subgraph "Infrastructure (Docker/K8s)"
+        Collector -- "Push Spans" --> Tempo[Tempo: Traces]
+        Collector -- "Push Logs" --> Loki[Loki: Logs]
+        Prom[Prometheus] -- "Scrape :8889 (Pull)" --> Collector
+    end
+
+    subgraph "Visualization"
+        Grafana -- "Query" --> Tempo
+        Grafana -- "Query" --> Loki
+        Grafana -- "Query" --> Prom
+    end
+```
+
+### The "Bottom-Up" Flow
+1.  **Capture**: As a gRPC request arrives, the `Interceptor` starts a Span and generates a Trace ID.
+2.  **Logic**: Your code executes, adding events or child spans via the `OTel API`.
+3.  **Queue**: The `SDK` adds service-level metadata and drops the data into a **non-blocking memory queue**.
+4.  **Ship**: A background thread flushes the queue and sends the data to the **OTel Collector** (Port 4317).
+5.  **Route**: The Collector sorts the data and routes it to Tempo, Loki, or exposes it for Prometheus to scrape.
+6.  **View**: Grafana queries the backends to build the dashboards.
+
+---
+
 ## Signal Map
 
 The platform produces three observability signals from three instrumentation layers.

@@ -28,3 +28,6 @@ class ObservabilityConfig(BaseModel):
     otel_enable_aiohttp_client_instrumentation: bool = Field(
         default=False, description="Enable aiohttp client auto-instrumentation"
     )
+    otel_enable_redis_instrumentation: bool = Field(
+        default=False, description="Enable refis auto-instrumentation"
+    )

@@ -15,6 +15,7 @@ from .instrumentation import (
     instrument_grpc_client,
     instrument_grpc_server,
     instrument_qdrant_client,
+    instrument_redis,
 )
 from .interceptors import AioServerInterceptor
 from .logging import setup_logging, stop_logging
@@ -32,6 +33,7 @@ __all__ = [
     "instrument_grpc_client",
     "instrument_grpc_server",
     "instrument_qdrant_client",
+    "instrument_redis",
     "extract_context_from_nats_headers",
     "extract_context_from_temporal_headers",
     "extract_trace_context",
@@ -62,6 +64,7 @@ def setup_telemetry(
     enable_grpc_client_instrumentation: bool = False,
     enable_aiohttp_client_instrumentation: bool = False,
     enable_qdrant_client_instrumentation: bool = False,
+    enable_redis_instrumentation: bool = False,
     metric_export_interval_millis: int = 15000,
     trace_sample_ratio: float = 1.0,
     log_sample_rate: float = 1.0,
@@ -107,6 +110,7 @@ def setup_telemetry(
         enable_grpc_client_instrumentation,
         enable_aiohttp_client_instrumentation,
         enable_qdrant_client_instrumentation,
+        enable_redis_instrumentation,
         metric_export_interval_millis,
         trace_sample_ratio,
         log_sample_rate,
@@ -157,6 +161,8 @@ def setup_telemetry(
         instrument_aiohttp_client()
     if enable_qdrant_client_instrumentation:
         instrument_qdrant_client()
+    if enable_redis_instrumentation:
+        instrument_redis()
 
     _telemetry_initialized = True
     _telemetry_init_signature = init_signature

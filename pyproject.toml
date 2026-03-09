@@ -45,10 +45,11 @@ dependencies = [
     "opentelemetry-sdk==1.39.1",
     "opentelemetry-exporter-otlp==1.39.1",
     "opentelemetry-instrumentation-fastapi==0.60b1",
+    "opentelemetry-instrumentation-redis==0.60b1",
     "opentelemetry-instrumentation-grpc==0.60b1",
     "opentelemetry-instrumentation-aiohttp-client==0.60b1",
-    "opentelemetry-instrumentation-qdrant==0.52.4",
-    "structlog>=25.1.0",
+    "opentelemetry-instrumentation-qdrant==0.53.0",
+    "structlog>=25.5.0",
 ]
 
 [project.optional-dependencies]

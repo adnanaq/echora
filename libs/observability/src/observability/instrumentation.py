@@ -7,6 +7,7 @@ _GRPC_SERVER_INSTRUMENTED = False
 _GRPC_CLIENT_INSTRUMENTED = False
 _AIOHTTP_CLIENT_INSTRUMENTED = False
 _QDRANT_CLIENT_INSTRUMENTED = False
+_REDIS_INSTRUMENTED = False
 
 
 def instrument_grpc_server() -> None:
@@ -95,3 +96,24 @@ def instrument_qdrant_client() -> None:
 
     QdrantInstrumentor().instrument()
     _QDRANT_CLIENT_INSTRUMENTED = True
+
+def instrument_redis() -> None:
+    """Enable OpenTelemetry auto-instrumentation for Redis clients.
+
+    Installs ``RedisInstrumentor`` which creates spans for all Redis commands
+    (GET, SET, etc.) executed by both sync and async clients. This provides
+    visibility into cache hit/miss overhead in the enrichment pipeline and
+    embedding layers. Idempotent.
+    """
+    global _REDIS_INSTRUMENTED
+    if _REDIS_INSTRUMENTED:
+        return
+
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        logger.warning("Redis instrumentation is unavailable")
+        return
+
+    RedisInstrumentor().instrument()
+    _REDIS_INSTRUMENTED = True

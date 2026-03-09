@@ -33,90 +33,6 @@ _LOG_LISTENER: QueueListener | None = None
 _UNSAMPLED_LEVELS = frozenset({"warning", "error", "critical"})
 
 
-def _make_log_sampler(sample_rate: float) -> Processor:
-    """Return a structlog processor that probabilistically drops INFO/DEBUG logs.
-
-    WARN/ERROR/CRITICAL events are always emitted regardless of sample_rate.
-    At millions of requests/day, 10 % INFO sampling (sample_rate=0.1) reduces
-    log volume by ~10× while preserving all actionable signals.
-
-    Args:
-        sample_rate: Fraction of INFO/DEBUG events to keep (0.0–1.0).
-            1.0 means keep all (default for local development).
-    """
-    if sample_rate >= 1.0:
-        # Fast path: return an identity processor — no overhead, no branching.
-        def _passthrough(
-            logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
-        ) -> MutableMapping[str, Any]:
-            return event_dict
-
-        return _passthrough
-
-    def _sampler(
-        logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
-    ) -> MutableMapping[str, Any]:
-        # method_name is the log method called ("info", "warning", "error", etc.)
-        # — use it directly rather than reading from event_dict to avoid
-        # depending on add_log_level running first.
-        if method_name not in _UNSAMPLED_LEVELS and random.random() >= sample_rate:  # noqa: S311
-            raise structlog.DropEvent()
-        return event_dict
-
-    return _sampler
-
-
-def redact_pii(
-    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
-) -> MutableMapping[str, Any]:
-    """Redact PII patterns from all string values in a log event.
-
-    Applies regex substitutions for common PII patterns (API keys, passwords,
-    email addresses) against every string-valued field in the event dict.
-
-    Args:
-        logger: The bound logger instance (unused, required by structlog API).
-        method_name: Log method name (e.g. ``"info"``). Unused here.
-        event_dict: The mutable structlog event dict to redact in-place.
-
-    Returns:
-        The same ``event_dict`` with PII values replaced by ``[REDACTED]``.
-    """
-    for key, value in event_dict.items():
-        if isinstance(value, str):
-            for pattern, repl in _PII_PATTERNS:
-                event_dict[key] = pattern.sub(repl, event_dict[key])
-    return event_dict
-
-
-def inject_otel_context(
-    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
-) -> MutableMapping[str, Any]:
-    """Inject the active OTel trace and span IDs into the log event dict.
-
-    Adds ``trace_id`` and ``span_id`` fields only when there is a valid,
-    recording span in the current context. This enables log-to-trace
-    correlation in Grafana (Loki → Tempo) without duplicating fields that
-    OTel structured metadata already carries.
-
-    Args:
-        logger: The bound logger instance (unused, required by structlog API).
-        method_name: Log method name (e.g. ``"info"``). Unused here.
-        event_dict: The mutable structlog event dict to enrich.
-
-    Returns:
-        The same ``event_dict``, with ``trace_id`` and ``span_id`` added when
-        a valid active span exists.
-    """
-    span = trace.get_current_span()
-    if span.is_recording():
-        ctx = span.get_span_context()
-        if ctx.is_valid:
-            event_dict["trace_id"] = hex(ctx.trace_id)[2:].zfill(32)
-            event_dict["span_id"] = hex(ctx.span_id)[2:].zfill(16)
-    return event_dict
-
-
 def setup_logging(
     *,
     level: str = "INFO",
@@ -227,3 +143,87 @@ def stop_logging() -> None:
     if _LOG_LISTENER:
         _LOG_LISTENER.stop()
         _LOG_LISTENER = None
+
+
+def redact_pii(
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    """Redact PII patterns from all string values in a log event.
+
+    Applies regex substitutions for common PII patterns (API keys, passwords,
+    email addresses) against every string-valued field in the event dict.
+
+    Args:
+        logger: The bound logger instance (unused, required by structlog API).
+        method_name: Log method name (e.g. ``"info"``). Unused here.
+        event_dict: The mutable structlog event dict to redact in-place.
+
+    Returns:
+        The same ``event_dict`` with PII values replaced by ``[REDACTED]``.
+    """
+    for key, value in event_dict.items():
+        if isinstance(value, str):
+            for pattern, repl in _PII_PATTERNS:
+                event_dict[key] = pattern.sub(repl, event_dict[key])
+    return event_dict
+
+
+def inject_otel_context(
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    """Inject the active OTel trace and span IDs into the log event dict.
+
+    Adds ``trace_id`` and ``span_id`` fields only when there is a valid,
+    recording span in the current context. This enables log-to-trace
+    correlation in Grafana (Loki → Tempo) without duplicating fields that
+    OTel structured metadata already carries.
+
+    Args:
+        logger: The bound logger instance (unused, required by structlog API).
+        method_name: Log method name (e.g. ``"info"``). Unused here.
+        event_dict: The mutable structlog event dict to enrich.
+
+    Returns:
+        The same ``event_dict``, with ``trace_id`` and ``span_id`` added when
+        a valid active span exists.
+    """
+    span = trace.get_current_span()
+    if span.is_recording():
+        ctx = span.get_span_context()
+        if ctx.is_valid:
+            event_dict["trace_id"] = hex(ctx.trace_id)[2:].zfill(32)
+            event_dict["span_id"] = hex(ctx.span_id)[2:].zfill(16)
+    return event_dict
+
+
+def _make_log_sampler(sample_rate: float) -> Processor:
+    """Return a structlog processor that probabilistically drops INFO/DEBUG logs.
+
+    WARN/ERROR/CRITICAL events are always emitted regardless of sample_rate.
+    At millions of requests/day, 10 % INFO sampling (sample_rate=0.1) reduces
+    log volume by ~10× while preserving all actionable signals.
+
+    Args:
+        sample_rate: Fraction of INFO/DEBUG events to keep (0.0–1.0).
+            1.0 means keep all (default for local development).
+    """
+    if sample_rate >= 1.0:
+        # Fast path: return an identity processor — no overhead, no branching.
+        def _passthrough(
+            logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+        ) -> MutableMapping[str, Any]:
+            return event_dict
+
+        return _passthrough
+
+    def _sampler(
+        logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any]:
+        # method_name is the log method called ("info", "warning", "error", etc.)
+        # — use it directly rather than reading from event_dict to avoid
+        # depending on add_log_level running first.
+        if method_name not in _UNSAMPLED_LEVELS and random.random() >= sample_rate:  # noqa: S311
+            raise structlog.DropEvent()
+        return event_dict
+
+    return _sampler
