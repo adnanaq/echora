@@ -9,11 +9,13 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     parse_aired_string,
     parse_broadcast_string,
     parse_duration_seconds,
+    parse_episode_ranges,
     parse_iso_date,
     parse_number,
     parse_premiered,
     parse_sidebar_field,
     parse_sidebar_link_texts,
+    parse_sidebar_links,
 )
 from enrichment.crawlers.mal_crawler.mal_models import MalScrapedAnime
 
@@ -226,6 +228,92 @@ def test_parse_sidebar_field_missing() -> None:
 
 
 # =============================================================================
+# parse_sidebar_links / parse_sidebar_link_texts
+# =============================================================================
+
+
+_SAMPLE_SIDEBAR_WITH_LINKS = """
+<div>
+  <span class="dark_text">Studios:</span>
+  <a href="https://myanimelist.net/anime/producer/18/Toei_Animation">Toei Animation</a>,
+  <a href="https://myanimelist.net/anime/producer/99/Other_Studio">Other Studio</a>
+  <br>
+  <span class="dark_text">Genres:</span>
+  <a href="https://myanimelist.net/anime/genre/1/Action">Action</a>
+  <br>
+  <span class="dark_text">Next:</span>
+  nothing here
+</div>
+"""
+
+
+def test_parse_sidebar_links_extracts_multiple() -> None:
+    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Studios")
+    assert len(result) == 2
+    assert result[0]["name"] == "Toei Animation"
+    assert result[0]["url"] == "https://myanimelist.net/anime/producer/18/Toei_Animation"
+    assert result[0]["mal_id"] == 18
+    assert result[1]["name"] == "Other Studio"
+    assert result[1]["mal_id"] == 99
+
+
+def test_parse_sidebar_links_single_entry() -> None:
+    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Genres")
+    assert len(result) == 1
+    assert result[0]["name"] == "Action"
+    assert result[0]["url"] == "https://myanimelist.net/anime/genre/1/Action"
+    # Genre URLs use /anime/genre/N format — extract_id_from_url only parses
+    # /anime/, /character/, /people/, /manga/, /producer/ paths, not /genre/
+    assert result[0]["mal_id"] is None
+
+
+def test_parse_sidebar_links_missing_label_returns_empty() -> None:
+    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Nonexistent")
+    assert result == []
+
+
+def test_parse_sidebar_link_texts_returns_names_only() -> None:
+    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Studios")
+    assert result == ["Toei Animation", "Other Studio"]
+
+
+def test_parse_sidebar_link_texts_genres() -> None:
+    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Genres")
+    assert result == ["Action"]
+
+
+def test_parse_sidebar_link_texts_missing_label_returns_empty() -> None:
+    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Nonexistent")
+    assert result == []
+
+
+# =============================================================================
+# parse_episode_ranges
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1-26", [{"start": 1, "end": 26}]),
+        ("492", [{"start": 492, "end": 492}]),
+        ("1139-", [{"start": 1139, "end": None}]),
+        (
+            "1-30, 492, 1139-",
+            [{"start": 1, "end": 30}, {"start": 492, "end": 492}, {"start": 1139, "end": None}],
+        ),
+        (None, []),
+        ("", []),
+        ("(eps 1-13)", [{"start": 1, "end": 13}]),
+    ],
+)
+def test_parse_episode_ranges(
+    raw: str | None, expected: list[dict]
+) -> None:
+    assert parse_episode_ranges(raw) == expected
+
+
+# =============================================================================
 # diff_models
 # =============================================================================
 
@@ -263,6 +351,26 @@ def test_diff_models_new_entity() -> None:
     diff = diff_models(None, new, "anime")
     assert diff.is_new
     assert diff.has_changes
+
+
+def test_diff_models_entity_id_correct_for_anime() -> None:
+    """Regression: diff_models must use anime_id (not mal_id) for MalScrapedAnime."""
+    old = _make_anime(score=8.7)
+    new = _make_anime(score=8.8)
+    diff = diff_models(old, new, "anime")
+    assert diff.entity_id == 21  # Was 0 before fix (mal_id doesn't exist on MalScrapedAnime)
+
+
+def test_diff_models_entity_id_correct_for_new_anime() -> None:
+    """Regression: entity_id must be non-zero even for new (old=None) anime diffs."""
+    new = _make_anime()
+    diff = diff_models(None, new, "anime")
+    assert diff.entity_id == 21
+
+
+# =============================================================================
+# diff_model_lists
+# =============================================================================
 
 
 def test_diff_model_lists_added_and_removed() -> None:
