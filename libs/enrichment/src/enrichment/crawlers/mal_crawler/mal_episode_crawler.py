@@ -62,50 +62,43 @@ def _append_jsonl(path: str, record: dict[str, Any]) -> None:
 def _get_episode_schema() -> dict[str, Any]:
     """XPath extraction schema for MAL episode detail pages.
 
-    Key MAL episode page structure (verified March 2026 against One Piece ep 1):
-    - Episode title: h2.fs18 (NOT div#content h2 — 6 sidebar h2s appear first)
-    - Subtitle (romaji + kanji): p.fn-grey2
-    - Aired/Duration: div.di-tc.ar (right-aligned info box in the episode header row)
-    - Synopsis: text inside the Synopsis block (h2.fw-b parent div)
-    - Characters/Staff: parsed from the section list container (table.fl-l entries)
+    Key MAL episode page structure (verified March 2026 against Dandadan ep 1):
+    - Episode title: h2.fs18.lh11 — text starts with "#N - "; text-anchor used
+      so extraction is not tied to the CSS class name. Raw header is passed to
+      _parse_title_info which handles prefix stripping, filler/recap detection,
+      subtitle parsing, and the "Episode N" fallback — all in Python.
+    - Subtitle (romaji + kanji): p.fn-grey2 immediately after the title h2.
+      Anchored as the first p sibling after the title h2 to avoid matching other
+      fn-grey2 elements (the duration/aired div also uses that class).
+    - Aired/Duration: div.di-tc.ar — right-aligned info box; extracted via regex
+      on the container text content (verified working against live page).
+    - Synopsis: text inside the Synopsis block (h2 parent div).
+    - Characters/Staff: parsed from table.fl-l section containers.
     """
     return {
         "name": "MalEpisodeDetail",
         "baseSelector": "//body",
         "fields": [
-            # Episode title h2 — class "fs18" is unique to the episode title h2.
-            # The page has 6 other h2s (Alternative Titles, Information, Statistics,
-            # Available At, Resources, Streaming Platforms) before the episode title.
+            # Episode title h2 — anchored on "#N -" content, not on a CSS class.
+            # Full raw text (e.g. "#1 - I'm Luffy! Filler") is passed to
+            # _parse_title_info which handles all title parsing in Python.
             {
-                "name": "title",
-                "selector": "//h2[contains(@class,'fs18')]",
-                "type": "regex",
-                "pattern": r"#\d+\s*-\s*(.*?)(?:\s+\b(?:Filler|Recap)\b)?\s*$",
+                "name": "title_header",
+                "selector": "//h2[starts-with(normalize-space(.), '#')]",
+                "type": "text",
             },
+            # Subtitle paragraph (romaji + kanji) — anchored as the first p sibling
+            # after the title h2, avoiding any other fn-grey2 elements on the page.
             {
-                "name": "is_filler",
-                "selector": "//h2[contains(@class,'fs18')]",
-                "type": "regex",
-                "pattern": r"\b(Filler)\b",
+                "name": "subtitle_raw",
+                "selector": (
+                    "//h2[starts-with(normalize-space(.), '#')]"
+                    "/following-sibling::p[1]"
+                ),
+                "type": "text",
             },
-            {
-                "name": "is_recap",
-                "selector": "//h2[contains(@class,'fs18')]",
-                "type": "regex",
-                "pattern": r"\b(Recap)\b",
-            },
-            {
-                "name": "title_japanese",
-                "selector": "//p[contains(@class,'fn-grey2')]",
-                "type": "regex",
-                "pattern": r"\(([^)]+)\)\s*$",
-            },
-            {
-                "name": "title_romaji",
-                "selector": "//p[contains(@class,'fn-grey2')]",
-                "type": "regex",
-                "pattern": r"^(.*?)(?:\s*\([^)]+\))?\s*$",
-            },
+            # Duration and aired — both extracted via regex from the right-aligned
+            # info box (div.di-tc.ar). Dual-class compound selector is stable.
             {
                 "name": "duration_raw",
                 "selector": "//div[contains(@class,'di-tc') and contains(@class,'ar')]",
@@ -193,9 +186,13 @@ def _parse_title_info(
 ) -> tuple[str, str | None, str | None, bool, bool]:
     """Parse MAL episode header into (title, title_japanese, title_romaji, is_filler, is_recap).
 
+    This is the primary title-parsing path. header_text comes from the text-anchored
+    XPath selector ``//h2[starts-with(normalize-space(.), '#')]`` and subtitle_text
+    from its first p sibling — both extracted as plain text, not pre-parsed by regex.
+
     Args:
-        header_text: Raw text of the h2.fs18 element, e.g. "#1 - I'm Luffy! Filler"
-        subtitle_text: Raw text of p.fn-grey2, e.g. "Romaji Title (Japanese Title)"
+        header_text: Raw h2 text, e.g. "#1 - I'm Luffy! Filler"
+        subtitle_text: Raw subtitle text, e.g. "Romaji Title (Japanese Title)"
         episode_number: Fallback episode number for title when header_text is None.
 
     Returns:
@@ -206,6 +203,11 @@ def _parse_title_info(
     title = f"Episode {episode_number}"
 
     if header_text:
+        # Normalize whitespace — the Filler/Recap badge is in a child
+        # <span class="ml8 icon-episode-type-bg"> whose text crawl4ai extracts
+        # with leading newlines (e.g. "#50 - Title\n                  Filler").
+        # Collapsing all whitespace into single spaces makes the suffix regex work.
+        header_text = " ".join(header_text.split())
         # Strip "#N - " prefix
         m = re.match(r"^#\d+\s*-\s*(.*)", header_text)
         raw_title = m.group(1) if m else header_text
@@ -372,11 +374,11 @@ def _build_episode_from_raw(
     """Construct a MalScrapedEpisode from a raw extraction dict."""
     saved_url = raw.pop("_url", url)
 
-    title = raw.get("title") or f"Episode {episode_number}"
-    is_filler = bool(raw.get("is_filler"))
-    is_recap = bool(raw.get("is_recap"))
-    title_japanese = raw.get("title_japanese")
-    title_romaji = raw.get("title_romaji")
+    title, title_japanese, title_romaji, is_filler, is_recap = _parse_title_info(
+        raw.get("title_header"),
+        raw.get("subtitle_raw"),
+        episode_number,
+    )
     aired = parse_iso_date(raw.get("aired_raw"))
     duration = parse_duration_seconds(raw.get("duration_raw"))
     syn_raw = raw.get("synopsis_raw")

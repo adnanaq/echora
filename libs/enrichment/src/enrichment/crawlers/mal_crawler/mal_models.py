@@ -129,7 +129,7 @@ class MalScrapedAnime(BaseModel):
     ending_themes: list[MalThemeSong] = []
 
     # Links
-    external_links: list[MalExternalLink] = []
+    external_sources: list[MalExternalLink] = []
     streaming: list[MalExternalLink] = []
 
 

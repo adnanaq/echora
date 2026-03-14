@@ -540,6 +540,24 @@ class ListDiff:
     updated: list[ModelDiff] = field(default_factory=list)  # Changed entries
 
 
+def _get_entity_id(model: BaseModel) -> int:
+    """Extract a numeric entity ID from any scraped model.
+
+    Tries the following attributes in order:
+        anime_id  (MalScrapedAnime)
+        char_id   (CharacterRef)
+        mal_id    (MalScrapedCharacter)
+        episode_number (MalScrapedEpisode)
+
+    Returns 0 when none are found.
+    """
+    for attr in ("anime_id", "char_id", "mal_id", "episode_number"):
+        v = getattr(model, attr, None)
+        if v is not None:
+            return int(v)
+    return 0
+
+
 def diff_models(old: BaseModel | None, new: BaseModel, entity_type: str) -> ModelDiff:
     """Compare two Pydantic models field-by-field.
 
@@ -554,7 +572,7 @@ def diff_models(old: BaseModel | None, new: BaseModel, entity_type: str) -> Mode
     Returns:
         ModelDiff containing all changed fields, or is_new=True if no prior version.
     """
-    entity_id: int = getattr(new, "mal_id", 0)
+    entity_id: int = _get_entity_id(new)
     if old is None:
         return ModelDiff(entity_type=entity_type, entity_id=entity_id, is_new=True)
 
@@ -591,11 +609,8 @@ def diff_model_lists(
         ListDiff with added/removed/updated model IDs and diffs.
     """
     def _get_id(m: BaseModel) -> int | None:
-        for attr in ("anime_id", "char_id", "mal_id"):
-            v = getattr(m, attr, None)
-            if v is not None:
-                return int(v)
-        return None
+        v = _get_entity_id(m)
+        return v if v != 0 else None
 
     old_by_id: dict[int, BaseModel] = {
         _get_id(m): m for m in old_models if _get_id(m) is not None

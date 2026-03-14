@@ -268,11 +268,19 @@ def _get_anime_schema() -> dict[str, Any]:
             },
             # Links
             {
-                "name": "external_links_raw",
-                "selector": "//div[preceding::h2[normalize-space()='Available At' or normalize-space()='Resources'] or preceding::div[contains(@class,'normal_header')][normalize-space()='Available At' or normalize-space()='Resources']]//div[contains(@class,'external_links')]//a",
+                "name": "external_sources_raw",
+                "selector": (
+                    "//h2[normalize-space()='Available At' or normalize-space()='Resources']"
+                    "/following-sibling::div[1][contains(@class,'external_links')]"
+                    "//a[@href and not(@href='#')]"
+                ),
                 "type": "list",
                 "fields": [
-                    {"name": "name", "selector": ".", "type": "text"},
+                    {
+                        "name": "name",
+                        "selector": ".//div[contains(@class,'caption')]",
+                        "type": "text",
+                    },
                     {
                         "name": "source",
                         "selector": ".",
@@ -283,13 +291,18 @@ def _get_anime_schema() -> dict[str, Any]:
             },
             {
                 "name": "streaming_links_raw",
-                "selector": "//div[contains(@class,'streaming-platform_links')]//a",
+                "selector": (
+                    "//h2[normalize-space()='Streaming Platforms']"
+                    "/following-sibling::div[1][contains(@class,'broadcasts')]"
+                    "//a[@href and @title]"
+                ),
                 "type": "list",
                 "fields": [
                     {
                         "name": "name",
-                        "selector": ".//span[contains(@class,'name')] | .",
-                        "type": "text",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "title",
                     },
                     {
                         "name": "source",
@@ -400,34 +413,26 @@ def _get_anime_schema() -> dict[str, Any]:
                 "selector": "//td[contains(@class,'pb16')]//p",
                 "type": "html",
             },
-        ],
-    }
-
-
-def _get_pics_schema() -> dict[str, Any]:
-    """XPath extraction schema for MAL anime pictures page."""
-    return {
-        "name": "MalAnimePics",
-        "baseSelector": "//body",
-        "fields": [
+            # Gallery pictures — picSurround <a href> contains full-size 'l' image URL.
+            # Returns [] on the anime detail page (no picSurround divs there);
+            # returns all gallery URLs when this schema is applied to the /pics page.
             {
-                "name": "images",
-                "selector": "//div[contains(@class,'picSurround')]//a//img",
+                "name": "picture_urls_raw",
+                "selector": "//div[contains(@class,'picSurround')]/a[@href]",
                 "type": "list",
                 "fields": [
-                    {"name": "src", "type": "attribute", "attribute": "data-src"},
-                    {"name": "src_fallback", "type": "attribute", "attribute": "src"},
+                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
                 ],
-            }
+            },
         ],
     }
 
 
 def _parse_picture_urls(pics_data: list[dict[str, Any]]) -> list[str]:
-    """Extract picture URLs from the crawled pics page data."""
+    """Extract large picture URLs from the crawled pics page data."""
     urls = []
     for item in pics_data:
-        url = item.get("src") or item.get("src_fallback") or ""
+        url = item.get("url") or ""
         if url and "myanimelist" in url and "images/anime" in url:
             urls.append(url)
     return urls
@@ -677,16 +682,17 @@ def _build_anime_from_raw(
     # Relations
     # related_entries = _parse_all_related_entries(raw)
 
-    # Images
+    # Images — cover (large variant) first, then gallery; deduplicated via dict.fromkeys
     cover_url = raw.get("cover_image_src") or raw.get("cover_image_src_fallback") or ""
+    if cover_url and cover_url.endswith(".jpg") and not cover_url.endswith("l.jpg"):
+        cover_url = cover_url[:-4] + "l.jpg"
+    picture_urls = list(dict.fromkeys(([cover_url] if cover_url else []) + picture_urls))
     images: dict[str, str] = {}
-    if cover_url:
-        images["jpg"] = cover_url
 
     # External links
-    external_links = [
+    external_sources = [
         MalExternalLink(name=item["name"].strip(), source=item["source"])
-        for item in raw.get("external_links_raw", [])
+        for item in raw.get("external_sources_raw", [])
         if item.get("name") and item.get("source")
     ]
 
@@ -753,7 +759,7 @@ def _build_anime_from_raw(
         trailer_url=raw.get("trailer_url"),
         opening_themes=opening_themes,
         ending_themes=ending_themes,
-        external_links=external_links,
+        external_sources=external_sources,
         streaming=streaming,
     )
 
@@ -761,12 +767,15 @@ def _build_anime_from_raw(
 @cached_result(
     ttl=TTL_MAL,
     key_prefix="mal_anime_scraped",
-    dependencies=[_get_anime_schema, _get_pics_schema, _parse_picture_urls],
+    dependencies=[_get_anime_schema, _parse_picture_urls],
 )
 async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
     """Fetch and extract MAL anime detail page via crawl4ai Docker. Cached by anime_id.
 
-    Submits anime detail + pics pages as one batch job to the Docker server.
+    Submits anime detail + pics pages as one batch job to the Docker server using
+    the same schema. The `picture_urls_raw` field returns [] on the detail page
+    and returns gallery images on the /pics page.
+
     Cache key includes schema hash for automatic invalidation when extraction
     logic changes.
 
@@ -777,17 +786,14 @@ async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
         Raw extracted data dict, or None on failure.
     """
     url = f"{MAL_BASE_URL}/anime/{anime_id}"
-    pics_url = f"{MAL_BASE_URL}/anime/{anime_id}/pics"
 
+    # ── Step 1: fetch anime detail page ──────────────────────────────────────
     await _limiter.acquire()
-    results = await crawl_batch_urls(
-        [url, pics_url],
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(
-            _get_anime_schema(), delay=1.5, magic=True
-        ),
-    )
-    result, pics_result = results[0], results[1]
+    browser_config = get_mal_docker_browser_config()
+    crawler_config = get_mal_docker_crawler_config(_get_anime_schema(), delay=1.5, magic=True)
+
+    results = await crawl_batch_urls([url], browser_config=browser_config, crawler_config=crawler_config)
+    result = results[0] if results else None
 
     if not result:
         logger.warning(f"No result for anime page {anime_id}")
@@ -807,16 +813,6 @@ async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
         return None
     raw = raw_list[0]
 
-    # Fetch gallery URLs from the pics result
-    picture_urls: list[str] = []
-    if pics_result:
-        pics_list = json.loads(pics_result.get("extracted_content") or "[]")
-        if pics_list:
-            picture_urls = _parse_picture_urls(pics_list[0].get("images", []))
-
-    raw["_picture_urls"] = picture_urls
-    raw["_anime_id"] = anime_id
-
     # Derive canonical slug URL from an episode link on the page.
     # Episode hrefs contain the slug: /anime/{id}/{slug}/episode/{n}
     # Slug-less URLs (e.g. /anime/57334/episode/1) 404 on MAL.
@@ -824,7 +820,23 @@ async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
     slug_match = re.match(
         r"(https?://[^/]+/anime/\d+/[^/]+)/episode/", episode_url or ""
     )
-    raw["_url"] = slug_match.group(1) if slug_match else url
+    canonical_url = slug_match.group(1) if slug_match else url
+
+    # ── Step 2: fetch /pics page using correct slug URL ───────────────────────
+    # /anime/{id}/pics (no slug) returns the wrong page on MAL — slug is required.
+    picture_urls: list[str] = []
+    pics_url = f"{canonical_url}/pics"
+    await _limiter.acquire()
+    pics_results = await crawl_batch_urls([pics_url], browser_config=browser_config, crawler_config=crawler_config)
+    pics_result = pics_results[0] if pics_results else None
+    if pics_result:
+        pics_list = json.loads(pics_result.get("extracted_content") or "[]")
+        if pics_list:
+            picture_urls = _parse_picture_urls(pics_list[0].get("picture_urls_raw", []))
+
+    raw["_picture_urls"] = picture_urls
+    raw["_anime_id"] = anime_id
+    raw["_url"] = canonical_url
     return raw
 
 
