@@ -1,6 +1,7 @@
 """Pydantic models for anime, character, and episode data used across Echora services."""
 from datetime import datetime
 from enum import Enum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 # =============================================================================
@@ -482,7 +483,6 @@ class VoiceActor(BaseModel):
     # ── Array / dict fields (alphabetical) ────────────────────────────────
     character_assignments: list[str] = Field(default_factory=list, description="Characters voiced")
     sources: list[str] = Field(default_factory=list, description="Voice actor profile URLs")
-    staff_ids: dict[str, int] = Field(default_factory=dict, description="Staff IDs across platforms")
 
 
 class CompanyEntry(BaseModel):

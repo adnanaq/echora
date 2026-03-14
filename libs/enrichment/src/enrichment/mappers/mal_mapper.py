@@ -264,7 +264,8 @@ def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
     # ── Voice actors ──────────────────────────────────────────────────────
     if char.voice_actors:
         result["voice_actors"] = [
-            {"name": va.name, "language": va.language} for va in char.voice_actors
+            VoiceActor(name=va.name, language=va.language, sources=va.sources)
+            for va in char.voice_actors
         ]
 
 

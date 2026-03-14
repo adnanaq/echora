@@ -153,6 +153,7 @@ class MalVoiceActorRef(BaseModel):
     name: str
     language: str
     image_url: str | None = None
+    sources: list[str] = []
 
 
 class CharacterRef(BaseModel):
