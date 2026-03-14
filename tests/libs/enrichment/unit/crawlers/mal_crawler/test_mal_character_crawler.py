@@ -174,6 +174,7 @@ def test_extract_voice_actors_name_and_language() -> None:
     assert result[0].name == "Tanaka, Mayumi"
     assert result[0].language == "Japanese"
     assert result[0].person_id == 70
+    assert result[0].sources == ["https://myanimelist.net/people/70/Tanaka_Mayumi"]
 
 
 def test_extract_voice_actors_english_va() -> None:
@@ -255,7 +256,7 @@ def test_parse_character_raw_minimal() -> None:
         "title": None,
         "content_html": "",
         "image_src": None,
-        "image_src_fallback": None,
+
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.mal_id == 40
@@ -270,7 +271,7 @@ def test_parse_character_raw_url_from_raw() -> None:
         "_url": "https://myanimelist.net/character/40/Monkey_D_Luffy",
         "content_html": "",
         "image_src": None,
-        "image_src_fallback": None,
+
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.url == "https://myanimelist.net/character/40/Monkey_D_Luffy"
@@ -280,9 +281,10 @@ def test_parse_character_raw_favorites_extracted() -> None:
     raw = {
         "name_header": "Luffy",
         "title": None,
-        "content_html": "Member Favorites: 123,456",
+        "favorites": "123,456",
+        "content_html": "",
         "image_src": None,
-        "image_src_fallback": None,
+
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.favorites == 123456

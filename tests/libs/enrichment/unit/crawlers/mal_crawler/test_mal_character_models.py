@@ -35,6 +35,7 @@ def test_mal_voice_actor_ref_minimal() -> None:
     assert va.person_id == 70
     assert va.language == "Japanese"
     assert va.image_url is None
+    assert va.sources == []
 
 
 def test_mal_voice_actor_ref_with_image() -> None:
@@ -45,6 +46,16 @@ def test_mal_voice_actor_ref_with_image() -> None:
         image_url="https://cdn.myanimelist.net/images/voiceactors/2/40132.jpg",
     )
     assert va.image_url is not None
+
+
+def test_mal_voice_actor_ref_with_sources() -> None:
+    va = MalVoiceActorRef(
+        person_id=70,
+        name="Tanaka, Mayumi",
+        language="Japanese",
+        sources=["https://myanimelist.net/people/70/Mayumi_Tanaka"],
+    )
+    assert va.sources == ["https://myanimelist.net/people/70/Mayumi_Tanaka"]
 
 
 # =============================================================================

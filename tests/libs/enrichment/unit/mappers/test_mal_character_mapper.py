@@ -25,7 +25,12 @@ def _make_sample_character() -> MalScrapedCharacter:
             "Devil fruit": "Gomu Gomu no Mi",
         },
         voice_actors=[
-            MalVoiceActorRef(person_id=70, name="Tanaka, Mayumi", language="Japanese"),
+            MalVoiceActorRef(
+                person_id=70,
+                name="Tanaka, Mayumi",
+                language="Japanese",
+                sources=["https://myanimelist.net/people/70/Mayumi_Tanaka"],
+            ),
         ],
         animeography=[{"title": "One Piece", "role": "Main", "sources": ["https://myanimelist.net/anime/21"]}],
     )
@@ -39,8 +44,10 @@ def test_character_from_mal_name() -> None:
 def test_character_from_mal_voice_actors() -> None:
     result = character_from_mal(_make_sample_character())
     assert "voice_actors" in result
-    assert result["voice_actors"][0]["name"] == "Tanaka, Mayumi"
-    assert result["voice_actors"][0]["language"] == "Japanese"
+    va = result["voice_actors"][0]
+    assert va["name"] == "Tanaka, Mayumi"
+    assert va["language"] == "Japanese"
+    assert va["sources"] == ["https://myanimelist.net/people/70/Mayumi_Tanaka"]
 
 
 def test_character_from_mal_animeography() -> None:
