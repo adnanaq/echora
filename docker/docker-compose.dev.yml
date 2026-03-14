@@ -147,12 +147,34 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      crawl4ai:
+        condition: service_started
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
+
+  # Crawl4AI Docker Server
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: echora-crawl4ai
+    # Skip supervisord (and its bundled Redis) — use our echora-redis instead.
+    # The server reads redis.uri from config.yml mounted below.
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "11235", "--log-level", "info", "--timeout-keep-alive", "300"]
+    ports:
+      - "11235:11235"
+    environment:
+      MAX_CONCURRENT_TASKS: "3"  # 3 concurrent MAL tabs; increase for non-MAL crawlers
+    volumes:
+      - ./crawl4ai-config.yml:/app/config.yml:ro
+    networks:
+      - vector-network
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
 networks:
