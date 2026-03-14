@@ -1,9 +1,9 @@
-"""Crawlers - Web crawlers for anime data extraction."""
+"""MAL crawler package — direct scraping of myanimelist.net."""
 
 python_sources(
     dependencies=[
         "//libs/http_cache/src/http_cache",
         "//libs/common/src/common",
-        "//:reqs0#aiohttp",
+        "//libs/enrichment/src/enrichment/api_helpers",
     ],
 )
