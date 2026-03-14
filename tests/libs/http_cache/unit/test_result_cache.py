@@ -1261,3 +1261,257 @@ class TestMaxCacheKeyLength:
 
         config = CacheConfig(max_cache_key_length=500)
         assert config.max_cache_key_length == 500
+
+
+class TestComputeSchemaHashWithDependencies:
+    """Test _compute_schema_hash() with the dependencies parameter."""
+
+    def test_none_dependencies_same_as_no_dependencies(self) -> None:
+        """dependencies=None must be backward-compatible: produces the same hash."""
+
+        def main_func() -> str:
+            return "main"
+
+        assert _compute_schema_hash(main_func) == _compute_schema_hash(main_func, None)
+
+    def test_empty_list_dependencies_same_as_no_dependencies(self) -> None:
+        """An empty list of dependencies produces the same hash as no dependencies."""
+
+        def main_func() -> str:
+            return "main"
+
+        assert _compute_schema_hash(main_func) == _compute_schema_hash(main_func, [])
+
+    def test_dependency_changes_hash(self) -> None:
+        """Adding a dependency changes the hash vs no dependency."""
+
+        def dep() -> str:
+            return "dep_v1"
+
+        def main_func() -> str:
+            return dep()
+
+        hash_without = _compute_schema_hash(main_func)
+        hash_with = _compute_schema_hash(main_func, [dep])
+
+        assert hash_without != hash_with
+
+    def test_dependency_change_changes_hash(self) -> None:
+        """When a dependency's implementation changes, the hash changes."""
+
+        def main_func() -> str:
+            return "main"
+
+        def dep_v1() -> str:
+            return "schema_v1"
+
+        def dep_v2() -> str:
+            return "schema_v2"
+
+        hash_v1 = _compute_schema_hash(main_func, [dep_v1])
+        hash_v2 = _compute_schema_hash(main_func, [dep_v2])
+
+        assert hash_v1 != hash_v2
+
+    def test_multiple_dependencies_all_contribute(self) -> None:
+        """Each dependency in the list contributes independently to the hash."""
+
+        def main_func() -> str:
+            return "main"
+
+        def dep_a() -> str:
+            return "a"
+
+        def dep_b() -> str:
+            return "b"
+
+        hash_a_only = _compute_schema_hash(main_func, [dep_a])
+        hash_b_only = _compute_schema_hash(main_func, [dep_b])
+        hash_both = _compute_schema_hash(main_func, [dep_a, dep_b])
+
+        # Each combination produces a distinct hash
+        assert hash_a_only != hash_b_only
+        assert hash_a_only != hash_both
+        assert hash_b_only != hash_both
+
+    def test_hash_is_stable(self) -> None:
+        """Same function + same dependencies always produce the same hash."""
+
+        def dep() -> str:
+            return "stable_dep"
+
+        def main_func() -> str:
+            return dep()
+
+        assert _compute_schema_hash(main_func, [dep]) == _compute_schema_hash(
+            main_func, [dep]
+        )
+
+    def test_builtin_dependency_falls_back_to_name(self) -> None:
+        """A builtin dependency (no source) falls back to its __name__."""
+        # len has no inspectable source code
+        def main_func() -> int:
+            return len([])
+
+        # Should not raise; result must still be a valid 16-char hex hash
+        result = _compute_schema_hash(main_func, [len])
+        assert len(result) == 16
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_lambda_dependency_falls_back_to_name(self) -> None:
+        """A lambda dependency (no retrievable source) falls back to its __name__."""
+        transform = lambda x: x * 2  # noqa: E731
+
+        def main_func(x: int) -> int:
+            return transform(x)
+
+        result = _compute_schema_hash(main_func, [transform])
+        assert len(result) == 16
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_one_unretrievable_dep_does_not_break_others(self) -> None:
+        """If one dependency source cannot be retrieved, others still contribute."""
+
+        def good_dep() -> str:
+            return "good"
+
+        # Combine a good dep with a builtin (no source)
+        hash_good_only = _compute_schema_hash(good_dep, [good_dep])
+        hash_with_builtin = _compute_schema_hash(good_dep, [good_dep, len])
+
+        # The builtin adds its name, so the hash must differ from good_dep alone
+        assert hash_good_only != hash_with_builtin
+
+    def test_result_is_16_char_hex(self) -> None:
+        """Result with dependencies is still a 16-character hex string."""
+
+        def dep() -> None:
+            pass
+
+        def main_func() -> None:
+            pass
+
+        result = _compute_schema_hash(main_func, [dep])
+        assert len(result) == 16
+        assert all(c in "0123456789abcdef" for c in result)
+
+
+class TestCachedResultWithDependencies:
+    """Test that cached_result() forwards dependencies to _compute_schema_hash."""
+
+    @pytest.mark.asyncio
+    async def test_dependencies_affect_cache_key(self) -> None:
+        """Functions decorated with different dependencies get different cache keys."""
+
+        def helper_v1() -> str:
+            return "xpath_v1"
+
+        def helper_v2() -> str:
+            return "xpath_v2"
+
+        @cached_result(ttl=60, key_prefix="test_dep", dependencies=[helper_v1])
+        async def fetch_with_v1(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        @cached_result(ttl=60, key_prefix="test_dep", dependencies=[helper_v2])
+        async def fetch_with_v2(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.get.return_value = None
+
+            await fetch_with_v1("item1")
+            key_v1 = mock_redis.get.call_args_list[0][0][0]
+
+            await fetch_with_v2("item1")
+            key_v2 = mock_redis.get.call_args_list[1][0][0]
+
+            # Different dependency source → different schema hash → different cache key
+            assert key_v1 != key_v2
+
+    @pytest.mark.asyncio
+    async def test_no_dependencies_backward_compatible(self) -> None:
+        """Existing callers without dependencies= still work as before."""
+
+        @cached_result(ttl=60, key_prefix="test_no_dep")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.get.return_value = None
+
+            result = await fetch_data("item1")
+            assert result == {"id": "item1"}
+            mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dependency_change_invalidates_cache_key(self) -> None:
+        """Simulates a schema upgrade: after changing a dependency the key changes,
+        so stale cache entries are never returned."""
+
+        def schema_v1() -> list[str]:
+            return ["//div[@class='title']"]
+
+        def schema_v2() -> list[str]:
+            return ["//h1[@class='title']"]  # XPath updated
+
+        @cached_result(ttl=3600, key_prefix="page_data", dependencies=[schema_v1])
+        async def fetch_page_v1(url: str) -> dict[str, str]:
+            return {"url": url, "schema": "v1"}
+
+        @cached_result(ttl=3600, key_prefix="page_data", dependencies=[schema_v2])
+        async def fetch_page_v2(url: str) -> dict[str, str]:
+            return {"url": url, "schema": "v2"}
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.get.return_value = None
+
+            await fetch_page_v1("https://example.com")
+            key_before = mock_redis.get.call_args_list[0][0][0]
+
+            await fetch_page_v2("https://example.com")
+            key_after = mock_redis.get.call_args_list[1][0][0]
+
+            assert key_before != key_after, (
+                "Cache key must change when a dependency changes to prevent stale reads"
+            )
+
+    @pytest.mark.asyncio
+    async def test_same_function_and_dependencies_produce_stable_cache_key(self) -> None:
+        """The same decorated function + same args always produces the same cache key
+        across multiple calls (the schema hash is computed once at decoration time)."""
+
+        def shared_helper() -> str:
+            return "parse_title"
+
+        @cached_result(ttl=60, key_prefix="stable", dependencies=[shared_helper])
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.get.return_value = None
+
+            await fetch_data("item1")
+            key_call1 = mock_redis.get.call_args_list[0][0][0]
+
+            await fetch_data("item1")
+            key_call2 = mock_redis.get.call_args_list[1][0][0]
+
+            # Identical args + identical decorated function → identical cache key
+            assert key_call1 == key_call2
