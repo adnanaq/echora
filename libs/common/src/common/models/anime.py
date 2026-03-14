@@ -375,6 +375,14 @@ class StreamingEntry(BaseModel):
     )
 
 
+class AnimeImages(BaseModel):
+    """Anime image URLs organized by type, aggregated across all sources."""
+
+    covers: list[str] = Field(default_factory=list, description="Cover/key visual image URLs")
+    posters: list[str] = Field(default_factory=list, description="Poster image URLs")
+    banners: list[str] = Field(default_factory=list, description="Banner/wide image URLs")
+
+
 class ThemeEntry(BaseModel):
     """Thematic element with description"""
 
@@ -502,7 +510,6 @@ class StaffData(BaseModel):
     production_staff: ProductionStaff = Field(
         default_factory=ProductionStaff, description="Production staff by role"
     )
-    licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
 
 
 class ContextualRank(BaseModel):
@@ -588,6 +595,7 @@ class Anime(BaseModel):
     )
     ending_themes: list[ThemeSong] = Field(default_factory=list, description="Ending theme songs")
     genres: list[str] = Field(default_factory=list, description="Anime genres")
+    licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
     opening_themes: list[ThemeSong] = Field(default_factory=list, description="Opening theme songs")
     producers: list[CompanyEntry] = Field(default_factory=list, description="Producers")
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = Field(
@@ -616,13 +624,13 @@ class Anime(BaseModel):
     broadcast: Broadcast | None = Field(
         None, description="Recurring broadcast schedule and premiere dates"
     )
-    external_links: dict[str, str] = Field(
+    external_sources: dict[str, str] = Field(
         default_factory=dict, description="External links (official site, social media)"
     )
     hiatus: AnimeHiatus | None = Field(None, description="Current hiatus snapshot from AnimSchedule")
-    images: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description="Images organized by type (covers, posters, banners) with URLs only",
+    images: AnimeImages = Field(
+        default_factory=AnimeImages,
+        description="Images organized by type (covers, posters, banners)",
     )
     score: ScoreCalculations | None = Field(
         None, description="Aggregated score calculations from all platforms"
