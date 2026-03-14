@@ -348,12 +348,7 @@ def _get_anime_schema() -> dict[str, Any]:
                 "type": "attribute",
                 "attribute": "data-src",
             },
-            {
-                "name": "cover_image_src_fallback",
-                "selector": "//img[@itemprop='image']",
-                "type": "attribute",
-                "attribute": "src",
-            },
+
             # Theme songs
             {
                 "name": "opening_themes_raw",
@@ -683,7 +678,7 @@ def _build_anime_from_raw(
     # related_entries = _parse_all_related_entries(raw)
 
     # Images — cover (large variant) first, then gallery; deduplicated via dict.fromkeys
-    cover_url = raw.get("cover_image_src") or raw.get("cover_image_src_fallback") or ""
+    cover_url = raw.get("cover_image_src") or ""
     if cover_url and cover_url.endswith(".jpg") and not cover_url.endswith("l.jpg"):
         cover_url = cover_url[:-4] + "l.jpg"
     picture_urls = list(dict.fromkeys(([cover_url] if cover_url else []) + picture_urls))

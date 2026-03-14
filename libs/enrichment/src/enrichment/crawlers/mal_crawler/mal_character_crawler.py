@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls, crawl_single_url
+from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
     get_mal_docker_browser_config,
@@ -49,36 +49,48 @@ _limiter = get_mal_scraping_limiter()
 
 
 def _get_character_schema() -> dict[str, Any]:
-    """CSS schema for MAL character detail pages."""
+    """XPath extraction schema for MAL character detail pages.
+
+    Anchors on structural attributes (id, width) and text content rather than
+    CSS class names, which change frequently. The bulk of parsing (bio, ography,
+    voice actors) is done by Python helpers operating on the raw content_html block.
+    """
     return {
         "name": "MalCharacterDetail",
-        "baseSelector": "body",
+        "baseSelector": "//body",
         "fields": [
+            # Character name — h2 with normal_header class is stable on character pages
             {
                 "name": "name_header",
-                "selector": "h2.normal_header",
+                "selector": "//h2[contains(@class,'normal_header')]",
                 "type": "text",
             },
+            # Title tag as name fallback
             {
                 "name": "title",
-                "selector": "title",
+                "selector": "//title",
                 "type": "text",
             },
+            # Character image — portrait class in the fixed-width left sidebar td
+            # (no itemprop on character pages unlike anime pages)
             {
                 "name": "image_src",
-                "selector": "td.borderClass img",
+                "selector": "//td[@width='225' and contains(@class,'borderClass')]//img[contains(@class,'portrait')]",
                 "type": "attribute",
                 "attribute": "data-src",
             },
+
+            # Favorites count — plain text node in the left column td
             {
-                "name": "image_src_fallback",
-                "selector": "td.borderClass img",
-                "type": "attribute",
-                "attribute": "src",
+                "name": "favorites",
+                "selector": "//td[contains(normalize-space(),'Member Favorites:')]",
+                "type": "regex",
+                "pattern": r"Member Favorites:\s*([\d,]+)",
             },
+            # Full content block — parsed by Python helpers for bio, ography, VA sections
             {
                 "name": "content_html",
-                "selector": "div#content",
+                "selector": "//div[@id='content']",
                 "type": "html",
             },
         ],
@@ -204,13 +216,15 @@ def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
 
         person_id: int | None = None
         name = ""
+        source_url = ""
         for link_match in re.finditer(
-            r'<a[^>]*href="[^"]*myanimelist[^"]*/people/(\d+)/[^"]*"[^>]*>(.*?)</a>',
+            r'<a[^>]*href="([^"]*myanimelist[^"]*/people/(\d+)/[^"]*)"[^>]*>(.*?)</a>',
             row_html, re.DOTALL,
         ):
-            candidate = re.sub(r"<[^>]+>", "", link_match.group(2)).strip()
+            candidate = re.sub(r"<[^>]+>", "", link_match.group(3)).strip()
             if candidate:
-                person_id = int(link_match.group(1))
+                source_url = link_match.group(1)
+                person_id = int(link_match.group(2))
                 name = candidate
                 break
         if not person_id or not name:
@@ -222,7 +236,13 @@ def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
         img_match = re.search(r'<img[^>]*(?:data-src|src)="([^"]+)"', row_html)
         image_url = img_match.group(1) if img_match else None
 
-        results.append(MalVoiceActorRef(person_id=person_id, name=name, language=language, image_url=image_url))
+        results.append(MalVoiceActorRef(
+            person_id=person_id,
+            name=name,
+            language=language,
+            image_url=image_url,
+            sources=[source_url] if source_url else [],
+        ))
 
     return results
 
@@ -285,16 +305,12 @@ async def _fetch_mal_character_data(char_id: int) -> dict[str, Any] | None:
     url = f"{MAL_BASE_URL}/character/{char_id}"
 
     await _limiter.acquire()
-    result = await crawl_single_url(
-        url=url,
+    results = await crawl_batch_urls(
+        [url],
         browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(
-            _get_character_schema(),
-            strategy_type="JsonCssExtractionStrategy",
-            # magic=True,  # TEST: disabled to check if this causes ~23s slowdown
-            # simulate_user=False,  # TEST: disabled to check simulation overhead
-        ),
+        crawler_config=get_mal_docker_crawler_config(_get_character_schema(), magic=True),
     )
+    result = results[0] if results else None
     if not result:
         return None
 
@@ -321,13 +337,12 @@ def _parse_character_raw(raw: dict[str, Any], char_id: int) -> MalScrapedCharact
         raw.get("name_header"), raw.get("title")
     )
 
-    image_url = raw.get("image_src") or raw.get("image_src_fallback") or ""
+    image_url = raw.get("image_src") or ""
     images = [image_url] if image_url else []
 
     content_html = raw.get("content_html") or ""
 
-    fav_match = re.search(r"Member\s+Favorites:\s*([\d,]+)", content_html, re.IGNORECASE)
-    favorites = parse_number(fav_match.group(1)) if fav_match else 0
+    favorites = parse_number(raw.get("favorites") or "") or 0
 
     nicknames_raw = parse_sidebar_field(content_html, "Nicknames")
     nicknames = [n.strip() for n in nicknames_raw.split(",")] if nicknames_raw else []
@@ -404,12 +419,7 @@ async def fetch_mal_characters(
     results = await crawl_batch_urls(
         urls,
         browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(
-            _get_character_schema(),
-            strategy_type="JsonCssExtractionStrategy",
-            # magic=True,  # TEST: disabled to check if this causes ~23s slowdown
-            # simulate_user=False,  # TEST: disabled to check simulation overhead
-        ),
+        crawler_config=get_mal_docker_crawler_config(_get_character_schema(), magic=True),
     )
 
     characters: list[MalScrapedCharacter | None] = []
@@ -440,33 +450,15 @@ async def main() -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
     parser = argparse.ArgumentParser(description="Fetch MAL character data")
-    subparsers = parser.add_subparsers(dest="command")
-
-    ids_parser = subparsers.add_parser("ids", help="Fetch character refs from anime page")
-    ids_parser.add_argument("mal_id", type=int, help="MAL anime ID")
-    ids_parser.add_argument("anime_url", type=str, help="Canonical anime URL")
-
-    detail_parser = subparsers.add_parser("detail", help="Fetch character detail page")
-    detail_parser.add_argument("char_id", type=int, help="MAL character ID")
-    detail_parser.add_argument("--output", type=str, default="mal_character.json")
-
+    parser.add_argument("char_id", type=int, help="MAL character ID (e.g. 40 for Luffy)")
+    parser.add_argument("--output", type=str, default="mal_character.json", help="Output file path")
     args = parser.parse_args()
 
-    if args.command == "ids":
-        from enrichment.crawlers.mal_crawler.mal_character_refs_crawler import fetch_mal_character_refs
-        refs = await fetch_mal_character_refs(args.mal_id, args.anime_url)
-        logger.info("Found %s characters", len(refs))
-        for ref in refs[:5]:
-            logger.info("  %s (ID=%s, role=%s)", ref.name, ref.char_id, ref.role)
-    elif args.command == "detail":
-        char = await fetch_mal_character(args.char_id, output_path=args.output)
-        if char is None:
-            logger.error("No data for character %s", args.char_id)
-            return 1
-        logger.info("Done: %s", char.name)
-    else:
-        parser.print_help()
-
+    char = await fetch_mal_character(args.char_id, output_path=args.output)
+    if char is None:
+        logger.error("No data for character %s", args.char_id)
+        return 1
+    logger.info("Done: %s", char.name)
     return 0
 
 
