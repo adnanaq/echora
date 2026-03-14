@@ -96,7 +96,7 @@ class EnrichmentConfig(BaseSettings):
         Raises:
             ValueError: If `v` is less than 1 or greater than 300.
         """
-        if v < 1 or v > 300:
+        if v < 1 or v > 3600:
             raise ValueError("API timeout must be between 1 and 300 seconds")
         return v
 

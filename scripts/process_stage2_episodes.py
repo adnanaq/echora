@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Process all episodes from episodes_detailed.jsonl and convert to Stage 2 schema format.
+Process all episodes from mal_episodes.jsonl and convert to Stage 2 schema format.
 Following the prompt template exactly for all 1,144 episodes.
 Includes proper timezone conversion from JST (+09:00) to UTC (Z format).
 """
@@ -167,7 +167,7 @@ def load_anisearch_episode_data(temp_dir: str):
 
 def process_all_episodes(temp_dir: str):
     # Read the detailed episodes data
-    with open(f"{temp_dir}/episodes_detailed.jsonl", encoding="utf-8") as f:
+    with open(f"{temp_dir}/mal_episodes.jsonl", encoding="utf-8") as f:
         raw_records = [json.loads(line) for line in f if line.strip()]
 
     # Accept both canonical JSONL (one object per line) and a single JSON array line.
@@ -338,11 +338,11 @@ Examples:
         # Fallback: auto-detect
         temp_dir = auto_detect_temp_dir()
 
-    # Check if episodes_detailed.jsonl exists before processing
-    episodes_file = f"{temp_dir}/episodes_detailed.jsonl"
+    # Check if mal_episodes.jsonl exists before processing
+    episodes_file = f"{temp_dir}/mal_episodes.jsonl"
     if not os.path.exists(episodes_file):
         print(f"Error: Required file not found: {episodes_file}")
-        print("Please ensure the API fetcher has created episodes_detailed.jsonl")
+        print("Please ensure the API fetcher has created mal_episodes.jsonl")
         sys.exit(1)
 
     process_all_episodes(temp_dir)

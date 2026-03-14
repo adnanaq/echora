@@ -311,7 +311,7 @@ async def process_stage5_ai_characters(
 
     # Load data from all sources
     stage_files = {
-        "mal": agent_dir / "characters_detailed.jsonl",
+        "mal": agent_dir / "mal_characters.jsonl",
         "anilist": agent_dir / "anilist.json",
         "anidb": agent_dir / "anidb.json",
         "animeplanet": agent_dir / "anime_planet.json",

@@ -106,7 +106,7 @@ class ProcessedCharacter:
     gender: str | None
     hair_color: str | None
     eye_color: str | None
-    character_traits: list[str]
+    traits: list[str]
     favorites: int | None
     match_confidence: MatchConfidence
     source_count: int
@@ -1283,7 +1283,7 @@ class AICharacterMatcher:
             gender=None,
             hair_color=None,
             eye_color=None,
-            character_traits=[],
+            traits=[],
             favorites=mal_char.get("favorites"),  # MAL favorites count
             match_confidence=MatchConfidence.HIGH,  # Primary source
             source_count=1,
@@ -1414,7 +1414,7 @@ class AICharacterMatcher:
 
             # Extract character traits/tags from AnimePlanet
             if ap_char.get("tags"):
-                integrated.character_traits = ap_char.get("tags", [])
+                integrated.traits = ap_char.get("tags", [])
 
             # AnimePlanet URL (character slug)
             ap_url = ap_char.get("url", "")
@@ -1476,7 +1476,7 @@ async def process_characters_with_ai_matching(
     Returns:
         Dict[str, List[Dict[str, Any]]]: A dictionary with a "characters" list where each entry is a dict containing the integrated fields:
             - age, description, eye_color, favorites, gender, hair_color, name, name_native, role
-            - character_traits, images, name_variations, nicknames, voice_actors
+            - traits, images, name_variations, nicknames, voice_actors
             - character_pages
             - _match_scores (internal per-source match scoring; may be an empty dict)
     """
@@ -1498,19 +1498,15 @@ async def process_characters_with_ai_matching(
             # =====================================================================
             # SCALAR FIELDS (alphabetical)
             # =====================================================================
-            "age": char.age,
             "description": char.description,
-            "eye_color": char.eye_color,
             "favorites": char.favorites,
-            "gender": char.gender,
-            "hair_color": char.hair_color,
             "name": char.name,
             "name_native": char.name_native,
             "role": char.role,
             # =====================================================================
             # ARRAY FIELDS (alphabetical)
             # =====================================================================
-            "character_traits": char.character_traits,
+            "traits": char.traits,
             "images": char.images,
             "name_variations": char.name_variations,
             "nicknames": char.nicknames,
@@ -1518,6 +1514,12 @@ async def process_characters_with_ai_matching(
             # =====================================================================
             # OBJECT/DICT FIELDS (alphabetical)
             # =====================================================================
+            "attributes": {k: v for k, v in {
+                "age": char.age,
+                "eye_color": char.eye_color,
+                "gender": char.gender,
+                "hair_color": char.hair_color,
+            }.items() if v is not None} or None,
             "character_pages": char.character_pages,
             # Internal field for stage5 to use (not part of final output)
             "_match_scores": char.match_scores if char.match_scores else {},

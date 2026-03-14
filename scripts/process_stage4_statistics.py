@@ -32,7 +32,7 @@ def load_source_data(temp_dir: str) -> dict[str, dict[str, Any]]:
             return json.load(f)
 
     source_files = {
-        "mal": f"{temp_dir}/mal.jsonl",
+        "mal": f"{temp_dir}/mal_anime.jsonl",
         "animeschedule": f"{temp_dir}/animeschedule.json",
         "kitsu": f"{temp_dir}/kitsu.json",
         "anime_planet": f"{temp_dir}/anime_planet.json",

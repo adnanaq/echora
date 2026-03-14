@@ -7,8 +7,14 @@ Supports multiple input methods: index, title search, or custom file.
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from typing import Any, cast
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+)
 
 from enrichment.programmatic.enrichment_pipeline import (
     ProgrammaticEnrichmentPipeline,
@@ -98,8 +104,8 @@ Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animesc
 
     parser.add_argument(
         "--file",
-        default="data/qdrant_storage/anime-offline-database.json",
-        help="Path to anime database JSON file (default: data/qdrant_storage/anime-offline-database.json)",
+        default="assets/seed_data/anime-offline-database.json",
+        help="Path to anime database JSON file (default: ./assets/seed_data/anime-offline-database.json)",
     )
     parser.add_argument(
         "--index", type=int, help="Index of anime entry in database (0-based)"

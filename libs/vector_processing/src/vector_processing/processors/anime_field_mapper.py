@@ -102,8 +102,8 @@ class AnimeFieldMapper:
 
         # 4. Temporal & Status
         temp_parts = []
-        if anime.aired_dates and anime.aired_dates.from_date:
-            temp_parts.append(f"Aired: {anime.aired_dates.from_date}")
+        if anime.aired_dates and anime.aired_dates.aired_from:
+            temp_parts.append(f"Aired: {anime.aired_dates.aired_from}")
         if anime.month:
             temp_parts.append(f"Season: {anime.month}")
         sections.append(" | ".join(temp_parts))
@@ -133,14 +133,14 @@ class AnimeFieldMapper:
         """
         parts = [
             f"Name: {character.name}" if character.name else "",
-            f"Role: {character.role}" if character.role else "",
+            f"Roles: {', '.join(r.value for r in character.roles)}" if character.roles else "",
             f"Native Name: {character.name_native}" if character.name_native else "",
             f"Nicknames: {', '.join(character.nicknames)}"
             if character.nicknames
             else "",
             f"Background: {character.description}" if character.description else "",
-            f"Gender: {character.gender}" if character.gender else "",
-            f"Age: {character.age}" if character.age else "",
+            f"Gender: {character.attributes.gender}" if character.attributes.gender else "",
+            f"Age: {character.attributes.age}" if character.attributes.age else "",
         ]
         return " | ".join(filter(None, parts))
 

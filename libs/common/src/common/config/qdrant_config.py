@@ -115,10 +115,6 @@ class QdrantConfig(BaseModel):
             "tags": "keyword",
             "demographics": "text",
             "content_warnings": "text",
-            # Character physical attributes (AnimePlanet)
-            "characters.hair_color": "keyword",
-            "characters.eye_color": "keyword",
-            "characters.character_traits": "keyword",
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",

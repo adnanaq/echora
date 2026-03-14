@@ -23,8 +23,8 @@ from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
 from enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
-from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
+from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 from enrichment.exceptions import (
     AniListGraphQLError,
     AniListNetworkError,
@@ -226,7 +226,6 @@ class ParallelAPIFetcher:
                 f"🔍 [MAL DEBUG] Starting _fetch_mal_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
             )
             start = time.time()
-            include_details = bool(temp_dir)
             fallback_episode_count = int(offline_data.get("episodes", 0) or 0)
 
             async def _write_json(path: str, data: Any) -> None:
@@ -235,12 +234,19 @@ class ParallelAPIFetcher:
             async def _write_jsonl(path: str, data: Any) -> None:
                 await asyncio.to_thread(_write_jsonl_sync, path, data)
 
+            # Build streaming output paths
+            anime_path = os.path.join(temp_dir, "mal_anime.jsonl")
+            episodes_path = os.path.join(temp_dir, "mal_episodes.jsonl")
+            characters_path = os.path.join(temp_dir, "mal_characters.jsonl")
+
             async with MalEnrichmentHelper(
                 mal_id, session=self.mal_session
             ) as helper:
                 result = await helper.fetch_all_data(
-                    include_details=include_details,
                     fallback_episode_count=fallback_episode_count,
+                    anime_output_path=anime_path,
+                    episodes_output_path=episodes_path,
+                    characters_output_path=characters_path,
                 )
                 if not result:
                     logger.warning(
@@ -248,42 +254,7 @@ class ParallelAPIFetcher:
                     )
                     return None
 
-                anime_info = result["anime"]
-                episodes_data = result["episodes"]
-                characters_data = result["characters"]
-                logger.info("🔍 [MAL DEBUG] MAL helper fetch_all_data completed")
-
-                if temp_dir:
-                    mal_file = os.path.join(temp_dir, "mal.jsonl")
-                    await _write_jsonl(mal_file, anime_info)
-                    logger.info(
-                        f"🔍 [MAL DEBUG] ✓ Saved mal.jsonl with anime full data to {mal_file}"
-                    )
-
-                episode_count = anime_info.get("episodes")
-                if episode_count is None:
-                    episode_count = fallback_episode_count
-                episode_count = int(episode_count or 0)
-                logger.info(f"🔍 [MAL DEBUG] Episode count: {episode_count}")
-
-                # Persist detailed outputs with the same conditions as before.
-                if include_details:
-                    if episode_count > 0:
-                        await _write_jsonl(
-                            os.path.join(temp_dir, "episodes_detailed.jsonl"),
-                            episodes_data,
-                        )
-
-                    if characters_data:
-                        await _write_jsonl(
-                            os.path.join(temp_dir, "characters_detailed.jsonl"),
-                            characters_data,
-                        )
-
             self.api_timings["mal"] = time.time() - start
-            logger.info(
-                f"🔍 [MAL DEBUG] ✓ MAL fetch complete: {len(result['episodes'])} episodes, {len(result['characters'])} characters in {self.api_timings['mal']:.2f}s"
-            )
             return result
 
         except Exception as e:
@@ -566,7 +537,7 @@ class ParallelAPIFetcher:
                 try:
                     # MAL canonical artifacts are JSONL.
                     if api_name == "mal":
-                        file_path = os.path.join(temp_dir, "mal.jsonl")
+                        file_path = os.path.join(temp_dir, "mal_anime.jsonl")
                         mal_data = data.get("anime") if isinstance(data, dict) else data
                         await asyncio.to_thread(_write_jsonl_sync, file_path, mal_data)
                     else:

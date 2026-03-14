@@ -81,6 +81,11 @@ filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
+    # crawl4ai pulls chardet 7.x which requests 2.32.x doesn't officially support
+    # (requests supports chardet <6). The packages work fine together; this is noise.
+    # Cannot use the full class path (importing requests itself triggers the warning),
+    # so match by message text instead.
+    "ignore:.*doesn't match a supported version.*",
 ]
 
 [tool.coverage.run]

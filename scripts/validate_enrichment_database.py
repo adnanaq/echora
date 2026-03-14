@@ -310,7 +310,7 @@ class EnrichmentValidator:
             "name_variations",
             "nicknames",
             "images",
-            "character_traits",
+            "traits",
         }
         char_empty_objects = {"character_ids", "character_pages"}
         char_empty_scalars = {
@@ -754,7 +754,7 @@ class EnrichmentValidator:
                     "name_variations",
                     "nicknames",
                     "images",
-                    "character_traits",
+                    "traits",
                 }:
                     if (
                         field in char

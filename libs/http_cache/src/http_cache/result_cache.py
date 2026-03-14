@@ -99,23 +99,39 @@ async def close_result_cache_redis_client() -> None:
 T = TypeVar("T")
 
 
-def _compute_schema_hash(func: Callable[..., Any]) -> str:
+def _compute_schema_hash(
+    func: Callable[..., Any], dependencies: list[Callable[..., Any]] | None = None
+) -> str:
     """
-    Compute a hash of the function's source code.
+    Compute a hash of the function's source code, optionally including dependencies.
 
     This hash changes whenever the function's implementation changes,
     automatically invalidating cached results when code is modified.
 
+    When ``dependencies`` is provided, the source of each listed callable is
+    appended to the function's source before hashing.  This means any change to
+    a helper (XPath schema, parsing utility, extraction helper) automatically
+    invalidates entries cached under the decorated function.
+
     Args:
-        func: Function to hash
+        func: Function to hash.
+        dependencies: Optional list of callables whose source should also be
+            included in the hash.  If source cannot be retrieved for a callable
+            (built-in, C extension, lambda), its ``__name__`` is used as a
+            fallback so the hash remains stable but still reflects the identity
+            of that dependency.
 
     Returns:
         16-character hexadecimal hash of the function's source code (64 bits)
     """
     try:
-        # Get the source code of the function
         source = inspect.getsource(func)
-        # Generate SHA-256 hash and take first 16 characters for 64-bit collision resistance
+        if dependencies:
+            for dep in dependencies:
+                try:
+                    source += inspect.getsource(dep)
+                except (OSError, TypeError):
+                    source += dep.__name__  # ty: ignore[unresolved-attribute]
         return hashlib.sha256(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
@@ -185,6 +201,7 @@ def _generate_cache_key(
 def cached_result(
     ttl: int | None = None,
     key_prefix: str | None = None,
+    dependencies: list[Callable[..., Any]] | None = None,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """
     Decorator to cache async function results in Redis with automatic schema invalidation.
@@ -202,6 +219,9 @@ def cached_result(
     Args:
         ttl: Time-to-live in seconds (None = use fixed 24h default, independent of CacheConfig)
         key_prefix: Optional custom key prefix (default: function name)
+        dependencies: Optional list of callables whose source is included in the
+            schema hash.  When any listed callable changes, the hash changes and
+            stale cached entries are automatically invalidated.
 
     Returns:
         Decorated function with caching
@@ -224,7 +244,7 @@ def cached_result(
         Returns:
             Callable: An async wrapper that returns the cached or newly computed result.
         """
-        schema_hash = _compute_schema_hash(func)
+        schema_hash = _compute_schema_hash(func, dependencies)
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
