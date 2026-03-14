@@ -5,5 +5,7 @@ python_sources(
     dependencies=[
         "//libs/http_cache/src/http_cache",
         "//libs/common/src/common",
+        "//libs/enrichment/src/enrichment/crawlers/mal_crawler",
+        "//libs/enrichment/src/enrichment/mappers",
     ],
 )
