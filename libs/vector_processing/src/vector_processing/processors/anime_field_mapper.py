@@ -58,8 +58,8 @@ class AnimeFieldMapper:
         ]
         sections.append(" | ".join(filter(None, title_parts)))
 
-        # 2. Genres & Themes (with expansions for better semantic matching)
-        if anime.genres or anime.tags or anime.themes:
+        # 2. Genres, Demographics & Themes (with expansions for better semantic matching)
+        if anime.genres or anime.demographics or anime.tags or anime.themes:
             genre_parts = []
             if anime.genres:
                 genres = ", ".join(anime.genres)
@@ -69,6 +69,9 @@ class AnimeFieldMapper:
                 genres = genres.replace("Seinen", "Seinen (adult male)")
                 genres = genres.replace("Josei", "Josei (adult female)")
                 genre_parts.append(f"Genres: {genres}")
+
+            if anime.demographics:
+                genre_parts.append(f"Demographics: {', '.join(anime.demographics)}")
 
             if anime.tags:
                 genre_parts.append(f"Tags: {', '.join(anime.tags)}")
@@ -81,34 +84,46 @@ class AnimeFieldMapper:
 
             sections.append(" | ".join(genre_parts))
 
-        # 3. Staff & Production
-        if anime.staff_data:
-            staff_parts = []
-            # Studios
-            studios = [s.name for s in anime.staff_data.studios if s.name]
-            if studios:
-                staff_parts.append(f"Studios: {', '.join(studios)}")
+        # 3. Format & Temporal
+        meta_parts = []
+        if anime.type and anime.type.value != "UNKNOWN":
+            meta_parts.append(f"Type: {anime.type.value}")
+        if anime.status and anime.status.value != "UNKNOWN":
+            meta_parts.append(f"Status: {anime.status.value}")
+        if anime.year:
+            meta_parts.append(f"Year: {anime.year}")
+        if anime.season:
+            meta_parts.append(f"Season: {anime.season.value}")
+        if meta_parts:
+            sections.append(" | ".join(meta_parts))
 
-            # Key Staff (Directors/Composers)
-            if anime.staff_data.production_staff:
-                roles = anime.staff_data.production_staff.get_all_roles()
-                for role, members in roles.items():
-                    names = [m.name for m in members if hasattr(m, "name") and m.name]
-                    if names:
-                        role_name = role.replace("_", " ").title()
-                        staff_parts.append(f"{role_name}: {', '.join(names)}")
+        # 4. Production Companies
+        production_parts = []
+        if anime.studios:
+            names = [s.name for s in anime.studios if s.name]
+            if names:
+                production_parts.append(f"Studios: {', '.join(names)}")
+        if anime.producers:
+            names = [p.name for p in anime.producers if p.name]
+            if names:
+                production_parts.append(f"Producers: {', '.join(names)}")
+        if anime.licensors:
+            names = [l.name for l in anime.licensors if l.name]
+            if names:
+                production_parts.append(f"Licensors: {', '.join(names)}")
+        if production_parts:
+            sections.append(" | ".join(production_parts))
 
-            sections.append(" | ".join(staff_parts))
-
-        # 4. Temporal & Status
+        # 5. Temporal (detailed airing)
         temp_parts = []
         if anime.aired_dates and anime.aired_dates.aired_from:
             temp_parts.append(f"Aired: {anime.aired_dates.aired_from}")
         if anime.month:
-            temp_parts.append(f"Season: {anime.month}")
-        sections.append(" | ".join(temp_parts))
+            temp_parts.append(f"Month: {anime.month}")
+        if temp_parts:
+            sections.append(" | ".join(temp_parts))
 
-        # 5. Streaming & Franchise
+        # 6. Streaming
         if anime.streaming_info:
             stream_parts = []
             for s in anime.streaming_info:
@@ -188,9 +203,9 @@ class AnimeFieldMapper:
             A deduplicated list of valid image URLs.
         """
         urls = []
-        if anime.images:
-            for category in ["covers", "posters", "banners"]:
-                urls.extend(anime.images.get(category, []))
+        urls.extend(anime.images.covers)
+        urls.extend(anime.images.posters)
+        urls.extend(anime.images.banners)
 
         for trailer in anime.trailers:
             if hasattr(trailer, "thumbnail_url") and trailer.thumbnail_url:

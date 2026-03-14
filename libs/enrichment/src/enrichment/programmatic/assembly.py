@@ -94,7 +94,7 @@ class EnrichmentAssembler:
 
     OMIT_EMPTY_OBJECTS = {
         "images",
-        "external_links",
+        "external_sources",
         "staff_data",
         "aired_dates",
         "broadcast",
@@ -312,7 +312,7 @@ class EnrichmentAssembler:
             "hiatus",
             "duration",
             "episode_overrides",
-            "external_links",
+            "external_sources",
         ]
 
         for field in object_fields:
@@ -497,7 +497,7 @@ class EnrichmentAssembler:
             "broadcast",
             "hiatus",
             "duration",
-            "external_links",
+            "external_sources",
             "images",
             "popularity_trends",
             "score",

@@ -252,14 +252,14 @@ def organize_images_by_type(sources: dict[str, dict]) -> dict[str, list[str]]:
     return images
 
 
-def normalize_external_links(sources: dict[str, dict]) -> dict[str, str]:
+def normalize_external_sources(sources: dict[str, dict]) -> dict[str, str]:
     """
     Extract and normalize external links from all sources.
 
     Returns:
         Dict with normalized lowercase keys and URLs as values
     """
-    external_links = {}
+    external_sources = {}
 
     # MAL external links
     mal = sources.get("mal", {})
@@ -267,8 +267,8 @@ def normalize_external_links(sources: dict[str, dict]) -> dict[str, str]:
         for link in mal.get("data", {}).get(link_type, []):
             if link.get("name") and link.get("url"):
                 key = normalize_string_for_comparison(link["name"]).replace(" ", "")
-                if key not in external_links:
-                    external_links[key] = link["url"]
+                if key not in external_sources:
+                    external_sources[key] = link["url"]
 
     # AnimSchedule websites
     animeschedule = sources.get("animeschedule", {})
@@ -277,21 +277,21 @@ def normalize_external_links(sources: dict[str, dict]) -> dict[str, str]:
         for name, url in websites.items():
             if name and url and isinstance(url, str):
                 key = normalize_string_for_comparison(name).replace(" ", "")
-                if key not in external_links:
+                if key not in external_sources:
                     # Add https:// if not present
                     if not url.startswith("http"):
                         url = f"https://{url}"
-                    external_links[key] = url
+                    external_sources[key] = url
 
     # AniList external links
     anilist = sources.get("anilist", {})
     for link in anilist.get("externalLinks", []):
         if link.get("site") and link.get("url"):
             key = normalize_string_for_comparison(link["site"]).replace(" ", "")
-            if key not in external_links:
-                external_links[key] = link["url"]
+            if key not in external_sources:
+                external_sources[key] = link["url"]
 
-    return external_links
+    return external_sources
 
 
 def extract_synopsis_with_hierarchy(sources: dict[str, dict]) -> str | None:
@@ -938,7 +938,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     output["duration"] = cross_validate_with_offline(offline_data, sources, "duration")
 
     # External links with normalization and deduplication
-    output["external_links"] = normalize_external_links(sources)
+    output["external_sources"] = normalize_external_sources(sources)
 
     # Images organized by type
     output["images"] = organize_images_by_type(sources)
@@ -1119,7 +1119,7 @@ Examples:
         print(
             f"   - Images: {sum(len(urls) for urls in result.get('images', {}).values())} URLs"
         )
-        print(f"   - External links: {len(result.get('external_links', {}))} links")
+        print(f"   - External links: {len(result.get('external_sources', {}))} links")
         print(f"   - Synopsis: {'Yes' if result.get('synopsis') else 'No'}")
     else:
         print("Stage 1 metadata extraction failed")

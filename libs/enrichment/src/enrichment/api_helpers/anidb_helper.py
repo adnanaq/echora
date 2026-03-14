@@ -841,7 +841,7 @@ class AniDBEnrichmentHelper:
             "synonyms": synonyms,
             "tags": tags,
             # OBJECT/DICT FIELDS (alphabetical)
-            "external_links": external_links,
+            "external_sources": external_links,
             "statistics": statistics,
             "title_others": title_others,
         }

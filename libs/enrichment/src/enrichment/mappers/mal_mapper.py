@@ -16,6 +16,7 @@ from typing import Any
 
 from common.models.anime import (
     Anime,
+    AnimeImages,
     AnimeRating,
     AnimeRelationType,
     AnimeSeason,
@@ -88,6 +89,9 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     # ── Arrays ───────────────────────────────────────────────────────────
     demographics = anime.demographics
     genres = anime.genres
+    licensors = [
+        CompanyEntry(name=l.name, sources=[l.source]) for l in anime.licensors
+    ]
     producers = [
         CompanyEntry(name=p.name, sources=[p.source]) for p in anime.producers
     ]
@@ -119,14 +123,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
             timezone=anime.broadcast_timezone,
         )
 
-    # Images
-    images: dict[str, list[str]] = {}
-    if anime.images:
-        cover_url = anime.images.get("large_jpg") or anime.images.get("jpg")
-        if cover_url:
-            images["covers"] = [cover_url]
-    if anime.picture_urls:
-        images["gallery"] = anime.picture_urls
+    images = AnimeImages(covers=anime.picture_urls)
 
     # Relations
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}
@@ -194,7 +191,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     ]
 
     # Links
-    external_links = {link.name: link.source for link in anime.external_links}
+    external_sources = {link.name: link.source for link in anime.external_sources}
     streaming_info = [
         StreamingEntry(platform=link.name, url=link.source) for link in anime.streaming
     ]
@@ -217,6 +214,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
         demographics=demographics,
         ending_themes=ending_themes,
         genres=genres,
+        licensors=licensors,
         opening_themes=opening_themes,
         producers=producers,
         related_anime=related_anime,
@@ -229,7 +227,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
         trailers=trailers,
         aired_dates=aired_dates,
         broadcast=broadcast,
-        external_links=external_links,
+        external_sources=external_sources,
         images=images,
         statistics=statistics,
     )
