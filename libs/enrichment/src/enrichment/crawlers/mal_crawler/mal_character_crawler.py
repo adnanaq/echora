@@ -59,16 +59,13 @@ def _get_character_schema() -> dict[str, Any]:
         "name": "MalCharacterDetail",
         "baseSelector": "//body",
         "fields": [
-            # Character name — h2 with normal_header class is stable on character pages
+            # Character name — h2.normal_header contains "Name (NativeName)" on all
+            # MAL character pages. It is the only element that provides both the
+            # canonical name and the native (kanji) name in a single extraction.
+            # <title> and og:title live in <head>, unreachable from baseSelector //body.
             {
                 "name": "name_header",
                 "selector": "//h2[contains(@class,'normal_header')]",
-                "type": "text",
-            },
-            # Title tag as name fallback
-            {
-                "name": "title",
-                "selector": "//title",
                 "type": "text",
             },
             # Character image — portrait class in the fixed-width left sidebar td
@@ -98,15 +95,13 @@ def _get_character_schema() -> dict[str, Any]:
 
 
 def _extract_name_and_native(
-    name_header: str | None, title: str | None
+    name_header: str | None,
 ) -> tuple[str, str | None]:
     """Extract canonical name and native (kanji) name from MAL character page.
 
-    MAL format in h2: "Monkey D., Luffy (モンキー・D・ルフィ)"
-    Or in title: "Monkey D., Luffy | MyAnimeList.net"
+    MAL format in h2.normal_header: "Monkey D., Luffy (モンキー・D・ルフィ)"
     """
-    raw = name_header or title or ""
-    raw = re.sub(r"\s*\|\s*MyAnimeList\.net.*$", "", raw).strip()
+    raw = (name_header or "").strip()
 
     native_match = re.search(r"\(([^\)]+)\)\s*$", raw)
     native = native_match.group(1).strip() if native_match else None
@@ -333,9 +328,7 @@ def _parse_character_raw(raw: dict[str, Any], char_id: int) -> MalScrapedCharact
     saved_id = raw.pop("_char_id", char_id)
     saved_url = raw.pop("_url", f"{MAL_BASE_URL}/character/{char_id}")
 
-    name, name_native = _extract_name_and_native(
-        raw.get("name_header"), raw.get("title")
-    )
+    name, name_native = _extract_name_and_native(raw.get("name_header"))
 
     image_url = raw.get("image_src") or ""
     images = [image_url] if image_url else []

@@ -15,6 +15,7 @@ enum AnimeStatus {
   ANIME_STATUS_UPCOMING = 2;
   ANIME_STATUS_ONGOING = 3;
   ANIME_STATUS_UNKNOWN = 4;
+  ANIME_STATUS_CANCELLED = 5;
 }
 
 // Primary entity type for vector indexing/filtering.
@@ -72,6 +73,7 @@ enum AnimeRating {
   ANIME_RATING_R = 4;
   ANIME_RATING_RPLUS = 5;
   ANIME_RATING_RX = 6;
+  ANIME_RATING_UNKNOWN = 7;
 }
 
 enum AnimeSeason {
@@ -88,7 +90,6 @@ enum CharacterRole {
   CHARACTER_ROLE_MAIN = 1;
   CHARACTER_ROLE_SUPPORTING = 2;
   CHARACTER_ROLE_BACKGROUND = 3;
-  CHARACTER_ROLE_CAMEO = 4;
 }
 
 // Relation type between two anime entries (13 types).
@@ -115,7 +116,7 @@ enum AnimeRelationType {
 enum SourceMaterialRelationType {
   SOURCE_MATERIAL_RELATION_TYPE_UNSPECIFIED = 0;
   SOURCE_MATERIAL_RELATION_TYPE_ADAPTATION = 1;
-  SOURCE_MATERIAL_RELATION_TYPE_ORIGINAL_STORY = 2;
+  SOURCE_MATERIAL_RELATION_TYPE_SOURCE = 2;
   SOURCE_MATERIAL_RELATION_TYPE_SPIN_OFF = 3;
   SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE = 4;
   SOURCE_MATERIAL_RELATION_TYPE_OTHER = 5;
@@ -124,11 +125,6 @@ enum SourceMaterialRelationType {
 // =============================================================================
 // SIMPLE / SHARED MESSAGES
 // =============================================================================
-
-// Helper for map<string, repeated string>.
-message StringList {
-  repeated string values = 1;
-}
 
 message TrailerEntry {
   optional string url = 1;
@@ -164,10 +160,9 @@ message Broadcast {
 
 // Hiatus information — replaces the old DelayInformation message.
 message AnimeHiatus {
-  bool on_hiatus = 1;
+  optional string reason = 1;
   optional string hiatus_from = 2;
   optional string hiatus_until = 3;
-  optional string hiatus_reason = 4;
 }
 
 message EnrichmentMetadata {
@@ -178,23 +173,30 @@ message EnrichmentMetadata {
 }
 
 // Anime-to-source-material relation (replaces the old RelationEntry).
-message SourceMaterial {
+message RelatedSourceMaterial {
   string title = 1;
-  SourceMaterialRelationType relation_type = 2;
-  string url = 3;
+  SourceMaterialType type = 2;
+  repeated string sources = 3;
 }
 
 // Anime-to-anime relation entry.
-message RelatedAnimeEntry {
+message RelatedAnime {
   string title = 1;
-  AnimeRelationType relation_type = 2;
-  string url = 3;
-  optional AnimeType type = 4;
+  AnimeType type = 2;
+  repeated string sources = 3;
+}
+
+message RelatedAnimeList {
+  repeated RelatedAnime items = 1;
+}
+
+message RelatedSourceMaterialList {
+  repeated RelatedSourceMaterial items = 1;
 }
 
 message StreamingEntry {
   string platform = 1;
-  string url = 2;
+  string source = 2;
   optional string region = 3;
   optional bool free = 4;
   optional bool premium_required = 5;
@@ -207,22 +209,36 @@ message ThemeEntry {
   optional string description = 2;
 }
 
+message EpisodeRange {
+  int32 start = 1;
+  optional int32 end = 2;
+}
+
 message ThemeSong {
   string title = 1;
   optional string artist = 2;
-  optional string episodes = 3;
+  repeated EpisodeRange episodes = 3;
 }
 
-message SimpleVoiceActor {
-  string name = 1;
-  string language = 2;
+message Ography {
+  string title = 1;
+  CharacterRole role = 2;
+  repeated string sources = 3;
 }
 
-message VoiceActorEntry {
-  string name = 1;
-  optional string native_name = 2;
-  string language = 3;
-  optional string image = 4;
+message CharacterAttributes {
+  optional string affiliation = 1;
+  optional string age = 2;
+  optional string birthday = 3;
+  optional string blood_type = 4;
+  optional string bounty = 5;
+  optional string devil_fruit = 6;
+  optional string eye_color = 7;
+  optional string gender = 8;
+  optional string hair_color = 9;
+  optional string height = 10;
+  optional string position = 11;
+  optional string weight = 12;
 }
 
 message StaffMember {
@@ -243,14 +259,16 @@ message StaffMember {
 }
 
 message VoiceActor {
-  map<string, int64> staff_ids = 1;
-  string name = 2;
-  optional string native_name = 3;
-  repeated string character_assignments = 4;
+  string name = 1;
+  optional string native_name = 2;
+  optional string id = 3;
+  optional string language = 4;
   optional string image = 5;
   optional string biography = 6;
   optional string birth_date = 7;
   optional string blood_type = 8;
+  repeated string character_assignments = 9;
+  repeated string sources = 10;
 }
 
 // Production company (studio, producer, licensor).
@@ -262,6 +280,13 @@ message CompanyEntry {
   repeated string sources = 3;
 }
 
+// Anime cover/poster/banner images organized by type.
+message AnimeImages {
+  repeated string covers = 1;
+  repeated string posters = 2;
+  repeated string banners = 3;
+}
+
 message StaffMemberList {
   repeated StaffMember items = 1;
 }
@@ -271,15 +296,8 @@ message ProductionStaff {
   map<string, StaffMemberList> roles = 1;
 }
 
-message VoiceActors {
-  repeated VoiceActor japanese = 1;
-}
-
-// Studios and producers are now directly on Anime, not in StaffData.
 message StaffData {
   ProductionStaff production_staff = 1;
-  repeated CompanyEntry licensors = 2;
-  VoiceActors voice_actors = 3;
 }
 
 message ContextualRank {
@@ -295,7 +313,7 @@ message Statistics {
   optional float score = 1;
   optional int64 scored_by = 2;
   optional int64 rank = 3;
-  optional int64 popularity_rank = 4;
+  optional int64 popularity = 4;
   optional int64 members = 5;
   optional int64 favorites = 6;
   repeated ContextualRank contextual_ranks = 7;
@@ -308,18 +326,18 @@ message ScoreCalculations {
 }
 
 // Community-contributed character appearance in a specific episode.
-message EpisodeCharacterAppearance {
-  map<string, int64> character_ids = 1;
-  string name = 2;
-  string role = 3;
-  repeated SimpleVoiceActor voice_actors = 4;
+message EpisodeCharacter {
+  string name = 1;
+  CharacterRole role = 2;
+  repeated string sources = 3;
+  repeated VoiceActor voice_actors = 4;
 }
 
 // Community-contributed staff credit for a specific episode.
-message EpisodeStaffCredit {
-  map<string, int64> staff_ids = 1;
-  string name = 2;
-  string role = 3;
+message EpisodeStaff {
+  string name = 1;
+  string role = 2;
+  repeated string sources = 3;
 }
 
 // =============================================================================
@@ -327,29 +345,23 @@ message EpisodeStaffCredit {
 // =============================================================================
 
 message Character {
-  optional string age = 1;
-  optional string description = 2;
-  optional string eye_color = 3;
-  optional int64 favorites = 4;
-  optional string gender = 5;
-  optional string hair_color = 6;
-  optional string id = 7;
-  EntityType entity_type = 8;
-  string name = 9;
-  optional string name_native = 10;
-  CharacterRole role = 11;
-  repeated string anime_ids = 12;
-  repeated string character_traits = 13;
-  repeated string images = 14;
-  repeated string name_variations = 15;
-  repeated string nicknames = 16;
-  repeated SimpleVoiceActor voice_actors = 17;
-  // sources replaces character_pages (list instead of map)
-  repeated string sources = 18;
-  // Free-form biographical key-value pairs (Age, Height, Blood type, etc.)
-  google.protobuf.Struct character_info = 19;
-  repeated google.protobuf.Struct animeography = 20;
-  repeated google.protobuf.Struct mangaography = 21;
+  optional string description = 1;
+  optional int64 favorites = 2;
+  optional string id = 3;
+  EntityType entity_type = 4;
+  string name = 5;
+  optional string name_native = 6;
+  repeated CharacterRole roles = 7;
+  repeated string anime_ids = 8;
+  repeated Ography animeography = 9;
+  repeated string traits = 10;
+  repeated string images = 11;
+  repeated Ography mangaography = 12;
+  repeated string name_variations = 13;
+  repeated string nicknames = 14;
+  repeated string sources = 15;
+  repeated VoiceActor voice_actors = 16;
+  CharacterAttributes attributes = 17;
 }
 
 message Episode {
@@ -373,8 +385,8 @@ message Episode {
   map<string, string> streaming = 17;
   // sources replaces episode_pages (list instead of map)
   repeated string sources = 18;
-  repeated EpisodeCharacterAppearance characters = 19;
-  repeated EpisodeStaffCredit staff = 20;
+  repeated EpisodeCharacter characters = 19;
+  repeated EpisodeStaff staff = 20;
 }
 
 message Anime {
@@ -401,30 +413,27 @@ message Anime {
   repeated ThemeSong ending_themes = 21;
   repeated string genres = 22;
   repeated ThemeSong opening_themes = 23;
-  repeated RelatedAnimeEntry related_anime = 24;
-  // related_source_material replaces relations (RelationEntry → SourceMaterial)
-  repeated SourceMaterial related_source_material = 25;
+  map<string, RelatedAnimeList> related_anime = 24;
+  map<string, RelatedSourceMaterialList> related_source_material = 25;
   repeated string sources = 26;
-  repeated StreamingEntry streaming_info = 27;
-  repeated string streaming_licenses = 28;
-  repeated string synonyms = 29;
-  repeated string tags = 30;
-  repeated ThemeEntry themes = 31;
-  repeated TrailerEntry trailers = 32;
-  AiredDates aired_dates = 33;
+  repeated StreamingEntry streaming_sources = 27;
+  repeated string synonyms = 28;
+  repeated string tags = 29;
+  repeated ThemeEntry themes = 30;
+  repeated TrailerEntry trailers = 31;
+  AiredDates aired_dates = 32;
   // Unified broadcast message (weekly slot + streaming times + premiere dates)
-  Broadcast broadcast = 34;
-  EnrichmentMetadata enrichment_metadata = 35;
-  map<string, string> external_links = 36;
-  map<string, StringList> images = 37;
-  google.protobuf.Struct popularity_trends = 38;
-  ScoreCalculations score = 39;
-  StaffData staff_data = 40;
-  map<string, Statistics> statistics = 41;
-  // Studios and producers moved out of StaffData onto Anime directly
-  repeated CompanyEntry studios = 42;
-  repeated CompanyEntry producers = 43;
-  // Hiatus info (replaces delay_information)
+  Broadcast broadcast = 33;
+  EnrichmentMetadata enrichment_metadata = 34;
+  map<string, string> external_sources = 35;
+  AnimeImages images = 36;
+  google.protobuf.Struct popularity_trends = 37;
+  ScoreCalculations score = 38;
+  StaffData staff_data = 39;
+  map<string, Statistics> statistics = 40;
+  repeated CompanyEntry licensors = 41;
+  repeated CompanyEntry producers = 42;
+  repeated CompanyEntry studios = 43;
   optional AnimeHiatus hiatus = 44;
 }
 

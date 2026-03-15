@@ -31,7 +31,7 @@ from common.models.anime import (
     EpisodeStaff,
     Ography,
     RelatedAnime,
-    SourceMaterial,
+    RelatedSourceMaterial,
     SourceMaterialRelationType,
     SourceMaterialType,
     Statistics,
@@ -127,7 +127,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
 
     # Relations
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}
-    related_original_works: dict[SourceMaterialRelationType, list[SourceMaterial]] = {}
+    related_source_material: dict[SourceMaterialRelationType, list[RelatedSourceMaterial]] = {}
 
     for entry in anime.related_entries:
         rel_raw = entry.relation.lower()
@@ -146,10 +146,10 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
             rel_type = SourceMaterialRelationType(
                 SOURCE_RELATION.get(rel_raw, "OTHER")
             )
-            if rel_type not in related_original_works:
-                related_original_works[rel_type] = []
-            related_original_works[rel_type].append(
-                SourceMaterial(
+            if rel_type not in related_source_material:
+                related_source_material[rel_type] = []
+            related_source_material[rel_type].append(
+                RelatedSourceMaterial(
                     title=entry.title,
                     type=SourceMaterialType(
                         SOURCE_MATERIAL.get(
@@ -192,8 +192,8 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
 
     # Links
     external_sources = {link.name: link.source for link in anime.external_sources}
-    streaming_info = [
-        StreamingEntry(platform=link.name, url=link.source) for link in anime.streaming
+    streaming_sources = [
+        StreamingEntry(platform=link.name, source=link.source) for link in anime.streaming
     ]
 
     # Build final canonical object
@@ -218,9 +218,9 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
         opening_themes=opening_themes,
         producers=producers,
         related_anime=related_anime,
-        related_original_works=related_original_works,
+        related_source_material=related_source_material,
         sources=sources,
-        streaming_info=streaming_info,
+        streaming_sources=streaming_sources,
         studios=studios,
         synonyms=synonyms,
         themes=themes,

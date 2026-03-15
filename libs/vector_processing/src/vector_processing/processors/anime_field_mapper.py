@@ -124,9 +124,9 @@ class AnimeFieldMapper:
             sections.append(" | ".join(temp_parts))
 
         # 6. Streaming
-        if anime.streaming_info:
+        if anime.streaming_sources:
             stream_parts = []
-            for s in anime.streaming_info:
+            for s in anime.streaming_sources:
                 if s.platform:
                     stream_parts.append(f"Platform: {s.platform}")
             if stream_parts:

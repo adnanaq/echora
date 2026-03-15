@@ -20,32 +20,15 @@ from enrichment.crawlers.mal_crawler.mal_character_crawler import (
 
 
 def test_extract_name_and_native_with_kanji() -> None:
-    name, native = _extract_name_and_native(
-        "Monkey D., Luffy (モンキー・D・ルフィ)", None
-    )
+    name, native = _extract_name_and_native("Monkey D., Luffy (モンキー・D・ルフィ)")
     assert name == "Monkey D., Luffy"
     assert native == "モンキー・D・ルフィ"
 
 
 def test_extract_name_and_native_no_kanji() -> None:
-    name, native = _extract_name_and_native("Roronoa, Zoro", None)
+    name, native = _extract_name_and_native("Roronoa, Zoro")
     assert name == "Roronoa, Zoro"
     assert native is None
-
-
-def test_extract_name_and_native_from_title_fallback() -> None:
-    name, native = _extract_name_and_native(
-        None, "Monkey D., Luffy | MyAnimeList.net"
-    )
-    assert name == "Monkey D., Luffy"
-    assert native is None
-
-
-def test_extract_name_and_native_strips_mal_suffix() -> None:
-    name, native = _extract_name_and_native(
-        None, "Nami | MyAnimeList.net - Something"
-    )
-    assert "MyAnimeList" not in name
 
 
 # =============================================================================
@@ -253,10 +236,8 @@ def test_parse_character_raw_minimal() -> None:
     """Minimal raw dict produces a valid MalScrapedCharacter."""
     raw = {
         "name_header": "Monkey D., Luffy (モンキー・D・ルフィ)",
-        "title": None,
         "content_html": "",
         "image_src": None,
-
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.mal_id == 40
@@ -267,11 +248,9 @@ def test_parse_character_raw_minimal() -> None:
 def test_parse_character_raw_url_from_raw() -> None:
     raw = {
         "name_header": "Luffy",
-        "title": None,
         "_url": "https://myanimelist.net/character/40/Monkey_D_Luffy",
         "content_html": "",
         "image_src": None,
-
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.url == "https://myanimelist.net/character/40/Monkey_D_Luffy"
@@ -280,11 +259,9 @@ def test_parse_character_raw_url_from_raw() -> None:
 def test_parse_character_raw_favorites_extracted() -> None:
     raw = {
         "name_header": "Luffy",
-        "title": None,
         "favorites": "123,456",
         "content_html": "",
         "image_src": None,
-
     }
     char = _parse_character_raw(raw, char_id=40)
     assert char.favorites == 123456

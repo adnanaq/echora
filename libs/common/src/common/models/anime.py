@@ -214,7 +214,7 @@ class CharacterRole(str, Enum):
 
 
 class SourceMaterialType(str, Enum):
-    """Source material type — used on both Anime and SourceMaterial models."""
+    """Source material type — used on both Anime and RelatedSourceMaterial models."""
 
     BOOK = "BOOK"
     CARD_GAME = "CARD GAME"
@@ -325,9 +325,9 @@ class Broadcast(BaseModel):
     dub_delay_days: int | None = Field(None, description="Days after JP that dub drops")
 
     # Per-version premiere dates (from AnimSchedule)
-    premiere_jp: str | None = Field(None, description="Original JP premiere date")
-    premiere_sub: str | None = Field(None, description="Subtitle premiere date")
-    premiere_dub: str | None = Field(None, description="Dub premiere date")
+    premiere_jp: datetime | None = Field(None, description="Original JP premiere date")
+    premiere_sub: datetime | None = Field(None, description="Subtitle premiere date")
+    premiere_dub: datetime | None = Field(None, description="Dub premiere date")
 
 
 class AnimeHiatus(BaseModel):
@@ -338,7 +338,7 @@ class AnimeHiatus(BaseModel):
     hiatus_until: str | None = Field(None, description="Hiatus end date (None = still on hiatus)")
 
 
-class SourceMaterial(BaseModel):
+class RelatedSourceMaterial(BaseModel):
     """Source work (manga, light novel, visual novel, game, etc.) with multi-source data."""
 
     title: str = Field(..., description="Original work title")
@@ -366,7 +366,7 @@ class StreamingEntry(BaseModel):
     """Streaming platform entry"""
 
     platform: str = Field(..., description="Streaming platform name")
-    url: str = Field(..., description="Streaming URL")
+    source: str = Field(..., description="Streaming URL")
     region: str | None = Field(None, description="Available regions")
     free: bool | None = Field(None, description="Free to watch")
     premium_required: bool | None = Field(None, description="Premium subscription required")
@@ -474,7 +474,7 @@ class VoiceActor(BaseModel):
     biography: str | None = Field(None, description="Voice actor biography")
     birth_date: str | None = Field(None, description="Birth date")
     blood_type: str | None = Field(None, description="Blood type")
-    id: str | None = Field(None, description="Unique identifier, assigned at consolidation")
+    id: str | None = Field(None, description="Unique UUID for the voice actor")
     image: str | None = Field(None, description="Voice actor image URL")
     language: str | None = Field(None, description="Voice acting language (Japanese, English, etc.)")
     name: str = Field(..., description="Voice actor name")
@@ -602,15 +602,14 @@ class Anime(BaseModel):
         default_factory=dict,
         description="Related anime grouped by relationship type (SEQUEL, PREQUEL, etc.)",
     )
-    related_original_works: dict[SourceMaterialRelationType, list[SourceMaterial]] = Field(
+    related_source_material: dict[SourceMaterialRelationType, list[RelatedSourceMaterial]] = Field(
         default_factory=dict,
         description="Original source work relations (manga, light novel, visual novel, game, etc.)",
     )
     sources: list[str] = Field(..., description="Source URLs from various providers")
-    streaming_info: list[StreamingEntry] = Field(
+    streaming_sources: list[StreamingEntry] = Field(
         default_factory=list, description="Streaming platform information"
     )
-    streaming_licenses: list[str] = Field(default_factory=list, description="Streaming licenses")
     studios: list[CompanyEntry] = Field(default_factory=list, description="Animation studios")
     synonyms: list[str] = Field(default_factory=list, description="Alternative titles")
     tags: list[str] = Field(default_factory=list, description="Original tags from offline database")
