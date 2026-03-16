@@ -18,6 +18,20 @@ from pydantic import BaseModel, ConfigDict
 # =============================================================================
 
 
+class MalTrailer(BaseModel):
+    """Trailer extracted from the video-promotion block on the MAL anime page.
+
+    Fields mirror TrailerEntry in the canonical model so the mapper is a
+    straight pass-through with no transformation logic.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    title: str | None = None
+    thumbnail: str | None = None
+
+
 class MalCompanyRef(BaseModel):
     """Studio, producer, or licensor reference from MAL sidebar."""
 
@@ -122,7 +136,7 @@ class MalScrapedAnime(BaseModel):
     # Media
     images: dict[str, str] = {}  # {"jpg": url, "webp": url, "large_jpg": url}
     picture_urls: list[str] = []  # Gallery images from /anime/{id}/pics
-    trailer_url: str | None = None
+    trailer: MalTrailer | None = None
     opening_themes: list[MalThemeSong] = []
     ending_themes: list[MalThemeSong] = []
 

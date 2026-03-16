@@ -12,6 +12,7 @@ models wherever possible, these functions only:
 Field names are NOT renamed here — that's already handled at the model level.
 """
 
+import re
 from typing import Any
 
 from common.models.anime import (
@@ -101,7 +102,11 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     ]
     synonyms = anime.synonyms
     themes = [ThemeEntry(name=t) for t in anime.themes]
-    trailers = [TrailerEntry(url=anime.trailer_url)] if anime.trailer_url else []
+    trailers = (
+        [TrailerEntry(source=anime.trailer.source, title=anime.trailer.title, thumbnail=anime.trailer.thumbnail)]
+        if anime.trailer
+        else []
+    )
 
     # ── Objects / Dicts ──────────────────────────────────────────────────
     aired_dates = None

@@ -46,6 +46,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalRelatedEntry,
     MalScrapedAnime,
     MalThemeSong,
+    MalTrailer,
 )
 
 
@@ -397,10 +398,15 @@ def _get_anime_schema() -> dict[str, Any]:
             },
             # Trailer
             {
-                "name": "trailer_url",
+                "name": "trailer_embed_url",
                 "selector": "//div[contains(@class,'video-promotion')]//a",
                 "type": "attribute",
                 "attribute": "href",
+            },
+            {
+                "name": "trailer_title",
+                "selector": "//div[contains(@class,'video-promotion')]//span[contains(@class,'title')]",
+                "type": "text",
             },
             # Background (text node after h2 "Background")
             {
@@ -421,6 +427,24 @@ def _get_anime_schema() -> dict[str, Any]:
             },
         ],
     }
+
+
+def _parse_trailer(raw: dict[str, Any]) -> MalTrailer | None:
+    """Build a MalTrailer from the raw video-promotion fields.
+
+    Converts the YouTube nocookie embed URL to a watchable URL and derives
+    the thumbnail from the video ID.
+    """
+    embed_url = raw.get("trailer_embed_url") or ""
+    m = re.search(r"embed/([^?&]+)", embed_url)
+    if not m:
+        return None
+    vid = m.group(1)
+    return MalTrailer(
+        source=f"https://www.youtube.com/watch?v={vid}",
+        title=raw.get("trailer_title"),
+        thumbnail=f"https://img.youtube.com/vi/{vid}/maxresdefault.jpg",
+    )
 
 
 def _parse_picture_urls(pics_data: list[dict[str, Any]]) -> list[str]:
@@ -750,7 +774,7 @@ def _build_anime_from_raw(
         related_entries=related_entries,
         images=images,
         picture_urls=picture_urls,
-        trailer_url=raw.get("trailer_url"),
+        trailer=_parse_trailer(raw),
         opening_themes=opening_themes,
         ending_themes=ending_themes,
         external_sources=external_sources,
