@@ -576,9 +576,9 @@ def _get_entity_id(model: BaseModel) -> str | int:
         v = getattr(model, attr, None)
         if v is not None:
             return int(v)
-    url = getattr(model, "url", None)
-    if url:
-        return str(url)
+    source = getattr(model, "source", None)
+    if source:
+        return str(source)
     return 0
 
 
