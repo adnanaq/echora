@@ -5,6 +5,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalRelatedEntry,
     MalScrapedAnime,
     MalThemeSong,
+    MalTrailer,
 )
 from enrichment.mappers.mal_mapper import anime_from_mal
 
@@ -128,3 +129,39 @@ def test_anime_from_mal_sources() -> None:
     sample = _make_sample_anime()
     result = anime_from_mal(sample)
     assert result["sources"] == [sample.source]
+
+
+def test_anime_from_mal_trailer_watch_url_passed_through() -> None:
+    """Watch URL from MalTrailer is passed through to TrailerEntry.source."""
+    sample = _make_sample_anime()
+    sample.trailer = MalTrailer(source="https://www.youtube.com/watch?v=gAX3Zj-JGE0")
+    result = anime_from_mal(sample)
+    assert len(result["trailers"]) == 1
+    assert result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=gAX3Zj-JGE0"
+
+
+def test_anime_from_mal_trailer_thumbnail_passed_through() -> None:
+    """Thumbnail from MalTrailer is passed through to TrailerEntry.thumbnail."""
+    sample = _make_sample_anime()
+    sample.trailer = MalTrailer(
+        source="https://www.youtube.com/watch?v=gAX3Zj-JGE0",
+        thumbnail="https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg",
+    )
+    result = anime_from_mal(sample)
+    assert result["trailers"][0]["thumbnail"] == "https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg"
+
+
+def test_anime_from_mal_trailer_title_passed_through() -> None:
+    """Title from MalTrailer is passed through to TrailerEntry.title."""
+    sample = _make_sample_anime()
+    sample.trailer = MalTrailer(source="https://www.youtube.com/watch?v=gAX3Zj-JGE0", title="PV 1")
+    result = anime_from_mal(sample)
+    assert result["trailers"][0]["title"] == "PV 1"
+
+
+def test_anime_from_mal_trailer_none_when_absent() -> None:
+    """No trailer entry when MalScrapedAnime.trailer is None."""
+    sample = _make_sample_anime()
+    sample.trailer = None
+    result = anime_from_mal(sample)
+    assert result["trailers"] == []
