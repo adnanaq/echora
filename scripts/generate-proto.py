@@ -192,14 +192,18 @@ def main() -> int:
         for entry in TARGETS:
             if entry["name"] not in per_target_protos:
                 continue
+            name = entry["name"]
             out_root = Path(entry["out_root"])
-            protos = per_target_protos[entry["name"]]
+            protos = per_target_protos[name]
             proto_include = Path(entry["proto_include"])
             proto_extra_includes = [
                 Path(include) for include in entry.get("proto_extra_includes", [])
             ]
             proto_rel = [p.relative_to(proto_include) for p in protos]
             v1_dir = out_root / "v1"
+
+            print(f"Generating {name} ({len(protos)} proto(s))...")
+
             if v1_dir.exists():
                 shutil.rmtree(v1_dir)
             if entry.get("relocate_shared_proto_v1_to_v1", False):
@@ -226,12 +230,16 @@ def main() -> int:
                 *(str(p) for p in proto_rel),
             ]
             _run(cmd)
+            print(f"  ✓ Compiled")
             if entry.get("relocate_shared_proto_v1_to_v1", False):
                 generated_shared_v1 = out_root / "shared_proto" / "v1"
                 if generated_shared_v1.exists():
                     shutil.move(str(generated_shared_v1), str(v1_dir))
                     shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
-            _rewrite_generated_imports(out_root, rewrites)
+                    print(f"  ✓ Relocated shared_proto/v1 → v1/")
+            if rewrites:
+                _rewrite_generated_imports(out_root, rewrites)
+                print(f"  ✓ Rewrote imports")
             init_root = out_root / "__init__.py"
             v1_dir.mkdir(parents=True, exist_ok=True)
             init_v1 = v1_dir / "__init__.py"
@@ -247,6 +255,7 @@ def main() -> int:
         print(f"Proto generation configuration error: {exc}", file=sys.stderr)
         return 2
 
+    print("\nAll proto targets generated.")
     return 0
 
 
