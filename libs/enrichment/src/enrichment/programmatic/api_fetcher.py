@@ -52,23 +52,6 @@ def _write_json_sync(path: str, data: Any) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2, default=json_serial)
 
 
-def _write_jsonl_sync(path: str, data: Any) -> None:
-    """Sync JSONL write used via asyncio.to_thread in async paths."""
-    out_dir = os.path.dirname(path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
-    def json_serial(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        raise TypeError(f"Type {type(obj)} not serializable")
-
-    records = data if isinstance(data, list) else [data]
-    with open(path, "w", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record, ensure_ascii=False, default=json_serial))
-            f.write("\n")
-
 
 class ParallelAPIFetcher:
     """
@@ -165,7 +148,7 @@ class ParallelAPIFetcher:
             tasks.append(
                 (
                     "mal",
-                    self._fetch_mal_complete(ids["mal_id"], offline_data, temp_dir),
+                    self._fetch_mal(ids["mal_id"], temp_dir),
                 )
             )
 
@@ -205,17 +188,14 @@ class ParallelAPIFetcher:
 
         return results
 
-    async def _fetch_mal_complete(
-        self, mal_id: str, offline_data: dict[str, Any], temp_dir: str | None = None
+    async def _fetch_mal(
+        self, mal_id: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """
         Fetch comprehensive MAL data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
 
-        Fetches the anime "full" endpoint, attempts to retrieve detailed episodes and character data (respecting rate limits), falls back to offline_data for missing episode counts, and saves/loads temporary JSON files if temp_dir is supplied.
-
         Parameters:
             mal_id (str): The MyAnimeList identifier for the anime.
-            offline_data (Dict): Local/offline metadata used as fallback (e.g., episode count).
             temp_dir (Optional[str]): Directory path to write/read temporary JSON files for intermediate results.
 
         Returns:
@@ -223,16 +203,9 @@ class ParallelAPIFetcher:
         """
         try:
             logger.info(
-                f"🔍 [MAL DEBUG] Starting _fetch_mal_complete for MAL ID {mal_id}, temp_dir={temp_dir}"
+                f"🔍 [MAL DEBUG] Starting _fetch_mal for MAL ID {mal_id}, temp_dir={temp_dir}"
             )
             start = time.time()
-            fallback_episode_count = int(offline_data.get("episodes", 0) or 0)
-
-            async def _write_json(path: str, data: Any) -> None:
-                await asyncio.to_thread(_write_json_sync, path, data)
-
-            async def _write_jsonl(path: str, data: Any) -> None:
-                await asyncio.to_thread(_write_jsonl_sync, path, data)
 
             # Build streaming output paths (None when no temp_dir)
             anime_path = os.path.join(temp_dir, "mal_anime.jsonl") if temp_dir else None
@@ -243,7 +216,6 @@ class ParallelAPIFetcher:
                 mal_id, session=self.mal_session
             ) as helper:
                 result = await helper.fetch_all_data(
-                    fallback_episode_count=fallback_episode_count,
                     anime_output_path=anime_path,
                     episodes_output_path=episodes_path,
                     characters_output_path=characters_path,
@@ -535,14 +507,11 @@ class ParallelAPIFetcher:
         for api_name, data in results.items():
             if data:
                 try:
-                    # MAL canonical artifacts are JSONL.
+                    # MAL artifacts are already written by MalEnrichmentHelper.
                     if api_name == "mal":
-                        file_path = os.path.join(temp_dir, "mal_anime.jsonl")
-                        mal_data = data.get("anime") if isinstance(data, dict) else data
-                        await asyncio.to_thread(_write_jsonl_sync, file_path, mal_data)
-                    else:
-                        file_path = os.path.join(temp_dir, f"{api_name}.json")
-                        await asyncio.to_thread(_write_json_sync, file_path, data)
+                        continue
+                    file_path = os.path.join(temp_dir, f"{api_name}.json")
+                    await asyncio.to_thread(_write_json_sync, file_path, data)
                     logger.debug(f"Saved {api_name} response to {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to save {api_name} response: {e}")

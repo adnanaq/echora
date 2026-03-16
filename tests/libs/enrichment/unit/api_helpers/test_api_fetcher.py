@@ -115,7 +115,7 @@ class TestParallelAPIFetcherContextManager:
 
 
 class TestFetchMALComplete:
-    """Test _fetch_mal_complete method with various scenarios."""
+    """Test _fetch_mal method with various scenarios."""
 
     @pytest.fixture
     def mock_anime_response(self) -> dict[str, Any]:
@@ -153,13 +153,13 @@ class TestFetchMALComplete:
         }
 
     @pytest.mark.asyncio
-    async def test_fetch_mal_complete_without_temp_dir(
+    async def test_fetch_mal_without_temp_dir(
         self,
         mock_anime_response: dict[str, Any],
         mock_characters_response: dict[str, Any],
         offline_data: dict[str, Any],
     ):
-        """Test _fetch_mal_complete writes streaming JSONL output paths."""
+        """Test _fetch_mal writes streaming JSONL output paths."""
         fetcher = ParallelAPIFetcher()
         fetcher.mal_session = AsyncMock()
 
@@ -181,7 +181,7 @@ class TestFetchMALComplete:
                 "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
                 return_value=helper_cm,
             ):
-                result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
+                result = await fetcher._fetch_mal("1", temp_dir=temp_dir)
 
             # Verify result structure
             assert result is not None
@@ -194,20 +194,19 @@ class TestFetchMALComplete:
             assert len(result["characters"]) == 1
             assert result["characters"][0]["character"]["mal_id"] == 1
             helper.fetch_all_data.assert_awaited_once_with(
-                fallback_episode_count=12,
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
             )
 
     @pytest.mark.asyncio
-    async def test_fetch_mal_complete_with_temp_dir(
+    async def test_fetch_mal_with_temp_dir(
         self,
         mock_anime_response: dict[str, Any],
         mock_characters_response: dict[str, Any],
         offline_data: dict[str, Any],
     ):
-        """Test _fetch_mal_complete with temp_dir provided (normal scenario)."""
+        """Test _fetch_mal with temp_dir provided (normal scenario)."""
         fetcher = ParallelAPIFetcher()
         fetcher.mal_session = AsyncMock()
 
@@ -229,9 +228,8 @@ class TestFetchMALComplete:
                 "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
                 return_value=helper_cm,
             ):
-                result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
+                result = await fetcher._fetch_mal("1", temp_dir=temp_dir)
             helper.fetch_all_data.assert_awaited_once_with(
-                fallback_episode_count=12,
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
@@ -251,10 +249,10 @@ class TestFetchMALComplete:
             assert result["characters"][0]["mal_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_fetch_mal_complete_with_no_episodes(
+    async def test_fetch_mal_with_no_episodes(
         self, mock_characters_response: dict[str, Any], offline_data: dict[str, Any]
     ):
-        """Test _fetch_mal_complete with anime that has no episodes."""
+        """Test _fetch_mal with anime that has no episodes."""
         fetcher = ParallelAPIFetcher()
         fetcher.mal_session = AsyncMock()
 
@@ -285,23 +283,21 @@ class TestFetchMALComplete:
                 "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
                 return_value=helper_cm,
             ):
-                result = await fetcher._fetch_mal_complete("2", offline_data, temp_dir=temp_dir)
+                result = await fetcher._fetch_mal("2", temp_dir=temp_dir)
 
-            # Should use offline_data for episode count
             assert result is not None
             assert result["anime"]["episodes"] is None
             # No episodes should be fetched
             assert result["episodes"] == []
             helper.fetch_all_data.assert_awaited_once_with(
-                fallback_episode_count=12,
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
             )
 
     @pytest.mark.asyncio
-    async def test_fetch_mal_complete_api_failure(self, offline_data: dict[str, Any]):
-        """Test _fetch_mal_complete when API request fails (returns None)."""
+    async def test_fetch_mal_api_failure(self, offline_data: dict[str, Any]):
+        """Test _fetch_mal when API request fails (returns None)."""
         fetcher = ParallelAPIFetcher()
         fetcher.mal_session = AsyncMock()
 
@@ -317,7 +313,7 @@ class TestFetchMALComplete:
                 "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
                 return_value=helper_cm,
             ):
-                result = await fetcher._fetch_mal_complete("999", offline_data, temp_dir=temp_dir)
+                result = await fetcher._fetch_mal("999", temp_dir=temp_dir)
 
         # Should return None on failure
         assert result is None
@@ -325,10 +321,10 @@ class TestFetchMALComplete:
         assert "mal" not in fetcher.api_errors
 
     @pytest.mark.asyncio
-    async def test_fetch_mal_complete_exception_handling(
+    async def test_fetch_mal_exception_handling(
         self, offline_data: dict[str, Any]
     ):
-        """Test _fetch_mal_complete exception handling."""
+        """Test _fetch_mal exception handling."""
         fetcher = ParallelAPIFetcher()
         fetcher.mal_session = AsyncMock()
 
@@ -344,7 +340,7 @@ class TestFetchMALComplete:
                 "enrichment.programmatic.api_fetcher.MalEnrichmentHelper",
                 return_value=helper_cm,
             ):
-                result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
+                result = await fetcher._fetch_mal("1", temp_dir=temp_dir)
 
         # Should return None on exception
         assert result is None
@@ -381,6 +377,7 @@ class TestSaveTempFiles:
             ) as mock_to_thread:
                 await fetcher._save_temp_files(results, temp_dir)
 
-            assert os.path.exists(os.path.join(temp_dir, "mal_anime.jsonl"))
+            # MAL artifacts are written by MalEnrichmentHelper directly — skipped here
+            assert not os.path.exists(os.path.join(temp_dir, "mal.json"))
             assert os.path.exists(os.path.join(temp_dir, "anilist.json"))
             mock_to_thread.assert_awaited()
