@@ -1,11 +1,18 @@
 """Unit tests for mal_base.py — sidebar parsers, number utils, model diffing."""
 
 import pytest
+from pydantic import BaseModel
 
 from enrichment.crawlers.mal_crawler.mal_base import (
+    AntiDetectionLayer,
+    _get_entity_id,
     diff_model_lists,
     diff_models,
     extract_id_from_url,
+    get_browser_config,
+    get_mal_docker_browser_config,
+    get_mal_docker_crawler_config,
+    get_mal_scraping_limiter,
     normalize_mal_anime_url,
     parse_aired_string,
     parse_broadcast_string,
@@ -18,7 +25,11 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     parse_sidebar_link_texts,
     parse_sidebar_links,
 )
-from enrichment.crawlers.mal_crawler.mal_models import MalScrapedAnime
+from enrichment.crawlers.mal_crawler.mal_models import (
+    MalScrapedAnime,
+    MalScrapedCharacter,
+    MalScrapedEpisode,
+)
 
 
 # =============================================================================
@@ -351,7 +362,7 @@ def test_parse_episode_ranges(
 
 def _make_anime(score: float = 8.7, title: str = "One Piece") -> MalScrapedAnime:
     return MalScrapedAnime(
-        url="https://myanimelist.net/anime/21",
+        source="https://myanimelist.net/anime/21",
         title=title,
         score=score,
     )
@@ -407,14 +418,153 @@ def test_diff_model_lists_added_and_removed() -> None:
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
     old_chars = [
-        MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalScrapedCharacter(url="https://myanimelist.net/character/41/Zoro", name="Zoro"),
+        MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalScrapedCharacter(source="https://myanimelist.net/character/41/Zoro", name="Zoro"),
     ]
     new_chars = [
-        MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalScrapedCharacter(url="https://myanimelist.net/character/42/Nami", name="Nami"),
+        MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalScrapedCharacter(source="https://myanimelist.net/character/42/Nami", name="Nami"),
     ]
     list_diff = diff_model_lists(old_chars, new_chars, "character")
     assert "https://myanimelist.net/character/42/Nami" in list_diff.added
     assert "https://myanimelist.net/character/41/Zoro" in list_diff.removed
     assert not list_diff.updated  # Luffy unchanged
+
+
+def test_diff_model_lists_updated_when_field_changes() -> None:
+    old = [MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy")]
+    new = [MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy Updated")]
+    list_diff = diff_model_lists(old, new, "character")
+    assert len(list_diff.updated) == 1
+    assert list_diff.updated[0].has_changes
+
+
+# =============================================================================
+# get_browser_config / get_mal_docker_browser_config / get_mal_docker_crawler_config
+# =============================================================================
+
+
+def test_get_browser_config_stealth_default_returns_config() -> None:
+    cfg = get_browser_config()
+    assert cfg is not None
+
+
+def test_get_browser_config_warmup_cookie_with_cookies() -> None:
+    cfg = get_browser_config(
+        AntiDetectionLayer.WARMUP_COOKIE,
+        cookies=[{"name": "cf_clearance", "value": "x"}],
+    )
+    assert cfg is not None
+
+
+def test_get_browser_config_undetected_layer() -> None:
+    cfg = get_browser_config(AntiDetectionLayer.UNDETECTED)
+    assert cfg is not None
+
+
+def test_get_mal_docker_browser_config_returns_typed_dict() -> None:
+    result = get_mal_docker_browser_config()
+    assert result["type"] == "BrowserConfig"
+    assert "enable_stealth" in result["params"]
+
+
+def test_get_mal_docker_crawler_config_no_magic() -> None:
+    result = get_mal_docker_crawler_config({"name": "test"})
+    assert "magic" not in result["params"]
+
+
+def test_get_mal_docker_crawler_config_magic_branch() -> None:
+    result = get_mal_docker_crawler_config({"name": "test"}, magic=True)
+    assert result["params"]["magic"] is True
+
+
+def test_get_mal_scraping_limiter_returns_limiter() -> None:
+    limiter = get_mal_scraping_limiter()
+    assert limiter is not None
+
+
+# =============================================================================
+# parse_sidebar_links — empty name skip (line 238)
+# =============================================================================
+
+_SIDEBAR_EMPTY_NAME = """
+<div>
+  <span class="dark_text">Studios:</span>
+  <a href="https://myanimelist.net/anime/producer/18/Toei_Animation"></a>
+  <a href="https://myanimelist.net/anime/producer/99/Real_Studio">Real Studio</a>
+</div>
+"""
+
+
+def test_parse_sidebar_links_empty_name_skipped() -> None:
+    result = parse_sidebar_links(_SIDEBAR_EMPTY_NAME, "Studios")
+    assert len(result) == 1
+    assert result[0]["name"] == "Real Studio"
+
+
+# =============================================================================
+# parse_iso_date — unrecognized format → None (line 409)
+# =============================================================================
+
+
+def test_parse_iso_date_unrecognized_returns_none() -> None:
+    assert parse_iso_date("Some Random String") is None
+
+
+# =============================================================================
+# parse_premiered — unrecognized string → (None, None) (line 462)
+# =============================================================================
+
+
+def test_parse_premiered_unrecognized_returns_none_none() -> None:
+    season, year = parse_premiered("Not a season string")
+    assert season is None
+    assert year is None
+
+
+# =============================================================================
+# parse_broadcast_string — no-match string → (None, None, None) (line 487)
+# =============================================================================
+
+
+def test_parse_broadcast_string_no_match_returns_nones() -> None:
+    day, time, tz = parse_broadcast_string("Irregular schedule")
+    assert day is None
+    assert time is None
+    assert tz is None
+
+
+# =============================================================================
+# parse_episode_ranges — ValueError branches (lines 518-519, 524-525)
+# =============================================================================
+
+
+def test_parse_episode_ranges_bad_range_skipped() -> None:
+    """Space inside number part triggers ValueError on int() → entry skipped."""
+    assert parse_episode_ranges("1 2-3") == []
+
+
+def test_parse_episode_ranges_bad_standalone_skipped() -> None:
+    """Space inside standalone number triggers ValueError on int() → entry skipped."""
+    assert parse_episode_ranges("1 2") == []
+
+
+# =============================================================================
+# _get_entity_id (lines 578, 582)
+# =============================================================================
+
+
+def test_get_entity_id_returns_episode_number_as_int() -> None:
+    ep = MalScrapedEpisode(
+        source="https://myanimelist.net/anime/21/One_Piece/episode/1",
+        episode_number=1,
+        title="Romance Dawn",
+    )
+    assert _get_entity_id(ep) == 1
+
+
+def test_get_entity_id_returns_zero_for_bare_model() -> None:
+    class _Bare(BaseModel):
+        pass
+
+    assert _get_entity_id(_Bare()) == 0
