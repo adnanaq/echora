@@ -6,6 +6,7 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     diff_model_lists,
     diff_models,
     extract_id_from_url,
+    normalize_mal_anime_url,
     parse_aired_string,
     parse_broadcast_string,
     parse_duration_seconds,
@@ -185,6 +186,39 @@ def test_extract_id_from_url(url: str, expected: int | None) -> None:
 
 
 # =============================================================================
+# normalize_mal_anime_url
+# =============================================================================
+
+
+def test_normalize_mal_anime_url_slugless_no_slug() -> None:
+    url, has_slug = normalize_mal_anime_url("https://myanimelist.net/anime/21")
+    assert url == "https://myanimelist.net/anime/21"
+    assert has_slug is False
+
+
+def test_normalize_mal_anime_url_slugged_has_slug() -> None:
+    url, has_slug = normalize_mal_anime_url("https://myanimelist.net/anime/21/One_Piece")
+    assert url == "https://myanimelist.net/anime/21/One_Piece"
+    assert has_slug is True
+
+
+def test_normalize_mal_anime_url_passes_through_unchanged() -> None:
+    original = "https://myanimelist.net/anime/57334/Dandadan"
+    url, _ = normalize_mal_anime_url(original)
+    assert url == original
+
+
+def test_normalize_mal_anime_url_wrong_base_raises() -> None:
+    with pytest.raises(ValueError):
+        normalize_mal_anime_url("https://example.com/anime/21")
+
+
+def test_normalize_mal_anime_url_non_anime_path_raises() -> None:
+    with pytest.raises(ValueError):
+        normalize_mal_anime_url("https://myanimelist.net/character/40")
+
+
+# =============================================================================
 # parse_sidebar_field
 # =============================================================================
 
@@ -295,16 +329,13 @@ def test_parse_sidebar_link_texts_missing_label_returns_empty() -> None:
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ("1-26", [{"start": 1, "end": 26}]),
-        ("492", [{"start": 492, "end": 492}]),
-        ("1139-", [{"start": 1139, "end": None}]),
-        (
-            "1-30, 492, 1139-",
-            [{"start": 1, "end": 30}, {"start": 492, "end": 492}, {"start": 1139, "end": None}],
-        ),
+        ("1-26", [(1, 26)]),
+        ("492", [(492, 492)]),
+        ("1139-", [(1139, None)]),
+        ("1-30, 492, 1139-", [(1, 30), (492, 492), (1139, None)]),
         (None, []),
         ("", []),
-        ("(eps 1-13)", [{"start": 1, "end": 13}]),
+        ("(eps 1-13)", [(1, 13)]),
     ],
 )
 def test_parse_episode_ranges(
@@ -320,7 +351,6 @@ def test_parse_episode_ranges(
 
 def _make_anime(score: float = 8.7, title: str = "One Piece") -> MalScrapedAnime:
     return MalScrapedAnime(
-        anime_id=21,
         url="https://myanimelist.net/anime/21",
         title=title,
         score=score,
@@ -354,18 +384,18 @@ def test_diff_models_new_entity() -> None:
 
 
 def test_diff_models_entity_id_correct_for_anime() -> None:
-    """Regression: diff_models must use anime_id (not mal_id) for MalScrapedAnime."""
+    """diff_models uses url as entity_id for MalScrapedAnime (anime_id field removed)."""
     old = _make_anime(score=8.7)
     new = _make_anime(score=8.8)
     diff = diff_models(old, new, "anime")
-    assert diff.entity_id == 21  # Was 0 before fix (mal_id doesn't exist on MalScrapedAnime)
+    assert diff.entity_id == "https://myanimelist.net/anime/21"
 
 
 def test_diff_models_entity_id_correct_for_new_anime() -> None:
-    """Regression: entity_id must be non-zero even for new (old=None) anime diffs."""
+    """entity_id is the URL even for new (old=None) anime diffs."""
     new = _make_anime()
     diff = diff_models(None, new, "anime")
-    assert diff.entity_id == 21
+    assert diff.entity_id == "https://myanimelist.net/anime/21"
 
 
 # =============================================================================
@@ -377,14 +407,14 @@ def test_diff_model_lists_added_and_removed() -> None:
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
     old_chars = [
-        MalScrapedCharacter(mal_id=40, url="...", name="Luffy"),
-        MalScrapedCharacter(mal_id=41, url="...", name="Zoro"),
+        MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalScrapedCharacter(url="https://myanimelist.net/character/41/Zoro", name="Zoro"),
     ]
     new_chars = [
-        MalScrapedCharacter(mal_id=40, url="...", name="Luffy"),
-        MalScrapedCharacter(mal_id=42, url="...", name="Nami"),
+        MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalScrapedCharacter(url="https://myanimelist.net/character/42/Nami", name="Nami"),
     ]
     list_diff = diff_model_lists(old_chars, new_chars, "character")
-    assert 42 in list_diff.added
-    assert 41 in list_diff.removed
+    assert "https://myanimelist.net/character/42/Nami" in list_diff.added
+    assert "https://myanimelist.net/character/41/Zoro" in list_diff.removed
     assert not list_diff.updated  # Luffy unchanged

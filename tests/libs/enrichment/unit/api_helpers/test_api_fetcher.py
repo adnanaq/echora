@@ -195,6 +195,7 @@ class TestFetchMALComplete:
             assert result["characters"][0]["character"]["mal_id"] == 1
             helper.fetch_all_data.assert_awaited_once_with(
                 fallback_episode_count=12,
+                anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
             )
@@ -231,6 +232,7 @@ class TestFetchMALComplete:
                 result = await fetcher._fetch_mal_complete("1", offline_data, temp_dir=temp_dir)
             helper.fetch_all_data.assert_awaited_once_with(
                 fallback_episode_count=12,
+                anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
             )
@@ -247,13 +249,6 @@ class TestFetchMALComplete:
             # Characters should be returned from helper (and persisted for debugging)
             assert len(result["characters"]) == 1
             assert result["characters"][0]["mal_id"] == 1
-
-            # Verify mal_anime.jsonl was saved
-            mal_file = os.path.join(temp_dir, "mal_anime.jsonl")
-            assert os.path.exists(mal_file)
-            with open(mal_file) as f:
-                saved_data = json.load(f)
-                assert saved_data["mal_id"] == 1
 
     @pytest.mark.asyncio
     async def test_fetch_mal_complete_with_no_episodes(
@@ -299,6 +294,7 @@ class TestFetchMALComplete:
             assert result["episodes"] == []
             helper.fetch_all_data.assert_awaited_once_with(
                 fallback_episode_count=12,
+                anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
             )

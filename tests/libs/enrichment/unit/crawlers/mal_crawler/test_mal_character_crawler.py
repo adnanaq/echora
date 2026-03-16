@@ -239,8 +239,8 @@ def test_parse_character_raw_minimal() -> None:
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, char_id=40)
-    assert char.mal_id == 40
+    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
+    assert char.url == "https://myanimelist.net/character/40/Monkey_D_Luffy"
     assert char.name == "Monkey D., Luffy"
     assert char.name_native == "モンキー・D・ルフィ"
 
@@ -252,7 +252,7 @@ def test_parse_character_raw_url_from_raw() -> None:
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, char_id=40)
+    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
     assert char.url == "https://myanimelist.net/character/40/Monkey_D_Luffy"
 
 
@@ -263,5 +263,5 @@ def test_parse_character_raw_favorites_extracted() -> None:
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, char_id=40)
+    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
     assert char.favorites == 123456

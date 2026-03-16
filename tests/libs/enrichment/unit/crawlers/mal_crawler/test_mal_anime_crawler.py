@@ -69,7 +69,6 @@ def _build(extra: dict | None = None):
         raw.update(extra)
     return _build_anime_from_raw(
         raw,
-        anime_id=21,
         url="https://myanimelist.net/anime/21/One_Piece",
         picture_urls=[],
     )

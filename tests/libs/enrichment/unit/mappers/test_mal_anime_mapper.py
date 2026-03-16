@@ -11,7 +11,6 @@ from enrichment.mappers.mal_mapper import anime_from_mal
 
 def _make_sample_anime() -> MalScrapedAnime:
     return MalScrapedAnime(
-        anime_id=21,
         url="https://myanimelist.net/anime/21",
         title="One Piece",
         title_english="One Piece",
@@ -41,7 +40,6 @@ def _make_sample_anime() -> MalScrapedAnime:
             MalRelatedEntry(
                 relation="Side Story",
                 title="One Piece Film: Gold",
-                mal_id=28933,
                 source="https://myanimelist.net/anime/28933",
                 entry_type="Movie",
                 is_anime=True,

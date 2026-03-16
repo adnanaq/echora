@@ -4,25 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from enrichment.crawlers.mal_crawler.mal_models import (
-    CharacterRef,
     MalScrapedCharacter,
     MalVoiceActorRef,
 )
-
-
-# =============================================================================
-# CharacterRef
-# =============================================================================
-
-
-def test_character_ref_defaults() -> None:
-    ref = CharacterRef(char_id=40, name="Luffy", role="Main")
-    assert ref.favorites == 0
-
-
-def test_character_ref_with_favorites() -> None:
-    ref = CharacterRef(char_id=40, name="Luffy", role="Main", favorites=123456)
-    assert ref.favorites == 123456
 
 
 # =============================================================================
@@ -65,7 +49,6 @@ def test_mal_voice_actor_ref_with_sources() -> None:
 
 def test_mal_scraped_character_minimal() -> None:
     char = MalScrapedCharacter(
-        mal_id=40,
         url="https://myanimelist.net/character/40",
         name="Monkey D., Luffy",
     )
@@ -77,7 +60,6 @@ def test_mal_scraped_character_minimal() -> None:
 
 def test_mal_scraped_character_bio_data() -> None:
     char = MalScrapedCharacter(
-        mal_id=40,
         url="...",
         name="Luffy",
         character_info={
@@ -94,7 +76,6 @@ def test_mal_scraped_character_bio_data() -> None:
 def test_mal_scraped_character_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
         MalScrapedCharacter(
-            mal_id=40,
             url="...",
             name="Luffy",
             unexpected_field="x",  # type: ignore[call-arg]
@@ -103,7 +84,6 @@ def test_mal_scraped_character_extra_field_rejected() -> None:
 
 def test_mal_scraped_character_nicknames() -> None:
     char = MalScrapedCharacter(
-        mal_id=40,
         url="...",
         name="Monkey D., Luffy",
         nicknames=["Straw Hat Luffy", "Straw Hat"],
@@ -114,7 +94,6 @@ def test_mal_scraped_character_nicknames() -> None:
 
 def test_mal_scraped_character_voice_actors() -> None:
     char = MalScrapedCharacter(
-        mal_id=40,
         url="...",
         name="Luffy",
         voice_actors=[

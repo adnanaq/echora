@@ -121,14 +121,14 @@ def test_mal_scraped_episode_with_community_data() -> None:
 
 
 def test_mal_fetch_result_defaults() -> None:
-    anime = MalScrapedAnime(anime_id=21, url="...", title="One Piece")
+    anime = MalScrapedAnime(url="...", title="One Piece")
     result = MalFetchResult(anime=anime)
     assert result.characters == []
     assert result.episodes == []
 
 
 def test_mal_fetch_result_with_data() -> None:
-    anime = MalScrapedAnime(anime_id=21, url="...", title="One Piece")
+    anime = MalScrapedAnime(url="...", title="One Piece")
     ep = MalScrapedEpisode(episode_number=1, url="...", title="I'm Luffy!")
     result = MalFetchResult(anime=anime, episodes=[ep])
     assert len(result.episodes) == 1

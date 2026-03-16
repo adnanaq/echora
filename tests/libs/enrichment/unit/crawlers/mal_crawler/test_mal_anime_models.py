@@ -32,21 +32,18 @@ def test_mal_related_entry_anime() -> None:
     entry = MalRelatedEntry(
         relation="Side Story",
         title="One Piece Film: Gold",
-        mal_id=28933,
         source="https://myanimelist.net/anime/28933",
         entry_type="Movie",
         is_anime=True,
     )
     assert entry.relation == "Side Story"
     assert entry.is_anime is True
-    assert entry.mal_id == 28933
 
 
 def test_mal_related_entry_manga() -> None:
     entry = MalRelatedEntry(
         relation="Adaptation",
         title="One Piece",
-        mal_id=103,
         source="https://myanimelist.net/manga/103",
         entry_type="Manga",
         is_anime=False,
@@ -61,7 +58,6 @@ def test_mal_related_entry_optional_fields() -> None:
         source="https://myanimelist.net/anime/99999",
         is_anime=True,
     )
-    assert entry.mal_id is None
     assert entry.entry_type is None
 
 
@@ -90,11 +86,9 @@ def test_mal_theme_song_no_artist() -> None:
 def test_mal_scraped_anime_minimal() -> None:
     """Minimal required fields only."""
     anime = MalScrapedAnime(
-        anime_id=21,
         url="https://myanimelist.net/anime/21",
         title="One Piece",
     )
-    assert anime.anime_id == 21
     assert anime.title == "One Piece"
     assert anime.synonyms == []
     assert anime.genres == []
@@ -106,7 +100,6 @@ def test_mal_scraped_anime_extra_field_rejected() -> None:
     """extra='forbid' rejects unknown fields."""
     with pytest.raises(ValidationError):
         MalScrapedAnime(
-            anime_id=21,
             url="...",
             title="One Piece",
             unknown_field="value",  # type: ignore[call-arg]
@@ -115,7 +108,6 @@ def test_mal_scraped_anime_extra_field_rejected() -> None:
 
 def test_mal_scraped_anime_full() -> None:
     anime = MalScrapedAnime(
-        anime_id=21,
         url="https://myanimelist.net/anime/21",
         title="One Piece",
         title_english="One Piece",
@@ -142,14 +134,11 @@ def test_mal_scraped_anime_related_entries() -> None:
     entry = MalRelatedEntry(
         relation="Side Story",
         title="One Piece Film: Gold",
-        mal_id=28933,
         source="https://myanimelist.net/anime/28933",
         entry_type="Movie",
         is_anime=True,
     )
-    anime = MalScrapedAnime(
-        anime_id=21, url="...", title="One Piece", related_entries=[entry]
-    )
+    anime = MalScrapedAnime(url="...", title="One Piece", related_entries=[entry])
     assert len(anime.related_entries) == 1
     assert anime.related_entries[0].relation == "Side Story"
     assert anime.related_entries[0].is_anime is True
@@ -157,7 +146,6 @@ def test_mal_scraped_anime_related_entries() -> None:
 
 def test_mal_scraped_anime_images_dict() -> None:
     anime = MalScrapedAnime(
-        anime_id=21,
         url="...",
         title="One Piece",
         images={"jpg": "https://cdn.myanimelist.net/images/anime/6/73245.jpg"},
@@ -169,7 +157,6 @@ def test_mal_scraped_anime_external_and_streaming_links() -> None:
     from enrichment.crawlers.mal_crawler.mal_models import MalExternalLink
 
     anime = MalScrapedAnime(
-        anime_id=21,
         url="...",
         title="One Piece",
         external_sources=[MalExternalLink(name="Official Site", source="https://example.com")],
