@@ -37,7 +37,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeVARef,
     MalScrapedEpisode,
 )
-from enrichment.crawlers.utils import sanitize_output_path
+
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -48,15 +48,6 @@ TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
 _limiter = get_mal_scraping_limiter()
 
-
-def _append_jsonl(path: str, record: dict[str, Any]) -> None:
-    """Append a single JSON record as a JSONL line. Logs and continues on failure."""
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False))
-            f.write("\n")
-    except Exception as e:
-        logger.warning("Failed to append episode record to %s: %s", path, e)
 
 
 def _get_episode_schema() -> dict[str, Any]:
@@ -402,17 +393,13 @@ def _build_episode_from_raw(
     )
 
 
-async def fetch_mal_episode(
-    identifier: str,
-    output_path: str | None = None,
-) -> MalScrapedEpisode | None:
+async def fetch_mal_episode(identifier: str) -> MalScrapedEpisode | None:
     """Fetch a MAL episode detail page.
 
     Args:
         identifier: Full URL, path with leading slash, or path without —
             e.g. "https://myanimelist.net/anime/21/One_Piece/episode/1"
             or   "anime/21/One_Piece/episode/1"
-        output_path: Optional path to write JSON output.
 
     Returns:
         MalScrapedEpisode if successful, None otherwise.
@@ -421,7 +408,7 @@ async def fetch_mal_episode(
 
     m = re.search(r"/episode/(\d+)", url)
     if not m:
-        logger.error(f"Cannot parse mal_id/episode_number from URL: {url}")
+        logger.error(f"Cannot parse episode_number from URL: {url}")
         return None
     episode_number = int(m.group(1))
     logger.info(f"[episode] Fetching episode {episode_number}: {url}")
@@ -430,36 +417,20 @@ async def fetch_mal_episode(
         logger.error(f"[episode] Failed to fetch episode {episode_number}")
         return None
 
-    ep = _build_episode_from_raw(raw, episode_number, url)
-
-    if output_path:
-        from enrichment.mappers.mal_mapper import episode_from_mal
-        safe_path = sanitize_output_path(output_path)
-        canonical = episode_from_mal(ep)
-        Path(safe_path).write_text(
-            json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
-    return ep
+    return _build_episode_from_raw(raw, episode_number, url)
 
 
-async def fetch_mal_episodes(
-    identifiers: list[str],
-    *,
-    output_path: str | None = None,
-) -> list[MalScrapedEpisode | None]:
+async def fetch_mal_episodes(identifiers: list[str]) -> list[MalScrapedEpisode | None]:
     """Fetch multiple MAL episode pages as a single Docker batch job.
 
     Submits all URLs in one POST /crawl/job request and polls a single task ID —
-    O(1) polling tasks regardless of episode count.  Suitable for bulk first-time
+    O(1) polling tasks regardless of episode count. Suitable for bulk first-time
     fetches (e.g. all episodes of an anime during enrichment).
 
     For single-episode fetches with Redis caching, use ``fetch_mal_episode`` instead.
 
     Args:
         identifiers: List of episode URLs or paths (same formats as fetch_mal_episode).
-        output_path: If provided, each successfully parsed episode is appended to this
-            JSONL file as it is processed (streaming write).
 
     Returns:
         List aligned to ``identifiers`` — None for any failed fetch.
@@ -468,25 +439,26 @@ async def fetch_mal_episodes(
 
     urls = [_normalize_episode_url(i) for i in identifiers]
     logger.info(f"[episodes] Fetching {len(urls)} episodes...")
-    docker_results = await crawl_batch_urls(
+    results = await crawl_batch_urls(
         urls,
         browser_config=get_mal_docker_browser_config(),
         crawler_config=get_mal_docker_crawler_config(_get_episode_schema()),
     )
 
     episodes: list[MalScrapedEpisode | None] = []
-    for url, result in zip(urls, docker_results):
+    for result in results:
         if not result:
             episodes.append(None)
             continue
 
+        url = result["url"]
         status = result.get("status_code")
         if status == 404:
-            logger.warning("Episode not found: %s", url)
+            logger.warning(f"Episode not found: {url}")
             episodes.append(None)
             continue
         if status and status != 200:
-            logger.error("HTTP %s for %s", status, url)
+            logger.error(f"HTTP {status} for {url}")
             episodes.append(None)
             continue
 
@@ -495,20 +467,13 @@ async def fetch_mal_episodes(
             episodes.append(None)
             continue
 
-        raw = raw_list[0]
-        raw["_url"] = url
-
         m = re.search(r"/episode/(\d+)", url)
         if not m:
-            logger.error("Cannot parse episode_number from URL: %s", url)
+            logger.error(f"Cannot parse episode_number from URL: {url}")
             episodes.append(None)
             continue
 
-        ep = _build_episode_from_raw(raw, int(m.group(1)), url)
-        if output_path is not None:
-            from enrichment.mappers.mal_mapper import episode_from_mal
-            _append_jsonl(output_path, episode_from_mal(ep))
-        episodes.append(ep)
+        episodes.append(_build_episode_from_raw(raw_list[0], int(m.group(1)), url))
 
     return episodes
 
@@ -527,14 +492,16 @@ async def main() -> int:
     parser.add_argument("--output", type=str, default="mal_episode.json")
     args = parser.parse_args()
 
-    ep = await fetch_mal_episode(args.identifier, output_path=args.output)
+    ep = await fetch_mal_episode(args.identifier)
     if ep is None:
         logger.error(f"Failed to fetch or parse episode data for: {args.identifier}")
         return 1
 
-    logger.info(
-        f"Fetched Episode {ep.episode_number}: {ep.title}"
-    )
+    from enrichment.mappers.mal_mapper import episode_from_mal
+    from pathlib import Path
+    canonical = episode_from_mal(ep)
+    Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info(f"Fetched Episode {ep.episode_number}: {ep.title}")
     return 0
 
 

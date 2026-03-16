@@ -30,7 +30,6 @@ class MalRelatedEntry(BaseModel):
 
     relation: str  # Raw MAL string: "Side Story", "Sequel", "Adaptation", etc.
     title: str
-    mal_id: int | None = None  # Extracted from URL
     source: str
     entry_type: str | None = (
         None  # "(TV)", "(Manga)", "(Movie)" — from parens annotation
@@ -70,7 +69,6 @@ class MalScrapedAnime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Identity
-    anime_id: int
     url: str
 
     # Titles
@@ -156,19 +154,6 @@ class MalVoiceActorRef(BaseModel):
     sources: list[str] = []
 
 
-class CharacterRef(BaseModel):
-    """Minimal character reference extracted from /anime/{id}/characters page.
-
-    This is the lightweight version — one page fetch returns all characters.
-    Full detail comes from fetch_mal_character() per character.
-    """
-
-    char_id: int
-    name: str
-    role: str  # "Main" or "Supporting"
-    favorites: int = 0
-
-
 class MalScrapedCharacter(BaseModel):
     """Scraped from /character/{id} detail page.
 
@@ -177,7 +162,6 @@ class MalScrapedCharacter(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mal_id: int
     url: str
     name: str
     name_native: str | None = None  # Kanji/native script in parens from page title

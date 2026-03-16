@@ -27,15 +27,13 @@ from enrichment.api_helpers.mal_rate_limiter import (
     get_shared_mal_rate_limiter,
 )
 from enrichment.crawlers.mal_crawler.mal_anime_crawler import fetch_mal_anime
+from enrichment.crawlers.mal_crawler.mal_base import normalize_mal_anime_url
 from enrichment.crawlers.mal_crawler.mal_character_crawler import (
     fetch_mal_character,
     fetch_mal_characters,
 )
 from enrichment.crawlers.mal_crawler.mal_character_refs_crawler import fetch_mal_character_refs
-from enrichment.crawlers.mal_crawler.mal_episode_crawler import (
-    fetch_mal_episode,
-    fetch_mal_episodes,
-)
+from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episodes
 from enrichment.mappers.mal_mapper import anime_from_mal, character_from_mal, episode_from_mal
 
 logger = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ def _append_jsonl(path: str, record: dict[str, Any]) -> None:
             f.write(json.dumps(record, ensure_ascii=False))
             f.write("\n")
     except Exception as e:
-        logger.warning("Failed to append record to %s: %s", path, e)
+        logger.warning(f"Failed to append record to {path}: {e}")
 
 
 class MalEnrichmentHelper:
@@ -58,7 +56,7 @@ class MalEnrichmentHelper:
     api_fetcher.py and stage scripts require no changes.
 
     Args:
-        anime_id: MyAnimeList anime ID (stringified or int).
+        mal_source: Full MAL anime URL (e.g. "https://myanimelist.net/anime/21").
         session: Ignored — kept for interface compatibility with the old helper.
             The crawlers manage their own browser sessions internally.
         limiter: Optional rate limiter override.
@@ -66,14 +64,14 @@ class MalEnrichmentHelper:
 
     def __init__(
         self,
-        anime_id: str,
+        mal_source: str,
         *,
         session: Any | None = None,  # noqa: ARG002  — compatibility only
         limiter: MalRateLimiter | None = None,
     ) -> None:
-        self._anime_id = str(anime_id)
-        self._mal_id = int(anime_id)
-        self._anime_url: str = ""
+        _, has_slug = normalize_mal_anime_url(mal_source)  # raises ValueError on invalid input
+        self._mal_source = mal_source
+        self._anime_url: str = mal_source if has_slug else ""
         self._limiter = limiter or get_shared_mal_rate_limiter()
 
     async def close(self) -> None:
@@ -92,45 +90,27 @@ class MalEnrichmentHelper:
         Returns:
             MalScrapedAnime as a JSON-serializable dict, or None on failure.
         """
-        anime = await fetch_mal_anime(self._mal_id)
+        anime = await fetch_mal_anime(self._mal_source)
         if anime is None:
             return None
-        self._anime_url = anime.url
+        if not self._anime_url:
+            self._anime_url = anime.url
         return anime_from_mal(anime)
 
-    async def fetch_characters_basic(self) -> list[dict[str, Any]]:
-        """Fetch all character references from /anime/{id}/characters.
+    async def fetch_character_urls(self) -> list[str]:
+        """Fetch all character URLs from /anime/{id}/characters.
 
         A single page fetch returns all characters (1475 for One Piece).
         Requires fetch_anime() to have been called first so that _anime_url
         is set to the canonical slug URL (e.g. /anime/57334/Dandadan).
 
         Returns:
-            List of CharacterRef dicts. Empty on failure.
+            List of character URLs. Empty on failure.
         """
         if not self._anime_url:
-            logger.error("fetch_characters_basic called before fetch_anime — anime URL unknown")
+            logger.error("fetch_character_urls called before fetch_anime — anime URL unknown")
             return []
-        refs = await fetch_mal_character_refs(self._mal_id, self._anime_url)
-        return [ref.model_dump(mode="json") for ref in refs]
-
-    async def fetch_episode_detail(self, episode_id: int) -> dict[str, Any] | None:
-        """Fetch a single episode detail from /anime/{id}/episode/{num}.
-
-        Args:
-            episode_id: 1-based episode number.
-
-        Returns:
-            MalScrapedEpisode as a dict, or None on failure.
-        """
-        url = f"{self._anime_url}/episode/{episode_id}"
-        ep = await fetch_mal_episode(url)
-        if ep is None:
-            return None
-        result = ep.model_dump(mode="json")
-        # Ensure episode_number is present for pipeline compatibility
-        result["episode_number"] = episode_id
-        return result
+        return await fetch_mal_character_refs(f"{self._anime_url}/characters")
 
     async def fetch_episodes(
         self, episode_count: int, *, output_path: str | None = None
@@ -150,76 +130,55 @@ class MalEnrichmentHelper:
             List of episode dicts (failed episodes are skipped).
         """
         urls = [f"{self._anime_url}/episode/{i}" for i in range(1, episode_count + 1)]
-        episodes_or_none = await fetch_mal_episodes(urls, output_path=output_path)
-        return [
-            episode_from_mal(ep)
-            for ep in episodes_or_none
-            if ep is not None
-        ]
+        episodes_or_none = await fetch_mal_episodes(urls)
+        episodes = [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
+        if output_path:
+            for ep_dict in episodes:
+                _append_jsonl(output_path, ep_dict)
+        return episodes
 
-    async def fetch_character_detail(
-        self, character_basic: dict[str, Any]
+    async def fetch_character(
+        self,
+        url: str,
+        *,
+        output_path: str | None = None,
     ) -> dict[str, Any] | None:
         """Fetch detailed character data from /character/{id}.
 
         Args:
-            character_basic: CharacterRef dict from fetch_characters_basic().
+            url: Full MAL character URL (e.g. https://myanimelist.net/character/40/Luffy).
+            output_path: If provided, the character is appended to this JSONL file.
 
         Returns:
-            MalScrapedCharacter as a dict with injected role context, or None.
+            MalScrapedCharacter as a dict, or None on failure.
         """
-        char_id: int | None = character_basic.get("char_id")
-        if not isinstance(char_id, int):
-            return None
+        char = await fetch_mal_character(url)
+        result = character_from_mal(char) if char else None
+        if result and output_path:
+            _append_jsonl(output_path, result)
+        return result
 
-        char = await fetch_mal_character(char_id)
-        if char is None:
-            return None
-
-        # Name from character list ("Monkey D., Luffy") is in canonical "Last, First" order.
-        # The detail page may use a different order, so prefer the list-page name.
-        char.name = character_basic.get("name") or char.name
-
-        return character_from_mal(char)
-
-    async def fetch_characters_detailed(
+    async def fetch_characters(
         self,
-        characters_basic: list[dict[str, Any]],
+        urls: list[str],
         *,
         output_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch detailed character data in a single batch Docker job.
 
         Args:
-            characters_basic: Output of fetch_characters_basic().
+            urls: List of full MAL character URLs from fetch_character_urls().
             output_path: If provided, each character is appended to this JSONL file
                 as it arrives (streaming write).
 
         Returns:
             List of detailed character dicts (failed ones are skipped).
         """
-        # Build char_id list and lookup for context injection
-        char_ids: list[int] = []
-        basic_by_id: dict[int, dict[str, Any]] = {}
-        for item in characters_basic:
-            char_id: int | None = item.get("char_id")
-            if isinstance(char_id, int):
-                char_ids.append(char_id)
-                basic_by_id[char_id] = item
-
-        chars = await fetch_mal_characters(char_ids)
-
-        characters: list[dict[str, Any]] = []
-        for char_id, char in zip(char_ids, chars):
-            if char is None:
-                continue
-            # Name from character list is in canonical "Last, First" order — prefer it.
-            basic = basic_by_id[char_id]
-            char.name = basic.get("name") or char.name
-            detail = character_from_mal(char)
-            characters.append(detail)
-            if output_path:
-                _append_jsonl(output_path, detail)
+        chars = await fetch_mal_characters(urls)
+        characters = [character_from_mal(c) for c in chars if c is not None]
+        if output_path:
+            for char_dict in characters:
+                _append_jsonl(output_path, char_dict)
         return characters
 
     async def fetch_all_data(
@@ -255,9 +214,9 @@ class MalEnrichmentHelper:
         episode_count = anime_info.get("episode_count") or fallback_episode_count
         episode_count = int(episode_count or 0)
 
-        characters_basic = await self.fetch_characters_basic()
+        character_urls = await self.fetch_character_urls()
         episodes_data: list[dict[str, Any]] = []
-        characters_data: list[dict[str, Any]] = characters_basic
+        characters_data: list[dict[str, Any]] = []
 
         if episode_count > 0:
             try:
@@ -265,16 +224,15 @@ class MalEnrichmentHelper:
                     episode_count, output_path=episodes_output_path
                 )
             except Exception as e:
-                logger.warning("Episode fetch failed, continuing without episodes: %s", e)
+                logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
 
-        if characters_basic:
+        if character_urls:
             try:
-                detailed_chars = await self.fetch_characters_detailed(
-                    characters_basic, output_path=characters_output_path
+                characters_data = await self.fetch_characters(
+                    character_urls, output_path=characters_output_path
                 )
-                characters_data = detailed_chars or characters_basic
             except Exception as e:
-                logger.warning("Character detail fetch failed, using basic data: %s", e)
+                logger.warning(f"Character detail fetch failed, continuing without characters: {e}")
 
         return {
             "anime": anime_info,
@@ -325,8 +283,8 @@ async def main() -> int:
             return 0
 
         if args.cmd == "characters":
-            basic = await helper.fetch_characters_basic()
-            detailed = await helper.fetch_characters_detailed(basic)
+            basic = await helper.fetch_character_urls()
+            detailed = await helper.fetch_characters(basic)
             _write_json_sync(args.output_file, detailed)
             return 0
 

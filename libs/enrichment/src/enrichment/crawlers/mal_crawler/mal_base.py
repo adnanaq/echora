@@ -275,6 +275,30 @@ def extract_id_from_url(url: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def normalize_mal_anime_url(url: str) -> tuple[str, bool]:
+    """Validate and inspect a MAL anime URL.
+
+    Args:
+        url: MAL anime URL — slugged or slugless.
+            e.g. "https://myanimelist.net/anime/21" or
+                 "https://myanimelist.net/anime/21/One_Piece"
+
+    Returns:
+        (url, has_slug) — url unchanged, has_slug True when a slug segment
+        follows the numeric ID.
+
+    Raises:
+        ValueError: If url does not start with MAL_BASE_URL or does not
+            match the /anime/{id} pattern.
+    """
+    if not url.startswith(MAL_BASE_URL):
+        raise ValueError(f"URL must start with {MAL_BASE_URL!r}, got: {url!r}")
+    if not re.search(r"/anime/\d+", url):
+        raise ValueError(f"URL does not match /anime/{{id}} pattern: {url!r}")
+    has_slug = bool(re.search(r"/anime/\d+/[^/]", url))
+    return url, has_slug
+
+
 def parse_number(s: str | None) -> int | None:
     """Parse a formatted number string to int.
 
@@ -463,11 +487,11 @@ def parse_broadcast_string(
     return None, None, None
 
 
-def parse_episode_ranges(raw: str | None) -> list[dict[str, int | None]]:
-    """Parse MAL episode range strings into a list of start/end dicts.
+def parse_episode_ranges(raw: str | None) -> list[tuple[int, int | None]]:
+    """Parse MAL episode range strings into a list of (start, end) tuples.
 
     Handles: "1-30", "492", "1139-", "1-30, 492, 1139-".
-    Returns list of dicts matching EpisodeRange model.
+    Returns tuples of (start, end) where end is None for open ranges.
     """
     if not raw:
         return []
@@ -490,13 +514,13 @@ def parse_episode_ranges(raw: str | None) -> list[dict[str, int | None]]:
                 end = int(e_str) if e_str else None
 
                 if start is not None:
-                    ranges.append({"start": start, "end": end})
+                    ranges.append((start, end))
             except ValueError:
                 continue
         else:
             try:
                 val = int(part.strip())
-                ranges.append({"start": val, "end": val})
+                ranges.append((val, val))
             except ValueError:
                 continue
     return ranges
@@ -521,7 +545,7 @@ class ModelDiff:
     """Field-level diff result for a scraped model."""
 
     entity_type: str  # "anime", "character", "episode"
-    entity_id: int  # mal_id
+    entity_id: str | int  # URL for anime, numeric mal_id for characters/episodes
     changes: list[FieldChange] = field(default_factory=list)
     is_new: bool = False
 
@@ -533,28 +557,28 @@ class ModelDiff:
 
 @dataclass
 class ListDiff:
-    """Set-level diff for a list of scraped models keyed by mal_id."""
+    """Set-level diff for a list of scraped models keyed by url or mal_id."""
 
-    added: list[int] = field(default_factory=list)  # New mal_ids
-    removed: list[int] = field(default_factory=list)  # Removed mal_ids
-    updated: list[ModelDiff] = field(default_factory=list)  # Changed entries
+    added: list[str | int] = field(default_factory=list)
+    removed: list[str | int] = field(default_factory=list)
+    updated: list[ModelDiff] = field(default_factory=list)
 
 
-def _get_entity_id(model: BaseModel) -> int:
-    """Extract a numeric entity ID from any scraped model.
+def _get_entity_id(model: BaseModel) -> str | int:
+    """Extract a unique entity key from any scraped model.
 
-    Tries the following attributes in order:
-        anime_id  (MalScrapedAnime)
-        char_id   (CharacterRef)
-        mal_id    (MalScrapedCharacter)
-        episode_number (MalScrapedEpisode)
+    Tries episode_number first (MalScrapedEpisode), then falls back
+    to url (MalScrapedAnime, MalScrapedCharacter).
 
     Returns 0 when none are found.
     """
-    for attr in ("anime_id", "char_id", "mal_id", "episode_number"):
+    for attr in ("episode_number",):
         v = getattr(model, attr, None)
         if v is not None:
             return int(v)
+    url = getattr(model, "url", None)
+    if url:
+        return str(url)
     return 0
 
 
@@ -572,7 +596,7 @@ def diff_models(old: BaseModel | None, new: BaseModel, entity_type: str) -> Mode
     Returns:
         ModelDiff containing all changed fields, or is_new=True if no prior version.
     """
-    entity_id: int = _get_entity_id(new)
+    entity_id: str | int = _get_entity_id(new)
     if old is None:
         return ModelDiff(entity_type=entity_type, entity_id=entity_id, is_new=True)
 
@@ -608,15 +632,15 @@ def diff_model_lists(
     Returns:
         ListDiff with added/removed/updated model IDs and diffs.
     """
-    def _get_id(m: BaseModel) -> int | None:
+    def _get_id(m: BaseModel) -> str | int | None:
         v = _get_entity_id(m)
         return v if v != 0 else None
 
-    old_by_id: dict[int, BaseModel] = {
-        _get_id(m): m for m in old_models if _get_id(m) is not None
+    old_by_id: dict[str | int, BaseModel] = {
+        mid: m for m in old_models if (mid := _get_id(m)) is not None
     }
-    new_by_id: dict[int, BaseModel] = {
-        _get_id(m): m for m in new_models if _get_id(m) is not None
+    new_by_id: dict[str | int, BaseModel] = {
+        mid: m for m in new_models if (mid := _get_id(m)) is not None
     }
 
     added = [mid for mid in new_by_id if mid not in old_by_id]

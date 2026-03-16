@@ -19,17 +19,16 @@ import json
 import logging
 import re
 import sys
-from pathlib import Path
+
 from typing import Any
 
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.crawlers.utils import sanitize_output_path
+
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
-    extract_id_from_url,
     get_mal_docker_browser_config,
     get_mal_docker_crawler_config,
     get_mal_scraping_limiter,
@@ -42,12 +41,13 @@ from enrichment.crawlers.mal_crawler.mal_base import (
 )
 from enrichment.crawlers.mal_crawler.mal_models import (
     MalCompanyRef,
+    MalEpisodeRange,
     MalExternalLink,
     MalRelatedEntry,
     MalScrapedAnime,
     MalThemeSong,
 )
-from enrichment.mappers.mal_mapper import anime_from_mal
+
 
 logger = logging.getLogger(__name__)
 
@@ -465,7 +465,10 @@ def _parse_structured_themes(raw_themes: list[dict[str, Any]]) -> list[MalThemeS
 
         # Parse episode ranges
         episodes_raw = raw.get("episodes")
-        episode_ranges = parse_episode_ranges(episodes_raw)
+        episode_ranges = [
+            MalEpisodeRange(start=s, end=e)
+            for s, e in parse_episode_ranges(episodes_raw)
+        ]
 
         results.append(
             MalThemeSong(
@@ -553,7 +556,6 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
             MalRelatedEntry(
                 relation=relation,
                 title=title,
-                mal_id=extract_id_from_url(source_url),
                 source=source_url,
                 entry_type=item.get("entry_type"),
                 is_anime="/anime/" in source_url,
@@ -566,7 +568,6 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
 
 def _build_anime_from_raw(
     raw: dict[str, Any],
-    anime_id: int,
     url: str,
     picture_urls: list[str],
 ) -> MalScrapedAnime:
@@ -577,7 +578,6 @@ def _build_anime_from_raw(
 
     Args:
         raw: Dict from JsonCssExtractionStrategy output.
-        anime_id: MAL anime ID.
         url: Canonical URL for this anime.
         picture_urls: Gallery image URLs from /anime/{id}/pics.
 
@@ -715,7 +715,6 @@ def _build_anime_from_raw(
     related_entries = _parse_all_related_entries(raw)
 
     return MalScrapedAnime(
-        anime_id=anime_id,
         url=url,
         title=title,
         title_english=title_english,
@@ -764,53 +763,52 @@ def _build_anime_from_raw(
     key_prefix="mal_anime_scraped",
     dependencies=[_get_anime_schema, _parse_picture_urls],
 )
-async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
-    """Fetch and extract MAL anime detail page via crawl4ai Docker. Cached by anime_id.
+async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
+    """Fetch and extract MAL anime detail page via crawl4ai Docker. Cached by URL.
 
-    Submits anime detail + pics pages as one batch job to the Docker server using
-    the same schema. The `picture_urls_raw` field returns [] on the detail page
-    and returns gallery images on the /pics page.
+    Accepts both slugged and slugless URLs. If the URL already contains a slug
+    (e.g. /anime/21/One_Piece), slug derivation is skipped. Otherwise the slug
+    is derived from episode links on the page before fetching /pics.
 
     Cache key includes schema hash for automatic invalidation when extraction
     logic changes.
 
     Args:
-        anime_id: MAL anime ID.
+        url: MAL anime URL — slugged or slugless.
 
     Returns:
         Raw extracted data dict, or None on failure.
     """
-    url = f"{MAL_BASE_URL}/anime/{anime_id}"
-
     # ── Step 1: fetch anime detail page ──────────────────────────────────────
     await _limiter.acquire()
     browser_config = get_mal_docker_browser_config()
-    crawler_config = get_mal_docker_crawler_config(_get_anime_schema(), delay=1.5, magic=True)
+    crawler_config = get_mal_docker_crawler_config(_get_anime_schema(), delay=1.5)
 
     results = await crawl_batch_urls([url], browser_config=browser_config, crawler_config=crawler_config)
     result = results[0] if results else None
 
     if not result:
-        logger.warning(f"No result for anime page {anime_id}")
+        logger.warning(f"No result for anime page {url}")
         return None
 
     status = result.get("status_code")
     if status == 404:
-        logger.warning(f"Anime {anime_id} not found (404)")
+        logger.warning(f"Anime not found (404): {url}")
         return None
     if status and status != 200:
-        logger.error(f"HTTP {status} for anime {anime_id}")
+        logger.error(f"HTTP {status} for anime {url}")
         return None
 
     raw_list = json.loads(result.get("extracted_content") or "[]")
     if not raw_list:
-        logger.warning(f"No data extracted from anime page {anime_id}")
+        logger.warning(f"No data extracted from anime page {url}")
         return None
     raw = raw_list[0]
 
-    # Derive canonical slug URL from an episode link on the page.
+    # Derive canonical slug URL from episode links on the page.
     # Episode hrefs contain the slug: /anime/{id}/{slug}/episode/{n}
     # Slug-less URLs (e.g. /anime/57334/episode/1) 404 on MAL.
+    # If the input already has a slug, episode links will match it — canonical_url == url.
     episode_url = raw.get("episode_url", "")
     slug_match = re.match(
         r"(https?://[^/]+/anime/\d+/[^/]+)/episode/", episode_url or ""
@@ -830,48 +828,33 @@ async def _fetch_mal_anime_data(anime_id: int) -> dict[str, Any] | None:
             picture_urls = _parse_picture_urls(pics_list[0].get("picture_urls_raw", []))
 
     raw["_picture_urls"] = picture_urls
-    raw["_anime_id"] = anime_id
     raw["_url"] = canonical_url
     return raw
 
 
-async def fetch_mal_anime(
-    anime_id: int,
-    output_path: str | None = None,
-) -> MalScrapedAnime | None:
+async def fetch_mal_anime(url: str) -> MalScrapedAnime | None:
     """Fetch MAL anime detail and pictures pages.
 
-    Public API. Fetches, validates into MalScrapedAnime, and optionally saves
-    to disk. The disk write runs even on cache hits.
+    Public API. Fetches and validates into MalScrapedAnime.
+    Accepts both slugged and slugless MAL anime URLs.
 
     Args:
-        anime_id: MAL anime ID (e.g., 21 for One Piece).
-        output_path: Optional path to write JSON output.
+        url: MAL anime URL, e.g. "https://myanimelist.net/anime/21" or
+             "https://myanimelist.net/anime/21/One_Piece".
 
     Returns:
         MalScrapedAnime model if successful, None otherwise.
     """
-    logger.info(f"[anime] Fetching MAL anime {anime_id}...")
-    raw = await _fetch_mal_anime_data(anime_id)
+    logger.info(f"[anime] Fetching MAL anime {url}...")
+    raw = await _fetch_mal_anime_data(url)
     if not raw:
-        logger.error(f"[anime] Failed to fetch anime {anime_id}")
+        logger.error(f"[anime] Failed to fetch anime {url}")
         return None
 
     picture_urls = raw.pop("_picture_urls", [])
-    saved_id = raw.pop("_anime_id", anime_id)
-    saved_url = raw.pop("_url", f"{MAL_BASE_URL}/anime/{anime_id}")
+    saved_url = raw.pop("_url", url)
 
-    anime = _build_anime_from_raw(raw, saved_id, saved_url, picture_urls)
-
-    if output_path:
-        canonical = anime_from_mal(anime)
-        safe_path = sanitize_output_path(output_path)
-        Path(safe_path).write_text(
-            json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        logger.info(f"[anime] Saved to {safe_path}")
-
-    return anime
+    return _build_anime_from_raw(raw, saved_url, picture_urls)
 
 
 async def main() -> int:
@@ -882,18 +865,22 @@ async def main() -> int:
     )
     parser = argparse.ArgumentParser(description="Fetch anime data from MAL")
     parser.add_argument(
-        "anime_id", type=int, help="MAL anime ID (e.g., 21 for One Piece)"
+        "url", type=str, help="MAL anime URL (e.g., https://myanimelist.net/anime/21)"
     )
     parser.add_argument(
         "--output", type=str, default="mal_anime.json", help="Output file path"
     )
     args = parser.parse_args()
 
-    anime = await fetch_mal_anime(args.anime_id, output_path=args.output)
+    anime = await fetch_mal_anime(args.url)
     if anime is None:
-        logger.error("No data extracted for anime ID %s", args.anime_id)
+        logger.error(f"No data extracted for anime URL {args.url}")
         return 1
-    logger.info("Done: %s (%s episodes)", anime.title, anime.episode_count)
+    from enrichment.mappers.mal_mapper import anime_from_mal
+    from pathlib import Path
+    canonical = anime_from_mal(anime)
+    Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info(f"Done: {anime.title} ({anime.episode_count} episodes)")
     return 0
 
 
