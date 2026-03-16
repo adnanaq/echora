@@ -234,10 +234,10 @@ class ParallelAPIFetcher:
             async def _write_jsonl(path: str, data: Any) -> None:
                 await asyncio.to_thread(_write_jsonl_sync, path, data)
 
-            # Build streaming output paths
-            anime_path = os.path.join(temp_dir, "mal_anime.jsonl")
-            episodes_path = os.path.join(temp_dir, "mal_episodes.jsonl")
-            characters_path = os.path.join(temp_dir, "mal_characters.jsonl")
+            # Build streaming output paths (None when no temp_dir)
+            anime_path = os.path.join(temp_dir, "mal_anime.jsonl") if temp_dir else None
+            episodes_path = os.path.join(temp_dir, "mal_episodes.jsonl") if temp_dir else None
+            characters_path = os.path.join(temp_dir, "mal_characters.jsonl") if temp_dir else None
 
             async with MalEnrichmentHelper(
                 mal_id, session=self.mal_session

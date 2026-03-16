@@ -19,7 +19,6 @@ class PlatformIDExtractor:
 
     # Define regex patterns for each platform
     PATTERNS = {
-        "mal_id": r"myanimelist\.net/anime/(\d+)",
         "anilist_id": r"anilist\.co/anime/(\d+)",
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
@@ -43,6 +42,11 @@ class PlatformIDExtractor:
         """
         sources = offline_data.get("sources", [])
         ids = {}
+
+        # MAL: pass the full source URL — no ID stripping needed
+        ids["mal_id"] = next(
+            (s for s in sources if "myanimelist.net/anime/" in s), None
+        )
 
         # Extract IDs for each platform
         for platform, pattern in self.PATTERNS.items():
@@ -148,7 +152,6 @@ class PlatformIDExtractor:
 
             # Validate numeric IDs
             if platform in [
-                "mal_id",
                 "anilist_id",
                 "anidb_id",
                 "anisearch_id",
