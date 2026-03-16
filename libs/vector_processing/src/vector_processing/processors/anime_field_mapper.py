@@ -154,8 +154,7 @@ class AnimeFieldMapper:
             if character.nicknames
             else "",
             f"Background: {character.description}" if character.description else "",
-            f"Gender: {character.attributes.gender}" if character.attributes.gender else "",
-            f"Age: {character.attributes.age}" if character.attributes.age else "",
+            *(f"{k}: {v}" for k, v in character.attributes.items()),
         ]
         return " | ".join(filter(None, parts))
 

@@ -110,6 +110,44 @@ def _extract_name_and_native(
     return name or raw, native
 
 
+def _inline_spoilers(html: str) -> str:
+    """Replace spoiler divs with their revealed text content.
+
+    MAL spoiler structure:
+        <div class="spoiler ...">
+          <input ... value="Show">
+          <span class="spoiler_content" style="display:none">
+            <input ... value="Hide"><br>
+            spoiler text here
+          </span>
+        </div>
+
+    The visible text follows the <br> inside spoiler_content. We extract that
+    text and substitute the whole spoiler div with it, preserving field values.
+    """
+
+    def _replace(m: re.Match[str]) -> str:
+        sc = re.search(
+            r'<span[^>]*spoiler_content[^>]*>.*?<br\s*/?>(.*?)</span>',
+            m.group(0),
+            re.DOTALL | re.IGNORECASE,
+        )
+        if not sc:
+            return ""
+        return re.sub(r"<[^>]+>", "", sc.group(1)).strip()
+
+    result = re.sub(
+        r'<div[^>]*class="[^"]*spoiler[^"]*"[^>]*>.*?</div>',
+        _replace,
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    result = re.sub(r"<input[^>]*>", "", result, flags=re.IGNORECASE)
+    result = re.sub(r",\s*,", ",", result)
+    result = re.sub(r":\s*,", ":", result)
+    return result
+
+
 def _extract_bio_data(content_html: str) -> dict[str, str]:
     """Extract key:value biographical data pairs from MAL character content."""
     bio: dict[str, str] = {}
@@ -123,22 +161,7 @@ def _extract_bio_data(content_html: str) -> dict[str, str]:
     if not bio_section:
         return bio
 
-    bio_html = bio_section.group(1)
-
-    # Two-pass spoiler strip: inner content first, then outer wrapper
-    bio_html = re.sub(
-        r'<(?:div|span)[^>]*class="[^"]*spoiler_content[^"]*"[^>]*>.*?</(?:div|span)>',
-        "",
-        bio_html,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-    bio_html = re.sub(
-        r'<(?:div|span)[^>]*class="[^"]*spoiler[^"]*"[^>]*>.*?</(?:div|span)>',
-        "",
-        bio_html,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-    bio_html = re.sub(r"<input[^>]*>", "", bio_html, flags=re.IGNORECASE)
+    bio_html = _inline_spoilers(bio_section.group(1))
 
     for line in re.split(r"<br\s*/?>", bio_html, flags=re.IGNORECASE):
         text = re.sub(r"<[^>]+>", "", line).strip()
