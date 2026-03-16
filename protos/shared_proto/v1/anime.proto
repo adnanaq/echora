@@ -127,9 +127,9 @@ enum SourceMaterialRelationType {
 // =============================================================================
 
 message TrailerEntry {
-  optional string url = 1;
+  optional string source = 1;
   optional string title = 2;
-  optional string thumbnail_url = 3;
+  optional string thumbnail = 3;
 }
 
 // Aired date range. Fields renamed from from_date/to for clarity.

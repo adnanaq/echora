@@ -197,14 +197,14 @@ SOURCE_MATERIAL_RELATION_TYPE_ALTERNATIVE: SourceMaterialRelationType
 SOURCE_MATERIAL_RELATION_TYPE_OTHER: SourceMaterialRelationType
 
 class TrailerEntry(_message.Message):
-    __slots__ = ("url", "title", "thumbnail_url")
-    URL_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("source", "title", "thumbnail")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
-    THUMBNAIL_URL_FIELD_NUMBER: _ClassVar[int]
-    url: str
+    THUMBNAIL_FIELD_NUMBER: _ClassVar[int]
+    source: str
     title: str
-    thumbnail_url: str
-    def __init__(self, url: _Optional[str] = ..., title: _Optional[str] = ..., thumbnail_url: _Optional[str] = ...) -> None: ...
+    thumbnail: str
+    def __init__(self, source: _Optional[str] = ..., title: _Optional[str] = ..., thumbnail: _Optional[str] = ...) -> None: ...
 
 class AiredDates(_message.Message):
     __slots__ = ("aired_from", "aired_to")

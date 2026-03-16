@@ -293,9 +293,9 @@ class Ography(BaseModel):
 class TrailerEntry(BaseModel):
     """Trailer information from external APIs"""
 
-    url: str | None = Field(None, description="Trailer video URL")
+    source: str | None = Field(None, description="Trailer video URL")
     title: str | None = Field(None, description="Trailer title")
-    thumbnail_url: str | None = Field(None, description="Trailer thumbnail URL")
+    thumbnail: str | None = Field(None, description="Trailer thumbnail URL")
 
 
 class AiredDates(BaseModel):

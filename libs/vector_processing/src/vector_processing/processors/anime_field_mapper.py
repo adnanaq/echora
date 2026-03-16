@@ -208,8 +208,8 @@ class AnimeFieldMapper:
         urls.extend(anime.images.banners)
 
         for trailer in anime.trailers:
-            if hasattr(trailer, "thumbnail_url") and trailer.thumbnail_url:
-                urls.append(trailer.thumbnail_url)
+            if hasattr(trailer, "thumbnail") and trailer.thumbnail:
+                urls.append(trailer.thumbnail)
 
         return list(dict.fromkeys(filter(None, urls)))
 
