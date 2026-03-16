@@ -57,6 +57,12 @@ crawler:
       - "--disable-web-security"
       - "--allow-insecure-localhost"
       - "--ignore-certificate-errors"
+      # Disabling JS eliminates V8 heap accumulation across batch requests (confirmed
+      # 30-35% faster per page, 40-70% smaller HTML, zero field regressions on all MAL
+      # page types). Safe to enable once ALL crawlers migrated to Docker have been
+      # verified JS-free. Currently blocked by anisearch_anime_crawler.py which uses
+      # js_code for click-navigation between sub-pages (screenshots, relations tabs).
+      # - "--blink-settings=scriptEnabled=0"
 
 logging:
   level: "INFO"
