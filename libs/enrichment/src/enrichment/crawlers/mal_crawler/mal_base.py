@@ -91,9 +91,8 @@ def get_browser_config(
 
     elif layer == AntiDetectionLayer.UNDETECTED:
         # Camoufox / UndetectedAdapter — full fingerprint spoofing
-        # For now falls back to stealth with extra settings
+        # For now falls back to stealth (override_navigator not supported by BrowserConfig)
         base_kwargs["enable_stealth"] = True
-        base_kwargs["override_navigator"] = True
 
     return BrowserConfig(**base_kwargs)
 
