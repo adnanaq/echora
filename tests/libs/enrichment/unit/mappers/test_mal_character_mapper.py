@@ -9,8 +9,7 @@ from enrichment.mappers.mal_mapper import character_from_mal
 
 def _make_sample_character() -> MalScrapedCharacter:
     return MalScrapedCharacter(
-        mal_id=40,
-        url="https://myanimelist.net/character/40",
+        source="https://myanimelist.net/character/40",
         name="Monkey D., Luffy",
         name_native="モンキー・D・ルフィ",
         description="The main character of One Piece.",
@@ -62,9 +61,8 @@ def test_character_from_mal_roles_derived_from_animeography() -> None:
     assert "MAIN" in result["roles"]
 
 
-# TODO: attributes mapping from character_info not yet implemented
-# def test_character_from_mal_character_info() -> None:
-#     result = character_from_mal(_make_sample_character())
-#     assert "attributes" in result
-#     assert result["attributes"]["age"] == "17; 19"
-#     assert result["attributes"]["devil_fruit"] == "Gomu Gomu no Mi"
+def test_character_from_mal_attributes_mapped() -> None:
+    result = character_from_mal(_make_sample_character())
+    assert "attributes" in result
+    assert result["attributes"]["Age"] == "17; 19"
+    assert result["attributes"]["Devil fruit"] == "Gomu Gomu no Mi"

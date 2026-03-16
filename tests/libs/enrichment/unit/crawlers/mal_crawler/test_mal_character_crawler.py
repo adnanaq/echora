@@ -69,16 +69,54 @@ def test_extract_bio_data_no_header_returns_empty() -> None:
     assert result == {}
 
 
-def test_extract_bio_data_spoiler_content_stripped() -> None:
-    html = """
-    <h2 class="normal_header">Info</h2>
-    Age: 19<br>
-    <div class="spoiler_content">Secret: hidden value</div>
-    Blood type: F<br>
-    """
-    result = _extract_bio_data(html)
-    assert "Age" in result
-    assert "Secret" not in result
+_SPOILER_ONLY_HTML = """
+<h2 class="normal_header">Info</h2>
+Bounty:
+<div class="spoiler" id="spoiler123">
+  <input type="button" class="button-secondary" value="Show">
+  <span class="spoiler_content" style="display: none;">
+    <input type="button" class="button-secondary" value="Hide"><br>
+    3,000,000,000
+  </span>
+</div><br>
+Age: 19<br>
+"""
+
+_SPOILER_SUFFIX_HTML = """
+<h2 class="normal_header">Info</h2>
+Devil fruit:
+Gomu Gomu no Mi,
+<div class="spoiler" id="spoiler456">
+  <input type="button" class="button-secondary" value="Show">
+  <span class="spoiler_content" style="display: none;">
+    <input type="button" class="button-secondary" value="Hide"><br>
+    Hito Hito no Mi
+  </span>
+</div><br>
+Age: 17<br>
+"""
+
+
+def test_extract_bio_data_spoiler_value_only_inlined() -> None:
+    """Spoiler-only value is inlined — Bounty should not be empty."""
+    result = _extract_bio_data(_SPOILER_ONLY_HTML)
+    assert "Bounty" in result
+    assert "3,000,000,000" in result["Bounty"]
+
+
+def test_extract_bio_data_spoiler_suffix_inlined() -> None:
+    """Spoiler appended to a visible value is concatenated cleanly."""
+    result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
+    assert "Devil fruit" in result
+    assert "Gomu Gomu no Mi" in result["Devil fruit"]
+    assert "Hito Hito no Mi" in result["Devil fruit"]
+
+
+def test_extract_bio_data_spoiler_no_double_comma() -> None:
+    """Concatenation of visible value + spoiler must not produce ', ,'."""
+    result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
+    assert ",," not in result.get("Devil fruit", "")
+    assert ", ," not in result.get("Devil fruit", "")
 
 
 # =============================================================================

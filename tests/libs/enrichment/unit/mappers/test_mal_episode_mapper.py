@@ -12,7 +12,7 @@ from enrichment.mappers.mal_mapper import episode_from_mal
 def _make_sample_episode() -> MalScrapedEpisode:
     return MalScrapedEpisode(
         episode_number=1,
-        url="https://myanimelist.net/anime/21/episode/1",
+        source="https://myanimelist.net/anime/21/One_Piece/episode/1",
         title="I'm Luffy! The Man Who Will Become the Pirate King!",
         title_japanese="俺はルフィ！",
         title_romaji="Ore wa Luffy!",
@@ -50,7 +50,7 @@ def test_episode_from_mal_duration() -> None:
 
 def test_episode_from_mal_source_url() -> None:
     result = episode_from_mal(_make_sample_episode())
-    assert result["sources"] == ["https://myanimelist.net/anime/21/episode/1"]
+    assert result["sources"] == ["https://myanimelist.net/anime/21/One_Piece/episode/1"]
 
 
 def test_episode_from_mal_characters_mapped() -> None:
