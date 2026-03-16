@@ -648,25 +648,6 @@ class Anime(BaseModel):
 # =============================================================================
 
 
-class CharacterAttributes(BaseModel):
-    """Typed biographical attributes for a character, aggregated across all sources.
-
-    All fields are optional — populated progressively as sources are processed.
-    Known keys so far: MAL sidebar, AniList, AniDB, AnimePlanet.
-    """
-
-    affiliation: str | None = Field(None, description="Group or organization")
-    age: str | None = Field(None, description="Age (string to handle ranges like '17-19')")
-    birthday: str | None = Field(None, description="Birthday")
-    blood_type: str | None = Field(None, description="Blood type")
-    bounty: str | None = Field(None, description="Bounty (e.g. One Piece)")
-    devil_fruit: str | None = Field(None, description="Devil fruit (e.g. One Piece)")
-    eye_color: str | None = Field(None, description="Eye color")
-    gender: str | None = Field(None, description="Gender")
-    hair_color: str | None = Field(None, description="Hair color")
-    height: str | None = Field(None, description="Height")
-    position: str | None = Field(None, description="Role or position within their group")
-    weight: str | None = Field(None, description="Weight")
 
 
 class Character(BaseModel):
@@ -724,9 +705,9 @@ class Character(BaseModel):
     # =====================================================================
     # OBJECT/DICT FIELDS (alphabetical)
     # =====================================================================
-    attributes: CharacterAttributes = Field(
-        default_factory=CharacterAttributes,
-        description="Typed biographical attributes (age, gender, hair/eye color, height, etc.)",
+    attributes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Biographical attributes scraped from character page (keys vary by series)",
     )
 
 

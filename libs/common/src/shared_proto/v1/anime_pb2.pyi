@@ -336,34 +336,6 @@ class Ography(_message.Message):
     sources: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, title: _Optional[str] = ..., role: _Optional[_Union[CharacterRole, str]] = ..., sources: _Optional[_Iterable[str]] = ...) -> None: ...
 
-class CharacterAttributes(_message.Message):
-    __slots__ = ("affiliation", "age", "birthday", "blood_type", "bounty", "devil_fruit", "eye_color", "gender", "hair_color", "height", "position", "weight")
-    AFFILIATION_FIELD_NUMBER: _ClassVar[int]
-    AGE_FIELD_NUMBER: _ClassVar[int]
-    BIRTHDAY_FIELD_NUMBER: _ClassVar[int]
-    BLOOD_TYPE_FIELD_NUMBER: _ClassVar[int]
-    BOUNTY_FIELD_NUMBER: _ClassVar[int]
-    DEVIL_FRUIT_FIELD_NUMBER: _ClassVar[int]
-    EYE_COLOR_FIELD_NUMBER: _ClassVar[int]
-    GENDER_FIELD_NUMBER: _ClassVar[int]
-    HAIR_COLOR_FIELD_NUMBER: _ClassVar[int]
-    HEIGHT_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    WEIGHT_FIELD_NUMBER: _ClassVar[int]
-    affiliation: str
-    age: str
-    birthday: str
-    blood_type: str
-    bounty: str
-    devil_fruit: str
-    eye_color: str
-    gender: str
-    hair_color: str
-    height: str
-    position: str
-    weight: str
-    def __init__(self, affiliation: _Optional[str] = ..., age: _Optional[str] = ..., birthday: _Optional[str] = ..., blood_type: _Optional[str] = ..., bounty: _Optional[str] = ..., devil_fruit: _Optional[str] = ..., eye_color: _Optional[str] = ..., gender: _Optional[str] = ..., hair_color: _Optional[str] = ..., height: _Optional[str] = ..., position: _Optional[str] = ..., weight: _Optional[str] = ...) -> None: ...
-
 class StaffMember(_message.Message):
     __slots__ = ("staff_ids", "name", "native_name", "role", "image", "biography", "birth_date", "hometown", "primary_occupations", "years_active", "gender", "blood_type", "community_favorites", "enhancement_status")
     class StaffIdsEntry(_message.Message):
@@ -540,6 +512,13 @@ class EpisodeStaff(_message.Message):
 
 class Character(_message.Message):
     __slots__ = ("description", "favorites", "id", "entity_type", "name", "name_native", "roles", "anime_ids", "animeography", "traits", "images", "mangaography", "name_variations", "nicknames", "sources", "voice_actors", "attributes")
+    class AttributesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     FAVORITES_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
@@ -573,8 +552,8 @@ class Character(_message.Message):
     nicknames: _containers.RepeatedScalarFieldContainer[str]
     sources: _containers.RepeatedScalarFieldContainer[str]
     voice_actors: _containers.RepeatedCompositeFieldContainer[VoiceActor]
-    attributes: CharacterAttributes
-    def __init__(self, description: _Optional[str] = ..., favorites: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., roles: _Optional[_Iterable[_Union[CharacterRole, str]]] = ..., anime_ids: _Optional[_Iterable[str]] = ..., animeography: _Optional[_Iterable[_Union[Ography, _Mapping]]] = ..., traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., mangaography: _Optional[_Iterable[_Union[Ography, _Mapping]]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., sources: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[VoiceActor, _Mapping]]] = ..., attributes: _Optional[_Union[CharacterAttributes, _Mapping]] = ...) -> None: ...
+    attributes: _containers.ScalarMap[str, str]
+    def __init__(self, description: _Optional[str] = ..., favorites: _Optional[int] = ..., id: _Optional[str] = ..., entity_type: _Optional[_Union[EntityType, str]] = ..., name: _Optional[str] = ..., name_native: _Optional[str] = ..., roles: _Optional[_Iterable[_Union[CharacterRole, str]]] = ..., anime_ids: _Optional[_Iterable[str]] = ..., animeography: _Optional[_Iterable[_Union[Ography, _Mapping]]] = ..., traits: _Optional[_Iterable[str]] = ..., images: _Optional[_Iterable[str]] = ..., mangaography: _Optional[_Iterable[_Union[Ography, _Mapping]]] = ..., name_variations: _Optional[_Iterable[str]] = ..., nicknames: _Optional[_Iterable[str]] = ..., sources: _Optional[_Iterable[str]] = ..., voice_actors: _Optional[_Iterable[_Union[VoiceActor, _Mapping]]] = ..., attributes: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class Episode(_message.Message):
     __slots__ = ("aired", "anime_id", "description", "duration", "episode_number", "filler", "id", "entity_type", "recap", "score", "season_number", "synopsis", "title", "title_japanese", "title_romaji", "images", "streaming", "sources", "characters", "staff")
