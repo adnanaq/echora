@@ -47,9 +47,9 @@ Devil fruit: Gomu Gomu no Mi<br>
 
 def test_extract_bio_data_key_value_pairs() -> None:
     result = _extract_bio_data(_BIO_HTML)
-    assert result["Age"] == "17; 19"
-    assert result["Height"] == "172 cm"
-    assert result["Devil fruit"] == "Gomu Gomu no Mi"
+    assert result["age"] == "17; 19"
+    assert result["height"] == "172 cm"
+    assert result["devil_fruit"] == "Gomu Gomu no Mi"
 
 
 def test_extract_bio_data_stops_at_next_section() -> None:
@@ -100,23 +100,23 @@ Age: 17<br>
 def test_extract_bio_data_spoiler_value_only_inlined() -> None:
     """Spoiler-only value is inlined — Bounty should not be empty."""
     result = _extract_bio_data(_SPOILER_ONLY_HTML)
-    assert "Bounty" in result
-    assert "3,000,000,000" in result["Bounty"]
+    assert "bounty" in result
+    assert "3,000,000,000" in result["bounty"]
 
 
 def test_extract_bio_data_spoiler_suffix_inlined() -> None:
     """Spoiler appended to a visible value is concatenated cleanly."""
     result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
-    assert "Devil fruit" in result
-    assert "Gomu Gomu no Mi" in result["Devil fruit"]
-    assert "Hito Hito no Mi" in result["Devil fruit"]
+    assert "devil_fruit" in result
+    assert "Gomu Gomu no Mi" in result["devil_fruit"]
+    assert "Hito Hito no Mi" in result["devil_fruit"]
 
 
 def test_extract_bio_data_spoiler_no_double_comma() -> None:
     """Concatenation of visible value + spoiler must not produce ', ,'."""
     result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
-    assert ",," not in result.get("Devil fruit", "")
-    assert ", ," not in result.get("Devil fruit", "")
+    assert ",," not in result.get("devil_fruit", "")
+    assert ", ," not in result.get("devil_fruit", "")
 
 
 # =============================================================================

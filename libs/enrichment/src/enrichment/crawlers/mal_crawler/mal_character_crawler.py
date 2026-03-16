@@ -19,12 +19,10 @@ import json
 import logging
 import re
 import sys
-
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
 from enrichment.crawlers.mal_crawler.mal_base import (
-    MAL_BASE_URL,
     get_mal_docker_browser_config,
     get_mal_docker_crawler_config,
     get_mal_scraping_limiter,
@@ -36,7 +34,6 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedCharacter,
     MalVoiceActorRef,
 )
-
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -167,7 +164,7 @@ def _extract_bio_data(content_html: str) -> dict[str, str]:
         text = re.sub(r"<[^>]+>", "", line).strip()
         if ":" in text:
             key, _, value = text.partition(":")
-            key = key.strip()
+            key = key.strip().lower().replace(" ", "_")
             value = value.strip()
             if key and value and len(key) < 50:
                 bio[key] = value
@@ -447,8 +444,9 @@ async def main() -> int:
     if char is None:
         logger.error(f"No data for character {args.url}")
         return 1
-    from enrichment.mappers.mal_mapper import character_from_mal
     from pathlib import Path
+
+    from enrichment.mappers.mal_mapper import character_from_mal
     canonical = character_from_mal(char)
     Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
     logger.info(f"Done: {char.name}")

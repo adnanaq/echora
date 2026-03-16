@@ -17,11 +17,11 @@ def _make_sample_character() -> MalScrapedCharacter:
         favorites=123456,
         images=["https://cdn.myanimelist.net/images/characters/9/310307.jpg"],
         character_info={
-            "Age": "17; 19",
-            "Birthdate": "May 5, Taurus",
-            "Height": "172 cm",
-            "Blood type": "F",
-            "Devil fruit": "Gomu Gomu no Mi",
+            "age": "17; 19",
+            "birthdate": "May 5, Taurus",
+            "height": "172 cm",
+            "blood_type": "F",
+            "devil_fruit": "Gomu Gomu no Mi",
         },
         voice_actors=[
             MalVoiceActorRef(
@@ -64,5 +64,5 @@ def test_character_from_mal_roles_derived_from_animeography() -> None:
 def test_character_from_mal_attributes_mapped() -> None:
     result = character_from_mal(_make_sample_character())
     assert "attributes" in result
-    assert result["attributes"]["Age"] == "17; 19"
-    assert result["attributes"]["Devil fruit"] == "Gomu Gomu no Mi"
+    assert result["attributes"]["age"] == "17; 19"
+    assert result["attributes"]["devil_fruit"] == "Gomu Gomu no Mi"
