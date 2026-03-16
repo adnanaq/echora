@@ -11,7 +11,7 @@ from enrichment.mappers.mal_mapper import anime_from_mal
 
 def _make_sample_anime() -> MalScrapedAnime:
     return MalScrapedAnime(
-        url="https://myanimelist.net/anime/21",
+        source="https://myanimelist.net/anime/21",
         title="One Piece",
         title_english="One Piece",
         title_japanese="ワンピース",
@@ -127,4 +127,4 @@ def test_anime_from_mal_field_names_valid() -> None:
 def test_anime_from_mal_sources() -> None:
     sample = _make_sample_anime()
     result = anime_from_mal(sample)
-    assert result["sources"] == [sample.url]
+    assert result["sources"] == [sample.source]

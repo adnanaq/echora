@@ -379,7 +379,7 @@ def _build_episode_from_raw(
 
     return MalScrapedEpisode(
         episode_number=episode_number,
-        url=saved_url,
+        source=saved_url,
         title=title,
         title_japanese=title_japanese,
         title_romaji=title_romaji,

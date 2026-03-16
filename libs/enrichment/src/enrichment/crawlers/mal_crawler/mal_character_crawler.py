@@ -333,7 +333,7 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
     nicknames = [n.strip() for n in nicknames_raw.split(",")] if nicknames_raw else []
 
     return MalScrapedCharacter(
-        url=url,
+        source=url,
         name=name,
         name_native=name_native,
         description=_extract_description(content_html),

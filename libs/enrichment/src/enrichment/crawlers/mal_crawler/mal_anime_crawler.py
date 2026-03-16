@@ -715,7 +715,7 @@ def _build_anime_from_raw(
     related_entries = _parse_all_related_entries(raw)
 
     return MalScrapedAnime(
-        url=url,
+        source=url,
         title=title,
         title_english=title_english,
         title_japanese=title_japanese,

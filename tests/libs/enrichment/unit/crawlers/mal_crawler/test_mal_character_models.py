@@ -49,7 +49,7 @@ def test_mal_voice_actor_ref_with_sources() -> None:
 
 def test_mal_scraped_character_minimal() -> None:
     char = MalScrapedCharacter(
-        url="https://myanimelist.net/character/40",
+        source="https://myanimelist.net/character/40",
         name="Monkey D., Luffy",
     )
     assert char.name == "Monkey D., Luffy"
@@ -60,7 +60,7 @@ def test_mal_scraped_character_minimal() -> None:
 
 def test_mal_scraped_character_bio_data() -> None:
     char = MalScrapedCharacter(
-        url="...",
+        source="...",
         name="Luffy",
         character_info={
             "Age": "17; 19",
@@ -76,7 +76,7 @@ def test_mal_scraped_character_bio_data() -> None:
 def test_mal_scraped_character_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
         MalScrapedCharacter(
-            url="...",
+            source="...",
             name="Luffy",
             unexpected_field="x",  # type: ignore[call-arg]
         )
@@ -84,7 +84,7 @@ def test_mal_scraped_character_extra_field_rejected() -> None:
 
 def test_mal_scraped_character_nicknames() -> None:
     char = MalScrapedCharacter(
-        url="...",
+        source="...",
         name="Monkey D., Luffy",
         nicknames=["Straw Hat Luffy", "Straw Hat"],
     )
@@ -94,7 +94,7 @@ def test_mal_scraped_character_nicknames() -> None:
 
 def test_mal_scraped_character_voice_actors() -> None:
     char = MalScrapedCharacter(
-        url="...",
+        source="...",
         name="Luffy",
         voice_actors=[
             MalVoiceActorRef(person_id=70, name="Tanaka, Mayumi", language="Japanese"),

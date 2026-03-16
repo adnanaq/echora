@@ -95,7 +95,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     producers = [
         CompanyEntry(name=p.name, sources=[p.source]) for p in anime.producers
     ]
-    sources = [anime.url] if anime.url else []
+    sources = [anime.source] if anime.source else []
     studios = [
         CompanyEntry(name=s.name, sources=[s.source]) for s in anime.studios
     ]
@@ -254,8 +254,8 @@ def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
             result[field] = value
 
     # ── Sources ───────────────────────────────────────────────────────────
-    if char.url:
-        result["sources"] = [char.url]
+    if char.source:
+        result["sources"] = [char.source]
 
     # ── Images ────────────────────────────────────────────────────────────
     if char.images:
@@ -363,7 +363,7 @@ def episode_from_mal(
         title_romaji=ep.title_romaji,
         characters=characters,
         staff=staff,
-        sources=[ep.url],
+        sources=[ep.source],
     )
 
     return episode.model_dump(mode="json", exclude_none=True)

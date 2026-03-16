@@ -65,7 +65,7 @@ def test_episode_character_ref_with_voice_actors() -> None:
 def test_mal_scraped_episode_minimal() -> None:
     ep = MalScrapedEpisode(
         episode_number=1,
-        url="...",
+        source="...",
         title="Episode 1",
     )
     assert ep.episode_number == 1
@@ -79,15 +79,15 @@ def test_mal_scraped_episode_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
         MalScrapedEpisode(
             episode_number=1,
-            url="...",
+            source="...",
             title="Episode 1",
             unknown_field="x",  # type: ignore[call-arg]
         )
 
 
 def test_mal_scraped_episode_filler_recap_flags() -> None:
-    filler_ep = MalScrapedEpisode(episode_number=50, url="...", title="Showdown at High!", filler=True)
-    recap_ep = MalScrapedEpisode(episode_number=279, url="...", title="Luffy's Feelings!", recap=True)
+    filler_ep = MalScrapedEpisode(episode_number=50, source="...", title="Showdown at High!", filler=True)
+    recap_ep = MalScrapedEpisode(episode_number=279, source="...", title="Luffy's Feelings!", recap=True)
     assert filler_ep.filler is True
     assert filler_ep.recap is False
     assert recap_ep.recap is True
@@ -104,7 +104,7 @@ def test_mal_scraped_episode_with_community_data() -> None:
     staff = EpisodeStaffRef(person_id=999, name="Takegami, Junki", role="Script")
     ep = MalScrapedEpisode(
         episode_number=1,
-        url="...",
+        source="...",
         title="Episode 1",
         characters=[char],
         staff=[staff],
@@ -121,15 +121,15 @@ def test_mal_scraped_episode_with_community_data() -> None:
 
 
 def test_mal_fetch_result_defaults() -> None:
-    anime = MalScrapedAnime(url="...", title="One Piece")
+    anime = MalScrapedAnime(source="...", title="One Piece")
     result = MalFetchResult(anime=anime)
     assert result.characters == []
     assert result.episodes == []
 
 
 def test_mal_fetch_result_with_data() -> None:
-    anime = MalScrapedAnime(url="...", title="One Piece")
-    ep = MalScrapedEpisode(episode_number=1, url="...", title="I'm Luffy!")
+    anime = MalScrapedAnime(source="...", title="One Piece")
+    ep = MalScrapedEpisode(episode_number=1, source="...", title="I'm Luffy!")
     result = MalFetchResult(anime=anime, episodes=[ep])
     assert len(result.episodes) == 1
     assert result.episodes[0].title == "I'm Luffy!"

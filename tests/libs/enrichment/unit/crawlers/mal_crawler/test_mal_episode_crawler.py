@@ -321,7 +321,7 @@ def test_build_episode_from_raw_url_from_raw_preferred() -> None:
         "_url": "https://myanimelist.net/anime/21/One_Piece/episode/1",
     }
     ep = _build_episode_from_raw(raw, 1, "https://other.url/episode/1")
-    assert ep.url == "https://myanimelist.net/anime/21/One_Piece/episode/1"
+    assert ep.source == "https://myanimelist.net/anime/21/One_Piece/episode/1"
 
 
 def test_build_episode_from_raw_with_anime_id() -> None:

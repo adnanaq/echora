@@ -69,7 +69,7 @@ class MalScrapedAnime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Identity
-    url: str
+    source: str
 
     # Titles
     title: str
@@ -162,7 +162,7 @@ class MalScrapedCharacter(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    url: str
+    source: str
     name: str
     name_native: str | None = None  # Kanji/native script in parens from page title
     description: str | None = None  # "About" section on character page
@@ -221,7 +221,7 @@ class MalScrapedEpisode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     episode_number: int
-    url: str
+    source: str
 
     title: str
     title_japanese: str | None = None
