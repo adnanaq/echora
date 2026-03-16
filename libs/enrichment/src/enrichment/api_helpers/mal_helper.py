@@ -7,9 +7,9 @@ the crawlers in enrichment.crawlers.mal_crawler. The public interface is preserv
 that api_fetcher.py and stage scripts need no changes.
 
 CLI:
-  python -m enrichment.api_helpers.mal_helper anime <mal_id> <output_file>
-  python -m enrichment.api_helpers.mal_helper episodes <mal_id> <episode_count> <output_file>
-  python -m enrichment.api_helpers.mal_helper characters <mal_id> <output_file>
+  python -m enrichment.api_helpers.mal_helper anime <anime_url> <output_file>
+  python -m enrichment.api_helpers.mal_helper episodes <anime_url> <episode_count> <output_file>
+  python -m enrichment.api_helpers.mal_helper characters <anime_url> <output_file>
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from enrichment.crawlers.mal_crawler.mal_character_crawler import (
     fetch_mal_characters,
 )
 from enrichment.crawlers.mal_crawler.mal_character_refs_crawler import fetch_mal_character_refs
+from enrichment.crawlers.mal_crawler.mal_episode_count_crawler import fetch_mal_episode_count
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episodes
 from enrichment.mappers.mal_mapper import anime_from_mal, character_from_mal, episode_from_mal
 
@@ -87,6 +88,9 @@ class MalEnrichmentHelper:
     async def fetch_anime(self) -> dict[str, Any] | None:
         """Fetch anime detail from /anime/{id}.
 
+        If the anime page reports an unknown episode count (e.g. ongoing series),
+        the count is resolved from the episode list page and patched into the result.
+
         Returns:
             MalScrapedAnime as a JSON-serializable dict, or None on failure.
         """
@@ -94,8 +98,11 @@ class MalEnrichmentHelper:
         if anime is None:
             return None
         if not self._anime_url:
-            self._anime_url = anime.url
-        return anime_from_mal(anime)
+            self._anime_url = anime.source
+        anime_dict = anime_from_mal(anime)
+        if not anime_dict.get("episode_count") and self._anime_url:
+            anime_dict["episode_count"] = await fetch_mal_episode_count(self._anime_url)
+        return anime_dict
 
     async def fetch_character_urls(self) -> list[str]:
         """Fetch all character URLs from /anime/{id}/characters.
@@ -122,13 +129,19 @@ class MalEnrichmentHelper:
         Concurrency is controlled by the Docker server's MAX_CONCURRENT_TASKS.
 
         Args:
-            episode_count: Number of episodes to fetch.
+            episode_count: Number of episodes to fetch. Use fetch_anime() first to
+                get the correct count — it resolves "Unknown" counts automatically.
             output_path: If provided, each episode is appended to this JSONL file
                 as it is parsed (streaming write).
 
         Returns:
             List of episode dicts (failed episodes are skipped).
         """
+        if not self._anime_url:
+            logger.error("fetch_episodes requires a slug URL — pass https://myanimelist.net/anime/{id}/{slug}")
+            return []
+        if episode_count == 0:
+            return []
         urls = [f"{self._anime_url}/episode/{i}" for i in range(1, episode_count + 1)]
         episodes_or_none = await fetch_mal_episodes(urls)
         episodes = [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
@@ -184,7 +197,6 @@ class MalEnrichmentHelper:
     async def fetch_all_data(
         self,
         *,
-        fallback_episode_count: int = 0,
         anime_output_path: str | None = None,
         episodes_output_path: str | None = None,
         characters_output_path: str | None = None,
@@ -192,7 +204,6 @@ class MalEnrichmentHelper:
         """Fetch all MAL data for this anime.
 
         Args:
-            fallback_episode_count: Episode count fallback when anime page lacks count.
             anime_output_path: If provided, anime data is written to this JSONL file
                 immediately after the anime page is fetched.
             episodes_output_path: If provided, each episode is streamed to this JSONL
@@ -211,8 +222,7 @@ class MalEnrichmentHelper:
         if anime_output_path:
             _append_jsonl(anime_output_path, anime_info)
 
-        episode_count = anime_info.get("episode_count") or fallback_episode_count
-        episode_count = int(episode_count or 0)
+        episode_count = int(anime_info.get("episode_count") or 0)
 
         character_urls = await self.fetch_character_urls()
         episodes_data: list[dict[str, Any]] = []
@@ -257,21 +267,21 @@ async def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_anime = sub.add_parser("anime", help="Fetch anime detail page")
-    p_anime.add_argument("anime_id", help="MyAnimeList anime ID")
+    p_anime.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
     p_anime.add_argument("output_file", help="Output JSON file")
 
     p_eps = sub.add_parser("episodes", help="Fetch episode detail pages")
-    p_eps.add_argument("anime_id", help="MyAnimeList anime ID")
+    p_eps.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
     p_eps.add_argument("episode_count", type=int, help="Number of episodes to fetch")
     p_eps.add_argument("output_file", help="Output JSON file")
 
     p_chars = sub.add_parser("characters", help="Fetch character detail pages")
-    p_chars.add_argument("anime_id", help="MyAnimeList anime ID")
+    p_chars.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
     p_chars.add_argument("output_file", help="Output JSON file")
 
     args = parser.parse_args()
 
-    async with MalEnrichmentHelper(args.anime_id) as helper:
+    async with MalEnrichmentHelper(args.anime_url) as helper:
         if args.cmd == "anime":
             data = await helper.fetch_anime()
             _write_json_sync(args.output_file, data or {})
