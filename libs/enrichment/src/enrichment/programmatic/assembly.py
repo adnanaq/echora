@@ -14,26 +14,23 @@ Key responsibilities:
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 # Type annotations for optional imports
 _AnimeRecord: type[Any] | None = None
-_EnrichmentMetadata: type[Any] | None = None
 _EnrichmentValidator: type[Any] | None = None
 _ValidationError: type[Exception] = Exception
 
 try:
     # Import the existing validator
-    from common.models.anime import AnimeRecord, EnrichmentMetadata
+    from common.models.anime import AnimeRecord
     from pydantic import ValidationError
 
     from scripts.validate_enrichment_database import EnrichmentValidator
 
     # Set the type markers for successful imports
     _AnimeRecord = AnimeRecord
-    _EnrichmentMetadata = EnrichmentMetadata
     _EnrichmentValidator = EnrichmentValidator
     _ValidationError = ValidationError
 except ImportError:
@@ -70,7 +67,6 @@ class EnrichmentAssembler:
         "status",
         "episode_details",
         "statistics",
-        "enrichment_metadata",
     }
 
     # Fields that should be omitted when empty (from validator)
@@ -156,8 +152,8 @@ class EnrichmentAssembler:
             # Apply field mapping and cleanup
             anime_entry = self._apply_field_mapping(anime_entry)
 
-            # Add enrichment metadata and apply schema ordering
-            anime_entry = self._add_enrichment_metadata(anime_entry)
+            # Apply schema ordering
+            anime_entry = self._apply_schema_ordering(anime_entry)
 
             # Assembly complete - validation will be done separately
             validation_passed = True
@@ -191,7 +187,6 @@ class EnrichmentAssembler:
             "status": "",
             "episode_details": [],
             "statistics": {},
-            "enrichment_metadata": None,
         }
 
     def _merge_programmatic_data(
@@ -438,20 +433,8 @@ class EnrichmentAssembler:
     # Note: No cleanup in Step 5 - just merge the data
     # Validation and cleanup will be done separately after assembly
 
-    def _add_enrichment_metadata(self, entry: dict[str, Any]) -> dict[str, Any]:
-        """Add enrichment metadata and apply proper schema field ordering"""
-        entry["enrichment_metadata"] = {
-            "source": "programmatic_ai_pipeline",
-            "enriched_at": datetime.now().isoformat(),
-            "success": len(self.errors) == 0,
-            "error_message": "; ".join(self.errors) if self.errors else None,
-        }
-
-        # Apply proper AnimeRecord schema field ordering
-        return self._apply_schema_ordering(entry)
-
     def _apply_schema_ordering(self, entry: dict[str, Any]) -> dict[str, Any]:
-        """Apply AnimeRecord schema field ordering: SCALAR → ARRAY → OBJECT → enrichment_metadata"""
+        """Apply AnimeRecord schema field ordering: SCALAR → ARRAY → OBJECT"""
 
         # Define field order per AnimeRecord schema
         scalar_fields = [
@@ -522,10 +505,6 @@ class EnrichmentAssembler:
         for field in object_fields:
             if field in entry:
                 ordered_entry[field] = entry[field]
-
-        # 4. FINAL FIELD: enrichment_metadata (always last)
-        if "enrichment_metadata" in entry:
-            ordered_entry["enrichment_metadata"] = entry["enrichment_metadata"]
 
         return ordered_entry
 

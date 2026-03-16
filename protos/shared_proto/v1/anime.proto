@@ -165,12 +165,6 @@ message AnimeHiatus {
   optional string hiatus_until = 3;
 }
 
-message EnrichmentMetadata {
-  string source = 1;
-  google.protobuf.Timestamp enriched_at = 2;
-  bool success = 3;
-  optional string error_message = 4;
-}
 
 // Anime-to-source-material relation (replaces the old RelationEntry).
 message RelatedSourceMaterial {
@@ -424,17 +418,16 @@ message Anime {
   AiredDates aired_dates = 32;
   // Unified broadcast message (weekly slot + streaming times + premiere dates)
   Broadcast broadcast = 33;
-  EnrichmentMetadata enrichment_metadata = 34;
-  map<string, string> external_sources = 35;
-  AnimeImages images = 36;
-  google.protobuf.Struct popularity_trends = 37;
-  ScoreCalculations score = 38;
-  StaffData staff_data = 39;
-  map<string, Statistics> statistics = 40;
-  repeated CompanyEntry licensors = 41;
-  repeated CompanyEntry producers = 42;
-  repeated CompanyEntry studios = 43;
-  optional AnimeHiatus hiatus = 44;
+  map<string, string> external_sources = 34;
+  AnimeImages images = 35;
+  google.protobuf.Struct popularity_trends = 36;
+  ScoreCalculations score = 37;
+  StaffData staff_data = 38;
+  map<string, Statistics> statistics = 39;
+  repeated CompanyEntry licensors = 40;
+  repeated CompanyEntry producers = 41;
+  repeated CompanyEntry studios = 42;
+  optional AnimeHiatus hiatus = 43;
 }
 
 message AnimeRecord {
