@@ -189,6 +189,10 @@ class MalScrapedCharacter(BaseModel):
     # Devil fruit, Bounty, Type, etc. Stored as dict[str, str] — values are raw strings.
     character_info: dict[str, Any] = {}
 
+    # Spoiler values keyed by the same field names as character_info, plus "description"
+    # for the prose description spoiler. Empty if the character page has no spoilers.
+    spoilers: dict[str, str] = {}
+
     voice_actors: list[MalVoiceActorRef] = []
 
     # From character detail page

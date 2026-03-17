@@ -709,6 +709,10 @@ class Character(BaseModel):
         default_factory=dict,
         description="Biographical attributes scraped from character page (keys vary by series)",
     )
+    spoilers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Spoiler values keyed by field name (same keys as attributes); 'description' key holds the prose description spoiler",
+    )
 
 
 # =============================================================================
