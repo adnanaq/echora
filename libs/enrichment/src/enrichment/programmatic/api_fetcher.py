@@ -82,23 +82,37 @@ class ParallelAPIFetcher:
         self.api_timings: dict[str, float] = {}
         self.api_errors: dict[str, str] = {}
 
-    async def initialize_helpers(self) -> None:
+    async def initialize_helpers(
+        self,
+        skip_services: list[str] | None = None,
+        only_services: list[str] | None = None,
+    ) -> None:
         """
         Lazily initialize enrichment helpers and a shared cached aiohttp session for MAL.
 
-        This prepares helper instances for AniList, Kitsu, AniDB, Anime-Planet, and AniSearch only if they are not already created, and obtains a shared cached aiohttp session for MAL requests to enable connection pooling and reuse.
+        Only initializes helpers for services that will actually be used, based on the
+        provided filter sets. This avoids side effects (e.g. logging, connections) from
+        helpers whose services are filtered out.
         """
-        if not self.anilist_helper:
+        def needed(service: str) -> bool:
+            if only_services:
+                return service in only_services
+            if skip_services:
+                return service not in skip_services
+            return True
+
+        if needed("anilist") and not self.anilist_helper:
             self.anilist_helper = AniListEnrichmentHelper()
-        if not self.kitsu_helper:
+        if needed("kitsu") and not self.kitsu_helper:
             self.kitsu_helper = KitsuEnrichmentHelper()
-        if not self.anidb_helper:
+        if needed("anidb") and not self.anidb_helper:
             self.anidb_helper = AniDBEnrichmentHelper()
-        if not self.anime_planet_helper:
+        if needed("anime_planet") and not self.anime_planet_helper:
             self.anime_planet_helper = AnimePlanetEnrichmentHelper()
-        if not self.anisearch_helper:
+        if needed("anisearch") and not self.anisearch_helper:
             self.anisearch_helper = AniSearchEnrichmentHelper()
         if not self.mal_session:
+            # MAL session is shared infrastructure (HTTP cache), always init
             from http_cache.instance import http_cache_manager as cache_manager
 
             self.mal_session = cache_manager.get_aiohttp_session("mal")
@@ -124,7 +138,7 @@ class ParallelAPIFetcher:
         Returns:
             Dict[str, Any]: Mapping of service names to their fetched result object, or `None` for services that failed or timed out.
         """
-        await self.initialize_helpers()
+        await self.initialize_helpers(skip_services=skip_services, only_services=only_services)
 
         start_time = time.time()
         tasks: list[tuple[str, Any]] = []
