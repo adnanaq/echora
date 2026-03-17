@@ -208,7 +208,7 @@ async def test_fetch_character_returns_mapped_data():
     """fetch_character delegates to fetch_mal_character + character_from_mal."""
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
-    char = MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy")
+    char = MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy")
     mapped = {"name": "Luffy", "sources": ["https://myanimelist.net/character/40/Luffy"]}
 
     with (
@@ -237,7 +237,7 @@ async def test_fetch_character_with_output_path_appends_jsonl(tmp_path: Path):
     """fetch_character appends to JSONL file when output_path is provided."""
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
-    char = MalScrapedCharacter(url="https://myanimelist.net/character/40/Luffy", name="Luffy")
+    char = MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy")
     mapped = {"name": "Luffy", "sources": ["https://myanimelist.net/character/40/Luffy"]}
     out = tmp_path / "chars.jsonl"
 
@@ -258,7 +258,7 @@ async def test_fetch_characters_returns_full_character_data(tmp_path: Path):
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
     urls = ["https://myanimelist.net/character/100/A"]
-    char = MalScrapedCharacter(url="https://myanimelist.net/character/100/A", name="A")
+    char = MalScrapedCharacter(source="https://myanimelist.net/character/100/A", name="A")
     mapped = {"name": "A", "role": "MAIN", "sources": ["https://myanimelist.net/character/100/A"]}
     out = tmp_path / "chars.jsonl"
 

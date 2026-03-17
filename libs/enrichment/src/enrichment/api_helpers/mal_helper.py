@@ -22,10 +22,6 @@ import os
 import sys
 from typing import Any
 
-from enrichment.api_helpers.mal_rate_limiter import (
-    MalRateLimiter,
-    get_shared_mal_rate_limiter,
-)
 from enrichment.crawlers.mal_crawler.mal_anime_crawler import fetch_mal_anime
 from enrichment.crawlers.mal_crawler.mal_base import normalize_mal_anime_url
 from enrichment.crawlers.mal_crawler.mal_character_crawler import (
@@ -60,7 +56,6 @@ class MalEnrichmentHelper:
         mal_source: Full MAL anime URL (e.g. "https://myanimelist.net/anime/21").
         session: Ignored — kept for interface compatibility with the old helper.
             The crawlers manage their own browser sessions internally.
-        limiter: Optional rate limiter override.
     """
 
     def __init__(
@@ -68,12 +63,10 @@ class MalEnrichmentHelper:
         mal_source: str,
         *,
         session: Any | None = None,  # noqa: ARG002  — compatibility only
-        limiter: MalRateLimiter | None = None,
     ) -> None:
         _, has_slug = normalize_mal_anime_url(mal_source)  # raises ValueError on invalid input
         self._mal_source = mal_source
         self._anime_url: str = mal_source if has_slug else ""
-        self._limiter = limiter or get_shared_mal_rate_limiter()
 
     async def close(self) -> None:
         """No-op — crawlers manage their own sessions."""
@@ -224,25 +217,26 @@ class MalEnrichmentHelper:
 
         episode_count = int(anime_info.get("episode_count") or 0)
 
-        character_urls = await self.fetch_character_urls()
-        episodes_data: list[dict[str, Any]] = []
-        characters_data: list[dict[str, Any]] = []
-
-        if episode_count > 0:
+        async def _fetch_episodes() -> list[dict[str, Any]]:
+            if episode_count == 0:
+                return []
             try:
-                episodes_data = await self.fetch_episodes(
-                    episode_count, output_path=episodes_output_path
-                )
+                return await self.fetch_episodes(episode_count, output_path=episodes_output_path)
             except Exception as e:
                 logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
+                return []
 
-        if character_urls:
+        async def _fetch_characters() -> list[dict[str, Any]]:
+            urls = await self.fetch_character_urls()
+            if not urls:
+                return []
             try:
-                characters_data = await self.fetch_characters(
-                    character_urls, output_path=characters_output_path
-                )
+                return await self.fetch_characters(urls, output_path=characters_output_path)
             except Exception as e:
                 logger.warning(f"Character detail fetch failed, continuing without characters: {e}")
+                return []
+
+        episodes_data, characters_data = await asyncio.gather(_fetch_episodes(), _fetch_characters())
 
         return {
             "anime": anime_info,
