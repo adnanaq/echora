@@ -58,6 +58,10 @@ async def _submit_job(
         async with session.post(f"{base_url}/crawl/job", json=payload) as resp:
             if resp.status not in (200, 202):
                 text = await resp.text()
+                if resp.status >= 500:
+                    raise RuntimeError(
+                        f"crawl4ai server error: HTTP {resp.status} — {text[:200]}"
+                    )
                 logger.error(
                     "crawl4ai job submission failed: HTTP %s — %s", resp.status, text[:200]
                 )
