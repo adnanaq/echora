@@ -8,7 +8,6 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     _get_entity_id,
     diff_model_lists,
     diff_models,
-    extract_id_from_url,
     get_browser_config,
     get_mal_docker_browser_config,
     get_mal_docker_crawler_config,
@@ -22,8 +21,6 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     parse_number,
     parse_premiered,
     parse_sidebar_field,
-    parse_sidebar_link_texts,
-    parse_sidebar_links,
 )
 from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedAnime,
@@ -177,26 +174,6 @@ def test_parse_broadcast_string_none() -> None:
 
 
 # =============================================================================
-# extract_id_from_url
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "url, expected",
-    [
-        ("https://myanimelist.net/anime/21/One_Piece", 21),
-        ("https://myanimelist.net/character/40", 40),
-        ("https://myanimelist.net/people/123/Name", 123),
-        ("https://myanimelist.net/manga/456", 456),
-        ("https://myanimelist.net/producer/3", 3),
-        ("https://example.com/something", None),
-    ],
-)
-def test_extract_id_from_url(url: str, expected: int | None) -> None:
-    assert extract_id_from_url(url) == expected
-
-
-# =============================================================================
 # normalize_mal_anime_url
 # =============================================================================
 
@@ -270,66 +247,6 @@ def test_parse_sidebar_field_ranked() -> None:
 def test_parse_sidebar_field_missing() -> None:
     result = parse_sidebar_field(_SAMPLE_SIDEBAR, "Nonexistent")
     assert result is None
-
-
-# =============================================================================
-# parse_sidebar_links / parse_sidebar_link_texts
-# =============================================================================
-
-
-_SAMPLE_SIDEBAR_WITH_LINKS = """
-<div>
-  <span class="dark_text">Studios:</span>
-  <a href="https://myanimelist.net/anime/producer/18/Toei_Animation">Toei Animation</a>,
-  <a href="https://myanimelist.net/anime/producer/99/Other_Studio">Other Studio</a>
-  <br>
-  <span class="dark_text">Genres:</span>
-  <a href="https://myanimelist.net/anime/genre/1/Action">Action</a>
-  <br>
-  <span class="dark_text">Next:</span>
-  nothing here
-</div>
-"""
-
-
-def test_parse_sidebar_links_extracts_multiple() -> None:
-    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Studios")
-    assert len(result) == 2
-    assert result[0]["name"] == "Toei Animation"
-    assert result[0]["url"] == "https://myanimelist.net/anime/producer/18/Toei_Animation"
-    assert result[0]["mal_id"] == 18
-    assert result[1]["name"] == "Other Studio"
-    assert result[1]["mal_id"] == 99
-
-
-def test_parse_sidebar_links_single_entry() -> None:
-    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Genres")
-    assert len(result) == 1
-    assert result[0]["name"] == "Action"
-    assert result[0]["url"] == "https://myanimelist.net/anime/genre/1/Action"
-    # Genre URLs use /anime/genre/N format — extract_id_from_url only parses
-    # /anime/, /character/, /people/, /manga/, /producer/ paths, not /genre/
-    assert result[0]["mal_id"] is None
-
-
-def test_parse_sidebar_links_missing_label_returns_empty() -> None:
-    result = parse_sidebar_links(_SAMPLE_SIDEBAR_WITH_LINKS, "Nonexistent")
-    assert result == []
-
-
-def test_parse_sidebar_link_texts_returns_names_only() -> None:
-    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Studios")
-    assert result == ["Toei Animation", "Other Studio"]
-
-
-def test_parse_sidebar_link_texts_genres() -> None:
-    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Genres")
-    assert result == ["Action"]
-
-
-def test_parse_sidebar_link_texts_missing_label_returns_empty() -> None:
-    result = parse_sidebar_link_texts(_SAMPLE_SIDEBAR_WITH_LINKS, "Nonexistent")
-    assert result == []
 
 
 # =============================================================================
@@ -468,14 +385,10 @@ def test_get_mal_docker_browser_config_returns_typed_dict() -> None:
     assert "enable_stealth" in result["params"]
 
 
-def test_get_mal_docker_crawler_config_no_magic() -> None:
+def test_get_mal_docker_crawler_config_returns_config() -> None:
     result = get_mal_docker_crawler_config({"name": "test"})
-    assert "magic" not in result["params"]
-
-
-def test_get_mal_docker_crawler_config_magic_branch() -> None:
-    result = get_mal_docker_crawler_config({"name": "test"}, magic=True)
-    assert result["params"]["magic"] is True
+    assert result["type"] == "CrawlerRunConfig"
+    assert result["params"]["extraction_strategy"]["type"] == "JsonXPathExtractionStrategy"
 
 
 def test_get_mal_scraping_limiter_returns_limiter() -> None:
@@ -484,26 +397,7 @@ def test_get_mal_scraping_limiter_returns_limiter() -> None:
 
 
 # =============================================================================
-# parse_sidebar_links — empty name skip (line 238)
-# =============================================================================
-
-_SIDEBAR_EMPTY_NAME = """
-<div>
-  <span class="dark_text">Studios:</span>
-  <a href="https://myanimelist.net/anime/producer/18/Toei_Animation"></a>
-  <a href="https://myanimelist.net/anime/producer/99/Real_Studio">Real Studio</a>
-</div>
-"""
-
-
-def test_parse_sidebar_links_empty_name_skipped() -> None:
-    result = parse_sidebar_links(_SIDEBAR_EMPTY_NAME, "Studios")
-    assert len(result) == 1
-    assert result[0]["name"] == "Real Studio"
-
-
-# =============================================================================
-# parse_iso_date — unrecognized format → None (line 409)
+# parse_iso_date — unrecognized format → None
 # =============================================================================
 
 

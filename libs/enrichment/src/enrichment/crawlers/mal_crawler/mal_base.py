@@ -14,8 +14,9 @@ All crawlers import from this module — no duplicated boilerplate.
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
-from typing import Any, cast
+from typing import Any
 
 from crawl4ai import BrowserConfig
 from pydantic import BaseModel
@@ -102,56 +103,55 @@ def get_browser_config(
 # =============================================================================
 
 
+_MAL_DOCKER_BROWSER_CONFIG: dict[str, Any] = {
+    "type": "BrowserConfig",
+    "params": {
+        "headless": True,
+        "verbose": False,
+        "enable_stealth": True,
+        "user_agent_mode": "random",
+        "headers": _MAL_BROWSER_HEADERS,
+        "viewport_width": 1920,
+        "viewport_height": 1080,
+    },
+}
+
+
 def get_mal_docker_browser_config() -> dict[str, Any]:
     """Browser config dict for the crawl4ai Docker REST API (MAL stealth layer).
 
     Mirrors ``get_browser_config(AntiDetectionLayer.STEALTH)`` but serialized as
     the type-params wrapper required by the Docker REST API.
     """
-    return {
-        "type": "BrowserConfig",
-        "params": {
-            "headless": True,
-            "verbose": False,
-            "enable_stealth": True,
-            "user_agent_mode": "random",
-            "headers": _MAL_BROWSER_HEADERS,
-            "viewport_width": 1920,
-            "viewport_height": 1080,
-        },
-    }
+    return _MAL_DOCKER_BROWSER_CONFIG
 
 
 def get_mal_docker_crawler_config(
     schema: dict[str, Any],
     *,
-    strategy_type: str = "JsonXPathExtractionStrategy",
     wait_until: str = "domcontentloaded",
     delay: float = 1.0,
-    magic: bool = False,
 ) -> dict[str, Any]:
     """Crawler config dict for the crawl4ai Docker REST API with structured extraction.
 
     Args:
         schema: Extraction schema dict (from the caller's ``_get_*_schema()``).
-        strategy_type: Extraction strategy class name — ``"JsonXPathExtractionStrategy"``
-            (default) or ``"JsonCssExtractionStrategy"``.
         wait_until: Page load event to wait for before extracting.
         delay: Seconds to wait before returning HTML (allows JS rendering).
-        magic: Enable crawl4ai magic mode (extra anti-bot measures).
     """
-    params: dict[str, Any] = {
-        "extraction_strategy": {
-            "type": strategy_type,
-            "params": {"schema": schema},
+    return {
+        "type": "CrawlerRunConfig",
+        "params": {
+            "extraction_strategy": {
+                "type": "JsonXPathExtractionStrategy",
+                "params": {"schema": schema},
+            },
+            "delay_before_return_html": delay,
+            "simulate_user": True,
+            "wait_until": wait_until,
+            "page_timeout": 90000,
         },
-        "delay_before_return_html": delay,
-        # "simulate_user": True,  # TEST: disabled to check simulation overhead
-        "wait_until": wait_until,
     }
-    if magic:
-        params["magic"] = True
-    return {"type": "CrawlerRunConfig", "params": params}
 
 
 def get_mal_scraping_limiter() -> MalRateLimiter:
@@ -203,75 +203,9 @@ def parse_sidebar_field(sidebar_html: str, label: str) -> str | None:
     return cleaned if cleaned and cleaned not in ("N/A", "?", "None", "") else None
 
 
-def parse_sidebar_links(sidebar_html: str, label: str) -> list[dict[str, Any]]:
-    """Extract links with mal_id from a MAL sidebar section.
-
-    Used for producers, studios, genres, themes, demographics — any sidebar
-    field that contains multiple anchor tags pointing to MAL entities.
-
-    Args:
-        sidebar_html: Raw HTML of the sidebar.
-        label: The label text (e.g., "Studios", "Genres").
-
-    Returns:
-        List of dicts with keys: name (str), url (str), mal_id (int | None).
-    """
-    escaped = re.escape(label)
-    # Find the block between this label and the next span.dark_text
-    block_pattern = (
-        rf'<span[^>]*class="dark_text"[^>]*>{escaped}:?</span>(.*?)'
-        rf'(?:<span[^>]*class="dark_text"|$)'
-    )
-    block_match = re.search(block_pattern, sidebar_html, re.DOTALL | re.IGNORECASE)
-    if not block_match:
-        return []
-
-    block = block_match.group(1)
-    results = []
-    for link_match in re.finditer(
-        r'<a[^>]*href="([^"]*myanimelist[^"]*)"[^>]*>(.*?)</a>', block, re.DOTALL
-    ):
-        url = link_match.group(1)
-        name = re.sub(r"<[^>]+>", "", link_match.group(2)).strip()
-        if not name:
-            continue
-        results.append(
-            {
-                "name": name,
-                "url": url,
-                "mal_id": extract_id_from_url(url),
-            }
-        )
-    return results
-
-
-def parse_sidebar_link_texts(sidebar_html: str, label: str) -> list[str]:
-    """Extract just the text values from sidebar links (for genres, themes, etc.)."""
-    return [item["name"] for item in parse_sidebar_links(sidebar_html, label)]
-
-
 # =============================================================================
 # URL / NUMBER UTILITIES
 # =============================================================================
-
-
-def extract_id_from_url(url: str) -> int | None:
-    """Extract a numeric MAL entity ID from a URL.
-
-    Handles paths like:
-        /anime/21/One_Piece     → 21
-        /character/40           → 40
-        /people/123/Name        → 123
-        /manga/456              → 456
-
-    Args:
-        url: MAL URL string.
-
-    Returns:
-        Integer ID, or None if not found.
-    """
-    match = re.search(r"/(?:anime|character|people|manga|producer)/(\d+)", url)
-    return int(match.group(1)) if match else None
 
 
 def normalize_mal_anime_url(url: str) -> tuple[str, bool]:
@@ -374,32 +308,13 @@ def parse_iso_date(raw: str | None) -> str | None:
     if not raw or raw.strip() in ("?", "N/A", ""):
         return None
 
-    months = {
-        "jan": "01",
-        "feb": "02",
-        "mar": "03",
-        "apr": "04",
-        "may": "05",
-        "jun": "06",
-        "jul": "07",
-        "aug": "08",
-        "sep": "09",
-        "oct": "10",
-        "nov": "11",
-        "dec": "12",
-    }
-
     raw = raw.strip()
 
-    # "Oct 20, 1999" or "Oct  20, 1999"
-    match = re.match(r"(\w{3})\s+(\d{1,2}),\s*(\d{4})", raw, re.IGNORECASE)
-    if match:
-        mon_str = match.group(1).lower()
-        day = match.group(2).zfill(2)
-        year = match.group(3)
-        mon = months.get(mon_str)
-        if mon:
-            return f"{year}-{mon}-{day}"
+    # "Oct 20, 1999" or "Oct  20, 1999" (normalize extra whitespace first)
+    try:
+        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        pass
 
     # Already ISO-ish "1999-10-20"
     if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):

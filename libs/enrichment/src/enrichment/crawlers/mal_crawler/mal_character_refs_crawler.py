@@ -61,10 +61,8 @@ async def _fetch_mal_characters_data(url: str) -> list[dict[str, Any]] | None:
         browser_config=get_mal_docker_browser_config(),
         crawler_config=get_mal_docker_crawler_config(
             _get_characters_schema(),
-            strategy_type="JsonXPathExtractionStrategy",
             wait_until="networkidle",
             delay=2.0,
-            magic=False,
         ),
     )
     if not result:
