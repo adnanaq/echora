@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
-from enrichment.api_helpers.animeschedule_fetcher import fetch_animeschedule_data
+from enrichment.api_helpers.animeschedule_helper import fetch_animeschedule_data
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
@@ -183,7 +183,7 @@ class ParallelAPIFetcher:
 
         # Always try AnimSchedule with title search (unless explicitly filtered)
         if should_include("animeschedule"):
-            tasks.append(("animeschedule", self._fetch_animeschedule(offline_data)))
+            tasks.append(("animeschedule", self._fetch_animeschedule(offline_data, temp_dir)))
 
         # Execute all tasks in parallel with timeout
         results = await self._gather_with_timeout(
@@ -427,27 +427,29 @@ class ParallelAPIFetcher:
             return None
 
     async def _fetch_animeschedule(
-        self, offline_data: dict[str, Any]
+        self, offline_data: dict[str, Any], temp_dir: str | None = None
     ) -> dict[str, Any] | None:
-        """
-        Fetches anime schedule information based on the title found in the provided offline data.
+        """Fetch AnimSchedule data for the anime in offline_data.
 
-        Parameters:
-            offline_data (Dict): A dictionary containing at least a "title" key whose value is used as the search term.
-
-        Returns:
-            Dict: Schedule data returned by the AnimSchedule lookup, or `None` if no title is available or the lookup fails.
+        Passes known source URLs for cross-source validation so the correct
+        result is selected even when the search returns multiple candidates.
+        Writes the mapped canonical dict as JSONL directly (like MAL) when
+        temp_dir is provided, so _save_temp_files can skip it.
         """
         try:
             start = time.time()
 
-            # Get search term from offline data
             search_term = offline_data.get("title", "")
             if not search_term:
                 return None
 
-            # Call async function directly
-            result = await fetch_animeschedule_data(search_term)
+            output_path = (
+                os.path.join(temp_dir, "animeschedule.jsonl") if temp_dir else None
+            )
+            sources: list[str] = offline_data.get("sources", [])
+            result = await fetch_animeschedule_data(
+                search_term, sources=sources or None, output_path=output_path
+            )
 
             self.api_timings["animeschedule"] = time.time() - start
             return result
@@ -521,8 +523,8 @@ class ParallelAPIFetcher:
         for api_name, data in results.items():
             if data:
                 try:
-                    # MAL artifacts are already written by MalEnrichmentHelper.
-                    if api_name == "mal":
+                    # MAL and AnimSchedule write their own files directly.
+                    if api_name in ("mal", "animeschedule"):
                         continue
                     file_path = os.path.join(temp_dir, f"{api_name}.json")
                     await asyncio.to_thread(_write_json_sync, file_path, data)
