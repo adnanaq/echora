@@ -329,3 +329,19 @@ def test_build_episode_from_raw_with_anime_id() -> None:
     raw = {"title_header": "#1 - Test"}
     ep = _build_episode_from_raw(raw, 1, "https://myanimelist.net/anime/21/episode/1")
     assert ep.episode_number == 1
+
+
+def test_build_episode_from_raw_mal_placeholder_synopsis_becomes_none() -> None:
+    """MAL's 'no synopsis yet' message must not be stored as synopsis text."""
+    raw = {
+        "title_header": "#12 - Episode Title",
+        "synopsis_raw": "Sorry, this episode doesn't seem to have a synopsis yet. Maybe you can help us out? If you've watched this episode, you can easily add episode information to our database here.",
+    }
+    ep = _build_episode_from_raw(raw, 12, "https://myanimelist.net/anime/57334/Dandadan/episode/12")
+    assert ep.synopsis is None
+
+
+def test_build_episode_from_raw_real_synopsis_preserved() -> None:
+    raw = {"title_header": "#1 - Momo and Okarun", "synopsis_raw": "Momo is a high school girl born into a family of spirit mediums."}
+    ep = _build_episode_from_raw(raw, 1, "https://myanimelist.net/anime/57334/Dandadan/episode/1")
+    assert ep.synopsis == "Momo is a high school girl born into a family of spirit mediums."

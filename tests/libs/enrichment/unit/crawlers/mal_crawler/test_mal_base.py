@@ -89,6 +89,7 @@ def test_parse_duration_seconds(raw: str | None, expected: int | None) -> None:
         (None, None),
         ("", None),
         ("1999-10-20", "1999-10-20"),  # Already ISO
+        ("2026", "2026-01-01"),         # Year-only (upcoming anime)
     ],
 )
 def test_parse_iso_date(raw: str | None, expected: str | None) -> None:
@@ -121,6 +122,13 @@ def test_parse_aired_string_single_date() -> None:
 def test_parse_aired_string_none() -> None:
     from_d, to_d = parse_aired_string(None)
     assert from_d is None
+    assert to_d is None
+
+
+def test_parse_aired_string_year_only() -> None:
+    """Upcoming anime with no specific date — year only, e.g. '2026 to ?'."""
+    from_d, to_d = parse_aired_string("2026 to ?")
+    assert from_d == "2026-01-01"
     assert to_d is None
 
 

@@ -16,7 +16,6 @@ from enrichment.crawlers.mal_crawler.mal_character_crawler import (
     _extract_voice_actors,
     _fetch_mal_character_data,
     _get_character_schema,
-    _inline_spoilers,
     _parse_character_raw,
     fetch_mal_character,
     fetch_mal_characters,
@@ -55,27 +54,28 @@ Devil fruit: Gomu Gomu no Mi<br>
 
 
 def test_extract_bio_data_key_value_pairs() -> None:
-    result = _extract_bio_data(_BIO_HTML)
-    assert result["age"] == "17; 19"
-    assert result["height"] == "172 cm"
-    assert result["devil_fruit"] == "Gomu Gomu no Mi"
+    attrs, spoilers = _extract_bio_data(_BIO_HTML)
+    assert attrs["age"] == "17; 19"
+    assert attrs["height"] == "172 cm"
+    assert attrs["devil_fruit"] == "Gomu Gomu no Mi"
 
 
 def test_extract_bio_data_stops_at_next_section() -> None:
     """Bio data parser must not bleed into the next h2 section."""
-    result = _extract_bio_data(_BIO_HTML)
-    # "Next Section" is h2 text, not bio data
-    assert "Next Section" not in result
+    attrs, spoilers = _extract_bio_data(_BIO_HTML)
+    assert "Next Section" not in attrs
 
 
 def test_extract_bio_data_empty_html_returns_empty() -> None:
-    result = _extract_bio_data("")
-    assert result == {}
+    attrs, spoilers = _extract_bio_data("")
+    assert attrs == {}
+    assert spoilers == {}
 
 
 def test_extract_bio_data_no_header_returns_empty() -> None:
-    result = _extract_bio_data("<p>Some text without a normal_header</p>")
-    assert result == {}
+    attrs, spoilers = _extract_bio_data("<p>Some text without a normal_header</p>")
+    assert attrs == {}
+    assert spoilers == {}
 
 
 _SPOILER_ONLY_HTML = """
@@ -106,26 +106,26 @@ Age: 17<br>
 """
 
 
-def test_extract_bio_data_spoiler_value_only_inlined() -> None:
-    """Spoiler-only value is inlined — Bounty should not be empty."""
-    result = _extract_bio_data(_SPOILER_ONLY_HTML)
-    assert "bounty" in result
-    assert "3,000,000,000" in result["bounty"]
+def test_extract_bio_data_spoiler_value_only_in_spoilers_not_attrs() -> None:
+    """Spoiler-only field must appear in spoilers dict, not in attributes."""
+    attrs, spoilers = _extract_bio_data(_SPOILER_ONLY_HTML)
+    assert "bounty" not in attrs
+    assert "bounty" in spoilers
+    assert "3,000,000,000" in spoilers["bounty"]
 
 
-def test_extract_bio_data_spoiler_suffix_inlined() -> None:
-    """Spoiler appended to a visible value is concatenated cleanly."""
-    result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
-    assert "devil_fruit" in result
-    assert "Gomu Gomu no Mi" in result["devil_fruit"]
-    assert "Hito Hito no Mi" in result["devil_fruit"]
+def test_extract_bio_data_spoiler_suffix_split() -> None:
+    """Non-spoiler value goes to attrs; spoiler value goes to spoilers — same key."""
+    attrs, spoilers = _extract_bio_data(_SPOILER_SUFFIX_HTML)
+    assert attrs.get("devil_fruit") == "Gomu Gomu no Mi"
+    assert spoilers.get("devil_fruit") == "Hito Hito no Mi"
 
 
-def test_extract_bio_data_spoiler_no_double_comma() -> None:
-    """Concatenation of visible value + spoiler must not produce ', ,'."""
-    result = _extract_bio_data(_SPOILER_SUFFIX_HTML)
-    assert ",," not in result.get("devil_fruit", "")
-    assert ", ," not in result.get("devil_fruit", "")
+def test_extract_bio_data_attrs_no_double_comma() -> None:
+    """Non-spoiler value in attrs must not have a trailing comma artifact."""
+    attrs, _spoilers = _extract_bio_data(_SPOILER_SUFFIX_HTML)
+    assert ",," not in attrs.get("devil_fruit", "")
+    assert ", ," not in attrs.get("devil_fruit", "")
 
 
 # =============================================================================
@@ -141,19 +141,20 @@ He ate the Gomu Gomu no Mi.<br>
 
 
 def test_extract_description_returns_text() -> None:
-    result = _extract_description(_DESC_HTML)
-    assert result is not None
-    assert "One Piece" in result
+    desc, _spoiler = _extract_description(_DESC_HTML)
+    assert desc is not None
+    assert "One Piece" in desc
 
 
 def test_extract_description_stops_before_next_section() -> None:
-    result = _extract_description(_DESC_HTML)
-    assert "Voice Actors" not in (result or "")
+    desc, _spoiler = _extract_description(_DESC_HTML)
+    assert "Voice Actors" not in (desc or "")
 
 
 def test_extract_description_empty_returns_none() -> None:
-    result = _extract_description("")
-    assert result is None
+    desc, desc_spoiler = _extract_description("")
+    assert desc is None
+    assert desc_spoiler is None
 
 
 def test_extract_description_key_value_lines_excluded() -> None:
@@ -163,10 +164,32 @@ def test_extract_description_key_value_lines_excluded() -> None:
     Age: 17<br>
     He is the captain of the Straw Hat Pirates.<br>
     """
-    result = _extract_description(html)
-    assert result is not None
-    assert "captain" in result
-    assert "Age: 17" not in result
+    desc, _spoiler = _extract_description(html)
+    assert desc is not None
+    assert "captain" in desc
+    assert "Age: 17" not in desc
+
+
+_DESC_SPOILER_HTML = """
+<h2 class="normal_header">About</h2>
+He is the captain of the Straw Hat Pirates.<br>
+<div class="spoiler" id="spoiler789">
+  <input type="button" class="button-secondary" value="Show">
+  <span class="spoiler_content" style="display: none;">
+    <input type="button" class="button-secondary" value="Hide"><br>
+    He is also the son of Dragon, the most wanted criminal.
+  </span>
+</div><br>
+"""
+
+
+def test_extract_description_captures_prose_spoiler() -> None:
+    """Prose spoiler div in description section is captured in second return value."""
+    desc, desc_spoiler = _extract_description(_DESC_SPOILER_HTML)
+    assert desc is not None
+    assert "captain" in desc
+    assert desc_spoiler is not None
+    assert "Dragon" in desc_spoiler
 
 
 # =============================================================================
@@ -290,6 +313,7 @@ def test_parse_character_raw_minimal() -> None:
     assert char.source == "https://myanimelist.net/character/40/Monkey_D_Luffy"
     assert char.name == "Monkey D., Luffy"
     assert char.name_native == "モンキー・D・ルフィ"
+    assert char.spoilers == {}
 
 
 def test_parse_character_raw_url_from_raw() -> None:
@@ -323,18 +347,6 @@ def test_get_character_schema_has_fields() -> None:
     schema = _get_character_schema()
     assert "fields" in schema
     assert isinstance(schema["fields"], list)
-
-
-# =============================================================================
-# _inline_spoilers — no spoiler_content span → empty string (line 133)
-# =============================================================================
-
-
-def test_inline_spoilers_no_spoiler_content_returns_empty() -> None:
-    """Spoiler div without a spoiler_content span is replaced with empty string."""
-    html = '<div class="spoiler">no span here</div>'
-    result = _inline_spoilers(html)
-    assert result == ""
 
 
 # =============================================================================
@@ -446,7 +458,7 @@ async def test_fetch_mal_character_data_success(mocker) -> None:
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"status_code": 200, "extracted_content": json.dumps([raw])}],
+        return_value=[{"status_code": 200, "metadata": {"og:url": "https://myanimelist.net/character/996/Luffy"}, "extracted_content": json.dumps([raw])}],
     )
     mocker.patch.object(
         _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
@@ -454,7 +466,10 @@ async def test_fetch_mal_character_data_success(mocker) -> None:
         return_value=None,
     )
     result = await _fetch_mal_character_data("https://myanimelist.net/character/996")
-    assert result == raw
+    assert result is not None
+    raw, canonical_url = result
+    assert raw["name_header"] == "Luffy"
+    assert canonical_url == "https://myanimelist.net/character/996/Luffy"
 
 
 # =============================================================================
@@ -477,11 +492,12 @@ async def test_fetch_mal_character_returns_parsed_character(mocker) -> None:
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None, "favorites": "0"}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler._fetch_mal_character_data",
-        return_value=raw,
+        return_value=(raw, "https://myanimelist.net/character/40/Luffy"),
     )
     result = await fetch_mal_character("https://myanimelist.net/character/40")
     assert result is not None
     assert result.name == "Luffy"
+    assert result.source == "https://myanimelist.net/character/40/Luffy"
 
 
 # =============================================================================

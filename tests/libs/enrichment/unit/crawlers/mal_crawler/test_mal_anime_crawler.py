@@ -142,6 +142,19 @@ def test_build_missing_link_fields_returns_empty_lists() -> None:
     assert anime.streaming == []
 
 
+def test_build_dbchanges_placeholder_filtered_from_companies() -> None:
+    """Licensors/studios/producers with dbchanges.php source ('add some') are dropped."""
+    anime = _build({
+        "licensors": [{"name": "add some", "source": "https://myanimelist.net/dbchanges.php?aid=62312&t=producers"}],
+        "studios": [{"name": "add some", "source": "https://myanimelist.net/dbchanges.php?aid=63764&t=producers"}],
+        "producers": [{"name": "Arch", "source": "https://myanimelist.net/anime/producer/1966/Arch"}],
+    })
+    assert anime.licensors == []
+    assert anime.studios == []
+    assert len(anime.producers) == 1
+    assert anime.producers[0].name == "Arch"
+
+
 def test_build_both_link_types_populated_independently() -> None:
     """External and streaming links are populated independently."""
     anime = _build({
@@ -433,12 +446,12 @@ async def test_fetch_mal_anime_data_empty_content(mocker) -> None:
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_success(mocker) -> None:
     mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
-    raw = {"title": "One Piece", "episode_url": "https://myanimelist.net/anime/21/One_Piece/episode/1"}
+    raw = {"title": "One Piece"}
     pics_raw = [{"picture_urls_raw": [{"url": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}]}]
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
-            [{"status_code": 200, "extracted_content": json.dumps([raw])}],
+            [{"status_code": 200, "metadata": {"og:url": "https://myanimelist.net/anime/21/One_Piece"}, "extracted_content": json.dumps([raw])}],
             [{"status_code": 200, "extracted_content": json.dumps(pics_raw)}],
         ],
     )
@@ -451,6 +464,29 @@ async def test_fetch_mal_anime_data_success(mocker) -> None:
     assert result is not None
     assert result["title"] == "One Piece"
     assert "123.jpg" in result["_picture_urls"][0]
+    assert result["_url"] == "https://myanimelist.net/anime/21/One_Piece"
+
+
+@pytest.mark.asyncio
+async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker) -> None:
+    """When og:url is absent from metadata, _url falls back to result['url']."""
+    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    raw = {"title": "One Piece"}
+    mocker.patch(
+        "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
+        side_effect=[
+            [{"status_code": 200, "url": "https://myanimelist.net/anime/21/One_Piece", "metadata": {}, "extracted_content": json.dumps([raw])}],
+            [{"status_code": 200, "extracted_content": "[]"}],
+        ],
+    )
+    mocker.patch.object(
+        _fetch_mal_anime_data.__wrapped__.__globals__["_limiter"],
+        "acquire",
+        return_value=None,
+    )
+    result = await _fetch_mal_anime_data("https://myanimelist.net/anime/21")
+    assert result is not None
+    assert result["_url"] == "https://myanimelist.net/anime/21/One_Piece"
 
 
 # =============================================================================

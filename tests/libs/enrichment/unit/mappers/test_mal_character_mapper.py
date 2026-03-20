@@ -66,3 +66,18 @@ def test_character_from_mal_attributes_mapped() -> None:
     assert "attributes" in result
     assert result["attributes"]["age"] == "17; 19"
     assert result["attributes"]["devil_fruit"] == "Gomu Gomu no Mi"
+
+
+def test_character_from_mal_spoilers_mapped() -> None:
+    """spoilers field is passed through correctly."""
+    char_no_spoilers = _make_sample_character()
+    assert character_from_mal(char_no_spoilers).get("spoilers", {}) == {}
+
+    char_with_spoilers = _make_sample_character()
+    char_with_spoilers.spoilers = {
+        "devil_fruit": "Hito Hito no Mi",
+        "description": "He is the son of Dragon.",
+    }
+    result = character_from_mal(char_with_spoilers)
+    assert result["spoilers"]["devil_fruit"] == "Hito Hito no Mi"
+    assert result["spoilers"]["description"] == "He is the son of Dragon."
