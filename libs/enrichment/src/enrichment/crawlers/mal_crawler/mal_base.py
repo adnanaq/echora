@@ -320,6 +320,10 @@ def parse_iso_date(raw: str | None) -> str | None:
     if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
         return raw
 
+    # Year-only "2026" — upcoming anime with no specific date yet
+    if re.match(r"^\d{4}$", raw):
+        return f"{raw}-01-01"
+
     return None
 
 

@@ -374,6 +374,8 @@ def _build_episode_from_raw(
     duration = parse_duration_seconds(raw.get("duration_raw"))
     syn_raw = raw.get("synopsis_raw")
     synopsis = " ".join(syn_raw.split()).strip() if syn_raw else None
+    if synopsis and "doesn't seem to have a synopsis" in synopsis:
+        synopsis = None
     characters = _parse_episode_characters(raw.get("characters"))
     staff = _parse_episode_staff(raw.get("staff"))
 

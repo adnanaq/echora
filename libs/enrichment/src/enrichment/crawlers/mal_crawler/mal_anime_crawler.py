@@ -387,15 +387,6 @@ def _get_anime_schema() -> dict[str, Any]:
                     },
                 ],
             },
-            # Canonical slug URL — extracted from any episode link on the page
-            # e.g. https://myanimelist.net/anime/57334/Dandadan/episode/12
-            # Used to build correct episode URLs (slug is required, ID-only URLs 404).
-            {
-                "name": "episode_url",
-                "selector": "//a[contains(@href,'/episode/')]",
-                "type": "attribute",
-                "attribute": "href",
-            },
             # Trailer
             {
                 "name": "trailer_embed_url",
@@ -677,21 +668,21 @@ def _build_anime_from_raw(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("producers", [])
-        if item.get("name") and item.get("source")
+        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
     ]
     licensors = [
         MalCompanyRef(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("licensors", [])
-        if item.get("name") and item.get("source")
+        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
     ]
     studios = [
         MalCompanyRef(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("studios", [])
-        if item.get("name") and item.get("source")
+        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
     ]
 
     # Theme songs
@@ -829,15 +820,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
         return None
     raw = raw_list[0]
 
-    # Derive canonical slug URL from episode links on the page.
-    # Episode hrefs contain the slug: /anime/{id}/{slug}/episode/{n}
-    # Slug-less URLs (e.g. /anime/57334/episode/1) 404 on MAL.
-    # If the input already has a slug, episode links will match it — canonical_url == url.
-    episode_url = raw.get("episode_url", "")
-    slug_match = re.match(
-        r"(https?://[^/]+/anime/\d+/[^/]+)/episode/", episode_url or ""
-    )
-    canonical_url = slug_match.group(1) if slug_match else url
+    canonical_url = result.get("metadata", {}).get("og:url") or result.get("url") or url
 
     # ── Step 2: fetch /pics page using correct slug URL ───────────────────────
     # /anime/{id}/pics (no slug) returns the wrong page on MAL — slug is required.
