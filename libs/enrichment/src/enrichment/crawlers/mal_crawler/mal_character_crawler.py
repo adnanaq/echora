@@ -107,84 +107,125 @@ def _extract_name_and_native(
     return name or raw, native
 
 
-def _inline_spoilers(html: str) -> str:
-    """Replace spoiler divs with their revealed text content.
 
-    MAL spoiler structure:
-        <div class="spoiler ...">
-          <input ... value="Show">
-          <span class="spoiler_content" style="display:none">
-            <input ... value="Hide"><br>
-            spoiler text here
-          </span>
-        </div>
-
-    The visible text follows the <br> inside spoiler_content. We extract that
-    text and substitute the whole spoiler div with it, preserving field values.
-    """
-
-    def _replace(m: re.Match[str]) -> str:
-        sc = re.search(
-            r'<span[^>]*spoiler_content[^>]*>.*?<br\s*/?>(.*?)</span>',
-            m.group(0),
-            re.DOTALL | re.IGNORECASE,
-        )
-        if not sc:
-            return ""
-        return re.sub(r"<[^>]+>", "", sc.group(1)).strip()
-
-    result = re.sub(
-        r'<div[^>]*class="[^"]*spoiler[^"]*"[^>]*>.*?</div>',
-        _replace,
-        html,
-        flags=re.DOTALL | re.IGNORECASE,
+def _extract_spoiler(div_html: str) -> str:
+    """Extract the revealed text from a single <div class="spoiler"> block."""
+    sc = re.search(
+        r'<span[^>]*spoiler_content[^>]*>.*?<br\s*/?>(.*?)</span>',
+        div_html,
+        re.DOTALL | re.IGNORECASE,
     )
-    result = re.sub(r"<input[^>]*>", "", result, flags=re.IGNORECASE)
-    result = re.sub(r",\s*,", ",", result)
-    result = re.sub(r":\s*,", ":", result)
-    return result
+    if not sc:
+        return ""
+    return re.sub(r"<[^>]+>", "", sc.group(1)).strip()
 
 
-def _extract_bio_data(content_html: str) -> dict[str, str]:
-    """Extract key:value biographical data pairs from MAL character content."""
-    bio: dict[str, str] = {}
-
-    bio_section = re.search(
+def _bio_section_html(content_html: str) -> str | None:
+    """Return the raw HTML of the first normal_header bio section."""
+    m = re.search(
         r"<h2[^>]*class=\"[^\"]*normal_header[^\"]*\"[^>]*>.*?</h2>(.*?)"
         r"(?:<h2|<div[^>]*class=\"[^\"]*normal_header|$)",
         content_html,
         re.DOTALL | re.IGNORECASE,
     )
-    if not bio_section:
-        return bio
-
-    bio_html = _inline_spoilers(bio_section.group(1))
-
-    for line in re.split(r"<br\s*/?>", bio_html, flags=re.IGNORECASE):
-        text = re.sub(r"<[^>]+>", "", line).strip()
-        if ":" in text:
-            key, _, value = text.partition(":")
-            key = key.strip().lower().replace(" ", "_")
-            value = value.strip()
-            if key and value and len(key) < 50:
-                bio[key] = value
-
-    return bio
+    return m.group(1) if m else None
 
 
-def _extract_description(content_html: str) -> str | None:
-    """Extract the description text from character content HTML."""
-    bio_section = re.search(
-        r'<h2[^>]*class="[^"]*normal_header[^"]*"[^>]*>.*?</h2>(.*?)'
-        r'(?:<div[^>]*class="[^"]*normal_header|<h2|$)',
-        content_html,
-        re.DOTALL | re.IGNORECASE,
+def _tokenize_spoilers(html: str, spoiler_map: dict[str, str]) -> str:
+    """Replace each spoiler div with a unique placeholder token.
+
+    Populates spoiler_map {token: revealed_text} and returns the processed HTML
+    with all spoiler divs replaced. The internal <br> inside spoiler_content is
+    eliminated, making subsequent <br>-based line splitting safe.
+    """
+    def _replace(m: re.Match[str]) -> str:
+        token = f"__SPOILER_{len(spoiler_map)}__"
+        spoiler_map[token] = _extract_spoiler(m.group(0))
+        return token
+
+    processed = re.sub(
+        r'<div[^>]*class="[^"]*spoiler[^"]*"[^>]*>.*?</div>',
+        _replace,
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
     )
-    if not bio_section:
-        return None
+    return re.sub(r"<input[^>]*>", "", processed, flags=re.IGNORECASE)
 
-    section_html = bio_section.group(1)
 
+def _extract_bio_data(content_html: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Extract key:value biographical data pairs, split into (attributes, spoilers).
+
+    attributes — non-spoiler values only
+    spoilers   — spoiler values keyed by the same field names
+    """
+    attributes: dict[str, str] = {}
+    spoilers: dict[str, str] = {}
+
+    raw_html = _bio_section_html(content_html)
+    if not raw_html:
+        return attributes, spoilers
+
+    spoiler_map: dict[str, str] = {}
+    processed = _tokenize_spoilers(raw_html, spoiler_map)
+
+    for line in re.split(r"<br\s*/?>", processed, flags=re.IGNORECASE):
+        tokens = re.findall(r"__SPOILER_\d+__", line)
+        clean = re.sub(r"__SPOILER_\d+__", "", line)
+        clean = re.sub(r"<[^>]+>", "", clean).strip().rstrip(",").strip()
+
+        if ":" not in clean:
+            continue
+        key, _, value = clean.partition(":")
+        key = key.strip().lower().replace(" ", "_")
+        value = value.strip()
+        if not key or len(key) >= 50:
+            continue
+
+        if value:
+            attributes[key] = value
+        for token in tokens:
+            spoiler_text = spoiler_map.get(token, "")
+            if spoiler_text:
+                spoilers[key] = spoiler_text
+
+    return attributes, spoilers
+
+
+def _extract_description(content_html: str) -> tuple[str | None, str | None]:
+    """Extract description text, split into (description, description_spoiler).
+
+    description         — non-spoiler prose (same content as before)
+    description_spoiler — text hidden inside prose-level spoiler divs; None if absent
+
+    Bio-field spoiler lines (short key before colon) are excluded from
+    description_spoiler — they are already captured by _extract_bio_data.
+    """
+    raw_html = _bio_section_html(content_html)
+    if not raw_html:
+        return None, None
+
+    spoiler_map: dict[str, str] = {}
+    processed = _tokenize_spoilers(raw_html, spoiler_map)
+
+    prose_spoiler_parts: list[str] = []
+    for line in re.split(r"<br\s*/?>", processed, flags=re.IGNORECASE):
+        tokens = re.findall(r"__SPOILER_\d+__", line)
+        if not tokens:
+            continue
+        clean = re.sub(r"__SP_\d+__", "", line)
+        clean = re.sub(r"<[^>]+>", "", clean).strip()
+        colon_pos = clean.find(":")
+        if 0 < colon_pos < 30:
+            continue  # bio-field line — skip
+        for token in tokens:
+            text = spoiler_map.get(token, "")
+            if text:
+                prose_spoiler_parts.append(text)
+
+    description_spoiler = " ".join(" ".join(prose_spoiler_parts).split()) or None
+
+    # --- description: non-spoiler prose (strip all spoiler divs) ---
+    section_html = raw_html
     section_html = re.sub(
         r'<(?:div|span)[^>]*class="[^"]*spoiler_content[^"]*"[^>]*>.*?</(?:div|span)>',
         "",
@@ -209,8 +250,8 @@ def _extract_description(content_html: str) -> str | None:
             continue
         desc_lines.append(text)
 
-    description = " ".join(" ".join(desc_lines).split())
-    return description if description else None
+    description = " ".join(" ".join(desc_lines).split()) or None
+    return description, description_spoiler
 
 
 def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
@@ -315,8 +356,12 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
         _extract_ography,
     ],
 )
-async def _fetch_mal_character_data(url: str) -> dict[str, Any] | None:
-    """Fetch /character/{id} and extract character detail. Cached by url."""
+async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | None:
+    """Fetch /character/{id} and extract character detail. Cached by url.
+
+    Returns:
+        (raw, canonical_url) on success, None on failure.
+    """
     await _limiter.acquire()
     results = await crawl_batch_urls(
         [url],
@@ -335,7 +380,8 @@ async def _fetch_mal_character_data(url: str) -> dict[str, Any] | None:
     raw_list = json.loads(result.get("extracted_content") or "[]")
     if not raw_list:
         return None
-    return raw_list[0]
+    canonical_url = result.get("metadata", {}).get("og:url") or url
+    return raw_list[0], canonical_url
 
 
 def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
@@ -352,15 +398,21 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
     nicknames_raw = parse_sidebar_field(content_html, "Nicknames")
     nicknames = [n.strip() for n in nicknames_raw.split(",")] if nicknames_raw else []
 
+    attrs, spoilers = _extract_bio_data(content_html)
+    description, description_spoiler = _extract_description(content_html)
+    if description_spoiler:
+        spoilers["description"] = description_spoiler
+
     return MalScrapedCharacter(
         source=url,
         name=name,
         name_native=name_native,
-        description=_extract_description(content_html),
+        description=description,
         nicknames=nicknames,
         favorites=favorites or 0,
         images=images,
-        character_info=_extract_bio_data(content_html),
+        character_info=attrs,
+        spoilers=spoilers,
         animeography=_extract_ography(content_html, "Animeography"),
         mangaography=_extract_ography(content_html, "Mangaography"),
         voice_actors=_extract_voice_actors(content_html),
@@ -377,12 +429,13 @@ async def fetch_mal_character(url: str) -> MalScrapedCharacter | None:
         MalScrapedCharacter if successful, None otherwise.
     """
     logger.info(f"[character] Fetching character {url}...")
-    raw = await _fetch_mal_character_data(url)
-    if not raw:
+    fetched = await _fetch_mal_character_data(url)
+    if not fetched:
         logger.error(f"[character] Failed to fetch character {url}")
         return None
 
-    return _parse_character_raw(raw, url)
+    raw, canonical_url = fetched
+    return _parse_character_raw(raw, canonical_url)
 
 
 async def fetch_mal_characters(
@@ -415,7 +468,7 @@ async def fetch_mal_characters(
         if not result:
             characters.append(None)
             continue
-        url = result["url"]
+        url = result.get("metadata", {}).get("og:url") or result["url"]
         status = result.get("status_code")
         if status and status != 200:
             logger.error(f"[character] HTTP {status} for character {url}")

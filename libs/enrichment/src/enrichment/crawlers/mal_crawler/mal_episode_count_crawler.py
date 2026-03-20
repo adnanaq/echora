@@ -71,7 +71,6 @@ async def _fetch_episode_count_data(url: str) -> str | None:
             _get_episode_count_schema(),
             wait_until="networkidle",
             delay=1.0,
-            magic=False,
         ),
     )
     if not result:

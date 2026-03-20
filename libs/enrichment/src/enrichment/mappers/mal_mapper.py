@@ -265,6 +265,8 @@ def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
     # ── Attributes (bio key/value pairs) ─────────────────────────────────
     if char.character_info:
         result["attributes"] = {k: str(v) for k, v in char.character_info.items()}
+    if char.spoilers:
+        result["spoilers"] = char.spoilers
 
     # ── Images ────────────────────────────────────────────────────────────
     if char.images:
