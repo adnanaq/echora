@@ -1,75 +1,12 @@
 
-"""Shared normalization lookup tables for all 7 enrichment sources.
-All lookups are keyed by lowercase source strings → canonical enum value string.
-Used by all source-specific mappers (mal_mapper, anilist_mapper, kitsu_mapper, etc.).
-Sources covered: MAL, AniList, Kitsu, AniDB, AniSearch, Anime-Planet, AnimSchedule.
+"""Shared normalization lookup tables for enrichment mappers.
+
+SOURCE_MATERIAL and ANIME_RELATION have been moved into the canonical model
+(SourceMaterialType._missing_ and AnimeRelationType._missing_ in common/models/anime.py).
+Mappers should call the enum constructors directly — e.g. SourceMaterialType(raw_string).
 """
 import re
 from typing import Any
-
-# =============================================================================
-# SOURCE MATERIAL
-# =============================================================================
-
-SOURCE_MATERIAL: dict[str, str] = {
-    "manga": "MANGA",
-    "one_shot": "MANGA",
-    "4-koma manga": "MANGA",
-    "doujinshi": "MANGA",
-    "light novel": "LIGHT NOVEL",
-    "light_novel": "LIGHT NOVEL",
-    "novel": "NOVEL",
-    "visual novel": "VISUAL NOVEL",
-    "visual_novel": "VISUAL NOVEL",
-    "game": "GAME",
-    "video_game": "GAME",
-    "card game": "CARD GAME",
-    "card_game": "CARD GAME",
-    "music": "MUSIC",
-    "radio": "RADIO",
-    "book": "BOOK",
-    "picture book": "PICTURE BOOK",
-    "picture_book": "PICTURE BOOK",
-    "original": "ORIGINAL",
-    "mixed media": "MIXED MEDIA",
-    "mixed_media": "MIXED MEDIA",
-    "web manga": "WEB MANGA",
-    "web_manga": "WEB MANGA",
-    "web novel": "WEB NOVEL",
-    "web_novel": "WEB NOVEL",
-    "other": "OTHER",
-    "unknown": "UNKNOWN",
-    "": "UNKNOWN",
-}
-
-
-# =============================================================================
-# ANIME RELATION TYPE  (anime ↔ anime)
-# =============================================================================
-
-ANIME_RELATION: dict[str, str] = {
-    # MAL
-    "sequel": "SEQUEL",
-    "prequel": "PREQUEL",
-    "alternative version": "ALTERNATIVE VERSION",
-    "alternative setting": "ALTERNATIVE SETTING",
-    "side story": "SIDE_STORY",
-    "full story": "FULL_STORY",
-    "parent story": "PARENT_STORY",
-    "spin-off": "SPIN_OFF",
-    "spinoff": "SPIN_OFF",
-    "summary": "SUMMARY",
-    "adaptation": "ADAPTATION",
-    "character": "CHARACTER",
-    "crossover": "CROSSOVER",
-    "other": "OTHER",
-    # AniList — maps single ALTERNATIVE to both; use version as default
-    "alternative": "ALTERNATIVE VERSION",
-    "side_story": "SIDE_STORY",
-    "parent": "PARENT_STORY",
-    "spin_off": "SPIN_OFF",
-}
-
 
 # =============================================================================
 # SOURCE MATERIAL RELATION TYPE  (anime ↔ source)

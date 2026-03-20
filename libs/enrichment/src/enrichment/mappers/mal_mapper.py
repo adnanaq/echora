@@ -49,11 +49,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedCharacter,
     MalScrapedEpisode,
 )
-from enrichment.mappers.normalization import (
-    ANIME_RELATION,
-    SOURCE_MATERIAL,
-    SOURCE_RELATION,
-)
+from enrichment.mappers.normalization import SOURCE_RELATION
 
 
 def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
@@ -74,11 +70,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     episode_count = anime.episode_count or 0
     rating = AnimeRating(anime.rating) if anime.rating else AnimeRating.UNKNOWN
     season = AnimeSeason(anime.season.upper()) if anime.season else None
-    source_material = (
-        SourceMaterialType(SOURCE_MATERIAL.get((anime.source_material or "").lower(), "UNKNOWN"))
-        if anime.source_material
-        else None
-    )
+    source_material = SourceMaterialType(anime.source_material) if anime.source_material else None
     status = AnimeStatus(anime.status or "")
     synopsis = anime.synopsis
     title = anime.title
@@ -135,9 +127,8 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     related_source_material: dict[SourceMaterialRelationType, list[RelatedSourceMaterial]] = {}
 
     for entry in anime.related_entries:
-        rel_raw = entry.relation.lower()
         if entry.is_anime:
-            rel_type = AnimeRelationType(ANIME_RELATION.get(rel_raw, "OTHER"))
+            rel_type = AnimeRelationType(entry.relation)
             if rel_type not in related_anime:
                 related_anime[rel_type] = []
             related_anime[rel_type].append(
@@ -149,19 +140,14 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
             )
         else:
             rel_type = SourceMaterialRelationType(
-                SOURCE_RELATION.get(rel_raw, "OTHER")
+                SOURCE_RELATION.get(entry.relation.lower(), "OTHER")
             )
             if rel_type not in related_source_material:
                 related_source_material[rel_type] = []
             related_source_material[rel_type].append(
                 RelatedSourceMaterial(
                     title=entry.title,
-                    type=SourceMaterialType(
-                        SOURCE_MATERIAL.get(
-                            entry.entry_type.lower() if entry.entry_type else "",
-                            "UNKNOWN",
-                        )
-                    ),
+                    type=SourceMaterialType(entry.entry_type or ""),
                     sources=[entry.source],
                 )
             )

@@ -218,12 +218,17 @@ class SourceMaterialType(str, Enum):
 
     BOOK = "BOOK"
     CARD_GAME = "CARD GAME"
+    DOUJINSHI = "DOUJINSHI"
+    KOMA_4 = "4-KOMA"
     GAME = "GAME"
     LIGHT_NOVEL = "LIGHT NOVEL"
     MANGA = "MANGA"
+    MANHUA = "MANHUA"
+    MANHWA = "MANHWA"
     MIXED_MEDIA = "MIXED MEDIA"
     MUSIC = "MUSIC"
     NOVEL = "NOVEL"
+    ONE_SHOT = "ONE SHOT"
     ORIGINAL = "ORIGINAL"
     OTHER = "OTHER"
     PICTURE_BOOK = "PICTURE BOOK"
@@ -232,6 +237,54 @@ class SourceMaterialType(str, Enum):
     VISUAL_NOVEL = "VISUAL NOVEL"
     WEB_MANGA = "WEB MANGA"
     WEB_NOVEL = "WEB NOVEL"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "SourceMaterialType":
+        """Normalize source-specific strings from all enrichment sources.
+
+        Handles MAL/Jikan, AniList, AnimSchedule, and other variant spellings.
+        """
+        if not isinstance(value, str):
+            return cls.UNKNOWN
+        _map = {
+            # MAL / Jikan / AnimSchedule (Title Case → lowercase key)
+            "manga": cls.MANGA,
+            "4-koma manga": cls.KOMA_4,
+            "4-koma": cls.KOMA_4,
+            "doujinshi": cls.DOUJINSHI,
+            "one-shot": cls.ONE_SHOT,
+            "one_shot": cls.ONE_SHOT,
+            "one shot": cls.ONE_SHOT,
+            "manhwa": cls.MANHWA,
+            "manhua": cls.MANHUA,
+            "light novel": cls.LIGHT_NOVEL,
+            "light_novel": cls.LIGHT_NOVEL,
+            "novel": cls.NOVEL,
+            "visual novel": cls.VISUAL_NOVEL,
+            "visual_novel": cls.VISUAL_NOVEL,
+            "game": cls.GAME,
+            "video_game": cls.GAME,             # AniList
+            "video game": cls.GAME,             # AnimSchedule: "Video Game"
+            "card game": cls.CARD_GAME,
+            "card_game": cls.CARD_GAME,
+            "music": cls.MUSIC,
+            "radio": cls.RADIO,
+            "book": cls.BOOK,
+            "picture book": cls.PICTURE_BOOK,
+            "picture_book": cls.PICTURE_BOOK,
+            "original": cls.ORIGINAL,
+            "mixed media": cls.MIXED_MEDIA,
+            "mixed_media": cls.MIXED_MEDIA,
+            "multimedia_project": cls.MIXED_MEDIA,  # AniList schema
+            "web manga": cls.WEB_MANGA,
+            "web_manga": cls.WEB_MANGA,
+            "web novel": cls.WEB_NOVEL,
+            "web_novel": cls.WEB_NOVEL,
+            "other": cls.OTHER,
+            "unknown": cls.UNKNOWN,
+            "": cls.UNKNOWN,
+        }
+        return _map.get(value.lower(), cls.UNKNOWN)
 
 
 class SourceMaterialRelationType(str, Enum):
@@ -272,6 +325,53 @@ class AnimeRelationType(str, Enum):
     SIDE_STORY = "SIDE_STORY"
     SPIN_OFF = "SPIN_OFF"
     SUMMARY = "SUMMARY"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "AnimeRelationType":
+        """Normalize source-specific relation strings from all enrichment sources.
+
+        Handles MAL, AniList, Kitsu, AnimSchedule (camelCase dict keys), and others.
+        """
+        if not isinstance(value, str):
+            return cls.OTHER
+        _map = {
+            # MAL / Jikan (Title Case)
+            "sequel": cls.SEQUEL,
+            "prequel": cls.PREQUEL,
+            "alternative version": cls.ALTERNATIVE_VERSION,
+            "alternative setting": cls.ALTERNATIVE_SETTING,
+            "side story": cls.SIDE_STORY,
+            "full story": cls.FULL_STORY,
+            "parent story": cls.PARENT_STORY,
+            "spin-off": cls.SPIN_OFF,
+            "summary": cls.SUMMARY,
+            "adaptation": cls.ADAPTATION,
+            "character": cls.CHARACTER,
+            "crossover": cls.CROSSOVER,
+            "other": cls.OTHER,
+            # AniList (UPPER_SNAKE)
+            "alternative": cls.ALTERNATIVE_VERSION,
+            "side_story": cls.SIDE_STORY,
+            "parent": cls.PARENT_STORY,
+            "spin_off": cls.SPIN_OFF,
+            "source": cls.ADAPTATION,
+            "compilation": cls.SUMMARY,
+            "contains": cls.OTHER,
+            # Kitsu (snake_case)
+            "alternative_version": cls.ALTERNATIVE_VERSION,
+            "alternative_setting": cls.ALTERNATIVE_SETTING,
+            "full_story": cls.FULL_STORY,
+            "parent_story": cls.PARENT_STORY,
+            "spinoff": cls.SPIN_OFF,
+            # AnimSchedule (camelCase dict keys)
+            "sequels": cls.SEQUEL,
+            "prequels": cls.PREQUEL,
+            "parents": cls.PARENT_STORY,
+            "sidestories": cls.SIDE_STORY,
+            "spinoffs": cls.SPIN_OFF,
+            "alternatives": cls.ALTERNATIVE_VERSION,
+        }
+        return _map.get(value.lower(), cls.OTHER)
 
 
 # =============================================================================
