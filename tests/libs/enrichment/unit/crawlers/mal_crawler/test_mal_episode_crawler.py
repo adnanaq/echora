@@ -1,13 +1,18 @@
 """Unit tests for mal_episode_crawler.py — title parsing, URL normalization, and data assembly."""
 
+import json
+from unittest.mock import AsyncMock
+
 import pytest
 
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import (
     _build_episode_from_raw,
+    _fetch_mal_episode_data,
     _normalize_episode_url,
     _parse_episode_characters,
     _parse_episode_staff,
     _parse_title_info,
+    fetch_mal_episodes,
 )
 
 
@@ -345,3 +350,86 @@ def test_build_episode_from_raw_real_synopsis_preserved() -> None:
     raw = {"title_header": "#1 - Momo and Okarun", "synopsis_raw": "Momo is a high school girl born into a family of spirit mediums."}
     ep = _build_episode_from_raw(raw, 1, "https://myanimelist.net/anime/57334/Dandadan/episode/1")
     assert ep.synopsis == "Momo is a high school girl born into a family of spirit mediums."
+
+
+# =============================================================================
+# fetch_mal_episodes — cache + chunking
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_mal_episodes_uses_cache_and_merges_results(mocker) -> None:
+    url1 = "https://myanimelist.net/anime/21/One_Piece/episode/1"
+    url2 = "https://myanimelist.net/anime/21/One_Piece/episode/2"
+    raw1 = {"title_header": "#1 - I'm Luffy!", "_url": url1}
+    raw2 = {"title_header": "#2 - Zoro!", "_url": url2}
+
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([raw1, None], [1])),
+    )
+    cache_set = AsyncMock()
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_set",
+        new=cache_set,
+    )
+    mocker.patch(
+        "enrichment.crawlers.mal_crawler.mal_episode_crawler.crawl_batch_urls",
+        return_value=[{
+            "url": url2,
+            "status_code": 200,
+            "extracted_content": json.dumps([raw2]),
+        }],
+    )
+
+    result = await fetch_mal_episodes([url1, url2])
+    assert len(result) == 2
+    assert result[0] is not None
+    assert result[0].title == "I'm Luffy!"
+    assert result[1] is not None
+    assert result[1].title == "Zoro!"
+    cache_set.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_mal_episodes_chunks_requests(mocker) -> None:
+    urls = [
+        f"https://myanimelist.net/anime/21/One_Piece/episode/{i}"
+        for i in range(1, 26)
+    ]
+    raw = {"title_header": "#1 - I'm Luffy!"}
+
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None] * len(urls), list(range(len(urls))))),
+    )
+    cache_set = AsyncMock()
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_set",
+        new=cache_set,
+    )
+    sleep_mock = mocker.patch(
+        "enrichment.crawlers.mal_crawler.mal_episode_crawler.asyncio.sleep",
+        new=AsyncMock(),
+    )
+
+    def _batch_result(batch_urls: list[str]) -> list[dict[str, str]]:
+        return [
+            {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
+            for u in batch_urls
+        ]
+
+    mocker.patch(
+        "enrichment.crawlers.mal_crawler.mal_episode_crawler.crawl_batch_urls",
+        side_effect=_batch_result,
+    )
+
+    result = await fetch_mal_episodes(urls)
+    assert len(result) == len(urls)
+    assert all(item is not None for item in result)
+    assert sleep_mock.await_count == 1
+    assert cache_set.await_count == 2

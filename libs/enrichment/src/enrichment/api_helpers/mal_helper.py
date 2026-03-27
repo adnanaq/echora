@@ -136,12 +136,12 @@ class MalEnrichmentHelper:
         if episode_count == 0:
             return []
         urls = [f"{self._anime_url}/episode/{i}" for i in range(1, episode_count + 1)]
-        episodes_or_none = await fetch_mal_episodes(urls)
-        episodes = [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
-        if output_path:
-            for ep_dict in episodes:
-                _append_jsonl(output_path, ep_dict)
-        return episodes
+
+        def _on_episode(ep: Any) -> None:
+            _append_jsonl(output_path, episode_from_mal(ep))  # type: ignore[arg-type]
+
+        episodes_or_none = await fetch_mal_episodes(urls, on_result=_on_episode if output_path else None)
+        return [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
 
     async def fetch_character(
         self,
@@ -180,12 +180,12 @@ class MalEnrichmentHelper:
         Returns:
             List of detailed character dicts (failed ones are skipped).
         """
-        chars = await fetch_mal_characters(urls)
-        characters = [character_from_mal(c) for c in chars if c is not None]
-        if output_path:
-            for char_dict in characters:
-                _append_jsonl(output_path, char_dict)
-        return characters
+
+        def _on_character(c: Any) -> None:
+            _append_jsonl(output_path, character_from_mal(c))  # type: ignore[arg-type]
+
+        chars = await fetch_mal_characters(urls, on_result=_on_character if output_path else None)
+        return [character_from_mal(c) for c in chars if c is not None]
 
     async def fetch_all_data(
         self,

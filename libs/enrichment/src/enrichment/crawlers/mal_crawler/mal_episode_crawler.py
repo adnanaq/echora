@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,8 @@ TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
 _limiter = get_mal_scraping_limiter()
 
+_EPISODE_BATCH_SIZE = 35
+_EPISODE_BATCH_DELAY_SECONDS = 10.0
 
 
 def _get_episode_schema() -> dict[str, Any]:
@@ -422,7 +425,11 @@ async def fetch_mal_episode(identifier: str) -> MalScrapedEpisode | None:
     return _build_episode_from_raw(raw, episode_number, url)
 
 
-async def fetch_mal_episodes(identifiers: list[str]) -> list[MalScrapedEpisode | None]:
+async def fetch_mal_episodes(
+    identifiers: list[str],
+    *,
+    on_result: Callable[[MalScrapedEpisode], None] | None = None,
+) -> list[MalScrapedEpisode | None]:
     """Fetch multiple MAL episode pages as a single Docker batch job.
 
     Submits all URLs in one POST /crawl/job request and polls a single task ID —
@@ -441,41 +448,94 @@ async def fetch_mal_episodes(identifiers: list[str]) -> list[MalScrapedEpisode |
 
     urls = [_normalize_episode_url(i) for i in identifiers]
     logger.info(f"[episodes] Fetching {len(urls)} episodes...")
-    results = await crawl_batch_urls(
-        urls,
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(_get_episode_schema()),
+
+    cached_values, missing_indices = await _fetch_mal_episode_data.cache_batch_get(  # type: ignore[attr-defined]
+        urls
     )
 
-    episodes: list[MalScrapedEpisode | None] = []
-    for result in results:
-        if not result:
-            episodes.append(None)
-            continue
+    episodes: list[MalScrapedEpisode | None] = [None] * len(urls)
 
-        url = result["url"]
-        status = result.get("status_code")
-        if status == 404:
-            logger.warning(f"Episode not found: {url}")
-            episodes.append(None)
-            continue
-        if status and status != 200:
-            logger.error(f"HTTP {status} for {url}")
-            episodes.append(None)
-            continue
-
-        raw_list = json.loads(result.get("extracted_content") or "[]")
-        if not raw_list:
-            episodes.append(None)
-            continue
-
+    def _parse_cached(value: Any, fallback_url: str) -> MalScrapedEpisode | None:
+        if not value or not isinstance(value, dict):
+            return None
+        raw = dict(value)
+        url = raw.get("_url") or fallback_url
         m = re.search(r"/episode/(\d+)", url)
         if not m:
             logger.error(f"Cannot parse episode_number from URL: {url}")
-            episodes.append(None)
-            continue
+            return None
+        return _build_episode_from_raw(raw, int(m.group(1)), url)
 
-        episodes.append(_build_episode_from_raw(raw_list[0], int(m.group(1)), url))
+    for idx, cached in enumerate(cached_values):
+        parsed = _parse_cached(cached, urls[idx])
+        if parsed is not None:
+            episodes[idx] = parsed
+            if on_result is not None:
+                on_result(parsed)
+        else:
+            if idx not in missing_indices:
+                missing_indices.append(idx)
+
+    if not missing_indices:
+        return episodes
+
+    missing_indices = sorted(set(missing_indices))
+    missing_urls = [urls[i] for i in missing_indices]
+
+    for offset in range(0, len(missing_urls), _EPISODE_BATCH_SIZE):
+        chunk_urls = missing_urls[offset: offset + _EPISODE_BATCH_SIZE]
+        chunk_indices = missing_indices[offset: offset + _EPISODE_BATCH_SIZE]
+        cache_values: list[dict[str, Any] | None] = [None] * len(chunk_urls)
+
+        await _limiter.acquire()
+        results = await crawl_batch_urls(
+            chunk_urls,
+            browser_config=get_mal_docker_browser_config(),
+            crawler_config=get_mal_docker_crawler_config(_get_episode_schema()),
+        )
+
+        for idx_in_chunk, result in enumerate(results):
+            out_index = chunk_indices[idx_in_chunk]
+            if not result:
+                episodes[out_index] = None
+                continue
+
+            url = result["url"]
+            status = result.get("status_code")
+            if status == 404:
+                logger.warning(f"Episode not found: {url}")
+                episodes[out_index] = None
+                continue
+            if status and status != 200:
+                logger.error(f"HTTP {status} for {url}")
+                episodes[out_index] = None
+                continue
+
+            raw_list = json.loads(result.get("extracted_content") or "[]")
+            if not raw_list:
+                episodes[out_index] = None
+                continue
+
+            m = re.search(r"/episode/(\d+)", url)
+            if not m:
+                logger.error(f"Cannot parse episode_number from URL: {url}")
+                episodes[out_index] = None
+                continue
+
+            raw_for_cache = raw_list[0]
+            raw_for_cache["_url"] = url
+            episodes[out_index] = _build_episode_from_raw(raw_for_cache, int(m.group(1)), url)
+            cache_values[idx_in_chunk] = raw_for_cache
+            if on_result is not None and episodes[out_index] is not None:
+                on_result(episodes[out_index])
+
+        await _fetch_mal_episode_data.cache_batch_set(  # type: ignore[attr-defined]
+            chunk_urls,
+            cache_values,
+        )
+
+        if offset + _EPISODE_BATCH_SIZE < len(missing_urls):
+            await asyncio.sleep(_EPISODE_BATCH_DELAY_SECONDS)
 
     return episodes
 

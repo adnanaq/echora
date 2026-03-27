@@ -19,6 +19,7 @@ import json
 import logging
 import re
 import sys
+from collections.abc import Callable
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
@@ -43,6 +44,9 @@ _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
 _limiter = get_mal_scraping_limiter()
+
+_CHARACTER_BATCH_SIZE = 30
+_CHARACTER_BATCH_DELAY_SECONDS = 10.0
 
 
 def _get_character_schema() -> dict[str, Any]:
@@ -440,6 +444,8 @@ async def fetch_mal_character(url: str) -> MalScrapedCharacter | None:
 
 async def fetch_mal_characters(
     urls: list[str],
+    *,
+    on_result: Callable[[MalScrapedCharacter], None] | None = None,
 ) -> list[MalScrapedCharacter | None]:
     """Fetch multiple character detail pages in a single batch Docker job.
 
@@ -457,28 +463,79 @@ async def fetch_mal_characters(
 
     logger.info(f"[characters] Batch fetching {len(urls)} character details...")
 
-    results = await crawl_batch_urls(
-        urls,
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(_get_character_schema()),
+    cached_values, missing_indices = await _fetch_mal_character_data.cache_batch_get(  # type: ignore[attr-defined]
+        urls
     )
 
-    characters: list[MalScrapedCharacter | None] = []
-    for result in results:
-        if not result:
-            characters.append(None)
-            continue
-        url = result.get("metadata", {}).get("og:url") or result["url"]
-        status = result.get("status_code")
-        if status and status != 200:
-            logger.error(f"[character] HTTP {status} for character {url}")
-            characters.append(None)
-            continue
-        raw_list = json.loads(result.get("extracted_content") or "[]")
-        if not raw_list:
-            characters.append(None)
-            continue
-        characters.append(_parse_character_raw(raw_list[0], url))
+    characters: list[MalScrapedCharacter | None] = [None] * len(urls)
+
+    def _parse_cached(value: Any) -> MalScrapedCharacter | None:
+        if not value:
+            return None
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            raw, canonical_url = value
+        else:
+            return None
+        if not isinstance(raw, dict) or not canonical_url:
+            return None
+        return _parse_character_raw(raw, canonical_url)
+
+    for idx, cached in enumerate(cached_values):
+        parsed = _parse_cached(cached)
+        if parsed is not None:
+            characters[idx] = parsed
+            if on_result is not None:
+                on_result(parsed)
+        else:
+            if idx not in missing_indices:
+                missing_indices.append(idx)
+
+    if not missing_indices:
+        return characters
+
+    missing_indices = sorted(set(missing_indices))
+    missing_urls = [urls[i] for i in missing_indices]
+
+    for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
+        chunk_urls = missing_urls[offset: offset + _CHARACTER_BATCH_SIZE]
+        chunk_indices = missing_indices[offset: offset + _CHARACTER_BATCH_SIZE]
+        cache_values: list[tuple[dict[str, Any], str] | None] = [None] * len(chunk_urls)
+
+        await _limiter.acquire()
+        results = await crawl_batch_urls(
+            chunk_urls,
+            browser_config=get_mal_docker_browser_config(),
+            crawler_config=get_mal_docker_crawler_config(_get_character_schema()),
+        )
+
+        for idx_in_chunk, result in enumerate(results):
+            out_index = chunk_indices[idx_in_chunk]
+            if not result:
+                characters[out_index] = None
+                continue
+            url = result.get("metadata", {}).get("og:url") or result["url"]
+            status = result.get("status_code")
+            if status and status != 200:
+                logger.error(f"[character] HTTP {status} for character {url}")
+                characters[out_index] = None
+                continue
+            raw_list = json.loads(result.get("extracted_content") or "[]")
+            if not raw_list:
+                characters[out_index] = None
+                continue
+            raw_for_cache = raw_list[0]
+            characters[out_index] = _parse_character_raw(raw_for_cache, url)
+            cache_values[idx_in_chunk] = (raw_for_cache, url)
+            if on_result is not None and characters[out_index] is not None:
+                on_result(characters[out_index])
+
+        await _fetch_mal_character_data.cache_batch_set(  # type: ignore[attr-defined]
+            chunk_urls,
+            cache_values,
+        )
+
+        if offset + _CHARACTER_BATCH_SIZE < len(missing_urls):
+            await asyncio.sleep(_CHARACTER_BATCH_DELAY_SECONDS)
 
     return characters
 
