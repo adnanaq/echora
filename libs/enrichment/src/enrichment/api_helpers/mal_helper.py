@@ -236,7 +236,8 @@ class MalEnrichmentHelper:
                 logger.warning(f"Character detail fetch failed, continuing without characters: {e}")
                 return []
 
-        episodes_data, characters_data = await asyncio.gather(_fetch_episodes(), _fetch_characters())
+        episodes_data = await _fetch_episodes()
+        characters_data = await _fetch_characters()
 
         return {
             "anime": anime_info,

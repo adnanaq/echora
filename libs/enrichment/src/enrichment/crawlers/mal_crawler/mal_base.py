@@ -130,13 +130,15 @@ def get_mal_docker_crawler_config(
     schema: dict[str, Any],
     *,
     wait_until: str = "domcontentloaded",
-    delay: float = 1.0,
+    delay: float = 3.0,
 ) -> dict[str, Any]:
     """Crawler config dict for the crawl4ai Docker REST API with structured extraction.
 
     Args:
         schema: Extraction schema dict (from the caller's ``_get_*_schema()``).
-        wait_until: Page load event to wait for before extracting.
+        wait_until: Page load event to wait for before extracting. Defaults to
+            ``"load"`` (not ``"domcontentloaded"``) so AWS WAF JS challenge has
+            time to complete before the page is returned.
         delay: Seconds to wait before returning HTML (allows JS rendering).
     """
     return {
@@ -148,6 +150,8 @@ def get_mal_docker_crawler_config(
             },
             "delay_before_return_html": delay,
             "simulate_user": True,
+            "override_navigator": True,  # override navigator JS properties for stealth
+            "magic": True,              # handle popups/banners, reduces detection signals
             "wait_until": wait_until,
             "page_timeout": 90000,
         },

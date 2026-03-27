@@ -63,17 +63,17 @@ async def _submit_job(
                         f"crawl4ai server error: HTTP {resp.status} — {text[:200]}"
                     )
                 logger.error(
-                    "crawl4ai job submission failed: HTTP %s — %s", resp.status, text[:200]
+                    f"crawl4ai job submission failed: HTTP {resp.status} — {text[:200]}"
                 )
                 return None
             data: dict[str, Any] = await resp.json()
             task_id: str | None = data.get("task_id")
             if not task_id:
-                logger.error("crawl4ai job response missing task_id: %s", data)
+                logger.error(f"crawl4ai job response missing task_id: {data}")
                 return None
             return task_id
     except aiohttp.ClientError as exc:
-        logger.warning("crawl4ai Docker not reachable: %s", exc)
+        logger.warning(f"crawl4ai Docker not reachable: {exc}")
         return None
 
 
@@ -92,23 +92,23 @@ async def _poll_job(
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    logger.error("crawl4ai poll error: HTTP %s for task %s", resp.status, task_id)
+                    logger.error(f"crawl4ai poll error: HTTP {resp.status} for task {task_id}")
                     return None
                 data: dict[str, Any] = await resp.json()
         except aiohttp.ClientError as exc:
-            logger.warning("crawl4ai poll request failed: %s", exc)
+            logger.warning(f"crawl4ai poll request failed: {exc}")
             return None
 
         status = data.get("status")
         if status == "completed":
             return data
         if status == "failed":
-            logger.error("crawl4ai job %s failed: %s", task_id, data.get("error", "unknown"))
+            logger.error(f"crawl4ai job {task_id} failed: {data.get('error', 'unknown')}")
             return None
 
         await asyncio.sleep(poll_interval)
 
-    logger.error("crawl4ai job %s timed out after %.0fs", task_id, timeout)
+    logger.error(f"crawl4ai job {task_id} timed out after {timeout:.0f}s")
     return None
 
 
@@ -130,19 +130,23 @@ def _align_results(
     for url in urls:
         entry = index.get(url)
         if entry is None:
-            logger.warning("crawl4ai returned no result for URL: %s", url)
+            logger.warning(f"crawl4ai returned no result for URL: {url}")
             aligned.append(None)
             continue
 
         if not entry.get("success", True):
             err = entry.get("error_message") or entry.get("error", "")
-            logger.warning("crawl4ai result failure for %s: %s", url, err)
+            logger.warning(f"crawl4ai result failure for {url}: {err}")
             aligned.append(None)
             continue
 
         status_code = entry.get("status_code")
         if status_code == 404:
-            logger.warning("crawl4ai 404 for %s", url)
+            logger.warning(f"crawl4ai 404 for {url}")
+            aligned.append(None)
+            continue
+        if status_code == 405:
+            logger.error(f"crawl4ai 405 (AWS WAF soft block) for {url}")
             aligned.append(None)
             continue
 

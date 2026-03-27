@@ -33,7 +33,6 @@ class TestAniListEnrichmentHelperInit:
         assert helper.base_url == "https://graphql.anilist.co"
         assert helper.session is None
         assert helper.rate_limit_remaining == 90
-        assert helper.rate_limit_reset is None
         assert helper._session_event_loop is None
 
     def test_init_no_session_created(self):
@@ -824,27 +823,6 @@ class TestAniListEnrichmentHelperSpecificFetchers:
         assert "characters" in call_args[0][2]
 
     @pytest.mark.asyncio
-    async def test_fetch_all_staff(self):
-        """Test fetching all staff."""
-        helper = AniListEnrichmentHelper()
-        helper._fetch_paginated_data = AsyncMock(
-            return_value=[
-                {
-                    "node": {"id": 1, "name": {"full": "Eiichiro Oda"}},
-                    "role": "Story & Art",
-                }
-            ]
-        )
-
-        result = await helper.fetch_all_staff(21)
-
-        assert len(result) == 1
-        assert result[0]["node"]["name"]["full"] == "Eiichiro Oda"
-        # Verify correct data key
-        call_args = helper._fetch_paginated_data.call_args
-        assert call_args[0][2] == "staff"
-
-    @pytest.mark.asyncio
     async def test_fetch_all_episodes(self):
         """Test fetching all episodes."""
         helper = AniListEnrichmentHelper()
@@ -874,9 +852,6 @@ class TestAniListEnrichmentHelperPopulateDetails:
         helper.fetch_all_characters = AsyncMock(
             return_value=[{"node": {"id": 1}, "role": "MAIN"}]
         )
-        helper.fetch_all_staff = AsyncMock(
-            return_value=[{"node": {"id": 1}, "role": "Director"}]
-        )
         helper.fetch_all_episodes = AsyncMock(
             return_value=[{"node": {"id": 1, "episode": 1}}]
         )
@@ -885,8 +860,6 @@ class TestAniListEnrichmentHelperPopulateDetails:
 
         assert "characters" in result
         assert result["characters"]["edges"][0]["node"]["id"] == 1
-        assert "staff" in result
-        assert result["staff"]["edges"][0]["node"]["id"] == 1
         assert "airingSchedule" in result
         assert result["airingSchedule"]["edges"][0]["node"]["episode"] == 1
 
@@ -910,7 +883,6 @@ class TestAniListEnrichmentHelperPopulateDetails:
         anime_data = {"id": 21}
 
         helper.fetch_all_characters = AsyncMock(return_value=[])
-        helper.fetch_all_staff = AsyncMock(return_value=[])
         helper.fetch_all_episodes = AsyncMock(return_value=[])
 
         result = await helper._fetch_and_populate_details(anime_data)
@@ -1205,14 +1177,12 @@ class TestAniListEnrichmentHelperEdgeCases:
 
         # All fetch methods return None
         helper.fetch_all_characters = AsyncMock(return_value=None)
-        helper.fetch_all_staff = AsyncMock(return_value=None)
         helper.fetch_all_episodes = AsyncMock(return_value=None)
 
         result = await helper._fetch_and_populate_details(anime_data)
 
         # Should not add keys when None returned
         assert "characters" not in result
-        assert "staff" not in result
         assert "airingSchedule" not in result
 
     @pytest.mark.asyncio

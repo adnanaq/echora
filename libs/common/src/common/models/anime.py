@@ -1,6 +1,6 @@
 """Pydantic models for anime, character, and episode data used across Echora services."""
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ENUMS
 # =============================================================================
 
-class AnimeStatus(str, Enum):
+class AnimeStatus(StrEnum):
     """Anime airing status classification."""
 
     CANCELLED = "CANCELLED"
@@ -55,7 +55,7 @@ class AnimeStatus(str, Enum):
         return _map.get(v, cls.UNKNOWN)
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     """Primary entity type classification for vector search."""
 
     ANIME = "anime"
@@ -63,7 +63,7 @@ class EntityType(str, Enum):
     EPISODE = "episode"
 
 
-class AnimeType(str, Enum):
+class AnimeType(StrEnum):
     """Anime type/format classification."""
 
     CM = "CM"
@@ -126,7 +126,7 @@ class AnimeType(str, Enum):
         return _map.get(v, cls.UNKNOWN)
 
 
-class AnimeRating(str, Enum):
+class AnimeRating(StrEnum):
     """Anime content rating classification."""
 
     G = "G - All Ages"
@@ -152,7 +152,7 @@ class AnimeRating(str, Enum):
         return _map.get(value.lower(), cls.UNKNOWN)
 
 
-class AnimeSeason(str, Enum):
+class AnimeSeason(StrEnum):
     """Anime season classification."""
 
     SPRING = "SPRING"
@@ -173,7 +173,7 @@ class AnimeSeason(str, Enum):
         return _map.get(value.lower())  # type: ignore[return-value]
 
 
-class CharacterRole(str, Enum):
+class CharacterRole(StrEnum):
     """Character significance within a specific anime."""
 
     BACKGROUND = "BACKGROUND"
@@ -213,7 +213,7 @@ class CharacterRole(str, Enum):
         return _map.get(v, cls.UNSPECIFIED)
 
 
-class SourceMaterialType(str, Enum):
+class SourceMaterialType(StrEnum):
     """Source material type — used on both Anime and RelatedSourceMaterial models."""
 
     BOOK = "BOOK"
@@ -236,7 +236,9 @@ class SourceMaterialType(str, Enum):
     UNKNOWN = "UNKNOWN"
     VISUAL_NOVEL = "VISUAL NOVEL"
     WEB_MANGA = "WEB MANGA"
-    WEB_NOVEL = "WEB NOVEL"
+    WEB_NOVEL = "WEB NOVEL",
+    COMIC = "COMIC"           # Western comics (DC, Marvel, etc.) — AniList only
+    LIVE_ACTION = "LIVE ACTION"  # Based on live-action film/drama — AniList only
 
     @classmethod
     def _missing_(cls, value: object) -> "SourceMaterialType":
@@ -280,6 +282,9 @@ class SourceMaterialType(str, Enum):
             "web_manga": cls.WEB_MANGA,
             "web novel": cls.WEB_NOVEL,
             "web_novel": cls.WEB_NOVEL,
+            "comic": cls.COMIC,
+            "live_action": cls.LIVE_ACTION,
+            "live action": cls.LIVE_ACTION,
             "other": cls.OTHER,
             "unknown": cls.UNKNOWN,
             "": cls.UNKNOWN,
@@ -287,7 +292,7 @@ class SourceMaterialType(str, Enum):
         return _map.get(value.lower(), cls.UNKNOWN)
 
 
-class SourceMaterialRelationType(str, Enum):
+class SourceMaterialRelationType(StrEnum):
     """Relation type between an anime and its original source work."""
 
     ADAPTATION = "ADAPTATION"
@@ -297,7 +302,7 @@ class SourceMaterialRelationType(str, Enum):
     OTHER = "OTHER"
 
 
-class AnimeRelationType(str, Enum):
+class AnimeRelationType(StrEnum):
     """Relation type between two anime entries (cross-source normalized).
 
     Maps from platform-specific strings:
