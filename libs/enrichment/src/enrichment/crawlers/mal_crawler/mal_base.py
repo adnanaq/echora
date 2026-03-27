@@ -109,7 +109,7 @@ _MAL_DOCKER_BROWSER_CONFIG: dict[str, Any] = {
         "headless": True,
         "verbose": False,
         "enable_stealth": True,
-        "user_agent_mode": "random",
+        # "user_agent_mode": "random",  # disabled: use fixed Chrome 131 UA from headers instead
         "headers": _MAL_BROWSER_HEADERS,
         "viewport_width": 1920,
         "viewport_height": 1080,
@@ -148,7 +148,7 @@ def get_mal_docker_crawler_config(
                 "type": "JsonXPathExtractionStrategy",
                 "params": {"schema": schema},
             },
-            "delay_before_return_html": delay,
+            # "delay_before_return_html": delay,  # disabled: wait_until="load" already ensures page is ready
             "simulate_user": True,
             "override_navigator": True,  # override navigator JS properties for stealth
             "magic": True,              # handle popups/banners, reduces detection signals
