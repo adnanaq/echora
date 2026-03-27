@@ -2,7 +2,7 @@
 """
 AniList Helper for AI Enrichment Integration
 
-Test script to fetch and analyze AniList data for anime entries using GraphQL API.
+Production helper for fetching and enriching anime data from the AniList GraphQL API.
 """
 
 import argparse
@@ -29,20 +29,9 @@ class AniListEnrichmentHelper:
     """Helper for AniList data fetching in AI enrichment pipeline."""
 
     def __init__(self) -> None:
-        """
-        Create an AniListEnrichmentHelper and initialize its internal state.
-
-        Attributes:
-            base_url (str): AniList GraphQL endpoint URL.
-            session (Optional[aiohttp.ClientSession]): Per-event-loop HTTP session, created lazily.
-            rate_limit_remaining (int): Estimated remaining requests before hitting rate limit.
-            rate_limit_reset (Optional[int]): Timestamp when the rate limit resets, if known.
-            _session_event_loop (Optional[asyncio.AbstractEventLoop]): Event loop associated with the current session.
-        """
         self.base_url = "https://graphql.anilist.co"
         self.session: aiohttp.ClientSession | None = None
         self.rate_limit_remaining = 90
-        self.rate_limit_reset: int | None = None
         self._session_event_loop: asyncio.AbstractEventLoop | None = None
 
     async def _make_request(
@@ -226,13 +215,9 @@ class AniListEnrichmentHelper:
         genres
         synonyms
         tags {
-          id
           name
           description
           category
-          rank
-          isGeneralSpoiler
-          isMediaSpoiler
           isAdult
         }
         relations {
@@ -265,14 +250,6 @@ class AniListEnrichmentHelper:
           site
           type
           language
-          color
-          icon
-        }
-        streamingEpisodes {
-          title
-          thumbnail
-          url
-          site
         }
         nextAiringEpisode {
           episode
@@ -280,7 +257,6 @@ class AniListEnrichmentHelper:
           timeUntilAiring
         }
         rankings {
-          id
           rank
           type
           format
@@ -289,30 +265,20 @@ class AniListEnrichmentHelper:
           allTime
           context
         }
-        stats {
-          scoreDistribution {
-            score
-            amount
-          }
-          statusDistribution {
-            status
-            amount
-          }
-        }
         updatedAt
         """
 
-    # def _build_query_by_mal_id(self) -> str:
-    #     return f"query ($idMal: Int) {{ Media(idMal: $idMal, type: ANIME) {{ {self._get_media_query_fields()} }} }}"
+    def _build_query_by_mal_id(self) -> str:
+        return f"query ($idMal: Int) {{ Media(idMal: $idMal, type: ANIME) {{ {self._get_media_query_fields()} }} }}"
 
     def _build_query_by_anilist_id(self) -> str:
         return f"query ($id: Int) {{ Media(id: $id, type: ANIME) {{ {self._get_media_query_fields()} }} }}"
 
-    # async def fetch_anime_by_mal_id(self, mal_id: int) -> Optional[Dict[str, Any]]:
-    #     query = self._build_query_by_mal_id()
-    #     variables = {"idMal": mal_id}
-    #     response = await self._make_request(query, variables)
-    #     return response.get("Media")
+    async def fetch_anime_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
+        query = self._build_query_by_mal_id()
+        variables = {"idMal": mal_id}
+        response = await self._make_request(query, variables)
+        return response.get("Media")
 
     async def fetch_anime_by_anilist_id(self, anilist_id: int) -> dict[str, Any] | None:
         query = self._build_query_by_anilist_id()
@@ -351,9 +317,8 @@ class AniListEnrichmentHelper:
             has_next_page = data.get("pageInfo", {}).get("hasNextPage", False)
             page += 1
 
-            # Only rate limit for network requests, not cache hits
-            # Cache hits are instant, no need to throttle
-            if not response.get("_from_cache", False):
+            # Only rate limit for network requests, not cache hits, and only between pages (not after the last)
+            if not response.get("_from_cache", False) and has_next_page:
                 await asyncio.sleep(0.5)
 
         return all_items
@@ -398,19 +363,6 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
-    async def fetch_all_staff(self, anilist_id: int) -> list[dict[str, Any]]:
-        query = """
-        query ($id: Int!, $page: Int!) {
-          Media(id: $id, type: ANIME) {
-            staff(page: $page, perPage: 25, sort: RELEVANCE) {
-              pageInfo { hasNextPage }
-              edges { node { id name { full native } } role }
-            }
-          }
-        }
-        """
-        return await self._fetch_paginated_data(anilist_id, query, "staff")
-
     async def fetch_all_episodes(self, anilist_id: int) -> list[dict[str, Any]]:
         query = """
         query ($id: Int!, $page: Int!) {
@@ -433,7 +385,6 @@ class AniListEnrichmentHelper:
 
         details = {
             "characters": await self.fetch_all_characters(anilist_id),
-            "staff": await self.fetch_all_staff(anilist_id),
             "airingSchedule": await self.fetch_all_episodes(anilist_id),
         }
 
@@ -444,12 +395,12 @@ class AniListEnrichmentHelper:
 
         return anime_data
 
-    # async def fetch_all_data_by_mal_id(self, mal_id: int) -> Optional[Dict[str, Any]]:
-    #     anime_data = await self.fetch_anime_by_mal_id(mal_id)
-    #     if not anime_data:
-    #         logger.warning(f"No AniList data found for MAL ID: {mal_id}")
-    #         return None
-    #     return await self._fetch_and_populate_details(anime_data)
+    async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
+        anime_data = await self.fetch_anime_by_mal_id(mal_id)
+        if not anime_data:
+            logger.warning(f"No AniList data found for MAL ID: {mal_id}")
+            return None
+        return await self._fetch_and_populate_details(anime_data)
 
     async def fetch_all_data_by_anilist_id(
         self, anilist_id: int
@@ -503,14 +454,14 @@ async def main() -> int:
     """
     CLI entry point that fetches AniList data for a provided ID and writes the result as JSON to a file.
 
-    Parses command-line arguments --anilist-id (required) and optional --output (defaults to "test_anilist_output.json"), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
+    Parses command-line arguments --anilist-id or --mal-id (mutually exclusive, one required) and optional --output (defaults to "test_anilist_output.json"), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
 
     Returns:
         int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
     """
-    parser = argparse.ArgumentParser(description="Test AniList data fetching")
+    parser = argparse.ArgumentParser(description="Fetch AniList data for an anime entry")
     group = parser.add_mutually_exclusive_group(required=True)
-    # group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")
+    group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")
     group.add_argument("--anilist-id", type=int, help="AniList ID to fetch")
     parser.add_argument(
         "--output",
@@ -524,16 +475,17 @@ async def main() -> int:
     helper = AniListEnrichmentHelper()
     anime_data = None
     try:
-        if args.anilist_id:
-            try:
-                anime_data = await helper.fetch_all_data_by_anilist_id(args.anilist_id)
-            except Exception:
-                logger.exception(
-                    f"Error fetching AniList data for ID {args.anilist_id}"
-                )
-                anime_data = None
-        # elif args.mal_id:
-        #     anime_data = await helper.fetch_all_data_by_mal_id(args.mal_id)
+        fetch_id = args.anilist_id or args.mal_id
+        fetch_fn = (
+            helper.fetch_all_data_by_anilist_id
+            if args.anilist_id
+            else helper.fetch_all_data_by_mal_id
+        )
+        try:
+            anime_data = await fetch_fn(fetch_id)
+        except Exception:
+            logger.exception(f"Error fetching AniList data for ID {fetch_id}")
+            anime_data = None
 
         if anime_data:
             with open(args.output, "w", encoding="utf-8") as f:
