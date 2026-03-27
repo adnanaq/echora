@@ -463,7 +463,9 @@ class CachedAiohttpSession:
                 # API caching this is rarely an issue (APIs don't typically send Set-Cookie).
                 _get_all = getattr(response.headers, "getall", None)
                 if _get_all is not None:
-                    res_headers = {k: ", ".join(_get_all(k)) for k in set(response.headers.keys())}
+                    res_headers = {
+                        k: ", ".join(_get_all(k)) for k in set(response.headers.keys())
+                    }
                 else:
                     res_headers = dict(response.headers)
 

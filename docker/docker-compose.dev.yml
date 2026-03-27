@@ -182,7 +182,7 @@ services:
     ports:
       - "11235:11235"
     environment:
-      MAX_CONCURRENT_TASKS: "3" # 3 concurrent MAL tabs; increase for non-MAL crawlers
+      MAX_CONCURRENT_TASKS: "3" # 3 concurrent MAL tabs
     volumes:
       - ./crawl4ai-config.yml:/app/config.yml:ro
     networks:
