@@ -22,6 +22,7 @@ import pytest
 from http_cache.result_cache import (
     _compute_schema_hash,
     _generate_cache_key,
+    _normalize_batch_args,
     cached_result,
 )
 from redis.exceptions import RedisError
@@ -970,6 +971,222 @@ class TestCachedResultDecorator:
             assert result2["nested"]["key"] == "value"
 
 
+class TestNormalizeBatchArgs:
+    """Test _normalize_batch_args helper."""
+
+    def test_bare_values_wrapped_in_tuples(self) -> None:
+        normalized, kw = _normalize_batch_args(["a", "b"], None)
+        assert normalized == [("a",), ("b",)]
+        assert kw == [{}, {}]
+
+    def test_tuples_passed_through(self) -> None:
+        normalized, kw = _normalize_batch_args([("a", 1), ("b", 2)], None)
+        assert normalized == [("a", 1), ("b", 2)]
+
+    def test_provided_kwargs_list_returned_as_is(self) -> None:
+        kw_in = [{"x": 1}, {"x": 2}]
+        _, kw_out = _normalize_batch_args(["a", "b"], kw_in)
+        assert kw_out is kw_in
+
+    def test_mismatched_kwargs_list_raises(self) -> None:
+        with pytest.raises(ValueError, match="kwargs_list length"):
+            _normalize_batch_args(["a", "b"], [{}])
+
+
+class TestCachedResultBatchHelper:
+    """Test batch cache helper attached to cached_result wrappers."""
+
+    @pytest.mark.asyncio
+    async def test_batch_helper_uses_mget_and_returns_missing(self) -> None:
+        """Batch helper should MGET and return cached values with missing indices."""
+
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        assert hasattr(fetch_data, "cache_batch_get")
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_get_client.return_value = mock_redis
+            mock_redis.mget.return_value = [
+                json.dumps({"id": "item1"}),
+                None,
+                "{bad json",
+            ]
+
+            args_list = [("item1",), ("item2",), ("item3",)]
+            cached, missing = await fetch_data.cache_batch_get(args_list)  # type: ignore[attr-defined]
+
+            # Ensure keys are generated consistently with the decorator
+            schema_hash = _compute_schema_hash(fetch_data.__wrapped__)  # type: ignore[attr-defined]
+            expected_keys = [
+                _generate_cache_key("test_batch", schema_hash, "item1"),
+                _generate_cache_key("test_batch", schema_hash, "item2"),
+                _generate_cache_key("test_batch", schema_hash, "item3"),
+            ]
+            mock_redis.mget.assert_called_once_with(expected_keys)
+
+            assert cached == [{"id": "item1"}, None, None]
+            assert missing == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_batch_helper_cache_disabled_returns_all_missing(self) -> None:
+        """When caching is disabled, batch helper should skip Redis and mark all missing."""
+
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_cache_config") as mock_config:
+            mock_config.return_value = MagicMock(
+                cache_enabled=False, storage_type="redis"
+            )
+
+            args_list = [("item1",), ("item2",)]
+            cached, missing = await fetch_data.cache_batch_get(args_list)  # type: ignore[attr-defined]
+
+            assert cached == [None, None]
+            assert missing == [0, 1]
+
+    @pytest.mark.asyncio
+    async def test_batch_helper_writes_values_with_ttl(self) -> None:
+        """Batch helper should write non-None values via pipeline and skip None."""
+
+        @cached_result(ttl=123, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
+            mock_pipe = MagicMock()
+            mock_pipe.setex = MagicMock()
+            mock_pipe.execute = AsyncMock()
+            mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
+            mock_pipe.__aexit__ = AsyncMock(return_value=None)
+
+            mock_redis = AsyncMock()
+            mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+            mock_get_client.return_value = mock_redis
+
+            args_list = [("item1",), ("item2",), ("item3",)]
+            values = [{"id": "item1"}, None, {"id": "item3"}]
+
+            await fetch_data.cache_batch_set(args_list, values)  # type: ignore[attr-defined]
+
+            # None value skipped — only 2 setex calls queued on the pipeline
+            assert mock_pipe.setex.call_count == 2
+            mock_pipe.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_batch_get_empty_args_returns_empty(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        result = await fetch_data.cache_batch_get([])  # type: ignore[attr-defined]
+        assert result == ([], [])
+
+    @pytest.mark.asyncio
+    async def test_batch_get_redis_error_returns_all_missing(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_redis.mget.side_effect = RedisError("connection failed")
+            mock_get_client.return_value = mock_redis
+
+            cached, missing = await fetch_data.cache_batch_get([("a",), ("b",)])  # type: ignore[attr-defined]
+            assert cached == [None, None]
+            assert missing == [0, 1]
+
+    @pytest.mark.asyncio
+    async def test_batch_get_empty_redis_result_returns_all_missing(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_redis.mget.return_value = []
+            mock_get_client.return_value = mock_redis
+
+            cached, missing = await fetch_data.cache_batch_get([("a",), ("b",)])  # type: ignore[attr-defined]
+            assert cached == [None, None]
+            assert missing == [0, 1]
+
+    @pytest.mark.asyncio
+    async def test_batch_set_empty_args_is_noop(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            await fetch_data.cache_batch_set([], [])  # type: ignore[attr-defined]
+            mock_get_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_batch_set_values_length_mismatch_raises(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with pytest.raises(ValueError, match="values length"):
+            await fetch_data.cache_batch_set([("a",), ("b",)], [{"id": "a"}])  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_batch_set_cache_disabled_is_noop(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_cache_config") as mock_config:
+            mock_config.return_value = MagicMock(cache_enabled=False, storage_type="redis")
+            with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+                await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
+                mock_get_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_batch_set_type_error_on_serialization_is_skipped(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            mock_pipe = MagicMock()
+            mock_pipe.setex = MagicMock()
+            mock_pipe.execute = AsyncMock()
+            mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
+            mock_pipe.__aexit__ = AsyncMock(return_value=None)
+            mock_redis = AsyncMock()
+            mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+            mock_get_client.return_value = mock_redis
+
+            with patch("http_cache.result_cache.json.dumps", side_effect=TypeError("not serializable")):
+                # Should not raise — TypeError is swallowed
+                await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
+            mock_pipe.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_batch_set_redis_error_on_pipeline_is_swallowed(self) -> None:
+        @cached_result(ttl=60, key_prefix="test_batch")
+        async def fetch_data(item_id: str) -> dict[str, str]:
+            return {"id": item_id}
+
+        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            mock_redis = AsyncMock()
+            mock_redis.pipeline = MagicMock(side_effect=RedisError("pipeline failed"))
+            mock_get_client.return_value = mock_redis
+
+            # Should not raise — RedisError is swallowed
+            await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
+
+
 class TestSchemaHashInvalidation:
     """Test schema hash invalidation behavior."""
 
@@ -1243,6 +1460,33 @@ class TestGetResultCacheRedisClient:
                 assert result is not None, (
                     f"Result at index {i} was None - race condition exists"
                 )
+
+
+    @pytest.mark.asyncio
+    async def test_redis_initialization_returns_none_raises(self) -> None:
+        """RedisInitializationError raised when from_url somehow returns None."""
+        from http_cache.exceptions import RedisInitializationError
+        from http_cache.result_cache import _redis_client, close_result_cache_redis_client, get_result_cache_redis_client
+
+        await close_result_cache_redis_client()
+
+        with (
+            patch("http_cache.result_cache.get_cache_config") as mock_config,
+            patch("http_cache.result_cache.Redis.from_url", return_value=None),
+        ):
+            mock_config.return_value = MagicMock(
+                redis_url="redis://localhost:6379/0",
+                redis_max_connections=10,
+                redis_socket_keepalive=True,
+                redis_socket_connect_timeout=5,
+                redis_socket_timeout=10,
+                redis_retry_on_timeout=True,
+                redis_health_check_interval=30,
+            )
+            with pytest.raises(RedisInitializationError):
+                await get_result_cache_redis_client()
+
+        await close_result_cache_redis_client()
 
 
 class TestMaxCacheKeyLength:
