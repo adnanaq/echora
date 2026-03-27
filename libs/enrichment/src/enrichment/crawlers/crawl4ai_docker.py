@@ -9,6 +9,8 @@ Public API
 ----------
 ``crawl_single_url`` — submit one URL, poll until done, return result dict.
 ``crawl_batch_urls``  — submit N URLs as one job, return list aligned to input.
+                        Automatically retries WAF-blocked (405) URLs after
+                        polling until the block lifts.
 
 Both functions accept plain dicts for ``browser_config`` / ``crawler_config``
 so callers never import crawl4ai Python types through this boundary.
@@ -30,6 +32,17 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DOCKER_URL = "http://localhost:11235"
+
+# How long to wait between WAF recovery probes, and the max total wait time.
+_WAF_PROBE_INTERVAL = 30.0   # seconds between probe attempts
+_WAF_MAX_WAIT = 600.0        # give up after 10 minutes
+
+# Transient error retry
+_TRANSIENT_RETRY_DELAY = 10.0  # seconds before retrying transient failures
+_TRANSIENT_ERROR_FRAGMENTS = (
+    "ERR_NAME_NOT_RESOLVED",
+    "Target page, context or browser has been closed",
+)
 
 
 def _get_base_url() -> str:
@@ -155,6 +168,103 @@ def _align_results(
     return aligned
 
 
+def _extract_waf_blocked_urls(raw_results: list[dict[str, Any]]) -> list[str]:
+    """Return URLs from the raw result list that were soft-blocked by AWS WAF (405)."""
+    return [
+        entry["url"]
+        for entry in raw_results
+        if entry.get("status_code") == 405 and entry.get("url")
+    ]
+
+
+def _extract_transient_failed_urls(raw_results: list[dict[str, Any]]) -> list[str]:
+    """Return URLs that failed with a known transient error (DNS or browser closed)."""
+    return [
+        entry["url"]
+        for entry in raw_results
+        if not entry.get("success", True)
+        and entry.get("url")
+        and any(
+            frag in (entry.get("error_message") or entry.get("error", ""))
+            for frag in _TRANSIENT_ERROR_FRAGMENTS
+        )
+    ]
+
+
+async def _retry_failed_urls(
+    session: aiohttp.ClientSession,
+    base_url: str,
+    failed_urls: list[str],
+    aligned: list[dict[str, Any] | None],
+    all_urls: list[str],
+    browser_config: dict[str, Any],
+    crawler_config: dict[str, Any],
+    timeout: float,
+    poll_interval: float,
+) -> list[dict[str, Any] | None]:
+    """Submit failed_urls as a new job and patch successes back into aligned."""
+    task_id = await _submit_job(session, base_url, failed_urls, browser_config, crawler_config)
+    if not task_id:
+        return aligned
+    response = await _poll_job(session, base_url, task_id, timeout, poll_interval)
+    if not response:
+        return aligned
+    raw: list[dict[str, Any]] = response.get("result", {}).get("results") or []
+    retry_by_url = dict(zip(failed_urls, _align_results(failed_urls, raw)))
+    for i, url in enumerate(all_urls):
+        if aligned[i] is None and retry_by_url.get(url) is not None:
+            aligned[i] = retry_by_url[url]
+    return aligned
+
+
+async def _probe_waf_recovery(
+    session: aiohttp.ClientSession,
+    base_url: str,
+    probe_url: str,
+    browser_config: dict[str, Any],
+    crawler_config: dict[str, Any],
+) -> bool:
+    """Submit a single URL and return True if it comes back without a 405."""
+    task_id = await _submit_job(session, base_url, [probe_url], browser_config, crawler_config)
+    if not task_id:
+        return False
+    response = await _poll_job(session, base_url, task_id, timeout=90.0, poll_interval=3.0)
+    if not response:
+        return False
+    results: list[dict[str, Any]] = response.get("result", {}).get("results") or []
+    if not results:
+        return False
+    return results[0].get("status_code") != 405
+
+
+async def _wait_for_waf_unblock(
+    session: aiohttp.ClientSession,
+    base_url: str,
+    probe_url: str,
+    browser_config: dict[str, Any],
+    crawler_config: dict[str, Any],
+) -> bool:
+    """Poll until the WAF block lifts or the max wait time is exceeded.
+
+    Probes ``probe_url`` every ``_WAF_PROBE_INTERVAL`` seconds.
+    Returns True when unblocked, False on timeout.
+    """
+    deadline = asyncio.get_event_loop().time() + _WAF_MAX_WAIT
+    attempt = 0
+    while asyncio.get_event_loop().time() < deadline:
+        attempt += 1
+        logger.info(
+            f"WAF recovery: waiting {_WAF_PROBE_INTERVAL:.0f}s before probe #{attempt}..."
+        )
+        await asyncio.sleep(_WAF_PROBE_INTERVAL)
+        if await _probe_waf_recovery(session, base_url, probe_url, browser_config, crawler_config):
+            logger.info(f"WAF unblocked after {attempt} probe(s) — resuming crawl")
+            return True
+        logger.warning(f"WAF probe #{attempt}: still blocked (405)")
+    logger.error(f"WAF did not unblock within {_WAF_MAX_WAIT:.0f}s — giving up on blocked URLs")
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -201,13 +311,18 @@ async def crawl_batch_urls(
     browser_config: dict[str, Any],
     crawler_config: dict[str, Any],
     timeout: float = 600.0,
-    poll_interval: float = 3.0,
+    poll_interval: float = 5.0,
 ) -> list[dict[str, Any] | None]:
     """Submit N URLs as a single crawl4ai Docker job and return aligned results.
 
     Efficient for bulk fetching: one HTTP round-trip regardless of N.
     The Docker server processes URLs at ``MAX_CONCURRENT_TASKS`` concurrency,
     which acts as the rate limiter — no Python-level throttling needed.
+
+    If AWS WAF soft-blocks any URLs (405), the function pauses, polls until
+    the block lifts, then retries only the affected URLs and merges them back
+    into the original result list — so callers always get a full-length list
+    aligned to the input.
 
     Args:
         urls: List of URLs to crawl.
@@ -235,4 +350,30 @@ async def crawl_batch_urls(
         raw_results: list[dict[str, Any]] = (
             job_response.get("result", {}).get("results") or []
         )
-        return _align_results(urls, raw_results)
+
+        waf_blocked = _extract_waf_blocked_urls(raw_results)
+        transient_failed = _extract_transient_failed_urls(raw_results)
+        aligned = _align_results(urls, raw_results)
+
+        if transient_failed:
+            logger.warning(
+                f"{len(transient_failed)} URL(s) hit transient errors — retrying in {_TRANSIENT_RETRY_DELAY:.0f}s"
+            )
+            await asyncio.sleep(_TRANSIENT_RETRY_DELAY)
+            aligned = await _retry_failed_urls(
+                session, base_url, transient_failed, aligned, urls, browser_config, crawler_config, timeout, poll_interval
+            )
+
+        if waf_blocked:
+            logger.warning(
+                f"AWS WAF blocked {len(waf_blocked)} URL(s) with 405 — pausing until unblocked"
+            )
+            recovered = await _wait_for_waf_unblock(
+                session, base_url, waf_blocked[0], browser_config, crawler_config
+            )
+            if recovered:
+                aligned = await _retry_failed_urls(
+                    session, base_url, waf_blocked, aligned, urls, browser_config, crawler_config, timeout, poll_interval
+                )
+
+        return aligned
