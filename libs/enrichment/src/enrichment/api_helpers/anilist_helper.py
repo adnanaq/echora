@@ -15,12 +15,14 @@ from types import TracebackType
 from typing import Any
 
 import aiohttp
+from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager
 
 from ..exceptions import (
     AniListGraphQLError,
-    AniListNetworkError,
-    AniListRateLimitError,
+    ServiceBlockedError,
+    ServiceNetworkError,
+    ServiceRateLimitedError,
 )
 from .anilist.anilist_anime_models import AniListAnime
 from .anilist.anilist_character_models import AniListCharacterEdge
@@ -38,71 +40,51 @@ class AniListEnrichmentHelper:
         self.rate_limit_remaining = 90
         self._session_event_loop: asyncio.AbstractEventLoop | None = None
 
-    async def _make_request(
-        self, query: str, variables: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """
-        Send a GraphQL request to the AniList API and return the parsed response data with cache metadata.
-
-        Handles per-event-loop session management and respects server rate limits; on 429 responses it waits according to Retry-After and retries the request up to a maximum of 3 attempts.
-
-        Parameters:
-            query (str): GraphQL query string.
-            variables (Optional[Dict[str, Any]]): Mapping of variables for the GraphQL query.
-
-        Returns:
-            result (Dict[str, Any]): The GraphQL `data` object merged into a dict. Contains an additional
-            key `_from_cache` set to `True` if the response was served from cache, `False` otherwise.
-
-        Raises:
-            RuntimeError: If an aiohttp session cannot be initialized for the current event loop.
-            AniListRateLimitError: If the rate limit is exceeded after all retry attempts.
-            AniListGraphQLError: If the AniList API response contains GraphQL errors.
-            AniListNetworkError: If a network or JSON decode error occurs during the request.
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        payload = {"query": query, "variables": variables or {}}
-
-        # Check if we need to create/recreate session for current event loop
+    async def _ensure_session(self) -> None:
+        """Lazily create (or recreate) the aiohttp session for the current event loop."""
         current_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         if self.session is None or self._session_event_loop != current_loop:
-            # Close old session if it exists
             if self.session is not None:
                 try:
                     await self.session.close()
                 except Exception:
-                    logger.debug(
-                        "Ignoring error while closing old session", exc_info=True
-                    )
-
-            # Get cached session from centralized cache manager
-            # Each event loop gets its own session via the cache manager
-            # Body-key caching is enabled globally in FilterPolicy, so POST requests
-            # (GraphQL queries) automatically include request body in cache key
+                    logger.debug("Ignoring error while closing old session", exc_info=True)
             self.session = http_cache_manager.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
             )
-            logger.debug(
-                "AniList cached session created via cache manager for current event loop"
-            )
+            logger.debug("AniList cached session created for current event loop")
             self._session_event_loop = current_loop
 
-        # Session should always be initialized by this point
         if self.session is None:
             raise RuntimeError("Failed to initialize AniList session")
 
-        # Retry loop with bounded attempts to avoid unbounded recursion
-        max_retries = 3
-        for attempt in range(max_retries):
+    async def _execute_request(
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Single-attempt HTTP call to AniList GraphQL endpoint.
+
+        Handles 429 with Retry-After (up to 3 waits before raising).
+        Raises canonical ServiceError subtypes — no retry logic here.
+
+        Raises:
+            ServiceRateLimitedError: 429 exhausted.
+            ServiceBlockedError: 403 — API disabled/blocked.
+            AniListGraphQLError: HTTP 200/400 with GraphQL errors[] in body.
+            ServiceNetworkError: Any other network / JSON decode failure.
+        """
+        await self._ensure_session()
+        assert self.session is not None  # guaranteed by _ensure_session
+
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        payload = {"query": query, "variables": variables or {}}
+
+        max_rate_limit_waits = 3
+        for attempt in range(max_rate_limit_waits):
             try:
                 async with self.session.post(
                     self.base_url, json=payload, headers=headers
                 ) as response:
-                    # Capture cache status before response is consumed
                     from_cache = getattr(response, "from_cache", False)
 
                     if "X-RateLimit-Remaining" in response.headers:
@@ -111,63 +93,76 @@ class AniListEnrichmentHelper:
                         )
 
                     if response.status == 429:
-                        if attempt < max_retries - 1:
+                        if attempt < max_rate_limit_waits - 1:
                             retry_after = int(response.headers.get("Retry-After", 60))
                             logger.warning(
-                                f"Rate limit exceeded (attempt {attempt + 1}/{max_retries}). Waiting {retry_after} seconds..."
+                                f"AniList rate limit (attempt {attempt + 1}/{max_rate_limit_waits}). "
+                                f"Waiting {retry_after}s..."
                             )
                             await asyncio.sleep(retry_after)
-                            continue  # Retry in loop instead of recursion
-                        else:
-                            logger.error(
-                                f"Rate limit exceeded after {max_retries} attempts. Giving up."
-                            )
-                            raise AniListRateLimitError(max_retries)
+                            continue
+                        raise ServiceRateLimitedError(
+                            service="anilist", attempts=max_rate_limit_waits
+                        )
+
+                    if response.status == 403:
+                        raise ServiceBlockedError(
+                            "API disabled/blocked", service="anilist"
+                        )
 
                     response.raise_for_status()
                     data: Any = await response.json()
+
                     if "errors" in data:
                         logger.error(f"AniList GraphQL errors: {data['errors']}")
                         raise AniListGraphQLError(data["errors"])
+
                     result: dict[str, Any] = data.get("data", {})
-                    # Add cache metadata to result
                     result["_from_cache"] = from_cache
-            except (
-                TimeoutError,
-                aiohttp.ClientError,
-                json.JSONDecodeError,
-            ) as exc:
-                # Don't retry 4xx client errors — they're not transient
-                if isinstance(exc, aiohttp.ClientResponseError) and exc.status < 500:
-                    logger.error(f"AniList API client error {exc.status}: {exc.message}")
-                    raise AniListNetworkError(exc) from exc
-                # Retry transient network/JSON errors with exponential backoff
-                if attempt < max_retries - 1:
-                    backoff = 2**attempt
-                    logger.warning(
-                        f"AniList request failed (attempt {attempt + 1}/{max_retries}): {exc}. Retrying in {backoff}s..."
-                    )
-                    await asyncio.sleep(backoff)
-                    continue
-                logger.exception(
-                    f"AniList API request failed after {max_retries} attempts"
-                )
-                raise AniListNetworkError(exc) from exc
-            else:
-                # Connection released - now apply throttling if needed
-                # Apply client-side throttling for non-cache responses approaching the limit.
-                # Cache hits are instant and don't consume rate limit quota.
-                if not from_cache and self.rate_limit_remaining < 5:
-                    logger.warning(
-                        f"Rate limit low ({self.rate_limit_remaining}), sleeping 60s to avoid hitting limit."
-                    )
-                    await asyncio.sleep(60)
-                    self.rate_limit_remaining = 90  # Reset after waiting
 
-                return result
+                    # Client-side throttle when approaching rate limit
+                    if not from_cache and self.rate_limit_remaining < 5:
+                        logger.warning(
+                            f"Rate limit low ({self.rate_limit_remaining}), sleeping 60s."
+                        )
+                        await asyncio.sleep(60)
+                        self.rate_limit_remaining = 90
 
-        # Unreachable: every loop iteration raises or returns
-        raise AssertionError("AniList retry loop exited without raising or returning")  # pragma: no cover
+                    return result
+
+            except (ServiceRateLimitedError, ServiceBlockedError, AniListGraphQLError):
+                raise
+            except aiohttp.ClientResponseError as exc:
+                # Non-429/403 4xx are not retryable
+                if exc.status < 500:
+                    raise ServiceNetworkError(service="anilist", cause=exc) from exc
+                raise
+            except (aiohttp.ClientError, json.JSONDecodeError, TimeoutError) as exc:
+                raise ServiceNetworkError(service="anilist", cause=exc) from exc
+
+        # Unreachable — loop always raises or returns
+        raise AssertionError("AniList rate-limit wait loop exited without raising or returning")  # pragma: no cover
+
+    async def _make_request(
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Send a GraphQL request with retry on transient network errors.
+
+        Raises:
+            ServiceRateLimitedError: 429 exhausted after Retry-After waits.
+            ServiceBlockedError: 403 API disabled.
+            AniListGraphQLError: GraphQL errors in response body.
+            ServiceNetworkError: Transient network failure after all retries.
+        """
+        return await retry_with_backoff(
+            operation=lambda: self._execute_request(query, variables),
+            max_retries=3,
+            retry_delay=1.0,
+            is_transient_error=lambda e: isinstance(
+                e, (aiohttp.ClientError, json.JSONDecodeError, TimeoutError)
+            )
+            and not isinstance(e, aiohttp.ClientResponseError),
+        )
 
     def _get_media_query_fields(self) -> str:
         """
@@ -286,7 +281,7 @@ class AniListEnrichmentHelper:
         response = await self._make_request(query, variables)
         return response.get("Media")
 
-    async def fetch_anime_by_anilist_id(self, anilist_id: int) -> dict[str, Any] | None:
+    async def fetch_anime(self, anilist_id: int) -> dict[str, Any] | None:
         query = self._build_query_by_anilist_id()
         variables = {"id": anilist_id}
         response = await self._make_request(query, variables)
@@ -329,7 +324,7 @@ class AniListEnrichmentHelper:
 
         return all_items
 
-    async def fetch_all_characters(self, anilist_id: int) -> list[dict[str, Any]]:
+    async def fetch_characters(self, anilist_id: int) -> list[dict[str, Any]]:
         """
         Fetches all character edges for an anime from AniList by its AniList ID.
 
@@ -342,7 +337,7 @@ class AniListEnrichmentHelper:
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
-            characters(page: $page, perPage: 25, sort: ROLE) {
+            characters(page: $page, perPage: 50, sort: ROLE) {
               pageInfo { hasNextPage }
               edges {
                 node {
@@ -393,7 +388,7 @@ class AniListEnrichmentHelper:
         Returns:
             Canonical dict (output of anime_from_anilist), or None if not found.
         """
-        raw = await self.fetch_anime_by_anilist_id(anilist_id)
+        raw = await self.fetch_anime(anilist_id)
         if not raw:
             logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
             return None
@@ -422,7 +417,7 @@ class AniListEnrichmentHelper:
         Returns:
             List of canonical character dicts (output of character_from_anilist).
         """
-        raw_edges = await self.fetch_all_characters(anilist_id)
+        raw_edges = await self.fetch_characters(anilist_id)
         if not raw_edges:
             return []
 
@@ -444,24 +439,29 @@ class AniListEnrichmentHelper:
 
         return canonical
 
+    async def fetch_all(
+        self, anilist_id: int, output_dir: str | None = None
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """Fetch canonical anime data and all characters for an AniList ID.
+
+        Args:
+            anilist_id: AniList anime ID.
+            output_dir: If provided, writes anilist.jsonl and anilist_characters.jsonl
+                to this directory (consistent with MAL/AnimSchedule pattern).
+
+        Returns:
+            Tuple of (canonical anime dict or None, list of canonical character dicts).
+        """
+        anime = await self.fetch_anime_canonical(anilist_id, output_dir)
+        characters = await self.fetch_characters_canonical(anilist_id, output_dir)
+        return anime, characters
+
     async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
         anime_data = await self.fetch_anime_by_mal_id(mal_id)
         if not anime_data:
             logger.warning(f"No AniList data found for MAL ID: {mal_id}")
             return None
-        characters = await self.fetch_all_characters(anime_data["id"])
-        if characters:
-            anime_data["characters"] = {"edges": characters}
-        return anime_data
-
-    async def fetch_all_data_by_anilist_id(
-        self, anilist_id: int
-    ) -> dict[str, Any] | None:
-        anime_data = await self.fetch_anime_by_anilist_id(anilist_id)
-        if not anime_data:
-            logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
-            return None
-        characters = await self.fetch_all_characters(anilist_id)
+        characters = await self.fetch_characters(anime_data["id"])
         if characters:
             anime_data["characters"] = {"edges": characters}
         return anime_data

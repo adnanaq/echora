@@ -24,6 +24,8 @@ import defusedxml.ElementTree as ET
 from common.utils.datetime_utils import determine_anime_status
 from http_cache.instance import http_cache_manager as _cache_manager
 
+from enrichment.exceptions import ServiceBlockedError, ServiceNetworkError
+
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from enrichment.crawlers.utils import sanitize_output_path
 
@@ -387,6 +389,7 @@ class AniDBEnrichmentHelper:
             logger.error(
                 f"Request failed permanently after {self.max_retries + 1} attempts: {last_exception}"
             )
+            raise ServiceNetworkError(service="anidb", cause=last_exception)
 
         return None
 
@@ -466,14 +469,16 @@ class AniDBEnrichmentHelper:
                 return None
 
             elif response.status == 555:
-                logger.error(
-                    "AniDB banned/blocked (555) - serious rate limit violation"
-                )
                 self.metrics.last_error_time = time.time()
                 # Force circuit breaker open for ban scenarios
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
                 self.circuit_breaker_opened_at = time.time()
-                return None
+                # TODO: publish a deferred retry event via NATS JetStream / Temporal
+                #   so this enrichment job is retried once AniDB recovers.
+                #   ServiceBlockedError signals "try again later" — not a permanent failure.
+                raise ServiceBlockedError(
+                    "banned/blocked (555) — serious rate limit violation", service="anidb"
+                )
 
             else:
                 logger.warning(f"AniDB API error: HTTP {response.status}")

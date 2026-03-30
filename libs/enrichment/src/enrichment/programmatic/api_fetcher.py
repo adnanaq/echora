@@ -21,14 +21,15 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
-from enrichment.api_helpers.animeschedule_helper import fetch_animeschedule_data
+from enrichment.api_helpers.animeschedule_helper import fetch_all
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 from enrichment.exceptions import (
     AniListGraphQLError,
-    AniListNetworkError,
-    AniListRateLimitError,
+    ServiceBlockedError,
+    ServiceNetworkError,
+    ServiceRateLimitedError,
 )
 
 from .config import EnrichmentConfig
@@ -229,7 +230,7 @@ class ParallelAPIFetcher:
             async with MalEnrichmentHelper(
                 mal_id, session=self.mal_session
             ) as helper:
-                result = await helper.fetch_all_data(
+                result = await helper.fetch_all(
                     anime_output_path=anime_path,
                     episodes_output_path=episodes_path,
                     characters_output_path=characters_path,
@@ -271,13 +272,8 @@ class ParallelAPIFetcher:
 
                 anilist_helper = AniListEnrichmentHelper()
 
-                # fetch_anime_canonical maps to canonical, writes anilist.jsonl, returns canonical dict
-                result = loop.run_until_complete(
-                    anilist_helper.fetch_anime_canonical(int(anilist_id), temp_dir)
-                )
-                # fetch_characters_canonical writes anilist_characters.jsonl
-                chars_list = loop.run_until_complete(
-                    anilist_helper.fetch_characters_canonical(int(anilist_id), temp_dir)
+                result, chars_list = loop.run_until_complete(
+                    anilist_helper.fetch_all(int(anilist_id), temp_dir)
                 )
 
                 # Close the helper's session
@@ -296,17 +292,24 @@ class ParallelAPIFetcher:
                 logger.warning(f"AniList returned no data for ID {anilist_id}")
 
             return result
-        except AniListRateLimitError as e:
+        except ServiceRateLimitedError as e:
             logger.error(f"AniList rate limit exhausted for ID {anilist_id}: {e}")  # noqa: TRY400
-            self.api_errors["anilist"] = f"Rate limit exhausted: {e}"
+            self.api_errors["anilist"] = str(e)
+            return None
+        except ServiceBlockedError as e:
+            logger.warning(f"AniList blocked/disabled for ID {anilist_id}: {e}")
+            self.api_errors["anilist"] = str(e)
+            # TODO: publish a deferred retry event via NATS JetStream / Temporal
+            #   so this enrichment job is retried once AniList recovers.
+            #   ServiceBlockedError signals "try again later" — not a permanent failure.
             return None
         except AniListGraphQLError as e:
             logger.error(f"AniList GraphQL error for ID {anilist_id}: {e}")  # noqa: TRY400
-            self.api_errors["anilist"] = f"GraphQL error: {e}"
+            self.api_errors["anilist"] = str(e)
             return None
-        except AniListNetworkError as e:
+        except ServiceNetworkError as e:
             logger.error(f"AniList network error for ID {anilist_id}: {e}")  # noqa: TRY400
-            self.api_errors["anilist"] = f"Network error: {e}"
+            self.api_errors["anilist"] = str(e)
             return None
         except Exception as e:
             logger.error(f"AniList fetch failed for ID {anilist_id}: {e}")
@@ -441,7 +444,7 @@ class ParallelAPIFetcher:
                 os.path.join(temp_dir, "animeschedule.jsonl") if temp_dir else None
             )
             sources: list[str] = offline_data.get("sources", [])
-            result = await fetch_animeschedule_data(
+            result = await fetch_all(
                 search_term, sources=sources or None, output_path=output_path
             )
 
@@ -472,22 +475,7 @@ class ParallelAPIFetcher:
         task_names = [name for name, _ in tasks]
         coroutines = [coro for _, coro in tasks]
 
-        if self.config.no_timeout_mode:
-            logger.info(
-                "Running in NO TIMEOUT mode - will fetch ALL data from all APIs"
-            )
-            # Gather all results without timeout, returning exceptions for failed tasks
-            task_results = await asyncio.gather(*coroutines, return_exceptions=True)
-
-        else:
-            # Normal mode with individual timeouts for each task
-            # Wrap each coroutine in wait_for to apply the timeout
-            timed_coroutines = [
-                asyncio.wait_for(coro, timeout=timeout) for coro in coroutines
-            ]
-            task_results = await asyncio.gather(
-                *timed_coroutines, return_exceptions=True
-            )
+        task_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
         # Process the results from gather
         for i, result in enumerate(task_results):

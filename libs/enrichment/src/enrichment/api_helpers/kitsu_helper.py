@@ -13,7 +13,10 @@ from types import TracebackType
 from typing import Any, cast
 
 import aiohttp
+from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager as _cache_manager
+
+from ..exceptions import ServiceNetworkError, ServiceNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -49,30 +52,28 @@ class KitsuEnrichmentHelper:
 
         url = f"{self.base_url}{endpoint}"
 
-        async def _handle_response(response: Any) -> dict[str, Any]:
-            if response.status == 200:
+        async def _execute() -> dict[str, Any]:
+            active_session = session or _cache_manager.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
+            )
+            async with active_session.get(url, headers=headers, params=params) as response:
+                if response.status == 404:
+                    raise ServiceNotFoundError(
+                        f"not found: {endpoint}", service="kitsu"
+                    )
+                if response.status != 200:
+                    response.raise_for_status()
                 payload = cast(dict[str, Any], await response.json())
                 payload["_from_cache"] = bool(getattr(response, "from_cache", False))
                 return payload
 
-            logger.warning(f"Kitsu API error: HTTP {response.status}")
-            return {}
-
-        try:
-            if session is not None:
-                async with session.get(url, headers=headers, params=params) as response:
-                    return await _handle_response(response)
-
-            async with _cache_manager.get_aiohttp_session(
-                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
-            ) as owned_session:
-                async with owned_session.get(
-                    url, headers=headers, params=params
-                ) as response:
-                    return await _handle_response(response)
-        except Exception:
-            logger.exception("Kitsu API request failed")
-            return {}
+        return await retry_with_backoff(
+            operation=_execute,
+            max_retries=3,
+            retry_delay=1.0,
+            is_transient_error=lambda e: isinstance(e, aiohttp.ClientError)
+            and not isinstance(e, aiohttp.ClientResponseError),
+        )
 
     async def get_anime_by_id(
         self, anime_id: int, *, session: Any | None = None
@@ -81,8 +82,11 @@ class KitsuEnrichmentHelper:
         try:
             response = await self._make_request(f"/anime/{anime_id}", session=session)
             return response.get("data") if response else None
-        except Exception:
-            logger.exception(f"Kitsu get_anime_by_id failed for ID {anime_id}")
+        except ServiceNotFoundError:
+            logger.warning(f"Kitsu anime not found: ID {anime_id}")
+            return None
+        except (ServiceNetworkError, aiohttp.ClientError) as exc:
+            logger.error(f"Kitsu get_anime_by_id failed for ID {anime_id}: {exc}")
             return None
 
     async def get_anime_episodes(
