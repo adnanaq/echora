@@ -112,7 +112,7 @@ async def test_all_helpers_use_cache_manager_not_hardcoded_redis(mocker):
             # Trigger session creation (different helpers have different methods)
             try:
                 if class_name == "AniListEnrichmentHelper":
-                    await helper.fetch_anime_by_anilist_id(1)
+                    await helper.fetch_anime(1)
                 elif class_name == "MalEnrichmentHelper":
                     await helper.fetch_anime()
                 elif class_name == "KitsuEnrichmentHelper":
@@ -198,7 +198,7 @@ async def test_anilist_helper_no_hardcoded_redis(mocker):
     helper = AniListEnrichmentHelper()
 
     # Make request to trigger session creation
-    await helper.fetch_anime_by_anilist_id(1)
+    await helper.fetch_anime(1)
 
     # Verify no hard-coded Redis URL was used
     mock_redis_from_url.assert_not_called()
@@ -359,12 +359,12 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
 @pytest.mark.asyncio
 async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
     """
-    Verify that fetch_animeschedule_data uses the centralized HTTP cache session and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
+    Verify that fetch_all (AnimSchedule) uses the centralized HTTP cache session and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
 
-    Patches the HTTP cache manager to return a mocked aiohttp session, patches `Redis.from_url` to observe calls, invokes `fetch_animeschedule_data`, and asserts that no direct Redis connection was created. API errors during the fetch are tolerated.
+    Patches the HTTP cache manager to return a mocked aiohttp session, patches `Redis.from_url` to observe calls, invokes fetch_all, and asserts that no direct Redis connection was created. API errors during the fetch are tolerated.
     """
-    from enrichment.api_helpers.animeschedule_fetcher import (
-        fetch_animeschedule_data,
+    from enrichment.api_helpers.animeschedule_helper import (
+        fetch_all as fetch_animeschedule_data,
     )
 
     # Mock Redis.from_url

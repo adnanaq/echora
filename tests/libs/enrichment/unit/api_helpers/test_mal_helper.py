@@ -291,8 +291,8 @@ async def test_fetch_characters_skips_failed_fetches():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_fetches_episodes_and_characters(tmp_path: Path):
-    """fetch_all_data orchestrates anime + episodes + character detail fetches."""
+async def test_fetch_all_fetches_episodes_and_characters(tmp_path: Path):
+    """fetch_all orchestrates anime + episodes + character detail fetches."""
     char_urls = ["https://myanimelist.net/character/10/A"]
     anime_out = tmp_path / "anime.jsonl"
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
@@ -301,7 +301,7 @@ async def test_fetch_all_data_fetches_episodes_and_characters(tmp_path: Path):
     helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}, {"episode_number": 2}])
     helper.fetch_characters = AsyncMock(return_value=[{"mal_id": 10, "name": "A"}])
 
-    result = await helper.fetch_all_data(anime_output_path=str(anime_out))
+    result = await helper.fetch_all(anime_output_path=str(anime_out))
 
     assert result is not None
     assert result["anime"]["mal_id"] == 1
@@ -314,15 +314,15 @@ async def test_fetch_all_data_fetches_episodes_and_characters(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_passes_episode_count_from_anime_page():
-    """fetch_all_data passes episode_count from the anime page to fetch_episodes."""
+async def test_fetch_all_passes_episode_count_from_anime_page():
+    """fetch_all passes episode_count from the anime page to fetch_episodes."""
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
     helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 12})
     helper.fetch_character_urls = AsyncMock(return_value=[])
     helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
     helper.fetch_characters = AsyncMock(return_value=[])
 
-    result = await helper.fetch_all_data()
+    result = await helper.fetch_all()
 
     assert result is not None
     assert result["episodes"] == [{"episode_number": 1}]
@@ -330,8 +330,8 @@ async def test_fetch_all_data_passes_episode_count_from_anime_page():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_returns_empty_when_detailed_empty():
-    """fetch_all_data returns empty characters when detailed fetch returns empty."""
+async def test_fetch_all_returns_empty_when_detailed_empty():
+    """fetch_all returns empty characters when detailed fetch returns empty."""
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
     helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": None})
     helper.fetch_character_urls = AsyncMock(
@@ -340,29 +340,29 @@ async def test_fetch_all_data_returns_empty_when_detailed_empty():
     helper.fetch_episodes = AsyncMock(return_value=[])
     helper.fetch_characters = AsyncMock(return_value=[])
 
-    result = await helper.fetch_all_data()
+    result = await helper.fetch_all()
 
     assert result is not None
     assert result["characters"] == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_continues_when_episodes_raise():
-    """fetch_all_data logs and continues with empty episodes when episode fetch raises."""
+async def test_fetch_all_continues_when_episodes_raise():
+    """fetch_all logs and continues with empty episodes when episode fetch raises."""
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
     helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 2})
     helper.fetch_character_urls = AsyncMock(return_value=[])
     helper.fetch_episodes = AsyncMock(side_effect=Exception("network error"))
 
-    result = await helper.fetch_all_data()
+    result = await helper.fetch_all()
 
     assert result is not None
     assert result["episodes"] == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_continues_when_characters_raise():
-    """fetch_all_data logs and continues with empty characters when character fetch raises."""
+async def test_fetch_all_continues_when_characters_raise():
+    """fetch_all logs and continues with empty characters when character fetch raises."""
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
     helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 0})
     helper.fetch_character_urls = AsyncMock(
@@ -370,19 +370,19 @@ async def test_fetch_all_data_continues_when_characters_raise():
     )
     helper.fetch_characters = AsyncMock(side_effect=Exception("network error"))
 
-    result = await helper.fetch_all_data()
+    result = await helper.fetch_all()
 
     assert result is not None
     assert result["characters"] == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_data_returns_none_when_anime_fails():
-    """fetch_all_data returns None when the anime fetch fails."""
+async def test_fetch_all_returns_none_when_anime_fails():
+    """fetch_all returns None when the anime fetch fails."""
     helper = MalEnrichmentHelper("https://myanimelist.net/anime/1")
     helper.fetch_anime = AsyncMock(return_value=None)
 
-    result = await helper.fetch_all_data()
+    result = await helper.fetch_all()
 
     assert result is None
 

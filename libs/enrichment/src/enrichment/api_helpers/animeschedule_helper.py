@@ -5,11 +5,11 @@ Fetches anime data from AnimSchedule API (async version).
 
 Usage:
     # Programmatic usage (no file output)
-    from enrichment.api_helpers.animeschedule_helper import fetch_animeschedule_data
-    data = await fetch_animeschedule_data("One Piece", sources=["https://myanimelist.net/anime/21"])
+    from enrichment.api_helpers.animeschedule_helper import fetch_all
+    data = await fetch_all("One Piece", sources=["https://myanimelist.net/anime/21"])
 
     # Programmatic usage (with file output)
-    data = await fetch_animeschedule_data("One Piece", output_path="temp/animeschedule.jsonl")
+    data = await fetch_all("One Piece", output_path="temp/animeschedule.jsonl")
 
     # CLI usage (default output to CWD)
     python -m enrichment.api_helpers.animeschedule_helper "One Piece"
@@ -72,7 +72,7 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
     return None
 
 
-async def fetch_animeschedule_data(
+async def fetch_all(
     search_term: str,
     sources: list[str] | None = None,
     output_path: str | None = None,
@@ -151,7 +151,7 @@ async def main() -> int:
     args = parser.parse_args()
 
     try:
-        result = await fetch_animeschedule_data(args.search_term, output_path=args.output)
+        result = await fetch_all(args.search_term, output_path=args.output)
         return 0 if result else 1
     except Exception:
         logger.exception("Error fetching AnimSchedule data")

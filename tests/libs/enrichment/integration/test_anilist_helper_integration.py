@@ -65,7 +65,7 @@ async def test_anilist_fetch_anime_caching(clean_helper):
 
     # First call (should be a cache miss)
     start_time_1 = time.monotonic()
-    result_1 = await helper.fetch_anime_by_anilist_id(21)  # One Piece
+    result_1 = await helper.fetch_anime(21)  # One Piece
     end_time_1 = time.monotonic()
     duration_1 = end_time_1 - start_time_1
 
@@ -75,7 +75,7 @@ async def test_anilist_fetch_anime_caching(clean_helper):
 
     # Second call (should be a cache hit)
     start_time_2 = time.monotonic()
-    result_2 = await helper.fetch_anime_by_anilist_id(21)
+    result_2 = await helper.fetch_anime(21)
     end_time_2 = time.monotonic()
     duration_2 = end_time_2 - start_time_2
 
@@ -99,7 +99,7 @@ async def test_anilist_pagination_caching(clean_helper):
     helper = clean_helper
 
     # Fetch characters (paginated)
-    characters_1 = await helper.fetch_all_characters(
+    characters_1 = await helper.fetch_characters(
         21
     )  # One Piece has many characters
 
@@ -110,7 +110,7 @@ async def test_anilist_pagination_caching(clean_helper):
     import time
 
     start_time = time.monotonic()
-    characters_2 = await helper.fetch_all_characters(21)
+    characters_2 = await helper.fetch_characters(21)
     end_time = time.monotonic()
     duration = end_time - start_time
 
@@ -129,9 +129,7 @@ async def test_anilist_full_data_fetch(clean_helper):
     helper = clean_helper
 
     # Fetch complete data
-    anime_data = await helper.fetch_all_data_by_anilist_id(
-        1535
-    )  # Death Note (smaller dataset)
+    anime_data = await helper.fetch_anime(1535)  # Death Note (smaller dataset)
 
     assert anime_data is not None
     assert anime_data["id"] == 1535
@@ -154,7 +152,7 @@ async def test_anilist_not_found(clean_helper):
     """
     helper = clean_helper
 
-    result = await helper.fetch_anime_by_anilist_id(999999999)
+    result = await helper.fetch_anime(999999999)
 
     # Should return None for non-existent ID
     assert result is None
@@ -168,8 +166,8 @@ async def test_anilist_multiple_anime(clean_helper):
     helper = clean_helper
 
     # Fetch different anime
-    anime1 = await helper.fetch_anime_by_anilist_id(1)  # Cowboy Bebop
-    anime2 = await helper.fetch_anime_by_anilist_id(20)  # Naruto
+    anime1 = await helper.fetch_anime(1)  # Cowboy Bebop
+    anime2 = await helper.fetch_anime(20)  # Naruto
 
     assert anime1 is not None
     assert anime2 is not None
@@ -178,8 +176,8 @@ async def test_anilist_multiple_anime(clean_helper):
     assert anime1 != anime2
 
     # Fetch again (should hit cache)
-    anime1_cached = await helper.fetch_anime_by_anilist_id(1)
-    anime2_cached = await helper.fetch_anime_by_anilist_id(20)
+    anime1_cached = await helper.fetch_anime(1)
+    anime2_cached = await helper.fetch_anime(20)
 
     assert anime1_cached == anime1
     assert anime2_cached == anime2
@@ -199,7 +197,7 @@ async def test_anilist_event_loop_safety():
     helper = AniListEnrichmentHelper()
 
     try:
-        result = await helper.fetch_anime_by_anilist_id(30)  # Neon Genesis Evangelion
+        result = await helper.fetch_anime(30)  # Neon Genesis Evangelion
 
         assert result is not None
         assert result["id"] == 30
@@ -215,7 +213,7 @@ async def test_anilist_unicode_handling(clean_helper):
     helper = clean_helper
 
     # Fetch anime with Japanese title
-    result = await helper.fetch_anime_by_anilist_id(21)  # One Piece
+    result = await helper.fetch_anime(21)  # One Piece
 
     assert result is not None
     assert "title" in result
@@ -229,7 +227,7 @@ async def test_anilist_unicode_handling(clean_helper):
 @pytest.mark.asyncio
 async def test_anilist_empty_results(clean_helper):
     """
-    Verify fetch_all_data_by_anilist_id handles anime records with minimal or missing nested data.
+    Verify fetch_anime handles anime records with minimal or missing nested data.
 
     If a result is returned it must include an "id"; the call must not raise unhandled exceptions when characters, staff, or episodes are absent.
     """
@@ -238,9 +236,7 @@ async def test_anilist_empty_results(clean_helper):
     # Some anime might have minimal data
     # Test graceful handling
     try:
-        result = await helper.fetch_all_data_by_anilist_id(
-            100000
-        )  # Unlikely to have full data
+        result = await helper.fetch_anime(100000)  # Unlikely to have full data
 
         # Should handle gracefully (either None or partial data)
         if result:
@@ -260,7 +256,7 @@ async def test_anilist_rate_limit_headers(clean_helper):
     initial_rate_limit = helper.rate_limit_remaining
 
     # Make a request
-    await helper.fetch_anime_by_anilist_id(1)
+    await helper.fetch_anime(1)
 
     # Rate limit should be tracked (either updated from headers or unchanged)
     assert helper.rate_limit_remaining >= 0

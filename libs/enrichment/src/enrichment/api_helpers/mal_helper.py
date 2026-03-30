@@ -187,7 +187,7 @@ class MalEnrichmentHelper:
         chars = await fetch_mal_characters(urls, on_result=_on_character if output_path else None)
         return [character_from_mal(c) for c in chars if c is not None]
 
-    async def fetch_all_data(
+    async def fetch_all(
         self,
         *,
         anime_output_path: str | None = None,

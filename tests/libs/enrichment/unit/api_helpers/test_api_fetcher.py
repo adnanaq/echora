@@ -164,7 +164,7 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_all_data = AsyncMock(
+        helper.fetch_all = AsyncMock(
             return_value={
                 "anime": mock_anime_response["data"],
                 "episodes": [],
@@ -193,7 +193,7 @@ class TestFetchMALComplete:
             assert result["episodes"] == []
             assert len(result["characters"]) == 1
             assert result["characters"][0]["character"]["mal_id"] == 1
-            helper.fetch_all_data.assert_awaited_once_with(
+            helper.fetch_all.assert_awaited_once_with(
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
@@ -212,7 +212,7 @@ class TestFetchMALComplete:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             helper = AsyncMock()
-            helper.fetch_all_data = AsyncMock(
+            helper.fetch_all = AsyncMock(
                 return_value={
                     "anime": mock_anime_response["data"],
                     "episodes": [{"mal_id": 1, "title": "Episode 1"}],
@@ -229,7 +229,7 @@ class TestFetchMALComplete:
                 return_value=helper_cm,
             ):
                 result = await fetcher._fetch_mal("1", temp_dir=temp_dir)
-            helper.fetch_all_data.assert_awaited_once_with(
+            helper.fetch_all.assert_awaited_once_with(
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
@@ -266,7 +266,7 @@ class TestFetchMALComplete:
         }
 
         helper = AsyncMock()
-        helper.fetch_all_data = AsyncMock(
+        helper.fetch_all = AsyncMock(
             return_value={
                 "anime": anime_response_no_episodes["data"],
                 "episodes": [],
@@ -289,7 +289,7 @@ class TestFetchMALComplete:
             assert result["anime"]["episodes"] is None
             # No episodes should be fetched
             assert result["episodes"] == []
-            helper.fetch_all_data.assert_awaited_once_with(
+            helper.fetch_all.assert_awaited_once_with(
                 anime_output_path=os.path.join(temp_dir, "mal_anime.jsonl"),
                 episodes_output_path=os.path.join(temp_dir, "mal_episodes.jsonl"),
                 characters_output_path=os.path.join(temp_dir, "mal_characters.jsonl"),
@@ -302,7 +302,7 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_all_data = AsyncMock(return_value=None)
+        helper.fetch_all = AsyncMock(return_value=None)
 
         helper_cm = AsyncMock()
         helper_cm.__aenter__ = AsyncMock(return_value=helper)
@@ -329,7 +329,7 @@ class TestFetchMALComplete:
         fetcher.mal_session = AsyncMock()
 
         helper = AsyncMock()
-        helper.fetch_all_data = AsyncMock(side_effect=Exception("Network error"))
+        helper.fetch_all = AsyncMock(side_effect=Exception("Network error"))
 
         helper_cm = AsyncMock()
         helper_cm.__aenter__ = AsyncMock(return_value=helper)

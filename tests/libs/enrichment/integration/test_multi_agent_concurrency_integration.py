@@ -368,7 +368,7 @@ class TestConcurrentPipelineExecution:
             start_time = time.time()
 
             # Use only fast service for stress test
-            anilist_data = await helper.fetch_anime_by_anilist_id(anime_config["id"])
+            anilist_data = await helper.fetch_anime(anime_config["id"])
 
             elapsed = time.time() - start_time
 
