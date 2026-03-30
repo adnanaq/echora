@@ -203,6 +203,24 @@ def test_align_results_reordered() -> None:
     assert aligned[1]["url"] == url_b
 
 
+def test_align_results_unicode_submitted_percent_encoded_returned() -> None:
+    """Playwright percent-encodes URLs; submitted Unicode must still match."""
+    unicode_url = "https://myanimelist.net/character/270864/Broyé_Charlotte"
+    encoded_url = "https://myanimelist.net/character/270864/Broy%C3%A9_Charlotte"
+    entry = {"url": encoded_url, "success": True, "status_code": 200}
+    result = _align_results([unicode_url], [entry])
+    assert result == [entry]
+
+
+def test_align_results_percent_encoded_submitted_unicode_returned() -> None:
+    """Symmetric: percent-encoded submitted URL matches Unicode result URL."""
+    unicode_url = "https://myanimelist.net/character/152902/Brûlée_Charlotte"
+    encoded_url = "https://myanimelist.net/character/152902/Br%C3%BBl%C3%A9e_Charlotte"
+    entry = {"url": unicode_url, "success": True, "status_code": 200}
+    result = _align_results([encoded_url], [entry])
+    assert result == [entry]
+
+
 # ---------------------------------------------------------------------------
 # _extract_waf_blocked_urls
 # ---------------------------------------------------------------------------

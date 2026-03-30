@@ -26,6 +26,7 @@ import asyncio
 import logging
 import os
 from typing import Any
+from urllib.parse import quote, unquote
 
 import aiohttp
 
@@ -125,23 +126,38 @@ async def _poll_job(
     return None
 
 
+def _normalize_url(url: str) -> str:
+    """Normalize a URL to a consistent percent-encoded form for matching.
+
+    Decodes any existing percent-encoding then re-encodes non-ASCII characters,
+    so that raw Unicode URLs and percent-encoded URLs compare equal.
+    """
+    return quote(unquote(url), safe=":/@?=#&%+!$'()*+,;")
+
+
 def _align_results(
     urls: list[str], raw_results: list[dict[str, Any]]
 ) -> list[dict[str, Any] | None]:
     """Align job results back to the input URL list.
 
     The Docker server may reorder or drop results; we match by the ``url``
-    field returned in each result entry.
+    field returned in each result entry. Both exact-match and normalized
+    (percent-encoded) forms are indexed to handle cases where Playwright
+    encodes non-ASCII characters in the URL differently from the submitted form
+    (e.g. raw Unicode slug submitted, percent-encoded slug returned).
     """
     index: dict[str, dict[str, Any]] = {}
     for entry in raw_results:
         entry_url = entry.get("url") or ""
         if entry_url:
             index[entry_url] = entry
+            normalized = _normalize_url(entry_url)
+            if normalized != entry_url:
+                index[normalized] = entry
 
     aligned: list[dict[str, Any] | None] = []
     for url in urls:
-        entry = index.get(url)
+        entry = index.get(url) or index.get(_normalize_url(url))
         if entry is None:
             logger.warning(f"crawl4ai returned no result for URL: {url}")
             aligned.append(None)
