@@ -1,49 +1,57 @@
-"""Exceptions for enrichment pipeline API helpers."""
+"""Typed exception hierarchy for enrichment pipeline service errors."""
 
 from __future__ import annotations
 
 from typing import Any
 
 
-class AniListAPIError(Exception):
-    """Base exception for AniList API errors."""
+class EnrichmentError(Exception):
+    """Base for all enrichment pipeline errors."""
 
 
-class AniListRateLimitError(AniListAPIError):
-    """Raised when AniList API rate limit is exhausted after retries."""
+class ServiceError(EnrichmentError):
+    """Error from a specific external service."""
 
-    def __init__(self, attempts: int) -> None:
-        """Initialize rate limit error with retry attempt count.
+    def __init__(self, message: str, *, service: str) -> None:
+        self.service = service
+        super().__init__(f"[{service}] {message}")
 
-        Args:
-            attempts: Number of retry attempts exhausted.
-        """
+
+class ServiceRateLimitedError(ServiceError):
+    """429 / rate limit exhausted after retries."""
+
+    def __init__(self, *, service: str, attempts: int) -> None:
         self.attempts = attempts
-        super().__init__(f"AniList rate limit exceeded after {attempts} retry attempts")
+        super().__init__(f"rate limit exceeded after {attempts} attempts", service=service)
 
 
-class AniListGraphQLError(AniListAPIError):
-    """Raised when AniList API returns GraphQL errors in response."""
+class ServiceNetworkError(ServiceError):
+    """Transient network failure (DNS, connection reset, 5xx) after retries."""
+
+    def __init__(self, *, service: str, cause: BaseException | str) -> None:
+        self.cause = cause
+        super().__init__(f"network error: {cause}", service=service)
+
+
+class ServiceNotFoundError(ServiceError):
+    """404 — the requested resource does not exist."""
+
+
+class ServiceBlockedError(ServiceError):
+    """WAF / IP block that could not be recovered."""
+
+
+class ServiceParseError(ServiceError):
+    """Malformed response that failed validation/parsing."""
+
+    def __init__(self, *, service: str, cause: BaseException | str) -> None:
+        self.cause = cause
+        super().__init__(f"parse error: {cause}", service=service)
+
+
+class AniListGraphQLError(ServiceError):
+    """AniList GraphQL-level errors — protocol-specific, not retryable."""
 
     def __init__(self, errors: list[dict[str, Any]]) -> None:
-        """Initialize GraphQL error with error details.
-
-        Args:
-            errors: GraphQL error objects from response.
-        """
         self.errors = errors
-        super().__init__(f"AniList GraphQL errors: {errors}")
-
-
-class AniListNetworkError(AniListAPIError):
-    """Raised when AniList API request fails due to network or JSON decode errors."""
-
-    def __init__(self, cause: BaseException | str) -> None:
-        """Initialize network error with underlying cause.
-
-        Args:
-            cause: The underlying exception or error description.
-        """
-        self.cause = cause
-        super().__init__(f"AniList API request failed: {cause}")
-
+        super().__init__(f"GraphQL errors: {errors}", service="anilist")
