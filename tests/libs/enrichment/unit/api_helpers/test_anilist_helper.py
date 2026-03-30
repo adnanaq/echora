@@ -513,6 +513,37 @@ class TestAniListEnrichmentHelperMakeRequest:
             await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
+    async def test_make_request_4xx_client_error_not_retried(self):
+        """4xx client errors raise immediately without retry."""
+        helper = AniListEnrichmentHelper()
+
+        error = aiohttp.ClientResponseError(
+            request_info=MagicMock(), history=(), status=404
+        )
+
+        mock_response = AsyncMock()
+        mock_response.status = 404
+        mock_response.from_cache = False
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock(side_effect=error)
+
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_cm)
+
+        helper.session = mock_session
+        helper._session_event_loop = asyncio.get_running_loop()
+
+        with pytest.raises(AniListNetworkError):
+            await helper._make_request("query { test }")
+
+        # Should only attempt once (no retry for 4xx)
+        assert mock_session.post.call_count == 1
+
+    @pytest.mark.asyncio
     async def test_make_request_http_error(self):
         """Test handling of HTTP errors."""
         helper = AniListEnrichmentHelper()
@@ -628,6 +659,42 @@ class TestAniListEnrichmentHelperFetchMethods:
         result = await helper.fetch_anime_by_anilist_id(21)
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_by_mal_id_success(self):
+        """Test successful anime fetch by MAL ID."""
+        helper = AniListEnrichmentHelper()
+        helper._make_request = AsyncMock(
+            return_value={
+                "Media": {"id": 21, "idMal": 21, "title": {"romaji": "One Piece"}},
+                "_from_cache": False,
+            }
+        )
+
+        result = await helper.fetch_anime_by_mal_id(21)
+
+        assert result == {"id": 21, "idMal": 21, "title": {"romaji": "One Piece"}}
+        call_args = helper._make_request.call_args
+        assert call_args[0][1] == {"idMal": 21}
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_by_mal_id_not_found(self):
+        """Test anime fetch by MAL ID when not found."""
+        helper = AniListEnrichmentHelper()
+        helper._make_request = AsyncMock(return_value={"_from_cache": False})
+
+        result = await helper.fetch_anime_by_mal_id(99999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_build_query_by_mal_id(self):
+        """Test MAL ID query builder produces valid GraphQL."""
+        helper = AniListEnrichmentHelper()
+        query = helper._build_query_by_mal_id()
+
+        assert "idMal: $idMal" in query
+        assert "type: ANIME" in query
 
 
 class TestAniListEnrichmentHelperPagination:
@@ -822,105 +889,77 @@ class TestAniListEnrichmentHelperSpecificFetchers:
         call_args = helper._fetch_paginated_data.call_args
         assert "characters" in call_args[0][2]
 
-    @pytest.mark.asyncio
-    async def test_fetch_all_episodes(self):
-        """Test fetching all episodes."""
-        helper = AniListEnrichmentHelper()
-        helper._fetch_paginated_data = AsyncMock(
-            return_value=[{"node": {"id": 1, "episode": 1, "airingAt": 1234567890}}]
-        )
-
-        result = await helper.fetch_all_episodes(21)
-
-        assert len(result) == 1
-        assert result[0]["node"]["episode"] == 1
-        # Verify correct data key
-        call_args = helper._fetch_paginated_data.call_args
-        assert call_args[0][2] == "airingSchedule"
-
-
-class TestAniListEnrichmentHelperPopulateDetails:
-    """Test detail population and full data fetching."""
-
-    @pytest.mark.asyncio
-    async def test_fetch_and_populate_details_success(self):
-        """Test successful detail population."""
-        helper = AniListEnrichmentHelper()
-
-        anime_data = {"id": 21, "title": {"romaji": "One Piece"}}
-
-        helper.fetch_all_characters = AsyncMock(
-            return_value=[{"node": {"id": 1}, "role": "MAIN"}]
-        )
-        helper.fetch_all_episodes = AsyncMock(
-            return_value=[{"node": {"id": 1, "episode": 1}}]
-        )
-
-        result = await helper._fetch_and_populate_details(anime_data)
-
-        assert "characters" in result
-        assert result["characters"]["edges"][0]["node"]["id"] == 1
-        assert "airingSchedule" in result
-        assert result["airingSchedule"]["edges"][0]["node"]["episode"] == 1
-
-    @pytest.mark.asyncio
-    async def test_fetch_and_populate_details_missing_id(self):
-        """Test detail population when ID is missing."""
-        helper = AniListEnrichmentHelper()
-
-        anime_data = {"title": {"romaji": "Test"}}  # No ID
-
-        result = await helper._fetch_and_populate_details(anime_data)
-
-        # Should return original data unchanged
-        assert result == anime_data
-
-    @pytest.mark.asyncio
-    async def test_fetch_and_populate_details_empty_results(self):
-        """Test detail population with empty results."""
-        helper = AniListEnrichmentHelper()
-
-        anime_data = {"id": 21}
-
-        helper.fetch_all_characters = AsyncMock(return_value=[])
-        helper.fetch_all_episodes = AsyncMock(return_value=[])
-
-        result = await helper._fetch_and_populate_details(anime_data)
-
-        # Should not add empty keys
-        assert "characters" not in result
-        assert "staff" not in result
-        assert "airingSchedule" not in result
+class TestAniListEnrichmentHelperFetchAllData:
+    """Test fetch_all_data_by_anilist_id / fetch_all_data_by_mal_id."""
 
     @pytest.mark.asyncio
     async def test_fetch_all_data_by_anilist_id_success(self):
-        """Test successful full data fetch."""
+        """Fetches anime and injects character edges into result."""
         helper = AniListEnrichmentHelper()
 
         helper.fetch_anime_by_anilist_id = AsyncMock(
             return_value={"id": 21, "title": {"romaji": "One Piece"}}
         )
-        helper._fetch_and_populate_details = AsyncMock(
-            return_value={
-                "id": 21,
-                "title": {"romaji": "One Piece"},
-                "characters": {"edges": []},
-            }
+        helper.fetch_all_characters = AsyncMock(
+            return_value=[{"node": {"id": 1}, "role": "MAIN"}]
         )
 
         result = await helper.fetch_all_data_by_anilist_id(21)
 
         assert result is not None
         assert result["id"] == 21
-        assert "characters" in result
+        assert result["characters"] == {"edges": [{"node": {"id": 1}, "role": "MAIN"}]}
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_data_by_anilist_id_no_characters(self):
+        """Returns anime dict without characters key when none found."""
+        helper = AniListEnrichmentHelper()
+
+        helper.fetch_anime_by_anilist_id = AsyncMock(
+            return_value={"id": 21, "title": {"romaji": "One Piece"}}
+        )
+        helper.fetch_all_characters = AsyncMock(return_value=[])
+
+        result = await helper.fetch_all_data_by_anilist_id(21)
+
+        assert result is not None
+        assert "characters" not in result
 
     @pytest.mark.asyncio
     async def test_fetch_all_data_by_anilist_id_not_found(self):
-        """Test full data fetch when anime not found."""
+        """Returns None when anime is not found."""
         helper = AniListEnrichmentHelper()
         helper.fetch_anime_by_anilist_id = AsyncMock(return_value=None)
 
         result = await helper.fetch_all_data_by_anilist_id(99999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_data_by_mal_id_success(self):
+        """Fetches by MAL ID, resolves AniList ID, injects characters."""
+        helper = AniListEnrichmentHelper()
+
+        helper.fetch_anime_by_mal_id = AsyncMock(
+            return_value={"id": 21, "idMal": 21, "title": {"romaji": "One Piece"}}
+        )
+        helper.fetch_all_characters = AsyncMock(
+            return_value=[{"node": {"id": 1}, "role": "MAIN"}]
+        )
+
+        result = await helper.fetch_all_data_by_mal_id(21)
+
+        assert result is not None
+        assert result["id"] == 21
+        assert "characters" in result
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_data_by_mal_id_not_found(self):
+        """Returns None when MAL lookup finds nothing."""
+        helper = AniListEnrichmentHelper()
+        helper.fetch_anime_by_mal_id = AsyncMock(return_value=None)
+
+        result = await helper.fetch_all_data_by_mal_id(99999)
 
         assert result is None
 
@@ -1169,23 +1208,6 @@ class TestAniListEnrichmentHelperEdgeCases:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_fetch_populate_details_with_none_values(self):
-        """Test detail population when fetch methods return None."""
-        helper = AniListEnrichmentHelper()
-
-        anime_data = {"id": 21, "title": {"romaji": "One Piece"}}
-
-        # All fetch methods return None
-        helper.fetch_all_characters = AsyncMock(return_value=None)
-        helper.fetch_all_episodes = AsyncMock(return_value=None)
-
-        result = await helper._fetch_and_populate_details(anime_data)
-
-        # Should not add keys when None returned
-        assert "characters" not in result
-        assert "airingSchedule" not in result
-
-    @pytest.mark.asyncio
     async def test_rate_limit_header_missing(self):
         """Test when rate limit header is missing from response."""
         helper = AniListEnrichmentHelper()
@@ -1383,61 +1405,51 @@ class TestAniListEnrichmentHelperCLI:
 
     @pytest.mark.asyncio
     async def test_main_with_anilist_id_success(self, tmp_path):
-        """Test CLI with successful AniList ID fetch."""
-        import json
+        """CLI with --anilist-id calls canonical methods and returns 0."""
         import sys
         from unittest.mock import patch
 
-        output_file = tmp_path / "test_output.json"
-
-        # Mock command line arguments
-        test_args = ["script_name", "--anilist-id", "21", "--output", str(output_file)]
+        test_args = ["script_name", "--anilist-id", "21", "--output", str(tmp_path)]
 
         with patch.object(sys, "argv", test_args):
             with patch(
                 "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
             ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
-                    return_value={"id": 21, "title": {"romaji": "One Piece"}}
+                mock_helper_instance.fetch_anime_canonical = AsyncMock(
+                    return_value={"title": "One Piece"}
+                )
+                mock_helper_instance.fetch_characters_canonical = AsyncMock(
+                    return_value=[]
                 )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
                 from enrichment.api_helpers.anilist_helper import main
 
-                await main()
+                exit_code = await main()
 
-                # Verify helper methods were called
-                mock_helper_instance.fetch_all_data_by_anilist_id.assert_awaited_once_with(
-                    21
+                assert exit_code == 0
+                mock_helper_instance.fetch_anime_canonical.assert_awaited_once_with(
+                    21, str(tmp_path)
+                )
+                mock_helper_instance.fetch_characters_canonical.assert_awaited_once_with(
+                    21, str(tmp_path)
                 )
                 mock_helper_instance.close.assert_awaited_once()
 
-                # Verify output file was created
-                assert output_file.exists()
-                with open(output_file) as f:
-                    data = json.load(f)
-                assert data["id"] == 21
-
     @pytest.mark.asyncio
     async def test_main_with_no_data_found(self, tmp_path):
-        """
-        Verify CLI main closes the helper and does not create an output file when no data is found.
-
-        Asserts that AniListEnrichmentHelper.fetch_all_data_by_anilist_id returning None causes helper.close() to be awaited and prevents creation of the specified output file.
-        """
+        """CLI returns 1 when fetch_anime_canonical returns None."""
         import sys
         from unittest.mock import patch
-
-        output_file = tmp_path / "test_output.json"
 
         test_args = [
             "script_name",
             "--anilist-id",
             "99999",
             "--output",
-            str(output_file),
+            str(tmp_path),
         ]
 
         with patch.object(sys, "argv", test_args):
@@ -1445,38 +1457,34 @@ class TestAniListEnrichmentHelperCLI:
                 "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
             ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
-                    return_value=None
+                mock_helper_instance.fetch_anime_canonical = AsyncMock(return_value=None)
+                mock_helper_instance.fetch_characters_canonical = AsyncMock(
+                    return_value=[]
                 )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
                 from enrichment.api_helpers.anilist_helper import main
 
-                await main()
+                exit_code = await main()
 
-                # Verify close was called even when no data found
+                assert exit_code == 1
                 mock_helper_instance.close.assert_awaited_once()
-
-                # Verify output file was NOT created
-                assert not output_file.exists()
 
     @pytest.mark.asyncio
     async def test_main_with_exception_still_closes(self, tmp_path):
-        """Test CLI ensures helper.close() is called even on exception."""
+        """CLI ensures helper.close() is called even on exception."""
         import sys
         from unittest.mock import patch
 
-        output_file = tmp_path / "test_output.json"
-
-        test_args = ["script_name", "--anilist-id", "21", "--output", str(output_file)]
+        test_args = ["script_name", "--anilist-id", "21", "--output", str(tmp_path)]
 
         with patch.object(sys, "argv", test_args):
             with patch(
                 "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
             ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
+                mock_helper_instance.fetch_anime_canonical = AsyncMock(
                     side_effect=Exception("API Error")
                 )
                 mock_helper_instance.close = AsyncMock()
@@ -1484,70 +1492,96 @@ class TestAniListEnrichmentHelperCLI:
 
                 from enrichment.api_helpers.anilist_helper import main
 
-                # Should not raise exception (caught in CLI)
-                await main()
+                exit_code = await main()
 
-                # Verify close was called despite exception
+                assert exit_code == 1
                 mock_helper_instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_main_with_default_output_path(self):
-        """Test CLI with default output path."""
+    async def test_main_with_mal_id_success(self, tmp_path):
+        """CLI with --mal-id resolves AniList ID and calls canonical methods."""
         import sys
         from unittest.mock import patch
 
-        test_args = ["script_name", "--anilist-id", "21"]
-
-        with patch.object(sys, "argv", test_args):
-            with patch(
-                "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
-            ) as MockHelper:
-                with patch("builtins.open", MagicMock()) as mock_open:
-                    mock_helper_instance = MagicMock()
-                    mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
-                        return_value={"id": 21}
-                    )
-                    mock_helper_instance.close = AsyncMock()
-                    MockHelper.return_value = mock_helper_instance
-
-                    from enrichment.api_helpers.anilist_helper import main
-
-                    await main()
-
-                    # Verify default output path was used
-                    mock_open.assert_called()
-                    call_args = mock_open.call_args[0]
-                    assert "test_anilist_output.json" in call_args[0]
-
-    @pytest.mark.asyncio
-    async def test_main_with_file_write_error(self):
-        """Test CLI handles file writing errors in outer exception handler."""
-        import sys
-        from unittest.mock import patch
-
-        test_args = ["script_name", "--anilist-id", "21"]
+        test_args = ["script_name", "--mal-id", "21", "--output", str(tmp_path)]
 
         with patch.object(sys, "argv", test_args):
             with patch(
                 "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
             ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_all_data_by_anilist_id = AsyncMock(
-                    return_value={"id": 21}
+                mock_helper_instance.fetch_anime_by_mal_id = AsyncMock(
+                    return_value={"id": 21, "idMal": 21}
+                )
+                mock_helper_instance.fetch_anime_canonical = AsyncMock(
+                    return_value={"title": "One Piece"}
+                )
+                mock_helper_instance.fetch_characters_canonical = AsyncMock(
+                    return_value=[]
                 )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
-                # Mock open() to raise exception during file writing
-                with patch("builtins.open", side_effect=OSError("Disk full")):
-                    from enrichment.api_helpers.anilist_helper import main
+                from enrichment.api_helpers.anilist_helper import main
 
-                    exit_code = await main()
+                exit_code = await main()
 
-                    # Should return 1 due to exception
-                    assert exit_code == 1
-                    # Helper should still be closed
-                    mock_helper_instance.close.assert_awaited_once()
+                assert exit_code == 0
+                mock_helper_instance.fetch_anime_by_mal_id.assert_awaited_once_with(21)
+                mock_helper_instance.fetch_anime_canonical.assert_awaited_once_with(
+                    21, str(tmp_path)
+                )
+
+    @pytest.mark.asyncio
+    async def test_main_with_mal_id_not_found(self):
+        """CLI with --mal-id returns 1 when MAL lookup fails."""
+        import sys
+        from unittest.mock import patch
+
+        test_args = ["script_name", "--mal-id", "99999"]
+
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
+                mock_helper_instance = MagicMock()
+                mock_helper_instance.fetch_anime_by_mal_id = AsyncMock(return_value=None)
+                mock_helper_instance.close = AsyncMock()
+                MockHelper.return_value = mock_helper_instance
+
+                from enrichment.api_helpers.anilist_helper import main
+
+                exit_code = await main()
+
+                assert exit_code == 1
+                mock_helper_instance.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_main_with_mal_id_no_anilist_id_in_response(self):
+        """CLI returns 1 when MAL response has no 'id' field for AniList."""
+        import sys
+        from unittest.mock import patch
+
+        test_args = ["script_name", "--mal-id", "21"]
+
+        with patch.object(sys, "argv", test_args):
+            with patch(
+                "enrichment.api_helpers.anilist_helper.AniListEnrichmentHelper"
+            ) as MockHelper:
+                mock_helper_instance = MagicMock()
+                # Response has no 'id' field → anilist_id is falsy
+                mock_helper_instance.fetch_anime_by_mal_id = AsyncMock(
+                    return_value={"idMal": 21}
+                )
+                mock_helper_instance.close = AsyncMock()
+                MockHelper.return_value = mock_helper_instance
+
+                from enrichment.api_helpers.anilist_helper import main
+
+                exit_code = await main()
+
+                assert exit_code == 1
+                mock_helper_instance.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1557,23 +1591,17 @@ async def test_main_function_success(mock_helper_class, tmp_path):
     from enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(
-        return_value={"id": 21, "title": "Test"}
-    )
+    mock_helper.fetch_anime_canonical = AsyncMock(return_value={"title": "Test"})
+    mock_helper.fetch_characters_canonical = AsyncMock(return_value=[])
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    # Use pytest's tmp_path for portability
-    output_file = str(tmp_path / "output.json")
-    with patch(
-        "sys.argv", ["script.py", "--anilist-id", "21", "--output", output_file]
-    ):
-        with patch("builtins.open", MagicMock()):
-            exit_code = await main()
+    with patch("sys.argv", ["script.py", "--anilist-id", "21", "--output", str(tmp_path)]):
+        exit_code = await main()
 
     assert exit_code == 0
     mock_helper_class.assert_called_once()
-    mock_helper.fetch_all_data_by_anilist_id.assert_awaited_once_with(21)
+    mock_helper.fetch_anime_canonical.assert_awaited_once_with(21, str(tmp_path))
     mock_helper.close.assert_awaited_once()
 
 
@@ -1584,7 +1612,8 @@ async def test_main_function_no_data_found(mock_helper_class):
     from enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(return_value=None)
+    mock_helper.fetch_anime_canonical = AsyncMock(return_value=None)
+    mock_helper.fetch_characters_canonical = AsyncMock(return_value=[])
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
@@ -1602,9 +1631,7 @@ async def test_main_function_error_handling(mock_helper_class):
     from enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all_data_by_anilist_id = AsyncMock(
-        side_effect=Exception("API error")
-    )
+    mock_helper.fetch_anime_canonical = AsyncMock(side_effect=Exception("API error"))
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
@@ -1658,3 +1685,201 @@ class TestAniListEnrichmentHelperContextManager:
 
         # Session should still be closed despite exception
         mock_session.close.assert_awaited_once()
+
+
+class TestAniListEnrichmentHelperCanonicalMethods:
+    """Tests for fetch_anime_canonical and fetch_characters_canonical."""
+
+    # ------------------------------------------------------------------
+    # fetch_anime_canonical
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_canonical_success(self):
+        """Returns canonical dict when raw data is found and valid."""
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        helper.fetch_anime_by_anilist_id = AsyncMock(
+            return_value={"id": 21, "title": {"romaji": "One Piece"}}
+        )
+
+        canonical = {"title": "One Piece", "type": "TV", "status": "ONGOING"}
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.anime_from_anilist",
+            return_value=canonical,
+        ) as mock_map:
+            result = await helper.fetch_anime_canonical(21)
+
+        assert result == canonical
+        mock_map.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_canonical_not_found(self):
+        """Returns None when fetch_anime_by_anilist_id returns None."""
+        helper = AniListEnrichmentHelper()
+        helper.fetch_anime_by_anilist_id = AsyncMock(return_value=None)
+
+        result = await helper.fetch_anime_canonical(99999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_canonical_writes_jsonl(self, tmp_path):
+        """Writes canonical dict as JSONL when output_dir is given."""
+        import json
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        helper.fetch_anime_by_anilist_id = AsyncMock(
+            return_value={"id": 21, "title": {"romaji": "One Piece"}}
+        )
+
+        canonical = {"title": "One Piece", "episode_count": 1100}
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.anime_from_anilist",
+            return_value=canonical,
+        ):
+            result = await helper.fetch_anime_canonical(21, output_dir=str(tmp_path))
+
+        assert result == canonical
+        out_file = tmp_path / "anilist.jsonl"
+        assert out_file.exists()
+        data = json.loads(out_file.read_text())
+        assert data["title"] == "One Piece"
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_canonical_no_output_dir(self):
+        """Does not write any file when output_dir is None."""
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        helper.fetch_anime_by_anilist_id = AsyncMock(
+            return_value={"id": 21, "title": {"romaji": "One Piece"}}
+        )
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.anime_from_anilist",
+            return_value={"title": "One Piece"},
+        ):
+            with patch("builtins.open") as mock_open:
+                await helper.fetch_anime_canonical(21, output_dir=None)
+                mock_open.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # fetch_characters_canonical
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_canonical_success(self):
+        """Returns list of canonical dicts for each valid edge."""
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        raw_edges = [
+            {"node": {"id": 1, "name": {"full": "Luffy"}}, "role": "MAIN"},
+            {"node": {"id": 2, "name": {"full": "Zoro"}}, "role": "MAIN"},
+        ]
+        helper.fetch_all_characters = AsyncMock(return_value=raw_edges)
+
+        char_canonical = [{"name": "Luffy"}, {"name": "Zoro"}]
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.character_from_anilist",
+            side_effect=char_canonical,
+        ):
+            result = await helper.fetch_characters_canonical(21)
+
+        assert len(result) == 2
+        assert result[0]["name"] == "Luffy"
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_canonical_empty(self):
+        """Returns empty list when no character edges exist."""
+        helper = AniListEnrichmentHelper()
+        helper.fetch_all_characters = AsyncMock(return_value=[])
+
+        result = await helper.fetch_characters_canonical(21)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_canonical_skips_invalid_edges(self):
+        """Invalid edges are silently skipped; valid ones still returned."""
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        helper.fetch_all_characters = AsyncMock(
+            return_value=[
+                {"node": {"id": 1}, "role": "MAIN"},
+                {"bad": "data"},  # will fail model_validate
+                {"node": {"id": 3}, "role": "SUPPORTING"},
+            ]
+        )
+
+        def _side_effect(edge):
+            if not hasattr(edge, "node") or edge.node is None:
+                raise ValueError("bad edge")
+            return {"name": f"char_{edge.node.id}"}
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.AniListCharacterEdge"
+        ) as MockEdge:
+            # First call succeeds, second raises, third succeeds
+            mock_edge1 = MagicMock()
+            mock_edge3 = MagicMock()
+            MockEdge.model_validate = MagicMock(
+                side_effect=[mock_edge1, ValueError("bad"), mock_edge3]
+            )
+
+            with patch(
+                "enrichment.api_helpers.anilist_helper.character_from_anilist",
+                side_effect=[{"name": "Luffy"}, {"name": "Nami"}],
+            ):
+                result = await helper.fetch_characters_canonical(21)
+
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_canonical_writes_jsonl(self, tmp_path):
+        """Writes each canonical character as a JSONL line."""
+        import json
+        from unittest.mock import patch
+
+        helper = AniListEnrichmentHelper()
+        helper.fetch_all_characters = AsyncMock(
+            return_value=[
+                {"node": {"id": 1}, "role": "MAIN"},
+                {"node": {"id": 2}, "role": "SUPPORTING"},
+            ]
+        )
+
+        chars = [{"name": "Luffy"}, {"name": "Zoro"}]
+
+        with patch(
+            "enrichment.api_helpers.anilist_helper.character_from_anilist",
+            side_effect=chars,
+        ):
+            result = await helper.fetch_characters_canonical(
+                21, output_dir=str(tmp_path)
+            )
+
+        assert len(result) == 2
+        out_file = tmp_path / "anilist_characters.jsonl"
+        assert out_file.exists()
+        lines = [json.loads(l) for l in out_file.read_text().splitlines()]
+        assert lines[0]["name"] == "Luffy"
+        assert lines[1]["name"] == "Zoro"
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_canonical_no_output_when_empty(self, tmp_path):
+        """Does not write JSONL file when canonical list is empty."""
+        helper = AniListEnrichmentHelper()
+        helper.fetch_all_characters = AsyncMock(return_value=[])
+
+        await helper.fetch_characters_canonical(21, output_dir=str(tmp_path))
+
+        out_file = tmp_path / "anilist_characters.jsonl"
+        assert not out_file.exists()
