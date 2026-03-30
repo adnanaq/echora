@@ -65,6 +65,10 @@ enum SourceMaterialType {
   SOURCE_MATERIAL_TYPE_UNKNOWN = 19;
   SOURCE_MATERIAL_TYPE_MANHWA = 20;
   SOURCE_MATERIAL_TYPE_MANHUA = 21;
+  SOURCE_MATERIAL_TYPE_COMIC = 22;
+  SOURCE_MATERIAL_TYPE_LIVE_ACTION = 23;
+  SOURCE_MATERIAL_TYPE_ILLUSTRATION = 24;
+  SOURCE_MATERIAL_TYPE_WESTERN_MEDIA = 25;
 }
 
 enum AnimeRating {
@@ -158,6 +162,7 @@ message Broadcast {
   optional google.protobuf.Timestamp premiere_jp = 9;
   optional google.protobuf.Timestamp premiere_sub = 10;
   optional google.protobuf.Timestamp premiere_dub = 11;
+  optional google.protobuf.Timestamp next_episode_at = 12;
 }
 
 // Hiatus information — replaces the old DelayInformation message.
@@ -173,6 +178,11 @@ message RelatedSourceMaterial {
   string title = 1;
   SourceMaterialType type = 2;
   repeated string sources = 3;
+  optional AnimeStatus status = 4;
+  optional float score = 5;
+  repeated string images = 6;
+  optional int32 chapters = 7;
+  optional int32 volumes = 8;
 }
 
 // Anime-to-anime relation entry.
@@ -180,6 +190,11 @@ message RelatedAnime {
   string title = 1;
   AnimeType type = 2;
   repeated string sources = 3;
+  optional AnimeStatus status = 4;
+  optional int32 year = 5;
+  optional float score = 6;
+  repeated string images = 7;
+  optional int32 episode_count = 8;
 }
 
 message RelatedAnimeList {
@@ -284,7 +299,7 @@ message StaffData {
 
 message ContextualRank {
   int32 rank = 1;
-  string type = 2;
+  string context = 2;
   optional string format = 3;
   optional int32 year = 4;
   optional string season = 5;
@@ -344,6 +359,7 @@ message Character {
   repeated string sources = 15;
   repeated VoiceActor voice_actors = 16;
   map<string, string> attributes = 17;
+  map<string, string> spoilers = 18;
 }
 
 message Episode {
@@ -373,6 +389,7 @@ message Episode {
 
 message Anime {
   optional string background = 1;
+  optional string country_of_origin = 44;
   optional int32 duration = 2;
   int32 episode_count = 3;
   string id = 4;
