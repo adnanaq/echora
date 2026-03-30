@@ -49,8 +49,6 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedCharacter,
     MalScrapedEpisode,
 )
-from enrichment.mappers.normalization import SOURCE_RELATION
-
 
 def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     """Normalize a MalScrapedAnime into canonical Anime field values.
@@ -139,9 +137,7 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
                 )
             )
         else:
-            rel_type = SourceMaterialRelationType(
-                SOURCE_RELATION.get(entry.relation.lower(), "OTHER")
-            )
+            rel_type = SourceMaterialRelationType(entry.relation)
             if rel_type not in related_source_material:
                 related_source_material[rel_type] = []
             related_source_material[rel_type].append(

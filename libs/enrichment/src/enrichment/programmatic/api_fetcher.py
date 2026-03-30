@@ -271,8 +271,13 @@ class ParallelAPIFetcher:
 
                 anilist_helper = AniListEnrichmentHelper()
 
+                # fetch_anime_canonical maps to canonical, writes anilist.jsonl, returns canonical dict
                 result = loop.run_until_complete(
-                    anilist_helper.fetch_all_data_by_anilist_id(int(anilist_id))
+                    anilist_helper.fetch_anime_canonical(int(anilist_id), temp_dir)
+                )
+                # fetch_characters_canonical writes anilist_characters.jsonl
+                chars_list = loop.run_until_complete(
+                    anilist_helper.fetch_characters_canonical(int(anilist_id), temp_dir)
                 )
 
                 # Close the helper's session
@@ -284,19 +289,8 @@ class ParallelAPIFetcher:
             self.api_timings["anilist"] = elapsed
 
             if result:
-                # Save anilist.json directly to ensure it persists even if timeout occurs
-                if temp_dir:
-                    anilist_file = os.path.join(temp_dir, "anilist.json")
-                    with open(anilist_file, "w", encoding="utf-8") as f:
-                        json.dump(result, f, ensure_ascii=False, indent=2)
-                    logger.info(f"Saved anilist data to {anilist_file}")
-
-                # Log what we got
-                chars = len(result.get("characters", {}).get("edges", []))
-                staff = len(result.get("staff", {}).get("edges", []))
-                eps = len(result.get("airingSchedule", {}).get("edges", []))
                 logger.info(
-                    f"AniList fetched: {chars} characters, {staff} staff, {eps} episodes in {elapsed:.2f}s"
+                    f"AniList fetched: {len(chars_list)} characters in {elapsed:.2f}s"
                 )
             else:
                 logger.warning(f"AniList returned no data for ID {anilist_id}")
@@ -523,8 +517,8 @@ class ParallelAPIFetcher:
         for api_name, data in results.items():
             if data:
                 try:
-                    # MAL and AnimSchedule write their own files directly.
-                    if api_name in ("mal", "animeschedule"):
+                    # MAL, AniList, and AnimSchedule write their own files directly.
+                    if api_name in ("mal", "anilist", "animeschedule"):
                         continue
                     file_path = os.path.join(temp_dir, f"{api_name}.json")
                     await asyncio.to_thread(_write_json_sync, file_path, data)

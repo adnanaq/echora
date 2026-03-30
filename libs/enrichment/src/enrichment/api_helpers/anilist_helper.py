@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from types import TracebackType
 from typing import Any
@@ -21,6 +22,9 @@ from ..exceptions import (
     AniListNetworkError,
     AniListRateLimitError,
 )
+from .anilist.anilist_anime_models import AniListAnime
+from .anilist.anilist_character_models import AniListCharacterEdge
+from ..mappers.anilist_mapper import anime_from_anilist, character_from_anilist
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +167,7 @@ class AniListEnrichmentHelper:
                 return result
 
         # Unreachable: every loop iteration raises or returns
-        raise AssertionError("AniList retry loop exited without raising or returning")
+        raise AssertionError("AniList retry loop exited without raising or returning")  # pragma: no cover
 
     def _get_media_query_fields(self) -> str:
         """
@@ -194,7 +198,6 @@ class AniListEnrichmentHelper:
         seasonYear
         countryOfOrigin
         isAdult
-        hashtag
         coverImage {
           extraLarge
           large
@@ -208,10 +211,8 @@ class AniListEnrichmentHelper:
           thumbnail
         }
         averageScore
-        meanScore
         popularity
         favourites
-        trending
         genres
         synonyms
         tags {
@@ -224,12 +225,19 @@ class AniListEnrichmentHelper:
           edges {
             node {
               id
+              idMal
               title {
                 romaji
                 english
               }
               format
               status
+              seasonYear
+              averageScore
+              coverImage { extraLarge }
+              episodes
+              chapters
+              volumes
             }
             relationType
           }
@@ -258,14 +266,12 @@ class AniListEnrichmentHelper:
         }
         rankings {
           rank
-          type
+          context
           format
           year
           season
           allTime
-          context
         }
-        updatedAt
         """
 
     def _build_query_by_mal_id(self) -> str:
@@ -348,13 +354,25 @@ class AniListEnrichmentHelper:
                     alternativeSpoiler
                   }
                   image { large medium }
-                  favourites
+                  description
                   gender
+                  dateOfBirth { year month day }
+                  age
+                  bloodType
+                  favourites
+                  siteUrl
                 }
                 role
-                voiceActors(language: JAPANESE) {
-                  id
-                  name { full native }
+                voiceActorRoles {
+                  voiceActor {
+                    id
+                    name { full native }
+                    languageV2
+                    image { large }
+                    siteUrl
+                  }
+                  roleNotes
+                  dubGroup
                 }
               }
             }
@@ -363,44 +381,78 @@ class AniListEnrichmentHelper:
         """
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
-    async def fetch_all_episodes(self, anilist_id: int) -> list[dict[str, Any]]:
-        query = """
-        query ($id: Int!, $page: Int!) {
-          Media(id: $id, type: ANIME) {
-            airingSchedule(page: $page, perPage: 50) {
-              pageInfo { hasNextPage }
-              edges { node { id episode airingAt } }
-            }
-          }
-        }
+    async def fetch_anime_canonical(
+        self, anilist_id: int, output_dir: str | None = None
+    ) -> dict[str, Any] | None:
         """
-        return await self._fetch_paginated_data(anilist_id, query, "airingSchedule")
+        Fetch anime data, validate via AniListAnime, map to canonical fields.
 
-    async def _fetch_and_populate_details(
-        self, anime_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        anilist_id = anime_data.get("id")
-        if not anilist_id:
-            return anime_data
+        Writes the raw API response to {output_dir}/anilist.json when output_dir
+        is provided (consistent with the MAL/AnimSchedule pattern).
 
-        details = {
-            "characters": await self.fetch_all_characters(anilist_id),
-            "airingSchedule": await self.fetch_all_episodes(anilist_id),
-        }
+        Returns:
+            Canonical dict (output of anime_from_anilist), or None if not found.
+        """
+        raw = await self.fetch_anime_by_anilist_id(anilist_id)
+        if not raw:
+            logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
+            return None
 
-        for key, data in details.items():
-            if data:
-                anime_data[key] = {"edges": data}
-                logger.info(f"Total {key} fetched: {len(data)}")
+        anime = AniListAnime.model_validate(raw)
+        canonical = anime_from_anilist(anime)
 
-        return anime_data
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            out_path = os.path.join(output_dir, "anilist.jsonl")
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(canonical, ensure_ascii=False) + "\n")
+            logger.info(f"Saved canonical AniList data to {out_path}")
+
+        return canonical
+
+    async def fetch_characters_canonical(
+        self, anilist_id: int, output_dir: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch all character edges, validate, map to canonical dicts.
+
+        Writes raw edges as JSONL to {output_dir}/anilist_characters.jsonl when
+        output_dir is provided.
+
+        Returns:
+            List of canonical character dicts (output of character_from_anilist).
+        """
+        raw_edges = await self.fetch_all_characters(anilist_id)
+        if not raw_edges:
+            return []
+
+        canonical = []
+        for edge in raw_edges:
+            try:
+                char_edge = AniListCharacterEdge.model_validate(edge)
+                canonical.append(character_from_anilist(char_edge))
+            except Exception:
+                logger.warning("Skipping invalid character edge", exc_info=True)
+
+        if output_dir and canonical:
+            os.makedirs(output_dir, exist_ok=True)
+            out_path = os.path.join(output_dir, "anilist_characters.jsonl")
+            with open(out_path, "w", encoding="utf-8") as f:
+                for char in canonical:
+                    f.write(json.dumps(char, ensure_ascii=False) + "\n")
+            logger.info(f"Saved {len(canonical)} canonical characters to {out_path}")
+
+        return canonical
 
     async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
         anime_data = await self.fetch_anime_by_mal_id(mal_id)
         if not anime_data:
             logger.warning(f"No AniList data found for MAL ID: {mal_id}")
             return None
-        return await self._fetch_and_populate_details(anime_data)
+        characters = await self.fetch_all_characters(anime_data["id"])
+        if characters:
+            anime_data["characters"] = {"edges": characters}
+        return anime_data
 
     async def fetch_all_data_by_anilist_id(
         self, anilist_id: int
@@ -409,7 +461,10 @@ class AniListEnrichmentHelper:
         if not anime_data:
             logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
             return None
-        return await self._fetch_and_populate_details(anime_data)
+        characters = await self.fetch_all_characters(anilist_id)
+        if characters:
+            anime_data["characters"] = {"edges": characters}
+        return anime_data
 
     async def close(self) -> None:
         """
@@ -454,7 +509,7 @@ async def main() -> int:
     """
     CLI entry point that fetches AniList data for a provided ID and writes the result as JSON to a file.
 
-    Parses command-line arguments --anilist-id or --mal-id (mutually exclusive, one required) and optional --output (defaults to "test_anilist_output.json"), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
+    Parses command-line arguments --anilist-id or --mal-id (mutually exclusive, one required) and optional --output (defaults to "."), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
 
     Returns:
         int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
@@ -466,31 +521,31 @@ async def main() -> int:
     parser.add_argument(
         "--output",
         type=str,
-        default="test_anilist_output.json",
-        help="Output file path",
+        default=".",
+        help="Output directory path (default: current directory)",
     )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
     helper = AniListEnrichmentHelper()
-    anime_data = None
     try:
-        fetch_id = args.anilist_id or args.mal_id
-        fetch_fn = (
-            helper.fetch_all_data_by_anilist_id
-            if args.anilist_id
-            else helper.fetch_all_data_by_mal_id
-        )
-        try:
-            anime_data = await fetch_fn(fetch_id)
-        except Exception:
-            logger.exception(f"Error fetching AniList data for ID {fetch_id}")
-            anime_data = None
+        if args.anilist_id:
+            canonical = await helper.fetch_anime_canonical(args.anilist_id, args.output)
+            await helper.fetch_characters_canonical(args.anilist_id, args.output)
+        else:
+            anime_raw = await helper.fetch_anime_by_mal_id(args.mal_id)
+            if not anime_raw:
+                logger.error("No data found for the given MAL ID.")
+                return 1
+            anilist_id = anime_raw.get("id")
+            if not anilist_id:
+                logger.error("Could not resolve AniList ID from MAL ID.")
+                return 1
+            canonical = await helper.fetch_anime_canonical(anilist_id, args.output)
+            await helper.fetch_characters_canonical(anilist_id, args.output)
 
-        if anime_data:
-            with open(args.output, "w", encoding="utf-8") as f:
-                json.dump(anime_data, f, indent=2, ensure_ascii=False)
-            logger.info(f"Data saved to {args.output}")
+        if canonical:
+            logger.info(f"Data saved to {args.output}/ (anilist.jsonl, anilist_characters.jsonl)")
             return 0
         else:
             logger.error("No data found for the given ID.")
