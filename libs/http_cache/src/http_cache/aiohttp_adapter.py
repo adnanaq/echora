@@ -386,10 +386,13 @@ class CachedAiohttpSession:
             AsyncCacheProxy and called on cache misses.
         """
         self.storage = storage
-        # Use FilterPolicy with body-key enabled for GraphQL/POST caching
+        # Use FilterPolicy without global body-key. Body-key caching is opted in
+        # per-request via the X-Hishel-Body-Key header (GraphQL/POST), which sets
+        # request.metadata["hishel_body_key"]. Enabling use_body_key globally
+        # causes all GET requests (no body) to hash to SHA256(b"") — the same key —
+        # collapsing every URL into one cache slot.
         if policy is None:
             policy = FilterPolicy()
-            policy.use_body_key = True
         self.policy = policy
         self.force_cache = force_cache
         self.always_revalidate = always_revalidate
