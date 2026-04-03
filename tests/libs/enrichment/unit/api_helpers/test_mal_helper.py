@@ -1,31 +1,10 @@
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from enrichment.api_helpers.mal_helper import MalEnrichmentHelper, _append_jsonl
-
-
-# ---------------------------------------------------------------------------
-# _append_jsonl
-# ---------------------------------------------------------------------------
-
-
-def test_append_jsonl_writes_record(tmp_path: Path) -> None:
-    out = tmp_path / "out.jsonl"
-    _append_jsonl(str(out), {"key": "value"})
-    assert out.read_text(encoding="utf-8").strip() == '{"key": "value"}'
-
-
-def test_append_jsonl_logs_on_write_failure(caplog: pytest.LogCaptureFixture) -> None:
-    import logging
-    with patch("builtins.open", side_effect=OSError("disk full")):
-        with caplog.at_level(logging.WARNING, logger="enrichment.api_helpers.mal_helper"):
-            _append_jsonl("/bad/path.jsonl", {"key": "value"})
-    assert "disk full" in caplog.text
-
+from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
 
 # ---------------------------------------------------------------------------
 # MalEnrichmentHelper — unit tests (crawler-based implementation)

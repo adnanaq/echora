@@ -22,6 +22,7 @@ import os
 import sys
 from typing import Any
 
+from common.utils.jsonl_utils import append_jsonl as _append_jsonl
 from enrichment.crawlers.mal_crawler.mal_anime_crawler import fetch_mal_anime
 from enrichment.crawlers.mal_crawler.mal_base import normalize_mal_anime_url
 from enrichment.crawlers.mal_crawler.mal_character_crawler import (
@@ -34,16 +35,6 @@ from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episod
 from enrichment.mappers.mal_mapper import anime_from_mal, character_from_mal, episode_from_mal
 
 logger = logging.getLogger(__name__)
-
-
-def _append_jsonl(path: str, record: dict[str, Any]) -> None:
-    """Append a single JSON record as a JSONL line. Logs and continues on failure."""
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False))
-            f.write("\n")
-    except Exception as e:
-        logger.warning(f"Failed to append record to {path}: {e}")
 
 
 class MalEnrichmentHelper:

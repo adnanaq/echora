@@ -8,11 +8,12 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any, cast
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
 )
 
