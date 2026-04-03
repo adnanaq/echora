@@ -171,7 +171,7 @@ class ParallelAPIFetcher:
             tasks.append(("anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)))
 
         if ids.get("kitsu_id") and should_include("kitsu"):
-            tasks.append(("kitsu", self._fetch_kitsu(ids["kitsu_id"])))
+            tasks.append(("kitsu", self._fetch_kitsu(ids["kitsu_id"], temp_dir)))
 
         if ids.get("anidb_id") and should_include("anidb"):
             tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"])))
@@ -325,53 +325,41 @@ class ParallelAPIFetcher:
             None, self._fetch_anilist_sync, anilist_id, temp_dir
         )
 
-    async def _fetch_kitsu(self, kitsu_id: str) -> dict[str, Any] | None:
-        """Fetch Kitsu data using async helper."""
+    async def _fetch_kitsu(
+        self, kitsu_id: str, temp_dir: str | None = None
+    ) -> dict[str, Any] | None:
+        """Fetch canonical Kitsu data (anime + episodes + characters)."""
         try:
             start = time.time()
 
-            # Check if it's numeric or slug
+            if self.kitsu_helper is None:
+                raise RuntimeError("Kitsu helper not initialized")
+
             try:
-                # Try as numeric ID first
                 numeric_id = int(kitsu_id)
-                if self.kitsu_helper is None:
-                    raise RuntimeError("Kitsu helper not initialized")
-                result = await self.kitsu_helper.fetch_all_data(numeric_id)
             except ValueError:
-                # If not numeric, it's a slug - need to resolve to ID first
+                # Slug — resolve to numeric ID first
                 logger.info(f"Resolving Kitsu slug '{kitsu_id}' to numeric ID...")
+                import aiohttp as _aiohttp
 
-                # Use Kitsu API to search by slug
-                import aiohttp
-
-                async with aiohttp.ClientSession() as session:
+                async with _aiohttp.ClientSession() as slug_session:
                     url = f"https://kitsu.io/api/edge/anime?filter[slug]={kitsu_id}"
-                    async with session.get(
-                        url, timeout=aiohttp.ClientTimeout(total=5)
+                    async with slug_session.get(
+                        url, timeout=_aiohttp.ClientTimeout(total=5)
                     ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            if data.get("data"):
-                                numeric_id = int(data["data"][0]["id"])
-                                logger.info(
-                                    f"Resolved slug '{kitsu_id}' to ID {numeric_id}"
-                                )
-                                if self.kitsu_helper is None:
-                                    raise RuntimeError("Kitsu helper not initialized")
-                                result = await self.kitsu_helper.fetch_all_data(
-                                    numeric_id
-                                )
-                            else:
-                                logger.warning(
-                                    f"No Kitsu anime found for slug: {kitsu_id}"
-                                )
-                                result = None
-                        else:
+                        if response.status != 200:
                             logger.warning(
                                 f"Failed to resolve Kitsu slug: {response.status}"
                             )
-                            result = None
+                            return None
+                        data = await response.json()
+                        if not data.get("data"):
+                            logger.warning(f"No Kitsu anime found for slug: {kitsu_id}")
+                            return None
+                        numeric_id = int(data["data"][0]["id"])
+                        logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
 
+            result = await self.kitsu_helper.fetch_all(numeric_id, output_dir=temp_dir)
             self.api_timings["kitsu"] = time.time() - start
             return result
         except Exception as e:
@@ -505,8 +493,8 @@ class ParallelAPIFetcher:
         for api_name, data in results.items():
             if data:
                 try:
-                    # MAL, AniList, and AnimSchedule write their own files directly.
-                    if api_name in ("mal", "anilist", "animeschedule"):
+                    # These services write their own JSONL files directly.
+                    if api_name in ("mal", "anilist", "animeschedule", "kitsu"):
                         continue
                     file_path = os.path.join(temp_dir, f"{api_name}.json")
                     await asyncio.to_thread(_write_json_sync, file_path, data)

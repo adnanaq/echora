@@ -148,6 +148,9 @@ class AnimeRating(StrEnum):
             "r17+":  cls.R,
             "r+":    cls.RPLUS,
             "rx":    cls.RX,
+            # Kitsu
+            "r18+":  cls.RX,
+            "r18":   cls.RX,
         }
         return _map.get(value.lower(), cls.UNKNOWN)
 

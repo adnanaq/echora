@@ -5,5 +5,6 @@ python_sources(
         "//libs/common/src/common",
         "//libs/enrichment/src/enrichment/crawlers/mal_crawler",
         "//libs/enrichment/src/enrichment/api_helpers/anilist",
+        "//libs/enrichment/src/enrichment/api_helpers/kitsu",
     ],
 )

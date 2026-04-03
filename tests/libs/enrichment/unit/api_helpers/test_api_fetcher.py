@@ -364,7 +364,8 @@ class TestSaveTempFiles:
         results: dict[str, Any] = {
             "mal": {"mal_id": 1},
             "anilist": {"id": 2},
-            "kitsu": None,  # Should be skipped
+            "kitsu": {"anime": {"title": "Test"}},
+            "anidb": {"id": 3},
         }
 
         async def fake_to_thread(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
@@ -377,7 +378,10 @@ class TestSaveTempFiles:
             ) as mock_to_thread:
                 await fetcher._save_temp_files(results, temp_dir)
 
-            # MAL artifacts are written by MalEnrichmentHelper directly — skipped here
+            # MAL, AniList, AnimSchedule, and Kitsu write their own JSONL directly — skipped
             assert not os.path.exists(os.path.join(temp_dir, "mal.json"))
-            assert os.path.exists(os.path.join(temp_dir, "anilist.json"))
+            assert not os.path.exists(os.path.join(temp_dir, "anilist.json"))
+            assert not os.path.exists(os.path.join(temp_dir, "kitsu.json"))
+            # AniDB has no dedicated writer — goes through _save_temp_files
+            assert os.path.exists(os.path.join(temp_dir, "anidb.json"))
             mock_to_thread.assert_awaited()
