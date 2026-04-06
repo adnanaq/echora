@@ -5,23 +5,16 @@ Reduces API fetching from 30-60s sequential to 5-10s parallel.
 """
 
 import asyncio
-import json
 import logging
 import os
-import sys
 import time
-from datetime import datetime
-from pathlib import Path
 from types import TracebackType
-from typing import Any
-
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+from typing import Any, ClassVar
 
 from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
-from enrichment.api_helpers.animeschedule_helper import fetch_all
+from enrichment.api_helpers.animeschedule_helper import AnimescheduleEnrichmentHelper
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
@@ -37,83 +30,57 @@ from .config import EnrichmentConfig
 logger = logging.getLogger(__name__)
 
 
-def _write_json_sync(path: str, data: Any) -> None:
-    """Sync JSON write used via asyncio.to_thread in async paths."""
-    out_dir = os.path.dirname(path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
-    def json_serial(obj):
-        """JSON serializer for objects not serializable by default json code"""
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        raise TypeError(f"Type {type(obj)} not serializable")
-
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=json_serial)
-
-
-
 class ParallelAPIFetcher:
     """
     Fetches data from all anime APIs in parallel.
     Implements graceful degradation - continues with partial data if APIs fail.
     """
 
+    _REGISTRY: ClassVar[dict[str, type]] = {
+        "anilist": AniListEnrichmentHelper,
+        "kitsu": KitsuEnrichmentHelper,
+        "anidb": AniDBEnrichmentHelper,
+        "anime_planet": AnimePlanetEnrichmentHelper,
+        "anisearch": AniSearchEnrichmentHelper,
+        "animeschedule": AnimescheduleEnrichmentHelper,
+    }
+
     def __init__(self, config: EnrichmentConfig | None = None):
-        """
-        Initialize the ParallelAPIFetcher with an optional configuration and prepare lazy helper placeholders and performance trackers.
-
-        Parameters:
-            config (Optional[EnrichmentConfig]): Enrichment configuration to use; if not provided, a default EnrichmentConfig() is created.
-        """
         self.config = config or EnrichmentConfig()
-
-        # Initialize async helpers
-        self.anilist_helper: AniListEnrichmentHelper | None = (
-            None  # Lazy init in async context
-        )
-        self.kitsu_helper: KitsuEnrichmentHelper | None = None
-        self.anidb_helper: AniDBEnrichmentHelper | None = None
-        self.anime_planet_helper: AnimePlanetEnrichmentHelper | None = None
-        self.anisearch_helper: AniSearchEnrichmentHelper | None = None
+        self._helpers: dict[str, Any] = {}
         self.mal_session: Any | None = None
 
         # Track API performance
         self.api_timings: dict[str, float] = {}
         self.api_errors: dict[str, str] = {}
 
+    @staticmethod
+    def _should_include(
+        service: str,
+        only: list[str] | None,
+        skip: list[str] | None,
+    ) -> bool:
+        if only:
+            return service in only
+        if skip:
+            return service not in skip
+        return True
+
     async def initialize_helpers(
         self,
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,
     ) -> None:
-        """
-        Lazily initialize enrichment helpers and a shared cached aiohttp session for MAL.
-
-        Only initializes helpers for services that will actually be used, based on the
-        provided filter sets. This avoids side effects (e.g. logging, connections) from
-        helpers whose services are filtered out.
-        """
-        def needed(service: str) -> bool:
-            if only_services:
-                return service in only_services
-            if skip_services:
-                return service not in skip_services
-            return True
-
-        if needed("anilist") and not self.anilist_helper:
-            self.anilist_helper = AniListEnrichmentHelper()
-        if needed("kitsu") and not self.kitsu_helper:
-            self.kitsu_helper = KitsuEnrichmentHelper()
-        if needed("anidb") and not self.anidb_helper:
-            self.anidb_helper = AniDBEnrichmentHelper()
-        if needed("anime_planet") and not self.anime_planet_helper:
-            self.anime_planet_helper = AnimePlanetEnrichmentHelper()
-        if needed("anisearch") and not self.anisearch_helper:
-            self.anisearch_helper = AniSearchEnrichmentHelper()
-        if not self.mal_session:
-            # MAL session is shared infrastructure (HTTP cache), always init
+        """Lazily initialize only the helpers for services that will actually be used."""
+        for name, cls in self._REGISTRY.items():
+            if name not in self._helpers and self._should_include(
+                name, only_services, skip_services
+            ):
+                self._helpers[name] = cls()
+        if (
+            self._should_include("mal", only_services, skip_services)
+            and not self.mal_session
+        ):
             from http_cache.instance import http_cache_manager as cache_manager
 
             self.mal_session = cache_manager.get_aiohttp_session("mal")
@@ -139,18 +106,12 @@ class ParallelAPIFetcher:
         Returns:
             Dict[str, Any]: Mapping of service names to their fetched result object, or `None` for services that failed or timed out.
         """
-        await self.initialize_helpers(skip_services=skip_services, only_services=only_services)
+        await self.initialize_helpers(
+            skip_services=skip_services, only_services=only_services
+        )
 
         start_time = time.time()
         tasks: list[tuple[str, Any]] = []
-
-        # Helper to check if service should be included
-        def should_include(service_name: str) -> bool:
-            if only_services:
-                return service_name in only_services
-            if skip_services:
-                return service_name not in skip_services
-            return True
 
         # Log filtering info
         if only_services:
@@ -159,41 +120,48 @@ class ParallelAPIFetcher:
             logger.info(f"Skipping services: {skip_services}")
 
         # Create parallel tasks for each API (only if not filtered out)
-        if ids.get("mal_id") and should_include("mal"):
-            tasks.append(
-                (
-                    "mal",
-                    self._fetch_mal(ids["mal_id"], temp_dir),
-                )
-            )
+        if ids.get("mal_id") and self._should_include(
+            "mal", only_services, skip_services
+        ):
+            tasks.append(("mal", self._fetch_mal(ids["mal_id"], temp_dir)))
 
-        if ids.get("anilist_id") and should_include("anilist"):
+        if ids.get("anilist_id") and self._should_include(
+            "anilist", only_services, skip_services
+        ):
             tasks.append(("anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)))
 
-        if ids.get("kitsu_id") and should_include("kitsu"):
+        if ids.get("kitsu_id") and self._should_include(
+            "kitsu", only_services, skip_services
+        ):
             tasks.append(("kitsu", self._fetch_kitsu(ids["kitsu_id"], temp_dir)))
 
-        if ids.get("anidb_id") and should_include("anidb"):
-            tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"])))
+        if ids.get("anidb_id") and self._should_include(
+            "anidb", only_services, skip_services
+        ):
+            tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"], temp_dir)))
 
-        if ids.get("anime_planet_slug") and should_include("anime_planet"):
-            tasks.append(("anime_planet", self._fetch_anime_planet(offline_data)))
+        if ids.get("anime_planet_slug") and self._should_include(
+            "anime_planet", only_services, skip_services
+        ):
+            tasks.append(
+                ("anime_planet", self._fetch_anime_planet(offline_data, temp_dir))
+            )
 
-        if ids.get("anisearch_id") and should_include("anisearch"):
-            tasks.append(("anisearch", self._fetch_anisearch(ids["anisearch_id"])))
+        if ids.get("anisearch_id") and self._should_include(
+            "anisearch", only_services, skip_services
+        ):
+            tasks.append(
+                ("anisearch", self._fetch_anisearch(ids["anisearch_id"], temp_dir))
+            )
 
         # Always try AnimSchedule with title search (unless explicitly filtered)
-        if should_include("animeschedule"):
-            tasks.append(("animeschedule", self._fetch_animeschedule(offline_data, temp_dir)))
+        if self._should_include("animeschedule", only_services, skip_services):
+            tasks.append(
+                ("animeschedule", self._fetch_animeschedule(offline_data, temp_dir))
+            )
 
-        # Execute all tasks in parallel with timeout
-        results = await self._gather_with_timeout(
-            tasks, timeout=self.config.api_timeout
-        )
-
-        # Save to temp files if directory provided
-        if temp_dir:
-            await self._save_temp_files(results, temp_dir)
+        # Execute all tasks in parallel
+        results = await self._gather(tasks)
 
         elapsed = time.time() - start_time
         logger.info(f"Fetched all API data in {elapsed:.2f} seconds")
@@ -217,19 +185,18 @@ class ParallelAPIFetcher:
             Optional[Dict[str, Any]]: A dictionary with keys "anime" (anime info), "episodes" (list of episode dicts), and "characters" (list of character dicts); returns `None` on failure.
         """
         try:
-            logger.info(
-                f"🔍 [MAL DEBUG] Starting _fetch_mal for MAL ID {mal_id}, temp_dir={temp_dir}"
-            )
             start = time.time()
 
             # Build streaming output paths (None when no temp_dir)
             anime_path = os.path.join(temp_dir, "mal_anime.jsonl") if temp_dir else None
-            episodes_path = os.path.join(temp_dir, "mal_episodes.jsonl") if temp_dir else None
-            characters_path = os.path.join(temp_dir, "mal_characters.jsonl") if temp_dir else None
+            episodes_path = (
+                os.path.join(temp_dir, "mal_episodes.jsonl") if temp_dir else None
+            )
+            characters_path = (
+                os.path.join(temp_dir, "mal_characters.jsonl") if temp_dir else None
+            )
 
-            async with MalEnrichmentHelper(
-                mal_id, session=self.mal_session
-            ) as helper:
+            async with MalEnrichmentHelper(mal_id, session=self.mal_session) as helper:
                 result = await helper.fetch_all(
                     anime_output_path=anime_path,
                     episodes_output_path=episodes_path,
@@ -255,10 +222,6 @@ class ParallelAPIFetcher:
         """Synchronous wrapper for AniList fetch - runs in executor to avoid cancellation."""
         try:
             start = time.time()
-
-            logger.info(
-                f"Fetching AniList data for ID {anilist_id} (will fetch ALL characters, staff, episodes)..."
-            )
 
             # Create new event loop for this thread
             loop = asyncio.new_event_loop()
@@ -320,7 +283,7 @@ class ParallelAPIFetcher:
         self, anilist_id: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """Fetch ALL AniList data in executor to prevent timeout cancellation."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._fetch_anilist_sync, anilist_id, temp_dir
         )
@@ -331,8 +294,8 @@ class ParallelAPIFetcher:
         """Fetch canonical Kitsu data (anime + episodes + characters)."""
         try:
             start = time.time()
-
-            if self.kitsu_helper is None:
+            helper = self._helpers.get("kitsu")
+            if helper is None:
                 raise RuntimeError("Kitsu helper not initialized")
 
             try:
@@ -359,7 +322,7 @@ class ParallelAPIFetcher:
                         numeric_id = int(data["data"][0]["id"])
                         logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
 
-            result = await self.kitsu_helper.fetch_all(numeric_id, output_dir=temp_dir)
+            result = await helper.fetch_all(numeric_id, output_dir=temp_dir)
             self.api_timings["kitsu"] = time.time() - start
             return result
         except Exception as e:
@@ -367,13 +330,17 @@ class ParallelAPIFetcher:
             self.api_errors["kitsu"] = str(e)
             return None
 
-    async def _fetch_anidb(self, anidb_id: str) -> dict[str, Any] | None:
+    async def _fetch_anidb(
+        self, anidb_id: str, temp_dir: str | None = None
+    ) -> dict[str, Any] | None:
         """Fetch AniDB data using async helper."""
         try:
             start = time.time()
-            if self.anidb_helper is None:
+            helper = self._helpers.get("anidb")
+            if helper is None:
                 raise RuntimeError("AniDB helper not initialized")
-            result = await self.anidb_helper.fetch_all_data(int(anidb_id))
+            output_path = os.path.join(temp_dir, "anidb.jsonl") if temp_dir else None
+            result = await helper.fetch_all(int(anidb_id), output_path=output_path)
             self.api_timings["anidb"] = time.time() - start
             return result
         except Exception as e:
@@ -382,14 +349,18 @@ class ParallelAPIFetcher:
             return None
 
     async def _fetch_anime_planet(
-        self, offline_data: dict[str, Any]
+        self, offline_data: dict[str, Any], temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """Fetch Anime-Planet data using scraper."""
         try:
             start = time.time()
-            if self.anime_planet_helper is None:
+            helper = self._helpers.get("anime_planet")
+            if helper is None:
                 raise RuntimeError("Anime Planet helper not initialized")
-            result = await self.anime_planet_helper.fetch_all_data(offline_data)
+            output_path = (
+                os.path.join(temp_dir, "anime_planet.jsonl") if temp_dir else None
+            )
+            result = await helper.fetch_all(offline_data, output_path=output_path)
             self.api_timings["anime_planet"] = time.time() - start
             return result
         except Exception as e:
@@ -397,13 +368,19 @@ class ParallelAPIFetcher:
             self.api_errors["anime_planet"] = str(e)
             return None
 
-    async def _fetch_anisearch(self, anisearch_id: str) -> dict[str, Any] | None:
+    async def _fetch_anisearch(
+        self, anisearch_id: str, temp_dir: str | None = None
+    ) -> dict[str, Any] | None:
         """Fetch AniSearch data using scraper."""
         try:
             start = time.time()
-            if self.anisearch_helper is None:
+            helper = self._helpers.get("anisearch")
+            if helper is None:
                 raise RuntimeError("AniSearch helper not initialized")
-            result = await self.anisearch_helper.fetch_all_data(int(anisearch_id))
+            output_path = (
+                os.path.join(temp_dir, "anisearch.jsonl") if temp_dir else None
+            )
+            result = await helper.fetch_all(int(anisearch_id), output_path=output_path)
             self.api_timings["anisearch"] = time.time() - start
             return result
         except Exception as e:
@@ -424,6 +401,10 @@ class ParallelAPIFetcher:
         try:
             start = time.time()
 
+            helper = self._helpers.get("animeschedule")
+            if helper is None:
+                raise RuntimeError("AnimSchedule helper not initialized")
+
             search_term = offline_data.get("title", "")
             if not search_term:
                 return None
@@ -432,7 +413,7 @@ class ParallelAPIFetcher:
                 os.path.join(temp_dir, "animeschedule.jsonl") if temp_dir else None
             )
             sources: list[str] = offline_data.get("sources", [])
-            result = await fetch_all(
+            result = await helper.fetch_all(
                 search_term, sources=sources or None, output_path=output_path
             )
 
@@ -444,36 +425,17 @@ class ParallelAPIFetcher:
             self.api_errors["animeschedule"] = str(e)
             return None
 
-    async def _gather_with_timeout(
-        self, tasks: list[tuple[str, Any]], timeout: int
-    ) -> dict[str, Any]:
-        """
-        Run multiple named coroutines concurrently and collect their results with optional per-task timeouts and graceful degradation.
-
-        If a coroutine raises an exception or times out, its entry in the returned mapping will be None and the error string will be recorded in self.api_errors. When self.config.no_timeout_mode is True, the timeout parameter is ignored and all coroutines are allowed to complete.
-
-        Parameters:
-            tasks (List[Tuple[str, Any]]): List of (name, coroutine) pairs identifying each task.
-            timeout (int): Per-task timeout in seconds (ignored when no_timeout_mode is enabled).
-
-        Returns:
-            Dict[str, Any]: Mapping from task name to the coroutine result, or None for timed-out/failed tasks.
-        """
+    async def _gather(self, tasks: list[tuple[str, Any]]) -> dict[str, Any]:
+        """Run named coroutines concurrently and collect results with graceful degradation."""
         results: dict[str, Any] = {}
         task_names = [name for name, _ in tasks]
         coroutines = [coro for _, coro in tasks]
 
         task_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
-        # Process the results from gather
         for i, result in enumerate(task_results):
             name = task_names[i]
-            if isinstance(result, asyncio.TimeoutError):
-                logger.warning(f"API {name} timed out after {timeout}s")
-                results[name] = None
-                self.api_errors[name] = f"Timeout after {timeout}s"
-                # The task is already cancelled by wait_for, so no need to call cancel()
-            elif isinstance(result, Exception):
+            if isinstance(result, Exception):
                 logger.error(f"API {name} failed with error: {result}")
                 results[name] = None
                 self.api_errors[name] = str(result)
@@ -485,22 +447,6 @@ class ParallelAPIFetcher:
                     logger.warning(f"API {name} returned empty result")
 
         return results
-
-    async def _save_temp_files(self, results: dict[str, Any], temp_dir: str) -> None:
-        """Save API responses to temp files for debugging/caching."""
-        os.makedirs(temp_dir, exist_ok=True)
-
-        for api_name, data in results.items():
-            if data:
-                try:
-                    # These services write their own JSONL files directly.
-                    if api_name in ("mal", "anilist", "animeschedule", "kitsu"):
-                        continue
-                    file_path = os.path.join(temp_dir, f"{api_name}.json")
-                    await asyncio.to_thread(_write_json_sync, file_path, data)
-                    logger.debug(f"Saved {api_name} response to {file_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to save {api_name} response: {e}")
 
     def _log_performance_metrics(self, total_time: float) -> None:
         """
@@ -534,13 +480,6 @@ class ParallelAPIFetcher:
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
     async def __aenter__(self) -> "ParallelAPIFetcher":
-        """
-        Initialize internal helpers and return the fetcher instance for use as an async context manager.
-
-        Returns:
-            ParallelAPIFetcher: The same fetcher instance with helpers initialized.
-        """
-        await self.initialize_helpers()
         return self
 
     async def __aexit__(
@@ -549,31 +488,9 @@ class ParallelAPIFetcher:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        """
-        Cleanup and close all initialized helper resources when exiting the async context.
-
-        Closes AniList, AniDB, AniSearch, Kitsu, Anime-Planet helpers and the shared MAL session if they were created.
-        Resets all attributes to None for safe reusability of the fetcher instance.
-
-        Returns:
-            bool: `False` to indicate exceptions (if any) should not be suppressed.
-        """
-        # Close all helpers and reset to None for safe reusability
-        if self.anilist_helper:
-            await self.anilist_helper.close()
-            self.anilist_helper = None
-        if self.anidb_helper:
-            await self.anidb_helper.close()
-            self.anidb_helper = None
-        if self.anisearch_helper:
-            await self.anisearch_helper.close()
-            self.anisearch_helper = None
-        if self.kitsu_helper:
-            await self.kitsu_helper.close()
-            self.kitsu_helper = None
-        if self.anime_planet_helper:
-            await self.anime_planet_helper.close()
-            self.anime_planet_helper = None
+        for helper in self._helpers.values():
+            await helper.close()
+        self._helpers.clear()
         if self.mal_session:
             await self.mal_session.close()
             self.mal_session = None
