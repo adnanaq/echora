@@ -2,7 +2,6 @@
 """Kitsu data fetcher for the AI enrichment pipeline."""
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -11,8 +10,9 @@ from types import TracebackType
 from typing import Any, cast
 
 import aiohttp
-from common.models.anime import ThemeEntry  # used when building themes list below
+from common.models.anime import ThemeEntry
 from common.utils.jsonl_utils import append_jsonl as _append_jsonl
+from common.utils.jsonl_utils import write_jsonl as _write_jsonl
 from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager as _cache_manager
 
@@ -26,10 +26,12 @@ from .kitsu.kitsu_models import (
     KitsuAnime,
     KitsuAnimeographyEntry,
     KitsuCategory,
+    KitsuCharacter,
     KitsuCharacterVoice,
     KitsuEpisode,
     KitsuGenre,
     KitsuMediaCharacter,
+    KitsuPerson,
 )
 
 logger = logging.getLogger(__name__)
@@ -234,8 +236,6 @@ class KitsuEnrichmentHelper:
                 .get("id")
             )
             if char_id and char_id in char_map:
-                from .kitsu.kitsu_models import KitsuCharacter
-
                 char.character = KitsuCharacter.model_validate(char_map[char_id])
             media_chars.append(char)
         return media_chars
@@ -268,8 +268,6 @@ class KitsuEnrichmentHelper:
                 .get("id")
             )
             if person_id and person_id in person_map:
-                from .kitsu.kitsu_models import KitsuPerson
-
                 voice.person = KitsuPerson.model_validate(person_map[person_id])
             voices.append(voice)
         return voices
@@ -428,10 +426,8 @@ class KitsuEnrichmentHelper:
         logger.info(f"[Kitsu] {total} character(s) to process")
 
         sem = asyncio.Semaphore(5)
-        counter = 0
 
         async def _fetch_one(char: KitsuMediaCharacter) -> dict[str, Any] | None:
-            nonlocal counter
             if char.character is None:
                 return None
             char_id = char.character.id
@@ -461,12 +457,10 @@ class KitsuEnrichmentHelper:
             except Exception:
                 logger.exception(f"character_from_kitsu failed for mediaChar {char.id}")
                 return None
-            else:
-                counter += 1
-                logger.debug(f"[Kitsu] Character {counter}/{total}: {char_name}")
-                if output_path:
-                    _append_jsonl(output_path, result)
-                return result
+            logger.debug(f"[Kitsu] Character {char_name} ({total} total)")
+            if output_path:
+                _append_jsonl(output_path, result)
+            return result
 
         char_results = await asyncio.gather(*[_fetch_one(char) for char in resolved])
         return [r for r in char_results if r is not None]
@@ -559,13 +553,6 @@ class KitsuEnrichmentHelper:
     ) -> bool:
         return False
 
-
-def _write_jsonl(path: str, records: list[dict[str, Any]]) -> None:
-    """Write records as newline-delimited JSON, one record per line."""
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 async def main() -> int:
