@@ -22,7 +22,9 @@ class ServiceRateLimitedError(ServiceError):
 
     def __init__(self, *, service: str, attempts: int) -> None:
         self.attempts = attempts
-        super().__init__(f"rate limit exceeded after {attempts} attempts", service=service)
+        super().__init__(
+            f"rate limit exceeded after {attempts} attempts", service=service
+        )
 
 
 class ServiceNetworkError(ServiceError):

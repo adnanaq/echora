@@ -11,6 +11,7 @@ Key quirks handled here:
 - ``relations`` values are slugs; slug is used as fallback title until
   MAL/AniList fill in the real title during consolidation
 """
+
 import re
 from typing import Any
 
@@ -48,6 +49,7 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _is_zero_date(s: str | None) -> bool:
     """Return True if the date string is the AnimSchedule zero-date sentinel."""
     return not s or s.startswith(_ZERO_DATE)
@@ -64,6 +66,7 @@ def _strip_html(html: str) -> str:
 
 
 # ── Public mapper ────────────────────────────────────────────────────────────
+
 
 def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
     """Normalize an AnimScheduleAnime into canonical Anime field values.
@@ -167,7 +170,9 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
         hiatus = AnimeHiatus(
             reason=anime.delayd_reason,
             hiatus_from=anime.delayed_from,
-            hiatus_until=anime.delayed_until if not _is_zero_date(anime.delayed_until) else None,
+            hiatus_until=anime.delayed_until
+            if not _is_zero_date(anime.delayed_until)
+            else None,
         )
 
     # ── Streaming ────────────────────────────────────────────────────────

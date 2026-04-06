@@ -292,7 +292,9 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
     return result.model_dump(mode="json", exclude_none=True)
 
 
-def episode_from_kitsu(ep: KitsuEpisode, anime_slug: str | None = None) -> dict[str, Any]:
+def episode_from_kitsu(
+    ep: KitsuEpisode, anime_slug: str | None = None
+) -> dict[str, Any]:
     """Normalize a KitsuEpisode into canonical Episode field values.
 
     Args:

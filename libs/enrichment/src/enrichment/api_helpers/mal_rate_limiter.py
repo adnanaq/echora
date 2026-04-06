@@ -50,9 +50,13 @@ class MalRateLimiter:
             while self._recent and self._recent[0] <= cutoff:
                 self._recent.popleft()
 
-            if self._max_per_minute > 0 and len(self._recent) >= self._max_per_minute: # check if per-minute limit reached
-                oldest = self._recent[0] # oldest timestamp in the current window
-                sleep_for = max(0.0, (oldest + 60.0) - now) # compute wait time until a slot frees
+            if (
+                self._max_per_minute > 0 and len(self._recent) >= self._max_per_minute
+            ):  # check if per-minute limit reached
+                oldest = self._recent[0]  # oldest timestamp in the current window
+                sleep_for = max(
+                    0.0, (oldest + 60.0) - now
+                )  # compute wait time until a slot frees
                 if sleep_for > 0:
                     await asyncio.sleep(sleep_for)
                     now = time.time()
@@ -61,18 +65,22 @@ class MalRateLimiter:
                     while self._recent and self._recent[0] <= cutoff:
                         self._recent.popleft()
 
-            if self._last is not None and self._min_interval > 0: # check if min interval rule applies
+            if (
+                self._last is not None and self._min_interval > 0
+            ):  # check if min interval rule applies
                 sleep_for = (self._last + self._min_interval) - now
-                if sleep_for > 0: # only sleep if the last call was too recent
+                if sleep_for > 0:  # only sleep if the last call was too recent
                     await asyncio.sleep(sleep_for)
                     now = time.time()
 
             self._last = now
             self._recent.append(now)
 
+
 DEFAULT_MIN_INTERVAL_SECONDS = 0.5
 DEFAULT_MAX_PER_MINUTE = 60
 _shared_limiter: MalRateLimiter | None = None
+
 
 @lru_cache(maxsize=1)
 def get_shared_mal_rate_limiter() -> "MalRateLimiter":

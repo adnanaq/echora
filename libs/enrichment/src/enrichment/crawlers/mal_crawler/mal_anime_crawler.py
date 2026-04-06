@@ -19,14 +19,9 @@ import json
 import logging
 import re
 import sys
-
 from typing import Any
 
-from http_cache.config import get_cache_config
-from http_cache.result_cache import cached_result
-
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
     get_mal_docker_browser_config,
@@ -48,7 +43,8 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalThemeSong,
     MalTrailer,
 )
-
+from http_cache.config import get_cache_config
+from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +188,12 @@ def _get_anime_schema() -> dict[str, Any]:
                 "type": "list",
                 "fields": [
                     {"name": "name", "selector": ".", "type": "text"},
-                    {"name": "source", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {
+                        "name": "source",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
                 ],
             },
             {
@@ -201,7 +202,12 @@ def _get_anime_schema() -> dict[str, Any]:
                 "type": "list",
                 "fields": [
                     {"name": "name", "selector": ".", "type": "text"},
-                    {"name": "source", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {
+                        "name": "source",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
                 ],
             },
             {
@@ -210,7 +216,12 @@ def _get_anime_schema() -> dict[str, Any]:
                 "type": "list",
                 "fields": [
                     {"name": "name", "selector": ".", "type": "text"},
-                    {"name": "source", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {
+                        "name": "source",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
                 ],
             },
             # Background
@@ -349,7 +360,6 @@ def _get_anime_schema() -> dict[str, Any]:
                 "type": "attribute",
                 "attribute": "data-src",
             },
-
             # Theme songs
             {
                 "name": "opening_themes_raw",
@@ -413,7 +423,12 @@ def _get_anime_schema() -> dict[str, Any]:
                 "selector": "//div[contains(@class,'picSurround')]/a[@href]",
                 "type": "list",
                 "fields": [
-                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
                 ],
             },
         ],
@@ -486,11 +501,10 @@ def _parse_structured_themes(raw_themes: list[dict[str, Any]]) -> list[MalThemeS
         ]
 
         results.append(
-            MalThemeSong(
-                title=title, artist=artist or None, episodes=episode_ranges
-            )
+            MalThemeSong(title=title, artist=artist or None, episodes=episode_ranges)
         )
     return results
+
 
 def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
     """Process both tile and table related entries from raw schema data."""
@@ -580,7 +594,6 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
     return related_entries
 
 
-
 def _build_anime_from_raw(
     raw: dict[str, Any],
     url: str,
@@ -668,21 +681,27 @@ def _build_anime_from_raw(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("producers", [])
-        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
+        if item.get("name")
+        and item.get("source")
+        and "dbchanges.php" not in item["source"]
     ]
     licensors = [
         MalCompanyRef(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("licensors", [])
-        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
+        if item.get("name")
+        and item.get("source")
+        and "dbchanges.php" not in item["source"]
     ]
     studios = [
         MalCompanyRef(
             name=item["name"].strip(), source=_normalize_mal_url(item["source"])
         )
         for item in raw.get("studios", [])
-        if item.get("name") and item.get("source") and "dbchanges.php" not in item["source"]
+        if item.get("name")
+        and item.get("source")
+        and "dbchanges.php" not in item["source"]
     ]
 
     # Theme songs
@@ -696,7 +715,9 @@ def _build_anime_from_raw(
     cover_url = raw.get("cover_image_src") or ""
     if cover_url and cover_url.endswith(".jpg") and not cover_url.endswith("l.jpg"):
         cover_url = cover_url[:-4] + "l.jpg"
-    picture_urls = list(dict.fromkeys(([cover_url] if cover_url else []) + picture_urls))
+    picture_urls = list(
+        dict.fromkeys(([cover_url] if cover_url else []) + picture_urls)
+    )
     images: dict[str, str] = {}
 
     # External links
@@ -799,7 +820,9 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     browser_config = get_mal_docker_browser_config()
     crawler_config = get_mal_docker_crawler_config(_get_anime_schema(), delay=1.5)
 
-    results = await crawl_batch_urls([url], browser_config=browser_config, crawler_config=crawler_config)
+    results = await crawl_batch_urls(
+        [url], browser_config=browser_config, crawler_config=crawler_config
+    )
     result = results[0] if results else None
 
     if not result:
@@ -827,7 +850,9 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     picture_urls: list[str] = []
     pics_url = f"{canonical_url}/pics"
     await _limiter.acquire()
-    pics_results = await crawl_batch_urls([pics_url], browser_config=browser_config, crawler_config=crawler_config)
+    pics_results = await crawl_batch_urls(
+        [pics_url], browser_config=browser_config, crawler_config=crawler_config
+    )
     pics_result = pics_results[0] if pics_results else None
     if pics_result:
         pics_list = json.loads(pics_result.get("extracted_content") or "[]")
@@ -852,10 +877,10 @@ async def fetch_mal_anime(url: str) -> MalScrapedAnime | None:
     Returns:
         MalScrapedAnime model if successful, None otherwise.
     """
-    logger.info(f"[anime] Fetching MAL anime {url}...")
+    logger.info(f"Fetching MAL anime {url}...")
     raw = await _fetch_mal_anime_data(url)
     if not raw:
-        logger.error(f"[anime] Failed to fetch anime {url}")
+        logger.error(f"Failed to fetch MAL anime {url}")
         return None
 
     picture_urls = raw.pop("_picture_urls", [])
@@ -883,10 +908,14 @@ async def main() -> int:
     if anime is None:
         logger.error(f"No data extracted for anime URL {args.url}")
         return 1
-    from enrichment.mappers.mal_mapper import anime_from_mal
     from pathlib import Path
+
+    from enrichment.mappers.mal_mapper import anime_from_mal
+
     canonical = anime_from_mal(anime)
-    Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info(f"Done: {anime.title} ({anime.episode_count} episodes)")
     return 0
 

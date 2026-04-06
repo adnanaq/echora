@@ -4,6 +4,7 @@ These mirror the JSON structure with camelCase → snake_case aliases.
 All normalization and mapping to the canonical Anime model lives in
 mappers/animeschedule_mapper.py.
 """
+
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,7 +24,7 @@ class AnimScheduleStats(BaseModel):
 class AnimScheduleNames(BaseModel):
     """Title variants for an anime entry."""
 
-    native: str | None = None       # Japanese title
+    native: str | None = None  # Japanese title
     romaji: str | None = None
     english: str | None = None
     abbreviation: str | None = None
@@ -40,7 +41,7 @@ class AnimScheduleSeason(BaseModel):
 
     title: str | None = None
     year: str | None = None
-    season: str | None = None   # "" for year-only entries
+    season: str | None = None  # "" for year-only entries
     route: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
@@ -50,7 +51,7 @@ class AnimScheduleStream(BaseModel):
     """Single streaming platform entry inside ``websites.streams``."""
 
     platform: str
-    url: str    # partial URL (no scheme)
+    url: str  # partial URL (no scheme)
     name: str
 
     model_config = ConfigDict(populate_by_name=True)
@@ -68,19 +69,19 @@ class AnimScheduleAnime(BaseModel):
     # ── Identity ─────────────────────────────────────────────────────────
     id: str
     title: str
-    route: str          # URL slug, e.g. "dandadan"
+    route: str  # URL slug, e.g. "dandadan"
 
     # ── Metadata ─────────────────────────────────────────────────────────
-    description: str | None = None      # may contain HTML tags
-    status: str | None = None           # "Finished"|"Ongoing"|"Upcoming"|"Delayed"
+    description: str | None = None  # may contain HTML tags
+    status: str | None = None  # "Finished"|"Ongoing"|"Upcoming"|"Delayed"
     episodes: int | None = None
     length_min: int | None = Field(None, alias="lengthMin")
 
     # ── Dates (ISO; "0001-01-01T00:00:00Z" ≡ not set) ───────────────────
-    premier: str | None = None          # JP original premiere
+    premier: str | None = None  # JP original premiere
     sub_premier: str | None = Field(None, alias="subPremier")
     dub_premier: str | None = Field(None, alias="dubPremier")
-    jpn_time: str | None = Field(None, alias="jpnTime")     # latest known JP air time
+    jpn_time: str | None = Field(None, alias="jpnTime")  # latest known JP air time
     sub_time: str | None = Field(None, alias="subTime")
     dub_time: str | None = Field(None, alias="dubTime")
     delayed_from: str | None = Field(None, alias="delayedFrom")
@@ -95,7 +96,7 @@ class AnimScheduleAnime(BaseModel):
     # ── Taxonomy ({name, route} dicts) ───────────────────────────────────
     genres: list[dict[str, str]] = Field(default_factory=list)
     studios: list[dict[str, str]] = Field(default_factory=list)
-    sources: list[dict[str, str]] = Field(default_factory=list)     # source material
+    sources: list[dict[str, str]] = Field(default_factory=list)  # source material
     media_types: list[dict[str, str]] = Field(default_factory=list, alias="mediaTypes")
 
     # ── Media ────────────────────────────────────────────────────────────

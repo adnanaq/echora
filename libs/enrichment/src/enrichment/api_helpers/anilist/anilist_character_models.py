@@ -18,7 +18,9 @@ markdown at the top of the prose field:
 - ``description_attributes``  — non-spoiler key/value pairs
 - ``description_spoilers``    — pairs whose value was wrapped in ``~! … !~``
 """
+
 import re
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _ATTR_LINE_RE = re.compile(r"^__(.+?):__\s*(.*)")
@@ -32,7 +34,9 @@ class AniListCharacterName(BaseModel):
     full: str | None = None
     native: str | None = None
     alternative: list[str] = Field(default_factory=list)
-    alternative_spoiler: list[str] = Field(default_factory=list, alias="alternativeSpoiler")
+    alternative_spoiler: list[str] = Field(
+        default_factory=list, alias="alternativeSpoiler"
+    )
 
 
 class AniListCharacterImage(BaseModel):
@@ -131,7 +135,9 @@ class AniListCharacterNode(BaseModel):
                 if spoiler_match:
                     spoilers[key] = spoiler_match.group(1).strip()
                 else:
-                    clean_value = _SPOILER_RE.sub(lambda s: s.group(1).strip(), raw_value)
+                    clean_value = _SPOILER_RE.sub(
+                        lambda s: s.group(1).strip(), raw_value
+                    )
                     attributes[key] = clean_value
             else:
                 in_prose = True
@@ -156,4 +162,6 @@ class AniListCharacterEdge(BaseModel):
 
     node: AniListCharacterNode
     role: str | None = None
-    voice_actor_roles: list[AniListVoiceActorRole] = Field(default_factory=list, alias="voiceActorRoles")
+    voice_actor_roles: list[AniListVoiceActorRole] = Field(
+        default_factory=list, alias="voiceActorRoles"
+    )

@@ -684,7 +684,7 @@ class EnsembleFuzzyMatcher:
             norm2 = self._standardize_for_embedding(text2)
 
             embeddings = self.embedding_model.encode([norm1, norm2])
-            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]  # ty: ignore[call-non-callable]
+            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
             return float(max(0.0, similarity))
         except Exception as e:
             logger.warning(f"Semantic similarity failed: {e}")
@@ -1514,12 +1514,17 @@ async def process_characters_with_ai_matching(
             # =====================================================================
             # OBJECT/DICT FIELDS (alphabetical)
             # =====================================================================
-            "attributes": {k: v for k, v in {
-                "age": char.age,
-                "eye_color": char.eye_color,
-                "gender": char.gender,
-                "hair_color": char.hair_color,
-            }.items() if v is not None} or None,
+            "attributes": {
+                k: v
+                for k, v in {
+                    "age": char.age,
+                    "eye_color": char.eye_color,
+                    "gender": char.gender,
+                    "hair_color": char.hair_color,
+                }.items()
+                if v is not None
+            }
+            or None,
             "character_pages": char.character_pages,
             # Internal field for stage5 to use (not part of final output)
             "_match_scores": char.match_scores if char.match_scores else {},

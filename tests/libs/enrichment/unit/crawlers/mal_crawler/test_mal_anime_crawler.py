@@ -5,6 +5,7 @@ dicts that mirror the shape of real extraction output. No network calls are made
 """
 
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -498,6 +499,7 @@ async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker) -> No
 async def test_fetch_mal_anime_returns_none_when_no_data(mocker) -> None:
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler._fetch_mal_anime_data",
+        new_callable=AsyncMock,
         return_value=None,
     )
     result = await fetch_mal_anime("https://myanimelist.net/anime/21")
@@ -513,6 +515,7 @@ async def test_fetch_mal_anime_returns_parsed_anime(mocker) -> None:
     }
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler._fetch_mal_anime_data",
+        new_callable=AsyncMock,
         return_value=raw,
     )
     result = await fetch_mal_anime("https://myanimelist.net/anime/21")

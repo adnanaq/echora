@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DOCKER_URL = "http://localhost:11235"
 
 # How long to wait between WAF recovery probes, and the max total wait time.
-_WAF_PROBE_INTERVAL = 30.0   # seconds between probe attempts
-_WAF_MAX_WAIT = 600.0        # give up after 10 minutes
+_WAF_PROBE_INTERVAL = 30.0  # seconds between probe attempts
+_WAF_MAX_WAIT = 600.0  # give up after 10 minutes
 
 # Transient error retry
 _TRANSIENT_RETRY_DELAY = 10.0  # seconds before retrying transient failures
@@ -106,7 +106,9 @@ async def _poll_job(
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    logger.error(f"crawl4ai poll error: HTTP {resp.status} for task {task_id}")
+                    logger.error(
+                        f"crawl4ai poll error: HTTP {resp.status} for task {task_id}"
+                    )
                     return None
                 data: dict[str, Any] = await resp.json()
         except aiohttp.ClientError as exc:
@@ -117,7 +119,9 @@ async def _poll_job(
         if status == "completed":
             return data
         if status == "failed":
-            logger.error(f"crawl4ai job {task_id} failed: {data.get('error', 'unknown')}")
+            logger.error(
+                f"crawl4ai job {task_id} failed: {data.get('error', 'unknown')}"
+            )
             return None
 
         await asyncio.sleep(poll_interval)
@@ -219,7 +223,9 @@ async def _retry_failed_urls(
     poll_interval: float,
 ) -> list[dict[str, Any] | None]:
     """Submit failed_urls as a new job and patch successes back into aligned."""
-    task_id = await _submit_job(session, base_url, failed_urls, browser_config, crawler_config)
+    task_id = await _submit_job(
+        session, base_url, failed_urls, browser_config, crawler_config
+    )
     if not task_id:
         return aligned
     response = await _poll_job(session, base_url, task_id, timeout, poll_interval)
@@ -241,10 +247,14 @@ async def _probe_waf_recovery(
     crawler_config: dict[str, Any],
 ) -> bool:
     """Submit a single URL and return True if it comes back without a 405."""
-    task_id = await _submit_job(session, base_url, [probe_url], browser_config, crawler_config)
+    task_id = await _submit_job(
+        session, base_url, [probe_url], browser_config, crawler_config
+    )
     if not task_id:
         return False
-    response = await _poll_job(session, base_url, task_id, timeout=90.0, poll_interval=3.0)
+    response = await _poll_job(
+        session, base_url, task_id, timeout=90.0, poll_interval=3.0
+    )
     if not response:
         return False
     results: list[dict[str, Any]] = response.get("result", {}).get("results") or []
@@ -273,11 +283,15 @@ async def _wait_for_waf_unblock(
             f"WAF recovery: waiting {_WAF_PROBE_INTERVAL:.0f}s before probe #{attempt}..."
         )
         await asyncio.sleep(_WAF_PROBE_INTERVAL)
-        if await _probe_waf_recovery(session, base_url, probe_url, browser_config, crawler_config):
+        if await _probe_waf_recovery(
+            session, base_url, probe_url, browser_config, crawler_config
+        ):
             logger.info(f"WAF unblocked after {attempt} probe(s) — resuming crawl")
             return True
         logger.warning(f"WAF probe #{attempt}: still blocked (405)")
-    logger.error(f"WAF did not unblock within {_WAF_MAX_WAIT:.0f}s — giving up on blocked URLs")
+    logger.error(
+        f"WAF did not unblock within {_WAF_MAX_WAIT:.0f}s — giving up on blocked URLs"
+    )
     return False
 
 
@@ -307,11 +321,15 @@ async def crawl_single_url(
     """
     base_url = _get_base_url()
     async with aiohttp.ClientSession() as session:
-        task_id = await _submit_job(session, base_url, [url], browser_config, crawler_config)
+        task_id = await _submit_job(
+            session, base_url, [url], browser_config, crawler_config
+        )
         if not task_id:
             return None
 
-        job_response = await _poll_job(session, base_url, task_id, timeout, poll_interval)
+        job_response = await _poll_job(
+            session, base_url, task_id, timeout, poll_interval
+        )
         if not job_response:
             return None
 
@@ -355,11 +373,15 @@ async def crawl_batch_urls(
 
     base_url = _get_base_url()
     async with aiohttp.ClientSession() as session:
-        task_id = await _submit_job(session, base_url, urls, browser_config, crawler_config)
+        task_id = await _submit_job(
+            session, base_url, urls, browser_config, crawler_config
+        )
         if not task_id:
             return [None] * len(urls)
 
-        job_response = await _poll_job(session, base_url, task_id, timeout, poll_interval)
+        job_response = await _poll_job(
+            session, base_url, task_id, timeout, poll_interval
+        )
         if not job_response:
             return [None] * len(urls)
 
@@ -377,7 +399,15 @@ async def crawl_batch_urls(
             )
             await asyncio.sleep(_TRANSIENT_RETRY_DELAY)
             aligned = await _retry_failed_urls(
-                session, base_url, transient_failed, aligned, urls, browser_config, crawler_config, timeout, poll_interval
+                session,
+                base_url,
+                transient_failed,
+                aligned,
+                urls,
+                browser_config,
+                crawler_config,
+                timeout,
+                poll_interval,
             )
 
         if waf_blocked:
@@ -389,7 +419,15 @@ async def crawl_batch_urls(
             )
             if recovered:
                 aligned = await _retry_failed_urls(
-                    session, base_url, waf_blocked, aligned, urls, browser_config, crawler_config, timeout, poll_interval
+                    session,
+                    base_url,
+                    waf_blocked,
+                    aligned,
+                    urls,
+                    browser_config,
+                    crawler_config,
+                    timeout,
+                    poll_interval,
                 )
 
         return aligned

@@ -12,7 +12,6 @@ models wherever possible, these functions only:
 Field names are NOT renamed here — that's already handled at the model level.
 """
 
-import re
 from typing import Any
 
 from common.models.anime import (
@@ -50,6 +49,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedEpisode,
 )
 
+
 def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     """Normalize a MalScrapedAnime into canonical Anime field values.
 
@@ -68,7 +68,9 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     episode_count = anime.episode_count or 0
     rating = AnimeRating(anime.rating) if anime.rating else AnimeRating.UNKNOWN
     season = AnimeSeason(anime.season.upper()) if anime.season else None
-    source_material = SourceMaterialType(anime.source_material) if anime.source_material else None
+    source_material = (
+        SourceMaterialType(anime.source_material) if anime.source_material else None
+    )
     status = AnimeStatus(anime.status or "")
     synopsis = anime.synopsis
     title = anime.title
@@ -80,20 +82,20 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     # ── Arrays ───────────────────────────────────────────────────────────
     demographics = anime.demographics
     genres = anime.genres
-    licensors = [
-        CompanyEntry(name=l.name, sources=[l.source]) for l in anime.licensors
-    ]
-    producers = [
-        CompanyEntry(name=p.name, sources=[p.source]) for p in anime.producers
-    ]
+    licensors = [CompanyEntry(name=l.name, sources=[l.source]) for l in anime.licensors]
+    producers = [CompanyEntry(name=p.name, sources=[p.source]) for p in anime.producers]
     sources = [anime.source] if anime.source else []
-    studios = [
-        CompanyEntry(name=s.name, sources=[s.source]) for s in anime.studios
-    ]
+    studios = [CompanyEntry(name=s.name, sources=[s.source]) for s in anime.studios]
     synonyms = anime.synonyms
     themes = [ThemeEntry(name=t) for t in anime.themes]
     trailers = (
-        [TrailerEntry(source=anime.trailer.source, title=anime.trailer.title, thumbnail=anime.trailer.thumbnail)]
+        [
+            TrailerEntry(
+                source=anime.trailer.source,
+                title=anime.trailer.title,
+                thumbnail=anime.trailer.thumbnail,
+            )
+        ]
         if anime.trailer
         else []
     )
@@ -122,7 +124,9 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
 
     # Relations
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}
-    related_source_material: dict[SourceMaterialRelationType, list[RelatedSourceMaterial]] = {}
+    related_source_material: dict[
+        SourceMaterialRelationType, list[RelatedSourceMaterial]
+    ] = {}
 
     for entry in anime.related_entries:
         if entry.is_anime:
@@ -180,7 +184,8 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     # Links
     external_sources = {link.name: link.source for link in anime.external_sources}
     streaming_sources = [
-        StreamingEntry(platform=link.name, source=link.source) for link in anime.streaming
+        StreamingEntry(platform=link.name, source=link.source)
+        for link in anime.streaming
     ]
 
     # Build final canonical object
@@ -260,7 +265,6 @@ def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
             VoiceActor(name=va.name, language=va.language, sources=va.sources)
             for va in char.voice_actors
         ]
-
 
     # ── Roles (derived from animeography) ────────────────────────────────
     # Role is contextual per appearance; aggregate unique roles for search/filtering.

@@ -92,12 +92,14 @@ async def fetch_mal_character_refs(url: str) -> list[str]:
     Returns:
         Deduplicated list of character URLs, empty on failure.
     """
-    logger.info(f"[characters] Fetching character list from {url}...")
+    logger.info(f"Fetching MAL character list from {url}...")
     items = await _fetch_mal_characters_data(url)
     if not items:
         logger.warning(f"No character URLs extracted from {url}")
         return []
 
-    return list(dict.fromkeys(  # deduplicate, preserve order
-        item["url"] for item in items if item.get("url")
-    ))
+    return list(
+        dict.fromkeys(  # deduplicate, preserve order
+            item["url"] for item in items if item.get("url")
+        )
+    )

@@ -19,9 +19,8 @@ from enum import Enum
 from typing import Any
 
 from crawl4ai import BrowserConfig
-from pydantic import BaseModel
-
 from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +150,7 @@ def get_mal_docker_crawler_config(
             # "delay_before_return_html": delay,  # disabled: wait_until="load" already ensures page is ready
             "simulate_user": True,
             "override_navigator": True,  # override navigator JS properties for stealth
-            "magic": True,              # handle popups/banners, reduces detection signals
+            "magic": True,  # handle popups/banners, reduces detection signals
             "wait_until": wait_until,
             "page_timeout": 90000,
         },
@@ -316,7 +315,9 @@ def parse_iso_date(raw: str | None) -> str | None:
 
     # "Oct 20, 1999" or "Oct  20, 1999" (normalize extra whitespace first)
     try:
-        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime("%Y-%m-%d")
+        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime(
+            "%Y-%m-%d"
+        )
     except ValueError:
         pass
 
@@ -554,6 +555,7 @@ def diff_model_lists(
     Returns:
         ListDiff with added/removed/updated model IDs and diffs.
     """
+
     def _get_id(m: BaseModel) -> str | int | None:
         v = _get_entity_id(m)
         return v if v != 0 else None

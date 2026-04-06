@@ -95,7 +95,7 @@ class ProgrammaticEnrichmentPipeline:
             self.timing_breakdown["id_extraction"] = time.time() - step1_start
 
             logger.info(
-                f"Step 1 complete: Extracted {len(valid_ids)} platform IDs in {self.timing_breakdown['id_extraction']:.3f}s"
+                f"Extracted {len(valid_ids)} platform IDs in {self.timing_breakdown['id_extraction']:.3f}s"
             )
 
             # Create or use specified temp directory for this anime
@@ -121,20 +121,10 @@ class ProgrammaticEnrichmentPipeline:
             )
             self.timing_breakdown["api_fetching"] = time.time() - step2_start
 
-            # Count successful API responses
-            successful_apis = sum(1 for v in api_data.values() if v)
-            logger.info(
-                f"Step 2 complete: Fetched data from {successful_apis} APIs in {self.timing_breakdown['api_fetching']:.2f}s"
-            )
-
             # Step 3: Process episodes (instant)
             step3_start = time.time()
             processed_episodes = self._process_episodes(api_data)
             self.timing_breakdown["episode_processing"] = time.time() - step3_start
-
-            logger.info(
-                f"Step 3 complete: Processed {len(processed_episodes)} episodes in {self.timing_breakdown['episode_processing']:.3f}s"
-            )
 
             # Compile results
             result = {
@@ -267,7 +257,7 @@ class ProgrammaticEnrichmentPipeline:
         # No gaps found, return next sequential
         next_id = existing_ids[-1] + 1
         logger.info(
-            f"No gaps: Using next agent ID {next_id} (existing: {existing_ids})"
+            f"No gaps: Using next agent ID {next_id}"
         )
         return next_id
 

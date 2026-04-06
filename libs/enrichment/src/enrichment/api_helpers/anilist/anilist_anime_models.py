@@ -3,6 +3,7 @@
 All models use ConfigDict(populate_by_name=True, extra="allow") so they can be
 constructed either from the camelCase API response or from snake_case aliases.
 """
+
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -141,8 +142,12 @@ class AniListAnime(BaseModel):
     tags: list[AniListTag] = Field(default_factory=list)
     studios: list[AniListStudioEdge] = Field(default_factory=list)
     relations: list[AniListRelationEdge] = Field(default_factory=list)
-    external_links: list[AniListExternalLink] = Field(default_factory=list, alias="externalLinks")
-    next_airing_episode: AniListNextAiringEpisode | None = Field(None, alias="nextAiringEpisode")
+    external_links: list[AniListExternalLink] = Field(
+        default_factory=list, alias="externalLinks"
+    )
+    next_airing_episode: AniListNextAiringEpisode | None = Field(
+        None, alias="nextAiringEpisode"
+    )
     rankings: list[AniListRanking] = Field(default_factory=list)
 
     @model_validator(mode="before")
