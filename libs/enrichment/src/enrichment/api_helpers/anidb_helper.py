@@ -248,7 +248,7 @@ class AniDBEnrichmentHelper:
                 self.error_cooldown_base * error_multiplier, self.max_request_interval
             )
         else:
-            adaptive_interval = self.metrics.current_interval
+            adaptive_interval = self.min_request_interval
 
         # Add extra delay for retries
         if is_retry:
@@ -499,7 +499,7 @@ class AniDBEnrichmentHelper:
         Returns:
             Decoded string if successful, None if all encodings fail.
         """
-        encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
+        encodings = ["utf-8", "latin-1"]
 
         for encoding in encodings:
             try:
@@ -646,9 +646,8 @@ class AniDBEnrichmentHelper:
         title = None
         title_english = None
         title_japanese = None
-        title_others: dict[
-            str, str
-        ] = {}  # Official titles in other languages {lang: title}
+        title_others: dict[str, str] = {}
+        synonyms: list[str] = []
         titles_element = root.find("titles")
         if titles_element is not None:
             for title_elem in titles_element.findall("title"):
@@ -662,10 +661,10 @@ class AniDBEnrichmentHelper:
                         title_english = title_elem.text
                     elif lang == "ja":
                         title_japanese = title_elem.text
-                    else:
-                        # Preserve official titles in other languages with lang code as key
-                        if title_elem.text:
-                            title_others[lang] = title_elem.text
+                    elif title_elem.text:
+                        title_others[lang] = title_elem.text
+                elif title_type in ("synonym", "short") and title_elem.text:
+                    synonyms.append(title_elem.text)
 
         type_elem = root.find("type")
         anime_type = type_elem.text if type_elem is not None else None
@@ -708,23 +707,22 @@ class AniDBEnrichmentHelper:
                     character_ids_to_enrich.append(char_data["id"])
 
         # Batch fetch character details in parallel if enrichment enabled
-        if enrich_characters and character_ids_to_enrich:
-            logger.info(
-                f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
-            )
-            enriched_char_data = await self._batch_fetch_character_details(
-                character_ids_to_enrich
-            )
-            # Merge enriched data back into character_details
-            for char_data in character_details:
-                char_id = char_data.get("id")
-                if char_id and char_id in enriched_char_data:
-                    # Merge: crawler provides supplementary data (official_names, abilities, etc.)
-                    # Then XML overwrites with authoritative data (name, gender, description, etc.)
-                    # This preserves XML's comprehensive data while adding crawler's unique fields
-                    enriched_char_data[char_id].update(char_data)
-                    char_data.clear()
-                    char_data.update(enriched_char_data[char_id])
+        # TODO: re-enable once character crawler is validated; disabled to avoid
+        #       fetching 1000+ characters on large anime like One Piece.
+        # if enrich_characters and character_ids_to_enrich:
+        #     logger.info(
+        #         f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
+        #     )
+        #     enriched_char_data = await self._batch_fetch_character_details(
+        #         character_ids_to_enrich
+        #     )
+        #     # Merge enriched data back into character_details
+        #     for char_data in character_details:
+        #         char_id = char_data.get("id")
+        #         if char_id and char_id in enriched_char_data:
+        #             enriched_char_data[char_id].update(char_data)
+        #             char_data.clear()
+        #             char_data.update(enriched_char_data[char_id])
 
         # Extract creator information
         creators_element = root.find("creators")
@@ -762,15 +760,6 @@ class AniDBEnrichmentHelper:
             if related_anime_element is not None
             else []
         )
-
-        # Extract synonyms from titles
-        synonyms = []
-        if titles_element is not None:
-            for title_elem in titles_element.findall("title"):
-                title_type = title_elem.get("type", "unknown")
-                if title_type in ["synonym", "short"]:
-                    if title_elem.text:
-                        synonyms.append(title_elem.text)
 
         # Extract tags (simple list of names)
         tags_element = root.find("tags")
@@ -1086,16 +1075,10 @@ class AniDBEnrichmentHelper:
                     )
                 return (char_id, None)
 
-        # Fetch all character details in parallel with controlled concurrency
         tasks = [fetch_with_semaphore(char_id) for char_id in character_ids]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks)
 
-        # Build enriched data dictionary
-        for result in results:
-            if isinstance(result, BaseException):
-                logger.error(f"Character fetch task failed: {result}")
-                continue
-            char_id, char_data = result
+        for char_id, char_data in results:
             if char_data:
                 enriched_data[char_id] = char_data
 
@@ -1121,13 +1104,6 @@ class AniDBEnrichmentHelper:
                 logger.warning(f"No response for AniDB ID: {anidb_id}")
                 return None
 
-            if "<error" in xml_response:
-                logger.warning(
-                    f"Error response for AniDB ID {anidb_id}: {xml_response[:200]}"
-                )
-                return None
-
-            # Log first 200 chars of response for debugging
             logger.info(f"AniDB response preview: {xml_response[:200]}")
 
             return await self._parse_anime_xml(xml_response)
@@ -1150,20 +1126,12 @@ class AniDBEnrichmentHelper:
             Comprehensive AniDB data including metadata, characters, episodes,
                 and related anime. None if not found.
         """
-        try:
-            anime_data = await self.get_anime_by_id(anidb_id)
-            if not anime_data:
-                logger.warning(f"No AniDB data found for ID: {anidb_id}")
-                return None
-
-            logger.info(f"Successfully fetched AniDB data for ID: {anidb_id}")
-            if output_path:
-                append_jsonl(output_path, anime_data)
-            return anime_data
-
-        except Exception:
-            logger.exception(f"Error in fetch_all for AniDB ID {anidb_id}")
+        anime_data = await self.get_anime_by_id(anidb_id)
+        if not anime_data:
             return None
+        if output_path:
+            append_jsonl(output_path, anime_data)
+        return anime_data
 
     async def reset_circuit_breaker(self) -> bool:
         """Manually reset circuit breaker to CLOSED state.
