@@ -23,16 +23,25 @@ import sys
 from typing import Any
 
 from common.utils.jsonl_utils import append_jsonl as _append_jsonl
+
 from enrichment.crawlers.mal_crawler.mal_anime_crawler import fetch_mal_anime
 from enrichment.crawlers.mal_crawler.mal_base import normalize_mal_anime_url
 from enrichment.crawlers.mal_crawler.mal_character_crawler import (
     fetch_mal_character,
     fetch_mal_characters,
 )
-from enrichment.crawlers.mal_crawler.mal_character_refs_crawler import fetch_mal_character_refs
-from enrichment.crawlers.mal_crawler.mal_episode_count_crawler import fetch_mal_episode_count
+from enrichment.crawlers.mal_crawler.mal_character_refs_crawler import (
+    fetch_mal_character_refs,
+)
+from enrichment.crawlers.mal_crawler.mal_episode_count_crawler import (
+    fetch_mal_episode_count,
+)
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episodes
-from enrichment.mappers.mal_mapper import anime_from_mal, character_from_mal, episode_from_mal
+from enrichment.mappers.mal_mapper import (
+    anime_from_mal,
+    character_from_mal,
+    episode_from_mal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +64,9 @@ class MalEnrichmentHelper:
         *,
         session: Any | None = None,  # noqa: ARG002  — compatibility only
     ) -> None:
-        _, has_slug = normalize_mal_anime_url(mal_source)  # raises ValueError on invalid input
+        _, has_slug = normalize_mal_anime_url(
+            mal_source
+        )  # raises ValueError on invalid input
         self._mal_source = mal_source
         self._anime_url: str = mal_source if has_slug else ""
 
@@ -99,7 +110,9 @@ class MalEnrichmentHelper:
             List of character URLs. Empty on failure.
         """
         if not self._anime_url:
-            logger.error("fetch_character_urls called before fetch_anime — anime URL unknown")
+            logger.error(
+                "fetch_character_urls called before fetch_anime — anime URL unknown"
+            )
             return []
         return await fetch_mal_character_refs(f"{self._anime_url}/characters")
 
@@ -122,16 +135,23 @@ class MalEnrichmentHelper:
             List of episode dicts (failed episodes are skipped).
         """
         if not self._anime_url:
-            logger.error("fetch_episodes requires a slug URL — pass https://myanimelist.net/anime/{id}/{slug}")
+            logger.error(
+                "fetch_episodes requires a slug URL — pass https://myanimelist.net/anime/{id}/{slug}"
+            )
             return []
         if episode_count == 0:
             return []
         urls = [f"{self._anime_url}/episode/{i}" for i in range(1, episode_count + 1)]
 
-        def _on_episode(ep: Any) -> None:
-            _append_jsonl(output_path, episode_from_mal(ep))  # type: ignore[arg-type]
+        _path = output_path
 
-        episodes_or_none = await fetch_mal_episodes(urls, on_result=_on_episode if output_path else None)
+        def _on_episode(ep: Any) -> None:
+            if _path:
+                _append_jsonl(_path, episode_from_mal(ep))
+
+        episodes_or_none = await fetch_mal_episodes(
+            urls, on_result=_on_episode if output_path else None
+        )
         return [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
 
     async def fetch_character(
@@ -172,10 +192,15 @@ class MalEnrichmentHelper:
             List of detailed character dicts (failed ones are skipped).
         """
 
-        def _on_character(c: Any) -> None:
-            _append_jsonl(output_path, character_from_mal(c))  # type: ignore[arg-type]
+        _path = output_path
 
-        chars = await fetch_mal_characters(urls, on_result=_on_character if output_path else None)
+        def _on_character(c: Any) -> None:
+            if _path:
+                _append_jsonl(_path, character_from_mal(c))
+
+        chars = await fetch_mal_characters(
+            urls, on_result=_on_character if output_path else None
+        )
         return [character_from_mal(c) for c in chars if c is not None]
 
     async def fetch_all(
@@ -199,6 +224,7 @@ class MalEnrichmentHelper:
             Dict with keys ``anime``, ``episodes``, ``characters``, or None when
             the anime fetch fails.
         """
+        logger.info(f"Fetching MAL data for: {self._mal_source}")
         anime_info = await self.fetch_anime()
         if not anime_info:
             return None
@@ -206,15 +232,21 @@ class MalEnrichmentHelper:
         if anime_output_path:
             _append_jsonl(anime_output_path, anime_info)
 
+        logger.info(f"MAL anime fetched: {anime_info.get('title', self._mal_source)}")
+
         episode_count = int(anime_info.get("episode_count") or 0)
 
         async def _fetch_episodes() -> list[dict[str, Any]]:
             if episode_count == 0:
                 return []
             try:
-                return await self.fetch_episodes(episode_count, output_path=episodes_output_path)
+                return await self.fetch_episodes(
+                    episode_count, output_path=episodes_output_path
+                )
             except Exception as e:
-                logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
+                logger.warning(
+                    f"Episode fetch failed, continuing without episodes: {e}"
+                )
                 return []
 
         async def _fetch_characters() -> list[dict[str, Any]]:
@@ -222,14 +254,19 @@ class MalEnrichmentHelper:
             if not urls:
                 return []
             try:
-                return await self.fetch_characters(urls, output_path=characters_output_path)
+                return await self.fetch_characters(
+                    urls, output_path=characters_output_path
+                )
             except Exception as e:
-                logger.warning(f"Character detail fetch failed, continuing without characters: {e}")
+                logger.warning(
+                    f"Character detail fetch failed, continuing without characters: {e}"
+                )
                 return []
 
         episodes_data = await _fetch_episodes()
+        logger.info(f"MAL episodes fetched: {len(episodes_data)} episodes")
         characters_data = await _fetch_characters()
-
+        logger.info(f"MAL characters fetched: {len(characters_data)} characters")
         return {
             "anime": anime_info,
             "episodes": episodes_data,
@@ -248,21 +285,31 @@ def _write_json_sync(path: str, data: Any) -> None:
 
 async def main() -> int:
     """CLI entrypoint for fetching MAL data."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Fetch data from MAL via direct scraping")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    parser = argparse.ArgumentParser(
+        description="Fetch data from MAL via direct scraping"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_anime = sub.add_parser("anime", help="Fetch anime detail page")
-    p_anime.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
+    p_anime.add_argument(
+        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)"
+    )
     p_anime.add_argument("output_file", help="Output JSON file")
 
     p_eps = sub.add_parser("episodes", help="Fetch episode detail pages")
-    p_eps.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
+    p_eps.add_argument(
+        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)"
+    )
     p_eps.add_argument("episode_count", type=int, help="Number of episodes to fetch")
     p_eps.add_argument("output_file", help="Output JSON file")
 
     p_chars = sub.add_parser("characters", help="Fetch character detail pages")
-    p_chars.add_argument("anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)")
+    p_chars.add_argument(
+        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21)"
+    )
     p_chars.add_argument("output_file", help="Output JSON file")
 
     args = parser.parse_args()

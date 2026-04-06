@@ -22,12 +22,12 @@ from xml.etree.ElementTree import Element  # For type annotations only
 import aiohttp
 import defusedxml.ElementTree as ET
 from common.utils.datetime_utils import determine_anime_status
+from common.utils.jsonl_utils import append_jsonl
 from http_cache.instance import http_cache_manager as _cache_manager
-
-from enrichment.exceptions import ServiceBlockedError, ServiceNetworkError
 
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from enrichment.crawlers.utils import sanitize_output_path
+from enrichment.exceptions import ServiceBlockedError, ServiceNetworkError
 
 logger = logging.getLogger(__name__)
 
@@ -443,7 +443,7 @@ class AniDBEnrichmentHelper:
                         logger.debug(
                             f"Decompressed content length: {len(content)} bytes"
                         )
-                    except Exception as e:
+                    except Exception:
                         logger.exception("Failed to decompress gzipped content: ")
                         raise
 
@@ -477,7 +477,8 @@ class AniDBEnrichmentHelper:
                 #   so this enrichment job is retried once AniDB recovers.
                 #   ServiceBlockedError signals "try again later" — not a permanent failure.
                 raise ServiceBlockedError(
-                    "banned/blocked (555) — serious rate limit violation", service="anidb"
+                    "banned/blocked (555) — serious rate limit violation",
+                    service="anidb",
                 )
 
             else:
@@ -1134,11 +1135,16 @@ class AniDBEnrichmentHelper:
             logger.exception(f"Failed to fetch anime by AniDB ID {anidb_id}")
             return None
 
-    async def fetch_all_data(self, anidb_id: int) -> dict[str, Any] | None:
+    async def fetch_all(
+        self,
+        anidb_id: int,
+        output_path: str | None = None,
+    ) -> dict[str, Any] | None:
         """Fetch comprehensive AniDB data for an anime by ID.
 
         Args:
             anidb_id: The AniDB anime ID.
+            output_path: If provided, append the result as a JSONL record to this path.
 
         Returns:
             Comprehensive AniDB data including metadata, characters, episodes,
@@ -1151,10 +1157,12 @@ class AniDBEnrichmentHelper:
                 return None
 
             logger.info(f"Successfully fetched AniDB data for ID: {anidb_id}")
+            if output_path:
+                append_jsonl(output_path, anime_data)
             return anime_data
 
         except Exception:
-            logger.exception(f"Error in fetch_all_data for AniDB ID {anidb_id}")
+            logger.exception(f"Error in fetch_all for AniDB ID {anidb_id}")
             return None
 
     async def reset_circuit_breaker(self) -> bool:
@@ -1279,7 +1287,7 @@ async def main() -> int:
                 logger.warning(f"Failed to save XML: {e} (continuing anyway)")
 
         # Fetch data by ID
-        anime_data = await helper.fetch_all_data(args.anidb_id)
+        anime_data = await helper.fetch_all(args.anidb_id)
 
         if anime_data:
             # Save to file (sanitize path to prevent traversal attacks)

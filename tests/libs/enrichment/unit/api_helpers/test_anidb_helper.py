@@ -128,7 +128,7 @@ async def test_make_single_request_gzip(helper, mock_session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [503, 555, 404])
+@pytest.mark.parametrize("status_code", [503, 404])
 async def test_make_single_request_http_errors(helper, mock_session, status_code):
     """Test handling of various HTTP error statuses."""
     mock_session.get.return_value.__aenter__.return_value.status = status_code
@@ -136,8 +136,19 @@ async def test_make_single_request_http_errors(helper, mock_session, status_code
     params = {"request": "anime", "aid": 1}
     result = await helper._make_single_request(params, attempt=0)
     assert result is None
-    if status_code == 555:
-        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_make_single_request_555_raises_blocked(helper, mock_session):
+    """Status 555 (serious rate limit violation) raises ServiceBlockedError."""
+    from enrichment.exceptions import ServiceBlockedError
+
+    mock_session.get.return_value.__aenter__.return_value.status = 555
+    helper.session = mock_session
+    params = {"request": "anime", "aid": 1}
+    with pytest.raises(ServiceBlockedError):
+        await helper._make_single_request(params, attempt=0)
+    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
 
 
 @pytest.mark.asyncio
@@ -809,7 +820,7 @@ async def test_internal_parsers_granular(helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper.fetch_all_data",
+    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper.fetch_all",
     new_callable=AsyncMock,
 )
 @patch("argparse.ArgumentParser.parse_args")

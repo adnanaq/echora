@@ -134,10 +134,18 @@ async def test_fetch_episodes_maps_minimal_fields(tmp_path: Path):
     mapped1 = {"mal_id": 1, "title": "E1", "episode_number": 1}
     mapped2 = {"mal_id": 2, "title": "E2", "episode_number": 2}
 
+    async def _mock_fetch_episodes(urls, *, on_result=None):
+        results = [ep1, ep2]
+        if on_result:
+            for ep in results:
+                on_result(ep)
+        return results
+
     out = tmp_path / "eps.jsonl"
     with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_episodes", new=AsyncMock(return_value=[ep1, ep2])),
-        patch("enrichment.api_helpers.mal_helper.episode_from_mal", side_effect=[mapped1, mapped2]),
+        patch("enrichment.api_helpers.mal_helper.fetch_mal_episodes", side_effect=_mock_fetch_episodes),
+        # called twice per episode: once in on_result callback, once in return list comprehension
+        patch("enrichment.api_helpers.mal_helper.episode_from_mal", side_effect=[mapped1, mapped2, mapped1, mapped2]),
     ):
         helper = MalEnrichmentHelper("https://myanimelist.net/anime/21")
         helper._anime_url = "https://myanimelist.net/anime/21/One_Piece"
@@ -241,8 +249,13 @@ async def test_fetch_characters_returns_full_character_data(tmp_path: Path):
     mapped = {"name": "A", "role": "MAIN", "sources": ["https://myanimelist.net/character/100/A"]}
     out = tmp_path / "chars.jsonl"
 
+    async def _mock_fetch_characters(urls, *, on_result=None):
+        if on_result:
+            on_result(char)
+        return [char]
+
     with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_characters", new=AsyncMock(return_value=[char])),
+        patch("enrichment.api_helpers.mal_helper.fetch_mal_characters", side_effect=_mock_fetch_characters),
         patch("enrichment.api_helpers.mal_helper.character_from_mal", return_value=mapped),
     ):
         helper = MalEnrichmentHelper("https://myanimelist.net/anime/21")

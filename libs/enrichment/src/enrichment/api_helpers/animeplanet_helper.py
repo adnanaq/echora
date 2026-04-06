@@ -17,6 +17,8 @@ from typing import Any
 # Add project root to path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from common.utils.jsonl_utils import append_jsonl
+
 from ..crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
 from ..crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
 
@@ -148,14 +150,17 @@ class AnimePlanetEnrichmentHelper:
             logger.exception(f"Error fetching anime data for slug '{slug}'")
             return None
 
-    async def fetch_all_data(
-        self, offline_anime_data: dict[str, Any]
+    async def fetch_all(
+        self,
+        offline_anime_data: dict[str, Any],
+        output_path: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Locate an Anime-Planet URL in offline data, extract its slug, and fetch the corresponding Anime-Planet data.
 
         Parameters:
             offline_anime_data (Dict[str, Any]): Offline anime record expected to include a "sources" list and optionally a "title" for logging.
+            output_path: If provided, append the result as a JSONL record to this path.
 
         Returns:
             Dict[str, Any] or None: The assembled Anime-Planet data (possibly including characters) if a usable URL and slug are found, `None` otherwise.
@@ -172,7 +177,10 @@ class AnimePlanetEnrichmentHelper:
                 slug = await self.extract_slug_from_url(animeplanet_url)
                 if slug:
                     logger.info(f"Found Anime-Planet slug: {slug}")
-                    return await self.fetch_anime_data(slug)
+                    result = await self.fetch_anime_data(slug)
+                    if result and output_path:
+                        append_jsonl(output_path, result)
+                    return result
                 else:
                     logger.error(
                         f"Failed to extract slug from Anime-Planet URL: {animeplanet_url}"
@@ -188,7 +196,7 @@ class AnimePlanetEnrichmentHelper:
 
         except Exception:
             title = offline_anime_data.get("title", "Unknown")
-            logger.exception(f"Error in fetch_all_data for anime '{title}'")
+            logger.exception(f"Error in fetch_all for anime '{title}'")
             return None
 
     async def close(self) -> None:

@@ -368,14 +368,14 @@ class TestAniSearchEnrichmentHelper:
         assert result is None
 
     # ========================================
-    # Test: fetch_all_data
+    # Test: fetch_all
     # ========================================
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
-    async def test_fetch_all_data_complete(
+    async def test_fetch_all_complete(
         self,
         mock_char,
         mock_ep,
@@ -390,7 +390,7 @@ class TestAniSearchEnrichmentHelper:
         mock_ep.return_value = sample_episode_data
         mock_char.return_value = sample_character_data
 
-        result = await helper.fetch_all_data(18878)
+        result = await helper.fetch_all(18878)
 
         assert result is not None
         assert "japanese_title" in result
@@ -401,13 +401,13 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
-    async def test_fetch_all_data_anime_only(
+    async def test_fetch_all_anime_only(
         self, mock_anime, helper, sample_anime_data
     ):
         """Test fetching all data with episodes and characters disabled."""
         mock_anime.return_value = sample_anime_data
 
-        result = await helper.fetch_all_data(
+        result = await helper.fetch_all(
             18878, include_episodes=False, include_characters=False
         )
 
@@ -419,14 +419,14 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
-    async def test_fetch_all_data_with_episodes_only(
+    async def test_fetch_all_with_episodes_only(
         self, mock_ep, mock_anime, helper, sample_anime_data, sample_episode_data
     ):
         """Test fetching all data with episodes but no characters."""
         mock_anime.return_value = sample_anime_data
         mock_ep.return_value = sample_episode_data
 
-        result = await helper.fetch_all_data(
+        result = await helper.fetch_all(
             18878, include_episodes=True, include_characters=False
         )
 
@@ -437,25 +437,25 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
-    async def test_fetch_all_data_anime_failure(self, mock_anime, helper):
-        """Test fetch_all_data when anime data fetch fails."""
+    async def test_fetch_all_anime_failure(self, mock_anime, helper):
+        """Test fetch_all when anime data fetch fails."""
         mock_anime.return_value = None
 
-        result = await helper.fetch_all_data(18878)
+        result = await helper.fetch_all(18878)
 
         assert result is None
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
-    async def test_fetch_all_data_episode_failure_graceful(
+    async def test_fetch_all_episode_failure_graceful(
         self, mock_ep, mock_anime, helper, sample_anime_data
     ):
-        """Test fetch_all_data continues when episode fetch fails (graceful degradation)."""
+        """Test fetch_all continues when episode fetch fails (graceful degradation)."""
         mock_anime.return_value = sample_anime_data
         mock_ep.side_effect = Exception("Episode fetch failed")
 
-        result = await helper.fetch_all_data(18878, include_episodes=True)
+        result = await helper.fetch_all(18878, include_episodes=True)
 
         # Should still return anime data even though episodes failed
         assert result is not None
@@ -465,14 +465,14 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
-    async def test_fetch_all_data_character_failure_graceful(
+    async def test_fetch_all_character_failure_graceful(
         self, mock_char, mock_anime, helper, sample_anime_data
     ):
-        """Test fetch_all_data continues when character fetch fails (graceful degradation)."""
+        """Test fetch_all continues when character fetch fails (graceful degradation)."""
         mock_anime.return_value = sample_anime_data
         mock_char.side_effect = Exception("Character fetch failed")
 
-        result = await helper.fetch_all_data(18878, include_characters=True)
+        result = await helper.fetch_all(18878, include_characters=True)
 
         # Should still return anime data even though characters failed
         assert result is not None
@@ -482,14 +482,14 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_episodes")
-    async def test_fetch_all_data_episode_returns_none(
+    async def test_fetch_all_episode_returns_none(
         self, mock_ep, mock_anime, helper, sample_anime_data
     ):
-        """Test fetch_all_data when episode fetch returns None."""
+        """Test fetch_all when episode fetch returns None."""
         mock_anime.return_value = sample_anime_data
         mock_ep.return_value = None
 
-        result = await helper.fetch_all_data(18878, include_episodes=True)
+        result = await helper.fetch_all(18878, include_episodes=True)
 
         assert result is not None
         assert "episodes" not in result  # Episodes not added when None
@@ -497,30 +497,30 @@ class TestAniSearchEnrichmentHelper:
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_characters")
-    async def test_fetch_all_data_character_returns_none(
+    async def test_fetch_all_character_returns_none(
         self, mock_char, mock_anime, helper, sample_anime_data
     ):
-        """Test fetch_all_data when character fetch returns None."""
+        """Test fetch_all when character fetch returns None."""
         mock_anime.return_value = sample_anime_data
         mock_char.return_value = None
 
-        result = await helper.fetch_all_data(18878, include_characters=True)
+        result = await helper.fetch_all(18878, include_characters=True)
 
         assert result is not None
         assert "characters" not in result  # Characters not added when None
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
-    async def test_fetch_all_data_exception(self, mock_anime, helper):
-        """Test exception handling in fetch_all_data outer try-except (lines 219-221)."""
+    async def test_fetch_all_exception(self, mock_anime, helper):
+        """Test exception handling in fetch_all outer try-except (lines 219-221)."""
         mock_anime.side_effect = Exception("General error")
 
-        result = await helper.fetch_all_data(18878)
+        result = await helper.fetch_all(18878)
 
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_episode_method_raises_exception(
+    async def test_fetch_all_episode_method_raises_exception(
         self, helper, sample_anime_data
     ):
         """Test exception handling when fetch_episode_data itself raises (lines 198-199)."""
@@ -535,7 +535,7 @@ class TestAniSearchEnrichmentHelper:
                 "fetch_episode_data",
                 side_effect=Exception("Episode method error"),
             ):
-                result = await helper.fetch_all_data(18878, include_episodes=True)
+                result = await helper.fetch_all(18878, include_episodes=True)
 
                 # Should still return anime data despite episode method exception
                 assert result is not None
@@ -543,11 +543,11 @@ class TestAniSearchEnrichmentHelper:
                 assert "episodes" not in result
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_character_method_raises_exception(
+    async def test_fetch_all_character_method_raises_exception(
         self, helper, sample_anime_data
     ):
         """
-        Verify fetch_all_data returns anime information and omits characters if fetch_character_data raises an exception.
+        Verify fetch_all returns anime information and omits characters if fetch_character_data raises an exception.
 
         Patches the AniSearch anime fetch to return sample data and forces helper.fetch_character_data to raise; asserts the combined result is not None, contains anime fields (e.g., "japanese_title"), and does not include a "characters" key.
         """
@@ -562,7 +562,7 @@ class TestAniSearchEnrichmentHelper:
                 "fetch_character_data",
                 side_effect=Exception("Character method error"),
             ):
-                result = await helper.fetch_all_data(18878, include_characters=True)
+                result = await helper.fetch_all(18878, include_characters=True)
 
                 # Should still return anime data despite character method exception
                 assert result is not None
@@ -570,14 +570,14 @@ class TestAniSearchEnrichmentHelper:
                 assert "characters" not in result
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_outer_exception_handler(self, helper):
+    async def test_fetch_all_outer_exception_handler(self, helper):
         """Test outer exception handler when exception occurs outside inner try-except blocks."""
         with patch.object(
             helper,
             "fetch_anime_data",
             side_effect=RuntimeError("Outer handler test"),
         ):
-            result = await helper.fetch_all_data(
+            result = await helper.fetch_all(
                 18878, include_episodes=False, include_characters=False
             )
 

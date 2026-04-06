@@ -5,6 +5,8 @@ import re
 from types import TracebackType
 from typing import Any
 
+from common.utils.jsonl_utils import append_jsonl
+
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
 from ..crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
@@ -159,11 +161,12 @@ class AniSearchEnrichmentHelper:
             logger.exception(f"Error fetching character data for ID {anisearch_id}")
             return None
 
-    async def fetch_all_data(
+    async def fetch_all(
         self,
         anisearch_id: int,
         include_episodes: bool = True,
         include_characters: bool = True,
+        output_path: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Fetches anime data from AniSearch and enriches it with optional episodes and characters.
@@ -222,10 +225,12 @@ class AniSearchEnrichmentHelper:
             logger.info(
                 f"Successfully fetched all AniSearch data for ID {anisearch_id}"
             )
+            if output_path:
+                append_jsonl(output_path, anime_data)
             return anime_data
 
         except Exception:
-            logger.exception(f"Error in fetch_all_data for ID {anisearch_id}")
+            logger.exception(f"Error in fetch_all for ID {anisearch_id}")
             return None
 
     async def close(self) -> None:

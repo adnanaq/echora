@@ -91,7 +91,9 @@ class KitsuEnrichmentHelper:
                     payload = cast(dict[str, Any], await response.json())
                     from_cache = bool(getattr(response, "from_cache", False))
                     payload["_from_cache"] = from_cache
-                    logger.debug(f"[Kitsu] {'CACHE' if from_cache else 'LIVE '} {response.url}")
+                    logger.debug(
+                        f"{'CACHE' if from_cache else 'LIVE'} {response.url}"
+                    )
                     return payload
 
         return await retry_with_backoff(
@@ -317,7 +319,7 @@ class KitsuEnrichmentHelper:
         Returns:
             Canonical anime dict, or ``None`` if the anime was not found.
         """
-        logger.info(f"[Kitsu] Fetching anime ID {anime_id} …")
+        logger.info(f"Fetching Kitsu anime for: {anime_id}")
         async with (
             _cache_manager.get_aiohttp_session(
                 "kitsu", timeout=aiohttp.ClientTimeout(total=30)
@@ -359,7 +361,7 @@ class KitsuEnrichmentHelper:
         anime_model.genres = genres
         anime_model.themes = themes
         result = anime_from_kitsu(anime_model)
-        logger.info(f"[Kitsu] Anime done: {result.get('title', anime_id)}")
+        logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
 
         if output_path:
             _write_jsonl(output_path, [result])
@@ -384,7 +386,7 @@ class KitsuEnrichmentHelper:
         Returns:
             List of canonical episode dicts.
         """
-        logger.info(f"[Kitsu] Fetching episodes for anime ID {anime_id} …")
+        logger.info(f"Fetching Kitsu episodes for: {anime_id}")
         raw_episodes = await self.get_anime_episodes(anime_id, session=session)
         total = len(raw_episodes)
         results: list[dict[str, Any]] = []
@@ -392,7 +394,7 @@ class KitsuEnrichmentHelper:
             ep = episode_from_kitsu(
                 KitsuEpisode.model_validate(ep_raw), anime_slug=anime_slug
             )
-            logger.debug(f"[Kitsu] Episode {i}/{total}: {ep.get('title', '?')}")
+            logger.debug(f"Episode {i}/{total}: {ep.get('title', '?')}")
             results.append(ep)
             if output_path:
                 _append_jsonl(output_path, ep)
@@ -419,11 +421,10 @@ class KitsuEnrichmentHelper:
         Returns:
             List of canonical character dicts.
         """
-        logger.info(f"[Kitsu] Fetching characters for anime ID {anime_id} …")
+        logger.info(f"Fetching Kitsu characters for: {anime_id}")
         media_chars = await self.get_anime_characters(anime_id, session=session)
         resolved = [char for char in media_chars if char.character is not None]
         total = len(resolved)
-        logger.info(f"[Kitsu] {total} character(s) to process")
 
         sem = asyncio.Semaphore(5)
 
@@ -457,7 +458,7 @@ class KitsuEnrichmentHelper:
             except Exception:
                 logger.exception(f"character_from_kitsu failed for mediaChar {char.id}")
                 return None
-            logger.debug(f"[Kitsu] Character {char_name} ({total} total)")
+            logger.debug(f"Character {char_name} ({total} total)")
             if output_path:
                 _append_jsonl(output_path, result)
             return result
@@ -483,6 +484,7 @@ class KitsuEnrichmentHelper:
         Returns:
             ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
         """
+        logger.info(f"Fetching Kitsu data for: {anime_id}")
         try:
             anime_path = (
                 os.path.join(output_dir, "kitsu_anime.jsonl") if output_dir else None
@@ -513,9 +515,14 @@ class KitsuEnrichmentHelper:
 
                 canonical_episodes, canonical_characters = await asyncio.gather(
                     self.fetch_episodes(
-                        anime_id, anime_slug=anime_slug, output_path=episodes_path, session=session
+                        anime_id,
+                        anime_slug=anime_slug,
+                        output_path=episodes_path,
+                        session=session,
                     ),
-                    self.fetch_characters(anime_id, output_path=characters_path, session=session),
+                    self.fetch_characters(
+                        anime_id, output_path=characters_path, session=session
+                    ),
                     return_exceptions=True,
                 )
 
@@ -529,6 +536,8 @@ class KitsuEnrichmentHelper:
                     f"Kitsu characters fetch failed for ID {anime_id}: {canonical_characters}"
                 )
                 canonical_characters = []
+            logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
+            logger.info(f"Kitsu characters fetched: {len(canonical_characters)} characters")
         except Exception:
             logger.exception(f"Kitsu fetch_all failed for ID {anime_id}")
             return None
@@ -552,7 +561,6 @@ class KitsuEnrichmentHelper:
         exc_tb: TracebackType | None,
     ) -> bool:
         return False
-
 
 
 async def main() -> int:
