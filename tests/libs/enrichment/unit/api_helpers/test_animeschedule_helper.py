@@ -267,9 +267,10 @@ async def test_fetch_writes_jsonl_output(mock_cache, mock_mapper):
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
-async def test_fetch_client_error_returns_none(mock_cache):
+async def test_fetch_client_error_raises_service_network_error(mock_cache):
     import aiohttp
     from enrichment.api_helpers.animeschedule_helper import fetch_all
+    from enrichment.exceptions import ServiceNetworkError
 
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError("conn error"))
@@ -278,15 +279,17 @@ async def test_fetch_client_error_returns_none(mock_cache):
     session.get = MagicMock(return_value=cm)
     mock_cache.get_aiohttp_session.return_value = session
 
-    assert await fetch_all("Test Anime") is None
+    with pytest.raises(ServiceNetworkError):
+        await fetch_all("Test Anime")
     session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
-async def test_fetch_json_decode_error_returns_none(mock_cache):
+async def test_fetch_json_decode_error_raises_service_parse_error(mock_cache):
     import json as _json
     from enrichment.api_helpers.animeschedule_helper import fetch_all
+    from enrichment.exceptions import ServiceParseError
 
     r = AsyncMock()
     r.raise_for_status = MagicMock()
@@ -294,15 +297,17 @@ async def test_fetch_json_decode_error_returns_none(mock_cache):
     session = _make_session(r)
     mock_cache.get_aiohttp_session.return_value = session
 
-    assert await fetch_all("Test Anime") is None
+    with pytest.raises(ServiceParseError):
+        await fetch_all("Test Anime")
     session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
-async def test_fetch_http_error_returns_none(mock_cache):
+async def test_fetch_http_error_raises_service_network_error(mock_cache):
     import aiohttp
     from enrichment.api_helpers.animeschedule_helper import fetch_all
+    from enrichment.exceptions import ServiceNetworkError
 
     r = AsyncMock()
     r.raise_for_status = MagicMock(
@@ -313,7 +318,8 @@ async def test_fetch_http_error_returns_none(mock_cache):
     session = _make_session(r)
     mock_cache.get_aiohttp_session.return_value = session
 
-    assert await fetch_all("Test Anime") is None
+    with pytest.raises(ServiceNetworkError):
+        await fetch_all("Test Anime")
     session.close.assert_awaited_once()
 
 

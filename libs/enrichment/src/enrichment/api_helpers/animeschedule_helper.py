@@ -27,9 +27,11 @@ import logging
 import sys
 
 import aiohttp
+from common.utils.jsonl_utils import append_jsonl
 from http_cache.instance import http_cache_manager as _cache_manager
 
 from enrichment.api_helpers.animeschedule_models import AnimScheduleAnime
+from enrichment.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.mappers.animeschedule_mapper import anime_from_animeschedule
 
 logger = logging.getLogger(__name__)
@@ -52,9 +54,7 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
         The first matching candidate dict, or None if no match is found.
     """
     normalized = {
-        s.removeprefix("https://").removeprefix("http://")
-        for s in sources
-        if s
+        s.removeprefix("https://").removeprefix("http://") for s in sources if s
     }
 
     for candidate in candidates:
@@ -66,10 +66,27 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
             # Support both ID-only ("myanimelist.net/anime/21") and full slug
             # ("myanimelist.net/anime/21/One_Piece") on either side — match if
             # either string is a prefix of the other.
-            if any(partial.startswith(src) or src.startswith(partial) for src in normalized):
+            if any(
+                partial.startswith(src) or src.startswith(partial) for src in normalized
+            ):
                 return candidate
 
     return None
+
+
+class AnimescheduleEnrichmentHelper:
+    """Class wrapper around fetch_all for registry-based initialization in api_fetcher."""
+
+    async def fetch_all(
+        self,
+        search_term: str,
+        sources: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict | None:
+        return await fetch_all(search_term, sources=sources, output_path=output_path)
+
+    async def close(self) -> None:
+        pass  # session is created and closed per-call inside fetch_all
 
 
 async def fetch_all(
@@ -93,13 +110,13 @@ async def fetch_all(
     Returns:
         Canonical anime dict if a match is found, None otherwise.
     """
-    print(f"🔄 Fetching AnimSchedule data for: {search_term}")
+    logger.info(f"Fetching AnimSchedule data for: {search_term}")
 
     session = _cache_manager.get_aiohttp_session("animeschedule")
 
     try:
         search_url = f"https://animeschedule.net/api/v3/anime?q={search_term}"
-        print(f"  📡 Searching: {search_url}")
+        logger.debug(f"AnimSchedule search URL: {search_url}")
 
         async with session.get(search_url) as response:
             response.raise_for_status()
@@ -107,13 +124,13 @@ async def fetch_all(
 
         candidates: list[dict] = (search_results or {}).get("anime", [])
         if not candidates:
-            print("❌ No results found on AnimSchedule")
+            logger.warning(f"AnimSchedule returned no results for: {search_term}")
             return None
 
         if sources:
             raw_data = _match_by_sources(candidates, sources)
             if raw_data is None:
-                print("❌ No AnimSchedule result matched the provided sources")
+                logger.warning(f"No AnimSchedule result matched sources for: {search_term}")
                 return None
         else:
             raw_data = candidates[0]
@@ -122,25 +139,23 @@ async def fetch_all(
         result = anime_from_animeschedule(anime)
 
         if output_path:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
-            print(f"Data written to {output_path}")
+            append_jsonl(output_path, result)
 
-        print("✅ AnimSchedule data fetched successfully")
+        logger.info(f"AnimSchedule data fetched: {search_term}")
         return result
 
     except aiohttp.ClientError as e:
-        print(f"❌ AnimSchedule API error: {e}")
-        return None
+        raise ServiceNetworkError(service="animeschedule", cause=e) from e
     except json.JSONDecodeError as e:
-        print(f"❌ JSON parsing error: {e}")
-        return None
+        raise ServiceParseError(service="animeschedule", cause=e) from e
     finally:
         await session.close()
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="Fetch anime data from AnimSchedule API.")
+    parser = argparse.ArgumentParser(
+        description="Fetch anime data from AnimSchedule API."
+    )
     parser.add_argument("search_term", type=str, help="Anime title to search for")
     parser.add_argument(
         "--output",
