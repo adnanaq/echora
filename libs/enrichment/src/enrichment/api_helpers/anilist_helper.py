@@ -24,9 +24,9 @@ from ..exceptions import (
     ServiceNetworkError,
     ServiceRateLimitedError,
 )
+from ..mappers.anilist_mapper import anime_from_anilist, character_from_anilist
 from .anilist.anilist_anime_models import AniListAnime
 from .anilist.anilist_character_models import AniListCharacterEdge
-from ..mappers.anilist_mapper import anime_from_anilist, character_from_anilist
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,9 @@ class AniListEnrichmentHelper:
                 try:
                     await self.session.close()
                 except Exception:
-                    logger.debug("Ignoring error while closing old session", exc_info=True)
+                    logger.debug(
+                        "Ignoring error while closing old session", exc_info=True
+                    )
             self.session = http_cache_manager.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
@@ -76,7 +78,7 @@ class AniListEnrichmentHelper:
         await self._ensure_session()
         assert self.session is not None  # guaranteed by _ensure_session
 
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        headers = {"Content-Type": "application/json", "Accept": "application/json", "X-Hishel-Body-Key": "true"}
         payload = {"query": query, "variables": variables or {}}
 
         max_rate_limit_waits = 3
@@ -141,7 +143,9 @@ class AniListEnrichmentHelper:
                 raise ServiceNetworkError(service="anilist", cause=exc) from exc
 
         # Unreachable — loop always raises or returns
-        raise AssertionError("AniList rate-limit wait loop exited without raising or returning")  # pragma: no cover
+        raise AssertionError(
+            "AniList rate-limit wait loop exited without raising or returning"
+        )  # pragma: no cover
 
     async def _make_request(
         self, query: str, variables: dict[str, Any] | None = None
@@ -401,7 +405,7 @@ class AniListEnrichmentHelper:
             out_path = os.path.join(output_dir, "anilist.jsonl")
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(json.dumps(canonical, ensure_ascii=False) + "\n")
-            logger.info(f"Saved canonical AniList data to {out_path}")
+            logger.debug(f"Saved canonical AniList data to {out_path}")
 
         return canonical
 
@@ -435,7 +439,7 @@ class AniListEnrichmentHelper:
             with open(out_path, "w", encoding="utf-8") as f:
                 for char in canonical:
                     f.write(json.dumps(char, ensure_ascii=False) + "\n")
-            logger.info(f"Saved {len(canonical)} canonical characters to {out_path}")
+            logger.debug(f"Saved {len(canonical)} canonical characters to {out_path}")
 
         return canonical
 
@@ -452,8 +456,12 @@ class AniListEnrichmentHelper:
         Returns:
             Tuple of (canonical anime dict or None, list of canonical character dicts).
         """
+        logger.info(f"Fetching AniList data for: {anilist_id}")
         anime = await self.fetch_anime_canonical(anilist_id, output_dir)
+        if anime:
+            logger.info(f"AniList anime fetched: {anime.get('title', anilist_id)}")
         characters = await self.fetch_characters_canonical(anilist_id, output_dir)
+        logger.info(f"AniList characters fetched: {len(characters)} characters")
         return anime, characters
 
     async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
@@ -514,7 +522,9 @@ async def main() -> int:
     Returns:
         int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
     """
-    parser = argparse.ArgumentParser(description="Fetch AniList data for an anime entry")
+    parser = argparse.ArgumentParser(
+        description="Fetch AniList data for an anime entry"
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")
     group.add_argument("--anilist-id", type=int, help="AniList ID to fetch")
@@ -545,7 +555,9 @@ async def main() -> int:
             await helper.fetch_characters_canonical(anilist_id, args.output)
 
         if canonical:
-            logger.info(f"Data saved to {args.output}/ (anilist.jsonl, anilist_characters.jsonl)")
+            logger.info(
+                f"Data saved to {args.output}/ (anilist.jsonl, anilist_characters.jsonl)"
+            )
             return 0
         else:
             logger.error("No data found for the given ID.")

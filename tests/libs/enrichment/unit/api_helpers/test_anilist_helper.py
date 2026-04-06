@@ -18,8 +18,8 @@ import pytest
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
 from enrichment.exceptions import (
     AniListGraphQLError,
-    AniListNetworkError,
-    AniListRateLimitError,
+    ServiceNetworkError,
+    ServiceRateLimitedError,
 )
 
 
@@ -443,7 +443,7 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper2._session_event_loop = asyncio.get_running_loop()
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(AniListRateLimitError):
+            with pytest.raises(ServiceRateLimitedError):
                 await helper2._make_request("query { test }")
 
             # Should give up after 3 attempts
@@ -537,7 +537,7 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        with pytest.raises(AniListNetworkError):
+        with pytest.raises(ServiceNetworkError):
             await helper._make_request("query { test }")
 
         # Should only attempt once (no retry for 4xx)
@@ -548,9 +548,9 @@ class TestAniListEnrichmentHelperMakeRequest:
         """Test handling of HTTP errors."""
         helper = AniListEnrichmentHelper()
 
-        # Create exception for raise_for_status to raise
+        # Create exception for raise_for_status to raise (4xx → ServiceNetworkError)
         error = aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=500
+            request_info=MagicMock(), history=(), status=400
         )
 
         mock_response = AsyncMock()
@@ -572,8 +572,8 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        # Should raise AniListNetworkError on HTTP errors
-        with pytest.raises(AniListNetworkError):
+        # Should raise ServiceNetworkError on HTTP errors
+        with pytest.raises(ServiceNetworkError):
             await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
@@ -589,8 +589,8 @@ class TestAniListEnrichmentHelperMakeRequest:
         helper.session = mock_session
         helper._session_event_loop = asyncio.get_running_loop()
 
-        # Should raise AniListNetworkError on network exception
-        with pytest.raises(AniListNetworkError):
+        # Should raise ServiceNetworkError on network exception
+        with pytest.raises(ServiceNetworkError):
             await helper._make_request("query { test }")
 
 
@@ -757,8 +757,8 @@ class TestAniListEnrichmentHelperPagination:
             assert len(result) == 4
             assert result[2] == {"node": {"id": 3}}
             assert helper._make_request.await_count == 2
-            # Sleep happens after EACH page fetch (including the last one)
-            assert mock_sleep.await_count == 2
+            # Sleep happens between pages only (not after the last page)
+            assert mock_sleep.await_count == 1
             mock_sleep.assert_awaited_with(0.5)
 
     @pytest.mark.asyncio
@@ -1085,7 +1085,7 @@ class TestAniListEnrichmentHelperEdgeCases:
         helper._session_event_loop = asyncio.get_running_loop()
 
         # Should raise on JSON parse error
-        with pytest.raises(AniListNetworkError):
+        with pytest.raises(ServiceNetworkError):
             await helper._make_request("query { test }")
 
     @pytest.mark.asyncio
