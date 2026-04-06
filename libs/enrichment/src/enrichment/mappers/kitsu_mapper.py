@@ -5,6 +5,7 @@ Pure value normalization functions. No I/O, no side effects.
 Maps validated Kitsu models to canonical Anime / Character / Episode field dicts.
 """
 
+import html
 import re
 from typing import Any
 
@@ -29,6 +30,7 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
+
 from enrichment.api_helpers.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
@@ -58,17 +60,72 @@ _LOCALE_TO_LANGUAGE: dict[str, str] = {
 }
 
 
+_PREAMBLE_START_RE = re.compile(r"^[A-Za-z][A-Za-z /]+:\s*")
+_VALUE_CONT_RE = re.compile(r"^[\d(]")
+# Prose start embedded in a value-continuation chunk: after ")" or a digit, a Capital word
+_PROSE_IN_VALUE_RE = re.compile(r"[)\d]\s+([A-Z][a-z])")
+
+
+def _strip_preamble(text: str | None) -> str | None:
+    """Discard the run-on metadata preamble that precedes the narrative text.
+
+    Kitsu character descriptions sometimes start with a flat key-value block:
+        "Name: Luffy Age: 17; 19 Birthdate: May 5, Taurus Height: 172 cm  Luffy is …"
+
+    Complication: some preambles contain internal double-spaces (e.g. after a
+    zodiac sign) that create multiple key-value chunks when split. The algorithm
+    therefore splits on *all* double-space runs and skips chunks that still look
+    like preamble data, collecting only the first non-preamble chunk onward as
+    narrative.
+
+    An additional edge case: "Key:  value" (double-space between key and value)
+    may place numeric value text and narrative in the same chunk. In that case
+    the regex looks for a capitalized prose word following ")" or a digit.
+
+    Returns ``None`` when the description is preamble-only with no narrative.
+    """
+    if not text:
+        return None
+    text = text.strip()
+    if not _PREAMBLE_START_RE.match(text):
+        return text or None
+
+    parts = re.split(r"  +", text)
+    narrative_parts: list[str] = []
+    in_narrative = False
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if in_narrative:
+            narrative_parts.append(part)
+        elif _PREAMBLE_START_RE.match(part):
+            continue  # still in preamble key-value block
+        elif _VALUE_CONT_RE.match(part):
+            # Value continuation after "Key:  value" split — search for prose start
+            m = _PROSE_IN_VALUE_RE.search(part)
+            if m:
+                narrative_parts.append(part[m.start(1) :])
+                in_narrative = True
+        else:
+            narrative_parts.append(part)
+            in_narrative = True
+
+    return " ".join(narrative_parts).strip() or None
+
+
 def _strip_html(text: str | None) -> str | None:
-    """Strip HTML tags and decode common HTML entities."""
+    """Strip HTML tags, decode HTML entities, and repair cp1252-as-UTF-8 mojibake."""
     if not text:
         return None
     text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"&amp;", "&", text)
-    text = re.sub(r"&lt;", "<", text)
-    text = re.sub(r"&gt;", ">", text)
-    text = re.sub(r"&quot;", '"', text)
-    text = re.sub(r"&#39;", "'", text)
-    return text.strip() or None
+    text = html.unescape(text).strip()
+    try:
+        text = text.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    return text or None
 
 
 def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
@@ -224,7 +281,7 @@ def character_from_kitsu(char: KitsuMediaCharacter) -> dict[str, Any]:
         name=attrs.canonicalName or attrs.name or "Unknown",
         name_native=names.ja_jp,
         name_variations=attrs.otherNames,
-        description=_strip_html(attrs.description),
+        description=_strip_preamble(_strip_html(attrs.description)),
         images=[attrs.image.original] if attrs.image and attrs.image.original else [],
         roles=[CharacterRole(char.attributes.role or "")],
         sources=sources,
