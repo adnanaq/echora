@@ -24,11 +24,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
+from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
     get_mal_docker_browser_config,
     get_mal_docker_crawler_config,
-    get_mal_scraping_limiter,
     parse_duration_seconds,
     parse_iso_date,
 )
@@ -38,7 +39,6 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeVARef,
     MalScrapedEpisode,
 )
-
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -47,10 +47,9 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = get_mal_scraping_limiter()
+_limiter = MalRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
 
 _EPISODE_BATCH_SIZE = 35
-_EPISODE_BATCH_DELAY_SECONDS = 10.0
 
 
 def _get_episode_schema() -> dict[str, Any]:
@@ -86,8 +85,7 @@ def _get_episode_schema() -> dict[str, Any]:
             {
                 "name": "subtitle_raw",
                 "selector": (
-                    "//h2[starts-with(normalize-space(.), '#')]"
-                    "/following-sibling::p[1]"
+                    "//h2[starts-with(normalize-space(.), '#')]/following-sibling::p[1]"
                 ),
                 "type": "text",
             },
@@ -262,11 +260,11 @@ def _parse_episode_characters(
             va_matches = re.finditer(
                 r'<a[^>]+href="[^"]*/people/(\d+)[^"]*"[^>]*>(.*?)</a>\s*\(([^)]+)\)',
                 voice_actors_html,
-                re.DOTALL
+                re.DOTALL,
             )
             for m in va_matches:
                 person_id = int(m.group(1))
-                va_name = re.sub(r'<[^>]+>', '', m.group(2)).strip()
+                va_name = re.sub(r"<[^>]+>", "", m.group(2)).strip()
                 language = m.group(3).strip()
                 voice_actors.append(
                     EpisodeVARef(
@@ -285,7 +283,9 @@ def _parse_episode_characters(
     return characters
 
 
-def _parse_episode_staff(raw_items: list[dict[str, Any]] | None) -> list[EpisodeStaffRef]:
+def _parse_episode_staff(
+    raw_items: list[dict[str, Any]] | None,
+) -> list[EpisodeStaffRef]:
     if not raw_items:
         return []
 
@@ -416,10 +416,10 @@ async def fetch_mal_episode(identifier: str) -> MalScrapedEpisode | None:
         logger.error(f"Cannot parse episode_number from URL: {url}")
         return None
     episode_number = int(m.group(1))
-    logger.info(f"[episode] Fetching episode {episode_number}: {url}")
+    logger.debug(f"Fetching episode {episode_number}: {url}")
     raw = await _fetch_mal_episode_data(url)
     if not raw:
-        logger.error(f"[episode] Failed to fetch episode {episode_number}")
+        logger.error(f"Failed to fetch episode {episode_number}")
         return None
 
     return _build_episode_from_raw(raw, episode_number, url)
@@ -444,10 +444,8 @@ async def fetch_mal_episodes(
     Returns:
         List aligned to ``identifiers`` — None for any failed fetch.
     """
-    from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-
     urls = [_normalize_episode_url(i) for i in identifiers]
-    logger.info(f"[episodes] Fetching {len(urls)} episodes...")
+    logger.info(f"Fetching {len(urls)} MAL episodes...")
 
     cached_values, missing_indices = await _fetch_mal_episode_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
@@ -483,8 +481,8 @@ async def fetch_mal_episodes(
     missing_urls = [urls[i] for i in missing_indices]
 
     for offset in range(0, len(missing_urls), _EPISODE_BATCH_SIZE):
-        chunk_urls = missing_urls[offset: offset + _EPISODE_BATCH_SIZE]
-        chunk_indices = missing_indices[offset: offset + _EPISODE_BATCH_SIZE]
+        chunk_urls = missing_urls[offset : offset + _EPISODE_BATCH_SIZE]
+        chunk_indices = missing_indices[offset : offset + _EPISODE_BATCH_SIZE]
         cache_values: list[dict[str, Any] | None] = [None] * len(chunk_urls)
 
         await _limiter.acquire()
@@ -524,7 +522,9 @@ async def fetch_mal_episodes(
 
             raw_for_cache = raw_list[0]
             raw_for_cache["_url"] = url
-            episodes[out_index] = _build_episode_from_raw(raw_for_cache, int(m.group(1)), url)
+            episodes[out_index] = _build_episode_from_raw(
+                raw_for_cache, int(m.group(1)), url
+            )
             cache_values[idx_in_chunk] = raw_for_cache
             if on_result is not None and episodes[out_index] is not None:
                 on_result(episodes[out_index])
@@ -533,9 +533,6 @@ async def fetch_mal_episodes(
             chunk_urls,
             cache_values,
         )
-
-        if offset + _EPISODE_BATCH_SIZE < len(missing_urls):
-            await asyncio.sleep(_EPISODE_BATCH_DELAY_SECONDS)
 
     return episodes
 
@@ -560,9 +557,11 @@ async def main() -> int:
         return 1
 
     from enrichment.mappers.mal_mapper import episode_from_mal
-    from pathlib import Path
+
     canonical = episode_from_mal(ep)
-    Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info(f"Fetched Episode {ep.episode_number}: {ep.title}")
     return 0
 

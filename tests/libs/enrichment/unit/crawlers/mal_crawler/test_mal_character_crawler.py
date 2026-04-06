@@ -482,6 +482,7 @@ async def test_fetch_mal_character_data_success(mocker) -> None:
 async def test_fetch_mal_character_returns_none_when_no_data(mocker) -> None:
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler._fetch_mal_character_data",
+        new_callable=AsyncMock,
         return_value=None,
     )
     result = await fetch_mal_character("https://myanimelist.net/character/40")
@@ -493,6 +494,7 @@ async def test_fetch_mal_character_returns_parsed_character(mocker) -> None:
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None, "favorites": "0"}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler._fetch_mal_character_data",
+        new_callable=AsyncMock,
         return_value=(raw, "https://myanimelist.net/character/40/Luffy"),
     )
     result = await fetch_mal_character("https://myanimelist.net/character/40")
@@ -638,7 +640,7 @@ async def test_fetch_mal_characters_uses_cache_and_merges_results(mocker) -> Non
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
-    urls = [f"https://myanimelist.net/character/{i}" for i in range(1, 26)]
+    urls = [f"https://myanimelist.net/character/{i}" for i in range(1, 32)]  # 31 URLs > _CHARACTER_BATCH_SIZE=30 → forces 2 batches
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None}
 
     mocker.patch.object(
@@ -652,12 +654,7 @@ async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
         "cache_batch_set",
         new=cache_set,
     )
-    sleep_mock = mocker.patch(
-        "enrichment.crawlers.mal_crawler.mal_character_crawler.asyncio.sleep",
-        new=AsyncMock(),
-    )
-
-    def _batch_result(batch_urls: list[str]) -> list[dict[str, str]]:
+    async def _batch_result(batch_urls: list[str], **kwargs) -> list[dict[str, str]]:
         return [
             {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
             for u in batch_urls
@@ -671,7 +668,6 @@ async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
     result = await fetch_mal_characters(urls)
     assert len(result) == len(urls)
     assert all(item is not None for item in result)
-    assert sleep_mock.await_count == 1
     assert cache_set.await_count == 2
 
 

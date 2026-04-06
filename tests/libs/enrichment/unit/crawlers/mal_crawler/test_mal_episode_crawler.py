@@ -377,11 +377,11 @@ async def test_fetch_mal_episodes_uses_cache_and_merges_results(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_episode_crawler.crawl_batch_urls",
-        return_value=[{
+        new=AsyncMock(return_value=[{
             "url": url2,
             "status_code": 200,
             "extracted_content": json.dumps([raw2]),
-        }],
+        }]),
     )
 
     result = await fetch_mal_episodes([url1, url2])
@@ -397,7 +397,7 @@ async def test_fetch_mal_episodes_uses_cache_and_merges_results(mocker) -> None:
 async def test_fetch_mal_episodes_chunks_requests(mocker) -> None:
     urls = [
         f"https://myanimelist.net/anime/21/One_Piece/episode/{i}"
-        for i in range(1, 26)
+        for i in range(1, 37)  # 36 URLs > _EPISODE_BATCH_SIZE=35 → forces 2 batches
     ]
     raw = {"title_header": "#1 - I'm Luffy!"}
 
@@ -412,12 +412,7 @@ async def test_fetch_mal_episodes_chunks_requests(mocker) -> None:
         "cache_batch_set",
         new=cache_set,
     )
-    sleep_mock = mocker.patch(
-        "enrichment.crawlers.mal_crawler.mal_episode_crawler.asyncio.sleep",
-        new=AsyncMock(),
-    )
-
-    def _batch_result(batch_urls: list[str]) -> list[dict[str, str]]:
+    async def _batch_result(batch_urls: list[str], **kwargs) -> list[dict[str, str]]:
         return [
             {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
             for u in batch_urls
@@ -431,5 +426,4 @@ async def test_fetch_mal_episodes_chunks_requests(mocker) -> None:
     result = await fetch_mal_episodes(urls)
     assert len(result) == len(urls)
     assert all(item is not None for item in result)
-    assert sleep_mock.await_count == 1
     assert cache_set.await_count == 2

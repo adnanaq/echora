@@ -23,10 +23,10 @@ from collections.abc import Callable
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
+from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
 from enrichment.crawlers.mal_crawler.mal_base import (
     get_mal_docker_browser_config,
     get_mal_docker_crawler_config,
-    get_mal_scraping_limiter,
     parse_number,
     parse_sidebar_field,
 )
@@ -43,10 +43,9 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = get_mal_scraping_limiter()
+_limiter = MalRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
 
 _CHARACTER_BATCH_SIZE = 30
-_CHARACTER_BATCH_DELAY_SECONDS = 10.0
 
 
 def _get_character_schema() -> dict[str, Any]:
@@ -77,7 +76,6 @@ def _get_character_schema() -> dict[str, Any]:
                 "type": "attribute",
                 "attribute": "data-src",
             },
-
             # Favorites count — plain text node in the left column td
             {
                 "name": "favorites",
@@ -111,11 +109,10 @@ def _extract_name_and_native(
     return name or raw, native
 
 
-
 def _extract_spoiler(div_html: str) -> str:
     """Extract the revealed text from a single <div class="spoiler"> block."""
     sc = re.search(
-        r'<span[^>]*spoiler_content[^>]*>.*?<br\s*/?>(.*?)</span>',
+        r"<span[^>]*spoiler_content[^>]*>.*?<br\s*/?>(.*?)</span>",
         div_html,
         re.DOTALL | re.IGNORECASE,
     )
@@ -142,6 +139,7 @@ def _tokenize_spoilers(html: str, spoiler_map: dict[str, str]) -> str:
     with all spoiler divs replaced. The internal <br> inside spoiler_content is
     eliminated, making subsequent <br>-based line splitting safe.
     """
+
     def _replace(m: re.Match[str]) -> str:
         token = f"__SPOILER_{len(spoiler_map)}__"
         spoiler_map[token] = _extract_spoiler(m.group(0))
@@ -271,7 +269,9 @@ def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
     section_html = va_section_match.group(1)
     results: list[MalVoiceActorRef] = []
 
-    for tr_match in re.finditer(r"<tr[^>]*>(.*?)</tr>", section_html, re.DOTALL | re.IGNORECASE):
+    for tr_match in re.finditer(
+        r"<tr[^>]*>(.*?)</tr>", section_html, re.DOTALL | re.IGNORECASE
+    ):
         row_html = tr_match.group(1)
 
         person_id: int | None = None
@@ -279,7 +279,8 @@ def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
         source_url = ""
         for link_match in re.finditer(
             r'<a[^>]*href="([^"]*myanimelist[^"]*/people/(\d+)/[^"]*)"[^>]*>(.*?)</a>',
-            row_html, re.DOTALL,
+            row_html,
+            re.DOTALL,
         ):
             candidate = re.sub(r"<[^>]+>", "", link_match.group(3)).strip()
             if candidate:
@@ -290,19 +291,25 @@ def _extract_voice_actors(content_html: str) -> list[MalVoiceActorRef]:
         if not person_id or not name:
             continue
 
-        lang_match = re.search(r"<small[^>]*>(.*?)</small>", row_html, re.DOTALL | re.IGNORECASE)
-        language = re.sub(r"<[^>]+>", "", lang_match.group(1)).strip() if lang_match else ""
+        lang_match = re.search(
+            r"<small[^>]*>(.*?)</small>", row_html, re.DOTALL | re.IGNORECASE
+        )
+        language = (
+            re.sub(r"<[^>]+>", "", lang_match.group(1)).strip() if lang_match else ""
+        )
 
         img_match = re.search(r'<img[^>]*(?:data-src|src)="([^"]+)"', row_html)
         image_url = img_match.group(1) if img_match else None
 
-        results.append(MalVoiceActorRef(
-            person_id=person_id,
-            name=name,
-            language=language,
-            image_url=image_url,
-            sources=[source_url] if source_url else [],
-        ))
+        results.append(
+            MalVoiceActorRef(
+                person_id=person_id,
+                name=name,
+                language=language,
+                image_url=image_url,
+                sources=[source_url] if source_url else [],
+            )
+        )
 
     return results
 
@@ -319,14 +326,17 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
     if not section_match:
         return results
 
-    for row_match in re.finditer(r"<tr[^>]*>(.*?)</tr>", section_match.group(1), re.DOTALL | re.IGNORECASE):
+    for row_match in re.finditer(
+        r"<tr[^>]*>(.*?)</tr>", section_match.group(1), re.DOTALL | re.IGNORECASE
+    ):
         row_html = row_match.group(1)
 
         url = title = ""
         entry_id = 0
         for link_match in re.finditer(
             r'<a[^>]*href="([^"]*(?:anime|manga)/(\d+)[^"]*)"[^>]*>(.*?)</a>',
-            row_html, re.DOTALL,
+            row_html,
+            re.DOTALL,
         ):
             title = re.sub(r"<[^>]+>", "", link_match.group(3)).strip()
             if title:
@@ -337,7 +347,9 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
             continue
 
         role: str | None = None
-        role_match = re.search(r"<small[^>]*>(.*?)</small>", row_html, re.DOTALL | re.IGNORECASE)
+        role_match = re.search(
+            r"<small[^>]*>(.*?)</small>", row_html, re.DOTALL | re.IGNORECASE
+        )
         if role_match:
             role_text = re.sub(r"<[^>]+>", "", role_match.group(1)).strip()
             if role_text:
@@ -432,10 +444,10 @@ async def fetch_mal_character(url: str) -> MalScrapedCharacter | None:
     Returns:
         MalScrapedCharacter if successful, None otherwise.
     """
-    logger.info(f"[character] Fetching character {url}...")
+    logger.debug(f"Fetching character {url}")
     fetched = await _fetch_mal_character_data(url)
     if not fetched:
-        logger.error(f"[character] Failed to fetch character {url}")
+        logger.error(f"Failed to fetch character {url}")
         return None
 
     raw, canonical_url = fetched
@@ -461,7 +473,7 @@ async def fetch_mal_characters(
     if not urls:
         return []
 
-    logger.info(f"[characters] Batch fetching {len(urls)} character details...")
+    logger.info(f"Batch fetching {len(urls)} MAL character details...")
 
     cached_values, missing_indices = await _fetch_mal_character_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
@@ -497,8 +509,8 @@ async def fetch_mal_characters(
     missing_urls = [urls[i] for i in missing_indices]
 
     for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
-        chunk_urls = missing_urls[offset: offset + _CHARACTER_BATCH_SIZE]
-        chunk_indices = missing_indices[offset: offset + _CHARACTER_BATCH_SIZE]
+        chunk_urls = missing_urls[offset : offset + _CHARACTER_BATCH_SIZE]
+        chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
         cache_values: list[tuple[dict[str, Any], str] | None] = [None] * len(chunk_urls)
 
         await _limiter.acquire()
@@ -516,7 +528,7 @@ async def fetch_mal_characters(
             url = result.get("metadata", {}).get("og:url") or result["url"]
             status = result.get("status_code")
             if status and status != 200:
-                logger.error(f"[character] HTTP {status} for character {url}")
+                logger.error(f"HTTP {status} for character {url}")
                 characters[out_index] = None
                 continue
             raw_list = json.loads(result.get("extracted_content") or "[]")
@@ -534,9 +546,6 @@ async def fetch_mal_characters(
             cache_values,
         )
 
-        if offset + _CHARACTER_BATCH_SIZE < len(missing_urls):
-            await asyncio.sleep(_CHARACTER_BATCH_DELAY_SECONDS)
-
     return characters
 
 
@@ -546,8 +555,14 @@ async def main() -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
     parser = argparse.ArgumentParser(description="Fetch MAL character data")
-    parser.add_argument("url", type=str, help="MAL character URL (e.g. https://myanimelist.net/character/40/Luffy)")
-    parser.add_argument("--output", type=str, default="mal_character.json", help="Output file path")
+    parser.add_argument(
+        "url",
+        type=str,
+        help="MAL character URL (e.g. https://myanimelist.net/character/40/Luffy)",
+    )
+    parser.add_argument(
+        "--output", type=str, default="mal_character.json", help="Output file path"
+    )
     args = parser.parse_args()
 
     char = await fetch_mal_character(args.url)
@@ -557,8 +572,11 @@ async def main() -> int:
     from pathlib import Path
 
     from enrichment.mappers.mal_mapper import character_from_mal
+
     canonical = character_from_mal(char)
-    Path(args.output).write_text(json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info(f"Done: {char.name}")
     return 0
 
