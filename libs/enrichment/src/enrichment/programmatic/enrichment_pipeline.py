@@ -136,7 +136,6 @@ class ProgrammaticEnrichmentPipeline:
                     "method": "programmatic",
                     "total_time": time.time() - start_time,
                     "timing_breakdown": self.timing_breakdown.copy(),
-                    "successful_apis": successful_apis,
                     "temp_directory": temp_dir,
                 },
             }

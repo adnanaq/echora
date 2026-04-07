@@ -1231,34 +1231,25 @@ async def main() -> int:
     helper = AniDBEnrichmentHelper()
 
     try:
-        # Fetch raw XML if requested (optional, non-blocking)
-        if args.save_xml is not None:
-            try:
-                params = {"request": "anime", "aid": args.anidb_id}
-                xml_response = await helper._make_request(params)
-                if xml_response:
-                    # Use default filename if flag provided without path
-                    xml_path = (
-                        args.save_xml
-                        if args.save_xml
-                        else f"anidb_{args.anidb_id}_raw.xml"
-                    )
-                    safe_xml_path = sanitize_output_path(xml_path)
-                    with open(safe_xml_path, "w", encoding="utf-8") as f:
-                        f.write(xml_response)
-                    logger.info(f"Raw XML saved to {safe_xml_path}")
-                else:
-                    logger.warning(
-                        "Failed to fetch XML for --save-xml (continuing anyway)"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to save XML: {e} (continuing anyway)")
+        params = {"request": "anime", "aid": args.anidb_id}
+        xml_response = await helper._make_request(params)
 
-        # Fetch data by ID
-        anime_data = await helper.fetch_all(args.anidb_id)
+        if not xml_response:
+            logger.error("No response from AniDB")
+            return 1
+
+        if args.save_xml is not None:
+            xml_path = (
+                args.save_xml if args.save_xml else f"anidb_{args.anidb_id}_raw.xml"
+            )
+            safe_xml_path = sanitize_output_path(xml_path)
+            with open(safe_xml_path, "w", encoding="utf-8") as f:
+                f.write(xml_response)
+            logger.info(f"Raw XML saved to {safe_xml_path}")
+
+        anime_data = await helper._parse_anime_xml(xml_response)
 
         if anime_data:
-            # Save to file (sanitize path to prevent traversal attacks)
             safe_path = sanitize_output_path(args.output)
             with open(safe_path, "w", encoding="utf-8") as f:
                 json.dump(anime_data, f, indent=2, ensure_ascii=False)
