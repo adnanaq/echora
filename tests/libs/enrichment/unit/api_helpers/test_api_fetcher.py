@@ -441,11 +441,11 @@ class TestFetchAllData:
         """All ID-gated task branches (mal, anilist, anime_planet, anisearch) are exercised."""
         fetcher = ParallelAPIFetcher()
         ids = {
-            "mal_id": "https://myanimelist.net/anime/21",
+            "mal_url": "https://myanimelist.net/anime/21",
             "anilist_id": "21",
             "kitsu_id": "12",
             "anidb_id": "1",
-            "anime_planet_slug": "one-piece",
+            "anime_planet_url": "https://www.anime-planet.com/anime/one-piece",
             "anisearch_id": "42",
         }
         offline = {"title": "One Piece", "sources": []}
@@ -745,17 +745,40 @@ class TestFetchAnidbAnimePlanetAnisearch:
     async def test_fetch_anime_planet_success(self):
         fetcher = ParallelAPIFetcher()
         mock_helper = AsyncMock()
-        mock_helper.fetch_all = AsyncMock(return_value={"slug": "one-piece"})
+        expected = {"anime": {"title": "One Piece"}, "characters": []}
+        mock_helper.fetch_all = AsyncMock(return_value=expected)
         fetcher._helpers["anime_planet"] = mock_helper
 
-        result = await fetcher._fetch_anime_planet({"title": "One Piece"})
-        assert result == {"slug": "one-piece"}
+        result = await fetcher._fetch_anime_planet(
+            "https://www.anime-planet.com/anime/one-piece"
+        )
+        assert result == expected
         assert "anime_planet" in fetcher.api_timings
+
+    @pytest.mark.asyncio
+    async def test_fetch_anime_planet_output_paths(self):
+        fetcher = ParallelAPIFetcher()
+        mock_helper = AsyncMock()
+        mock_helper.fetch_all = AsyncMock(return_value={"anime": {}, "characters": []})
+        fetcher._helpers["anime_planet"] = mock_helper
+
+        temp_dir = "/tmp/agent1"
+        await fetcher._fetch_anime_planet(
+            "https://www.anime-planet.com/anime/one-piece", temp_dir=temp_dir
+        )
+
+        mock_helper.fetch_all.assert_awaited_once_with(
+            "https://www.anime-planet.com/anime/one-piece",
+            anime_output_path=os.path.join(temp_dir, "anime_planet_anime.jsonl"),
+            characters_output_path=os.path.join(temp_dir, "anime_planet_characters.jsonl"),
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_anime_planet_not_initialized(self):
         fetcher = ParallelAPIFetcher()
-        result = await fetcher._fetch_anime_planet({"title": "Test"})
+        result = await fetcher._fetch_anime_planet(
+            "https://www.anime-planet.com/anime/test"
+        )
         assert result is None
         assert "anime_planet" in fetcher.api_errors
 
