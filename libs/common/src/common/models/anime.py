@@ -113,6 +113,7 @@ class AnimeType(StrEnum):
             "tv short (chinese)": cls.TV_SHORT,
             # AniDB / AnimePlanet / AniSearch
             "tv series": cls.TV,
+            "tvseries": cls.TV,       # AnimePlanet JSON-LD @type value
             "web": cls.ONA,
             "music video": cls.MUSIC,
             "bonus": cls.SPECIAL,
@@ -406,6 +407,16 @@ class AnimeRelationType(StrEnum):
             "sidestories": cls.SIDE_STORY,
             "spinoffs": cls.SPIN_OFF,
             "alternatives": cls.ALTERNATIVE_VERSION,
+            # AnimePlanet subtypes (relation_subtype field from RelatedEntry__subtitle)
+            "same franchise": cls.SIDE_STORY,
+            "other franchise": cls.OTHER,
+            "omake": cls.SIDE_STORY,
+            "remake": cls.ALTERNATIVE_VERSION,
+            "alternate universe": cls.ALTERNATIVE_SETTING,
+            "condensed version": cls.SUMMARY,
+            "recap": cls.SUMMARY,
+            # AniDB
+            "same setting": cls.SIDE_STORY,
         }
         return _map.get(value.lower(), cls.OTHER)
 

@@ -97,7 +97,7 @@ class ParallelAPIFetcher:
         Fetch data from multiple anime APIs concurrently, allowing optional service filtering.
 
         Parameters:
-            ids (Dict[str, str]): Mapping of platform keys to their IDs or slugs (e.g., "mal_id", "anilist_id", "kitsu_id", "anidb_id", "anime_planet_slug", "anisearch_id").
+            ids (Dict[str, str]): Mapping of platform keys to their IDs or URLs (e.g., "mal_url", "anilist_id", "kitsu_id", "anidb_id", "anime_planet_url", "anisearch_id").
             offline_data (Dict): Original offline anime metadata used as input or fallback by some fetchers (e.g., title, episode count).
             temp_dir (Optional[str]): Directory path where per-service JSON responses will be saved when provided.
             skip_services (Optional[List[str]]): Services to omit from fetching. Ignored if `only_services` is provided.
@@ -120,10 +120,10 @@ class ParallelAPIFetcher:
             logger.info(f"Skipping services: {skip_services}")
 
         # Create parallel tasks for each API (only if not filtered out)
-        if ids.get("mal_id") and self._should_include(
+        if ids.get("mal_url") and self._should_include(
             "mal", only_services, skip_services
         ):
-            tasks.append(("mal", self._fetch_mal(ids["mal_id"], temp_dir)))
+            tasks.append(("mal", self._fetch_mal(ids["mal_url"], temp_dir)))
 
         if ids.get("anilist_id") and self._should_include(
             "anilist", only_services, skip_services
@@ -140,11 +140,11 @@ class ParallelAPIFetcher:
         ):
             tasks.append(("anidb", self._fetch_anidb(ids["anidb_id"], temp_dir)))
 
-        if ids.get("anime_planet_slug") and self._should_include(
+        if ids.get("anime_planet_url") and self._should_include(
             "anime_planet", only_services, skip_services
         ):
             tasks.append(
-                ("anime_planet", self._fetch_anime_planet(offline_data, temp_dir))
+                ("anime_planet", self._fetch_anime_planet(ids["anime_planet_url"], temp_dir))
             )
 
         if ids.get("anisearch_id") and self._should_include(
@@ -172,13 +172,13 @@ class ParallelAPIFetcher:
         return results
 
     async def _fetch_mal(
-        self, mal_id: str, temp_dir: str | None = None
+        self, url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """
         Fetch comprehensive MAL data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
 
         Parameters:
-            mal_id (str): The MyAnimeList identifier for the anime.
+            url (str): Full MyAnimeList anime URL (e.g. "https://myanimelist.net/anime/21").
             temp_dir (Optional[str]): Directory path to write/read temporary JSON files for intermediate results.
 
         Returns:
@@ -196,23 +196,21 @@ class ParallelAPIFetcher:
                 os.path.join(temp_dir, "mal_characters.jsonl") if temp_dir else None
             )
 
-            async with MalEnrichmentHelper(mal_id, session=self.mal_session) as helper:
+            async with MalEnrichmentHelper(url, session=self.mal_session) as helper:
                 result = await helper.fetch_all(
                     anime_output_path=anime_path,
                     episodes_output_path=episodes_path,
                     characters_output_path=characters_path,
                 )
                 if not result:
-                    logger.warning(
-                        f"Failed to fetch MAL anime data for MAL ID {mal_id}"
-                    )
+                    logger.warning(f"Failed to fetch MAL anime data for {url}")
                     return None
 
             self.api_timings["mal"] = time.time() - start
             return result
 
         except Exception as e:
-            logger.error(f"MAL fetch failed for MAL ID {mal_id}: {e}")
+            logger.error(f"MAL fetch failed for {url}: {e}")
             self.api_errors["mal"] = str(e)
             return None
 
@@ -349,7 +347,7 @@ class ParallelAPIFetcher:
             return None
 
     async def _fetch_anime_planet(
-        self, offline_data: dict[str, Any], temp_dir: str | None = None
+        self, url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """Fetch Anime-Planet data using scraper."""
         try:
@@ -357,14 +355,21 @@ class ParallelAPIFetcher:
             helper = self._helpers.get("anime_planet")
             if helper is None:
                 raise RuntimeError("Anime Planet helper not initialized")
-            output_path = (
-                os.path.join(temp_dir, "anime_planet.jsonl") if temp_dir else None
+            anime_path = (
+                os.path.join(temp_dir, "anime_planet_anime.jsonl") if temp_dir else None
             )
-            result = await helper.fetch_all(offline_data, output_path=output_path)
+            characters_path = (
+                os.path.join(temp_dir, "anime_planet_characters.jsonl") if temp_dir else None
+            )
+            result = await helper.fetch_all(
+                url,
+                anime_output_path=anime_path,
+                characters_output_path=characters_path,
+            )
             self.api_timings["anime_planet"] = time.time() - start
             return result
         except Exception as e:
-            logger.error(f"Anime-Planet fetch failed: {e}")
+            logger.error(f"Anime-Planet fetch failed for {url}: {e}")
             self.api_errors["anime_planet"] = str(e)
             return None
 

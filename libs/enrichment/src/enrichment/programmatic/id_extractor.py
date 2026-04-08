@@ -22,7 +22,7 @@ class PlatformIDExtractor:
         "anilist_id": r"anilist\.co/anime/(\d+)",
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
-        "anime_planet_slug": r"anime-planet\.com/anime/([^/\?]+)",
+
         "anisearch_id": r"anisearch\.com/anime/(?:index/)?(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",
@@ -43,9 +43,12 @@ class PlatformIDExtractor:
         sources = offline_data.get("sources", [])
         ids = {}
 
-        # MAL: pass the full source URL — no ID stripping needed
-        ids["mal_id"] = next(
+        # MAL and Anime-Planet: pass the full source URL — no ID stripping needed
+        ids["mal_url"] = next(
             (s for s in sources if "myanimelist.net/anime/" in s), None
+        )
+        ids["anime_planet_url"] = next(
+            (s for s in sources if "anime-planet.com/anime/" in s), None
         )
 
         # Extract IDs for each platform

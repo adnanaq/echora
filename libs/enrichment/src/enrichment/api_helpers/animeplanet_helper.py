@@ -9,7 +9,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import sys
 from types import TracebackType
 from typing import Any
@@ -19,8 +18,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from common.utils.jsonl_utils import append_jsonl
 
-from ..crawlers.anime_planet_anime_crawler import fetch_animeplanet_anime
+from ..crawlers.anime_planet.anime_planet_anime_crawler import fetch_animeplanet_anime
 from ..crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
+from ..mappers.animeplanet_mapper import anime_from_animeplanet
 
 logger = logging.getLogger(__name__)
 
@@ -30,42 +30,6 @@ class AnimePlanetEnrichmentHelper:
 
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
-
-    async def extract_slug_from_url(self, url: str) -> str | None:
-        """Extract Anime-Planet slug from URL."""
-        try:
-            # Pattern: https://www.anime-planet.com/anime/SLUG
-            match = re.search(r"anime-planet\.com/anime/([^/?]+)", url)
-            if match:
-                return match.group(1)
-            return None
-        except Exception:
-            logger.exception(f"Error extracting slug from URL {url}")
-            return None
-
-    async def find_animeplanet_url(
-        self, offline_anime_data: dict[str, Any]
-    ) -> str | None:
-        """
-        Locate the first Anime-Planet URL in the provided offline anime record.
-
-        Searches the record's "sources" list for a string that contains "anime-planet.com" and returns the first match.
-
-        Parameters:
-            offline_anime_data (Dict[str, Any]): Offline anime record; expected to include a "sources" sequence of source entries.
-
-        Returns:
-            Optional[str]: The first source string containing "anime-planet.com", or `None` if no such source is found.
-        """
-        try:
-            sources = offline_anime_data.get("sources", [])
-            for source in sources:
-                if isinstance(source, str) and "anime-planet.com" in source:
-                    return source
-            return None
-        except Exception:
-            logger.exception("Error finding Anime-Planet URL")
-            return None
 
     async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
         """
@@ -101,7 +65,7 @@ class AnimePlanetEnrichmentHelper:
             return None
 
     async def fetch_anime_data(
-        self, slug: str, include_characters: bool = True
+        self, url: str, include_characters: bool = True
     ) -> dict[str, Any] | None:
         """
         Fetch comprehensive Anime-Planet data for the given anime slug.
@@ -117,18 +81,16 @@ class AnimePlanetEnrichmentHelper:
             (list) and `character_count` (int). Returns `None` if no data could be retrieved.
         """
         try:
-            anime_data = await fetch_animeplanet_anime(
-                slug=slug,
-                output_path=None,  # No file output - return data only
-            )
-
-            if not anime_data:
-                logger.warning(f"Crawler returned no data for slug '{slug}'")
+            anime = await fetch_animeplanet_anime(url)
+            if not anime:
+                logger.warning(f"Crawler returned no data for '{url}'")
                 return None
+            anime_data = anime_from_animeplanet(anime)
 
             # Fetch character data if requested
             if include_characters:
                 try:
+                    slug = anime.slug
                     characters_data = await self.fetch_character_data(slug)
                     if characters_data:
                         anime_data["characters"] = characters_data.get("characters", [])
@@ -140,63 +102,68 @@ class AnimePlanetEnrichmentHelper:
                             f"into anime data for '{slug}'"
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to fetch characters for '{slug}': {e}")
-                    # Continue without characters data - non-critical
+                    logger.warning(f"Failed to fetch characters for '{url}': {e}")
 
-            logger.info(f"Successfully fetched anime data for '{slug}' using crawler")
+            logger.info(f"Successfully fetched anime data for '{url}'")
             return anime_data
 
         except Exception:
-            logger.exception(f"Error fetching anime data for slug '{slug}'")
+            logger.exception(f"Error fetching anime data for '{url}'")
             return None
 
     async def fetch_all(
         self,
-        offline_anime_data: dict[str, Any],
-        output_path: str | None = None,
+        url: str,
+        anime_output_path: str | None = None,
+        characters_output_path: str | None = None,
     ) -> dict[str, Any] | None:
         """
-        Locate an Anime-Planet URL in offline data, extract its slug, and fetch the corresponding Anime-Planet data.
+        Fetch Anime-Planet anime and character data for the given URL.
+
+        Anime data is written to ``anime_output_path`` immediately after the anime
+        fetch completes. Character data is written to ``characters_output_path`` after
+        the character fetch completes. This mirrors the MAL helper pattern so each
+        data type is persisted as soon as it is available.
 
         Parameters:
-            offline_anime_data (Dict[str, Any]): Offline anime record expected to include a "sources" list and optionally a "title" for logging.
-            output_path: If provided, append the result as a JSONL record to this path.
+            url: Full Anime-Planet anime URL (e.g. "https://www.anime-planet.com/anime/dandadan").
+            anime_output_path: If provided, anime data is written to this JSONL file
+                immediately after the anime fetch, before characters are fetched.
+            characters_output_path: If provided, character data is written to this
+                JSONL file after the character fetch completes.
 
         Returns:
-            Dict[str, Any] or None: The assembled Anime-Planet data (possibly including characters) if a usable URL and slug are found, `None` otherwise.
-
-        Notes:
-            This operation requires a direct Anime-Planet URL to be present in `offline_anime_data["sources"]`; title-based lookups are not performed.
+            Dict with keys ``anime`` and ``characters``, or None when the anime fetch fails.
         """
         try:
-            # Try to find direct URL in sources
-            animeplanet_url = await self.find_animeplanet_url(offline_anime_data)
+            anime = await fetch_animeplanet_anime(url)
+            if not anime:
+                logger.warning(f"Crawler returned no data for '{url}'")
+                return None
+            anime_data = anime_from_animeplanet(anime)
 
-            if animeplanet_url:
-                # Extract slug from URL
-                slug = await self.extract_slug_from_url(animeplanet_url)
-                if slug:
-                    logger.info(f"Found Anime-Planet slug: {slug}")
-                    result = await self.fetch_anime_data(slug)
-                    if result and output_path:
-                        append_jsonl(output_path, result)
-                    return result
-                else:
-                    logger.error(
-                        f"Failed to extract slug from Anime-Planet URL: {animeplanet_url}"
+            if anime_output_path:
+                append_jsonl(anime_output_path, anime_data)
+
+            logger.info(f"Anime-Planet anime fetched: {anime_data.get('title', url)}")
+
+            characters: list[dict[str, Any]] = []
+            try:
+                characters_data = await self.fetch_character_data(anime.slug)
+                if characters_data:
+                    characters = characters_data.get("characters", [])
+                    if characters_output_path:
+                        append_jsonl(characters_output_path, characters_data)
+                    logger.info(
+                        f"Anime-Planet characters fetched: {len(characters)} characters"
                     )
-                    return None
+            except Exception as e:
+                logger.warning(f"Failed to fetch characters for '{url}': {e}")
 
-            # No Anime-Planet URL found in sources
-            title = offline_anime_data.get("title", "Unknown")
-            logger.debug(
-                f"No Anime-Planet URL in sources for '{title}', skipping enrichment"
-            )
-            return None
+            return {"anime": anime_data, "characters": characters}
 
         except Exception:
-            title = offline_anime_data.get("title", "Unknown")
-            logger.exception(f"Error in fetch_all for anime '{title}'")
+            logger.exception(f"Error in fetch_all for URL '{url}'")
             return None
 
     async def close(self) -> None:
@@ -231,37 +198,36 @@ class AnimePlanetEnrichmentHelper:
 
 
 async def main() -> int:
-    """
-    Run the CLI that fetches Anime-Planet data for a given slug and writes it to the specified output file.
+    """CLI: fetch Anime-Planet data for a given URL and write to a JSON file.
+
+    Usage:
+        python animeplanet_helper.py <url> <output_file>
 
     Returns:
-        exit_code (int): 0 on success (data was fetched and written), 1 on failure (invalid usage, fetch/write error, or missing data).
+        0 on success, 1 on failure.
     """
     if len(sys.argv) != 3:
         print(
-            "Usage: python animeplanet_helper.py <slug> <output_file>", file=sys.stderr
+            "Usage: python animeplanet_helper.py <url> <output_file>", file=sys.stderr
         )
         return 1
 
     try:
-        slug = sys.argv[1]
+        url = sys.argv[1]
         output_file = sys.argv[2]
 
         async with AnimePlanetEnrichmentHelper() as helper:
-            data = await helper.fetch_anime_data(slug)
+            data = await helper.fetch_anime_data(url)
 
             if data:
                 with open(output_file, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
-                print(f"Data for {slug} saved to {output_file}")
+                print(f"Data for {url} saved to {output_file}")
                 return 0
             else:
-                print(f"Could not fetch data for {slug}", file=sys.stderr)
+                print(f"Could not fetch data for {url}", file=sys.stderr)
                 return 1
     except (OSError, ValueError, KeyError) as e:
-        # OSError: File I/O failures
-        # ValueError: Invalid JSON encoding
-        # KeyError: Missing expected data fields
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
