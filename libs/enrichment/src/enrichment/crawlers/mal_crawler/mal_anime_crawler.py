@@ -22,10 +22,9 @@ import sys
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
+from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
-    get_mal_docker_browser_config,
-    get_mal_docker_crawler_config,
     get_mal_scraping_limiter,
     parse_aired_string,
     parse_broadcast_string,
@@ -817,8 +816,8 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """
     # ── Step 1: fetch anime detail page ──────────────────────────────────────
     await _limiter.acquire()
-    browser_config = get_mal_docker_browser_config()
-    crawler_config = get_mal_docker_crawler_config(_get_anime_schema(), delay=1.5)
+    browser_config = get_docker_browser_config()
+    crawler_config = get_docker_crawler_config(_get_anime_schema(), delay=1.5)
 
     results = await crawl_batch_urls(
         [url], browser_config=browser_config, crawler_config=crawler_config

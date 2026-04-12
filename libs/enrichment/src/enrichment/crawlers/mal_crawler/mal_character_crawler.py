@@ -24,9 +24,8 @@ from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
 from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
-    get_mal_docker_browser_config,
-    get_mal_docker_crawler_config,
     parse_number,
     parse_sidebar_field,
 )
@@ -381,8 +380,8 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     await _limiter.acquire()
     results = await crawl_batch_urls(
         [url],
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(_get_character_schema()),
+        browser_config=get_docker_browser_config(),
+        crawler_config=get_docker_crawler_config(_get_character_schema()),
     )
     result = results[0] if results else None
     if not result:
@@ -516,8 +515,8 @@ async def fetch_mal_characters(
         await _limiter.acquire()
         results = await crawl_batch_urls(
             chunk_urls,
-            browser_config=get_mal_docker_browser_config(),
-            crawler_config=get_mal_docker_crawler_config(_get_character_schema()),
+            browser_config=get_docker_browser_config(),
+            crawler_config=get_docker_crawler_config(_get_character_schema()),
         )
 
         for idx_in_chunk, result in enumerate(results):

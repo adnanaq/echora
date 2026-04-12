@@ -20,25 +20,13 @@ from typing import Any
 
 from crawl4ai import BrowserConfig
 from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import DEFAULT_HEADERS as _MAL_BROWSER_HEADERS
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 # MAL base URL
 MAL_BASE_URL = "https://myanimelist.net"
-
-# Default browser config for MAL crawling
-_MAL_BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
 
 
 # =============================================================================
@@ -100,61 +88,6 @@ def get_browser_config(
 # =============================================================================
 # RATE LIMITER
 # =============================================================================
-
-
-_MAL_DOCKER_BROWSER_CONFIG: dict[str, Any] = {
-    "type": "BrowserConfig",
-    "params": {
-        "headless": True,
-        "verbose": False,
-        "enable_stealth": True,
-        # "user_agent_mode": "random",  # disabled: use fixed Chrome 131 UA from headers instead
-        "headers": _MAL_BROWSER_HEADERS,
-        "viewport_width": 1920,
-        "viewport_height": 1080,
-    },
-}
-
-
-def get_mal_docker_browser_config() -> dict[str, Any]:
-    """Browser config dict for the crawl4ai Docker REST API (MAL stealth layer).
-
-    Mirrors ``get_browser_config(AntiDetectionLayer.STEALTH)`` but serialized as
-    the type-params wrapper required by the Docker REST API.
-    """
-    return _MAL_DOCKER_BROWSER_CONFIG
-
-
-def get_mal_docker_crawler_config(
-    schema: dict[str, Any],
-    *,
-    wait_until: str = "domcontentloaded",
-    delay: float = 3.0,
-) -> dict[str, Any]:
-    """Crawler config dict for the crawl4ai Docker REST API with structured extraction.
-
-    Args:
-        schema: Extraction schema dict (from the caller's ``_get_*_schema()``).
-        wait_until: Page load event to wait for before extracting. Defaults to
-            ``"load"`` (not ``"domcontentloaded"``) so AWS WAF JS challenge has
-            time to complete before the page is returned.
-        delay: Seconds to wait before returning HTML (allows JS rendering).
-    """
-    return {
-        "type": "CrawlerRunConfig",
-        "params": {
-            "extraction_strategy": {
-                "type": "JsonXPathExtractionStrategy",
-                "params": {"schema": schema},
-            },
-            # "delay_before_return_html": delay,  # disabled: wait_until="load" already ensures page is ready
-            "simulate_user": True,
-            "override_navigator": True,  # override navigator JS properties for stealth
-            "magic": True,  # handle popups/banners, reduces detection signals
-            "wait_until": wait_until,
-            "page_timeout": 90000,
-        },
-    }
 
 
 def get_mal_scraping_limiter() -> MalRateLimiter:

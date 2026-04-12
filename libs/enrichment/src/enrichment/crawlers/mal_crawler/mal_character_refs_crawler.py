@@ -12,9 +12,8 @@ import logging
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_single_url
+from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
-    get_mal_docker_browser_config,
-    get_mal_docker_crawler_config,
     get_mal_scraping_limiter,
 )
 from http_cache.config import get_cache_config
@@ -58,8 +57,8 @@ async def _fetch_mal_characters_data(url: str) -> list[dict[str, Any]] | None:
     await _limiter.acquire()
     result = await crawl_single_url(
         url=url,
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(
+        browser_config=get_docker_browser_config(),
+        crawler_config=get_docker_crawler_config(
             _get_characters_schema(),
             wait_until="networkidle",
             delay=2.0,

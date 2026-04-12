@@ -26,10 +26,9 @@ from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
 from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
-    get_mal_docker_browser_config,
-    get_mal_docker_crawler_config,
     parse_duration_seconds,
     parse_iso_date,
 )
@@ -327,8 +326,8 @@ def _normalize_episode_url(identifier: str) -> str:
     key_prefix="mal_episode_detail",
     dependencies=[
         _get_episode_schema,
-        get_mal_docker_browser_config,
-        get_mal_docker_crawler_config,
+        get_docker_browser_config,
+        get_docker_crawler_config,
         _parse_episode_characters,
         _parse_episode_staff,
     ],
@@ -340,8 +339,8 @@ async def _fetch_mal_episode_data(url: str) -> dict[str, Any] | None:
     await _limiter.acquire()
     result = await crawl_single_url(
         url=url,
-        browser_config=get_mal_docker_browser_config(),
-        crawler_config=get_mal_docker_crawler_config(_get_episode_schema()),
+        browser_config=get_docker_browser_config(),
+        crawler_config=get_docker_crawler_config(_get_episode_schema()),
     )
     if not result:
         return None
@@ -488,8 +487,8 @@ async def fetch_mal_episodes(
         await _limiter.acquire()
         results = await crawl_batch_urls(
             chunk_urls,
-            browser_config=get_mal_docker_browser_config(),
-            crawler_config=get_mal_docker_crawler_config(_get_episode_schema()),
+            browser_config=get_docker_browser_config(),
+            crawler_config=get_docker_crawler_config(_get_episode_schema()),
         )
 
         for idx_in_chunk, result in enumerate(results):
