@@ -19,8 +19,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from common.utils.jsonl_utils import append_jsonl
 
 from ..crawlers.anime_planet.anime_planet_anime_crawler import fetch_animeplanet_anime
-from ..crawlers.anime_planet_character_crawler import fetch_animeplanet_characters
-from ..mappers.animeplanet_mapper import anime_from_animeplanet
+from ..crawlers.anime_planet.anime_planet_character_crawler import (
+    fetch_animeplanet_characters,
+)
+from ..crawlers.anime_planet.anime_planet_character_refs_crawler import (
+    fetch_animeplanet_character_refs,
+)
+from ..mappers.animeplanet_mapper import (
+    anime_from_animeplanet,
+    character_from_animeplanet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,38 +39,52 @@ class AnimePlanetEnrichmentHelper:
     def __init__(self) -> None:
         """Initialize Anime-Planet enrichment helper."""
 
-    async def fetch_character_data(self, slug: str) -> dict[str, Any] | None:
-        """
-        Retrieve character data for an Anime-Planet anime slug.
+    async def fetch_character_data(
+        self,
+        slug: str,
+        *,
+        output_path: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all characters for an Anime-Planet anime slug.
 
-        Parameters:
-            slug (str): Anime-Planet anime slug (for example, "dandadan").
+        Two-step flow: refs crawl (URL + role per character) → batch detail crawl.
+        Each character is written to ``output_path`` immediately via on_result callback
+        (write-immediately pattern, mirrors MAL helper).
+
+        Args:
+            slug: Anime-Planet anime slug (e.g. "dandadan").
+            output_path: If provided, each mapped character is appended to this JSONL
+                file as it completes.
 
         Returns:
-            dict or None: A dictionary containing:
-                - "characters": list of character dictionaries (each with keys such as "name", "role", "image_url", "url")
-                - "total_count": integer total number of characters
-            Returns `None` if no data is available or an error occurs.
+            List of canonical Character dicts. Empty on failure.
         """
+        characters_url = f"https://www.anime-planet.com/anime/{slug}/characters"
         try:
-            character_data = await fetch_animeplanet_characters(
-                slug=slug,
-                output_path=None,  # No file output - return data only
-            )
+            refs = await fetch_animeplanet_character_refs(characters_url)
+            if not refs:
+                logger.warning(f"No character refs for slug '{slug}'")
+                return []
 
-            if not character_data:
-                logger.warning(f"Character crawler returned no data for slug '{slug}'")
-                return None
+            urls = [ref["url"] for ref in refs]
+            results: list[dict[str, Any]] = []
 
-            logger.info(
-                f"Successfully fetched {character_data.get('total_count', 0)} characters "
-                f"for '{slug}' using crawler"
-            )
-            return character_data
+            _path = output_path
 
+            def _on_character(char: Any) -> None:
+                mapped = character_from_animeplanet(char)
+                results.append(mapped)
+                if _path:
+                    append_jsonl(_path, mapped)
+
+            await fetch_animeplanet_characters(urls, on_result=_on_character)
+
+            logger.info(f"Fetched {len(results)} characters for '{slug}'")
         except Exception:
             logger.exception(f"Error fetching character data for slug '{slug}'")
-            return None
+            return []
+        else:
+            return results
 
     async def fetch_anime_data(
         self, url: str, include_characters: bool = True
@@ -91,25 +113,23 @@ class AnimePlanetEnrichmentHelper:
             if include_characters:
                 try:
                     slug = anime.slug
-                    characters_data = await self.fetch_character_data(slug)
-                    if characters_data:
-                        anime_data["characters"] = characters_data.get("characters", [])
-                        anime_data["character_count"] = characters_data.get(
-                            "total_count", 0
-                        )
+                    characters = await self.fetch_character_data(slug)
+                    if characters:
+                        anime_data["characters"] = characters
+                        anime_data["character_count"] = len(characters)
                         logger.info(
-                            f"Integrated {anime_data['character_count']} characters "
+                            f"Integrated {len(characters)} characters "
                             f"into anime data for '{slug}'"
                         )
                 except Exception as e:
                     logger.warning(f"Failed to fetch characters for '{url}': {e}")
 
             logger.info(f"Successfully fetched anime data for '{url}'")
-            return anime_data
-
         except Exception:
             logger.exception(f"Error fetching anime data for '{url}'")
             return None
+        else:
+            return anime_data
 
     async def fetch_all(
         self,
@@ -149,22 +169,20 @@ class AnimePlanetEnrichmentHelper:
 
             characters: list[dict[str, Any]] = []
             try:
-                characters_data = await self.fetch_character_data(anime.slug)
-                if characters_data:
-                    characters = characters_data.get("characters", [])
-                    if characters_output_path:
-                        append_jsonl(characters_output_path, characters_data)
-                    logger.info(
-                        f"Anime-Planet characters fetched: {len(characters)} characters"
-                    )
+                characters = await self.fetch_character_data(
+                    anime.slug, output_path=characters_output_path
+                )
+                logger.info(
+                    f"Anime-Planet characters fetched: {len(characters)} characters"
+                )
             except Exception as e:
                 logger.warning(f"Failed to fetch characters for '{url}': {e}")
-
-            return {"anime": anime_data, "characters": characters}
 
         except Exception:
             logger.exception(f"Error in fetch_all for URL '{url}'")
             return None
+        else:
+            return {"anime": anime_data, "characters": characters}
 
     async def close(self) -> None:
         """
