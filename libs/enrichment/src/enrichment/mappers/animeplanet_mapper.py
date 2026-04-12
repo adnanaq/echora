@@ -2,9 +2,9 @@
 
 Pure value normalization — no I/O, no side effects.
 
-Receives a validated AnimePlanetAnime source model and returns a canonical
-Anime dict.  All field renaming, derivation (year, season, status), and
-stat normalization happen here — not in the crawler.
+Receives validated AnimePlanetAnime / AnimePlanetCharacter source models and
+returns canonical Anime / Character dicts.  All field renaming, derivation
+(year, season, status), and stat normalization happen here — not in the crawler.
 
 Key AP-specific details:
 - Ratings: AP uses 0–5 scale → multiply × 2 for canonical 0–10
@@ -25,12 +25,16 @@ from common.models.anime import (
     AnimeRelationType,
     AnimeSeason,
     AnimeType,
+    Character,
+    CharacterRole,
     CompanyEntry,
+    Ography,
     RelatedAnime,
     RelatedSourceMaterial,
     SourceMaterialRelationType,
     SourceMaterialType,
     Statistics,
+    VoiceActor,
 )
 from common.utils.datetime_utils import (
     determine_anime_season,
@@ -38,8 +42,21 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
-
+from enrichment.crawlers.anime_planet.anime_planet_character_models import (
+    AnimePlanetCharacter,
+)
 from enrichment.crawlers.anime_planet.anime_planet_models import AnimePlanetAnime
+
+_AP_BASE_URL = "https://www.anime-planet.com"
+
+_FLAG_TO_LANGUAGE: dict[str, str] = {
+    "jp": "Japanese",
+    "us": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "ko": "Korean",
+}
 
 _SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
 _RANK_RE = re.compile(r"#(\d+)")
@@ -53,7 +70,7 @@ def _parse_season_from_url(season_url: str | None) -> AnimeSeason | None:
     if not match:
         return None
     season_name = match.group(1).split("-")[0]  # "fall-1999" → "fall"
-    return AnimeSeason(season_name)             # _missing_ handles lowercase
+    return AnimeSeason(season_name)  # _missing_ handles lowercase
 
 
 def _parse_rank(rank_text: str | None) -> int | None:
@@ -71,7 +88,7 @@ def _parse_aka(aka: str | None) -> str | None:
     text = aka.strip()
     lower = text.lower()
     if lower.startswith("alt title:"):
-        text = text[len("alt title:"):].strip()
+        text = text[len("alt title:") :].strip()
     return text or None
 
 
@@ -207,3 +224,101 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     )
 
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def character_from_animeplanet(char: AnimePlanetCharacter) -> dict[str, Any]:
+    """Map an AnimePlanetCharacter source model to canonical Character field values.
+
+    Args:
+        char: Validated AnimePlanetCharacter scraped model.
+
+    Returns:
+        Dict of canonical Character field name → normalized value (exclude_none applied).
+    """
+    result: dict[str, Any] = {
+        "name": char.name,
+        "sources": [char.url],
+    }
+
+    if char.loved_count is not None:
+        result["favorites"] = char.loved_count
+
+    if char.description:
+        result["description"] = char.description
+    if char.tags:
+        result["traits"] = char.tags
+    if char.alt_names:
+        result["nicknames"] = char.alt_names
+    if char.image:
+        result["images"] = [char.image]
+
+    # ── Attributes (merge entryBar + EntryMetadata + ranks) ──────────────
+    attributes: dict[str, str] = {
+        k.lower().replace(" ", "_"): v for k, v in char.attributes.items()
+    }
+    if char.gender:
+        attributes["gender"] = char.gender
+    if char.hair_color:
+        attributes["hair_color"] = char.hair_color
+    if char.loved_rank is not None:
+        attributes["loved_rank"] = str(char.loved_rank)
+    if char.hated_rank is not None:
+        attributes["hated_rank"] = str(char.hated_rank)
+    if attributes:
+        result["attributes"] = attributes
+
+    # ── Roles (aggregate unique roles across all ography entries) ─────────
+    all_roles: set[CharacterRole] = set()
+    for entry in char.anime_roles:
+        if entry.role:
+            all_roles.add(CharacterRole(entry.role))
+    for entry in char.manga_roles:
+        if entry.role:
+            all_roles.add(CharacterRole(entry.role))
+    if all_roles:
+        result["roles"] = [r.value for r in all_roles]
+
+    # ── Animeography ─────────────────────────────────────────────────────
+    if char.anime_roles:
+        result["animeography"] = [
+            Ography(
+                title=entry.title,
+                role=CharacterRole(entry.role or ""),
+                sources=[f"{_AP_BASE_URL}{entry.url}"],
+            )
+            for entry in char.anime_roles
+        ]
+
+    # ── Mangaography ─────────────────────────────────────────────────────
+    if char.manga_roles:
+        result["mangaography"] = [
+            Ography(
+                title=entry.title,
+                role=CharacterRole(entry.role or ""),
+                sources=[f"{_AP_BASE_URL}{entry.url}"],
+            )
+            for entry in char.manga_roles
+        ]
+
+    # ── Voice actors (flat dedup across all anime roles, keyed by name+lang) ─
+    seen_vas: set[tuple[str, str]] = set()
+    vas: list[VoiceActor] = []
+    for anime_role in char.anime_roles:
+        for lang_code, actors in anime_role.voice_actors.items():
+            language = _FLAG_TO_LANGUAGE.get(lang_code, lang_code)
+            for va in actors:
+                key = (va.name, language)
+                if key not in seen_vas:
+                    seen_vas.add(key)
+                    vas.append(
+                        VoiceActor(
+                            name=va.name,
+                            language=language,
+                            sources=[f"{_AP_BASE_URL}{va.url}"],
+                        )
+                    )
+    if vas:
+        result["voice_actors"] = vas
+
+    character = Character.model_validate(result)
+    return character.model_dump(mode="json", exclude_none=True)
