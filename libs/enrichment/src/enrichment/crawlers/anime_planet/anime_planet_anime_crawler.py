@@ -19,16 +19,20 @@ import re
 import sys
 from typing import Any
 
-from enrichment.crawlers.crawl4ai_docker import crawl_single_url
-from enrichment.crawlers.utils import sanitize_output_path
-from http_cache.config import get_cache_config
-from http_cache.result_cache import cached_result
 from enrichment.crawlers.anime_planet.anime_planet_models import (
     AnimePlanetAggregateRating,
     AnimePlanetAnime,
     AnimePlanetMangaEntry,
     AnimePlanetRelatedEntry,
 )
+from enrichment.crawlers.crawl4ai_docker import crawl_single_url
+from enrichment.crawlers.crawler_config import (
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
+from enrichment.crawlers.utils import sanitize_output_path
+from http_cache.config import get_cache_config
+from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
@@ -36,25 +40,6 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
-
-_BROWSER_CONFIG: dict[str, Any] = {
-    "type": "BrowserConfig",
-    "params": {
-        "headless": True,
-        "verbose": False,
-        "enable_stealth": True,
-        "headers": {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-        },
-        "viewport_width": 1920,
-        "viewport_height": 1080,
-    },
-}
 
 
 def _normalize_anime_url(anime_identifier: str) -> str:
@@ -194,12 +179,34 @@ def _get_anime_schema() -> dict[str, Any]:
                 "selector": "//div[@id='tabs--relations--anime--same_franchise']//a[contains(@class,'RelatedEntry')]",
                 "type": "nested_list",
                 "fields": [
-                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
-                    {"name": "title", "selector": ".//p[contains(@class,'RelatedEntry__name')]", "type": "text"},
-                    {"name": "relation_subtype", "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]", "type": "text"},
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
+                    {
+                        "name": "title",
+                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "relation_subtype",
+                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
+                        "type": "text",
+                    },
                     # fa-tv li only — avoids picking up date spans from the calendar li
-                    {"name": "type", "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]", "type": "text"},
-                    {"name": "image", "selector": ".//img[contains(@class,'RelatedEntry__image')]", "type": "attribute", "attribute": "src"},
+                    {
+                        "name": "type",
+                        "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "image",
+                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
+                        "type": "attribute",
+                        "attribute": "src",
+                    },
                 ],
             },
             {
@@ -207,11 +214,33 @@ def _get_anime_schema() -> dict[str, Any]:
                 "selector": "//div[@id='tabs--relations--anime--other_franchise']//a[contains(@class,'RelatedEntry')]",
                 "type": "nested_list",
                 "fields": [
-                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
-                    {"name": "title", "selector": ".//p[contains(@class,'RelatedEntry__name')]", "type": "text"},
-                    {"name": "relation_subtype", "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]", "type": "text"},
-                    {"name": "type", "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]", "type": "text"},
-                    {"name": "image", "selector": ".//img[contains(@class,'RelatedEntry__image')]", "type": "attribute", "attribute": "src"},
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
+                    {
+                        "name": "title",
+                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "relation_subtype",
+                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "type",
+                        "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "image",
+                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
+                        "type": "attribute",
+                        "attribute": "src",
+                    },
                 ],
             },
             {
@@ -219,12 +248,34 @@ def _get_anime_schema() -> dict[str, Any]:
                 "selector": "//div[contains(@id,'tabs--relations--manga')]//a[contains(@class,'RelatedEntry')]",
                 "type": "nested_list",
                 "fields": [
-                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
-                    {"name": "title", "selector": ".//p[contains(@class,'RelatedEntry__name')]", "type": "text"},
-                    {"name": "relation_subtype", "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]", "type": "text"},
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
+                    {
+                        "name": "title",
+                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "relation_subtype",
+                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
+                        "type": "text",
+                    },
                     # fa-book-open li — "One Shot" or "Vol: X - Ch: Y" counts
-                    {"name": "vol_ch", "selector": ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]", "type": "text"},
-                    {"name": "image", "selector": ".//img[contains(@class,'RelatedEntry__image')]", "type": "attribute", "attribute": "src"},
+                    {
+                        "name": "vol_ch",
+                        "selector": ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
+                        "type": "text",
+                    },
+                    {
+                        "name": "image",
+                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
+                        "type": "attribute",
+                        "attribute": "src",
+                    },
                 ],
             },
         ],
@@ -259,15 +310,17 @@ def _build_related_anime_entries(
             type_clean = raw_type or None
             episode_count = None
 
-        entries.append(AnimePlanetRelatedEntry(
-            url=url_val,
-            slug=slug_match.group(1),
-            title=title,
-            relation_subtype=item.get("relation_subtype") or None,
-            type=type_clean,
-            episode_count=episode_count,
-            image=item.get("image") or None,
-        ))
+        entries.append(
+            AnimePlanetRelatedEntry(
+                url=url_val,
+                slug=slug_match.group(1),
+                title=title,
+                relation_subtype=item.get("relation_subtype") or None,
+                type=type_clean,
+                episode_count=episode_count,
+                image=item.get("image") or None,
+            )
+        )
     return entries
 
 
@@ -307,16 +360,18 @@ def _build_related_manga_entries(
             volumes = int(vol_match.group(1)) if vol_match else None
             chapters = int(ch_match.group(1)) if ch_match else None
 
-        entries.append(AnimePlanetMangaEntry(
-            url=url_val,
-            slug=slug_match.group(1),
-            title=title,
-            relation_subtype=item.get("relation_subtype") or None,
-            type=manga_type,
-            volumes=volumes,
-            chapters=chapters,
-            image=item.get("image") or None,
-        ))
+        entries.append(
+            AnimePlanetMangaEntry(
+                url=url_val,
+                slug=slug_match.group(1),
+                title=title,
+                relation_subtype=item.get("relation_subtype") or None,
+                type=manga_type,
+                volumes=volumes,
+                chapters=chapters,
+                image=item.get("image") or None,
+            )
+        )
     return entries
 
 
@@ -340,7 +395,9 @@ def _parse_aggregate_rating(
             pass
     if rating_value is None and rating_count is None:
         return None
-    return AnimePlanetAggregateRating(rating_value=rating_value, rating_count=rating_count)
+    return AnimePlanetAggregateRating(
+        rating_value=rating_value, rating_count=rating_count
+    )
 
 
 def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
@@ -410,24 +467,13 @@ async def _fetch_animeplanet_anime_data(
     """
     url = f"{BASE_ANIME_URL}{canonical_slug}"
 
-    crawler_config: dict[str, Any] = {
-        "type": "CrawlerRunConfig",
-        "params": {
-            "extraction_strategy": {
-                "type": "JsonXPathExtractionStrategy",
-                "params": {"schema": _get_anime_schema()},
-            },
-            "simulate_user": True,
-            "override_navigator": True,
-            "magic": True,
-            "wait_until": "load",
-            "page_timeout": 90000,
-        },
-    }
-
     logger.info(f"Fetching anime data: {url}")
     result = await crawl_single_url(
-        url, browser_config=_BROWSER_CONFIG, crawler_config=crawler_config
+        url,
+        browser_config=get_docker_browser_config(),
+        crawler_config=get_docker_crawler_config(
+            _get_anime_schema(), wait_until="load"
+        ),
     )
 
     status = result.get("status_code")
@@ -466,7 +512,9 @@ async def _fetch_animeplanet_anime_data(
         "end_date": json_ld.get("endDate"),
         "number_of_episodes": json_ld.get("numberOfEpisodes"),
         "genres": json_ld.get("genre") or [],
-        "aggregate_rating": json_ld.get("aggregateRating"),  # raw dict, parsed in _build_anime_from_raw
+        "aggregate_rating": json_ld.get(
+            "aggregateRating"
+        ),  # raw dict, parsed in _build_anime_from_raw
         # XPath scalars
         "type_raw": xpath.get("type_raw") or None,
         "season_url": xpath.get("season_url") or None,
