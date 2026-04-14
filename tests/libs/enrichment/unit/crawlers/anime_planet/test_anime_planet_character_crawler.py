@@ -6,8 +6,7 @@ Coverage targets:
 - _fetch_character_data async branches (no result, HTTP error, empty content, success)
 - fetch_animeplanet_character URL normalization + success/failure
 - fetch_animeplanet_characters batch flows (all cached, all live, partial, chunked, on_result)
-- _role_from_header / _parse_character_refs (refs crawler pure functions)
-- _fetch_refs_data async branches
+- _fetch_refs_data async branches (XPath extracted_content path)
 - fetch_animeplanet_character_refs public wrapper
 - character_from_animeplanet mapper (roles, VAs, attributes, dedup)
 - main() CLI
@@ -45,11 +44,9 @@ from enrichment.crawlers.anime_planet.anime_planet_character_models import (
 )
 from enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler import (
     _fetch_refs_data,
-    _parse_character_refs,
-    _role_from_header,
     fetch_animeplanet_character_refs,
 )
-from enrichment.mappers.animeplanet_mapper import character_from_animeplanet
+from enrichment.crawlers.anime_planet.animeplanet_mapper import character_from_animeplanet
 
 pytestmark = pytest.mark.asyncio
 
@@ -563,6 +560,40 @@ async def test_fetch_character_data_http_error(mocker) -> None:
     assert result is None
 
 
+async def test_fetch_character_data_500_returns_none(mocker) -> None:
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
+        return_value=[{"status_code": 500, "extracted_content": None, "html": ""}],
+    )
+    result = await _fetch_character_data("https://www.anime-planet.com/characters/test")
+    assert result is None
+
+
+async def test_fetch_character_data_307_redirect_returns_data(mocker) -> None:
+    """307 is a redirect Playwright follows — content is valid, should not be rejected."""
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    raw_fields = {"name": "Garp", "image": None}
+    mocker.patch(
+        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
+        return_value=[{
+            "status_code": 307,
+            "extracted_content": json.dumps([raw_fields]),
+            "html": "<body>garp html</body>",
+        }],
+    )
+    result = await _fetch_character_data("https://www.anime-planet.com/characters/monkey-d-garp")
+    assert result is not None
+    assert result["name"] == "Garp"
+    assert result["_html"] == "<body>garp html</body>"
+
+
 async def test_fetch_character_data_empty_content(mocker) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
@@ -621,12 +652,8 @@ async def test_fetch_animeplanet_character_returns_character(mocker) -> None:
     assert result.name == "Luffy"
 
 
-@pytest.mark.parametrize("url, expected_fragment", [
-    ("/characters/monkey-d-luffy", "https://www.anime-planet.com/characters/monkey-d-luffy"),
-    ("monkey-d-luffy", "https://www.anime-planet.com/characters/monkey-d-luffy"),
-    ("https://www.anime-planet.com/characters/monkey-d-luffy", "https://www.anime-planet.com/characters/monkey-d-luffy"),
-])
-async def test_fetch_animeplanet_character_url_normalization(url, expected_fragment, mocker) -> None:
+async def test_fetch_animeplanet_character_passes_full_url_unchanged(mocker) -> None:
+    """Crawler passes the URL directly to _fetch_character_data — no normalization."""
     captured: list[str] = []
 
     async def _fake_fetch(u: str):
@@ -637,8 +664,9 @@ async def test_fetch_animeplanet_character_url_normalization(url, expected_fragm
         "enrichment.crawlers.anime_planet.anime_planet_character_crawler._fetch_character_data",
         side_effect=_fake_fetch,
     )
+    url = "https://www.anime-planet.com/characters/monkey-d-luffy"
     await fetch_animeplanet_character(url)
-    assert captured[0] == expected_fragment
+    assert captured[0] == url
 
 
 # =============================================================================
@@ -753,6 +781,44 @@ async def test_fetch_animeplanet_characters_http_error(mocker) -> None:
     assert await fetch_animeplanet_characters([url]) == [None]
 
 
+async def test_fetch_animeplanet_characters_404_returns_none(mocker) -> None:
+    url = "https://www.anime-planet.com/characters/gone"
+    mocker.patch.object(
+        _fetch_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
+    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
+    mocker.patch(
+        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
+        return_value=[{"url": url, "status_code": 404, "extracted_content": None}],
+    )
+    assert await fetch_animeplanet_characters([url]) == [None]
+
+
+async def test_fetch_animeplanet_characters_307_redirect_returns_character(mocker) -> None:
+    """307 redirect — Playwright follows it, content is valid, character should be returned."""
+    url = "https://www.anime-planet.com/characters/monkey-d-garp"
+    mocker.patch.object(
+        _fetch_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
+    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
+    mocker.patch(
+        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
+        return_value=[{
+            "url": url,
+            "status_code": 307,
+            "extracted_content": json.dumps([{"name": "Garp"}]),
+            "html": "",
+        }],
+    )
+    result = await fetch_animeplanet_characters([url])
+    assert result[0] is not None
+    assert result[0].name == "Garp"
+
+
 async def test_fetch_animeplanet_characters_empty_extracted_content(mocker) -> None:
     url = "https://www.anime-planet.com/characters/empty"
     mocker.patch.object(
@@ -826,7 +892,8 @@ async def test_fetch_animeplanet_characters_chunks_into_batches(mocker) -> None:
     assert cache_set.await_count == 2
 
 
-async def test_fetch_animeplanet_characters_normalizes_relative_urls(mocker) -> None:
+async def test_fetch_animeplanet_characters_passes_full_urls_unchanged(mocker) -> None:
+    """Crawler passes URLs directly to crawl_batch_urls — no normalization."""
     mocker.patch.object(
         _fetch_character_data,
         "cache_batch_get",
@@ -843,105 +910,22 @@ async def test_fetch_animeplanet_characters_normalizes_relative_urls(mocker) -> 
         "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
         side_effect=_batch,
     )
-    await fetch_animeplanet_characters(["/characters/luffy"])
-    assert captured[0] == "https://www.anime-planet.com/characters/luffy"
-
-
-async def test_fetch_animeplanet_characters_normalizes_bare_slug(mocker) -> None:
-    mocker.patch.object(
-        _fetch_character_data,
-        "cache_batch_get",
-        new=AsyncMock(return_value=([None], [0])),
-    )
-    mocker.patch.object(_fetch_character_data, "cache_batch_set", new=AsyncMock())
-    captured: list[str] = []
-
-    async def _batch(batch_urls: list[str], **kwargs) -> list[None]:
-        captured.extend(batch_urls)
-        return [None]
-
-    mocker.patch(
-        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
-        side_effect=_batch,
-    )
-    await fetch_animeplanet_characters(["luffy"])
-    assert captured[0] == "https://www.anime-planet.com/characters/luffy"
+    url = "https://www.anime-planet.com/characters/monkey-d-luffy"
+    await fetch_animeplanet_characters([url])
+    assert captured[0] == url
 
 
 # =============================================================================
-# Refs crawler — _role_from_header
+# _fetch_refs_data — async branches (XPath extracted_content path)
 # =============================================================================
 
-
-@pytest.mark.parametrize("header, expected", [
-    ("Main Characters", "Main"),
-    ("Secondary Characters", "Secondary"),
-    ("Minor Characters", "Minor"),
-    ("Unknown Role Type", "Unknown Role Type"),  # full text returned — first word not recognised
-    ("", ""),
-])
-def test_role_from_header(header: str, expected: str) -> None:
-    assert _role_from_header(header) == expected
-
-
-def test_role_from_header_strips_html() -> None:
-    assert _role_from_header("<span>Main</span> Characters") == "Main"
-
-
-# =============================================================================
-# Refs crawler — _parse_character_refs
-# =============================================================================
-
-_REFS_HREF_FIRST = """
-<h3 class="sub">Main Characters</h3>
-<a href="/characters/monkey-d-luffy" class="name">Monkey D. Luffy</a>
-<a href="/characters/roronoa-zoro" class="name">Roronoa Zoro</a>
-<h3 class="sub">Secondary Characters</h3>
-<a href="/characters/nami" class="name">Nami</a>
-"""
-
-_REFS_CLASS_FIRST = """
-<h3 class="sub">Main Characters</h3>
-<a class="name" href="/characters/monkey-d-luffy">Monkey D. Luffy</a>
-"""
-
-
-def test_parse_character_refs_href_first_order() -> None:
-    refs = _parse_character_refs(_REFS_HREF_FIRST)
-    assert len(refs) == 3
-    assert refs[0] == {"url": "/characters/monkey-d-luffy", "role": "Main"}
-    assert refs[2] == {"url": "/characters/nami", "role": "Secondary"}
-
-
-def test_parse_character_refs_class_first_order() -> None:
-    refs = _parse_character_refs(_REFS_CLASS_FIRST)
-    assert len(refs) == 1
-    assert refs[0]["url"] == "/characters/monkey-d-luffy"
-    assert refs[0]["role"] == "Main"
-
-
-def test_parse_character_refs_no_sections() -> None:
-    assert _parse_character_refs("<p>No sections here</p>") == []
-
-
-def test_parse_character_refs_empty_section() -> None:
-    html = '<h3 class="sub">Main Characters</h3><p>No character links</p>'
-    assert _parse_character_refs(html) == []
-
-
-def test_parse_character_refs_preserves_document_order() -> None:
-    refs = _parse_character_refs(_REFS_HREF_FIRST)
-    urls = [r["url"] for r in refs]
-    assert urls == [
-        "/characters/monkey-d-luffy",
-        "/characters/roronoa-zoro",
-        "/characters/nami",
-    ]
-
-
-# =============================================================================
-# _fetch_refs_data — async branches
-# =============================================================================
+_REFS_EXTRACTED = json.dumps(
+    [{"characters": [
+        {"url": "/characters/monkey-d-luffy"},
+        {"url": "/characters/roronoa-zoro"},
+        {"url": "/characters/nami"},
+    ]}]
+)
 
 
 async def test_fetch_refs_data_no_result(mocker) -> None:
@@ -964,33 +948,33 @@ async def test_fetch_refs_data_http_error(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler.crawl_single_url",
-        return_value={"status_code": 404, "html": ""},
+        return_value={"status_code": 404, "extracted_content": "[]"},
     )
     result = await _fetch_refs_data("https://www.anime-planet.com/anime/dandadan/characters")
     assert result is None
 
 
-async def test_fetch_refs_data_empty_html(mocker) -> None:
+async def test_fetch_refs_data_empty_extracted_content(mocker) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
     mocker.patch(
         "enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler.crawl_single_url",
-        return_value={"status_code": 200, "html": ""},
+        return_value={"status_code": 200, "extracted_content": "[]"},
     )
     result = await _fetch_refs_data("https://www.anime-planet.com/anime/dandadan/characters")
     assert result is None
 
 
-async def test_fetch_refs_data_no_refs_returns_none(mocker) -> None:
+async def test_fetch_refs_data_no_characters_returns_none(mocker) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
     mocker.patch(
         "enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler.crawl_single_url",
-        return_value={"status_code": 200, "html": "<body>no character sections</body>"},
+        return_value={"status_code": 200, "extracted_content": json.dumps([{"characters": []}])},
     )
     result = await _fetch_refs_data("https://www.anime-planet.com/anime/dandadan/characters")
     assert result is None
@@ -1003,11 +987,13 @@ async def test_fetch_refs_data_success(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler.crawl_single_url",
-        return_value={"status_code": 200, "html": _REFS_HREF_FIRST},
+        return_value={"status_code": 200, "extracted_content": _REFS_EXTRACTED},
     )
     result = await _fetch_refs_data("https://www.anime-planet.com/anime/dandadan/characters")
     assert result is not None
     assert len(result) == 3
+    assert result[0] == {"url": "/characters/monkey-d-luffy", "role": ""}
+    assert result[2] == {"url": "/characters/nami", "role": ""}
 
 
 # =============================================================================
@@ -1028,7 +1014,7 @@ async def test_fetch_animeplanet_character_refs_empty_on_none(mocker) -> None:
 
 
 async def test_fetch_animeplanet_character_refs_returns_refs(mocker) -> None:
-    refs = [{"url": "/characters/luffy", "role": "Main"}]
+    refs = [{"url": "/characters/luffy", "role": ""}]
     mocker.patch(
         "enrichment.crawlers.anime_planet.anime_planet_character_refs_crawler._fetch_refs_data",
         new_callable=AsyncMock,
@@ -1215,44 +1201,3 @@ def test_mapper_voice_actor_sources_include_base_url() -> None:
     sources = character_from_animeplanet(char)["voice_actors"][0]["sources"]
     assert sources == ["https://www.anime-planet.com/people/va"]
 
-
-# =============================================================================
-# main() CLI
-# =============================================================================
-
-
-async def test_main_returns_1_when_no_character(mocker, tmp_path) -> None:
-    mocker.patch(
-        "sys.argv",
-        ["prog", "https://www.anime-planet.com/characters/test", "--output", str(tmp_path / "out.json")],
-    )
-    mocker.patch(
-        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.fetch_animeplanet_character",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    from enrichment.crawlers.anime_planet.anime_planet_character_crawler import main
-    assert await main() == 1
-
-
-async def test_main_returns_0_and_writes_file(mocker, tmp_path) -> None:
-    char = AnimePlanetCharacter(
-        name="Luffy",
-        slug="monkey-d-luffy",
-        url="https://www.anime-planet.com/characters/monkey-d-luffy",
-    )
-    output = tmp_path / "out.json"
-    mocker.patch(
-        "sys.argv",
-        ["prog", "https://www.anime-planet.com/characters/monkey-d-luffy", "--output", str(output)],
-    )
-    mocker.patch(
-        "enrichment.crawlers.anime_planet.anime_planet_character_crawler.fetch_animeplanet_character",
-        new_callable=AsyncMock,
-        return_value=char,
-    )
-    from enrichment.crawlers.anime_planet.anime_planet_character_crawler import main
-    assert await main() == 0
-    assert output.exists()
-    data = json.loads(output.read_text())
-    assert data["name"] == "Luffy"

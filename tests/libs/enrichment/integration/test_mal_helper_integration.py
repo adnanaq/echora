@@ -12,7 +12,7 @@ import os
 import pytest
 
 from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
-from enrichment.api_helpers.mal_rate_limiter import get_shared_mal_rate_limiter
+from enrichment.crawlers.mal_crawler.mal_base import get_shared_mal_rate_limiter
 
 # Mark all tests in this module as integration tests.
 pytestmark = pytest.mark.integration

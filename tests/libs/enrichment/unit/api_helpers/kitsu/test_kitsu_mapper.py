@@ -19,7 +19,7 @@ from enrichment.api_helpers.kitsu.kitsu_models import (
     KitsuPersonAttributes,
     KitsuTitles,
 )
-from enrichment.mappers.kitsu_mapper import (
+from enrichment.api_helpers.kitsu.kitsu_mapper import (
     _strip_html,
     _strip_preamble,
     anime_from_kitsu,

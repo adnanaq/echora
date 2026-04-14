@@ -4,7 +4,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedCharacter,
     MalVoiceActorRef,
 )
-from enrichment.mappers.mal_mapper import character_from_mal
+from enrichment.crawlers.mal_crawler.mal_mapper import character_from_mal
 
 
 def _make_sample_character() -> MalScrapedCharacter:

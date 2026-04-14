@@ -22,10 +22,13 @@ from enrichment.crawlers.anime_planet.anime_planet_anime_crawler import (
     _extract_slug_from_url,
     _normalize_anime_url,
     _parse_aggregate_rating,
+    _parse_alt_title,
+    _parse_rank,
+    _parse_season,
     fetch_animeplanet_anime,
 )
 from enrichment.crawlers.anime_planet.anime_planet_models import AnimePlanetAnime
-from enrichment.mappers.animeplanet_mapper import anime_from_animeplanet
+from enrichment.crawlers.anime_planet.animeplanet_mapper import anime_from_animeplanet
 
 pytestmark = pytest.mark.asyncio
 
@@ -178,6 +181,76 @@ def test_parse_aggregate_rating_partial_valid():
     assert result is not None
     assert result.rating_value == pytest.approx(3.2)
     assert result.rating_count is None
+
+
+# ---------------------------------------------------------------------------
+# _parse_season
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "season_url, expected",
+    [
+        (None, None),
+        ("", None),
+        ("/anime/seasons/fall-2024", "fall"),
+        ("/anime/seasons/winter-1999", "winter"),
+        ("/anime/seasons/spring-2023", "spring"),
+        ("/anime/seasons/summer-2020", "summer"),
+        # slug with only one segment (no year suffix)
+        ("/anime/seasons/fall", "fall"),
+        # no /seasons/ segment → no match
+        ("/anime/not-a-season-url", None),
+        # full URL form
+        ("https://www.anime-planet.com/anime/seasons/fall-2024", "fall"),
+    ],
+)
+def test_parse_season(season_url, expected):
+    assert _parse_season(season_url) == expected
+
+
+# ---------------------------------------------------------------------------
+# _parse_rank
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "rank_text, expected",
+    [
+        (None, None),
+        ("", None),
+        ("Rank #157", 157),
+        ("Rank #1", 1),
+        ("Rank #99999", 99999),
+        # text without '#' digit → no match
+        ("no hash here", None),
+    ],
+)
+def test_parse_rank(rank_text, expected):
+    assert _parse_rank(rank_text) == expected
+
+
+# ---------------------------------------------------------------------------
+# _parse_alt_title
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "aka, expected",
+    [
+        (None, None),
+        ("", None),
+        ("   ", None),  # whitespace only → None
+        ("Alt title: ダンダダン", "ダンダダン"),
+        ("alt title: ワンピース", "ワンピース"),  # case-insensitive prefix strip
+        ("ALT TITLE:  Bleach  ", "Bleach"),  # extra spaces stripped
+        # No prefix → returned as-is
+        ("ダンダダン", "ダンダダン"),
+        ("Plain title", "Plain title"),
+    ],
+)
+def test_parse_alt_title(aka, expected):
+    assert _parse_alt_title(aka) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -574,7 +647,7 @@ def _make_crawl_result(xpath_data: dict, json_ld: dict) -> dict:
 async def test_fetch_animeplanet_anime_success(mock_crawl):
     mock_crawl.return_value = _make_crawl_result(_BASE_XPATH, _BASE_JSON_LD)
 
-    anime = await fetch_animeplanet_anime("dandadan")
+    anime = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
 
     assert anime is not None
     assert anime.name == "Dandadan"
@@ -584,8 +657,8 @@ async def test_fetch_animeplanet_anime_success(mock_crawl):
     assert anime.aggregate_rating is not None
     assert anime.aggregate_rating.rating_value == pytest.approx(4.5)
     assert anime.aggregate_rating.rating_count == 1000
-    assert anime.rank_text == "Rank #123"
-    assert anime.aka == "Alt title: ダンダダン"
+    assert anime.rank == 123
+    assert anime.alt_title == "ダンダダン"
     assert "Action" in anime.genres
     assert "Action" in anime.tags or "Supernatural" in anime.tags
     assert any(s == "Science SARU" for s in anime.studios)
@@ -626,7 +699,7 @@ async def test_fetch_animeplanet_anime_season_from_url(mock_crawl):
     xpath = {**_BASE_XPATH, "season_url": "/anime/seasons/winter-2024"}
     mock_crawl.return_value = _make_crawl_result(xpath, _BASE_JSON_LD)
 
-    anime = await fetch_animeplanet_anime("dandadan")
+    anime = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
     assert anime is not None
     data = anime_from_animeplanet(anime)
     assert data["season"] == "WINTER"
@@ -640,7 +713,7 @@ async def test_fetch_animeplanet_anime_season_fallback_from_start_date(mock_craw
     json_ld = {**_BASE_JSON_LD, "startDate": "2024-04-05"}  # spring
     mock_crawl.return_value = _make_crawl_result(xpath, json_ld)
 
-    anime = await fetch_animeplanet_anime("dandadan")
+    anime = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
     assert anime is not None
     data = anime_from_animeplanet(anime)
     assert data["season"] == "SPRING"
@@ -654,7 +727,7 @@ async def test_fetch_animeplanet_anime_season_url_no_match_falls_back_to_date(mo
     json_ld = {**_BASE_JSON_LD, "startDate": "2024-07-10"}  # summer
     mock_crawl.return_value = _make_crawl_result(xpath, json_ld)
 
-    anime = await fetch_animeplanet_anime("dandadan")
+    anime = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
     assert anime is not None
     data = anime_from_animeplanet(anime)
     assert data["season"] == "SUMMER"
@@ -671,7 +744,7 @@ async def test_fetch_animeplanet_anime_no_json_ld_returns_none(mock_crawl):
         "error_message": None,
     }
 
-    data = await fetch_animeplanet_anime("dandadan")
+    data = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
     assert data is None
 
 
@@ -685,7 +758,7 @@ async def test_fetch_animeplanet_anime_404(mock_crawl):
         "html": "",
         "error_message": "Not found",
     }
-    assert await fetch_animeplanet_anime("nonexistent") is None
+    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/nonexistent") is None
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
@@ -698,7 +771,7 @@ async def test_fetch_animeplanet_anime_crawl_failure(mock_crawl):
         "html": "",
         "error_message": "Browser crashed",
     }
-    assert await fetch_animeplanet_anime("dandadan") is None
+    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
@@ -712,7 +785,7 @@ async def test_fetch_animeplanet_anime_empty_extraction(mock_crawl):
         "html": "",
         "error_message": None,
     }
-    assert await fetch_animeplanet_anime("dandadan") is None
+    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
@@ -726,7 +799,7 @@ async def test_fetch_animeplanet_anime_http_500(mock_crawl):
         "html": "",
         "error_message": None,
     }
-    assert await fetch_animeplanet_anime("dandadan") is None
+    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
@@ -736,7 +809,7 @@ async def test_fetch_animeplanet_anime_build_raises(mock_crawl, mock_build):
     """Exception in _build_anime_from_raw is caught and returns None."""
     mock_crawl.return_value = _make_crawl_result(_BASE_XPATH, _BASE_JSON_LD)
     mock_build.side_effect = ValueError("malformed data")
-    assert await fetch_animeplanet_anime("dandadan") is None
+    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
 
 
 @pytest.mark.parametrize(
@@ -755,69 +828,35 @@ async def test_fetch_anime_status_derivation(mock_crawl, start_date, end_date, e
     json_ld = {**_BASE_JSON_LD, "startDate": start_date, "endDate": end_date}
     mock_crawl.return_value = _make_crawl_result(_BASE_XPATH, json_ld)
 
-    anime = await fetch_animeplanet_anime(slug)
+    anime = await fetch_animeplanet_anime(f"https://www.anime-planet.com/anime/{slug}")
     assert anime is not None
     data = anime_from_animeplanet(anime)
     assert data["status"] == expected_status
 
 
 # ---------------------------------------------------------------------------
-# CLI main()
+# fetch_animeplanet_anime — URL contract
 # ---------------------------------------------------------------------------
 
 
-_MINIMAL_ANIME = AnimePlanetAnime(name="Dandadan", slug="dandadan")
-
-
+@pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch(
-    "enrichment.crawlers.anime_planet.anime_planet_anime_crawler.fetch_animeplanet_anime",
+    "enrichment.crawlers.anime_planet.anime_planet_anime_crawler._fetch_animeplanet_anime_data",
     new_callable=AsyncMock,
 )
-async def test_main_success(mock_fetch, tmp_path):
-    from enrichment.crawlers.anime_planet.anime_planet_anime_crawler import main
-
-    mock_fetch.return_value = _MINIMAL_ANIME
-    out = tmp_path / "out.json"
-    with patch("sys.argv", ["script.py", "dandadan", "--output", str(out)]):
-        assert await main() == 0
-    mock_fetch.assert_awaited_once_with("dandadan")
-    assert out.exists()
+async def test_fetch_animeplanet_anime_extracts_slug_from_url_for_cache(mock_inner):
+    """Crawler extracts the slug from the URL and uses it as the cache key."""
+    mock_inner.return_value = None  # short-circuit; we only care about the call arg
+    await fetch_animeplanet_anime("https://www.anime-planet.com/anime/one-piece")
+    mock_inner.assert_called_once_with("one-piece")
 
 
-@patch(
-    "enrichment.crawlers.anime_planet.anime_planet_anime_crawler.fetch_animeplanet_anime",
-    new_callable=AsyncMock,
-)
-async def test_main_no_data(mock_fetch):
-    from enrichment.crawlers.anime_planet.anime_planet_anime_crawler import main
+@pytest.mark.usefixtures("mock_redis_cache_miss")
+@patch("enrichment.crawlers.anime_planet.anime_planet_anime_crawler.crawl_single_url")
+async def test_fetch_animeplanet_anime_accepts_non_www_url(mock_crawl):
+    """Non-www AP URL works — slug is extracted by regex regardless of subdomain."""
+    mock_crawl.return_value = _make_crawl_result(_BASE_XPATH, _BASE_JSON_LD)
+    anime = await fetch_animeplanet_anime("https://anime-planet.com/anime/dandadan")
+    assert anime is not None
+    assert anime.slug == "dandadan"
 
-    mock_fetch.return_value = None
-    with patch("sys.argv", ["script.py", "dandadan"]):
-        assert await main() == 1
-
-
-@patch(
-    "enrichment.crawlers.anime_planet.anime_planet_anime_crawler.fetch_animeplanet_anime",
-    new_callable=AsyncMock,
-)
-async def test_main_default_output(mock_fetch, tmp_path):
-    from enrichment.crawlers.anime_planet.anime_planet_anime_crawler import main
-
-    mock_fetch.return_value = _MINIMAL_ANIME
-    # Use tmp_path so the test doesn't write to the working directory
-    with patch("sys.argv", ["script.py", "dandadan", "--output", str(tmp_path / "out.json")]):
-        await main()
-    mock_fetch.assert_awaited_once_with("dandadan")
-
-
-@pytest.mark.parametrize("exc", [ValueError("bad slug"), OSError("no write"), RuntimeError("boom")])
-@patch(
-    "enrichment.crawlers.anime_planet.anime_planet_anime_crawler.fetch_animeplanet_anime",
-    new_callable=AsyncMock,
-)
-async def test_main_error_handling(mock_fetch, exc):
-    from enrichment.crawlers.anime_planet.anime_planet_anime_crawler import main
-
-    mock_fetch.side_effect = exc
-    with patch("sys.argv", ["script.py", "dandadan"]):
-        assert await main() == 1

@@ -6,7 +6,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeVARef,
     MalScrapedEpisode,
 )
-from enrichment.mappers.mal_mapper import episode_from_mal
+from enrichment.crawlers.mal_crawler.mal_mapper import episode_from_mal
 
 
 def _make_sample_episode() -> MalScrapedEpisode:

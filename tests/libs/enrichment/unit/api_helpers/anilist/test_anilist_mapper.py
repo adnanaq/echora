@@ -5,7 +5,7 @@ from enrichment.api_helpers.anilist.anilist_character_models import (
     AniListCharacterEdge,
     AniListFuzzyDate,
 )
-from enrichment.mappers.anilist_mapper import (
+from enrichment.api_helpers.anilist.anilist_mapper import (
     _fuzzy_date_str,
     anime_from_anilist,
     character_from_anilist,

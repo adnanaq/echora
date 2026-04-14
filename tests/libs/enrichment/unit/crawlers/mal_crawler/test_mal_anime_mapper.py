@@ -7,7 +7,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalThemeSong,
     MalTrailer,
 )
-from enrichment.mappers.mal_mapper import anime_from_mal
+from enrichment.crawlers.mal_crawler.mal_mapper import anime_from_mal
 
 
 def _make_sample_anime() -> MalScrapedAnime:

@@ -1,17 +1,19 @@
 """Unit tests for mal_base.py — sidebar parsers, number utils, model diffing."""
 
 import pytest
-from pydantic import BaseModel
-
+from enrichment.crawlers.crawler_config import (
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
+from enrichment.crawlers.crawler_config import CrawlerRateLimiter
 from enrichment.crawlers.mal_crawler.mal_base import (
     AntiDetectionLayer,
     _get_entity_id,
     diff_model_lists,
     diff_models,
     get_browser_config,
-    get_mal_docker_browser_config,
-    get_mal_docker_crawler_config,
     get_mal_scraping_limiter,
+    get_shared_mal_rate_limiter,
     normalize_mal_anime_url,
     parse_aired_string,
     parse_broadcast_string,
@@ -27,7 +29,7 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalScrapedCharacter,
     MalScrapedEpisode,
 )
-
+from pydantic import BaseModel
 
 # =============================================================================
 # parse_number
@@ -89,7 +91,7 @@ def test_parse_duration_seconds(raw: str | None, expected: int | None) -> None:
         (None, None),
         ("", None),
         ("1999-10-20", "1999-10-20"),  # Already ISO
-        ("2026", "2026-01-01"),         # Year-only (upcoming anime)
+        ("2026", "2026-01-01"),  # Year-only (upcoming anime)
     ],
 )
 def test_parse_iso_date(raw: str | None, expected: str | None) -> None:
@@ -193,7 +195,9 @@ def test_normalize_mal_anime_url_slugless_no_slug() -> None:
 
 
 def test_normalize_mal_anime_url_slugged_has_slug() -> None:
-    url, has_slug = normalize_mal_anime_url("https://myanimelist.net/anime/21/One_Piece")
+    url, has_slug = normalize_mal_anime_url(
+        "https://myanimelist.net/anime/21/One_Piece"
+    )
     assert url == "https://myanimelist.net/anime/21/One_Piece"
     assert has_slug is True
 
@@ -274,9 +278,7 @@ def test_parse_sidebar_field_missing() -> None:
         ("(eps 1-13)", [(1, 13)]),
     ],
 )
-def test_parse_episode_ranges(
-    raw: str | None, expected: list[dict]
-) -> None:
+def test_parse_episode_ranges(raw: str | None, expected: list[dict]) -> None:
     assert parse_episode_ranges(raw) == expected
 
 
@@ -343,12 +345,20 @@ def test_diff_model_lists_added_and_removed() -> None:
     from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
 
     old_chars = [
-        MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalScrapedCharacter(source="https://myanimelist.net/character/41/Zoro", name="Zoro"),
+        MalScrapedCharacter(
+            source="https://myanimelist.net/character/40/Luffy", name="Luffy"
+        ),
+        MalScrapedCharacter(
+            source="https://myanimelist.net/character/41/Zoro", name="Zoro"
+        ),
     ]
     new_chars = [
-        MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
-        MalScrapedCharacter(source="https://myanimelist.net/character/42/Nami", name="Nami"),
+        MalScrapedCharacter(
+            source="https://myanimelist.net/character/40/Luffy", name="Luffy"
+        ),
+        MalScrapedCharacter(
+            source="https://myanimelist.net/character/42/Nami", name="Nami"
+        ),
     ]
     list_diff = diff_model_lists(old_chars, new_chars, "character")
     assert "https://myanimelist.net/character/42/Nami" in list_diff.added
@@ -357,15 +367,21 @@ def test_diff_model_lists_added_and_removed() -> None:
 
 
 def test_diff_model_lists_updated_when_field_changes() -> None:
-    old = [MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy")]
-    new = [MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy Updated")]
+    old = [
+        MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy")
+    ]
+    new = [
+        MalScrapedCharacter(
+            source="https://myanimelist.net/character/40", name="Luffy Updated"
+        )
+    ]
     list_diff = diff_model_lists(old, new, "character")
     assert len(list_diff.updated) == 1
     assert list_diff.updated[0].has_changes
 
 
 # =============================================================================
-# get_browser_config / get_mal_docker_browser_config / get_mal_docker_crawler_config
+# get_browser_config / get_docker_browser_config / get_docker_crawler_config
 # =============================================================================
 
 
@@ -387,16 +403,18 @@ def test_get_browser_config_undetected_layer() -> None:
     assert cfg is not None
 
 
-def test_get_mal_docker_browser_config_returns_typed_dict() -> None:
-    result = get_mal_docker_browser_config()
+def test_get_docker_browser_config_returns_typed_dict() -> None:
+    result = get_docker_browser_config()
     assert result["type"] == "BrowserConfig"
     assert "enable_stealth" in result["params"]
 
 
-def test_get_mal_docker_crawler_config_returns_config() -> None:
-    result = get_mal_docker_crawler_config({"name": "test"})
+def test_get_docker_crawler_config_returns_config() -> None:
+    result = get_docker_crawler_config({"name": "test"})
     assert result["type"] == "CrawlerRunConfig"
-    assert result["params"]["extraction_strategy"]["type"] == "JsonXPathExtractionStrategy"
+    assert (
+        result["params"]["extraction_strategy"]["type"] == "JsonXPathExtractionStrategy"
+    )
 
 
 def test_get_mal_scraping_limiter_returns_limiter() -> None:
@@ -470,3 +488,18 @@ def test_get_entity_id_returns_zero_for_bare_model() -> None:
         pass
 
     assert _get_entity_id(_Bare()) == 0
+
+
+# =============================================================================
+# get_shared_mal_rate_limiter (from mal_base)
+# =============================================================================
+
+
+def test_get_shared_mal_rate_limiter_returns_singleton() -> None:
+    a = get_shared_mal_rate_limiter()
+    b = get_shared_mal_rate_limiter()
+    assert a is b
+
+
+def test_get_shared_mal_rate_limiter_is_crawler_rate_limiter_instance() -> None:
+    assert isinstance(get_shared_mal_rate_limiter(), CrawlerRateLimiter)
