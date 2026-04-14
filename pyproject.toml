@@ -34,7 +34,7 @@ dependencies = [
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
     "langdetect>=1.0.9",
-    "crawl4ai>=0.8.0",
+    "crawl4ai>=0.8.6",
     # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
     "defusedxml>=0.7.1",
     "grpcio==1.78.0",
@@ -59,9 +59,6 @@ dev = [
     # Note: ty is specified in [dependency-groups] dev for uv/pdm compatibility
     "ruff==0.14.10",
     "types-requests>=2.32.0",
-
-    # Pretty output formatting
-    "rich>=13.0.0",
 ]
 
 [tool.pytest.ini_options]
