@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 from enrichment.api_helpers.anidb_helper import AniDBEnrichmentHelper
 from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
-from enrichment.api_helpers.animeplanet_helper import AnimePlanetEnrichmentHelper
+from enrichment.api_helpers.anime_planet_helper import AnimePlanetEnrichmentHelper
 from enrichment.api_helpers.animeschedule_helper import AnimescheduleEnrichmentHelper
 from enrichment.api_helpers.anisearch_helper import AniSearchEnrichmentHelper
 from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 
 class ParallelAPIFetcher:
-    """
-    Fetches data from all anime APIs in parallel.
-    Implements graceful degradation - continues with partial data if APIs fail.
+    """Fetch data from all anime APIs in parallel.
+
+    Implements graceful degradation — continues with partial data if individual APIs fail.
     """
 
     _REGISTRY: ClassVar[dict[str, type]] = {
@@ -60,6 +60,7 @@ class ParallelAPIFetcher:
         only: list[str] | None,
         skip: list[str] | None,
     ) -> bool:
+        """Return True if service should be fetched given only/skip filter lists."""
         if only:
             return service in only
         if skip:
@@ -93,18 +94,17 @@ class ParallelAPIFetcher:
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,
     ) -> dict[str, Any]:
-        """
-        Fetch data from multiple anime APIs concurrently, allowing optional service filtering.
+        """Fetch data from multiple anime APIs concurrently with optional service filtering.
 
-        Parameters:
-            ids (Dict[str, str]): Mapping of platform keys to their IDs or URLs (e.g., "mal_url", "anilist_id", "kitsu_id", "anidb_id", "anime_planet_url", "anisearch_id").
-            offline_data (Dict): Original offline anime metadata used as input or fallback by some fetchers (e.g., title, episode count).
-            temp_dir (Optional[str]): Directory path where per-service JSON responses will be saved when provided.
-            skip_services (Optional[List[str]]): Services to omit from fetching. Ignored if `only_services` is provided.
-            only_services (Optional[List[str]]): If provided, only these services will be fetched; takes precedence over `skip_services`.
+        Args:
+            ids: Platform-key → ID/URL map (e.g. ``"mal_url"``, ``"anilist_url"``, ``"kitsu_id"``).
+            offline_data: Original offline anime metadata; used as input/fallback by some fetchers.
+            temp_dir: Directory where per-service JSONL files are written when provided.
+            skip_services: Services to omit. Ignored when ``only_services`` is set.
+            only_services: Exclusive allowlist; takes precedence over ``skip_services``.
 
         Returns:
-            Dict[str, Any]: Mapping of service names to their fetched result object, or `None` for services that failed or timed out.
+            Mapping of service name → fetched result dict, or ``None`` for failed/timed-out services.
         """
         await self.initialize_helpers(
             skip_services=skip_services, only_services=only_services
@@ -125,10 +125,10 @@ class ParallelAPIFetcher:
         ):
             tasks.append(("mal", self._fetch_mal(ids["mal_url"], temp_dir)))
 
-        if ids.get("anilist_id") and self._should_include(
+        if ids.get("anilist_url") and self._should_include(
             "anilist", only_services, skip_services
         ):
-            tasks.append(("anilist", self._fetch_anilist(ids["anilist_id"], temp_dir)))
+            tasks.append(("anilist", self._fetch_anilist(ids["anilist_url"], temp_dir)))
 
         if ids.get("kitsu_id") and self._should_include(
             "kitsu", only_services, skip_services
@@ -174,15 +174,14 @@ class ParallelAPIFetcher:
     async def _fetch_mal(
         self, url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
-        """
-        Fetch comprehensive MAL data for a given MyAnimeList ID, including full anime info, episodes, and characters, writing intermediate files to temp_dir when provided.
+        """Fetch full MAL data: anime info, episodes, and characters.
 
-        Parameters:
-            url (str): Full MyAnimeList anime URL (e.g. "https://myanimelist.net/anime/21").
-            temp_dir (Optional[str]): Directory path to write/read temporary JSON files for intermediate results.
+        Args:
+            url: Full MyAnimeList anime URL (e.g. ``"https://myanimelist.net/anime/21"``).
+            temp_dir: Directory for intermediate JSONL output files.
 
         Returns:
-            Optional[Dict[str, Any]]: A dictionary with keys "anime" (anime info), "episodes" (list of episode dicts), and "characters" (list of character dicts); returns `None` on failure.
+            Dict with ``"anime"``, ``"episodes"``, and ``"characters"`` keys, or ``None`` on failure.
         """
         try:
             start = time.time()
@@ -215,9 +214,17 @@ class ParallelAPIFetcher:
             return None
 
     def _fetch_anilist_sync(
-        self, anilist_id: str, temp_dir: str | None = None
+        self, anilist_url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
-        """Synchronous wrapper for AniList fetch - runs in executor to avoid cancellation."""
+        """Synchronous AniList fetch — runs in executor to avoid event-loop cancellation.
+
+        Args:
+            anilist_url: Full AniList anime URL.
+            temp_dir: Directory for intermediate JSONL output files.
+
+        Returns:
+            Fetched AniList result dict, or ``None`` on failure.
+        """
         try:
             start = time.time()
 
@@ -234,7 +241,7 @@ class ParallelAPIFetcher:
                 anilist_helper = AniListEnrichmentHelper()
 
                 result, chars_list = loop.run_until_complete(
-                    anilist_helper.fetch_all(int(anilist_id), temp_dir)
+                    anilist_helper.fetch_all(anilist_url, temp_dir)
                 )
 
                 # Close the helper's session
@@ -278,12 +285,12 @@ class ParallelAPIFetcher:
             return None
 
     async def _fetch_anilist(
-        self, anilist_id: str, temp_dir: str | None = None
+        self, anilist_url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """Fetch ALL AniList data in executor to prevent timeout cancellation."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, self._fetch_anilist_sync, anilist_id, temp_dir
+            None, self._fetch_anilist_sync, anilist_url, temp_dir
         )
 
     async def _fetch_kitsu(
@@ -396,12 +403,15 @@ class ParallelAPIFetcher:
     async def _fetch_animeschedule(
         self, offline_data: dict[str, Any], temp_dir: str | None = None
     ) -> dict[str, Any] | None:
-        """Fetch AnimSchedule data for the anime in offline_data.
+        """Fetch AnimSchedule data for the anime described by offline_data.
 
-        Passes known source URLs for cross-source validation so the correct
-        result is selected even when the search returns multiple candidates.
-        Writes the mapped canonical dict as JSONL directly (like MAL) when
-        temp_dir is provided, so _save_temp_files can skip it.
+        Args:
+            offline_data: Offline anime metadata; ``"title"`` used for search,
+                ``"sources"`` for cross-source candidate disambiguation.
+            temp_dir: Directory for intermediate JSONL output files.
+
+        Returns:
+            Fetched AnimSchedule result dict, or ``None`` on failure or missing title.
         """
         try:
             start = time.time()
@@ -454,17 +464,10 @@ class ParallelAPIFetcher:
         return results
 
     def _log_performance_metrics(self, total_time: float) -> None:
-        """
-        Log API performance metrics including total runtime, per-service timings, recorded errors, and a computed success rate.
+        """Log per-service timings, errors, and overall success rate.
 
-        Parameters:
-            total_time (float): Total elapsed time in seconds for the overall parallel fetch operation.
-
-        Description:
-            - Writes an informational header with the total elapsed time.
-            - Writes per-API timing entries from `self.api_timings`.
-            - Writes warnings for any entries in `self.api_errors`.
-            - Computes and logs a simple success rate based on the number of timed APIs versus total recorded APIs (timings + errors).
+        Args:
+            total_time: Total elapsed seconds for the parallel fetch.
         """
         logger.info("API Performance Metrics:")
         logger.info(f"  Total Time: {total_time:.2f}s")
@@ -485,6 +488,7 @@ class ParallelAPIFetcher:
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
     async def __aenter__(self) -> "ParallelAPIFetcher":
+        """Enter async context."""
         return self
 
     async def __aexit__(
@@ -493,6 +497,7 @@ class ParallelAPIFetcher:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
+        """Close all helpers and the MAL session."""
         for helper in self._helpers.values():
             await helper.close()
         self._helpers.clear()

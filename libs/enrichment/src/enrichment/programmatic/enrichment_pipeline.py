@@ -123,7 +123,6 @@ class ProgrammaticEnrichmentPipeline:
 
             # Step 3: Process episodes (instant)
             step3_start = time.time()
-            processed_episodes = self._process_episodes(api_data)
             self.timing_breakdown["episode_processing"] = time.time() - step3_start
 
             # Compile results
@@ -131,7 +130,6 @@ class ProgrammaticEnrichmentPipeline:
                 "offline_data": offline_data,
                 "extracted_ids": valid_ids,
                 "api_data": api_data,
-                "processed_episodes": processed_episodes,
                 "enrichment_metadata": {
                     "method": "programmatic",
                     "total_time": time.time() - start_time,
@@ -288,22 +286,6 @@ class ProgrammaticEnrichmentPipeline:
         logger.info(f"Created temp directory: {temp_dir}")
 
         return temp_dir
-
-    def _process_episodes(self, api_data: dict[str, Any]) -> list[dict[str, Any]]:
-        """
-        Extract episode entries from the MAL response present in `api_data`.
-
-        Returns:
-            A list of episode dictionaries from MAL's `episodes` field (each typically includes title, synopsis, aired date, etc.); returns an empty list if no MAL data or episodes are present.
-        """
-        # Only use MAL episodes - they have full details (title, synopsis, aired, etc.)
-        # AniList episodes only have episode number and air time, not useful
-        if mal_data := api_data.get("mal"):
-            episodes = mal_data.get("episodes", [])
-            logger.debug(f"Extracted {len(episodes)} episodes from MAL")
-            return episodes
-
-        return []
 
     async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
         """

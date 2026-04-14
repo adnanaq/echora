@@ -37,7 +37,7 @@ from enrichment.crawlers.mal_crawler.mal_episode_count_crawler import (
     fetch_mal_episode_count,
 )
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episodes
-from enrichment.mappers.mal_mapper import (
+from enrichment.crawlers.mal_crawler.mal_mapper import (
     anime_from_mal,
     character_from_mal,
     episode_from_mal,
@@ -74,9 +74,11 @@ class MalEnrichmentHelper:
         """No-op — crawlers manage their own sessions."""
 
     async def __aenter__(self) -> MalEnrichmentHelper:
+        """Return self."""
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        """Call close() and return False (exceptions not suppressed)."""
         await self.close()
         return False
 

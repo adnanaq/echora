@@ -30,9 +30,9 @@ import aiohttp
 from common.utils.jsonl_utils import append_jsonl
 from http_cache.instance import http_cache_manager as _cache_manager
 
-from enrichment.api_helpers.animeschedule_models import AnimScheduleAnime
+from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
 from enrichment.exceptions import ServiceNetworkError, ServiceParseError
-from enrichment.mappers.animeschedule_mapper import anime_from_animeschedule
+from enrichment.api_helpers.animeschedule.animeschedule_mapper import anime_from_animeschedule
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +83,20 @@ class AnimescheduleEnrichmentHelper:
         sources: list[str] | None = None,
         output_path: str | None = None,
     ) -> dict | None:
+        """Delegate to the module-level :func:`fetch_all`.
+
+        Args:
+            search_term: Anime title to search for.
+            sources: Canonical source URLs to validate the result against.
+            output_path: If provided, write the result as JSONL to this path.
+
+        Returns:
+            Canonical anime dict, or None if no match is found.
+        """
         return await fetch_all(search_term, sources=sources, output_path=output_path)
 
     async def close(self) -> None:
+        """No-op — sessions are created per-call inside fetch_all."""
         pass  # session is created and closed per-call inside fetch_all
 
 
@@ -153,6 +164,11 @@ async def fetch_all(
 
 
 async def main() -> int:
+    """CLI entry point for fetching AnimSchedule data.
+
+    Returns:
+        0 on success, 1 if no data found or an error occurred.
+    """
     parser = argparse.ArgumentParser(
         description="Fetch anime data from AnimSchedule API."
     )

@@ -4,6 +4,5 @@ python_sources(
     dependencies=[
         "//libs/http_cache/src/http_cache",
         "//libs/common/src/common",
-        "//libs/enrichment/src/enrichment/api_helpers",
     ],
 )

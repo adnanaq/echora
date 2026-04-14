@@ -19,7 +19,6 @@ class PlatformIDExtractor:
 
     # Define regex patterns for each platform
     PATTERNS = {
-        "anilist_id": r"anilist\.co/anime/(\d+)",
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
 
@@ -38,17 +37,19 @@ class PlatformIDExtractor:
         Returns:
             Dictionary mapping platform names to extracted IDs
 
-        Performance: ~0.001 seconds for all platforms combined
         """
         sources = offline_data.get("sources", [])
         ids = {}
 
-        # MAL and Anime-Planet: pass the full source URL — no ID stripping needed
+        # Pass full source URLs — no ID stripping needed
         ids["mal_url"] = next(
             (s for s in sources if "myanimelist.net/anime/" in s), None
         )
         ids["anime_planet_url"] = next(
             (s for s in sources if "anime-planet.com/anime/" in s), None
+        )
+        ids["anilist_url"] = next(
+            (s for s in sources if "anilist.co/anime/" in s), None
         )
 
         # Extract IDs for each platform
@@ -85,58 +86,6 @@ class PlatformIDExtractor:
 
         return None
 
-    def get_platform_from_url(self, url: str) -> str | None:
-        """
-        Identify which platform a URL belongs to.
-
-        Args:
-            url: Source URL
-
-        Returns:
-            Platform name or None if not recognized
-        """
-        for platform, pattern in self.PATTERNS.items():
-            if re.search(pattern, url, re.IGNORECASE):
-                return platform.replace("_id", "").replace("_slug", "")
-        return None
-
-    def extract_animeschedule_search_terms(
-        self, offline_data: dict[str, Any]
-    ) -> list[str]:
-        """
-        Extract potential search terms for AnimSchedule.
-        AnimSchedule doesn't use IDs, so we need search terms.
-
-        Args:
-            offline_data: Offline anime data
-
-        Returns:
-            List of search terms to try
-        """
-        search_terms = []
-
-        # Primary title
-        if title := offline_data.get("title"):
-            search_terms.append(title)
-
-        # English title
-        if title_en := offline_data.get("title_english"):
-            if title_en not in search_terms:
-                search_terms.append(title_en)
-
-        # Japanese title
-        if title_jp := offline_data.get("title_japanese"):
-            if title_jp not in search_terms:
-                search_terms.append(title_jp)
-
-        # Synonyms
-        for synonym in offline_data.get("synonyms", []):
-            if synonym and synonym not in search_terms:
-                search_terms.append(synonym)
-
-        # Limit to first 3 unique terms for efficiency
-        return search_terms[:3]
-
     def validate_ids(self, ids: dict[str, str | None]) -> dict[str, str]:
         """
         Validate and clean extracted IDs.
@@ -155,7 +104,6 @@ class PlatformIDExtractor:
 
             # Validate numeric IDs
             if platform in [
-                "anilist_id",
                 "anidb_id",
                 "anisearch_id",
                 "livechart_id",

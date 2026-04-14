@@ -3,13 +3,13 @@
 Fetches the characters list page for an anime:
     fetch_animeplanet_character_refs(url)  — /anime/{slug}/characters → list[dict]
 
-Each dict contains {"url": "/characters/slug", "role": "Main|Secondary|Minor"}.
-Full character detail (bio, VAs, ography) requires separate calls via
-anime_planet_character_crawler.
+Each dict contains {"url": "/characters/slug", "role": ""}.
+Full character detail (bio, VAs, ography including per-title role) requires
+separate calls via anime_planet_character_crawler.
 """
 
+import json
 import logging
-import re
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_single_url
@@ -27,54 +27,33 @@ TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_URL = "https://www.anime-planet.com"
 
-# Pattern: <h3 ... class="...sub...">Role text</h3> ... (content until next h3.sub or EOF)
-_SECTION_RE = re.compile(
-    r'<h3[^>]+class="[^"]*\bsub\b[^"]*"[^>]*>(.*?)</h3>(.*?)(?=<h3[^>]+class="[^"]*\bsub\b|$)',
-    re.DOTALL | re.IGNORECASE,
-)
-# Matches: <a href="/characters/slug" class="name"> OR <a class="name" href="/characters/slug">
-_CHAR_HREF_RE = re.compile(
-    r'<a\s[^>]*href="(/characters/[^"?#]+)"[^>]*class="[^"]*\bname\b[^"]*"'
-    r'|<a\s[^>]*class="[^"]*\bname\b[^"]*"[^>]*href="(/characters/[^"?#]+)"',
-    re.IGNORECASE,
-)
-
 
 def _get_characters_list_schema() -> dict[str, Any]:
-    """XPath schema — extract full body HTML for regex-based parsing."""
+    """XPath schema — extract character hrefs directly.
+
+    Character links are server-rendered; domcontentloaded (the docker default)
+    is sufficient. networkidle + delay caused 90s timeouts on large casts
+    (e.g. One Piece: 1088 characters, ~1000 thumbnail image requests pending).
+    """
     return {
         "name": "AnimePlanetCharactersList",
         "baseSelector": "//body",
-        "fields": [{"name": "page_html", "selector": "//body", "type": "html"}],
+        "fields": [
+            {
+                "name": "characters",
+                "selector": "//a[contains(@class,'name') and contains(@href,'/characters/')]",
+                "type": "list",
+                "fields": [
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    }
+                ],
+            }
+        ],
     }
-
-
-def _role_from_header(raw_header: str) -> str:
-    """Extract role name from section header text.
-
-    'Main Characters' → 'Main', 'Secondary Characters' → 'Secondary', etc.
-    Falls back to the full stripped text if the first word is not a known role.
-    """
-    text = re.sub(r"<[^>]+>", "", raw_header).strip()
-    first_word = text.split()[0] if text else ""
-    return first_word if first_word in {"Main", "Secondary", "Minor"} else text
-
-
-def _parse_character_refs(page_html: str) -> list[dict[str, str]]:
-    """Parse character refs from full body HTML.
-
-    Returns a list of {"url": "/characters/slug", "role": "Main|..."} dicts,
-    preserving document order within each section.
-    """
-    results: list[dict[str, str]] = []
-    for section_match in _SECTION_RE.finditer(page_html):
-        role = _role_from_header(section_match.group(1))
-        section_content = section_match.group(2)
-        for m in _CHAR_HREF_RE.finditer(section_content):
-            url = m.group(1) or m.group(2)
-            if url:
-                results.append({"url": url, "role": role})
-    return results
 
 
 @cached_result(
@@ -83,15 +62,11 @@ def _parse_character_refs(page_html: str) -> list[dict[str, str]]:
     dependencies=[_get_characters_list_schema],
 )
 async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
-    """Fetch /anime/{slug}/characters and extract character refs. Cached by url."""
+    """Fetch /anime/{slug}/characters and extract character hrefs. Cached by url."""
     result = await crawl_single_url(
         url=url,
         browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(
-            _get_characters_list_schema(),
-            wait_until="networkidle",
-            delay=2.0,
-        ),
+        crawler_config=get_docker_crawler_config(_get_characters_list_schema()),
     )
     if not result:
         logger.error(f"No result for characters page {url}")
@@ -102,12 +77,13 @@ async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
         logger.error(f"HTTP {status} for characters page {url}")
         return None
 
-    page_html: str = result.get("html") or ""
-    if not page_html:
-        logger.warning(f"Empty page HTML from {url}")
+    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
+    if not items:
+        logger.warning(f"Empty extracted content from {url}")
         return None
 
-    refs = _parse_character_refs(page_html)
+    characters: list[dict[str, str]] = items[0].get("characters") or []
+    refs = [{"url": c["url"], "role": ""} for c in characters if c.get("url")]
     return refs or None
 
 

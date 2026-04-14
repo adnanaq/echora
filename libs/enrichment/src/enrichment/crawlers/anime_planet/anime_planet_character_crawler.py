@@ -6,20 +6,11 @@ Two public functions:
 
 All data (name, description, tags, alt names, voice actors, ography) is
 extracted from the character detail page via XPath schema + Python regex helpers.
-
-Usage:
-    ./pants run libs/enrichment/src/enrichment/crawlers/anime_planet/anime_planet_character_crawler.py -- <url> [--output PATH]
-
-    <url>         Full character URL (e.g. https://www.anime-planet.com/characters/monkey-d-luffy)
-    --output PATH Optional output file path (default: animeplanet_character.json)
 """
 
-import argparse
-import asyncio
 import json
 import logging
 import re
-import sys
 from collections.abc import Callable
 from html import unescape
 from typing import Any
@@ -32,6 +23,7 @@ from enrichment.crawlers.anime_planet.anime_planet_character_models import (
 )
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
 from enrichment.crawlers.crawler_config import (
+    get_ap_rate_limiter,
     get_docker_browser_config,
     get_docker_crawler_config,
 )
@@ -176,6 +168,7 @@ def _parse_loved_count(raw: str | None) -> int | None:
 
 
 def _extract_entry_bar(body_html: str) -> dict[str, str | None]:
+    """Extract gender and hair_color from the entryBar section HTML."""
     result: dict[str, str | None] = {"gender": None, "hair_color": None}
     section_match = _ENTRY_BAR_RE.search(body_html)
     if not section_match:
@@ -189,6 +182,7 @@ def _extract_entry_bar(body_html: str) -> dict[str, str | None]:
 
 
 def _extract_metadata(body_html: str) -> dict[str, str]:
+    """Extract EntryMetadata title/value pairs as a flat dict."""
     return {
         m.group(1).strip(): m.group(2).strip()
         for m in _METADATA_ITEM_RE.finditer(body_html)
@@ -197,6 +191,7 @@ def _extract_metadata(body_html: str) -> dict[str, str]:
 
 
 def _extract_alt_names(body_html: str) -> list[str]:
+    """Extract alternate names from the Aka: heading."""
     m = _ALT_NAMES_RE.search(body_html)
     if not m:
         return []
@@ -205,6 +200,7 @@ def _extract_alt_names(body_html: str) -> list[str]:
 
 
 def _extract_description(body_html: str) -> str | None:
+    """Extract plain-text description from the itemprop='description' div."""
     m = _DESCRIPTION_RE.search(body_html)
     if not m:
         return None
@@ -213,10 +209,12 @@ def _extract_description(body_html: str) -> str | None:
 
 
 def _extract_tags(body_html: str) -> list[str]:
+    """Extract character tag names from /characters/tags/ anchor hrefs."""
     return [unescape(m.group(1).strip()) for m in _TAG_RE.finditer(body_html)]
 
 
 def _extract_vas_from_cell(cell_html: str) -> dict[str, list[AnimePlanetVoiceActor]]:
+    """Extract voice actors keyed by language code from a table-cell HTML block."""
     vas: dict[str, list[AnimePlanetVoiceActor]] = {}
     for m in _VA_FLAG_RE.finditer(cell_html):
         lang = _FLAG_LANG_MAP.get(m.group(1).upper(), m.group(1).lower())
@@ -229,6 +227,7 @@ def _extract_vas_from_cell(cell_html: str) -> dict[str, list[AnimePlanetVoiceAct
 
 
 def _extract_anime_roles(body_html: str) -> list[AnimePlanetCharacterAnimeRole]:
+    """Extract anime ography entries from the 'Anime Roles' table."""
     section_match = _ANIME_ROLES_SECTION_RE.search(body_html)
     if not section_match:
         return []
@@ -259,6 +258,7 @@ def _extract_anime_roles(body_html: str) -> list[AnimePlanetCharacterAnimeRole]:
 
 
 def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
+    """Extract manga ography entries from the 'Manga Roles' table."""
     section_match = _MANGA_ROLES_SECTION_RE.search(body_html)
     if not section_match:
         return []
@@ -292,6 +292,7 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 
 
 def _build_character(raw: dict[str, Any], html: str, url: str) -> AnimePlanetCharacter:
+    """Build AnimePlanetCharacter from XPath-extracted raw fields and full page HTML."""
     slug = url.rstrip("/").rsplit("/", 1)[-1]
     bar = _extract_entry_bar(html)
     return AnimePlanetCharacter(
@@ -339,9 +340,11 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
         return None
 
     status = result.get("status_code")
-    if status and status != 200:
+    if status and status >= 400:
         logger.error(f"HTTP {status} for character {url}")
         return None
+    if status and 300 <= status < 400:
+        logger.debug(f"HTTP {status} (redirect followed) for character {url}")
 
     items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
     if not items:
@@ -360,18 +363,11 @@ async def fetch_animeplanet_character(url: str) -> AnimePlanetCharacter | None:
     """Fetch a single Anime-Planet character detail page.
 
     Args:
-        url: Full character URL or relative path (e.g. /characters/monkey-d-luffy).
+        url: Full character URL (e.g. https://www.anime-planet.com/characters/monkey-d-luffy).
 
     Returns:
         AnimePlanetCharacter on success, None on failure.
     """
-    if not url.startswith("http"):
-        url = (
-            f"{BASE_URL}{url}"
-            if url.startswith("/")
-            else f"{BASE_URL}/characters/{url}"
-        )
-
     logger.debug(f"Fetching AP character: {url}")
     raw = await _fetch_character_data(url)
     if raw is None:
@@ -392,7 +388,7 @@ async def fetch_animeplanet_characters(
     concurrency. Much faster than sequential single fetches for large casts.
 
     Args:
-        urls: List of character URLs (full or relative /characters/slug).
+        urls: List of full character URLs (e.g. https://www.anime-planet.com/characters/luffy).
         on_result: Optional callback invoked with each successfully parsed
             character as it completes (used for write-immediately streaming).
 
@@ -402,14 +398,7 @@ async def fetch_animeplanet_characters(
     if not urls:
         return []
 
-    # Normalize all URLs to full before crawling
-    full_urls = [
-        (f"{BASE_URL}{u}" if u.startswith("/") else f"{BASE_URL}/characters/{u}")
-        if not u.startswith("http")
-        else u
-        for u in urls
-    ]
-
+    full_urls = urls
     logger.info(f"Batch fetching {len(full_urls)} AP character details...")
 
     cached_values, missing_indices = await _fetch_character_data.cache_batch_get(  # type: ignore[attr-defined]
@@ -440,6 +429,7 @@ async def fetch_animeplanet_characters(
         chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
         cache_values: list[dict[str, Any] | None] = [None] * len(chunk_urls)
 
+        await get_ap_rate_limiter().acquire()
         results = await crawl_batch_urls(
             chunk_urls,
             browser_config=get_docker_browser_config(),
@@ -453,10 +443,12 @@ async def fetch_animeplanet_characters(
                 continue
             url = result.get("metadata", {}).get("og:url") or result["url"]
             status = result.get("status_code")
-            if status and status != 200:
+            if status and status >= 400:
                 logger.error(f"HTTP {status} for character {url}")
                 characters[out_index] = None
                 continue
+            if status and 300 <= status < 400:
+                logger.debug(f"HTTP {status} (redirect followed) for character {url}")
             items: list[dict[str, Any]] = json.loads(
                 result.get("extracted_content") or "[]"
             )
@@ -480,41 +472,3 @@ async def fetch_animeplanet_characters(
     return characters
 
 
-async def main() -> int:
-    """CLI entry point."""
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
-    parser = argparse.ArgumentParser(description="Fetch Anime-Planet character data")
-    parser.add_argument(
-        "url",
-        type=str,
-        help="Character URL (e.g. https://www.anime-planet.com/characters/monkey-d-luffy)",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="animeplanet_character.json",
-        help="Output file path",
-    )
-    args = parser.parse_args()
-
-    char = await fetch_animeplanet_character(args.url)
-    if char is None:
-        logger.error(f"No data for character {args.url}")
-        return 1
-
-    from pathlib import Path
-
-    from enrichment.mappers.animeplanet_mapper import character_from_animeplanet
-
-    canonical = character_from_animeplanet(char)
-    Path(args.output).write_text(
-        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    logger.info(f"Done: {char.name} → {args.output}")
-    return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    sys.exit(asyncio.run(main()))

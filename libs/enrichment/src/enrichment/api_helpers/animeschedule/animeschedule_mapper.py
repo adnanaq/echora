@@ -33,7 +33,7 @@ from common.models.anime import (
 )
 from common.utils.datetime_utils import normalize_to_utc
 
-from enrichment.api_helpers.animeschedule_models import AnimScheduleAnime
+from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

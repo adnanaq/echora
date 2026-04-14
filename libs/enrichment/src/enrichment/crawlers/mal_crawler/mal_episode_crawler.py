@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import CrawlerRateLimiter
 from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = MalRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
+_limiter = CrawlerRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
 
 _EPISODE_BATCH_SIZE = 35
 
@@ -233,6 +233,7 @@ def _parse_title_info(
 def _parse_episode_characters(
     raw_items: list[dict[str, Any]] | None,
 ) -> list[EpisodeCharacterRef]:
+    """Parse raw character dicts from XPath extraction into EpisodeCharacterRef list."""
     if not raw_items:
         return []
 
@@ -285,6 +286,7 @@ def _parse_episode_characters(
 def _parse_episode_staff(
     raw_items: list[dict[str, Any]] | None,
 ) -> list[EpisodeStaffRef]:
+    """Parse raw staff dicts from XPath extraction into EpisodeStaffRef list."""
     if not raw_items:
         return []
 
@@ -439,6 +441,8 @@ async def fetch_mal_episodes(
 
     Args:
         identifiers: List of episode URLs or paths (same formats as fetch_mal_episode).
+        on_result: Optional callback invoked with each successfully parsed
+            episode as results arrive (used for write-immediately streaming).
 
     Returns:
         List aligned to ``identifiers`` — None for any failed fetch.
@@ -555,7 +559,7 @@ async def main() -> int:
         logger.error(f"Failed to fetch or parse episode data for: {args.identifier}")
         return 1
 
-    from enrichment.mappers.mal_mapper import episode_from_mal
+    from enrichment.crawlers.mal_crawler.mal_mapper import episode_from_mal
 
     canonical = episode_from_mal(ep)
     Path(args.output).write_text(

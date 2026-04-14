@@ -9,7 +9,7 @@ Public API
 ----------
 ``crawl_single_url`` — submit one URL, poll until done, return result dict.
 ``crawl_batch_urls``  — submit N URLs as one job, return list aligned to input.
-                        Automatically retries WAF-blocked (405) URLs after
+                        Automatically retries WAF-blocked (403/405) URLs after
                         polling until the block lifts.
 
 Both functions accept plain dicts for ``browser_config`` / ``crawler_config``
@@ -37,6 +37,10 @@ _DEFAULT_DOCKER_URL = "http://localhost:11235"
 # How long to wait between WAF recovery probes, and the max total wait time.
 _WAF_PROBE_INTERVAL = 30.0  # seconds between probe attempts
 _WAF_MAX_WAIT = 600.0  # give up after 10 minutes
+
+# HTTP status codes treated as soft WAF blocks (pause + retry).
+# 403 = Cloudflare (Anime-Planet), 405 = AWS WAF (MAL).
+_WAF_BLOCKED_CODES = frozenset({403, 405})
 
 # Transient error retry
 _TRANSIENT_RETRY_DELAY = 10.0  # seconds before retrying transient failures
@@ -178,8 +182,8 @@ def _align_results(
             logger.warning(f"crawl4ai 404 for {url}")
             aligned.append(None)
             continue
-        if status_code == 405:
-            logger.error(f"crawl4ai 405 (AWS WAF soft block) for {url}")
+        if status_code in _WAF_BLOCKED_CODES:
+            logger.error(f"crawl4ai {status_code} (WAF block) for {url}")
             aligned.append(None)
             continue
 
@@ -189,11 +193,11 @@ def _align_results(
 
 
 def _extract_waf_blocked_urls(raw_results: list[dict[str, Any]]) -> list[str]:
-    """Return URLs from the raw result list that were soft-blocked by AWS WAF (405)."""
+    """Return URLs soft-blocked by a WAF (403 Cloudflare or 405 AWS WAF)."""
     return [
         entry["url"]
         for entry in raw_results
-        if entry.get("status_code") == 405 and entry.get("url")
+        if entry.get("status_code") in _WAF_BLOCKED_CODES and entry.get("url")
     ]
 
 
@@ -246,7 +250,7 @@ async def _probe_waf_recovery(
     browser_config: dict[str, Any],
     crawler_config: dict[str, Any],
 ) -> bool:
-    """Submit a single URL and return True if it comes back without a 405."""
+    """Submit a single URL and return True if it comes back without a WAF block."""
     task_id = await _submit_job(
         session, base_url, [probe_url], browser_config, crawler_config
     )
@@ -260,7 +264,7 @@ async def _probe_waf_recovery(
     results: list[dict[str, Any]] = response.get("result", {}).get("results") or []
     if not results:
         return False
-    return results[0].get("status_code") != 405
+    return results[0].get("status_code") not in _WAF_BLOCKED_CODES
 
 
 async def _wait_for_waf_unblock(
@@ -288,7 +292,7 @@ async def _wait_for_waf_unblock(
         ):
             logger.info(f"WAF unblocked after {attempt} probe(s) — resuming crawl")
             return True
-        logger.warning(f"WAF probe #{attempt}: still blocked (405)")
+        logger.warning(f"WAF probe #{attempt}: still blocked")
     logger.error(
         f"WAF did not unblock within {_WAF_MAX_WAIT:.0f}s — giving up on blocked URLs"
     )
@@ -353,7 +357,7 @@ async def crawl_batch_urls(
     The Docker server processes URLs at ``MAX_CONCURRENT_TASKS`` concurrency,
     which acts as the rate limiter — no Python-level throttling needed.
 
-    If AWS WAF soft-blocks any URLs (405), the function pauses, polls until
+    If a WAF soft-blocks any URLs (403 Cloudflare or 405 AWS WAF), the function pauses, polls until
     the block lifts, then retries only the affected URLs and merges them back
     into the original result list — so callers always get a full-length list
     aligned to the input.
@@ -411,8 +415,17 @@ async def crawl_batch_urls(
             )
 
         if waf_blocked:
+            blocked_codes = sorted(
+                {
+                    entry.get("status_code")
+                    for entry in raw_results
+                    if entry.get("url") in set(waf_blocked)
+                }
+                - {None}
+            )
+            codes_str = "/".join(map(str, blocked_codes))
             logger.warning(
-                f"AWS WAF blocked {len(waf_blocked)} URL(s) with 405 — pausing until unblocked"
+                f"WAF blocked {len(waf_blocked)} URL(s) with {codes_str} — pausing until unblocked"
             )
             recovered = await _wait_for_waf_unblock(
                 session, base_url, waf_blocked[0], browser_config, crawler_config

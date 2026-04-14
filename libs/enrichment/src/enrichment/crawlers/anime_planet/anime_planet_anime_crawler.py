@@ -3,20 +3,11 @@ Crawls anime information from anime-planet.com via the crawl4ai Docker REST API.
 
 Extracts comprehensive anime data including related anime, rankings, studios,
 and all metadata from JSON-LD.  Results are cached in Redis for 24 hours.
-
-Usage:
-    ./pants run libs/enrichment/src/enrichment/crawlers/anime_planet/anime_planet_anime_crawler.py -- <identifier> [--output PATH]
-
-    <identifier>    anime-planet.com anime identifier (slug, path, or full URL)
-    --output PATH   optional output file path (default: animeplanet_anime.json)
 """
 
-import argparse
-import asyncio
 import json
 import logging
 import re
-import sys
 from typing import Any
 
 from enrichment.crawlers.anime_planet.anime_planet_models import (
@@ -40,6 +31,38 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
+
+_SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
+_RANK_RE = re.compile(r"#(\d+)")
+_AKA_PREFIX = "alt title:"
+
+
+def _parse_season(season_url: str | None) -> str | None:
+    """Extract season name from AP season href e.g. '/anime/seasons/fall-1999' → 'fall'."""
+    if not season_url:
+        return None
+    match = _SEASON_SLUG_RE.search(season_url)
+    if not match:
+        return None
+    return match.group(1).split("-")[0].lower()
+
+
+def _parse_rank(rank_text: str | None) -> int | None:
+    """Parse rank integer from text like 'Rank #157' → 157."""
+    if not rank_text:
+        return None
+    match = _RANK_RE.search(rank_text)
+    return int(match.group(1)) if match else None
+
+
+def _parse_alt_title(aka: str | None) -> str | None:
+    """Strip 'Alt title: ' prefix from h2.aka text and return the bare title."""
+    if not aka:
+        return None
+    text = aka.strip()
+    if text.lower().startswith(_AKA_PREFIX):
+        text = text[len(_AKA_PREFIX) :].strip()
+    return text or None
 
 
 def _normalize_anime_url(anime_identifier: str) -> str:
@@ -425,9 +448,9 @@ def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
         genres=raw.get("genres", []),
         aggregate_rating=_parse_aggregate_rating(raw.get("aggregate_rating")),
         type_raw=raw.get("type_raw"),
-        season_url=raw.get("season_url"),
-        rank_text=raw.get("rank_text"),
-        aka=raw.get("aka"),
+        season=_parse_season(raw.get("season_url")),
+        rank=_parse_rank(raw.get("rank_text")),
+        alt_title=_parse_alt_title(raw.get("aka")),
         cover=raw.get("cover"),
         studios=raw.get("studios", []),
         tags=raw.get("tags", []),
@@ -531,23 +554,24 @@ async def _fetch_animeplanet_anime_data(
     }
 
 
-async def fetch_animeplanet_anime(slug: str) -> AnimePlanetAnime | None:
-    """Fetch and validate anime metadata for an Anime-Planet identifier.
+async def fetch_animeplanet_anime(url: str) -> AnimePlanetAnime | None:
+    """Fetch and validate anime metadata for an Anime-Planet anime URL.
 
-    Normalizes the provided slug/URL, fetches raw data (from cache or live
-    crawl), and validates it into an AnimePlanetAnime source model.
+    Callers are responsible for passing a full canonical URL
+    (e.g. "https://www.anime-planet.com/anime/dandadan").
+    URL normalization (slug/path → URL, www fix) is the caller's responsibility;
+    use ``_normalize_anime_url`` in CLI entry points.
 
     Callers are responsible for mapping to the canonical form via
     ``anime_from_animeplanet`` from ``enrichment.mappers.animeplanet_mapper``.
 
     Args:
-        slug: Anime identifier — slug, path, or full URL.
+        url: Full Anime-Planet anime URL.
 
     Returns:
         Validated AnimePlanetAnime model, or None if the fetch or validation fails.
     """
-    anime_url = _normalize_anime_url(slug)
-    canonical_slug = _extract_slug_from_url(anime_url)
+    canonical_slug = _extract_slug_from_url(url)
 
     raw = await _fetch_animeplanet_anime_data(canonical_slug)
     if raw is None:
@@ -560,49 +584,3 @@ async def fetch_animeplanet_anime(slug: str) -> AnimePlanetAnime | None:
         return None
 
 
-async def main() -> int:
-    """CLI entry point — crawl a single anime page and write to JSON."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    parser = argparse.ArgumentParser(
-        description="Crawl anime data from anime-planet.com"
-    )
-    parser.add_argument(
-        "identifier",
-        type=str,
-        help="Anime identifier: slug (e.g., 'dandadan'), path, or full URL",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="animeplanet_anime.json",
-        help="Output file path (default: animeplanet_anime.json)",
-    )
-    args = parser.parse_args()
-
-    try:
-        anime = await fetch_animeplanet_anime(args.identifier)
-        if anime is None:
-            logger.error("No data was extracted; see logs above for details.")
-            return 1
-    except (ValueError, OSError):
-        logger.exception("Failed to fetch anime-planet anime data")
-        return 1
-    except Exception:
-        logger.exception("Unexpected error during anime fetch")
-        return 1
-
-    from enrichment.mappers.animeplanet_mapper import anime_from_animeplanet
-
-    canonical = anime_from_animeplanet(anime)
-    safe_path = sanitize_output_path(args.output)
-    with open(safe_path, "w", encoding="utf-8") as f:
-        json.dump(canonical, f, ensure_ascii=False, indent=2)
-    logger.info(f"Data written to {safe_path}")
-    return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    sys.exit(asyncio.run(main()))

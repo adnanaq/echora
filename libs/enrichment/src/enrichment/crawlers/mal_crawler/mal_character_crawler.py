@@ -23,7 +23,7 @@ from collections.abc import Callable
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import CrawlerRateLimiter
 from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
 from enrichment.crawlers.mal_crawler.mal_base import (
     parse_number,
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = MalRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
+_limiter = CrawlerRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
 
 _CHARACTER_BATCH_SIZE = 30
 
@@ -465,6 +465,8 @@ async def fetch_mal_characters(
 
     Args:
         urls: List of full MAL character URLs.
+        on_result: Optional callback invoked with each successfully parsed
+            character as results arrive (used for write-immediately streaming).
 
     Returns:
         List aligned to urls — None for any failed fetch.
@@ -549,7 +551,7 @@ async def fetch_mal_characters(
 
 
 async def main() -> int:
-    """CLI entry point."""
+    """Fetch a single MAL character and write the mapped result to JSON."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -570,7 +572,7 @@ async def main() -> int:
         return 1
     from pathlib import Path
 
-    from enrichment.mappers.mal_mapper import character_from_mal
+    from enrichment.crawlers.mal_crawler.mal_mapper import character_from_mal
 
     canonical = character_from_mal(char)
     Path(args.output).write_text(

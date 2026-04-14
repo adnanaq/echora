@@ -3,19 +3,18 @@
 Pure value normalization — no I/O, no side effects.
 
 Receives validated AnimePlanetAnime / AnimePlanetCharacter source models and
-returns canonical Anime / Character dicts.  All field renaming, derivation
-(year, season, status), and stat normalization happen here — not in the crawler.
+returns canonical Anime / Character dicts.  The crawler is responsible for all
+raw-string parsing; the mapper only lifts primitives into canonical types.
 
 Key AP-specific details:
 - Ratings: AP uses 0–5 scale → multiply × 2 for canonical 0–10
-- Season: derived from /anime/seasons/<season>-<year> href slug
+- Season: crawler parses slug → plain string; mapper lifts to AnimeSeason enum
 - Type:   JSON-LD @type ("TVSeries" → TV, "Movie" → MOVIE) — coarse but reliable
 - Related anime subtype mapping documented in docs/source_api_field_mappings.md
 - Manga entries with subtype "Original Manga" → related_source_material (ADAPTATION)
 - All other manga entries → related_source_material (OTHER)
 """
 
-import re
 from typing import Any
 
 from common.models.anime import (
@@ -58,39 +57,6 @@ _FLAG_TO_LANGUAGE: dict[str, str] = {
     "ko": "Korean",
 }
 
-_SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
-_RANK_RE = re.compile(r"#(\d+)")
-
-
-def _parse_season_from_url(season_url: str | None) -> AnimeSeason | None:
-    """Parse AnimeSeason from AP season href like '/anime/seasons/fall-1999'."""
-    if not season_url:
-        return None
-    match = _SEASON_SLUG_RE.search(season_url)
-    if not match:
-        return None
-    season_name = match.group(1).split("-")[0]  # "fall-1999" → "fall"
-    return AnimeSeason(season_name)  # _missing_ handles lowercase
-
-
-def _parse_rank(rank_text: str | None) -> int | None:
-    """Parse rank integer from text like 'Rank #157' → 157."""
-    if not rank_text:
-        return None
-    match = _RANK_RE.search(rank_text)
-    return int(match.group(1)) if match else None
-
-
-def _parse_aka(aka: str | None) -> str | None:
-    """Strip 'Alt title: ' prefix and return the bare title."""
-    if not aka:
-        return None
-    text = aka.strip()
-    lower = text.lower()
-    if lower.startswith("alt title:"):
-        text = text[len("alt title:") :].strip()
-    return text or None
-
 
 def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     """Map an AnimePlanetAnime source model to canonical Anime field values.
@@ -105,14 +71,13 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     # schema_type is the JSON-LD @type value ("TVSeries", "Movie", etc.)
     anime_type = AnimeType(anime.schema_type or "")
 
-    # Season: prefer the dedicated season URL slug; fall back to start_date
-    season = _parse_season_from_url(anime.season_url)
+    # Season: crawler supplies a parsed name ("fall"); fall back to start_date derivation
+    season: AnimeSeason | None = AnimeSeason(anime.season) if anime.season else None
     if season is None and anime.start_date:
         season = determine_anime_season(anime.start_date)
 
     year = determine_anime_year(anime.start_date) if anime.start_date else None
     status = determine_anime_status(anime.start_date, anime.end_date)
-    title_japanese = _parse_aka(anime.aka)
 
     # ── Aired dates ───────────────────────────────────────────────────────
     aired_dates = None
@@ -124,7 +89,7 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
 
     # ── Statistics ────────────────────────────────────────────────────────
     statistics: dict[str, Statistics] = {}
-    rank = _parse_rank(anime.rank_text)
+    rank = anime.rank
     stats_data: dict[str, Any] = {}
     if anime.aggregate_rating:
         if anime.aggregate_rating.rating_value is not None:
@@ -207,7 +172,7 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     result = Anime(
         title=anime.name,
         synopsis=anime.description,
-        title_japanese=title_japanese,
+        title_japanese=anime.alt_title,
         type=anime_type,
         status=status,
         year=year,

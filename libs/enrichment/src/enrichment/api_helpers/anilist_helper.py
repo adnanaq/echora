@@ -24,11 +24,21 @@ from ..exceptions import (
     ServiceNetworkError,
     ServiceRateLimitedError,
 )
-from ..mappers.anilist_mapper import anime_from_anilist, character_from_anilist
+from .anilist.anilist_mapper import anime_from_anilist, character_from_anilist
 from .anilist.anilist_anime_models import AniListAnime
 from .anilist.anilist_character_models import AniListCharacterEdge
 
 logger = logging.getLogger(__name__)
+
+_ANILIST_BASE = "https://anilist.co/anime"
+
+
+def _extract_anilist_id(url: str) -> int:
+    """Extract numeric AniList ID from a URL like https://anilist.co/anime/21."""
+    try:
+        return int(url.rstrip("/").split("/")[-1])
+    except (ValueError, IndexError) as e:
+        raise ValueError(f"Cannot extract AniList ID from URL: {url!r}") from e
 
 
 class AniListEnrichmentHelper:
@@ -169,14 +179,11 @@ class AniListEnrichmentHelper:
         )
 
     def _get_media_query_fields(self) -> str:
-        """
-        GraphQL selection set for requesting Media (ANIME) fields from the AniList API.
+        """Return the GraphQL selection set for a Media (ANIME) node.
 
         Returns:
-            str: A multiline GraphQL field selection string that requests comprehensive Media fields
-                 (titles, identifiers, images, stats, relations, studios, external links, tags,
-                 rankings, airing/trailer info, and other metadata) used when querying an AniList
-                 Media node.
+            GraphQL field selection string covering titles, images, stats, relations,
+            studios, external links, tags, rankings, and airing info.
         """
         return """
         id
@@ -280,12 +287,28 @@ class AniListEnrichmentHelper:
         return f"query ($id: Int) {{ Media(id: $id, type: ANIME) {{ {self._get_media_query_fields()} }} }}"
 
     async def fetch_anime_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
+        """Fetch raw AniList Media data by MyAnimeList ID.
+
+        Args:
+            mal_id: MyAnimeList integer anime ID.
+
+        Returns:
+            Raw ``Media`` dict from AniList, or None if not found.
+        """
         query = self._build_query_by_mal_id()
         variables = {"idMal": mal_id}
         response = await self._make_request(query, variables)
         return response.get("Media")
 
     async def fetch_anime(self, anilist_id: int) -> dict[str, Any] | None:
+        """Fetch raw AniList Media data by AniList ID.
+
+        Args:
+            anilist_id: AniList integer anime ID.
+
+        Returns:
+            Raw ``Media`` dict from AniList, or None if not found.
+        """
         query = self._build_query_by_anilist_id()
         variables = {"id": anilist_id}
         response = await self._make_request(query, variables)
@@ -294,16 +317,17 @@ class AniListEnrichmentHelper:
     async def _fetch_paginated_data(
         self, anilist_id: int, query_template: str, data_key: str
     ) -> list[dict[str, Any]]:
-        """
-        Fetches and accumulative list of paginated edges for a specific Media sub-resource by AniList ID.
+        """Fetch all paginated edges for a Media sub-resource.
 
-        Parameters:
-            anilist_id (int): AniList numeric identifier for the Media node to query.
-            query_template (str): GraphQL query string that accepts `id` and `page` variables and returns a pagination structure under `Media`.
-            data_key (str): Key name under `Media` whose pagination container provides `edges` and `pageInfo` (e.g., "characters", "staff", "airingSchedule").
+        Args:
+            anilist_id: AniList numeric ID of the Media node.
+            query_template: GraphQL query accepting ``id`` and ``page`` variables,
+                returning a paginated structure under ``Media``.
+            data_key: Key under ``Media`` whose container provides ``edges`` and
+                ``pageInfo`` (e.g. ``"characters"``, ``"staff"``).
 
         Returns:
-            List[Dict[str, Any]]: Concatenated list of edge objects from all fetched pages. Paging stops when the container is missing, empty, or `pageInfo.hasNextPage` is false. If a response indicates it was served from cache via a `_from_cache` flag, the routine does not apply the inter-page throttle delay.
+            All edge objects across all pages. Cached pages skip the inter-page delay.
         """
         all_items = []
         page = 1
@@ -329,14 +353,14 @@ class AniListEnrichmentHelper:
         return all_items
 
     async def fetch_characters(self, anilist_id: int) -> list[dict[str, Any]]:
-        """
-        Fetches all character edges for an anime from AniList by its AniList ID.
+        """Fetch all character edges for an anime from AniList.
 
-        Parameters:
-                anilist_id (int): AniList numeric ID of the anime to query.
+        Args:
+            anilist_id: AniList numeric ID of the anime.
 
         Returns:
-                characters (List[Dict[str, Any]]): A list of edge dictionaries from the GraphQL `characters` connection; each edge contains `node` (character data), `role`, and `voiceActors`.
+            List of edge dicts from the ``characters`` connection; each edge
+            contains ``node`` (character data), ``role``, and ``voiceActors``.
         """
         query = """
         query ($id: Int!, $page: Int!) {
@@ -381,20 +405,22 @@ class AniListEnrichmentHelper:
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
     async def fetch_anime_canonical(
-        self, anilist_id: int, output_dir: str | None = None
+        self, url: str, output_dir: str | None = None
     ) -> dict[str, Any] | None:
-        """
-        Fetch anime data, validate via AniListAnime, map to canonical fields.
+        """Fetch anime data, validate via AniListAnime, and map to canonical fields.
 
-        Writes the raw API response to {output_dir}/anilist.json when output_dir
-        is provided (consistent with the MAL/AnimSchedule pattern).
+        Args:
+            url: Full AniList anime URL (e.g. ``https://anilist.co/anime/21``).
+            output_dir: If provided, write canonical JSONL to
+                ``{output_dir}/anilist.jsonl``.
 
         Returns:
-            Canonical dict (output of anime_from_anilist), or None if not found.
+            Canonical dict from ``anime_from_anilist``, or None if not found.
         """
+        anilist_id = _extract_anilist_id(url)
         raw = await self.fetch_anime(anilist_id)
         if not raw:
-            logger.warning(f"No AniList data found for AniList ID: {anilist_id}")
+            logger.warning(f"No AniList data found for: {url}")
             return None
 
         anime = AniListAnime.model_validate(raw)
@@ -410,17 +436,19 @@ class AniListEnrichmentHelper:
         return canonical
 
     async def fetch_characters_canonical(
-        self, anilist_id: int, output_dir: str | None = None
+        self, url: str, output_dir: str | None = None
     ) -> list[dict[str, Any]]:
-        """
-        Fetch all character edges, validate, map to canonical dicts.
+        """Fetch all character edges, validate, and map to canonical dicts.
 
-        Writes raw edges as JSONL to {output_dir}/anilist_characters.jsonl when
-        output_dir is provided.
+        Args:
+            url: Full AniList anime URL (e.g. ``https://anilist.co/anime/21``).
+            output_dir: If provided, write results as JSONL to
+                ``{output_dir}/anilist_characters.jsonl``.
 
         Returns:
-            List of canonical character dicts (output of character_from_anilist).
+            List of canonical character dicts from ``character_from_anilist``.
         """
+        anilist_id = _extract_anilist_id(url)
         raw_edges = await self.fetch_characters(anilist_id)
         if not raw_edges:
             return []
@@ -444,27 +472,35 @@ class AniListEnrichmentHelper:
         return canonical
 
     async def fetch_all(
-        self, anilist_id: int, output_dir: str | None = None
+        self, url: str, output_dir: str | None = None
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-        """Fetch canonical anime data and all characters for an AniList ID.
+        """Fetch canonical anime data and all characters for an AniList URL.
 
         Args:
-            anilist_id: AniList anime ID.
+            url: Full AniList anime URL (e.g. https://anilist.co/anime/21).
             output_dir: If provided, writes anilist.jsonl and anilist_characters.jsonl
                 to this directory (consistent with MAL/AnimSchedule pattern).
 
         Returns:
             Tuple of (canonical anime dict or None, list of canonical character dicts).
         """
-        logger.info(f"Fetching AniList data for: {anilist_id}")
-        anime = await self.fetch_anime_canonical(anilist_id, output_dir)
+        logger.info(f"Fetching AniList data for: {url}")
+        anime = await self.fetch_anime_canonical(url, output_dir)
         if anime:
-            logger.info(f"AniList anime fetched: {anime.get('title', anilist_id)}")
-        characters = await self.fetch_characters_canonical(anilist_id, output_dir)
+            logger.info(f"AniList anime fetched: {anime.get('title', url)}")
+        characters = await self.fetch_characters_canonical(url, output_dir)
         logger.info(f"AniList characters fetched: {len(characters)} characters")
         return anime, characters
 
     async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
+        """Fetch raw anime and character data by MyAnimeList ID.
+
+        Args:
+            mal_id: MyAnimeList integer anime ID.
+
+        Returns:
+            Raw Media dict with ``characters`` key populated, or None if not found.
+        """
         anime_data = await self.fetch_anime_by_mal_id(mal_id)
         if not anime_data:
             logger.warning(f"No AniList data found for MAL ID: {mal_id}")
@@ -475,11 +511,7 @@ class AniListEnrichmentHelper:
         return anime_data
 
     async def close(self) -> None:
-        """
-        Close the helper's active aiohttp session if one exists.
-
-        If a session is present, closes the underlying ClientSession and resets session state to make the helper safe for potential reuse.
-        """
+        """Close the active aiohttp session if one exists."""
         if self.session:
             await self.session.close()
             # Reset session state to prevent accidental reuse of closed session
@@ -487,14 +519,7 @@ class AniListEnrichmentHelper:
             self._session_event_loop = None
 
     async def __aenter__(self) -> "AniListEnrichmentHelper":
-        """
-        Enter the async context manager for this helper.
-
-        The underlying HTTP session is not created on enter; it will be created lazily on first request.
-
-        Returns:
-            AniListEnrichmentHelper: The helper instance (`self`).
-        """
+        """Return self; session is created lazily on first request."""
         return self
 
     async def __aexit__(
@@ -503,31 +528,25 @@ class AniListEnrichmentHelper:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        """
-        Exit the asynchronous context and close the helper's HTTP session.
-
-        Returns:
-            False to indicate exceptions are not suppressed.
-        """
+        """Close the session and return False (exceptions not suppressed)."""
         await self.close()
         return False
 
 
 async def main() -> int:
-    """
-    CLI entry point that fetches AniList data for a provided ID and writes the result as JSON to a file.
-
-    Parses command-line arguments --anilist-id or --mal-id (mutually exclusive, one required) and optional --output (defaults to "."), invokes the AniListEnrichmentHelper to retrieve and enrich anime data, and writes the JSON output when data is found. Ensures the helper is closed before exit.
+    """CLI entry point for fetching AniList data.
 
     Returns:
-        int: 0 when data was successfully fetched and saved; 1 when no data was found or an error occurred.
+        0 on success, 1 on failure.
     """
     parser = argparse.ArgumentParser(
         description="Fetch AniList data for an anime entry"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--mal-id", type=int, help="MyAnimeList ID to fetch")
-    group.add_argument("--anilist-id", type=int, help="AniList ID to fetch")
+    group.add_argument(
+        "--url", help="Full AniList anime URL (e.g. https://anilist.co/anime/21)"
+    )
     parser.add_argument(
         "--output",
         type=str,
@@ -539,9 +558,9 @@ async def main() -> int:
     logging.basicConfig(level=logging.INFO)
     helper = AniListEnrichmentHelper()
     try:
-        if args.anilist_id:
-            canonical = await helper.fetch_anime_canonical(args.anilist_id, args.output)
-            await helper.fetch_characters_canonical(args.anilist_id, args.output)
+        if args.url:
+            canonical = await helper.fetch_anime_canonical(args.url, args.output)
+            await helper.fetch_characters_canonical(args.url, args.output)
         else:
             anime_raw = await helper.fetch_anime_by_mal_id(args.mal_id)
             if not anime_raw:
@@ -551,8 +570,9 @@ async def main() -> int:
             if not anilist_id:
                 logger.error("Could not resolve AniList ID from MAL ID.")
                 return 1
-            canonical = await helper.fetch_anime_canonical(anilist_id, args.output)
-            await helper.fetch_characters_canonical(anilist_id, args.output)
+            anilist_url = f"{_ANILIST_BASE}/{anilist_id}"
+            canonical = await helper.fetch_anime_canonical(anilist_url, args.output)
+            await helper.fetch_characters_canonical(anilist_url, args.output)
 
         if canonical:
             logger.info(

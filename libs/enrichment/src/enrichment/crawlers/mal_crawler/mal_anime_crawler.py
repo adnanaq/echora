@@ -909,7 +909,7 @@ async def main() -> int:
         return 1
     from pathlib import Path
 
-    from enrichment.mappers.mal_mapper import anime_from_mal
+    from enrichment.crawlers.mal_crawler.mal_mapper import anime_from_mal
 
     canonical = anime_from_mal(anime)
     Path(args.output).write_text(

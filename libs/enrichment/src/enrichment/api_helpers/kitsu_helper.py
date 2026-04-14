@@ -17,7 +17,7 @@ from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager as _cache_manager
 
 from ..exceptions import ServiceNotFoundError
-from ..mappers.kitsu_mapper import (
+from .kitsu.kitsu_mapper import (
     anime_from_kitsu,
     character_from_kitsu,
     episode_from_kitsu,
@@ -176,7 +176,15 @@ class KitsuEnrichmentHelper:
     async def get_anime_by_id(
         self, anime_id: int, *, session: Any | None = None
     ) -> dict[str, Any] | None:
-        """Fetch a single anime resource by its Kitsu ID."""
+        """Fetch a single anime resource by its Kitsu ID.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            Raw Kitsu anime ``data`` dict, or None if not found.
+        """
         try:
             response = await self._make_request(f"/anime/{anime_id}", session=session)
             return response.get("data") if response else None
@@ -190,7 +198,15 @@ class KitsuEnrichmentHelper:
     async def get_anime_episodes(
         self, anime_id: int, *, session: Any | None = None
     ) -> list[dict[str, Any]]:
-        """Fetch all episode resources for a Kitsu anime ID."""
+        """Fetch all episode resources for a Kitsu anime ID.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            List of raw episode ``data`` dicts.
+        """
         return await self._fetch_all_pages(
             f"/anime/{anime_id}/episodes", session=session
         )
@@ -198,7 +214,15 @@ class KitsuEnrichmentHelper:
     async def get_anime_categories(
         self, anime_id: int, *, session: Any | None = None
     ) -> list[dict[str, Any]]:
-        """Fetch all category resources for a Kitsu anime ID."""
+        """Fetch all category resources for a Kitsu anime ID.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            List of raw category ``data`` dicts.
+        """
         return await self._fetch_all_pages(
             f"/anime/{anime_id}/categories", session=session
         )
@@ -206,7 +230,15 @@ class KitsuEnrichmentHelper:
     async def get_anime_genres(
         self, anime_id: int, *, session: Any | None = None
     ) -> list[dict[str, Any]]:
-        """Fetch all genre resources for a Kitsu anime ID."""
+        """Fetch all genre resources for a Kitsu anime ID.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Returns:
+            List of raw genre ``data`` dicts.
+        """
         return await self._fetch_all_pages(f"/anime/{anime_id}/genres", session=session)
 
     async def get_anime_characters(
@@ -552,6 +584,7 @@ class KitsuEnrichmentHelper:
         """No-op — sessions are created per-request and managed by the cache manager."""
 
     async def __aenter__(self) -> "KitsuEnrichmentHelper":
+        """Return self."""
         return self
 
     async def __aexit__(
@@ -560,6 +593,7 @@ class KitsuEnrichmentHelper:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
+        """Return False (exceptions not suppressed)."""
         return False
 
 

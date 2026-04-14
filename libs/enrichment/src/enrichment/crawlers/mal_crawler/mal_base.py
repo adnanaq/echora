@@ -6,7 +6,7 @@ Provides:
 - ID extraction helpers (URL → numeric MAL ID)
 - Number parsing utilities ("2,644,378" → int, "#17" → int)
 - Model-level diffing (field-by-field comparison, no HTML hashing)
-- Rate limiter factory (2s intervals for scraping vs 0.5s for Jikan)
+- Rate limiters: scraping (2s/25rpm), shared singleton (0.5s/60rpm)
 
 All crawlers import from this module — no duplicated boilerplate.
 """
@@ -14,12 +14,13 @@ All crawlers import from this module — no duplicated boilerplate.
 import logging
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from crawl4ai import BrowserConfig
-from enrichment.api_helpers.mal_rate_limiter import MalRateLimiter
+from enrichment.crawlers.crawler_config import CrawlerRateLimiter
 from enrichment.crawlers.crawler_config import DEFAULT_HEADERS as _MAL_BROWSER_HEADERS
 from pydantic import BaseModel
 
@@ -90,13 +91,19 @@ def get_browser_config(
 # =============================================================================
 
 
-def get_mal_scraping_limiter() -> MalRateLimiter:
+def get_mal_scraping_limiter() -> CrawlerRateLimiter:
     """Create a MAL scraping rate limiter with conservative timing.
 
     Uses 2s intervals and 25 requests/minute (vs 0.5s/60rpm for Jikan).
     Scraping is heavier than API calls — be respectful to MAL servers.
     """
-    return MalRateLimiter(min_interval_seconds=2.0, max_per_minute=25)
+    return CrawlerRateLimiter(min_interval_seconds=2.0, max_per_minute=25)
+
+
+@lru_cache(maxsize=1)
+def get_shared_mal_rate_limiter() -> CrawlerRateLimiter:
+    """Return a process-wide shared limiter instance for all MAL requests."""
+    return CrawlerRateLimiter(min_interval_seconds=0.5, max_per_minute=60)
 
 
 # =============================================================================

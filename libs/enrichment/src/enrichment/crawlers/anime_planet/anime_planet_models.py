@@ -61,12 +61,12 @@ class AnimePlanetAnime(BaseModel):
     genres: list[str] = []
     aggregate_rating: AnimePlanetAggregateRating | None = None
 
-    # ── From XPath ────────────────────────────────────────────────────────
+    # ── From XPath (parsed by crawler) ───────────────────────────────────
     type_raw: str | None = None  # "TV\n  (1156+ eps)" raw entryBar span text
-    season_url: str | None = None  # full href e.g. "/anime/seasons/fall-1999"
-    rank_text: str | None = None  # "Rank #157"
+    season: str | None = None  # season name e.g. "fall" — parsed from seasons slug
+    rank: int | None = None  # parsed from "Rank #157" → 157
     studios: list[str] = []
-    aka: str | None = None  # raw h2.aka text: "Alt title: ワンピース"
+    alt_title: str | None = None  # cleaned h2.aka text e.g. "ワンピース"
     tags: list[str] = []  # ["Action", "Adventure", ...]
     cover: str | None = None  # from img[itemprop="image"] — actual poster
     slug: str  # canonical slug, set by caller

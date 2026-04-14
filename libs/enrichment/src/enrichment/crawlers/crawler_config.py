@@ -6,12 +6,82 @@ Two factory variants:
 - Docker dict (get_docker_browser_config / get_docker_crawler_config): return
   serialized dicts for crawlers using the crawl4ai Docker REST API (MAL).
 
+Rate limiting:
+- CrawlerRateLimiter — generic async rate limiter for any crawler.
+  Import from here; MAL-specific wrappers in mal_rate_limiter.py re-export it.
+
 All crawlers import constants and factories from here — no duplication.
 """
 
+import asyncio
+import time
+from collections import deque
+from functools import lru_cache
 from typing import Any
 
 from crawl4ai import BrowserConfig, CrawlerRunConfig
+
+
+class CrawlerRateLimiter:
+    """Async rate limiter for crawler batch submissions.
+
+    Throttles request *start times* to respect:
+    - A minimum interval between submissions (min_interval_seconds).
+    - A maximum number of submissions per rolling 60-second window (max_per_minute).
+
+    Safe to share across coroutines in a single process.
+    """
+
+    def __init__(
+        self,
+        *,
+        min_interval_seconds: float = 0.5,
+        max_per_minute: int = 60,
+    ) -> None:
+        self._min_interval = float(min_interval_seconds)
+        self._max_per_minute = int(max_per_minute)
+        self._lock = asyncio.Lock()
+        self._last: float | None = None
+        self._recent: deque[float] = deque()
+
+    async def acquire(self) -> None:
+        """Block until a new submission is allowed under the configured limits."""
+        async with self._lock:
+            now = time.time()
+
+            cutoff = now - 60.0
+            while self._recent and self._recent[0] <= cutoff:
+                self._recent.popleft()
+
+            if self._max_per_minute > 0 and len(self._recent) >= self._max_per_minute:
+                oldest = self._recent[0]
+                sleep_for = max(0.0, (oldest + 60.0) - now)
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                    now = time.time()
+                    cutoff = now - 60.0
+                    while self._recent and self._recent[0] <= cutoff:
+                        self._recent.popleft()
+
+            if self._last is not None and self._min_interval > 0:
+                sleep_for = (self._last + self._min_interval) - now
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                    now = time.time()
+
+            self._last = now
+            self._recent.append(now)
+
+
+@lru_cache(maxsize=1)
+def get_ap_rate_limiter() -> CrawlerRateLimiter:
+    """Shared rate limiter for Anime-Planet character detail crawls.
+
+    5 s minimum between batch submissions prevents Cloudflare 403s on
+    large casts (e.g. One Piece: 1088 characters, 54 batches).
+    """
+    return CrawlerRateLimiter(min_interval_seconds=5.0, max_per_minute=12)
+
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
