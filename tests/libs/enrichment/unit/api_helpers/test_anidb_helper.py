@@ -613,8 +613,9 @@ async def test_get_anime_by_id_workflow(helper):
     helper._make_request = AsyncMock(return_value=None)
     assert await helper.get_anime_by_id(999) is None
 
-    # API Error case
+    # API Error case — reset parse mock so we test get_anime_by_id's own None propagation
     helper._make_request = AsyncMock(return_value="<error>Anime not found</error>")
+    helper._parse_anime_xml = AsyncMock(return_value=None)
     assert await helper.get_anime_by_id(999) is None
 
     # Exception case
@@ -820,11 +821,15 @@ async def test_internal_parsers_granular(helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper.fetch_all",
+    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper._parse_anime_xml",
+    new_callable=AsyncMock,
+)
+@patch(
+    "enrichment.api_helpers.anidb_helper.AniDBEnrichmentHelper._make_request",
     new_callable=AsyncMock,
 )
 @patch("argparse.ArgumentParser.parse_args")
-async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
+async def test_main_cli_scenarios(mock_parse_args, mock_make_request, mock_parse_xml, tmp_path):
     """Consolidated test for various CLI entry point scenarios."""
     from enrichment.api_helpers import anidb_helper
 
@@ -833,8 +838,10 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     mock_parse_args.return_value = MagicMock(
         anidb_id=1, search_name=None, output=str(output_path_1), save_xml=None
     )
-    mock_fetch.return_value = {"id": 1}
-    mock_fetch.side_effect = None  # Clear any previous side effects
+    mock_make_request.return_value = "<anime id='1'></anime>"
+    mock_make_request.side_effect = None
+    mock_parse_xml.return_value = {"id": 1}
+    mock_parse_xml.side_effect = None
     await anidb_helper.main()
     assert output_path_1.exists()
 
@@ -843,7 +850,7 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     mock_parse_args.return_value = MagicMock(
         anidb_id=2, search_name=None, output=str(output_path_2), save_xml=None
     )
-    mock_fetch.side_effect = KeyboardInterrupt
+    mock_make_request.side_effect = KeyboardInterrupt
     assert await anidb_helper.main() == 1
 
     # Case 3: Generic Exception
@@ -851,7 +858,7 @@ async def test_main_cli_scenarios(mock_parse_args, mock_fetch, tmp_path):
     mock_parse_args.return_value = MagicMock(
         anidb_id=3, search_name=None, output=str(output_path_3), save_xml=None
     )
-    mock_fetch.side_effect = Exception("Generic error")
+    mock_make_request.side_effect = Exception("Generic error")
     assert await anidb_helper.main() == 1
 
 

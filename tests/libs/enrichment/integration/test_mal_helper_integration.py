@@ -1,5 +1,5 @@
 """
-Integration tests for MalEnrichmentHelper.
+Integration tests for MalHelper.
 
 NOTE: These tests make REAL HTTP calls to the public MAL API and may be rate-limited.
 Set ENABLE_LIVE_API_TESTS=1 environment variable to run them.
@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from enrichment.api_helpers.mal_helper import MalEnrichmentHelper
+from enrichment.api_helpers.mal_helper import MalHelper
 from enrichment.crawlers.mal_crawler.mal_base import get_shared_mal_rate_limiter
 
 # Mark all tests in this module as integration tests.

@@ -184,7 +184,7 @@ async def test_fetch_all_returns_split_anime_and_characters():
     ), patch.object(
         helper, "fetch_characters", new=AsyncMock(return_value=characters)
     ):
-        result = await helper.fetch_all(_AP_ANIME_URL)
+        result = await helper.fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
 
     assert result == {"anime": _ANIME_CANONICAL, "characters": characters}
 
@@ -193,8 +193,6 @@ async def test_fetch_all_writes_anime_before_characters(tmp_path):
     """Anime output file is written before character fetch begins."""
     from enrichment.api_helpers.anime_planet_helper import AnimePlanetEnrichmentHelper
 
-    anime_path = str(tmp_path / "ap_anime.jsonl")
-    chars_path = str(tmp_path / "ap_chars.jsonl")
     write_calls: list[str] = []
 
     async def slow_char_fetch(slug: str, *, output_path: str | None = None):
@@ -217,12 +215,12 @@ async def test_fetch_all_writes_anime_before_characters(tmp_path):
         side_effect=tracking_append,
     ), patch.object(helper, "fetch_characters", side_effect=slow_char_fetch):
         await helper.fetch_all(
-            _AP_ANIME_URL,
-            anime_output_path=anime_path,
-            characters_output_path=chars_path,
+            {"anime_planet_url": _AP_ANIME_URL},
+            {},
+            temp_dir=str(tmp_path),
         )
 
-    assert write_calls.index(f"write:{os.path.basename(anime_path)}") < write_calls.index(
+    assert write_calls.index("write:anime_planet_anime.jsonl") < write_calls.index(
         "char_fetch_started"
     )
 
@@ -234,7 +232,7 @@ async def test_fetch_all_returns_none_when_anime_missing():
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
         new=AsyncMock(return_value=None),
     ):
-        result = await AnimePlanetEnrichmentHelper().fetch_all(_AP_ANIME_URL)
+        result = await AnimePlanetEnrichmentHelper().fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
 
     assert result is None
 
@@ -252,7 +250,7 @@ async def test_fetch_all_survives_character_fetch_failure():
     ), patch.object(
         helper, "fetch_characters", new=AsyncMock(side_effect=RuntimeError("network error"))
     ):
-        result = await helper.fetch_all(_AP_ANIME_URL)
+        result = await helper.fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
 
     assert result is not None
     assert result["anime"] == _ANIME_CANONICAL
@@ -399,9 +397,9 @@ async def test_main_all_subcommand_success(mock_helper_class, tmp_path):
 
     assert code == 0
     mock_helper.fetch_all.assert_awaited_once_with(
-        _AP_ANIME_URL,
-        anime_output_path=str(anime_out),
-        characters_output_path=str(chars_out),
+        {"anime_planet_url": _AP_ANIME_URL},
+        {},
+        None,
     )
 
 

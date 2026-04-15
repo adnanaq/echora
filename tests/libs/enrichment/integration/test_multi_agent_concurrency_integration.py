@@ -137,7 +137,7 @@ class TestConcurrentRedisAccess:
 
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from enrichment.api_helpers.anilist_helper import AniListHelper
 
         num_agents = 3
         anilist_id = 1535  # Death Note (much smaller anime)
@@ -147,7 +147,7 @@ class TestConcurrentRedisAccess:
 
         async def agent_fetch_data(agent_id: int) -> dict:
             """Simulate agent fetching data with Redis cache."""
-            helper = AniListEnrichmentHelper()
+            helper = AniListHelper()
 
             # Use _make_request directly to get _from_cache metadata
             query = helper._build_query_by_anilist_id()
@@ -349,7 +349,7 @@ class TestConcurrentPipelineExecution:
         NOTE: Requires live AniList API and Redis.
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from enrichment.api_helpers.anilist_helper import AniListHelper
 
         # Use small anime for stress test (avoid huge episode/character lists)
         anime_configs = [
@@ -362,7 +362,7 @@ class TestConcurrentPipelineExecution:
 
         async def run_enrichment_pipeline(anime_config: dict) -> dict:
             """Run full enrichment for one anime."""
-            helper = AniListEnrichmentHelper()
+            helper = AniListHelper()
 
             # Fetch from AniList concurrently
             start_time = time.time()

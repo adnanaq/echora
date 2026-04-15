@@ -1,5 +1,5 @@
 """
-Integration tests for AniListEnrichmentHelper to verify caching and real API calls.
+Integration tests for AniListHelper to verify caching and real API calls.
 
 These tests make real API calls to AniList GraphQL API to validate:
 - Caching functionality with Redis
@@ -13,7 +13,7 @@ import logging
 import pytest
 import pytest_asyncio
 import redis
-from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+from enrichment.api_helpers.anilist_helper import AniListHelper
 
 # Mark all tests in this module as integration tests
 # Use redis_client fixture for setup/teardown side effects
@@ -44,7 +44,7 @@ async def clean_helper():
     logger = logging.getLogger(__name__)
     logger.info(f"[clean_helper] SETUP - Event loop: {id(asyncio.get_running_loop())}")
 
-    helper = AniListEnrichmentHelper()
+    helper = AniListHelper()
 
     yield helper
 
@@ -194,7 +194,7 @@ async def test_anilist_event_loop_safety():
     logger = logging.getLogger(__name__)
     logger.info(f"Event loop safety test - loop: {id(asyncio.get_running_loop())}")
 
-    helper = AniListEnrichmentHelper()
+    helper = AniListHelper()
 
     try:
         result = await helper.fetch_anime(30)  # Neon Genesis Evangelion
