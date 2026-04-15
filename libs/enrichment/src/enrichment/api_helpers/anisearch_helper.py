@@ -1,6 +1,7 @@
 """AniSearch enrichment helper using crawlers (anime, episodes, characters)."""
 
 import logging
+import os
 import re
 from types import TracebackType
 from typing import Any
@@ -10,15 +11,121 @@ from common.utils.jsonl_utils import append_jsonl
 from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
 from ..crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
+from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
 
 
-class AniSearchEnrichmentHelper:
+class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
     """Helper class for fetching AniSearch data using crawlers."""
 
     def __init__(self) -> None:
         """Initialize AniSearch helper (crawlers are stateless)."""
+
+    async def fetch_all(
+        self,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetches anime data from AniSearch and enriches it with optional episodes and characters.
+
+        Args:
+            ids: Dictionary of validated platform IDs/URLs. Must contain 'anisearch_id'.
+            offline_data: The original offline anime metadata.
+            temp_dir: Optional directory for intermediate JSONL storage.
+
+        Returns:
+            The anime data dictionary enriched with optional "episodes" and "characters" keys, or `None` if the primary anime data could not be fetched.
+        """
+        anisearch_id = ids.get("anisearch_id")
+        if not anisearch_id:
+            return None
+
+        output_path = (
+            os.path.join(temp_dir, "anisearch.jsonl") if temp_dir else None
+        )
+
+        return await self._fetch_all_impl(
+            int(anisearch_id),
+            include_episodes=True,
+            include_characters=True,
+            output_path=output_path
+        )
+
+    async def _fetch_all_impl(
+        self,
+        anisearch_id: int,
+        include_episodes: bool = True,
+        include_characters: bool = True,
+        output_path: str | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Internal implementation of fetch_all.
+
+        Parameters:
+            anisearch_id (int): AniSearch numeric anime ID (e.g., 18878 for Dandadan).
+            include_episodes (bool): If True, attempt to attach an "episodes" list to the returned data.
+            include_characters (bool): If True, attempt to attach a "characters" list to the returned data.
+            output_path (str): Optional path to write JSONL output.
+
+        Returns:
+            The anime data dictionary enriched with optional "episodes" and "characters" keys, or `None` if the primary anime data could not be fetched.
+        """
+        try:
+            logger.info(f"Fetching all AniSearch data for ID {anisearch_id}")
+
+            # Fetch anime data (primary data)
+            anime_data = await self.fetch_anime_data(anisearch_id)
+
+            if not anime_data:
+                logger.warning(f"Failed to fetch anime data for ID {anisearch_id}")
+                return None
+
+            # Fetch episodes if requested
+            if include_episodes:
+                try:
+                    episode_data = await self.fetch_episode_data(anisearch_id)
+                    if episode_data:
+                        anime_data["episodes"] = episode_data
+                        logger.info(
+                            f"Integrated {len(episode_data)} episodes into anime data"
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch episodes for ID {anisearch_id}",
+                        exc_info=True,
+                    )
+                    # Continue without episodes - non-critical
+
+            # Fetch characters if requested
+            if include_characters:
+                try:
+                    character_data = await self.fetch_character_data(anisearch_id)
+                    if character_data:
+                        characters = character_data.get("characters", [])
+                        anime_data["characters"] = characters
+                        logger.info(
+                            f"Integrated {len(characters)} characters into anime data"
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to fetch characters for ID {anisearch_id}",
+                        exc_info=True,
+                    )
+                    # Continue without characters - non-critical
+
+            logger.info(
+                f"Successfully fetched all AniSearch data for ID {anisearch_id}"
+            )
+            if output_path:
+                append_jsonl(output_path, anime_data)
+            return anime_data
+
+        except Exception:
+            logger.exception(f"Error in _fetch_all_impl for ID {anisearch_id}")
+            return None
 
     async def extract_anisearch_id_from_url(self, url: str) -> int | None:
         """Extract AniSearch ID from URL.
@@ -159,78 +266,6 @@ class AniSearchEnrichmentHelper:
 
         except Exception:
             logger.exception(f"Error fetching character data for ID {anisearch_id}")
-            return None
-
-    async def fetch_all(
-        self,
-        anisearch_id: int,
-        include_episodes: bool = True,
-        include_characters: bool = True,
-        output_path: str | None = None,
-    ) -> dict[str, Any] | None:
-        """
-        Fetches anime data from AniSearch and enriches it with optional episodes and characters.
-
-        Parameters:
-            anisearch_id (int): AniSearch numeric anime ID (e.g., 18878 for Dandadan).
-            include_episodes (bool): If True, attempt to attach an "episodes" list to the returned data.
-            include_characters (bool): If True, attempt to attach a "characters" list to the returned data.
-
-        Returns:
-            The anime data dictionary enriched with optional "episodes" and "characters" keys, or `None` if the primary anime data could not be fetched.
-        """
-        try:
-            logger.info(f"Fetching all AniSearch data for ID {anisearch_id}")
-
-            # Fetch anime data (primary data)
-            anime_data = await self.fetch_anime_data(anisearch_id)
-
-            if not anime_data:
-                logger.warning(f"Failed to fetch anime data for ID {anisearch_id}")
-                return None
-
-            # Fetch episodes if requested
-            if include_episodes:
-                try:
-                    episode_data = await self.fetch_episode_data(anisearch_id)
-                    if episode_data:
-                        anime_data["episodes"] = episode_data
-                        logger.info(
-                            f"Integrated {len(episode_data)} episodes into anime data"
-                        )
-                except Exception:
-                    logger.warning(
-                        f"Failed to fetch episodes for ID {anisearch_id}",
-                        exc_info=True,
-                    )
-                    # Continue without episodes - non-critical
-
-            # Fetch characters if requested
-            if include_characters:
-                try:
-                    character_data = await self.fetch_character_data(anisearch_id)
-                    if character_data:
-                        characters = character_data.get("characters", [])
-                        anime_data["characters"] = characters
-                        logger.info(
-                            f"Integrated {len(characters)} characters into anime data"
-                        )
-                except Exception:
-                    logger.warning(
-                        f"Failed to fetch characters for ID {anisearch_id}",
-                        exc_info=True,
-                    )
-                    # Continue without characters - non-critical
-
-            logger.info(
-                f"Successfully fetched all AniSearch data for ID {anisearch_id}"
-            )
-            if output_path:
-                append_jsonl(output_path, anime_data)
-            return anime_data
-
-        except Exception:
-            logger.exception(f"Error in fetch_all for ID {anisearch_id}")
             return None
 
     async def close(self) -> None:

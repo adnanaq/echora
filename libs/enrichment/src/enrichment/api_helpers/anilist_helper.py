@@ -15,6 +15,7 @@ from types import TracebackType
 from typing import Any
 
 import aiohttp
+from common.utils.jsonl_utils import append_jsonl
 from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager
 
@@ -27,6 +28,7 @@ from ..exceptions import (
 from .anilist.anilist_mapper import anime_from_anilist, character_from_anilist
 from .anilist.anilist_anime_models import AniListAnime
 from .anilist.anilist_character_models import AniListCharacterEdge
+from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +43,47 @@ def _extract_anilist_id(url: str) -> int:
         raise ValueError(f"Cannot extract AniList ID from URL: {url!r}") from e
 
 
-class AniListEnrichmentHelper:
+class AniListHelper(BaseEnrichmentHelper):
     """Helper for AniList data fetching in AI enrichment pipeline."""
 
     def __init__(self) -> None:
+        """Initialize AniList helper."""
         self.base_url = "https://graphql.anilist.co"
         self.session: aiohttp.ClientSession | None = None
         self.rate_limit_remaining = 90
         self._session_event_loop: asyncio.AbstractEventLoop | None = None
+
+    async def fetch_all(
+        self,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch canonical anime data and all characters for an AniList URL.
+
+        Args:
+            ids: Dictionary of validated platform IDs/URLs. Must contain 'anilist_url'.
+            offline_data: The original offline anime metadata.
+            temp_dir: Optional directory for intermediate JSONL storage.
+
+        Returns:
+            Dict with keys ``anime`` and ``characters``, or ``None`` on failure.
+        """
+        url = ids.get("anilist_url")
+        if not url:
+            return None
+
+        logger.info(f"Fetching AniList data for: {url}")
+        anime = await self.fetch_anime_canonical(url, temp_dir)
+        if anime:
+            logger.info(f"AniList anime fetched: {anime.get('title', url)}")
+        characters = await self.fetch_characters_canonical(url, temp_dir)
+        logger.info(f"AniList characters fetched: {len(characters)} characters")
+
+        if not anime and not characters:
+            return None
+
+        return {"anime": anime, "characters": characters}
 
     async def _ensure_session(self) -> None:
         """Lazily create (or recreate) the aiohttp session for the current event loop."""
@@ -405,14 +440,14 @@ class AniListEnrichmentHelper:
         return await self._fetch_paginated_data(anilist_id, query, "characters")
 
     async def fetch_anime_canonical(
-        self, url: str, output_dir: str | None = None
+        self, url: str, temp_dir: str | None = None
     ) -> dict[str, Any] | None:
         """Fetch anime data, validate via AniListAnime, and map to canonical fields.
 
         Args:
             url: Full AniList anime URL (e.g. ``https://anilist.co/anime/21``).
-            output_dir: If provided, write canonical JSONL to
-                ``{output_dir}/anilist.jsonl``.
+            temp_dir: If provided, write canonical JSONL to
+                ``{temp_dir}/anilist.jsonl``.
 
         Returns:
             Canonical dict from ``anime_from_anilist``, or None if not found.
@@ -426,24 +461,20 @@ class AniListEnrichmentHelper:
         anime = AniListAnime.model_validate(raw)
         canonical = anime_from_anilist(anime)
 
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-            out_path = os.path.join(output_dir, "anilist.jsonl")
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(canonical, ensure_ascii=False) + "\n")
-            logger.debug(f"Saved canonical AniList data to {out_path}")
+        if temp_dir:
+            append_jsonl(os.path.join(temp_dir, "anilist.jsonl"), canonical)
 
         return canonical
 
     async def fetch_characters_canonical(
-        self, url: str, output_dir: str | None = None
+        self, url: str, temp_dir: str | None = None
     ) -> list[dict[str, Any]]:
         """Fetch all character edges, validate, and map to canonical dicts.
 
         Args:
             url: Full AniList anime URL (e.g. ``https://anilist.co/anime/21``).
-            output_dir: If provided, write results as JSONL to
-                ``{output_dir}/anilist_characters.jsonl``.
+            temp_dir: If provided, append each character as JSONL to
+                ``{temp_dir}/anilist_characters.jsonl``.
 
         Returns:
             List of canonical character dicts from ``character_from_anilist``.
@@ -453,46 +484,23 @@ class AniListEnrichmentHelper:
         if not raw_edges:
             return []
 
+        out_path = (
+            os.path.join(temp_dir, "anilist_characters.jsonl") if temp_dir else None
+        )
         canonical = []
         for edge in raw_edges:
             try:
                 char_edge = AniListCharacterEdge.model_validate(edge)
-                canonical.append(character_from_anilist(char_edge))
+                char = character_from_anilist(char_edge)
+                canonical.append(char)
+                if out_path:
+                    append_jsonl(out_path, char)
             except Exception:
                 logger.warning("Skipping invalid character edge", exc_info=True)
 
-        if output_dir and canonical:
-            os.makedirs(output_dir, exist_ok=True)
-            out_path = os.path.join(output_dir, "anilist_characters.jsonl")
-            with open(out_path, "w", encoding="utf-8") as f:
-                for char in canonical:
-                    f.write(json.dumps(char, ensure_ascii=False) + "\n")
-            logger.debug(f"Saved {len(canonical)} canonical characters to {out_path}")
-
         return canonical
 
-    async def fetch_all(
-        self, url: str, output_dir: str | None = None
-    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-        """Fetch canonical anime data and all characters for an AniList URL.
-
-        Args:
-            url: Full AniList anime URL (e.g. https://anilist.co/anime/21).
-            output_dir: If provided, writes anilist.jsonl and anilist_characters.jsonl
-                to this directory (consistent with MAL/AnimSchedule pattern).
-
-        Returns:
-            Tuple of (canonical anime dict or None, list of canonical character dicts).
-        """
-        logger.info(f"Fetching AniList data for: {url}")
-        anime = await self.fetch_anime_canonical(url, output_dir)
-        if anime:
-            logger.info(f"AniList anime fetched: {anime.get('title', url)}")
-        characters = await self.fetch_characters_canonical(url, output_dir)
-        logger.info(f"AniList characters fetched: {len(characters)} characters")
-        return anime, characters
-
-    async def fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
+    async def _fetch_all_data_by_mal_id(self, mal_id: int) -> dict[str, Any] | None:
         """Fetch raw anime and character data by MyAnimeList ID.
 
         Args:
@@ -518,20 +526,6 @@ class AniListEnrichmentHelper:
             self.session = None
             self._session_event_loop = None
 
-    async def __aenter__(self) -> "AniListEnrichmentHelper":
-        """Return self; session is created lazily on first request."""
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> bool:
-        """Close the session and return False (exceptions not suppressed)."""
-        await self.close()
-        return False
-
 
 async def main() -> int:
     """CLI entry point for fetching AniList data.
@@ -556,11 +550,11 @@ async def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    helper = AniListEnrichmentHelper()
+    helper = AniListHelper()
+    ids = {"anilist_url": args.url}
     try:
         if args.url:
-            canonical = await helper.fetch_anime_canonical(args.url, args.output)
-            await helper.fetch_characters_canonical(args.url, args.output)
+            canonical = await helper.fetch_all(ids, {}, args.output)
         else:
             anime_raw = await helper.fetch_anime_by_mal_id(args.mal_id)
             if not anime_raw:
@@ -571,8 +565,8 @@ async def main() -> int:
                 logger.error("Could not resolve AniList ID from MAL ID.")
                 return 1
             anilist_url = f"{_ANILIST_BASE}/{anilist_id}"
-            canonical = await helper.fetch_anime_canonical(anilist_url, args.output)
-            await helper.fetch_characters_canonical(anilist_url, args.output)
+            ids = {"anilist_url": anilist_url}
+            canonical = await helper.fetch_all(ids, {}, args.output)
 
         if canonical:
             logger.info(

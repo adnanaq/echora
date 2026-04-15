@@ -13,7 +13,7 @@ import time
 from types import TracebackType
 from typing import Any, cast
 
-from .api_fetcher import ParallelAPIFetcher
+from .api_fetcher import ApiFetcher
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
@@ -41,7 +41,7 @@ class ProgrammaticEnrichmentPipeline:
 
         # Initialize components
         self.id_extractor = PlatformIDExtractor()
-        self.api_fetcher = ParallelAPIFetcher(config)
+        self.api_fetcher = ApiFetcher(config)
 
         # Performance tracking
         self.timing_breakdown: dict[str, float] = {}

@@ -28,6 +28,7 @@ from http_cache.instance import http_cache_manager as _cache_manager
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
 from enrichment.crawlers.utils import sanitize_output_path
 from enrichment.exceptions import ServiceBlockedError, ServiceNetworkError
+from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class AniDBRequestMetrics:
         return 100.0 - self.success_rate
 
 
-class AniDBEnrichmentHelper:
+class AniDBEnrichmentHelper(BaseEnrichmentHelper):
     """Enhanced AniDB XML API helper with production-level features.
 
     Provides rate limiting, session management, circuit breaker pattern,
@@ -164,6 +165,36 @@ class AniDBEnrichmentHelper:
         )
         logger.info(f"  - Circuit breaker: {self.circuit_breaker_threshold} failures")
         logger.info(f"  - Max retries: {self.max_retries}")
+
+    async def fetch_all(
+        self,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch comprehensive AniDB data for an anime by ID.
+
+        Args:
+            ids: Dictionary of validated platform IDs/URLs. Must contain 'anidb_id'.
+            offline_data: The original offline anime metadata.
+            temp_dir: Optional directory for intermediate JSONL storage.
+
+        Returns:
+            Comprehensive AniDB data including metadata, characters, episodes,
+                and related anime. None if not found.
+        """
+        anidb_id = ids.get("anidb_id")
+        if not anidb_id:
+            return None
+
+        output_path = os.path.join(temp_dir, "anidb.jsonl") if temp_dir else None
+        
+        anime_data = await self.get_anime_by_id(int(anidb_id))
+        if not anime_data:
+            return None
+        if output_path:
+            append_jsonl(output_path, anime_data)
+        return anime_data
 
     async def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows requests.
@@ -707,22 +738,20 @@ class AniDBEnrichmentHelper:
                     character_ids_to_enrich.append(char_data["id"])
 
         # Batch fetch character details in parallel if enrichment enabled
-        # TODO: re-enable once character crawler is validated; disabled to avoid
-        #       fetching 1000+ characters on large anime like One Piece.
-        # if enrich_characters and character_ids_to_enrich:
-        #     logger.info(
-        #         f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
-        #     )
-        #     enriched_char_data = await self._batch_fetch_character_details(
-        #         character_ids_to_enrich
-        #     )
-        #     # Merge enriched data back into character_details
-        #     for char_data in character_details:
-        #         char_id = char_data.get("id")
-        #         if char_id and char_id in enriched_char_data:
-        #             enriched_char_data[char_id].update(char_data)
-        #             char_data.clear()
-        #             char_data.update(enriched_char_data[char_id])
+        if enrich_characters and character_ids_to_enrich:
+            logger.info(
+                f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
+            )
+            enriched_char_data = await self._batch_fetch_character_details(
+                character_ids_to_enrich
+            )
+            # Merge enriched data back into character_details
+            for char_data in character_details:
+                char_id = char_data.get("id")
+                if char_id and char_id in enriched_char_data:
+                    enriched_char_data[char_id].update(char_data)
+                    char_data.clear()
+                    char_data.update(enriched_char_data[char_id])
 
         # Extract creator information
         creators_element = root.find("creators")
@@ -1110,28 +1139,6 @@ class AniDBEnrichmentHelper:
         except Exception:
             logger.exception(f"Failed to fetch anime by AniDB ID {anidb_id}")
             return None
-
-    async def fetch_all(
-        self,
-        anidb_id: int,
-        output_path: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Fetch comprehensive AniDB data for an anime by ID.
-
-        Args:
-            anidb_id: The AniDB anime ID.
-            output_path: If provided, append the result as a JSONL record to this path.
-
-        Returns:
-            Comprehensive AniDB data including metadata, characters, episodes,
-                and related anime. None if not found.
-        """
-        anime_data = await self.get_anime_by_id(anidb_id)
-        if not anime_data:
-            return None
-        if output_path:
-            append_jsonl(output_path, anime_data)
-        return anime_data
 
     async def reset_circuit_breaker(self) -> bool:
         """Manually reset circuit breaker to CLOSED state.

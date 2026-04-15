@@ -17,6 +17,7 @@ from common.utils.retry import retry_with_backoff
 from http_cache.instance import http_cache_manager as _cache_manager
 
 from ..exceptions import ServiceNotFoundError
+from .base_helper import BaseEnrichmentHelper
 from .kitsu.kitsu_mapper import (
     anime_from_kitsu,
     character_from_kitsu,
@@ -37,11 +38,118 @@ from .kitsu.kitsu_models import (
 logger = logging.getLogger(__name__)
 
 
-class KitsuEnrichmentHelper:
+class KitsuEnrichmentHelper(BaseEnrichmentHelper):
     """Helper for Kitsu data fetching in AI enrichment pipeline."""
 
     def __init__(self) -> None:
+        """Initialize Kitsu helper."""
         self.base_url = "https://kitsu.io/api/edge"
+
+    async def fetch_all(
+        self,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch canonical anime, episodes, and characters from Kitsu.
+
+        Args:
+            ids: Dictionary of validated platform IDs/URLs. Must contain 'kitsu_id'.
+            offline_data: The original offline anime metadata.
+            temp_dir: Optional directory for intermediate JSONL storage.
+
+        Returns:
+            ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
+        """
+        kitsu_id = ids.get("kitsu_id")
+        if not kitsu_id:
+            return None
+
+        try:
+            numeric_id = int(kitsu_id)
+        except ValueError:
+            # Slug — resolve to numeric ID first
+            logger.info(f"Resolving Kitsu slug '{kitsu_id}' to numeric ID...")
+            async with aiohttp.ClientSession() as slug_session:
+                url = f"https://kitsu.io/api/edge/anime?filter[slug]={kitsu_id}"
+                async with slug_session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(
+                            f"Failed to resolve Kitsu slug: {response.status}"
+                        )
+                        return None
+                    data = await response.json()
+                    if not data.get("data"):
+                        logger.warning(f"No Kitsu anime found for slug: {kitsu_id}")
+                        return None
+                    numeric_id = int(data["data"][0]["id"])
+                    logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
+
+        logger.info(f"Fetching Kitsu data for: {numeric_id}")
+        try:
+            anime_path = (
+                os.path.join(temp_dir, "kitsu_anime.jsonl") if temp_dir else None
+            )
+            episodes_path = (
+                os.path.join(temp_dir, "kitsu_episodes.jsonl") if temp_dir else None
+            )
+            characters_path = (
+                os.path.join(temp_dir, "kitsu_characters.jsonl")
+                if temp_dir
+                else None
+            )
+
+            async with _cache_manager.get_aiohttp_session(
+                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
+            ) as session:
+                # Fetch anime first so we can extract the slug for episode URLs.
+                canonical_anime = await self.fetch_anime(
+                    numeric_id, output_path=anime_path, session=session
+                )
+
+                if not canonical_anime:
+                    logger.warning(f"Kitsu returned no anime for ID {numeric_id}")
+                    return None
+
+                sources = canonical_anime.get("sources", [])
+                anime_slug = sources[0].rsplit("/", 1)[-1] if sources else None
+
+                canonical_episodes, canonical_characters = await asyncio.gather(
+                    self.fetch_episodes(
+                        numeric_id,
+                        anime_slug=anime_slug,
+                        output_path=episodes_path,
+                        session=session,
+                    ),
+                    self.fetch_characters(
+                        numeric_id, output_path=characters_path, session=session
+                    ),
+                    return_exceptions=True,
+                )
+
+            if isinstance(canonical_episodes, Exception):
+                logger.error(
+                    f"Kitsu episodes fetch failed for ID {numeric_id}: {canonical_episodes}"
+                )
+                canonical_episodes = []
+            if isinstance(canonical_characters, Exception):
+                logger.error(
+                    f"Kitsu characters fetch failed for ID {numeric_id}: {canonical_characters}"
+                )
+                canonical_characters = []
+            logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
+            logger.info(f"Kitsu characters fetched: {len(canonical_characters)} characters")
+        except Exception:
+            logger.exception(f"Kitsu fetch_all failed for ID {numeric_id}")
+            return None
+        else:
+            return {
+                "anime": canonical_anime,
+                "episodes": canonical_episodes,
+                "characters": canonical_characters,
+            }
 
     async def _make_request(
         self,
@@ -461,9 +569,7 @@ class KitsuEnrichmentHelper:
         sem = asyncio.Semaphore(5)
 
         async def _fetch_one(char: KitsuMediaCharacter) -> dict[str, Any] | None:
-            if char.character is None:
-                return None
-            char_id = char.character.id
+            char_id = char.character.id  # type: ignore[union-attr]  # resolved guarantees non-None
             char_name = (
                 char.character.attributes.canonicalName
                 or char.character.attributes.name
@@ -498,88 +604,6 @@ class KitsuEnrichmentHelper:
         char_results = await asyncio.gather(*[_fetch_one(char) for char in resolved])
         return [r for r in char_results if r is not None]
 
-    async def fetch_all(
-        self,
-        anime_id: int,
-        output_dir: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Fetch canonical anime, episodes, and characters from Kitsu.
-
-        Episodes and genres/categories share a session. Characters are fetched
-        separately (each requires per-character sub-requests).
-
-        Args:
-            anime_id: Kitsu integer anime identifier.
-            output_dir: If provided, write JSONL files to this directory:
-                ``kitsu_anime.jsonl``, ``kitsu_episodes.jsonl``, ``kitsu_characters.jsonl``.
-
-        Returns:
-            ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
-        """
-        logger.info(f"Fetching Kitsu data for: {anime_id}")
-        try:
-            anime_path = (
-                os.path.join(output_dir, "kitsu_anime.jsonl") if output_dir else None
-            )
-            episodes_path = (
-                os.path.join(output_dir, "kitsu_episodes.jsonl") if output_dir else None
-            )
-            characters_path = (
-                os.path.join(output_dir, "kitsu_characters.jsonl")
-                if output_dir
-                else None
-            )
-
-            async with _cache_manager.get_aiohttp_session(
-                "kitsu", timeout=aiohttp.ClientTimeout(total=30)
-            ) as session:
-                # Fetch anime first so we can extract the slug for episode URLs.
-                canonical_anime = await self.fetch_anime(
-                    anime_id, output_path=anime_path, session=session
-                )
-
-                if not canonical_anime:
-                    logger.warning(f"Kitsu returned no anime for ID {anime_id}")
-                    return None
-
-                sources = canonical_anime.get("sources", [])
-                anime_slug = sources[0].rsplit("/", 1)[-1] if sources else None
-
-                canonical_episodes, canonical_characters = await asyncio.gather(
-                    self.fetch_episodes(
-                        anime_id,
-                        anime_slug=anime_slug,
-                        output_path=episodes_path,
-                        session=session,
-                    ),
-                    self.fetch_characters(
-                        anime_id, output_path=characters_path, session=session
-                    ),
-                    return_exceptions=True,
-                )
-
-            if isinstance(canonical_episodes, Exception):
-                logger.error(
-                    f"Kitsu episodes fetch failed for ID {anime_id}: {canonical_episodes}"
-                )
-                canonical_episodes = []
-            if isinstance(canonical_characters, Exception):
-                logger.error(
-                    f"Kitsu characters fetch failed for ID {anime_id}: {canonical_characters}"
-                )
-                canonical_characters = []
-            logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
-            logger.info(f"Kitsu characters fetched: {len(canonical_characters)} characters")
-        except Exception:
-            logger.exception(f"Kitsu fetch_all failed for ID {anime_id}")
-            return None
-        else:
-            return {
-                "anime": canonical_anime,
-                "episodes": canonical_episodes,
-                "characters": canonical_characters,
-            }
-
     async def close(self) -> None:
         """No-op — sessions are created per-request and managed by the cache manager."""
 
@@ -604,11 +628,12 @@ async def main() -> int:
         return 1
 
     try:
-        anime_id = int(sys.argv[1])
+        anime_id = sys.argv[1]  # Support ID or slug
         output_file = sys.argv[2]
 
         helper = KitsuEnrichmentHelper()
-        data = await helper.fetch_all(anime_id)
+        ids = {"kitsu_id": anime_id}
+        data = await helper.fetch_all(ids, {})
 
         if data:
             import json as _json
