@@ -1,4 +1,4 @@
-"""Unit tests for MalScrapedEpisode and related episode models."""
+"""Unit tests for MalEpisode and related episode models."""
 
 import pytest
 from pydantic import ValidationError
@@ -8,8 +8,8 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeStaffRef,
     EpisodeVARef,
     MalFetchResult,
-    MalScrapedAnime,
-    MalScrapedEpisode,
+    MalAnime,
+    MalEpisode,
 )
 
 
@@ -51,19 +51,21 @@ def test_episode_character_ref_with_voice_actors() -> None:
         mal_id=40,
         name="Luffy",
         role="Main",
-        voice_actors=[EpisodeVARef(person_id=70, name="Tanaka, Mayumi", language="Japanese")],
+        voice_actors=[
+            EpisodeVARef(person_id=70, name="Tanaka, Mayumi", language="Japanese")
+        ],
     )
     assert len(char.voice_actors) == 1
     assert char.voice_actors[0].language == "Japanese"
 
 
 # =============================================================================
-# MalScrapedEpisode
+# MalEpisode
 # =============================================================================
 
 
 def test_mal_scraped_episode_minimal() -> None:
-    ep = MalScrapedEpisode(
+    ep = MalEpisode(
         episode_number=1,
         source="...",
         title="Episode 1",
@@ -77,7 +79,7 @@ def test_mal_scraped_episode_minimal() -> None:
 
 def test_mal_scraped_episode_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
-        MalScrapedEpisode(
+        MalEpisode(
             episode_number=1,
             source="...",
             title="Episode 1",
@@ -86,8 +88,12 @@ def test_mal_scraped_episode_extra_field_rejected() -> None:
 
 
 def test_mal_scraped_episode_filler_recap_flags() -> None:
-    filler_ep = MalScrapedEpisode(episode_number=50, source="...", title="Showdown at High!", filler=True)
-    recap_ep = MalScrapedEpisode(episode_number=279, source="...", title="Luffy's Feelings!", recap=True)
+    filler_ep = MalEpisode(
+        episode_number=50, source="...", title="Showdown at High!", filler=True
+    )
+    recap_ep = MalEpisode(
+        episode_number=279, source="...", title="Luffy's Feelings!", recap=True
+    )
     assert filler_ep.filler is True
     assert filler_ep.recap is False
     assert recap_ep.recap is True
@@ -99,10 +105,12 @@ def test_mal_scraped_episode_with_community_data() -> None:
         mal_id=40,
         name="Luffy",
         role="Main",
-        voice_actors=[EpisodeVARef(person_id=70, name="Tanaka, Mayumi", language="Japanese")],
+        voice_actors=[
+            EpisodeVARef(person_id=70, name="Tanaka, Mayumi", language="Japanese")
+        ],
     )
     staff = EpisodeStaffRef(person_id=999, name="Takegami, Junki", role="Script")
-    ep = MalScrapedEpisode(
+    ep = MalEpisode(
         episode_number=1,
         source="...",
         title="Episode 1",
@@ -121,15 +129,15 @@ def test_mal_scraped_episode_with_community_data() -> None:
 
 
 def test_mal_fetch_result_defaults() -> None:
-    anime = MalScrapedAnime(source="...", title="One Piece")
+    anime = MalAnime(source="...", title="One Piece")
     result = MalFetchResult(anime=anime)
     assert result.characters == []
     assert result.episodes == []
 
 
 def test_mal_fetch_result_with_data() -> None:
-    anime = MalScrapedAnime(source="...", title="One Piece")
-    ep = MalScrapedEpisode(episode_number=1, source="...", title="I'm Luffy!")
+    anime = MalAnime(source="...", title="One Piece")
+    ep = MalEpisode(episode_number=1, source="...", title="I'm Luffy!")
     result = MalFetchResult(anime=anime, episodes=[ep])
     assert len(result.episodes) == 1
     assert result.episodes[0].title == "I'm Luffy!"

@@ -1,14 +1,14 @@
 """Unit tests for mal_mapper.py — character_from_mal value normalization."""
 
 from enrichment.crawlers.mal_crawler.mal_models import (
-    MalScrapedCharacter,
+    MalCharacter,
     MalVoiceActorRef,
 )
 from enrichment.crawlers.mal_crawler.mal_mapper import character_from_mal
 
 
-def _make_sample_character() -> MalScrapedCharacter:
-    return MalScrapedCharacter(
+def _make_sample_character() -> MalCharacter:
+    return MalCharacter(
         source="https://myanimelist.net/character/40",
         name="Monkey D., Luffy",
         name_native="モンキー・D・ルフィ",
@@ -31,7 +31,13 @@ def _make_sample_character() -> MalScrapedCharacter:
                 sources=["https://myanimelist.net/people/70/Mayumi_Tanaka"],
             ),
         ],
-        animeography=[{"title": "One Piece", "role": "Main", "sources": ["https://myanimelist.net/anime/21"]}],
+        animeography=[
+            {
+                "title": "One Piece",
+                "role": "Main",
+                "sources": ["https://myanimelist.net/anime/21"],
+            }
+        ],
     )
 
 

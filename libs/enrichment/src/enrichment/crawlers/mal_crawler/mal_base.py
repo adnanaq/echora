@@ -430,8 +430,8 @@ class ListDiff:
 def _get_entity_id(model: BaseModel) -> str | int:
     """Extract a unique entity key from any scraped model.
 
-    Tries episode_number first (MalScrapedEpisode), then falls back
-    to url (MalScrapedAnime, MalScrapedCharacter).
+    Tries episode_number first (MalEpisode), then falls back
+    to url (MalAnime, MalCharacter).
 
     Returns 0 when none are found.
     """

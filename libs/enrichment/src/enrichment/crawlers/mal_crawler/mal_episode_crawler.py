@@ -1,7 +1,6 @@
 """MAL Episode Detail Crawler.
 
-Fetches /anime/{id}/episode/{num} from MyAnimeList and extracts episode metadata
-into a MalScrapedEpisode model.
+Fetches /anime/{id}/episode/{num} from MyAnimeList and extracts episode metadata.
 
 Episodes are community-contributed on MAL. Character/staff data is populated for
 well-documented episodes but empty for many episodes of long-running shows (e.g.,
@@ -10,8 +9,7 @@ One Piece past ~ep 700). Empty sections return empty lists — no failure.
 Usage:
     from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episode
 
-    ep = await fetch_mal_episode("anime/21/One_Piece/episode/1")
-    ep = await fetch_mal_episode("https://myanimelist.net/anime/21/One_Piece/episode/1", output_path="ep1.json")
+    ep = await fetch_mal_episode("https://myanimelist.net/anime/21/One_Piece/episode/1")
 """
 
 import argparse
@@ -21,22 +19,30 @@ import logging
 import re
 import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.crawlers.crawler_config import CrawlerRateLimiter
-from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
+from enrichment.crawlers.crawler_config import (
+    CrawlerRateLimiter,
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
+from enrichment.crawlers.framework import (
+    DockerTransport,
+    FileRepository,
+    NullRepository,
+)
 from enrichment.crawlers.mal_crawler.mal_base import (
-    MAL_BASE_URL,
     parse_duration_seconds,
     parse_iso_date,
 )
+from enrichment.crawlers.mal_crawler.mal_base_crawler import MalCrawlerBase
+from enrichment.crawlers.mal_crawler.mal_mapper import episode_from_mal
 from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeCharacterRef,
     EpisodeStaffRef,
     EpisodeVARef,
-    MalScrapedEpisode,
+    MalEpisode,
 )
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -309,20 +315,6 @@ def _parse_episode_staff(
     return staff
 
 
-def _normalize_episode_url(identifier: str) -> str:
-    """Normalize a MAL episode identifier to a full URL.
-
-    Accepts:
-        - Full URL:  "https://myanimelist.net/anime/21/One_Piece/episode/1"
-        - With slash: "/anime/21/One_Piece/episode/1"
-        - Without:   "anime/21/One_Piece/episode/1"
-    """
-    if identifier.startswith("http"):
-        return identifier
-    path = identifier.lstrip("/")
-    return f"{MAL_BASE_URL}/{path}"
-
-
 @cached_result(
     ttl=TTL_MAL,
     key_prefix="mal_episode_detail",
@@ -365,8 +357,8 @@ async def _fetch_mal_episode_data(url: str) -> dict[str, Any] | None:
 
 def _build_episode_from_raw(
     raw: dict[str, Any], episode_number: int, url: str
-) -> MalScrapedEpisode:
-    """Construct a MalScrapedEpisode from a raw extraction dict."""
+) -> MalEpisode:
+    """Construct a MalEpisode from a raw extraction dict."""
     saved_url = raw.pop("_url", url)
 
     title, title_japanese, title_romaji, is_filler, is_recap = _parse_title_info(
@@ -383,7 +375,7 @@ def _build_episode_from_raw(
     characters = _parse_episode_characters(raw.get("characters"))
     staff = _parse_episode_staff(raw.get("staff"))
 
-    return MalScrapedEpisode(
+    return MalEpisode(
         episode_number=episode_number,
         source=saved_url,
         title=title,
@@ -399,38 +391,48 @@ def _build_episode_from_raw(
     )
 
 
-async def fetch_mal_episode(identifier: str) -> MalScrapedEpisode | None:
-    """Fetch a MAL episode detail page.
+class MalEpisodeCrawler(MalCrawlerBase[MalEpisode, dict[str, Any]]):
+    """Crawler for MyAnimeList episode detail pages."""
+
+    def normalize_identifier(self, identifier: str) -> str:
+        return identifier
+
+    async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
+        return await _fetch_mal_episode_data(url)
+
+    def build_source_model(
+        self, processed_raw: dict[str, Any], url: str
+    ) -> MalEpisode:
+        m = re.search(r"/episode/(\d+)", url)
+        episode_number = int(m.group(1)) if m else 0
+        return _build_episode_from_raw(processed_raw, episode_number, url)
+
+    def map_to_canonical(self, source_model: MalEpisode) -> dict[str, Any]:
+        return episode_from_mal(source_model)
+
+
+async def fetch_mal_episode(
+    url: str, output_path: str | None = None
+) -> dict[str, Any] | None:
+    """Fetch a MAL episode detail page and return canonical dict.
 
     Args:
-        identifier: Full URL, path with leading slash, or path without —
-            e.g. "https://myanimelist.net/anime/21/One_Piece/episode/1"
-            or   "anime/21/One_Piece/episode/1"
+        url: Full MAL episode URL
+            (e.g. "https://myanimelist.net/anime/21/One_Piece/episode/1").
+        output_path: If provided, append the canonical dict as a JSONL line.
 
     Returns:
-        MalScrapedEpisode if successful, None otherwise.
+        Canonical episode dict if successful, None otherwise.
     """
-    url = _normalize_episode_url(identifier)
-
-    m = re.search(r"/episode/(\d+)", url)
-    if not m:
-        logger.error(f"Cannot parse episode_number from URL: {url}")
-        return None
-    episode_number = int(m.group(1))
-    logger.debug(f"Fetching episode {episode_number}: {url}")
-    raw = await _fetch_mal_episode_data(url)
-    if not raw:
-        logger.error(f"Failed to fetch episode {episode_number}")
-        return None
-
-    return _build_episode_from_raw(raw, episode_number, url)
+    repo = FileRepository(output_path) if output_path else NullRepository()
+    return await MalEpisodeCrawler(DockerTransport(), repo).crawl(url)
 
 
 async def fetch_mal_episodes(
-    identifiers: list[str],
+    urls: list[str],
     *,
-    on_result: Callable[[MalScrapedEpisode], None] | None = None,
-) -> list[MalScrapedEpisode | None]:
+    on_result: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any] | None]:
     """Fetch multiple MAL episode pages as a single Docker batch job.
 
     Submits all URLs in one POST /crawl/job request and polls a single task ID —
@@ -440,23 +442,22 @@ async def fetch_mal_episodes(
     For single-episode fetches with Redis caching, use ``fetch_mal_episode`` instead.
 
     Args:
-        identifiers: List of episode URLs or paths (same formats as fetch_mal_episode).
+        urls: List of full MAL episode URLs.
         on_result: Optional callback invoked with each successfully parsed
-            episode as results arrive (used for write-immediately streaming).
+            canonical episode dict as results arrive (used for write-immediately streaming).
 
     Returns:
-        List aligned to ``identifiers`` — None for any failed fetch.
+        List aligned to ``urls`` — None for any failed fetch.
     """
-    urls = [_normalize_episode_url(i) for i in identifiers]
     logger.info(f"Fetching {len(urls)} MAL episodes...")
 
     cached_values, missing_indices = await _fetch_mal_episode_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
     )
 
-    episodes: list[MalScrapedEpisode | None] = [None] * len(urls)
+    episodes: list[dict[str, Any] | None] = [None] * len(urls)
 
-    def _parse_cached(value: Any, fallback_url: str) -> MalScrapedEpisode | None:
+    def _parse_cached(value: Any, fallback_url: str) -> dict[str, Any] | None:
         if not value or not isinstance(value, dict):
             return None
         raw = dict(value)
@@ -465,7 +466,7 @@ async def fetch_mal_episodes(
         if not m:
             logger.error(f"Cannot parse episode_number from URL: {url}")
             return None
-        return _build_episode_from_raw(raw, int(m.group(1)), url)
+        return episode_from_mal(_build_episode_from_raw(raw, int(m.group(1)), url))
 
     for idx, cached in enumerate(cached_values):
         parsed = _parse_cached(cached, urls[idx])
@@ -525,12 +526,13 @@ async def fetch_mal_episodes(
 
             raw_for_cache = raw_list[0]
             raw_for_cache["_url"] = url
-            episodes[out_index] = _build_episode_from_raw(
-                raw_for_cache, int(m.group(1)), url
+            canonical = episode_from_mal(
+                _build_episode_from_raw(raw_for_cache, int(m.group(1)), url)
             )
+            episodes[out_index] = canonical
             cache_values[idx_in_chunk] = raw_for_cache
-            if on_result is not None and episodes[out_index] is not None:
-                on_result(episodes[out_index])
+            if on_result is not None:
+                on_result(canonical)
 
         await _fetch_mal_episode_data.cache_batch_set(  # type: ignore[attr-defined]
             chunk_urls,
@@ -547,25 +549,19 @@ async def main() -> int:
     )
     parser = argparse.ArgumentParser(description="Fetch episode data from MAL")
     parser.add_argument(
-        "identifier",
+        "url",
         type=str,
-        help="Episode URL or path, e.g. 'anime/21/One_Piece/episode/1' or full URL",
+        help="Full MAL episode URL (e.g. https://myanimelist.net/anime/21/One_Piece/episode/1)",
     )
     parser.add_argument("--output", type=str, default="mal_episode.json")
     args = parser.parse_args()
 
-    ep = await fetch_mal_episode(args.identifier)
+    ep = await fetch_mal_episode(args.url, output_path=args.output)
     if ep is None:
-        logger.error(f"Failed to fetch or parse episode data for: {args.identifier}")
+        logger.error(f"Failed to fetch or parse episode data for: {args.url}")
         return 1
 
-    from enrichment.crawlers.mal_crawler.mal_mapper import episode_from_mal
-
-    canonical = episode_from_mal(ep)
-    Path(args.output).write_text(
-        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    logger.info(f"Fetched Episode {ep.episode_number}: {ep.title}")
+    logger.info(f"Fetched episode: {ep.get('title')}")
     return 0
 
 

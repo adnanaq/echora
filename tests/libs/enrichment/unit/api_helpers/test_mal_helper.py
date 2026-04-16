@@ -20,14 +20,18 @@ async def test_context_manager_protocol() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_anime_returns_data_payload():
-    """fetch_anime delegates to fetch_mal_anime crawler + anime_from_mal mapper."""
-    fake_anime = MagicMock()
-    fake_anime.source = "https://myanimelist.net/anime/1/X"
-    mapped = {"mal_id": 1, "title": "X", "synopsis": None, "episode_count": 12}
+    """fetch_anime delegates to fetch_mal_anime; crawler now returns canonical dict directly."""
+    mapped = {
+        "mal_id": 1,
+        "title": "X",
+        "synopsis": None,
+        "episode_count": 12,
+        "sources": ["https://myanimelist.net/anime/1/X"],
+    }
 
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_anime", new=AsyncMock(return_value=fake_anime)),
-        patch("enrichment.api_helpers.mal_helper.anime_from_mal", return_value=mapped),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_anime",
+        new=AsyncMock(return_value=mapped),
     ):
         helper = MalHelper()
         helper._mal_source = "https://myanimelist.net/anime/1"
@@ -42,14 +46,22 @@ async def test_fetch_anime_returns_data_payload():
 @pytest.mark.asyncio
 async def test_fetch_anime_resolves_unknown_episode_count():
     """fetch_anime patches episode_count via fetch_mal_episode_count when anime page returns 0."""
-    fake_anime = MagicMock()
-    fake_anime.source = "https://myanimelist.net/anime/21/One_Piece"
-    mapped = {"mal_id": 21, "title": "One Piece", "episode_count": 0}
+    mapped = {
+        "mal_id": 21,
+        "title": "One Piece",
+        "episode_count": 0,
+        "sources": ["https://myanimelist.net/anime/21/One_Piece"],
+    }
 
     with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_anime", new=AsyncMock(return_value=fake_anime)),
-        patch("enrichment.api_helpers.mal_helper.anime_from_mal", return_value=mapped),
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_episode_count", new=AsyncMock(return_value=1155)),
+        patch(
+            "enrichment.api_helpers.mal_helper.fetch_mal_anime",
+            new=AsyncMock(return_value=mapped),
+        ),
+        patch(
+            "enrichment.api_helpers.mal_helper.fetch_mal_episode_count",
+            new=AsyncMock(return_value=1155),
+        ),
     ):
         helper = MalHelper()
         helper._mal_source = "https://myanimelist.net/anime/21/One_Piece"
@@ -61,15 +73,22 @@ async def test_fetch_anime_resolves_unknown_episode_count():
 @pytest.mark.asyncio
 async def test_fetch_anime_skips_episode_count_resolution_when_known():
     """fetch_anime does not call fetch_mal_episode_count when episode_count is already set."""
-    fake_anime = MagicMock()
-    fake_anime.source = "https://myanimelist.net/anime/57334/Dandadan"
-    mapped = {"mal_id": 57334, "title": "Dandadan", "episode_count": 12}
+    mapped = {
+        "mal_id": 57334,
+        "title": "Dandadan",
+        "episode_count": 12,
+        "sources": ["https://myanimelist.net/anime/57334/Dandadan"],
+    }
     mock_count = AsyncMock(return_value=99)
 
     with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_anime", new=AsyncMock(return_value=fake_anime)),
-        patch("enrichment.api_helpers.mal_helper.anime_from_mal", return_value=mapped),
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_episode_count", new=mock_count),
+        patch(
+            "enrichment.api_helpers.mal_helper.fetch_mal_anime",
+            new=AsyncMock(return_value=mapped),
+        ),
+        patch(
+            "enrichment.api_helpers.mal_helper.fetch_mal_episode_count", new=mock_count
+        ),
     ):
         helper = MalHelper()
         helper._mal_source = "https://myanimelist.net/anime/57334/Dandadan"
@@ -82,7 +101,10 @@ async def test_fetch_anime_skips_episode_count_resolution_when_known():
 @pytest.mark.asyncio
 async def test_fetch_anime_returns_none_on_crawler_failure():
     """fetch_anime returns None when the crawler returns None."""
-    with patch("enrichment.api_helpers.mal_helper.fetch_mal_anime", new=AsyncMock(return_value=None)):
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_anime",
+        new=AsyncMock(return_value=None),
+    ):
         helper = MalHelper()
         helper._mal_source = "https://myanimelist.net/anime/1"
         data = await helper.fetch_anime()
@@ -98,7 +120,10 @@ async def test_fetch_character_urls_returns_list():
         "https://myanimelist.net/character/62/Roronoa_Zoro",
     ]
 
-    with patch("enrichment.api_helpers.mal_helper.fetch_mal_character_refs", new=AsyncMock(return_value=urls)):
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_character_refs",
+        new=AsyncMock(return_value=urls),
+    ):
         helper = MalHelper()
         helper._anime_url = "https://myanimelist.net/anime/21/One_Piece"
         items = await helper.fetch_character_urls()
@@ -111,7 +136,10 @@ async def test_fetch_character_urls_returns_list():
 @pytest.mark.asyncio
 async def test_fetch_character_urls_returns_empty_on_failure():
     """fetch_character_urls returns [] when crawler returns empty list."""
-    with patch("enrichment.api_helpers.mal_helper.fetch_mal_character_refs", new=AsyncMock(return_value=[])):
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_character_refs",
+        new=AsyncMock(return_value=[]),
+    ):
         helper = MalHelper()
         helper._anime_url = "https://myanimelist.net/anime/21/One_Piece"
         items = await helper.fetch_character_urls()
@@ -130,13 +158,9 @@ async def test_fetch_character_urls_returns_empty_when_anime_url_not_set():
 
 @pytest.mark.asyncio
 async def test_fetch_episodes_maps_minimal_fields(tmp_path: Path):
-    """fetch_episodes uses fetch_mal_episodes and maps each result via episode_from_mal."""
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedEpisode
-
-    ep1 = MagicMock(spec=MalScrapedEpisode)
-    ep2 = MagicMock(spec=MalScrapedEpisode)
-    mapped1 = {"mal_id": 1, "title": "E1", "episode_number": 1}
-    mapped2 = {"mal_id": 2, "title": "E2", "episode_number": 2}
+    """fetch_episodes uses fetch_mal_episodes; crawler now returns canonical dicts directly."""
+    ep1 = {"mal_id": 1, "title": "E1", "episode_number": 1}
+    ep2 = {"mal_id": 2, "title": "E2", "episode_number": 2}
 
     async def _mock_fetch_episodes(urls, *, on_result=None):
         results = [ep1, ep2]
@@ -146,10 +170,9 @@ async def test_fetch_episodes_maps_minimal_fields(tmp_path: Path):
         return results
 
     out = tmp_path / "eps.jsonl"
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_episodes", side_effect=_mock_fetch_episodes),
-        # called twice per episode: once in on_result callback, once in return list comprehension
-        patch("enrichment.api_helpers.mal_helper.episode_from_mal", side_effect=[mapped1, mapped2, mapped1, mapped2]),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_episodes",
+        side_effect=_mock_fetch_episodes,
     ):
         helper = MalHelper()
         helper._anime_url = "https://myanimelist.net/anime/21/One_Piece"
@@ -170,14 +193,11 @@ async def test_fetch_episodes_maps_minimal_fields(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_fetch_episodes_skips_none_results():
     """fetch_episodes skips None entries returned by the batch crawler (failed episodes)."""
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedEpisode
+    ep1 = {"mal_id": 1, "title": "E1", "episode_number": 1}
 
-    ep1 = MagicMock(spec=MalScrapedEpisode)
-    mapped1 = {"mal_id": 1, "title": "E1", "episode_number": 1}
-
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_episodes", new=AsyncMock(return_value=[ep1, None])),
-        patch("enrichment.api_helpers.mal_helper.episode_from_mal", return_value=mapped1),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_episodes",
+        new=AsyncMock(return_value=[ep1, None]),
     ):
         helper = MalHelper()
         helper._anime_url = "https://myanimelist.net/anime/21/One_Piece"
@@ -197,18 +217,20 @@ async def test_fetch_episodes_returns_empty_when_count_is_zero():
 
 @pytest.mark.asyncio
 async def test_fetch_character_returns_mapped_data():
-    """fetch_character delegates to fetch_mal_character + character_from_mal."""
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
+    """fetch_character delegates to fetch_mal_character; crawler now returns canonical dict directly."""
+    mapped = {
+        "name": "Luffy",
+        "sources": ["https://myanimelist.net/character/40/Luffy"],
+    }
 
-    char = MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy")
-    mapped = {"name": "Luffy", "sources": ["https://myanimelist.net/character/40/Luffy"]}
-
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_character", new=AsyncMock(return_value=char)),
-        patch("enrichment.api_helpers.mal_helper.character_from_mal", return_value=mapped),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_character",
+        new=AsyncMock(return_value=mapped),
     ):
         helper = MalHelper()
-        result = await helper.fetch_character("https://myanimelist.net/character/40/Luffy")
+        result = await helper.fetch_character(
+            "https://myanimelist.net/character/40/Luffy"
+        )
 
     assert result is not None
     assert result["name"] == "Luffy"
@@ -217,9 +239,14 @@ async def test_fetch_character_returns_mapped_data():
 @pytest.mark.asyncio
 async def test_fetch_character_returns_none_on_crawler_failure():
     """fetch_character returns None when crawler returns None."""
-    with patch("enrichment.api_helpers.mal_helper.fetch_mal_character", new=AsyncMock(return_value=None)):
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_character",
+        new=AsyncMock(return_value=None),
+    ):
         helper = MalHelper()
-        result = await helper.fetch_character("https://myanimelist.net/character/40/Luffy")
+        result = await helper.fetch_character(
+            "https://myanimelist.net/character/40/Luffy"
+        )
 
     assert result is None
 
@@ -227,18 +254,20 @@ async def test_fetch_character_returns_none_on_crawler_failure():
 @pytest.mark.asyncio
 async def test_fetch_character_with_output_path_appends_jsonl(tmp_path: Path):
     """fetch_character appends to JSONL file when output_path is provided."""
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
-
-    char = MalScrapedCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy")
-    mapped = {"name": "Luffy", "sources": ["https://myanimelist.net/character/40/Luffy"]}
+    mapped = {
+        "name": "Luffy",
+        "sources": ["https://myanimelist.net/character/40/Luffy"],
+    }
     out = tmp_path / "chars.jsonl"
 
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_character", new=AsyncMock(return_value=char)),
-        patch("enrichment.api_helpers.mal_helper.character_from_mal", return_value=mapped),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_character",
+        new=AsyncMock(return_value=mapped),
     ):
         helper = MalHelper()
-        await helper.fetch_character("https://myanimelist.net/character/40/Luffy", output_path=str(out))
+        await helper.fetch_character(
+            "https://myanimelist.net/character/40/Luffy", output_path=str(out)
+        )
 
     assert out.exists()
     assert json.loads(out.read_text(encoding="utf-8").strip())["name"] == "Luffy"
@@ -246,22 +275,23 @@ async def test_fetch_character_with_output_path_appends_jsonl(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_fetch_characters_returns_full_character_data(tmp_path: Path):
-    """fetch_characters batch-fetches character details and writes JSONL when output_path given."""
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
-
+    """fetch_characters batch-fetches character details; crawler now returns canonical dicts."""
     urls = ["https://myanimelist.net/character/100/A"]
-    char = MalScrapedCharacter(source="https://myanimelist.net/character/100/A", name="A")
-    mapped = {"name": "A", "role": "MAIN", "sources": ["https://myanimelist.net/character/100/A"]}
+    mapped = {
+        "name": "A",
+        "role": "MAIN",
+        "sources": ["https://myanimelist.net/character/100/A"],
+    }
     out = tmp_path / "chars.jsonl"
 
     async def _mock_fetch_characters(urls, *, on_result=None):
         if on_result:
-            on_result(char)
-        return [char]
+            on_result(mapped)
+        return [mapped]
 
-    with (
-        patch("enrichment.api_helpers.mal_helper.fetch_mal_characters", side_effect=_mock_fetch_characters),
-        patch("enrichment.api_helpers.mal_helper.character_from_mal", return_value=mapped),
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_characters",
+        side_effect=_mock_fetch_characters,
     ):
         helper = MalHelper()
         chars = await helper.fetch_characters(urls, output_path=str(out))
@@ -280,7 +310,10 @@ async def test_fetch_characters_skips_failed_fetches():
         "https://myanimelist.net/character/101/B",
     ]
 
-    with patch("enrichment.api_helpers.mal_helper.fetch_mal_characters", new=AsyncMock(return_value=[None, None])):
+    with patch(
+        "enrichment.api_helpers.mal_helper.fetch_mal_characters",
+        new=AsyncMock(return_value=[None, None]),
+    ):
         helper = MalHelper()
         chars = await helper.fetch_characters(urls)
 
@@ -292,11 +325,15 @@ async def test_fetch_all_standardized(tmp_path: Path):
     """fetch_all standardized interface orchestrates anime + episodes + character detail fetches."""
     char_urls = ["https://myanimelist.net/character/10/A"]
     ids = {"mal_url": "https://myanimelist.net/anime/1"}
-    
+
     helper = MalHelper()
-    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 2, "title": "Test"})
+    helper.fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 2, "title": "Test"}
+    )
     helper.fetch_character_urls = AsyncMock(return_value=char_urls)
-    helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}, {"episode_number": 2}])
+    helper.fetch_episodes = AsyncMock(
+        return_value=[{"episode_number": 1}, {"episode_number": 2}]
+    )
     helper.fetch_characters = AsyncMock(return_value=[{"mal_id": 10, "name": "A"}])
 
     result = await helper.fetch_all(ids, {}, temp_dir=str(tmp_path))
@@ -305,8 +342,12 @@ async def test_fetch_all_standardized(tmp_path: Path):
     assert result["anime"]["mal_id"] == 1
     assert len(result["episodes"]) == 2
     assert result["characters"] == [{"mal_id": 10, "name": "A"}]
-    helper.fetch_episodes.assert_awaited_once_with(2, output_path=str(tmp_path / "mal_episodes.jsonl"))
-    helper.fetch_characters.assert_awaited_once_with(char_urls, output_path=str(tmp_path / "mal_characters.jsonl"))
+    helper.fetch_episodes.assert_awaited_once_with(
+        2, output_path=str(tmp_path / "mal_episodes.jsonl")
+    )
+    helper.fetch_characters.assert_awaited_once_with(
+        char_urls, output_path=str(tmp_path / "mal_characters.jsonl")
+    )
     assert (tmp_path / "mal_anime.jsonl").exists()
 
 
@@ -315,7 +356,9 @@ async def test_fetch_all_passes_episode_count_from_anime_page():
     """fetch_all passes episode_count from the anime page to fetch_episodes."""
     ids = {"mal_url": "https://myanimelist.net/anime/1"}
     helper = MalHelper()
-    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 12, "title": "Test"})
+    helper.fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 12, "title": "Test"}
+    )
     helper.fetch_character_urls = AsyncMock(return_value=[])
     helper.fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
     helper.fetch_characters = AsyncMock(return_value=[])
@@ -332,7 +375,9 @@ async def test_fetch_all_returns_empty_when_detailed_empty():
     """fetch_all returns empty characters when detailed fetch returns empty."""
     ids = {"mal_url": "https://myanimelist.net/anime/1"}
     helper = MalHelper()
-    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": None, "title": "Test"})
+    helper.fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": None, "title": "Test"}
+    )
     helper.fetch_character_urls = AsyncMock(
         return_value=["https://myanimelist.net/character/10/A"]
     )
@@ -350,7 +395,9 @@ async def test_fetch_all_continues_when_episodes_raise():
     """fetch_all continues with empty episodes when episode fetch raises."""
     ids = {"mal_url": "https://myanimelist.net/anime/1"}
     helper = MalHelper()
-    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 2, "title": "Test"})
+    helper.fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 2, "title": "Test"}
+    )
     helper.fetch_character_urls = AsyncMock(return_value=[])
     helper.fetch_episodes = AsyncMock(side_effect=Exception("network error"))
     helper.fetch_characters = AsyncMock(return_value=[])
@@ -366,7 +413,9 @@ async def test_fetch_all_continues_when_characters_raise():
     """fetch_all continues with empty characters when character fetch raises."""
     ids = {"mal_url": "https://myanimelist.net/anime/1"}
     helper = MalHelper()
-    helper.fetch_anime = AsyncMock(return_value={"mal_id": 1, "episode_count": 0, "title": "Test"})
+    helper.fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 0, "title": "Test"}
+    )
     helper.fetch_character_urls = AsyncMock(
         return_value=["https://myanimelist.net/character/10/A"]
     )
@@ -426,13 +475,27 @@ class TestMALHelperCli:
             out = Path(tmpdir) / "anime.json"
 
             helper = AsyncMock()
-            helper.fetch_all = AsyncMock(return_value={"anime": {"mal_id": 1, "title": "X"}})
+            helper.fetch_all = AsyncMock(
+                return_value={"anime": {"mal_id": 1, "title": "X"}}
+            )
 
-            with patch(
-                "enrichment.api_helpers.mal_helper.MalHelper",
-                return_value=helper,
-            ), patch("sys.argv", ["mal_helper", "anime", "https://myanimelist.net/anime/1", str(out)]):
+            with (
+                patch(
+                    "enrichment.api_helpers.mal_helper.MalHelper",
+                    return_value=helper,
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "mal_helper",
+                        "anime",
+                        "https://myanimelist.net/anime/1",
+                        str(out),
+                    ],
+                ),
+            ):
                 from enrichment.api_helpers.mal_helper import main
+
                 rc = await main()
 
             assert rc == 0
@@ -449,11 +512,24 @@ class TestMALHelperCli:
                 return_value=[{"episode_number": 1}, {"episode_number": 2}]
             )
 
-            with patch(
-                "enrichment.api_helpers.mal_helper.MalHelper",
-                return_value=helper,
-            ), patch("sys.argv", ["mal_helper", "episodes", "https://myanimelist.net/anime/21", "2", str(out)]):
+            with (
+                patch(
+                    "enrichment.api_helpers.mal_helper.MalHelper",
+                    return_value=helper,
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "mal_helper",
+                        "episodes",
+                        "https://myanimelist.net/anime/21",
+                        "2",
+                        str(out),
+                    ],
+                ),
+            ):
                 from enrichment.api_helpers.mal_helper import main
+
                 rc = await main()
 
             assert rc == 0
@@ -467,14 +543,30 @@ class TestMALHelperCli:
             out = Path(tmpdir) / "characters.json"
 
             helper = AsyncMock()
-            helper.fetch_character_urls = AsyncMock(return_value=["https://myanimelist.net/character/10/A"])
-            helper.fetch_characters = AsyncMock(return_value=[{"mal_id": 10, "name": "Luffy"}])
+            helper.fetch_character_urls = AsyncMock(
+                return_value=["https://myanimelist.net/character/10/A"]
+            )
+            helper.fetch_characters = AsyncMock(
+                return_value=[{"mal_id": 10, "name": "Luffy"}]
+            )
 
-            with patch(
-                "enrichment.api_helpers.mal_helper.MalHelper",
-                return_value=helper,
-            ), patch("sys.argv", ["mal_helper", "characters", "https://myanimelist.net/anime/21", str(out)]):
+            with (
+                patch(
+                    "enrichment.api_helpers.mal_helper.MalHelper",
+                    return_value=helper,
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "mal_helper",
+                        "characters",
+                        "https://myanimelist.net/anime/21",
+                        str(out),
+                    ],
+                ),
+            ):
                 from enrichment.api_helpers.mal_helper import main
+
                 rc = await main()
 
             assert rc == 0

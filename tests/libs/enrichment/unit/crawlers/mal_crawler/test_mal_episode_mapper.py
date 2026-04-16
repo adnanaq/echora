@@ -4,13 +4,13 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     EpisodeCharacterRef,
     EpisodeStaffRef,
     EpisodeVARef,
-    MalScrapedEpisode,
+    MalEpisode,
 )
 from enrichment.crawlers.mal_crawler.mal_mapper import episode_from_mal
 
 
-def _make_sample_episode() -> MalScrapedEpisode:
-    return MalScrapedEpisode(
+def _make_sample_episode() -> MalEpisode:
+    return MalEpisode(
         episode_number=1,
         source="https://myanimelist.net/anime/21/One_Piece/episode/1",
         title="I'm Luffy! The Man Who Will Become the Pirate King!",
@@ -24,7 +24,11 @@ def _make_sample_episode() -> MalScrapedEpisode:
                 mal_id=40,
                 name="Monkey D., Luffy",
                 role="Main",
-                voice_actors=[EpisodeVARef(person_id=70, name="Tanaka, Mayumi", language="Japanese")],
+                voice_actors=[
+                    EpisodeVARef(
+                        person_id=70, name="Tanaka, Mayumi", language="Japanese"
+                    )
+                ],
             )
         ],
         staff=[
@@ -80,6 +84,7 @@ def test_episode_from_mal_with_anime_id() -> None:
 def test_episode_from_mal_field_names_valid() -> None:
     """All output keys should be valid Episode model field names."""
     from common.models.anime import Episode
+
     result = episode_from_mal(_make_sample_episode())
     valid_fields = set(Episode.model_fields.keys())
     for key in result:

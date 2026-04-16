@@ -47,7 +47,9 @@ def test_schema_external_sources_uses_text_anchor() -> None:
 def test_schema_streaming_links_uses_text_anchor() -> None:
     """streaming_links_raw must anchor on 'Streaming Platforms' h2 text."""
     schema = _get_anime_schema()
-    stream_field = next(f for f in schema["fields"] if f["name"] == "streaming_links_raw")
+    stream_field = next(
+        f for f in schema["fields"] if f["name"] == "streaming_links_raw"
+    )
     selector = stream_field["selector"]
     assert "Streaming Platforms" in selector
     assert "broadcasts" in selector
@@ -64,7 +66,9 @@ def test_schema_external_sources_name_uses_caption_div() -> None:
 def test_schema_streaming_links_name_uses_title_attribute() -> None:
     """streaming_links_raw name sub-field must read the anchor's title attribute."""
     schema = _get_anime_schema()
-    stream_field = next(f for f in schema["fields"] if f["name"] == "streaming_links_raw")
+    stream_field = next(
+        f for f in schema["fields"] if f["name"] == "streaming_links_raw"
+    )
     name_field = next(f for f in stream_field["fields"] if f["name"] == "name")
     assert name_field.get("attribute") == "title"
 
@@ -88,12 +92,14 @@ def _build(extra: dict | None = None):
 
 def test_build_external_sources_parsed() -> None:
     """external_sources_raw list is converted to MalExternalLink objects."""
-    anime = _build({
-        "external_sources_raw": [
-            {"name": "Official Site", "source": "https://example.com"},
-            {"name": "Twitter", "source": "https://twitter.com/onepieceanime"},
-        ]
-    })
+    anime = _build(
+        {
+            "external_sources_raw": [
+                {"name": "Official Site", "source": "https://example.com"},
+                {"name": "Twitter", "source": "https://twitter.com/onepieceanime"},
+            ]
+        }
+    )
     assert len(anime.external_sources) == 2
     assert anime.external_sources[0].name == "Official Site"
     assert anime.external_sources[1].name == "Twitter"
@@ -101,12 +107,14 @@ def test_build_external_sources_parsed() -> None:
 
 def test_build_streaming_links_parsed() -> None:
     """streaming_links_raw list is converted to MalExternalLink objects."""
-    anime = _build({
-        "streaming_links_raw": [
-            {"name": "Crunchyroll", "source": "https://crunchyroll.com/one-piece"},
-            {"name": "Netflix", "source": "https://netflix.com/title/80107103"},
-        ]
-    })
+    anime = _build(
+        {
+            "streaming_links_raw": [
+                {"name": "Crunchyroll", "source": "https://crunchyroll.com/one-piece"},
+                {"name": "Netflix", "source": "https://netflix.com/title/80107103"},
+            ]
+        }
+    )
     assert len(anime.streaming) == 2
     assert anime.streaming[0].name == "Crunchyroll"
     assert anime.streaming[1].name == "Netflix"
@@ -114,24 +122,28 @@ def test_build_streaming_links_parsed() -> None:
 
 def test_build_empty_link_name_skipped() -> None:
     """Link entries with empty name are skipped."""
-    anime = _build({
-        "external_sources_raw": [
-            {"name": "", "source": "https://example.com"},
-            {"name": "Valid Site", "source": "https://valid.com"},
-        ]
-    })
+    anime = _build(
+        {
+            "external_sources_raw": [
+                {"name": "", "source": "https://example.com"},
+                {"name": "Valid Site", "source": "https://valid.com"},
+            ]
+        }
+    )
     assert len(anime.external_sources) == 1
     assert anime.external_sources[0].name == "Valid Site"
 
 
 def test_build_empty_link_source_skipped() -> None:
     """Link entries with empty source are skipped."""
-    anime = _build({
-        "streaming_links_raw": [
-            {"name": "Crunchyroll", "source": ""},
-            {"name": "Netflix", "source": "https://netflix.com"},
-        ]
-    })
+    anime = _build(
+        {
+            "streaming_links_raw": [
+                {"name": "Crunchyroll", "source": ""},
+                {"name": "Netflix", "source": "https://netflix.com"},
+            ]
+        }
+    )
     assert len(anime.streaming) == 1
     assert anime.streaming[0].name == "Netflix"
 
@@ -145,11 +157,28 @@ def test_build_missing_link_fields_returns_empty_lists() -> None:
 
 def test_build_dbchanges_placeholder_filtered_from_companies() -> None:
     """Licensors/studios/producers with dbchanges.php source ('add some') are dropped."""
-    anime = _build({
-        "licensors": [{"name": "add some", "source": "https://myanimelist.net/dbchanges.php?aid=62312&t=producers"}],
-        "studios": [{"name": "add some", "source": "https://myanimelist.net/dbchanges.php?aid=63764&t=producers"}],
-        "producers": [{"name": "Arch", "source": "https://myanimelist.net/anime/producer/1966/Arch"}],
-    })
+    anime = _build(
+        {
+            "licensors": [
+                {
+                    "name": "add some",
+                    "source": "https://myanimelist.net/dbchanges.php?aid=62312&t=producers",
+                }
+            ],
+            "studios": [
+                {
+                    "name": "add some",
+                    "source": "https://myanimelist.net/dbchanges.php?aid=63764&t=producers",
+                }
+            ],
+            "producers": [
+                {
+                    "name": "Arch",
+                    "source": "https://myanimelist.net/anime/producer/1966/Arch",
+                }
+            ],
+        }
+    )
     assert anime.licensors == []
     assert anime.studios == []
     assert len(anime.producers) == 1
@@ -158,14 +187,16 @@ def test_build_dbchanges_placeholder_filtered_from_companies() -> None:
 
 def test_build_both_link_types_populated_independently() -> None:
     """External and streaming links are populated independently."""
-    anime = _build({
-        "external_sources_raw": [
-            {"name": "Official Site", "source": "https://example.com"},
-        ],
-        "streaming_links_raw": [
-            {"name": "Crunchyroll", "source": "https://crunchyroll.com"},
-        ],
-    })
+    anime = _build(
+        {
+            "external_sources_raw": [
+                {"name": "Official Site", "source": "https://example.com"},
+            ],
+            "streaming_links_raw": [
+                {"name": "Crunchyroll", "source": "https://crunchyroll.com"},
+            ],
+        }
+    )
     assert len(anime.external_sources) == 1
     assert len(anime.streaming) == 1
     assert anime.external_sources[0].name != anime.streaming[0].name
@@ -177,7 +208,10 @@ def test_build_both_link_types_populated_independently() -> None:
 
 
 def test_parse_trailer_returns_mal_trailer() -> None:
-    raw = {"trailer_embed_url": "https://www.youtube.com/embed/abc123?autoplay=1", "trailer_title": "Trailer"}
+    raw = {
+        "trailer_embed_url": "https://www.youtube.com/embed/abc123?autoplay=1",
+        "trailer_title": "Trailer",
+    }
     trailer = _parse_trailer(raw)
     assert trailer is not None
     assert "abc123" in trailer.source
@@ -240,9 +274,15 @@ def test_normalize_mal_url_no_slash_prepends_base_with_slash() -> None:
 
 
 def test_parse_structured_themes_valid_entry() -> None:
-    themes = _parse_structured_themes([
-        {"title_text": '"We Are!" by Hiroshi Kitadani', "artist": "Hiroshi Kitadani", "episodes": "1-130"},
-    ])
+    themes = _parse_structured_themes(
+        [
+            {
+                "title_text": '"We Are!" by Hiroshi Kitadani',
+                "artist": "Hiroshi Kitadani",
+                "episodes": "1-130",
+            },
+        ]
+    )
     assert len(themes) == 1
     assert themes[0].title == "We Are!"
     assert themes[0].artist == "Hiroshi Kitadani"
@@ -250,23 +290,29 @@ def test_parse_structured_themes_valid_entry() -> None:
 
 def test_parse_structured_themes_no_quotes_skipped() -> None:
     """Entries without quoted title (e.g. Spotify junk) are skipped."""
-    themes = _parse_structured_themes([
-        {"title_text": "Listen on Spotify", "artist": "", "episodes": None},
-    ])
+    themes = _parse_structured_themes(
+        [
+            {"title_text": "Listen on Spotify", "artist": "", "episodes": None},
+        ]
+    )
     assert themes == []
 
 
 def test_parse_structured_themes_artist_by_prefix_stripped() -> None:
-    themes = _parse_structured_themes([
-        {"title_text": '"Kokoro e"', "artist": "by Rhythm", "episodes": None},
-    ])
+    themes = _parse_structured_themes(
+        [
+            {"title_text": '"Kokoro e"', "artist": "by Rhythm", "episodes": None},
+        ]
+    )
     assert themes[0].artist == "Rhythm"
 
 
 def test_parse_structured_themes_empty_artist_becomes_none() -> None:
-    themes = _parse_structured_themes([
-        {"title_text": '"Kokoro e"', "artist": "", "episodes": None},
-    ])
+    themes = _parse_structured_themes(
+        [
+            {"title_text": '"Kokoro e"', "artist": "", "episodes": None},
+        ]
+    )
     assert themes[0].artist is None
 
 
@@ -278,7 +324,11 @@ def test_parse_structured_themes_empty_artist_becomes_none() -> None:
 def test_parse_all_related_entries_tile_entries() -> None:
     raw = {
         "related_tile_entries": [
-            {"relation_raw": "Adaptation\n(Manga)", "title": "One Piece Manga", "source": "/manga/103"},
+            {
+                "relation_raw": "Adaptation\n(Manga)",
+                "title": "One Piece Manga",
+                "source": "/manga/103",
+            },
         ],
         "related_table_entries": [],
     }
@@ -292,7 +342,12 @@ def test_parse_all_related_entries_tile_type_from_rel_parts() -> None:
     """entry_type extracted from second part of relation when not explicitly set."""
     raw = {
         "related_tile_entries": [
-            {"relation_raw": "Adaptation\n(Manga)", "title": "One Piece Manga", "entry_type": None, "source": "/manga/103"},
+            {
+                "relation_raw": "Adaptation\n(Manga)",
+                "title": "One Piece Manga",
+                "entry_type": None,
+                "source": "/manga/103",
+            },
         ],
         "related_table_entries": [],
     }
@@ -358,7 +413,9 @@ def test_build_rank_extracted_from_rank_html() -> None:
 
 def test_build_cover_url_without_l_suffix_gets_converted() -> None:
     """Cover URL ending in .jpg (not l.jpg) is converted to l.jpg large variant."""
-    anime = _build({"cover_image_src": "https://cdn.myanimelist.net/images/anime/1/123.jpg"})
+    anime = _build(
+        {"cover_image_src": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}
+    )
     assert any("123l.jpg" in u for u in anime.picture_urls)
 
 
@@ -382,7 +439,10 @@ def test_build_background_placeholder_ignored() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_no_result(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         return_value=[],
@@ -398,7 +458,10 @@ async def test_fetch_mal_anime_data_no_result(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_404(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         return_value=[{"status_code": 404, "extracted_content": None}],
@@ -414,7 +477,10 @@ async def test_fetch_mal_anime_data_404(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_http_error(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         return_value=[{"status_code": 500, "extracted_content": None}],
@@ -430,7 +496,10 @@ async def test_fetch_mal_anime_data_http_error(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_empty_content(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         return_value=[{"status_code": 200, "extracted_content": "[]"}],
@@ -446,13 +515,30 @@ async def test_fetch_mal_anime_data_empty_content(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_success(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     raw = {"title": "One Piece"}
-    pics_raw = [{"picture_urls_raw": [{"url": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}]}]
+    pics_raw = [
+        {
+            "picture_urls_raw": [
+                {"url": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}
+            ]
+        }
+    ]
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
-            [{"status_code": 200, "metadata": {"og:url": "https://myanimelist.net/anime/21/One_Piece"}, "extracted_content": json.dumps([raw])}],
+            [
+                {
+                    "status_code": 200,
+                    "metadata": {
+                        "og:url": "https://myanimelist.net/anime/21/One_Piece"
+                    },
+                    "extracted_content": json.dumps([raw]),
+                }
+            ],
             [{"status_code": 200, "extracted_content": json.dumps(pics_raw)}],
         ],
     )
@@ -471,12 +557,22 @@ async def test_fetch_mal_anime_data_success(mocker) -> None:
 @pytest.mark.asyncio
 async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker) -> None:
     """When og:url is absent from metadata, _url falls back to result['url']."""
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     raw = {"title": "One Piece"}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
-            [{"status_code": 200, "url": "https://myanimelist.net/anime/21/One_Piece", "metadata": {}, "extracted_content": json.dumps([raw])}],
+            [
+                {
+                    "status_code": 200,
+                    "url": "https://myanimelist.net/anime/21/One_Piece",
+                    "metadata": {},
+                    "extracted_content": json.dumps([raw]),
+                }
+            ],
             [{"status_code": 200, "extracted_content": "[]"}],
         ],
     )
@@ -520,7 +616,7 @@ async def test_fetch_mal_anime_returns_parsed_anime(mocker) -> None:
     )
     result = await fetch_mal_anime("https://myanimelist.net/anime/21")
     assert result is not None
-    assert result.title == "One Piece"
+    assert result["title"] == "One Piece"
 
 
 # =============================================================================
@@ -530,25 +626,39 @@ async def test_fetch_mal_anime_returns_parsed_anime(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_main_returns_1_when_no_anime(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", "https://myanimelist.net/anime/21", "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv",
+        [
+            "prog",
+            "https://myanimelist.net/anime/21",
+            "--output",
+            str(tmp_path / "out.json"),
+        ],
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.fetch_mal_anime",
         return_value=None,
     )
     from enrichment.crawlers.mal_crawler.mal_anime_crawler import main
+
     assert await main() == 1
 
 
 @pytest.mark.asyncio
 async def test_main_returns_0_on_success(mocker, tmp_path) -> None:
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedAnime
-    anime = MalScrapedAnime(source="https://myanimelist.net/anime/21", title="One Piece")
-    mocker.patch("sys.argv", ["prog", "https://myanimelist.net/anime/21", "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv",
+        [
+            "prog",
+            "https://myanimelist.net/anime/21",
+            "--output",
+            str(tmp_path / "out.json"),
+        ],
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.fetch_mal_anime",
-        return_value=anime,
+        return_value={"title": "One Piece", "episode_count": 1000},
     )
-    mocker.patch("enrichment.mappers.mal_mapper.anime_from_mal", return_value={"title": "One Piece"})
     from enrichment.crawlers.mal_crawler.mal_anime_crawler import main
+
     assert await main() == 0
-    assert (tmp_path / "out.json").exists()

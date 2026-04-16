@@ -33,11 +33,6 @@ from enrichment.crawlers.mal_crawler.mal_episode_count_crawler import (
     fetch_mal_episode_count,
 )
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import fetch_mal_episodes
-from enrichment.crawlers.mal_crawler.mal_mapper import (
-    anime_from_mal,
-    character_from_mal,
-    episode_from_mal,
-)
 
 from .base_helper import BaseEnrichmentHelper
 
@@ -92,7 +87,9 @@ class MalHelper(BaseEnrichmentHelper):
             logger.warning(f"Invalid MAL URL: {url}")
             return None
 
-        anime_output_path = os.path.join(temp_dir, "mal_anime.jsonl") if temp_dir else None
+        anime_output_path = (
+            os.path.join(temp_dir, "mal_anime.jsonl") if temp_dir else None
+        )
         episodes_output_path = (
             os.path.join(temp_dir, "mal_episodes.jsonl") if temp_dir else None
         )
@@ -159,17 +156,16 @@ class MalHelper(BaseEnrichmentHelper):
         the count is resolved from the episode list page and patched into the result.
 
         Returns:
-            MalScrapedAnime as a JSON-serializable dict, or None on failure.
+            MalAnime as a JSON-serializable dict, or None on failure.
         """
         anime = await fetch_mal_anime(self._mal_source)
         if anime is None:
             return None
         if not self._anime_url:
-            self._anime_url = anime.source
-        anime_dict = anime_from_mal(anime)
-        if not anime_dict.get("episode_count") and self._anime_url:
-            anime_dict["episode_count"] = await fetch_mal_episode_count(self._anime_url)
-        return anime_dict
+            self._anime_url = (anime.get("sources") or [""])[0]
+        if not anime.get("episode_count") and self._anime_url:
+            anime["episode_count"] = await fetch_mal_episode_count(self._anime_url)
+        return anime
 
     async def fetch_character_urls(self) -> list[str]:
         """Fetch all character URLs from /anime/{id}/characters.
@@ -217,14 +213,14 @@ class MalHelper(BaseEnrichmentHelper):
 
         _path = output_path
 
-        def _on_episode(ep: Any) -> None:
+        def _on_episode(ep: dict[str, Any]) -> None:
             if _path:
-                _append_jsonl(_path, episode_from_mal(ep))
+                _append_jsonl(_path, ep)
 
         episodes_or_none = await fetch_mal_episodes(
             urls, on_result=_on_episode if output_path else None
         )
-        return [episode_from_mal(ep) for ep in episodes_or_none if ep is not None]
+        return [ep for ep in episodes_or_none if ep is not None]
 
     async def fetch_character(
         self,
@@ -239,10 +235,9 @@ class MalHelper(BaseEnrichmentHelper):
             output_path: If provided, the character is appended to this JSONL file.
 
         Returns:
-            MalScrapedCharacter as a dict, or None on failure.
+            MalCharacter as a dict, or None on failure.
         """
-        char = await fetch_mal_character(url)
-        result = character_from_mal(char) if char else None
+        result = await fetch_mal_character(url)
         if result and output_path:
             _append_jsonl(output_path, result)
         return result
@@ -265,14 +260,14 @@ class MalHelper(BaseEnrichmentHelper):
         """
         _path = output_path
 
-        def _on_character(c: Any) -> None:
+        def _on_character(c: dict[str, Any]) -> None:
             if _path:
-                _append_jsonl(_path, character_from_mal(c))
+                _append_jsonl(_path, c)
 
         chars = await fetch_mal_characters(
             urls, on_result=_on_character if output_path else None
         )
-        return [character_from_mal(c) for c in chars if c is not None]
+        return [c for c in chars if c is not None]
 
 
 def _write_json_sync(path: str, data: Any) -> None:

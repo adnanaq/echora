@@ -304,13 +304,15 @@ def test_extract_ography_missing_section_returns_empty() -> None:
 
 
 def test_parse_character_raw_minimal() -> None:
-    """Minimal raw dict produces a valid MalScrapedCharacter."""
+    """Minimal raw dict produces a valid MalCharacter."""
     raw = {
         "name_header": "Monkey D., Luffy (モンキー・D・ルフィ)",
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
+    char = _parse_character_raw(
+        raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy"
+    )
     assert char.source == "https://myanimelist.net/character/40/Monkey_D_Luffy"
     assert char.name == "Monkey D., Luffy"
     assert char.name_native == "モンキー・D・ルフィ"
@@ -324,7 +326,9 @@ def test_parse_character_raw_url_from_raw() -> None:
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
+    char = _parse_character_raw(
+        raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy"
+    )
     assert char.source == "https://myanimelist.net/character/40/Monkey_D_Luffy"
 
 
@@ -335,7 +339,9 @@ def test_parse_character_raw_favorites_extracted() -> None:
         "content_html": "",
         "image_src": None,
     }
-    char = _parse_character_raw(raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy")
+    char = _parse_character_raw(
+        raw, url="https://myanimelist.net/character/40/Monkey_D_Luffy"
+    )
     assert char.favorites == 123456
 
 
@@ -407,7 +413,10 @@ def test_extract_ography_row_without_title_skipped() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_no_results(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
         return_value=[],
@@ -423,7 +432,10 @@ async def test_fetch_mal_character_data_no_results(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_http_error(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
         return_value=[{"status_code": 403, "extracted_content": None}],
@@ -439,7 +451,10 @@ async def test_fetch_mal_character_data_http_error(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_empty_content(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
         return_value=[{"status_code": 200, "extracted_content": "[]"}],
@@ -455,11 +470,20 @@ async def test_fetch_mal_character_data_empty_content(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_success(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"status_code": 200, "metadata": {"og:url": "https://myanimelist.net/character/996/Luffy"}, "extracted_content": json.dumps([raw])}],
+        return_value=[
+            {
+                "status_code": 200,
+                "metadata": {"og:url": "https://myanimelist.net/character/996/Luffy"},
+                "extracted_content": json.dumps([raw]),
+            }
+        ],
     )
     mocker.patch.object(
         _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
@@ -491,7 +515,12 @@ async def test_fetch_mal_character_returns_none_when_no_data(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_returns_parsed_character(mocker) -> None:
-    raw = {"name_header": "Luffy", "content_html": "", "image_src": None, "favorites": "0"}
+    raw = {
+        "name_header": "Luffy",
+        "content_html": "",
+        "image_src": None,
+        "favorites": "0",
+    }
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler._fetch_mal_character_data",
         new_callable=AsyncMock,
@@ -499,8 +528,8 @@ async def test_fetch_mal_character_returns_parsed_character(mocker) -> None:
     )
     result = await fetch_mal_character("https://myanimelist.net/character/40")
     assert result is not None
-    assert result.name == "Luffy"
-    assert result.source == "https://myanimelist.net/character/40/Luffy"
+    assert result["name"] == "Luffy"
+    assert result["sources"] == ["https://myanimelist.net/character/40/Luffy"]
 
 
 # =============================================================================
@@ -548,7 +577,13 @@ async def test_fetch_mal_characters_http_error(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": "https://myanimelist.net/character/40", "status_code": 403, "extracted_content": None}],
+        return_value=[
+            {
+                "url": "https://myanimelist.net/character/40",
+                "status_code": 403,
+                "extracted_content": None,
+            }
+        ],
     )
     result = await fetch_mal_characters(["https://myanimelist.net/character/40"])
     assert result == [None]
@@ -568,7 +603,13 @@ async def test_fetch_mal_characters_empty_content(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": "https://myanimelist.net/character/40", "status_code": 200, "extracted_content": "[]"}],
+        return_value=[
+            {
+                "url": "https://myanimelist.net/character/40",
+                "status_code": 200,
+                "extracted_content": "[]",
+            }
+        ],
     )
     result = await fetch_mal_characters(["https://myanimelist.net/character/40"])
     assert result == [None]
@@ -590,16 +631,18 @@ async def test_fetch_mal_characters_success(mocker) -> None:
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{
-            "url": "https://myanimelist.net/character/40",
-            "status_code": 200,
-            "extracted_content": json.dumps([raw]),
-        }],
+        return_value=[
+            {
+                "url": "https://myanimelist.net/character/40",
+                "status_code": 200,
+                "extracted_content": json.dumps([raw]),
+            }
+        ],
     )
     result = await fetch_mal_characters(["https://myanimelist.net/character/40"])
     assert len(result) == 1
     assert result[0] is not None
-    assert result[0].name == "Luffy"
+    assert result[0]["name"] == "Luffy"
     cache_set.assert_awaited_once()
 
 
@@ -623,24 +666,28 @@ async def test_fetch_mal_characters_uses_cache_and_merges_results(mocker) -> Non
     )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.crawl_batch_urls",
-        return_value=[{
-            "url": url2,
-            "status_code": 200,
-            "extracted_content": json.dumps([raw2]),
-        }],
+        return_value=[
+            {
+                "url": url2,
+                "status_code": 200,
+                "extracted_content": json.dumps([raw2]),
+            }
+        ],
     )
     result = await fetch_mal_characters([url1, url2])
     assert len(result) == 2
     assert result[0] is not None
-    assert result[0].name == "Luffy"
+    assert result[0]["name"] == "Luffy"
     assert result[1] is not None
-    assert result[1].name == "Zoro"
+    assert result[1]["name"] == "Zoro"
     cache_set.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
-    urls = [f"https://myanimelist.net/character/{i}" for i in range(1, 32)]  # 31 URLs > _CHARACTER_BATCH_SIZE=30 → forces 2 batches
+    urls = [
+        f"https://myanimelist.net/character/{i}" for i in range(1, 32)
+    ]  # 31 URLs > _CHARACTER_BATCH_SIZE=30 → forces 2 batches
     raw = {"name_header": "Luffy", "content_html": "", "image_src": None}
 
     mocker.patch.object(
@@ -654,6 +701,7 @@ async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
         "cache_batch_set",
         new=cache_set,
     )
+
     async def _batch_result(batch_urls: list[str], **kwargs) -> list[dict[str, str]]:
         return [
             {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
@@ -678,25 +726,39 @@ async def test_fetch_mal_characters_chunks_requests(mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_main_returns_1_when_no_character(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", "https://myanimelist.net/character/40", "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv",
+        [
+            "prog",
+            "https://myanimelist.net/character/40",
+            "--output",
+            str(tmp_path / "out.json"),
+        ],
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.fetch_mal_character",
         return_value=None,
     )
     from enrichment.crawlers.mal_crawler.mal_character_crawler import main
+
     assert await main() == 1
 
 
 @pytest.mark.asyncio
 async def test_main_returns_0_on_success(mocker, tmp_path) -> None:
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
-    char = MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy")
-    mocker.patch("sys.argv", ["prog", "https://myanimelist.net/character/40", "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv",
+        [
+            "prog",
+            "https://myanimelist.net/character/40",
+            "--output",
+            str(tmp_path / "out.json"),
+        ],
+    )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_character_crawler.fetch_mal_character",
-        return_value=char,
+        return_value={"name": "Luffy"},
     )
-    mocker.patch("enrichment.mappers.mal_mapper.character_from_mal", return_value={"name": "Luffy"})
     from enrichment.crawlers.mal_crawler.mal_character_crawler import main
+
     assert await main() == 0
-    assert (tmp_path / "out.json").exists()

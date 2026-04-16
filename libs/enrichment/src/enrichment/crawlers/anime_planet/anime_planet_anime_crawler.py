@@ -16,12 +16,13 @@ from enrichment.crawlers.anime_planet.anime_planet_models import (
     AnimePlanetMangaEntry,
     AnimePlanetRelatedEntry,
 )
+from enrichment.crawlers.anime_planet.animeplanet_mapper import anime_from_animeplanet
 from enrichment.crawlers.crawl4ai_docker import crawl_single_url
 from enrichment.crawlers.crawler_config import (
     get_docker_browser_config,
     get_docker_crawler_config,
 )
-from enrichment.crawlers.utils import sanitize_output_path
+from enrichment.crawlers.framework import BaseCrawler, DockerTransport, NullRepository
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -89,10 +90,7 @@ def _normalize_anime_url(anime_identifier: str) -> str:
         )
 
     if not url.startswith(BASE_ANIME_URL):
-        raise ValueError(
-            f"Invalid URL: Must be an anime-planet.com anime URL. "
-            f"Expected format: '{BASE_ANIME_URL}<slug>' or just '<slug>'"
-        )
+        raise ValueError(f"Not an anime-planet anime URL: {url!r}")
     return url
 
 
@@ -104,7 +102,7 @@ def _extract_slug_from_url(url: str) -> str:
     """
     match = re.search(r"/anime/([^/?#]+)", url)
     if not match:
-        raise ValueError(f"Could not extract slug from URL: {url}")
+        raise ValueError(f"No anime slug in URL: {url!r}")
     return match.group(1)
 
 
@@ -499,6 +497,10 @@ async def _fetch_animeplanet_anime_data(
         ),
     )
 
+    if result is None:
+        logger.warning(f"Crawl returned no result for {url}")
+        return None
+
     status = result.get("status_code")
     if status == 404:
         logger.warning(f"Anime not found (404): {url}")
@@ -554,33 +556,33 @@ async def _fetch_animeplanet_anime_data(
     }
 
 
-async def fetch_animeplanet_anime(url: str) -> AnimePlanetAnime | None:
-    """Fetch and validate anime metadata for an Anime-Planet anime URL.
+class AnimePlanetAnimeCrawler(BaseCrawler[AnimePlanetAnime, dict[str, Any]]):
+    """Crawler for Anime-Planet anime detail pages."""
 
-    Callers are responsible for passing a full canonical URL
-    (e.g. "https://www.anime-planet.com/anime/dandadan").
-    URL normalization (slug/path → URL, www fix) is the caller's responsibility;
-    use ``_normalize_anime_url`` in CLI entry points.
+    def normalize_identifier(self, identifier: str) -> str:
+        return _normalize_anime_url(identifier)
 
-    Callers are responsible for mapping to the canonical form via
-    ``anime_from_animeplanet`` from ``enrichment.mappers.animeplanet_mapper``.
+    async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
+        slug = _extract_slug_from_url(url)
+        return await _fetch_animeplanet_anime_data(slug)
+
+    def build_source_model(
+        self, processed_raw: dict[str, Any], url: str
+    ) -> AnimePlanetAnime:
+        return _build_anime_from_raw(processed_raw)
+
+    def map_to_canonical(self, source_model: AnimePlanetAnime) -> dict[str, Any]:
+        return anime_from_animeplanet(source_model)
+
+
+async def fetch_animeplanet_anime(url: str) -> dict[str, Any] | None:
+    """Fetch and return canonical anime dict for an Anime-Planet anime URL.
 
     Args:
-        url: Full Anime-Planet anime URL.
+        url: Full Anime-Planet anime URL, slug, or path
+            (e.g. "https://www.anime-planet.com/anime/dandadan" or "dandadan").
 
     Returns:
-        Validated AnimePlanetAnime model, or None if the fetch or validation fails.
+        Canonical anime dict, or None if the fetch or validation fails.
     """
-    canonical_slug = _extract_slug_from_url(url)
-
-    raw = await _fetch_animeplanet_anime_data(canonical_slug)
-    if raw is None:
-        return None
-
-    try:
-        return _build_anime_from_raw(raw)
-    except Exception as e:
-        logger.warning(f"Failed to build AnimePlanetAnime for {canonical_slug}: {e}")
-        return None
-
-
+    return await AnimePlanetAnimeCrawler(DockerTransport(), NullRepository()).crawl(url)

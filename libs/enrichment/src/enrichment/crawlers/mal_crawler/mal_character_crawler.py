@@ -1,16 +1,16 @@
 """MAL Character Detail Crawler.
 
 Two public functions:
-    fetch_mal_character(char_id)   — /character/{id}       → MalScrapedCharacter | None
-    fetch_mal_characters(char_ids) — batch /character/{id} → list[MalScrapedCharacter | None]
+    fetch_mal_character(url)   — /character/{id}       → dict[str, Any] | None
+    fetch_mal_characters(urls) — batch /character/{id} → list[dict[str, Any] | None]
 
 Usage:
     from enrichment.crawlers.mal_crawler.mal_character_crawler import (
         fetch_mal_character,
         fetch_mal_characters,
     )
-    char = await fetch_mal_character(40)               # Luffy character detail
-    chars = await fetch_mal_characters([40, 41, 42])   # batch
+    char = await fetch_mal_character("https://myanimelist.net/character/40/Luffy")
+    chars = await fetch_mal_characters([url1, url2, url3])
 """
 
 import argparse
@@ -23,15 +23,25 @@ from collections.abc import Callable
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.crawlers.crawler_config import CrawlerRateLimiter
-from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
+from enrichment.crawlers.crawler_config import (
+    CrawlerRateLimiter,
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
+from enrichment.crawlers.framework import (
+    DockerTransport,
+    FileRepository,
+    NullRepository,
+)
 from enrichment.crawlers.mal_crawler.mal_base import (
     parse_number,
     parse_sidebar_field,
 )
+from enrichment.crawlers.mal_crawler.mal_base_crawler import MalCrawlerBase
+from enrichment.crawlers.mal_crawler.mal_mapper import character_from_mal
 from enrichment.crawlers.mal_crawler.mal_models import (
     MalOgraphyEntry,
-    MalScrapedCharacter,
+    MalCharacter,
     MalVoiceActorRef,
 )
 from http_cache.config import get_cache_config
@@ -331,16 +341,14 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
         row_html = row_match.group(1)
 
         url = title = ""
-        entry_id = 0
         for link_match in re.finditer(
-            r'<a[^>]*href="([^"]*(?:anime|manga)/(\d+)[^"]*)"[^>]*>(.*?)</a>',
+            r'<a[^>]*href="([^"]*(?:anime|manga)/\d+[^"]*)"[^>]*>(.*?)</a>',
             row_html,
             re.DOTALL,
         ):
-            title = re.sub(r"<[^>]+>", "", link_match.group(3)).strip()
+            title = re.sub(r"<[^>]+>", "", link_match.group(2)).strip()
             if title:
                 url = link_match.group(1)
-                entry_id = int(link_match.group(2))
                 break
         if not title:
             continue
@@ -399,8 +407,8 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     return raw_list[0], canonical_url
 
 
-def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
-    """Parse a raw extraction dict into a MalScrapedCharacter."""
+def _parse_character_raw(raw: dict[str, Any], url: str) -> MalCharacter:
+    """Parse a raw extraction dict into a MalCharacter."""
     name, name_native = _extract_name_and_native(raw.get("name_header"))
 
     image_url = raw.get("image_src") or ""
@@ -418,7 +426,7 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
     if description_spoiler:
         spoilers["description"] = description_spoiler
 
-    return MalScrapedCharacter(
+    return MalCharacter(
         source=url,
         name=name,
         name_native=name_native,
@@ -434,30 +442,51 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalScrapedCharacter:
     )
 
 
-async def fetch_mal_character(url: str) -> MalScrapedCharacter | None:
-    """Fetch a single MAL character detail page.
+class MalCharacterCrawler(MalCrawlerBase[MalCharacter, dict[str, Any]]):
+    """Crawler for MyAnimeList character detail pages."""
+
+    def normalize_identifier(self, identifier: str) -> str:
+        return identifier
+
+    async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
+        result = await _fetch_mal_character_data(url)
+        if result is None:
+            return None
+        raw, canonical_url = result
+        return {"_raw": raw, "_canonical_url": canonical_url}
+
+    def build_source_model(
+        self, processed_raw: dict[str, Any], url: str
+    ) -> MalCharacter:
+        return _parse_character_raw(
+            processed_raw["_raw"], processed_raw["_canonical_url"]
+        )
+
+    def map_to_canonical(self, source_model: MalCharacter) -> dict[str, Any]:
+        return character_from_mal(source_model)
+
+
+async def fetch_mal_character(
+    url: str, output_path: str | None = None
+) -> dict[str, Any] | None:
+    """Fetch a single MAL character detail page and return canonical dict.
 
     Args:
         url: Full MAL character URL (e.g. https://myanimelist.net/character/40/Luffy).
+        output_path: If provided, append the canonical dict as a JSONL line.
 
     Returns:
-        MalScrapedCharacter if successful, None otherwise.
+        Canonical character dict, or None on failure.
     """
-    logger.debug(f"Fetching character {url}")
-    fetched = await _fetch_mal_character_data(url)
-    if not fetched:
-        logger.error(f"Failed to fetch character {url}")
-        return None
-
-    raw, canonical_url = fetched
-    return _parse_character_raw(raw, canonical_url)
+    repo = FileRepository(output_path) if output_path else NullRepository()
+    return await MalCharacterCrawler(DockerTransport(), repo).crawl(url)
 
 
 async def fetch_mal_characters(
     urls: list[str],
     *,
-    on_result: Callable[[MalScrapedCharacter], None] | None = None,
-) -> list[MalScrapedCharacter | None]:
+    on_result: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any] | None]:
     """Fetch multiple character detail pages in a single batch Docker job.
 
     All URLs are submitted at once; Docker processes them at MAX_CONCURRENT_TASKS
@@ -466,7 +495,7 @@ async def fetch_mal_characters(
     Args:
         urls: List of full MAL character URLs.
         on_result: Optional callback invoked with each successfully parsed
-            character as results arrive (used for write-immediately streaming).
+            canonical character dict as results arrive (used for write-immediately streaming).
 
     Returns:
         List aligned to urls — None for any failed fetch.
@@ -480,9 +509,9 @@ async def fetch_mal_characters(
         urls
     )
 
-    characters: list[MalScrapedCharacter | None] = [None] * len(urls)
+    characters: list[dict[str, Any] | None] = [None] * len(urls)
 
-    def _parse_cached(value: Any) -> MalScrapedCharacter | None:
+    def _parse_cached(value: Any) -> dict[str, Any] | None:
         if not value:
             return None
         if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -491,7 +520,7 @@ async def fetch_mal_characters(
             return None
         if not isinstance(raw, dict) or not canonical_url:
             return None
-        return _parse_character_raw(raw, canonical_url)
+        return character_from_mal(_parse_character_raw(raw, canonical_url))
 
     for idx, cached in enumerate(cached_values):
         parsed = _parse_cached(cached)
@@ -537,10 +566,11 @@ async def fetch_mal_characters(
                 characters[out_index] = None
                 continue
             raw_for_cache = raw_list[0]
-            characters[out_index] = _parse_character_raw(raw_for_cache, url)
+            canonical = character_from_mal(_parse_character_raw(raw_for_cache, url))
+            characters[out_index] = canonical
             cache_values[idx_in_chunk] = (raw_for_cache, url)
-            if on_result is not None and characters[out_index] is not None:
-                on_result(characters[out_index])
+            if on_result is not None:
+                on_result(canonical)
 
         await _fetch_mal_character_data.cache_batch_set(  # type: ignore[attr-defined]
             chunk_urls,
@@ -566,19 +596,11 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    char = await fetch_mal_character(args.url)
+    char = await fetch_mal_character(args.url, output_path=args.output)
     if char is None:
         logger.error(f"No data for character {args.url}")
         return 1
-    from pathlib import Path
-
-    from enrichment.crawlers.mal_crawler.mal_mapper import character_from_mal
-
-    canonical = character_from_mal(char)
-    Path(args.output).write_text(
-        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    logger.info(f"Done: {char.name}")
+    logger.info(f"Done: {char.get('name')}")
     return 0
 
 

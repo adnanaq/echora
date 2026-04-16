@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from enrichment.crawlers.anime_planet.anime_planet_character_models import AnimePlanetCharacter
-from enrichment.crawlers.anime_planet.anime_planet_models import AnimePlanetAnime
 
 pytestmark = pytest.mark.asyncio
 
@@ -14,8 +12,10 @@ _AP_WWW = "https://www.anime-planet.com"
 _AP_ANIME_URL = f"{_AP_WWW}/anime/dandadan"
 _AP_ANIME_URL_NO_WWW = "https://anime-planet.com/anime/dandadan"
 
-_ANIME_OBJ = AnimePlanetAnime(name="Dandadan", slug="dandadan")
-_ANIME_CANONICAL = {"title": "Dandadan", "slug": "dandadan"}
+_ANIME_CANONICAL = {
+    "title": "Dandadan",
+    "sources": [f"{_AP_WWW}/anime/dandadan"],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -51,11 +51,8 @@ async def test_fetch_anime_passes_www_url_to_crawler():
     helper = AnimePlanetEnrichmentHelper()
     with patch(
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ) as mock_crawl, patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
-    ):
+        new=AsyncMock(return_value=_ANIME_CANONICAL),
+    ) as mock_crawl:
         await helper.fetch_anime(_AP_ANIME_URL)
 
     mock_crawl.assert_awaited_once_with(_AP_ANIME_URL)
@@ -68,11 +65,8 @@ async def test_fetch_anime_normalizes_non_www_url_before_passing_to_crawler():
     helper = AnimePlanetEnrichmentHelper()
     with patch(
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ) as mock_crawl, patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
-    ):
+        new=AsyncMock(return_value=_ANIME_CANONICAL),
+    ) as mock_crawl:
         await helper.fetch_anime(_AP_ANIME_URL_NO_WWW)
 
     mock_crawl.assert_awaited_once_with(_AP_ANIME_URL)
@@ -97,10 +91,7 @@ async def test_fetch_anime_returns_mapped_canonical_dict():
     helper = AnimePlanetEnrichmentHelper()
     with patch(
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
+        new=AsyncMock(return_value=_ANIME_CANONICAL),
     ):
         result = await helper.fetch_anime(_AP_ANIME_URL)
 
@@ -122,14 +113,19 @@ async def test_fetch_characters_expands_relative_ref_urls_to_full():
         {"url": "/characters/monkey-d-luffy"},
         {"url": "/characters/nami"},
     ]
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_character_refs",
-        new=AsyncMock(return_value=refs),
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
-        new=AsyncMock(return_value=[]),
-    ) as mock_chars:
-        await AnimePlanetEnrichmentHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_character_refs",
+            new=AsyncMock(return_value=refs),
+        ),
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
+            new=AsyncMock(return_value=[]),
+        ) as mock_chars,
+    ):
+        await AnimePlanetEnrichmentHelper().fetch_characters(
+            f"{_AP_WWW}/anime/dandadan"
+        )
 
     passed_urls = mock_chars.await_args[0][0]
     assert passed_urls == [
@@ -145,7 +141,9 @@ async def test_fetch_characters_returns_empty_list_when_no_refs():
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_character_refs",
         new=AsyncMock(return_value=[]),
     ):
-        result = await AnimePlanetEnrichmentHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
+        result = await AnimePlanetEnrichmentHelper().fetch_characters(
+            f"{_AP_WWW}/anime/dandadan"
+        )
 
     assert result == []
 
@@ -158,7 +156,9 @@ async def test_fetch_characters_builds_correct_refs_url():
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_character_refs",
         new=AsyncMock(return_value=[]),
     ) as mock_refs:
-        await AnimePlanetEnrichmentHelper().fetch_characters(f"{_AP_WWW}/anime/one-piece")
+        await AnimePlanetEnrichmentHelper().fetch_characters(
+            f"{_AP_WWW}/anime/one-piece"
+        )
 
     mock_refs.assert_awaited_once_with(f"{_AP_WWW}/anime/one-piece/characters")
 
@@ -175,14 +175,14 @@ async def test_fetch_all_returns_split_anime_and_characters():
     helper = AnimePlanetEnrichmentHelper()
     characters = [{"name": "Okarun"}]
 
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
-    ), patch.object(
-        helper, "fetch_characters", new=AsyncMock(return_value=characters)
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
+            new=AsyncMock(return_value=_ANIME_CANONICAL),
+        ),
+        patch.object(
+            helper, "fetch_characters", new=AsyncMock(return_value=characters)
+        ),
     ):
         result = await helper.fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
 
@@ -204,16 +204,17 @@ async def test_fetch_all_writes_anime_before_characters(tmp_path):
     def tracking_append(path: str, data: object) -> None:
         write_calls.append(f"write:{os.path.basename(path)}")
 
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.append_jsonl",
-        side_effect=tracking_append,
-    ), patch.object(helper, "fetch_characters", side_effect=slow_char_fetch):
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
+            new=AsyncMock(return_value=_ANIME_CANONICAL),
+        ),
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.append_jsonl",
+            side_effect=tracking_append,
+        ),
+        patch.object(helper, "fetch_characters", side_effect=slow_char_fetch),
+    ):
         await helper.fetch_all(
             {"anime_planet_url": _AP_ANIME_URL},
             {},
@@ -232,7 +233,9 @@ async def test_fetch_all_returns_none_when_anime_missing():
         "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
         new=AsyncMock(return_value=None),
     ):
-        result = await AnimePlanetEnrichmentHelper().fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
+        result = await AnimePlanetEnrichmentHelper().fetch_all(
+            {"anime_planet_url": _AP_ANIME_URL}, {}
+        )
 
     assert result is None
 
@@ -241,14 +244,16 @@ async def test_fetch_all_survives_character_fetch_failure():
     from enrichment.api_helpers.anime_planet_helper import AnimePlanetEnrichmentHelper
 
     helper = AnimePlanetEnrichmentHelper()
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
-        new=AsyncMock(return_value=_ANIME_OBJ),
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.anime_from_animeplanet",
-        return_value=_ANIME_CANONICAL,
-    ), patch.object(
-        helper, "fetch_characters", new=AsyncMock(side_effect=RuntimeError("network error"))
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_anime",
+            new=AsyncMock(return_value=_ANIME_CANONICAL),
+        ),
+        patch.object(
+            helper,
+            "fetch_characters",
+            new=AsyncMock(side_effect=RuntimeError("network error")),
+        ),
     ):
         result = await helper.fetch_all({"anime_planet_url": _AP_ANIME_URL}, {})
 
@@ -302,8 +307,9 @@ async def test_main_anime_subcommand_success(mock_helper_class, tmp_path):
     mock_helper.__aexit__ = AsyncMock(return_value=False)
     out = tmp_path / "out.jsonl"
 
-    with patch("sys.argv", ["prog", "anime", _AP_ANIME_URL, "--output", str(out)]), patch(
-        "enrichment.api_helpers.anime_planet_helper.append_jsonl"
+    with (
+        patch("sys.argv", ["prog", "anime", _AP_ANIME_URL, "--output", str(out)]),
+        patch("enrichment.api_helpers.anime_planet_helper.append_jsonl"),
     ):
         code = await main()
 
@@ -332,25 +338,20 @@ async def test_main_characters_subcommand_streams_to_jsonl(tmp_path):
 
     char_url = f"{_AP_WWW}/characters/monkey-d-luffy"
     out = tmp_path / "chars.jsonl"
-    char_obj = AnimePlanetCharacter(
-        name="Luffy", slug="monkey-d-luffy", url=char_url
-    )
+    char_dict = {"name": "Luffy"}
 
-    async def fake_fetch(urls: list[str], *, on_result=None) -> list[AnimePlanetCharacter]:
+    async def fake_fetch(urls: list[str], *, on_result=None) -> list[dict]:
         if on_result:
-            on_result(char_obj)
-        return [char_obj]
+            on_result(char_dict)
+        return [char_dict]
 
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
-        side_effect=fake_fetch,
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.character_from_animeplanet",
-        return_value={"name": "Luffy"},
-    ), patch(
-        "enrichment.api_helpers.anime_planet_helper.append_jsonl"
-    ) as mock_append, patch(
-        "sys.argv", ["prog", "characters", char_url, "--output", str(out)]
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
+            side_effect=fake_fetch,
+        ),
+        patch("enrichment.api_helpers.anime_planet_helper.append_jsonl") as mock_append,
+        patch("sys.argv", ["prog", "characters", char_url, "--output", str(out)]),
     ):
         code = await main()
 
@@ -365,11 +366,12 @@ async def test_main_characters_subcommand_passes_urls_to_crawler(tmp_path):
     url2 = f"{_AP_WWW}/characters/nami"
     out = tmp_path / "chars.jsonl"
 
-    with patch(
-        "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
-        new=AsyncMock(return_value=[]),
-    ) as mock_crawl, patch(
-        "sys.argv", ["prog", "characters", url1, url2, "--output", str(out)]
+    with (
+        patch(
+            "enrichment.api_helpers.anime_planet_helper.fetch_animeplanet_characters",
+            new=AsyncMock(return_value=[]),
+        ) as mock_crawl,
+        patch("sys.argv", ["prog", "characters", url1, url2, "--output", str(out)]),
     ):
         await main()
 
@@ -382,7 +384,9 @@ async def test_main_all_subcommand_success(mock_helper_class, tmp_path):
     from enrichment.api_helpers.anime_planet_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all = AsyncMock(return_value={"anime": _ANIME_CANONICAL, "characters": []})
+    mock_helper.fetch_all = AsyncMock(
+        return_value={"anime": _ANIME_CANONICAL, "characters": []}
+    )
     mock_helper_class.return_value = mock_helper
     mock_helper.__aenter__ = AsyncMock(return_value=mock_helper)
     mock_helper.__aexit__ = AsyncMock(return_value=False)
@@ -391,7 +395,15 @@ async def test_main_all_subcommand_success(mock_helper_class, tmp_path):
 
     with patch(
         "sys.argv",
-        ["prog", "all", _AP_ANIME_URL, "--anime-output", str(anime_out), "--chars-output", str(chars_out)],
+        [
+            "prog",
+            "all",
+            _AP_ANIME_URL,
+            "--anime-output",
+            str(anime_out),
+            "--chars-output",
+            str(chars_out),
+        ],
     ):
         code = await main()
 

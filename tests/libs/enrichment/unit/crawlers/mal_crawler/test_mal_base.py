@@ -25,9 +25,9 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     parse_sidebar_field,
 )
 from enrichment.crawlers.mal_crawler.mal_models import (
-    MalScrapedAnime,
-    MalScrapedCharacter,
-    MalScrapedEpisode,
+    MalAnime,
+    MalCharacter,
+    MalEpisode,
 )
 from pydantic import BaseModel
 
@@ -287,8 +287,8 @@ def test_parse_episode_ranges(raw: str | None, expected: list[dict]) -> None:
 # =============================================================================
 
 
-def _make_anime(score: float = 8.7, title: str = "One Piece") -> MalScrapedAnime:
-    return MalScrapedAnime(
+def _make_anime(score: float = 8.7, title: str = "One Piece") -> MalAnime:
+    return MalAnime(
         source="https://myanimelist.net/anime/21",
         title=title,
         score=score,
@@ -322,7 +322,7 @@ def test_diff_models_new_entity() -> None:
 
 
 def test_diff_models_entity_id_correct_for_anime() -> None:
-    """diff_models uses url as entity_id for MalScrapedAnime (anime_id field removed)."""
+    """diff_models uses url as entity_id for MalAnime (anime_id field removed)."""
     old = _make_anime(score=8.7)
     new = _make_anime(score=8.8)
     diff = diff_models(old, new, "anime")
@@ -342,21 +342,21 @@ def test_diff_models_entity_id_correct_for_new_anime() -> None:
 
 
 def test_diff_model_lists_added_and_removed() -> None:
-    from enrichment.crawlers.mal_crawler.mal_models import MalScrapedCharacter
+    from enrichment.crawlers.mal_crawler.mal_models import MalCharacter
 
     old_chars = [
-        MalScrapedCharacter(
+        MalCharacter(
             source="https://myanimelist.net/character/40/Luffy", name="Luffy"
         ),
-        MalScrapedCharacter(
+        MalCharacter(
             source="https://myanimelist.net/character/41/Zoro", name="Zoro"
         ),
     ]
     new_chars = [
-        MalScrapedCharacter(
+        MalCharacter(
             source="https://myanimelist.net/character/40/Luffy", name="Luffy"
         ),
-        MalScrapedCharacter(
+        MalCharacter(
             source="https://myanimelist.net/character/42/Nami", name="Nami"
         ),
     ]
@@ -368,10 +368,10 @@ def test_diff_model_lists_added_and_removed() -> None:
 
 def test_diff_model_lists_updated_when_field_changes() -> None:
     old = [
-        MalScrapedCharacter(source="https://myanimelist.net/character/40", name="Luffy")
+        MalCharacter(source="https://myanimelist.net/character/40", name="Luffy")
     ]
     new = [
-        MalScrapedCharacter(
+        MalCharacter(
             source="https://myanimelist.net/character/40", name="Luffy Updated"
         )
     ]
@@ -475,7 +475,7 @@ def test_parse_episode_ranges_bad_standalone_skipped() -> None:
 
 
 def test_get_entity_id_returns_episode_number_as_int() -> None:
-    ep = MalScrapedEpisode(
+    ep = MalEpisode(
         source="https://myanimelist.net/anime/21/One_Piece/episode/1",
         episode_number=1,
         title="Romance Dawn",

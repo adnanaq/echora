@@ -1,7 +1,7 @@
 """MAL Anime Detail Crawler.
 
 Fetches /anime/{id} and /anime/{id}/pics pages from MyAnimeList and extracts
-all anime metadata into a MalScrapedAnime model.
+all anime metadata into a MalAnime model.
 
 Replaces the Jikan API calls in MalClient — one page fetch instead of one API
 call per field. No rate-limit queue on Jikan's side.
@@ -19,10 +19,19 @@ import json
 import logging
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_batch_urls
-from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
+from enrichment.crawlers.crawler_config import (
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
+from enrichment.crawlers.framework import (
+    DockerTransport,
+    FileRepository,
+    NullRepository,
+)
 from enrichment.crawlers.mal_crawler.mal_base import (
     MAL_BASE_URL,
     get_mal_scraping_limiter,
@@ -38,10 +47,12 @@ from enrichment.crawlers.mal_crawler.mal_models import (
     MalEpisodeRange,
     MalExternalLink,
     MalRelatedEntry,
-    MalScrapedAnime,
+    MalAnime,
     MalThemeSong,
     MalTrailer,
 )
+from enrichment.crawlers.mal_crawler.mal_base_crawler import MalCrawlerBase
+from enrichment.crawlers.mal_crawler.mal_mapper import anime_from_mal
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -597,8 +608,8 @@ def _build_anime_from_raw(
     raw: dict[str, Any],
     url: str,
     picture_urls: list[str],
-) -> MalScrapedAnime:
-    """Transform raw extracted data into a MalScrapedAnime model.
+) -> MalAnime:
+    """Transform raw extracted data into a MalAnime model.
 
     This is the post-processing step that converts CSS-extracted strings into
     typed/parsed values using the sidebar parser utilities.
@@ -609,7 +620,7 @@ def _build_anime_from_raw(
         picture_urls: Gallery image URLs from /anime/{id}/pics.
 
     Returns:
-        Validated MalScrapedAnime model.
+        Validated MalAnime model.
     """
     # Titles
     title = (raw.get("title") or raw.get("title_og") or "").strip()
@@ -749,7 +760,7 @@ def _build_anime_from_raw(
     # Relations
     related_entries = _parse_all_related_entries(raw)
 
-    return MalScrapedAnime(
+    return MalAnime(
         source=url,
         title=title,
         title_english=title_english,
@@ -863,29 +874,40 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     return raw
 
 
-async def fetch_mal_anime(url: str) -> MalScrapedAnime | None:
-    """Fetch MAL anime detail and pictures pages.
+class MalAnimeCrawler(MalCrawlerBase[MalAnime, dict[str, Any]]):
+    """Crawler for MyAnimeList anime detail pages."""
 
-    Public API. Fetches and validates into MalScrapedAnime.
-    Accepts both slugged and slugless MAL anime URLs.
+    def normalize_identifier(self, identifier: str) -> str:
+        return _normalize_mal_url(identifier)
+
+    async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
+        return await _fetch_mal_anime_data(url)
+
+    def build_source_model(
+        self, processed_raw: dict[str, Any], url: str
+    ) -> MalAnime:
+        picture_urls = processed_raw.pop("_picture_urls", [])
+        saved_url = processed_raw.pop("_url", url)
+        return _build_anime_from_raw(processed_raw, saved_url, picture_urls)
+
+    def map_to_canonical(self, source_model: MalAnime) -> dict[str, Any]:
+        return anime_from_mal(source_model)
+
+
+async def fetch_mal_anime(
+    url: str, output_path: str | None = None
+) -> dict[str, Any] | None:
+    """Fetch MAL anime detail and return canonical anime dict.
 
     Args:
-        url: MAL anime URL, e.g. "https://myanimelist.net/anime/21" or
-             "https://myanimelist.net/anime/21/One_Piece".
+        url: MAL anime URL (slugged or slugless).
+        output_path: If provided, write the canonical dict to this JSON file.
 
     Returns:
-        MalScrapedAnime model if successful, None otherwise.
+        Canonical anime dict, or None on failure.
     """
-    logger.info(f"Fetching MAL anime {url}...")
-    raw = await _fetch_mal_anime_data(url)
-    if not raw:
-        logger.error(f"Failed to fetch MAL anime {url}")
-        return None
-
-    picture_urls = raw.pop("_picture_urls", [])
-    saved_url = raw.pop("_url", url)
-
-    return _build_anime_from_raw(raw, saved_url, picture_urls)
+    repo = FileRepository(output_path) if output_path else NullRepository()
+    return await MalAnimeCrawler(DockerTransport(), repo).crawl(url)
 
 
 async def main() -> int:
@@ -903,19 +925,13 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    anime = await fetch_mal_anime(args.url)
-    if anime is None:
+    anime_dict = await fetch_mal_anime(args.url, output_path=args.output)
+    if anime_dict is None:
         logger.error(f"No data extracted for anime URL {args.url}")
         return 1
-    from pathlib import Path
-
-    from enrichment.crawlers.mal_crawler.mal_mapper import anime_from_mal
-
-    canonical = anime_from_mal(anime)
-    Path(args.output).write_text(
-        json.dumps(canonical, ensure_ascii=False, indent=2), encoding="utf-8"
+    logger.info(
+        f"Done: {anime_dict.get('title')} ({anime_dict.get('episode_count')} episodes)"
     )
-    logger.info(f"Done: {anime.title} ({anime.episode_count} episodes)")
     return 0
 
 

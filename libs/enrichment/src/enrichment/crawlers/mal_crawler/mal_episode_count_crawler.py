@@ -14,7 +14,10 @@ import re
 from typing import Any
 
 from enrichment.crawlers.crawl4ai_docker import crawl_single_url
-from enrichment.crawlers.crawler_config import get_docker_browser_config, get_docker_crawler_config
+from enrichment.crawlers.crawler_config import (
+    get_docker_browser_config,
+    get_docker_crawler_config,
+)
 from enrichment.crawlers.mal_crawler.mal_base import (
     get_mal_scraping_limiter,
 )

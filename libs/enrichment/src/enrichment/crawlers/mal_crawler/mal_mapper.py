@@ -2,7 +2,7 @@
 
 Pure value normalization functions. No I/O, no side effects.
 
-Since MalScrapedAnime/Character/Episode field names already match the canonical
+Since MalAnime/Character/Episode field names already match the canonical
 models wherever possible, these functions only:
   1. Normalize string values ("Currently Airing" → "ONGOING")
   2. Parse raw strings into typed values ("24 min." → 1440)
@@ -44,14 +44,14 @@ from common.models.anime import (
 from common.utils.datetime_utils import normalize_to_utc
 
 from enrichment.crawlers.mal_crawler.mal_models import (
-    MalScrapedAnime,
-    MalScrapedCharacter,
-    MalScrapedEpisode,
+    MalAnime,
+    MalCharacter,
+    MalEpisode,
 )
 
 
-def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
-    """Normalize a MalScrapedAnime into canonical Anime field values.
+def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
+    """Normalize a MalAnime into canonical Anime field values.
 
     Args:
         anime: Scraped MAL anime model.
@@ -227,8 +227,8 @@ def anime_from_mal(anime: MalScrapedAnime) -> dict[str, Any]:
     return result.model_dump(mode="json", exclude_none=True)
 
 
-def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
-    """Normalize a MalScrapedCharacter into canonical Character field values.
+def character_from_mal(char: MalCharacter) -> dict[str, Any]:
+    """Normalize a MalCharacter into canonical Character field values.
 
     Args:
         char: Scraped MAL character model.
@@ -295,11 +295,11 @@ def character_from_mal(char: MalScrapedCharacter) -> dict[str, Any]:
 
 
 def episode_from_mal(
-    ep: MalScrapedEpisode,
+    ep: MalEpisode,
     *,
     anime_id: str | None = None,
 ) -> dict[str, Any]:
-    """Normalize a MalScrapedEpisode into canonical Episode field values.
+    """Normalize a MalEpisode into canonical Episode field values.
 
     Args:
         ep: Scraped MAL episode model.

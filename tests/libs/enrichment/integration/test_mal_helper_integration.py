@@ -33,6 +33,3 @@ def test_shared_rate_limiter_is_singleton() -> None:
     a = get_shared_mal_rate_limiter()
     b = get_shared_mal_rate_limiter()
     assert a is b
-
-
-

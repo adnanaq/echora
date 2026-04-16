@@ -3,15 +3,15 @@
 from enrichment.crawlers.mal_crawler.mal_models import (
     MalCompanyRef,
     MalRelatedEntry,
-    MalScrapedAnime,
+    MalAnime,
     MalThemeSong,
     MalTrailer,
 )
 from enrichment.crawlers.mal_crawler.mal_mapper import anime_from_mal
 
 
-def _make_sample_anime() -> MalScrapedAnime:
-    return MalScrapedAnime(
+def _make_sample_anime() -> MalAnime:
+    return MalAnime(
         source="https://myanimelist.net/anime/21",
         title="One Piece",
         title_english="One Piece",
@@ -32,8 +32,17 @@ def _make_sample_anime() -> MalScrapedAnime:
         broadcast_day="Sundays",
         broadcast_time="23:15",
         broadcast_timezone="JST",
-        studios=[MalCompanyRef(name="Toei Animation", source="https://myanimelist.net/anime/producer/18")],
-        producers=[MalCompanyRef(name="Fuji TV", source="https://myanimelist.net/anime/producer/29")],
+        studios=[
+            MalCompanyRef(
+                name="Toei Animation",
+                source="https://myanimelist.net/anime/producer/18",
+            )
+        ],
+        producers=[
+            MalCompanyRef(
+                name="Fuji TV", source="https://myanimelist.net/anime/producer/29"
+            )
+        ],
         aired_from="1999-10-20",
         duration=1440,
         opening_themes=[MalThemeSong(title="We Are!", artist="Kitadani Hiroshi")],
@@ -101,7 +110,9 @@ def test_anime_from_mal_studios_mapped() -> None:
     result = anime_from_mal(_make_sample_anime())
     assert "studios" in result
     assert result["studios"][0]["name"] == "Toei Animation"
-    assert "https://myanimelist.net/anime/producer/18" in result["studios"][0]["sources"]
+    assert (
+        "https://myanimelist.net/anime/producer/18" in result["studios"][0]["sources"]
+    )
 
 
 def test_anime_from_mal_related_anime_split() -> None:
@@ -119,6 +130,7 @@ def test_anime_from_mal_opening_themes_parsed() -> None:
 def test_anime_from_mal_field_names_valid() -> None:
     """All output keys should be valid Anime model field names."""
     from common.models.anime import Anime
+
     result = anime_from_mal(_make_sample_anime())
     valid_fields = set(Anime.model_fields.keys())
     for key in result:
@@ -137,7 +149,9 @@ def test_anime_from_mal_trailer_watch_url_passed_through() -> None:
     sample.trailer = MalTrailer(source="https://www.youtube.com/watch?v=gAX3Zj-JGE0")
     result = anime_from_mal(sample)
     assert len(result["trailers"]) == 1
-    assert result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=gAX3Zj-JGE0"
+    assert (
+        result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=gAX3Zj-JGE0"
+    )
 
 
 def test_anime_from_mal_trailer_thumbnail_passed_through() -> None:
@@ -148,19 +162,24 @@ def test_anime_from_mal_trailer_thumbnail_passed_through() -> None:
         thumbnail="https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg",
     )
     result = anime_from_mal(sample)
-    assert result["trailers"][0]["thumbnail"] == "https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg"
+    assert (
+        result["trailers"][0]["thumbnail"]
+        == "https://img.youtube.com/vi/gAX3Zj-JGE0/maxresdefault.jpg"
+    )
 
 
 def test_anime_from_mal_trailer_title_passed_through() -> None:
     """Title from MalTrailer is passed through to TrailerEntry.title."""
     sample = _make_sample_anime()
-    sample.trailer = MalTrailer(source="https://www.youtube.com/watch?v=gAX3Zj-JGE0", title="PV 1")
+    sample.trailer = MalTrailer(
+        source="https://www.youtube.com/watch?v=gAX3Zj-JGE0", title="PV 1"
+    )
     result = anime_from_mal(sample)
     assert result["trailers"][0]["title"] == "PV 1"
 
 
 def test_anime_from_mal_trailer_none_when_absent() -> None:
-    """No trailer entry when MalScrapedAnime.trailer is None."""
+    """No trailer entry when MalAnime.trailer is None."""
     sample = _make_sample_anime()
     sample.trailer = None
     result = anime_from_mal(sample)

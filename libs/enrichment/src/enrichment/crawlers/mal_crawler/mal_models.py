@@ -73,7 +73,7 @@ class MalThemeSong(BaseModel):
     episodes: list[MalEpisodeRange] = []
 
 
-class MalScrapedAnime(BaseModel):
+class MalAnime(BaseModel):
     """Scraped from /anime/{id} detail page.
 
     Field names match canonical Anime model fields wherever possible so the
@@ -168,7 +168,7 @@ class MalVoiceActorRef(BaseModel):
     sources: list[str] = []
 
 
-class MalScrapedCharacter(BaseModel):
+class MalCharacter(BaseModel):
     """Scraped from /character/{id} detail page.
 
     Field names match canonical Character model fields wherever possible.
@@ -230,7 +230,7 @@ class EpisodeStaffRef(BaseModel):
     role: str  # "Script", "Animation Director", etc.
 
 
-class MalScrapedEpisode(BaseModel):
+class MalEpisode(BaseModel):
     """Scraped from /anime/{id}/episode/{num} detail page.
 
     Field names match canonical Episode model fields wherever possible.
@@ -265,6 +265,6 @@ class MalScrapedEpisode(BaseModel):
 class MalFetchResult(BaseModel):
     """Container for a complete MAL fetch of anime + characters + episodes."""
 
-    anime: MalScrapedAnime
-    characters: list[MalScrapedCharacter] = []
-    episodes: list[MalScrapedEpisode] = []
+    anime: MalAnime
+    characters: list[MalCharacter] = []
+    episodes: list[MalEpisode] = []

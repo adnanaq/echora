@@ -1,10 +1,10 @@
-"""Unit tests for MalScrapedCharacter and related character models."""
+"""Unit tests for MalCharacter and related character models."""
 
 import pytest
 from pydantic import ValidationError
 
 from enrichment.crawlers.mal_crawler.mal_models import (
-    MalScrapedCharacter,
+    MalCharacter,
     MalVoiceActorRef,
 )
 
@@ -43,12 +43,12 @@ def test_mal_voice_actor_ref_with_sources() -> None:
 
 
 # =============================================================================
-# MalScrapedCharacter
+# MalCharacter
 # =============================================================================
 
 
 def test_mal_scraped_character_minimal() -> None:
-    char = MalScrapedCharacter(
+    char = MalCharacter(
         source="https://myanimelist.net/character/40",
         name="Monkey D., Luffy",
     )
@@ -59,7 +59,7 @@ def test_mal_scraped_character_minimal() -> None:
 
 
 def test_mal_scraped_character_bio_data() -> None:
-    char = MalScrapedCharacter(
+    char = MalCharacter(
         source="...",
         name="Luffy",
         character_info={
@@ -75,7 +75,7 @@ def test_mal_scraped_character_bio_data() -> None:
 
 def test_mal_scraped_character_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
-        MalScrapedCharacter(
+        MalCharacter(
             source="...",
             name="Luffy",
             unexpected_field="x",  # type: ignore[call-arg]
@@ -83,7 +83,7 @@ def test_mal_scraped_character_extra_field_rejected() -> None:
 
 
 def test_mal_scraped_character_nicknames() -> None:
-    char = MalScrapedCharacter(
+    char = MalCharacter(
         source="...",
         name="Monkey D., Luffy",
         nicknames=["Straw Hat Luffy", "Straw Hat"],
@@ -93,7 +93,7 @@ def test_mal_scraped_character_nicknames() -> None:
 
 
 def test_mal_scraped_character_voice_actors() -> None:
-    char = MalScrapedCharacter(
+    char = MalCharacter(
         source="...",
         name="Luffy",
         voice_actors=[

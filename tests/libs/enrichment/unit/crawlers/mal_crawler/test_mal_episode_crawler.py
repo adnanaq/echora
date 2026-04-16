@@ -1,4 +1,4 @@
-"""Unit tests for mal_episode_crawler.py — title parsing, URL normalization, and data assembly."""
+"""Unit tests for mal_episode_crawler.py — title parsing and data assembly."""
 
 import json
 from unittest.mock import AsyncMock
@@ -8,7 +8,6 @@ import pytest
 from enrichment.crawlers.mal_crawler.mal_episode_crawler import (
     _build_episode_from_raw,
     _fetch_mal_episode_data,
-    _normalize_episode_url,
     _parse_episode_characters,
     _parse_episode_staff,
     _parse_title_info,
@@ -88,7 +87,9 @@ def test_parse_title_fallback_when_no_header() -> None:
 def test_parse_title_filler_full_pipeline_ep50() -> None:
     """End-to-end with exact values from MAL ep 50 — filler flag + romaji + kanji
     all extracted correctly from the same real crawl4ai output."""
-    header = "#50 - Usopp vs. Daddy the Parent! Showdown at High!\n                  Filler"
+    header = (
+        "#50 - Usopp vs. Daddy the Parent! Showdown at High!\n                  Filler"
+    )
     subtitle = "Usopp vs Kozure no Dadi Mahiru no Kettou (ウソップＶＳ子連れのダディ真昼の決闘)"
 
     title, jp, romaji, filler, recap = _parse_title_info(header, subtitle, 50)
@@ -104,7 +105,9 @@ def test_parse_title_recap_full_pipeline_ep279() -> None:
     """End-to-end with exact values from MAL ep 279 — recap flag + romaji + kanji
     all extracted correctly from the same real crawl4ai output."""
     header = "#279 - Jump Towards the Falls! Luffy's Feelings!\n                  Recap"
-    subtitle = "Taki ni Mukatte Tobe! Luffy no Omoi!! (滝に向かって飛べ！ルフィの想い！！)"
+    subtitle = (
+        "Taki ni Mukatte Tobe! Luffy no Omoi!! (滝に向かって飛べ！ルフィの想い！！)"
+    )
 
     title, jp, romaji, filler, recap = _parse_title_info(header, subtitle, 279)
 
@@ -113,32 +116,6 @@ def test_parse_title_recap_full_pipeline_ep279() -> None:
     assert filler is False
     assert jp == "滝に向かって飛べ！ルフィの想い！！"
     assert romaji == "Taki ni Mukatte Tobe! Luffy no Omoi!!"
-
-
-# =============================================================================
-# _normalize_episode_url
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "identifier, expected",
-    [
-        (
-            "https://myanimelist.net/anime/21/One_Piece/episode/1",
-            "https://myanimelist.net/anime/21/One_Piece/episode/1",
-        ),
-        (
-            "/anime/21/One_Piece/episode/1",
-            "https://myanimelist.net/anime/21/One_Piece/episode/1",
-        ),
-        (
-            "anime/21/One_Piece/episode/1",
-            "https://myanimelist.net/anime/21/One_Piece/episode/1",
-        ),
-    ],
-)
-def test_normalize_episode_url(identifier: str, expected: str) -> None:
-    assert _normalize_episode_url(identifier) == expected
 
 
 # =============================================================================
@@ -270,7 +247,9 @@ def test_parse_episode_staff_full_item() -> None:
 
 def test_build_episode_from_raw_minimal() -> None:
     raw = {"title_header": "#1 - I'm Luffy!"}
-    ep = _build_episode_from_raw(raw, episode_number=1, url="https://myanimelist.net/anime/21/episode/1")
+    ep = _build_episode_from_raw(
+        raw, episode_number=1, url="https://myanimelist.net/anime/21/episode/1"
+    )
     assert ep.episode_number == 1
     assert ep.title == "I'm Luffy!"
     assert ep.filler is False
@@ -342,14 +321,24 @@ def test_build_episode_from_raw_mal_placeholder_synopsis_becomes_none() -> None:
         "title_header": "#12 - Episode Title",
         "synopsis_raw": "Sorry, this episode doesn't seem to have a synopsis yet. Maybe you can help us out? If you've watched this episode, you can easily add episode information to our database here.",
     }
-    ep = _build_episode_from_raw(raw, 12, "https://myanimelist.net/anime/57334/Dandadan/episode/12")
+    ep = _build_episode_from_raw(
+        raw, 12, "https://myanimelist.net/anime/57334/Dandadan/episode/12"
+    )
     assert ep.synopsis is None
 
 
 def test_build_episode_from_raw_real_synopsis_preserved() -> None:
-    raw = {"title_header": "#1 - Momo and Okarun", "synopsis_raw": "Momo is a high school girl born into a family of spirit mediums."}
-    ep = _build_episode_from_raw(raw, 1, "https://myanimelist.net/anime/57334/Dandadan/episode/1")
-    assert ep.synopsis == "Momo is a high school girl born into a family of spirit mediums."
+    raw = {
+        "title_header": "#1 - Momo and Okarun",
+        "synopsis_raw": "Momo is a high school girl born into a family of spirit mediums.",
+    }
+    ep = _build_episode_from_raw(
+        raw, 1, "https://myanimelist.net/anime/57334/Dandadan/episode/1"
+    )
+    assert (
+        ep.synopsis
+        == "Momo is a high school girl born into a family of spirit mediums."
+    )
 
 
 # =============================================================================
@@ -377,19 +366,23 @@ async def test_fetch_mal_episodes_uses_cache_and_merges_results(mocker) -> None:
     )
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_episode_crawler.crawl_batch_urls",
-        new=AsyncMock(return_value=[{
-            "url": url2,
-            "status_code": 200,
-            "extracted_content": json.dumps([raw2]),
-        }]),
+        new=AsyncMock(
+            return_value=[
+                {
+                    "url": url2,
+                    "status_code": 200,
+                    "extracted_content": json.dumps([raw2]),
+                }
+            ]
+        ),
     )
 
     result = await fetch_mal_episodes([url1, url2])
     assert len(result) == 2
     assert result[0] is not None
-    assert result[0].title == "I'm Luffy!"
+    assert result[0]["title"] == "I'm Luffy!"
     assert result[1] is not None
-    assert result[1].title == "Zoro!"
+    assert result[1]["title"] == "Zoro!"
     cache_set.assert_awaited_once()
 
 
@@ -412,6 +405,7 @@ async def test_fetch_mal_episodes_chunks_requests(mocker) -> None:
         "cache_batch_set",
         new=cache_set,
     )
+
     async def _batch_result(batch_urls: list[str], **kwargs) -> list[dict[str, str]]:
         return [
             {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
