@@ -115,7 +115,9 @@ class ApiFetcher:
 
         # Create parallel tasks for each registered helper
         for name, helper in self._helpers.items():
-            tasks.append((name, self._fetch_service(name, helper, ids, offline_data, temp_dir)))
+            tasks.append(
+                (name, self._fetch_service(name, helper, ids, offline_data, temp_dir))
+            )
 
         # Execute all tasks in parallel
         results = await self._gather(tasks)
@@ -139,14 +141,16 @@ class ApiFetcher:
         """Generic fetcher for any registered service."""
         try:
             start = time.time()
-            
+
             # Special handling for AniList to run in executor if needed
             # (Keeping the original pattern for AniList as it was in a separate thread)
             if name == "anilist":
-                result = await self._fetch_anilist_via_executor(helper, ids, offline_data, temp_dir)
+                result = await self._fetch_anilist_via_executor(
+                    helper, ids, offline_data, temp_dir
+                )
             else:
                 result = await helper.fetch_all(ids, offline_data, temp_dir)
-                
+
             self.api_timings[name] = time.time() - start
             return result
         except Exception as e:
@@ -155,18 +159,28 @@ class ApiFetcher:
             return None
 
     def _anilist_sync_wrapper(
-        self, helper: Any, ids: dict[str, str], offline_data: dict[str, Any], temp_dir: str | None
+        self,
+        helper: Any,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None,
     ) -> dict[str, Any] | None:
         """Synchronous AniList fetch wrapper for executor."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            return loop.run_until_complete(helper.fetch_all(ids, offline_data, temp_dir))
+            return loop.run_until_complete(
+                helper.fetch_all(ids, offline_data, temp_dir)
+            )
         finally:
             loop.close()
 
     async def _fetch_anilist_via_executor(
-        self, helper: Any, ids: dict[str, str], offline_data: dict[str, Any], temp_dir: str | None
+        self,
+        helper: Any,
+        ids: dict[str, str],
+        offline_data: dict[str, Any],
+        temp_dir: str | None,
     ) -> dict[str, Any] | None:
         """Run AniList fetch in a separate thread to prevent event loop blocking."""
         loop = asyncio.get_running_loop()

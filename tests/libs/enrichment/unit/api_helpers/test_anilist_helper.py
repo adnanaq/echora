@@ -889,6 +889,7 @@ class TestAniListHelperSpecificFetchers:
         call_args = helper._fetch_paginated_data.call_args
         assert "characters" in call_args[0][2]
 
+
 class TestAniListHelperFetchAllData:
     """Test fetch_all and _fetch_all_data_by_mal_id."""
 
@@ -905,7 +906,9 @@ class TestAniListHelperFetchAllData:
         helper.fetch_anime_canonical = AsyncMock(return_value=None)
         helper.fetch_characters_canonical = AsyncMock(return_value=[])
 
-        result = await helper.fetch_all({"anilist_url": "https://anilist.co/anime/21"}, {})
+        result = await helper.fetch_all(
+            {"anilist_url": "https://anilist.co/anime/21"}, {}
+        )
         assert result is None
 
     @pytest.mark.asyncio
@@ -915,8 +918,13 @@ class TestAniListHelperFetchAllData:
         helper.fetch_anime_canonical = AsyncMock(return_value={"title": "One Piece"})
         helper.fetch_characters_canonical = AsyncMock(return_value=[{"name": "Luffy"}])
 
-        result = await helper.fetch_all({"anilist_url": "https://anilist.co/anime/21"}, {})
-        assert result == {"anime": {"title": "One Piece"}, "characters": [{"name": "Luffy"}]}
+        result = await helper.fetch_all(
+            {"anilist_url": "https://anilist.co/anime/21"}, {}
+        )
+        assert result == {
+            "anime": {"title": "One Piece"},
+            "characters": [{"name": "Luffy"}],
+        }
 
     @pytest.mark.asyncio
     async def test__fetch_all_data_by_mal_id_success(self):
@@ -1290,6 +1298,7 @@ class TestAniListHelperErrorPaths:
     def test_extract_anilist_id_invalid_url(self):
         """_extract_anilist_id raises ValueError for non-numeric last segment."""
         from enrichment.api_helpers.anilist_helper import _extract_anilist_id
+
         with pytest.raises(ValueError, match="Cannot extract AniList ID"):
             _extract_anilist_id("https://anilist.co/anime/not-a-number")
 
@@ -1451,7 +1460,13 @@ class TestAniListHelperCLI:
         import sys
         from unittest.mock import patch
 
-        test_args = ["script_name", "--url", "https://anilist.co/anime/21", "--output", str(tmp_path)]
+        test_args = [
+            "script_name",
+            "--url",
+            "https://anilist.co/anime/21",
+            "--output",
+            str(tmp_path),
+        ]
 
         with patch.object(sys, "argv", test_args):
             with patch(
@@ -1510,7 +1525,13 @@ class TestAniListHelperCLI:
         import sys
         from unittest.mock import patch
 
-        test_args = ["script_name", "--url", "https://anilist.co/anime/21", "--output", str(tmp_path)]
+        test_args = [
+            "script_name",
+            "--url",
+            "https://anilist.co/anime/21",
+            "--output",
+            str(tmp_path),
+        ]
 
         with patch.object(sys, "argv", test_args):
             with patch(
@@ -1575,7 +1596,9 @@ class TestAniListHelperCLI:
                 "enrichment.api_helpers.anilist_helper.AniListHelper"
             ) as MockHelper:
                 mock_helper_instance = MagicMock()
-                mock_helper_instance.fetch_anime_by_mal_id = AsyncMock(return_value=None)
+                mock_helper_instance.fetch_anime_by_mal_id = AsyncMock(
+                    return_value=None
+                )
                 mock_helper_instance.close = AsyncMock()
                 MockHelper.return_value = mock_helper_instance
 
@@ -1621,11 +1644,22 @@ async def test_main_function_success(mock_helper_class, tmp_path):
     from enrichment.api_helpers.anilist_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all = AsyncMock(return_value={"anime": {"title": "Test"}, "characters": []})
+    mock_helper.fetch_all = AsyncMock(
+        return_value={"anime": {"title": "Test"}, "characters": []}
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
-    with patch("sys.argv", ["script.py", "--url", "https://anilist.co/anime/21", "--output", str(tmp_path)]):
+    with patch(
+        "sys.argv",
+        [
+            "script.py",
+            "--url",
+            "https://anilist.co/anime/21",
+            "--output",
+            str(tmp_path),
+        ],
+    ):
         exit_code = await main()
 
     assert exit_code == 0
@@ -1782,7 +1816,9 @@ class TestAniListHelperCanonicalMethods:
             "enrichment.api_helpers.anilist_helper.anime_from_anilist",
             return_value=canonical,
         ):
-            result = await helper.fetch_anime_canonical("https://anilist.co/anime/21", temp_dir=str(tmp_path))
+            result = await helper.fetch_anime_canonical(
+                "https://anilist.co/anime/21", temp_dir=str(tmp_path)
+            )
 
         assert result == canonical
         out_file = tmp_path / "anilist.jsonl"
@@ -1804,8 +1840,12 @@ class TestAniListHelperCanonicalMethods:
             "enrichment.api_helpers.anilist_helper.anime_from_anilist",
             return_value={"title": "One Piece"},
         ):
-            with patch("enrichment.api_helpers.anilist_helper.append_jsonl") as mock_append:
-                await helper.fetch_anime_canonical("https://anilist.co/anime/21", temp_dir=None)
+            with patch(
+                "enrichment.api_helpers.anilist_helper.append_jsonl"
+            ) as mock_append:
+                await helper.fetch_anime_canonical(
+                    "https://anilist.co/anime/21", temp_dir=None
+                )
                 mock_append.assert_not_called()
 
     # ------------------------------------------------------------------
@@ -1830,7 +1870,9 @@ class TestAniListHelperCanonicalMethods:
             "enrichment.api_helpers.anilist_helper.character_from_anilist",
             side_effect=char_canonical,
         ):
-            result = await helper.fetch_characters_canonical("https://anilist.co/anime/21")
+            result = await helper.fetch_characters_canonical(
+                "https://anilist.co/anime/21"
+            )
 
         assert len(result) == 2
         assert result[0]["name"] == "Luffy"
@@ -1878,7 +1920,9 @@ class TestAniListHelperCanonicalMethods:
                 "enrichment.api_helpers.anilist_helper.character_from_anilist",
                 side_effect=[{"name": "Luffy"}, {"name": "Nami"}],
             ):
-                result = await helper.fetch_characters_canonical("https://anilist.co/anime/21")
+                result = await helper.fetch_characters_canonical(
+                    "https://anilist.co/anime/21"
+                )
 
         assert len(result) == 2
 
@@ -1919,7 +1963,9 @@ class TestAniListHelperCanonicalMethods:
         helper = AniListHelper()
         helper.fetch_characters = AsyncMock(return_value=[])
 
-        await helper.fetch_characters_canonical("https://anilist.co/anime/21", temp_dir=str(tmp_path))
+        await helper.fetch_characters_canonical(
+            "https://anilist.co/anime/21", temp_dir=str(tmp_path)
+        )
 
         out_file = tmp_path / "anilist_characters.jsonl"
         assert not out_file.exists()

@@ -148,7 +148,9 @@ class AnimeFieldMapper:
         """
         parts = [
             f"Name: {character.name}" if character.name else "",
-            f"Roles: {', '.join(r.value for r in character.roles)}" if character.roles else "",
+            f"Roles: {', '.join(r.value for r in character.roles)}"
+            if character.roles
+            else "",
             f"Native Name: {character.name_native}" if character.name_native else "",
             f"Nicknames: {', '.join(character.nicknames)}"
             if character.nicknames

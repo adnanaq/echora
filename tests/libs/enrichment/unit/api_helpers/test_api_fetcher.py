@@ -95,7 +95,9 @@ class TestFetchMALViaService:
         offline = {"title": "One Piece"}
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            result = await fetcher._fetch_service("mal", mock_helper, ids, offline, temp_dir)
+            result = await fetcher._fetch_service(
+                "mal", mock_helper, ids, offline, temp_dir
+            )
 
         assert result == expected
         assert "mal" in fetcher.api_timings
@@ -194,13 +196,19 @@ class TestFetchAllData:
     async def test_only_services_logs_and_builds_tasks(self):
         fetcher = ApiFetcher()
         fetcher._helpers["kitsu"] = AsyncMock()
-        fetcher._helpers["kitsu"].fetch_all = AsyncMock(return_value={"title": "One Piece"})
+        fetcher._helpers["kitsu"].fetch_all = AsyncMock(
+            return_value={"title": "One Piece"}
+        )
 
         ids = {"kitsu_id": "12"}
         offline = {"title": "One Piece", "sources": []}
 
         with patch.object(fetcher, "initialize_helpers", new=AsyncMock()):
-            with patch.object(fetcher, "_gather", new=AsyncMock(return_value={"kitsu": {"title": "One Piece"}})):
+            with patch.object(
+                fetcher,
+                "_gather",
+                new=AsyncMock(return_value={"kitsu": {"title": "One Piece"}}),
+            ):
                 with patch.object(fetcher, "_log_performance_metrics"):
                     result = await fetcher.fetch_all_data(
                         ids, offline, only_services=["kitsu"]
@@ -215,7 +223,9 @@ class TestFetchAllData:
         offline = {"title": "Test", "sources": []}
 
         with patch.object(fetcher, "initialize_helpers", new=AsyncMock()):
-            with patch.object(fetcher, "_gather", new=AsyncMock(return_value={})) as mock_gather:
+            with patch.object(
+                fetcher, "_gather", new=AsyncMock(return_value={})
+            ) as mock_gather:
                 with patch.object(fetcher, "_log_performance_metrics"):
                     await fetcher.fetch_all_data(ids, offline, skip_services=["kitsu"])
 
@@ -237,7 +247,9 @@ class TestFetchAllData:
         offline = {"title": "One Piece", "sources": []}
 
         with patch.object(fetcher, "initialize_helpers", new=AsyncMock()):
-            with patch.object(fetcher, "_gather", new=AsyncMock(return_value={})) as mock_gather:
+            with patch.object(
+                fetcher, "_gather", new=AsyncMock(return_value={})
+            ) as mock_gather:
                 with patch.object(fetcher, "_log_performance_metrics"):
                     await fetcher.fetch_all_data(ids, offline)
 
@@ -306,8 +318,12 @@ class TestAnilistSyncWrapper:
         fetcher = ApiFetcher()
         mock_helper = AsyncMock()
 
-        with patch.object(fetcher, "_anilist_sync_wrapper", return_value={"title": "Test"}) as mock_wrapper:
-            result = await fetcher._fetch_anilist_via_executor(mock_helper, {}, {}, None)
+        with patch.object(
+            fetcher, "_anilist_sync_wrapper", return_value={"title": "Test"}
+        ) as mock_wrapper:
+            result = await fetcher._fetch_anilist_via_executor(
+                mock_helper, {}, {}, None
+            )
 
         assert result == {"title": "Test"}
         mock_wrapper.assert_called_once_with(mock_helper, {}, {}, None)

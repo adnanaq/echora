@@ -246,7 +246,9 @@ class TestCachedAiohttpSessionRequestBuilding:
             assert resp.status == 200
 
     @pytest.mark.asyncio
-    async def test_unsupported_body_bypasses_cache(self, mock_storage: AsyncMock) -> None:
+    async def test_unsupported_body_bypasses_cache(
+        self, mock_storage: AsyncMock
+    ) -> None:
         """data=FormData (unsupported type) must bypass the cache entirely."""
         mock_session = AsyncMock()
         mock_session.headers = {}
@@ -463,7 +465,9 @@ class TestRequestSenderForceCacheBehaviour:
             storage=mock_storage, session=mock_session, force_cache=True
         )
         mock_session.request = AsyncMock(
-            return_value=_make_origin_resp(b"rate limited", status=429, cache_control="no-cache")
+            return_value=_make_origin_resp(
+                b"rate limited", status=429, cache_control="no-cache"
+            )
         )
 
         async def body_stream():
@@ -686,7 +690,9 @@ class TestSessionHeadersAttributeErrorFallback:
 
 class TestSyncStreamFallback:
     @pytest.mark.asyncio
-    async def test_sync_iterable_stream_is_consumed(self, mock_storage: AsyncMock) -> None:
+    async def test_sync_iterable_stream_is_consumed(
+        self, mock_storage: AsyncMock
+    ) -> None:
         """When hishel_response.stream has no __aiter__, fall back to list()."""
         mock_session = AsyncMock()
         mock_session.headers = {}

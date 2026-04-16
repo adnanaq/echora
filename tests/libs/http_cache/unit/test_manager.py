@@ -322,7 +322,9 @@ class TestGetOrCreateRedisClient:
             mock_new = AsyncMock()
             mock_async_redis_class.from_url.return_value = mock_new
 
-            with patch("http_cache.manager.asyncio.run_coroutine_threadsafe") as mock_threadsafe:
+            with patch(
+                "http_cache.manager.asyncio.run_coroutine_threadsafe"
+            ) as mock_threadsafe:
                 manager = HTTPCacheManager(config)
 
                 old_loop = MagicMock()
@@ -368,7 +370,9 @@ class TestGetOrCreateRedisClient:
                 "http_cache.async_redis_storage.AsyncRedisStorage",
                 side_effect=ImportError("missing dep"),
             ):
-                with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
+                with patch(
+                    "http_cache.manager.aiohttp.ClientSession"
+                ) as mock_session_class:
                     mock_session_class.return_value = MagicMock()
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("jikan")
@@ -387,7 +391,9 @@ class TestGetOrCreateRedisClient:
                 "http_cache.async_redis_storage.AsyncRedisStorage",
                 side_effect=RuntimeError("init failed"),
             ):
-                with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
+                with patch(
+                    "http_cache.manager.aiohttp.ClientSession"
+                ) as mock_session_class:
                     mock_session_class.return_value = MagicMock()
                     manager = HTTPCacheManager(config)
                     session = manager.get_aiohttp_session("jikan")

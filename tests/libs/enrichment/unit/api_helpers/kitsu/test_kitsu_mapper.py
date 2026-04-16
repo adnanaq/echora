@@ -113,9 +113,7 @@ def _make_animeography_entry(media_type: str = "anime") -> KitsuAnimeographyEntr
     entry.media = KitsuAnime(
         id="12",
         type=media_type,
-        attributes=KitsuAnimeAttributes(
-            slug="one-piece", canonicalTitle="One Piece"
-        ),
+        attributes=KitsuAnimeAttributes(slug="one-piece", canonicalTitle="One Piece"),
     )
     return entry
 
@@ -153,7 +151,9 @@ def test_anime_from_kitsu_full():
     assert result["statistics"]["kitsu"]["members"] == 500000
     assert result["statistics"]["kitsu"]["rank"] == 50
     assert result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=abc123"
-    assert result["aired_dates"]["aired_from"].startswith("1999-10-19")  # midnight JST → UTC prev day
+    assert result["aired_dates"]["aired_from"].startswith(
+        "1999-10-19"
+    )  # midnight JST → UTC prev day
     assert result["rating"] == "PG - Children"
 
 
@@ -172,8 +172,8 @@ def test_anime_from_kitsu_minimal():
     assert result["title"] == "Test Anime"
     assert result["episode_count"] == 0
     assert result["genres"] == []
-    assert result["trailers"] == []        # empty list, not None
-    assert "aired_dates" not in result     # no startDate → excluded
+    assert result["trailers"] == []  # empty list, not None
+    assert "aired_dates" not in result  # no startDate → excluded
 
 
 def test_anime_from_kitsu_r18_rating():
@@ -191,7 +191,12 @@ def test_anime_from_kitsu_next_release_sets_broadcast():
 
 def test_anime_from_kitsu_season_derivation():
     """startDate month determines the anime season."""
-    for month, expected_season in [("01", "WINTER"), ("04", "SPRING"), ("07", "SUMMER"), ("10", "FALL")]:
+    for month, expected_season in [
+        ("01", "WINTER"),
+        ("04", "SPRING"),
+        ("07", "SUMMER"),
+        ("10", "FALL"),
+    ]:
         anime = _make_anime(startDate=f"2020-{month}-01")
         result = anime_from_kitsu(anime)
         assert result["season"] == expected_season, f"month {month}"
@@ -208,7 +213,10 @@ import pytest
 def test_character_from_kitsu():
     mc = _make_media_char()
     voices = [_make_voice("ja_jp", "1"), _make_voice("en", "2")]
-    animeography = [_make_animeography_entry("anime"), _make_animeography_entry("manga")]
+    animeography = [
+        _make_animeography_entry("anime"),
+        _make_animeography_entry("manga"),
+    ]
 
     mc.voices = voices
     mc.animeography = animeography
@@ -283,7 +291,10 @@ def test_episode_from_kitsu():
         id="ep1",
         attributes=KitsuEpisodeAttributes(
             canonicalTitle="I'm Luffy! The Man Who Will Become the Pirate King!",
-            titles=KitsuTitles(ja_jp="俺はルフィ！海賊王になる男だ！", en_jp="Ore wa Rufi! Kaizoku Ou ni Naru Otoko da!"),
+            titles=KitsuTitles(
+                ja_jp="俺はルフィ！海賊王になる男だ！",
+                en_jp="Ore wa Rufi! Kaizoku Ou ni Naru Otoko da!",
+            ),
             synopsis="<p>Luffy sets sail.</p>",
             number=1,
             seasonNumber=1,

@@ -1,4 +1,5 @@
 """Pydantic models for anime, character, and episode data used across Echora services."""
+
 from datetime import datetime
 from enum import StrEnum
 
@@ -7,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # =============================================================================
 # ENUMS
 # =============================================================================
+
 
 class AnimeStatus(StrEnum):
     """Anime airing status classification."""
@@ -113,7 +115,7 @@ class AnimeType(StrEnum):
             "tv short (chinese)": cls.TV_SHORT,
             # AniDB / AnimePlanet / AniSearch
             "tv series": cls.TV,
-            "tvseries": cls.TV,       # AnimePlanet JSON-LD @type value
+            "tvseries": cls.TV,  # AnimePlanet JSON-LD @type value
             "web": cls.ONA,
             "music video": cls.MUSIC,
             "bonus": cls.SPECIAL,
@@ -143,15 +145,15 @@ class AnimeRating(StrEnum):
         if not isinstance(value, str):
             return cls.UNKNOWN
         _map = {
-            "g":     cls.G,
-            "pg":    cls.PG,
+            "g": cls.G,
+            "pg": cls.PG,
             "pg_13": cls.PG13,
-            "r17+":  cls.R,
-            "r+":    cls.RPLUS,
-            "rx":    cls.RX,
+            "r17+": cls.R,
+            "r+": cls.RPLUS,
+            "rx": cls.RX,
             # Kitsu
-            "r18+":  cls.RX,
-            "r18":   cls.RX,
+            "r18+": cls.RX,
+            "r18": cls.RX,
         }
         return _map.get(value.lower(), cls.UNKNOWN)
 
@@ -171,7 +173,7 @@ class AnimeSeason(StrEnum):
         _map = {
             "spring": cls.SPRING,
             "summer": cls.SUMMER,
-            "fall":   cls.FALL,
+            "fall": cls.FALL,
             "winter": cls.WINTER,
         }
         return _map.get(value.lower())  # type: ignore[return-value]
@@ -223,7 +225,7 @@ class SourceMaterialType(StrEnum):
     BOOK = "BOOK"
     CARD_GAME = "CARD GAME"
     DOUJINSHI = "DOUJINSHI"
-    KOMA_4 = "4-KOMA"           # proto: SOURCE_MATERIAL_TYPE_4_KOMA — flipped because Python identifiers can't start with a digit
+    KOMA_4 = "4-KOMA"  # proto: SOURCE_MATERIAL_TYPE_4_KOMA — flipped because Python identifiers can't start with a digit
     GAME = "GAME"
     LIGHT_NOVEL = "LIGHT NOVEL"
     MANGA = "MANGA"
@@ -240,11 +242,13 @@ class SourceMaterialType(StrEnum):
     UNKNOWN = "UNKNOWN"
     VISUAL_NOVEL = "VISUAL NOVEL"
     WEB_MANGA = "WEB MANGA"
-    WEB_NOVEL = "WEB NOVEL",
-    COMIC = "COMIC"                   # Western comics (DC, Marvel, etc.)
-    LIVE_ACTION = "LIVE ACTION"       # Based on live-action film/drama
-    ILLUSTRATION = "ILLUSTRATION"     # AniDB: CG collection (illustrated story)
-    WESTERN_MEDIA = "WESTERN MEDIA"   # AniDB: western animated cartoon / american derived
+    WEB_NOVEL = ("WEB NOVEL",)
+    COMIC = "COMIC"  # Western comics (DC, Marvel, etc.)
+    LIVE_ACTION = "LIVE ACTION"  # Based on live-action film/drama
+    ILLUSTRATION = "ILLUSTRATION"  # AniDB: CG collection (illustrated story)
+    WESTERN_MEDIA = (
+        "WESTERN MEDIA"  # AniDB: western animated cartoon / american derived
+    )
 
     @classmethod
     def _missing_(cls, value: object) -> "SourceMaterialType":
@@ -271,8 +275,8 @@ class SourceMaterialType(StrEnum):
             "visual novel": cls.VISUAL_NOVEL,
             "visual_novel": cls.VISUAL_NOVEL,
             "game": cls.GAME,
-            "video_game": cls.GAME,             # AniList
-            "video game": cls.GAME,             # AnimSchedule: "Video Game"
+            "video_game": cls.GAME,  # AniList
+            "video game": cls.GAME,  # AnimSchedule: "Video Game"
             "card game": cls.CARD_GAME,
             "card_game": cls.CARD_GAME,
             "music": cls.MUSIC,
@@ -291,15 +295,15 @@ class SourceMaterialType(StrEnum):
             "comic": cls.COMIC,
             "live_action": cls.LIVE_ACTION,
             "live action": cls.LIVE_ACTION,
-            "live-action film": cls.LIVE_ACTION,        # AniDB tag name
-            "television programme": cls.LIVE_ACTION,    # AniDB tag name
-            "western comics": cls.COMIC,                # AniDB tag name
-            "radio programme": cls.RADIO,               # AniDB tag name
-            "new": cls.ORIGINAL,                        # AniDB tag name (original work)
+            "live-action film": cls.LIVE_ACTION,  # AniDB tag name
+            "television programme": cls.LIVE_ACTION,  # AniDB tag name
+            "western comics": cls.COMIC,  # AniDB tag name
+            "radio programme": cls.RADIO,  # AniDB tag name
+            "new": cls.ORIGINAL,  # AniDB tag name (original work)
             "western animated cartoon": cls.WESTERN_MEDIA,  # AniDB tag name
-            "american derived": cls.WESTERN_MEDIA,      # AniDB tag name
-            "cg collection": cls.ILLUSTRATION,          # AniDB tag name
-            "anime": cls.OTHER,               # AniList: anime based on existing anime
+            "american derived": cls.WESTERN_MEDIA,  # AniDB tag name
+            "cg collection": cls.ILLUSTRATION,  # AniDB tag name
+            "anime": cls.OTHER,  # AniList: anime based on existing anime
             "other": cls.OTHER,
             "unknown": cls.UNKNOWN,
             "": cls.UNKNOWN,
@@ -353,8 +357,12 @@ class AnimeRelationType(StrEnum):
     """
 
     ADAPTATION = "ADAPTATION"
-    ALTERNATIVE_VERSION = "ALTERNATIVE VERSION"   # Same story, different version (e.g. TV vs movie cut)
-    ALTERNATIVE_SETTING = "ALTERNATIVE SETTING"   # Same characters, different universe/AU
+    ALTERNATIVE_VERSION = (
+        "ALTERNATIVE VERSION"  # Same story, different version (e.g. TV vs movie cut)
+    )
+    ALTERNATIVE_SETTING = (
+        "ALTERNATIVE SETTING"  # Same characters, different universe/AU
+    )
     CHARACTER = "CHARACTER"
     CROSSOVER = "CROSSOVER"
     FULL_STORY = "FULL_STORY"
@@ -430,7 +438,9 @@ class Ography(BaseModel):
     """A single anime or manga appearance entry on a character's page."""
 
     title: str = Field(..., description="Title of the anime or manga")
-    role: CharacterRole = Field(default=CharacterRole.UNSPECIFIED, description="Character's role in this title")
+    role: CharacterRole = Field(
+        default=CharacterRole.UNSPECIFIED, description="Character's role in this title"
+    )
     sources: list[str] = Field(
         default_factory=list,
         description="Source URLs for this entry (e.g., MAL anime/manga page URL)",
@@ -461,12 +471,18 @@ class Broadcast(BaseModel):
 
     # Weekly recurring slot (from MAL/Jikan)
     day: str | None = Field(None, description="Broadcast day (e.g., 'Sundays')")
-    time: str | None = Field(None, description="Broadcast time in JP timezone (e.g., '23:15')")
+    time: str | None = Field(
+        None, description="Broadcast time in JP timezone (e.g., '23:15')"
+    )
     timezone: str | None = Field(None, description="Broadcast timezone (e.g., 'JST')")
 
     # Per-version airtimes (from AnimSchedule)
-    jp_time: str | None = Field(None, description="Japanese broadcast time with timezone")
-    sub_time: str | None = Field(None, description="Subtitle broadcast time with timezone")
+    jp_time: str | None = Field(
+        None, description="Japanese broadcast time with timezone"
+    )
+    sub_time: str | None = Field(
+        None, description="Subtitle broadcast time with timezone"
+    )
     dub_time: str | None = Field(None, description="Dub broadcast time with timezone")
     sub_delay_days: int | None = Field(None, description="Days after JP that sub drops")
     dub_delay_days: int | None = Field(None, description="Days after JP that dub drops")
@@ -477,7 +493,9 @@ class Broadcast(BaseModel):
     premiere_dub: datetime | None = Field(None, description="Dub premiere date")
 
     # Next episode (from AniList)
-    next_episode_at: datetime | None = Field(None, description="UTC datetime of next episode airing (from AniList)")
+    next_episode_at: datetime | None = Field(
+        None, description="UTC datetime of next episode airing (from AniList)"
+    )
 
 
 class AnimeHiatus(BaseModel):
@@ -485,7 +503,9 @@ class AnimeHiatus(BaseModel):
 
     reason: str | None = Field(None, description="Reason for hiatus or delay")
     hiatus_from: str | None = Field(None, description="Hiatus start date")
-    hiatus_until: str | None = Field(None, description="Hiatus end date (None = still on hiatus)")
+    hiatus_until: str | None = Field(
+        None, description="Hiatus end date (None = still on hiatus)"
+    )
 
 
 class RelatedSourceMaterial(BaseModel):
@@ -529,7 +549,9 @@ class StreamingEntry(BaseModel):
     source: str = Field(..., description="Streaming URL")
     region: str | None = Field(None, description="Available regions")
     free: bool | None = Field(None, description="Free to watch")
-    premium_required: bool | None = Field(None, description="Premium subscription required")
+    premium_required: bool | None = Field(
+        None, description="Premium subscription required"
+    )
     dub_available: bool | None = Field(None, description="Dub available")
     subtitle_languages: list[str] = Field(
         default_factory=list, description="Available subtitle languages"
@@ -539,9 +561,13 @@ class StreamingEntry(BaseModel):
 class AnimeImages(BaseModel):
     """Anime image URLs organized by type, aggregated across all sources."""
 
-    covers: list[str] = Field(default_factory=list, description="Cover/key visual image URLs")
+    covers: list[str] = Field(
+        default_factory=list, description="Cover/key visual image URLs"
+    )
     posters: list[str] = Field(default_factory=list, description="Poster image URLs")
-    banners: list[str] = Field(default_factory=list, description="Banner/wide image URLs")
+    banners: list[str] = Field(
+        default_factory=list, description="Banner/wide image URLs"
+    )
 
 
 class ThemeEntry(BaseModel):
@@ -615,12 +641,18 @@ class StaffMember(BaseModel):
     biography: str | None = Field(None, description="Staff member biography")
     birth_date: str | None = Field(None, description="Birth date")
     hometown: str | None = Field(None, description="Hometown")
-    primary_occupations: list[str] = Field(default_factory=list, description="Primary occupations")
+    primary_occupations: list[str] = Field(
+        default_factory=list, description="Primary occupations"
+    )
     years_active: list[int] = Field(default_factory=list, description="Years active")
     gender: str | None = Field(None, description="Gender")
     blood_type: str | None = Field(None, description="Blood type")
-    community_favorites: int | None = Field(None, description="Community favorites count")
-    enhancement_status: str | None = Field(None, description="Enhancement status from AniList matching")
+    community_favorites: int | None = Field(
+        None, description="Community favorites count"
+    )
+    enhancement_status: str | None = Field(
+        None, description="Enhancement status from AniList matching"
+    )
 
 
 class VoiceActor(BaseModel):
@@ -636,13 +668,19 @@ class VoiceActor(BaseModel):
     blood_type: str | None = Field(None, description="Blood type")
     id: str | None = Field(None, description="Unique UUID for the voice actor")
     image: str | None = Field(None, description="Voice actor image URL")
-    language: str | None = Field(None, description="Voice acting language (Japanese, English, etc.)")
+    language: str | None = Field(
+        None, description="Voice acting language (Japanese, English, etc.)"
+    )
     name: str = Field(..., description="Voice actor name")
     native_name: str | None = Field(None, description="Native language name")
 
     # ── Array / dict fields (alphabetical) ────────────────────────────────
-    character_assignments: list[str] = Field(default_factory=list, description="Characters voiced")
-    sources: list[str] = Field(default_factory=list, description="Voice actor profile URLs")
+    character_assignments: list[str] = Field(
+        default_factory=list, description="Characters voiced"
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Voice actor profile URLs"
+    )
 
 
 class CompanyEntry(BaseModel):
@@ -650,7 +688,9 @@ class CompanyEntry(BaseModel):
 
     name: str = Field(..., description="Company name")
     description: str | None = Field(None, description="Company bio/description")
-    sources: list[str] = Field(default_factory=list, description="Canonical source URLs")
+    sources: list[str] = Field(
+        default_factory=list, description="Canonical source URLs"
+    )
 
 
 class ProductionStaff(BaseModel):
@@ -676,11 +716,18 @@ class ContextualRank(BaseModel):
     """Contextual ranking information from platforms like AniList"""
 
     # ── Scalars (alphabetical) ────────────────────────────────────────────────
-    all_time: bool | None = Field(None, description="Whether this is an all-time ranking")
-    context: str = Field(..., description="Human-readable ranking context (e.g. 'highest rated all time')")
+    all_time: bool | None = Field(
+        None, description="Whether this is an all-time ranking"
+    )
+    context: str = Field(
+        ...,
+        description="Human-readable ranking context (e.g. 'highest rated all time')",
+    )
     format: str | None = Field(None, description="Format context (TV, Movie, etc.)")
     rank: int = Field(..., description="Rank position")
-    season: str | None = Field(None, description="Season context (SPRING, SUMMER, FALL, WINTER)")
+    season: str | None = Field(
+        None, description="Season context (SPRING, SUMMER, FALL, WINTER)"
+    )
     year: int | None = Field(None, description="Year context")
 
 
@@ -692,7 +739,9 @@ class Statistics(BaseModel):
     members: int | None = Field(None, description="Total members/users tracking")
     popularity: int | None = Field(None, description="Popularity ranking position")
     rank: int | None = Field(None, description="Overall ranking position")
-    score: float | None = Field(None, description="Rating score (normalized to 0-10 scale)")
+    score: float | None = Field(
+        None, description="Rating score (normalized to 0-10 scale)"
+    )
     scored_by: int | None = Field(None, description="Number of users who rated")
 
     # ── Arrays (alphabetical) ─────────────────────────────────────────────────
@@ -723,7 +772,10 @@ class Anime(BaseModel):
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     background: str | None = Field(None, description="Background information from MAL")
-    country_of_origin: str | None = Field(None, description="ISO 3166-1 alpha-2 country code (e.g. 'JP', 'CN', 'KR') — from AniList")
+    country_of_origin: str | None = Field(
+        None,
+        description="ISO 3166-1 alpha-2 country code (e.g. 'JP', 'CN', 'KR') — from AniList",
+    )
     duration: int | None = Field(None, description="Episode duration in seconds")
     episode_count: int = Field(default=0, description="Number of episodes")
     id: str | None = Field(None, description="Unique identifier for the anime entry")
@@ -733,8 +785,12 @@ class Anime(BaseModel):
     )
     month: str | None = Field(None, description="Premiere month from AnimSchedule")
     nsfw: bool | None = Field(None, description="Not Safe For Work flag from Kitsu")
-    rating: AnimeRating = Field(default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)")
-    season: AnimeSeason | None = Field(None, description="Anime season (SPRING, SUMMER, FALL, WINTER)")
+    rating: AnimeRating = Field(
+        default=AnimeRating.UNKNOWN, description="Content rating (PG-13, R, etc.)"
+    )
+    season: AnimeSeason | None = Field(
+        None, description="Anime season (SPRING, SUMMER, FALL, WINTER)"
+    )
     similarity_score: float | None = Field(
         None,
         description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
@@ -744,7 +800,9 @@ class Anime(BaseModel):
         None, description="Source material type (manga, light novel, etc.)"
     )
     status: AnimeStatus = Field(..., description="Airing status")
-    synopsis: str | None = Field(None, description="Detailed anime synopsis from external sources")
+    synopsis: str | None = Field(
+        None, description="Detailed anime synopsis from external sources"
+    )
     title: str = Field(..., description="Primary anime title")
     title_english: str | None = Field(None, description="English title")
     title_japanese: str | None = Field(None, description="Japanese title")
@@ -754,20 +812,28 @@ class Anime(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
-    content_warnings: list[str] = Field(default_factory=list, description="Content warnings")
+    content_warnings: list[str] = Field(
+        default_factory=list, description="Content warnings"
+    )
     demographics: list[str] = Field(
         default_factory=list, description="Target demographics (Shounen, Seinen, etc.)"
     )
-    ending_themes: list[ThemeSong] = Field(default_factory=list, description="Ending theme songs")
+    ending_themes: list[ThemeSong] = Field(
+        default_factory=list, description="Ending theme songs"
+    )
     genres: list[str] = Field(default_factory=list, description="Anime genres")
     licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
-    opening_themes: list[ThemeSong] = Field(default_factory=list, description="Opening theme songs")
+    opening_themes: list[ThemeSong] = Field(
+        default_factory=list, description="Opening theme songs"
+    )
     producers: list[CompanyEntry] = Field(default_factory=list, description="Producers")
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = Field(
         default_factory=dict,
         description="Related anime grouped by relationship type (SEQUEL, PREQUEL, etc.)",
     )
-    related_source_material: dict[SourceMaterialRelationType, list[RelatedSourceMaterial]] = Field(
+    related_source_material: dict[
+        SourceMaterialRelationType, list[RelatedSourceMaterial]
+    ] = Field(
         default_factory=dict,
         description="Original source work relations (manga, light novel, visual novel, game, etc.)",
     )
@@ -775,11 +841,20 @@ class Anime(BaseModel):
     streaming_sources: list[StreamingEntry] = Field(
         default_factory=list, description="Streaming platform information"
     )
-    studios: list[CompanyEntry] = Field(default_factory=list, description="Animation studios")
+    studios: list[CompanyEntry] = Field(
+        default_factory=list, description="Animation studios"
+    )
     synonyms: list[str] = Field(default_factory=list, description="Alternative titles")
-    tags: list[str] = Field(default_factory=list, description="Descriptive tags (cast traits, settings, technical notes)")
-    themes: list[ThemeEntry] = Field(default_factory=list, description="Thematic elements with descriptions")
-    trailers: list[TrailerEntry] = Field(default_factory=list, description="Trailer information")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Descriptive tags (cast traits, settings, technical notes)",
+    )
+    themes: list[ThemeEntry] = Field(
+        default_factory=list, description="Thematic elements with descriptions"
+    )
+    trailers: list[TrailerEntry] = Field(
+        default_factory=list, description="Trailer information"
+    )
 
     # =====================================================================
     # OBJECT/DICT FIELDS (alphabetical)
@@ -791,7 +866,9 @@ class Anime(BaseModel):
     external_sources: dict[str, str] = Field(
         default_factory=dict, description="External links (official site, social media)"
     )
-    hiatus: AnimeHiatus | None = Field(None, description="Current hiatus snapshot from AnimSchedule")
+    hiatus: AnimeHiatus | None = Field(
+        None, description="Current hiatus snapshot from AnimSchedule"
+    )
     images: AnimeImages = Field(
         default_factory=AnimeImages,
         description="Images organized by type (covers, posters, banners)",
@@ -813,8 +890,6 @@ class Anime(BaseModel):
 # =============================================================================
 
 
-
-
 class Character(BaseModel):
     """Character data that becomes a Character Point in the vector database."""
 
@@ -822,14 +897,18 @@ class Character(BaseModel):
     # SCALAR FIELDS (alphabetical)
     # =====================================================================
     description: str | None = Field(None, description="Character description/biography")
-    favorites: int | None = Field(None, description="Number of users who favorited this character")
+    favorites: int | None = Field(
+        None, description="Number of users who favorited this character"
+    )
     id: str | None = Field(None, description="Unique UUID for the character")
     entity_type: EntityType = Field(
         default=EntityType.CHARACTER,
         description="Entity type for vector search filtering",
     )
     name: str = Field(..., description="Character name")
-    name_native: str | None = Field(None, description="Native language name (Japanese/Kanji)")
+    name_native: str | None = Field(
+        None, description="Native language name (Japanese/Kanji)"
+    )
     roles: list[CharacterRole] = Field(
         default_factory=list,
         description="All roles this character has played across anime (Main, Supporting, etc.)",
@@ -858,7 +937,9 @@ class Character(BaseModel):
     name_variations: list[str] = Field(
         default_factory=list, description="All name spellings and variations"
     )
-    nicknames: list[str] = Field(default_factory=list, description="Character nicknames")
+    nicknames: list[str] = Field(
+        default_factory=list, description="Character nicknames"
+    )
     sources: list[str] = Field(
         default_factory=list,
         description="Character profile URLs from different platforms",
@@ -897,7 +978,9 @@ class Episode(BaseModel):
     duration: int | None = Field(None, description="Episode duration in seconds")
     episode_number: int = Field(..., description="Episode number")
     filler: bool = Field(default=False, description="Whether episode is filler")
-    id: str | None = Field(None, description="Deterministic ID (hash of anime_id + episode_number)")
+    id: str | None = Field(
+        None, description="Deterministic ID (hash of anime_id + episode_number)"
+    )
     entity_type: EntityType = Field(
         default=EntityType.EPISODE,
         description="Entity type for vector search filtering",
@@ -933,6 +1016,8 @@ class Episode(BaseModel):
     streaming: dict[str, str] = Field(
         default_factory=dict, description="Streaming platforms and URLs {platform: url}"
     )
+
+
 # =============================================================================
 # AGGREGATE MODEL (container for data ingestion)
 # =============================================================================

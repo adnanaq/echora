@@ -34,7 +34,9 @@ from http_cache.instance import http_cache_manager as _cache_manager
 
 from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
 from enrichment.exceptions import ServiceNetworkError, ServiceParseError
-from enrichment.api_helpers.animeschedule.animeschedule_mapper import anime_from_animeschedule
+from enrichment.api_helpers.animeschedule.animeschedule_mapper import (
+    anime_from_animeschedule,
+)
 from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
@@ -151,7 +153,9 @@ async def _fetch_all(
         if sources:
             raw_data = _match_by_sources(candidates, sources)
             if raw_data is None:
-                logger.warning(f"No AnimSchedule result matched sources for: {search_term}")
+                logger.warning(
+                    f"No AnimSchedule result matched sources for: {search_term}"
+                )
                 return None
         else:
             raw_data = candidates[0]

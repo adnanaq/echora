@@ -1096,7 +1096,9 @@ class TestCachedResultBatchHelper:
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_redis.mget.side_effect = RedisError("connection failed")
             mock_get_client.return_value = mock_redis
@@ -1111,7 +1113,9 @@ class TestCachedResultBatchHelper:
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_redis.mget.return_value = []
             mock_get_client.return_value = mock_redis
@@ -1126,7 +1130,9 @@ class TestCachedResultBatchHelper:
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
             await fetch_data.cache_batch_set([], [])  # type: ignore[attr-defined]
             mock_get_client.assert_not_called()
 
@@ -1146,8 +1152,12 @@ class TestCachedResultBatchHelper:
             return {"id": item_id}
 
         with patch("http_cache.result_cache.get_cache_config") as mock_config:
-            mock_config.return_value = MagicMock(cache_enabled=False, storage_type="redis")
-            with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+            mock_config.return_value = MagicMock(
+                cache_enabled=False, storage_type="redis"
+            )
+            with patch(
+                "http_cache.result_cache.get_result_cache_redis_client"
+            ) as mock_get_client:
                 await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
                 mock_get_client.assert_not_called()
 
@@ -1157,7 +1167,9 @@ class TestCachedResultBatchHelper:
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
             mock_pipe = MagicMock()
             mock_pipe.setex = MagicMock()
             mock_pipe.execute = AsyncMock()
@@ -1167,7 +1179,10 @@ class TestCachedResultBatchHelper:
             mock_redis.pipeline = MagicMock(return_value=mock_pipe)
             mock_get_client.return_value = mock_redis
 
-            with patch("http_cache.result_cache.json.dumps", side_effect=TypeError("not serializable")):
+            with patch(
+                "http_cache.result_cache.json.dumps",
+                side_effect=TypeError("not serializable"),
+            ):
                 # Should not raise — TypeError is swallowed
                 await fetch_data.cache_batch_set([("a",)], [{"id": "a"}])  # type: ignore[attr-defined]
             mock_pipe.setex.assert_not_called()
@@ -1178,7 +1193,9 @@ class TestCachedResultBatchHelper:
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
 
-        with patch("http_cache.result_cache.get_result_cache_redis_client") as mock_get_client:
+        with patch(
+            "http_cache.result_cache.get_result_cache_redis_client"
+        ) as mock_get_client:
             mock_redis = AsyncMock()
             mock_redis.pipeline = MagicMock(side_effect=RedisError("pipeline failed"))
             mock_get_client.return_value = mock_redis
@@ -1461,12 +1478,15 @@ class TestGetResultCacheRedisClient:
                     f"Result at index {i} was None - race condition exists"
                 )
 
-
     @pytest.mark.asyncio
     async def test_redis_initialization_returns_none_raises(self) -> None:
         """RedisInitializationError raised when from_url somehow returns None."""
         from http_cache.exceptions import RedisInitializationError
-        from http_cache.result_cache import _redis_client, close_result_cache_redis_client, get_result_cache_redis_client
+        from http_cache.result_cache import (
+            _redis_client,
+            close_result_cache_redis_client,
+            get_result_cache_redis_client,
+        )
 
         await close_result_cache_redis_client()
 
@@ -1593,6 +1613,7 @@ class TestComputeSchemaHashWithDependencies:
 
     def test_builtin_dependency_falls_back_to_name(self) -> None:
         """A builtin dependency (no source) falls back to its __name__."""
+
         # len has no inspectable source code
         def main_func() -> int:
             return len([])
@@ -1733,7 +1754,9 @@ class TestCachedResultWithDependencies:
             )
 
     @pytest.mark.asyncio
-    async def test_same_function_and_dependencies_produce_stable_cache_key(self) -> None:
+    async def test_same_function_and_dependencies_produce_stable_cache_key(
+        self,
+    ) -> None:
         """The same decorated function + same args always produces the same cache key
         across multiple calls (the schema hash is computed once at decoration time)."""
 

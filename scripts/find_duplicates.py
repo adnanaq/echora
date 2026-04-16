@@ -93,6 +93,7 @@ def find_duplicates(file_path):
         print(f"  {len(internal_duplicates)} entries affected\n")
         for entry in internal_duplicates:
             from collections import Counter
+
             providers = [get_provider(s) for s in entry.get("sources", [])]
             duped = [p for p, c in Counter(providers).items() if c > 1]
             print(f"  {entry.get('title')}")
@@ -121,9 +122,15 @@ def find_duplicates(file_path):
                 print()
         return redundant
 
-    r1 = print_tier("TIER 1  (title + type + year + season)  — highest confidence", tier1_dups, 4)
-    r2 = print_tier("TIER 2  (title + type + year)           — season missing",      tier2_dups, 3)
-    r3 = print_tier("TIER 3  (title + type + season)         — year missing",        tier3_dups, 3)
+    r1 = print_tier(
+        "TIER 1  (title + type + year + season)  — highest confidence", tier1_dups, 4
+    )
+    r2 = print_tier(
+        "TIER 2  (title + type + year)           — season missing", tier2_dups, 3
+    )
+    r3 = print_tier(
+        "TIER 3  (title + type + season)         — year missing", tier3_dups, 3
+    )
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print(f"{SEP}")
@@ -140,7 +147,12 @@ def find_duplicates(file_path):
 
 if __name__ == "__main__":
     import sys, io, contextlib, os
-    file_path = sys.argv[1] if len(sys.argv) > 1 else "data/qdrant_storage/anime-offline-database-minified.json"
+
+    file_path = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else "data/qdrant_storage/anime-offline-database-minified.json"
+    )
     base = os.path.splitext(os.path.basename(file_path))[0]
     output_path = f"{base}_duplicates.txt"
     buf = io.StringIO()

@@ -20,9 +20,7 @@ def _runtime(
         text_processor=SimpleNamespace(
             encode_text=AsyncMock(return_value=text_embedding or [0.1] * 4)
         ),
-        vision_processor=SimpleNamespace(
-            encode_image=AsyncMock(return_value=None)
-        ),
+        vision_processor=SimpleNamespace(encode_image=AsyncMock(return_value=None)),
         qdrant_client=SimpleNamespace(
             search=AsyncMock(return_value=search_results or [])
         ),
@@ -50,7 +48,9 @@ async def test_image_value_error_returns_invalid_image_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_value_error_from_qdrant_search_is_not_labeled_invalid_image_input() -> None:
+async def test_value_error_from_qdrant_search_is_not_labeled_invalid_image_input() -> (
+    None
+):
     """ValueError from downstream qdrant search is NOT misclassified as INVALID_IMAGE_INPUT."""
     runtime = _runtime()
     runtime.qdrant_client.search = AsyncMock(

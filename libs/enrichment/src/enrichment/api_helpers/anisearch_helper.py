@@ -43,15 +43,13 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
         if not anisearch_id:
             return None
 
-        output_path = (
-            os.path.join(temp_dir, "anisearch.jsonl") if temp_dir else None
-        )
+        output_path = os.path.join(temp_dir, "anisearch.jsonl") if temp_dir else None
 
         return await self._fetch_all_impl(
             int(anisearch_id),
             include_episodes=True,
             include_characters=True,
-            output_path=output_path
+            output_path=output_path,
         )
 
     async def _fetch_all_impl(

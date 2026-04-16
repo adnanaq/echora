@@ -20,10 +20,17 @@ def _cm(response):
 
 def _make_media_char(mc_id: str, char_id: str, char_name: str = "Test"):
     """Build a minimal KitsuMediaCharacter with a character attached."""
-    from enrichment.api_helpers.kitsu.kitsu_models import KitsuCharacter, KitsuMediaCharacter
+    from enrichment.api_helpers.kitsu.kitsu_models import (
+        KitsuCharacter,
+        KitsuMediaCharacter,
+    )
 
-    char = KitsuCharacter.model_validate({"id": char_id, "attributes": {"canonicalName": char_name}})
-    mc = KitsuMediaCharacter.model_validate({"id": mc_id, "attributes": {"role": "main"}})
+    char = KitsuCharacter.model_validate(
+        {"id": char_id, "attributes": {"canonicalName": char_name}}
+    )
+    mc = KitsuMediaCharacter.model_validate(
+        {"id": mc_id, "attributes": {"role": "main"}}
+    )
     mc.character = char
     return mc
 
@@ -39,7 +46,9 @@ async def test_main_function_success(mock_helper_class):
     from enrichment.api_helpers.kitsu_helper import main
 
     mock_helper = AsyncMock()
-    mock_helper.fetch_all = AsyncMock(return_value={"anime": {"title": "Test"}, "episodes": [], "characters": []})
+    mock_helper.fetch_all = AsyncMock(
+        return_value={"anime": {"title": "Test"}, "episodes": [], "characters": []}
+    )
     mock_helper.close = AsyncMock()
     mock_helper_class.return_value = mock_helper
 
@@ -144,7 +153,10 @@ async def test_make_request_raises_service_not_found_on_404():
     mock_sess = MagicMock()
     mock_sess.get = MagicMock(return_value=_cm(mock_resp))
 
-    with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", return_value=_cm(mock_sess)):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(mock_sess),
+    ):
         with pytest.raises(ServiceNotFoundError):
             await helper._make_request("/anime/1")
 
@@ -163,7 +175,10 @@ async def test_make_request_raises_on_non_200():
     mock_sess = MagicMock()
     mock_sess.get = MagicMock(return_value=_cm(mock_resp))
 
-    with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", return_value=_cm(mock_sess)):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(mock_sess),
+    ):
         with pytest.raises(aiohttp.ClientResponseError):
             await helper._make_request("/anime/1")
 
@@ -243,7 +258,9 @@ async def test_paginate_breaks_when_items_empty():
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    helper._make_request = AsyncMock(return_value={"data": [], "meta": {"count": 0}, "_from_cache": True})
+    helper._make_request = AsyncMock(
+        return_value={"data": [], "meta": {"count": 0}, "_from_cache": True}
+    )
 
     items, _ = await helper._paginate("/anime/1/episodes")
 
@@ -259,12 +276,16 @@ async def test_paginate_sleeps_on_live_multi_page():
     helper = KitsuEnrichmentHelper()
     page1 = [{"id": str(i)} for i in range(20)]
     page2 = [{"id": "99"}]
-    helper._make_request = AsyncMock(side_effect=[
-        {"data": page1, "meta": {"count": 21}, "_from_cache": False},
-        {"data": page2, "meta": {"count": 21}, "_from_cache": True},
-    ])
+    helper._make_request = AsyncMock(
+        side_effect=[
+            {"data": page1, "meta": {"count": 21}, "_from_cache": False},
+            {"data": page2, "meta": {"count": 21}, "_from_cache": True},
+        ]
+    )
 
-    with patch("enrichment.api_helpers.kitsu_helper.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch(
+        "enrichment.api_helpers.kitsu_helper.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
         items, _ = await helper._paginate("/anime/1/episodes")
 
     assert len(items) == 21
@@ -297,7 +318,9 @@ async def test_get_anime_by_id_returns_none_on_service_not_found():
     from enrichment.exceptions import ServiceNotFoundError
 
     helper = KitsuEnrichmentHelper()
-    helper._make_request = AsyncMock(side_effect=ServiceNotFoundError("not found", service="kitsu"))
+    helper._make_request = AsyncMock(
+        side_effect=ServiceNotFoundError("not found", service="kitsu")
+    )
 
     assert await helper.get_anime_by_id(99999) is None
 
@@ -329,9 +352,7 @@ async def test_get_anime_characters_resolves_from_included():
         "id": "mc1",
         "type": "mediaCharacters",
         "attributes": {"role": "main"},
-        "relationships": {
-            "character": {"data": {"id": "c1", "type": "characters"}}
-        },
+        "relationships": {"character": {"data": {"id": "c1", "type": "characters"}}},
     }
     char_item = {
         "id": "c1",
@@ -368,9 +389,7 @@ async def test_get_anime_characters_missing_included_yields_none_character():
         "id": "mc1",
         "type": "mediaCharacters",
         "attributes": {"role": "supporting"},
-        "relationships": {
-            "character": {"data": {"id": "c999", "type": "characters"}}
-        },
+        "relationships": {"character": {"data": {"id": "c999", "type": "characters"}}},
     }
     helper._make_request = AsyncMock(
         return_value={
@@ -493,9 +512,13 @@ async def test_fetch_anime_returns_none_when_get_anime_raises():
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    with patch.object(helper, "get_anime_by_id", new=AsyncMock(side_effect=RuntimeError("fail"))):
+    with patch.object(
+        helper, "get_anime_by_id", new=AsyncMock(side_effect=RuntimeError("fail"))
+    ):
         with patch.object(helper, "get_anime_genres", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_anime_categories", new=AsyncMock(return_value=[])):
+            with patch.object(
+                helper, "get_anime_categories", new=AsyncMock(return_value=[])
+            ):
                 result = await helper.fetch_anime(12, session=MagicMock())
 
     assert result is None
@@ -507,14 +530,27 @@ async def test_fetch_anime_writes_output_path(tmp_path):
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    raw_anime = {"id": "12", "attributes": {"canonicalTitle": "Test Anime", "subtype": "TV", "status": "current"}}
+    raw_anime = {
+        "id": "12",
+        "attributes": {
+            "canonicalTitle": "Test Anime",
+            "subtype": "TV",
+            "status": "current",
+        },
+    }
     out = str(tmp_path / "kitsu_anime.jsonl")
 
     with patch.object(helper, "get_anime_by_id", new=AsyncMock(return_value=raw_anime)):
         with patch.object(helper, "get_anime_genres", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_anime_categories", new=AsyncMock(return_value=[])):
-                with patch("enrichment.api_helpers.kitsu_helper._write_jsonl") as mock_write:
-                    result = await helper.fetch_anime(12, output_path=out, session=MagicMock())
+            with patch.object(
+                helper, "get_anime_categories", new=AsyncMock(return_value=[])
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper._write_jsonl"
+                ) as mock_write:
+                    result = await helper.fetch_anime(
+                        12, output_path=out, session=MagicMock()
+                    )
 
     assert result is not None
     mock_write.assert_called_once_with(out, [result])
@@ -532,12 +568,22 @@ async def test_fetch_episodes_writes_each_episode_to_output_path(tmp_path):
 
     helper = KitsuEnrichmentHelper()
     raw_eps = [
-        {"id": "e1", "type": "episodes", "attributes": {"number": 1, "canonicalTitle": "Episode 1"}},
-        {"id": "e2", "type": "episodes", "attributes": {"number": 2, "canonicalTitle": "Episode 2"}},
+        {
+            "id": "e1",
+            "type": "episodes",
+            "attributes": {"number": 1, "canonicalTitle": "Episode 1"},
+        },
+        {
+            "id": "e2",
+            "type": "episodes",
+            "attributes": {"number": 2, "canonicalTitle": "Episode 2"},
+        },
     ]
     out = str(tmp_path / "kitsu_episodes.jsonl")
 
-    with patch.object(helper, "get_anime_episodes", new=AsyncMock(return_value=raw_eps)):
+    with patch.object(
+        helper, "get_anime_episodes", new=AsyncMock(return_value=raw_eps)
+    ):
         with patch("enrichment.api_helpers.kitsu_helper._append_jsonl") as mock_append:
             results = await helper.fetch_episodes(12, output_path=out)
 
@@ -571,9 +617,16 @@ async def test_fetch_characters_maps_character_with_voices_and_animeography():
     mc = _make_media_char("mc1", "c1", "Luffy")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_character_animeography", new=AsyncMock(return_value=[])):
-                with patch("enrichment.api_helpers.kitsu_helper.character_from_kitsu", return_value={"name": "Luffy"}) as mock_map:
+        with patch.object(
+            helper, "get_character_voices", new=AsyncMock(return_value=[])
+        ):
+            with patch.object(
+                helper, "get_character_animeography", new=AsyncMock(return_value=[])
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper.character_from_kitsu",
+                    return_value={"name": "Luffy"},
+                ) as mock_map:
                     result = await helper.fetch_characters(12)
 
     assert len(result) == 1
@@ -588,9 +641,13 @@ async def test_fetch_characters_skips_chars_without_character_object():
     from enrichment.api_helpers.kitsu.kitsu_models import KitsuMediaCharacter
 
     helper = KitsuEnrichmentHelper()
-    mc_no_char = KitsuMediaCharacter.model_validate({"id": "mc2", "attributes": {}})  # character=None
+    mc_no_char = KitsuMediaCharacter.model_validate(
+        {"id": "mc2", "attributes": {}}
+    )  # character=None
 
-    with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc_no_char])):
+    with patch.object(
+        helper, "get_anime_characters", new=AsyncMock(return_value=[mc_no_char])
+    ):
         result = await helper.fetch_characters(12)
 
     assert result == []
@@ -605,9 +662,18 @@ async def test_fetch_characters_handles_voices_exception():
     mc = _make_media_char("mc1", "c1")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(side_effect=RuntimeError("voices fail"))):
-            with patch.object(helper, "get_character_animeography", new=AsyncMock(return_value=[])):
-                with patch("enrichment.api_helpers.kitsu_helper.character_from_kitsu", return_value={"name": "X"}):
+        with patch.object(
+            helper,
+            "get_character_voices",
+            new=AsyncMock(side_effect=RuntimeError("voices fail")),
+        ):
+            with patch.object(
+                helper, "get_character_animeography", new=AsyncMock(return_value=[])
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper.character_from_kitsu",
+                    return_value={"name": "X"},
+                ):
                     result = await helper.fetch_characters(12)
 
     assert len(result) == 1
@@ -622,9 +688,18 @@ async def test_fetch_characters_handles_animeography_exception():
     mc = _make_media_char("mc1", "c1")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_character_animeography", new=AsyncMock(side_effect=RuntimeError("anim fail"))):
-                with patch("enrichment.api_helpers.kitsu_helper.character_from_kitsu", return_value={"name": "X"}):
+        with patch.object(
+            helper, "get_character_voices", new=AsyncMock(return_value=[])
+        ):
+            with patch.object(
+                helper,
+                "get_character_animeography",
+                new=AsyncMock(side_effect=RuntimeError("anim fail")),
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper.character_from_kitsu",
+                    return_value={"name": "X"},
+                ):
                     result = await helper.fetch_characters(12)
 
     assert len(result) == 1
@@ -639,9 +714,16 @@ async def test_fetch_characters_handles_mapper_exception():
     mc = _make_media_char("mc1", "c1")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_character_animeography", new=AsyncMock(return_value=[])):
-                with patch("enrichment.api_helpers.kitsu_helper.character_from_kitsu", side_effect=ValueError("bad data")):
+        with patch.object(
+            helper, "get_character_voices", new=AsyncMock(return_value=[])
+        ):
+            with patch.object(
+                helper, "get_character_animeography", new=AsyncMock(return_value=[])
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper.character_from_kitsu",
+                    side_effect=ValueError("bad data"),
+                ):
                     result = await helper.fetch_characters(12)
 
     assert result == []
@@ -657,10 +739,19 @@ async def test_fetch_characters_writes_to_output_path(tmp_path):
     out = str(tmp_path / "chars.jsonl")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(return_value=[])):
-            with patch.object(helper, "get_character_animeography", new=AsyncMock(return_value=[])):
-                with patch("enrichment.api_helpers.kitsu_helper.character_from_kitsu", return_value={"name": "Luffy"}):
-                    with patch("enrichment.api_helpers.kitsu_helper._append_jsonl") as mock_append:
+        with patch.object(
+            helper, "get_character_voices", new=AsyncMock(return_value=[])
+        ):
+            with patch.object(
+                helper, "get_character_animeography", new=AsyncMock(return_value=[])
+            ):
+                with patch(
+                    "enrichment.api_helpers.kitsu_helper.character_from_kitsu",
+                    return_value={"name": "Luffy"},
+                ):
+                    with patch(
+                        "enrichment.api_helpers.kitsu_helper._append_jsonl"
+                    ) as mock_append:
                         await helper.fetch_characters(12, output_path=out)
 
     mock_append.assert_called_once_with(out, {"name": "Luffy"})
@@ -693,11 +784,30 @@ async def test_fetch_all_reuses_one_session_for_anime_and_episodes():
                 }
             }
         elif "/episodes" in url:
-            payload = {"data": [{"id": "e1", "attributes": {"number": 1, "canonicalTitle": "Ep 1"}}], "meta": {"count": 1}}
+            payload = {
+                "data": [
+                    {"id": "e1", "attributes": {"number": 1, "canonicalTitle": "Ep 1"}}
+                ],
+                "meta": {"count": 1},
+            }
         elif "/genres" in url:
-            payload = {"data": [{"id": "g1", "attributes": {"name": "Action"}}], "meta": {"count": 1}}
+            payload = {
+                "data": [{"id": "g1", "attributes": {"name": "Action"}}],
+                "meta": {"count": 1},
+            }
         elif "/categories" in url:
-            payload = {"data": [{"id": "cat1", "attributes": {"title": "Pirates", "description": "Pirate stuff"}}], "meta": {"count": 1}}
+            payload = {
+                "data": [
+                    {
+                        "id": "cat1",
+                        "attributes": {
+                            "title": "Pirates",
+                            "description": "Pirate stuff",
+                        },
+                    }
+                ],
+                "meta": {"count": 1},
+            }
         else:
             payload = {}
         resp.json = AsyncMock(return_value=payload)
@@ -765,7 +875,10 @@ async def test_fetch_all_slug_resolution_http_failure():
     mock_sess = AsyncMock()
     mock_sess.get = MagicMock(return_value=_cm(mock_resp))
 
-    with patch("enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession", return_value=_cm(mock_sess)):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession",
+        return_value=_cm(mock_sess),
+    ):
         result = await KitsuEnrichmentHelper().fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is None
@@ -782,7 +895,10 @@ async def test_fetch_all_slug_resolution_no_data():
     mock_sess = AsyncMock()
     mock_sess.get = MagicMock(return_value=_cm(mock_resp))
 
-    with patch("enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession", return_value=_cm(mock_sess)):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession",
+        return_value=_cm(mock_sess),
+    ):
         result = await KitsuEnrichmentHelper().fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is None
@@ -800,11 +916,25 @@ async def test_fetch_all_slug_resolved_to_numeric_id():
     mock_sess.get = MagicMock(return_value=_cm(mock_resp))
 
     helper = KitsuEnrichmentHelper()
-    with patch("enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession", return_value=_cm(mock_sess)):
-        with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", return_value=_cm(AsyncMock())):
-            with patch.object(helper, "fetch_anime", new=AsyncMock(return_value={"title": "Test", "sources": []})):
-                with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
-                    with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper.aiohttp.ClientSession",
+        return_value=_cm(mock_sess),
+    ):
+        with patch(
+            "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+            return_value=_cm(AsyncMock()),
+        ):
+            with patch.object(
+                helper,
+                "fetch_anime",
+                new=AsyncMock(return_value={"title": "Test", "sources": []}),
+            ):
+                with patch.object(
+                    helper, "fetch_episodes", new=AsyncMock(return_value=[])
+                ):
+                    with patch.object(
+                        helper, "fetch_characters", new=AsyncMock(return_value=[])
+                    ):
                         result = await helper.fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is not None
@@ -817,10 +947,23 @@ async def test_fetch_all_episodes_exception_yields_empty_list():
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", return_value=_cm(AsyncMock())):
-        with patch.object(helper, "fetch_anime", new=AsyncMock(return_value={"title": "X", "sources": []})):
-            with patch.object(helper, "fetch_episodes", new=AsyncMock(side_effect=RuntimeError("ep fail"))):
-                with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(AsyncMock()),
+    ):
+        with patch.object(
+            helper,
+            "fetch_anime",
+            new=AsyncMock(return_value={"title": "X", "sources": []}),
+        ):
+            with patch.object(
+                helper,
+                "fetch_episodes",
+                new=AsyncMock(side_effect=RuntimeError("ep fail")),
+            ):
+                with patch.object(
+                    helper, "fetch_characters", new=AsyncMock(return_value=[])
+                ):
                     result = await helper.fetch_all({"kitsu_id": "1"}, {})
 
     assert result is not None
@@ -833,10 +976,21 @@ async def test_fetch_all_characters_exception_yields_empty_list():
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", return_value=_cm(AsyncMock())):
-        with patch.object(helper, "fetch_anime", new=AsyncMock(return_value={"title": "X", "sources": []})):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(AsyncMock()),
+    ):
+        with patch.object(
+            helper,
+            "fetch_anime",
+            new=AsyncMock(return_value={"title": "X", "sources": []}),
+        ):
             with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
-                with patch.object(helper, "fetch_characters", new=AsyncMock(side_effect=RuntimeError("char fail"))):
+                with patch.object(
+                    helper,
+                    "fetch_characters",
+                    new=AsyncMock(side_effect=RuntimeError("char fail")),
+                ):
                     result = await helper.fetch_all({"kitsu_id": "1"}, {})
 
     assert result is not None
@@ -849,8 +1003,10 @@ async def test_fetch_all_outer_exception_returns_none():
     from enrichment.api_helpers.kitsu_helper import KitsuEnrichmentHelper
 
     helper = KitsuEnrichmentHelper()
-    with patch("enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session", side_effect=RuntimeError("session failed")):
+    with patch(
+        "enrichment.api_helpers.kitsu_helper._cache_manager.get_aiohttp_session",
+        side_effect=RuntimeError("session failed"),
+    ):
         result = await helper.fetch_all({"kitsu_id": "1"}, {})
 
     assert result is None
-

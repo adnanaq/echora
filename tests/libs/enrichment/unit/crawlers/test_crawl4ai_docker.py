@@ -37,7 +37,9 @@ def _cm(resp: AsyncMock) -> MagicMock:
     return cm
 
 
-def _post_session(status: int, json_data: dict | None = None, text_data: str = "") -> AsyncMock:
+def _post_session(
+    status: int, json_data: dict | None = None, text_data: str = ""
+) -> AsyncMock:
     """Build a mock session whose .post() context manager yields a response.
 
     .post must be a MagicMock (not AsyncMock): aiohttp calls it synchronously
@@ -130,27 +132,42 @@ async def test_submit_job_client_error_returns_none() -> None:
 async def test_poll_job_completed_returns_data() -> None:
     data = {"status": "completed", "result": {}}
     session = _get_session((200, data))
-    assert await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0) == data
+    assert (
+        await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
+        == data
+    )
 
 
 async def test_poll_job_failed_returns_none() -> None:
     session = _get_session((200, {"status": "failed", "error": "oops"}))
-    assert await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0) is None
+    assert (
+        await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
+        is None
+    )
 
 
 async def test_poll_job_non_200_returns_none() -> None:
     session = _get_session((404, {}))
-    assert await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0) is None
+    assert (
+        await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
+        is None
+    )
 
 
 async def test_poll_job_client_error_returns_none() -> None:
     session = AsyncMock()
     session.get = MagicMock(side_effect=aiohttp.ClientError("fail"))
-    assert await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0) is None
+    assert (
+        await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
+        is None
+    )
 
 
 async def test_poll_job_timeout_returns_none() -> None:
-    assert await _poll_job(AsyncMock(), "http://x", "t1", timeout=0, poll_interval=0) is None
+    assert (
+        await _poll_job(AsyncMock(), "http://x", "t1", timeout=0, poll_interval=0)
+        is None
+    )
 
 
 async def test_poll_job_pending_then_completed() -> None:
@@ -159,7 +176,10 @@ async def test_poll_job_pending_then_completed() -> None:
         (200, {"status": "pending"}),
         (200, completed),
     )
-    assert await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0) == completed
+    assert (
+        await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
+        == completed
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -177,19 +197,27 @@ def test_align_results_missing_url_returns_none() -> None:
 
 
 def test_align_results_failure_error_message_returns_none() -> None:
-    assert _align_results([URL], [{"url": URL, "success": False, "error_message": "boom"}]) == [None]
+    assert _align_results(
+        [URL], [{"url": URL, "success": False, "error_message": "boom"}]
+    ) == [None]
 
 
 def test_align_results_failure_error_field_returns_none() -> None:
-    assert _align_results([URL], [{"url": URL, "success": False, "error": "boom"}]) == [None]
+    assert _align_results([URL], [{"url": URL, "success": False, "error": "boom"}]) == [
+        None
+    ]
 
 
 def test_align_results_404_returns_none() -> None:
-    assert _align_results([URL], [{"url": URL, "success": True, "status_code": 404}]) == [None]
+    assert _align_results(
+        [URL], [{"url": URL, "success": True, "status_code": 404}]
+    ) == [None]
 
 
 def test_align_results_405_returns_none() -> None:
-    assert _align_results([URL], [{"url": URL, "success": True, "status_code": 405}]) == [None]
+    assert _align_results(
+        [URL], [{"url": URL, "success": True, "status_code": 405}]
+    ) == [None]
 
 
 def test_align_results_reordered() -> None:
@@ -241,12 +269,24 @@ def test_extract_waf_blocked_urls() -> None:
 
 
 def test_extract_transient_dns_error() -> None:
-    raw = [{"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED at https://..."}]
+    raw = [
+        {
+            "url": URL,
+            "success": False,
+            "error_message": "ERR_NAME_NOT_RESOLVED at https://...",
+        }
+    ]
     assert _extract_transient_failed_urls(raw) == [URL]
 
 
 def test_extract_transient_browser_closed() -> None:
-    raw = [{"url": URL, "success": False, "error_message": "Target page, context or browser has been closed"}]
+    raw = [
+        {
+            "url": URL,
+            "success": False,
+            "error_message": "Target page, context or browser has been closed",
+        }
+    ]
     assert _extract_transient_failed_urls(raw) == [URL]
 
 
@@ -276,23 +316,53 @@ def test_extract_transient_ignores_unknown_error() -> None:
 
 
 async def test_retry_failed_urls_submit_fails_returns_aligned() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value=None):
-        result = await _retry_failed_urls(AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1)
+    with patch(
+        "enrichment.crawlers.crawl4ai_docker._submit_job",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        result = await _retry_failed_urls(
+            AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
+        )
     assert result == [None]
 
 
 async def test_retry_failed_urls_poll_fails_returns_aligned() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value=None):
-        result = await _retry_failed_urls(AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1)
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        result = await _retry_failed_urls(
+            AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
+        )
     assert result == [None]
 
 
 async def test_retry_failed_urls_patches_aligned() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [entry]}}):
-        result = await _retry_failed_urls(AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1)
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [entry]}},
+        ),
+    ):
+        result = await _retry_failed_urls(
+            AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
+        )
     assert result == [entry]
 
 
@@ -302,31 +372,83 @@ async def test_retry_failed_urls_patches_aligned() -> None:
 
 
 async def test_probe_waf_recovery_no_task_id() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value=None):
-        assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+    with patch(
+        "enrichment.crawlers.crawl4ai_docker._submit_job",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        assert (
+            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        )
 
 
 async def test_probe_waf_recovery_no_response() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value=None):
-        assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        assert (
+            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        )
 
 
 async def test_probe_waf_recovery_empty_results() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": []}}):
-        assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": []}},
+        ),
+    ):
+        assert (
+            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        )
 
 
 async def test_probe_waf_recovery_405_returns_false() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [{"status_code": 405}]}}):
-        assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [{"status_code": 405}]}},
+        ),
+    ):
+        assert (
+            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        )
 
 
 async def test_probe_waf_recovery_200_returns_true() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [{"status_code": 200}]}}):
+    with (
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [{"status_code": 200}]}},
+        ),
+    ):
         assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is True
 
 
@@ -337,19 +459,37 @@ async def test_probe_waf_recovery_200_returns_true() -> None:
 
 async def test_wait_for_waf_unblock_timeout_returns_false() -> None:
     with patch("enrichment.crawlers.crawl4ai_docker._WAF_MAX_WAIT", -1.0):
-        assert await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        assert (
+            await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is False
+        )
 
 
 async def test_wait_for_waf_unblock_first_probe_succeeds() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0), \
-         patch("enrichment.crawlers.crawl4ai_docker._probe_waf_recovery", new_callable=AsyncMock, return_value=True):
-        assert await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is True
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._probe_waf_recovery",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        assert (
+            await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is True
+        )
 
 
 async def test_wait_for_waf_unblock_second_probe_succeeds() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0), \
-         patch("enrichment.crawlers.crawl4ai_docker._probe_waf_recovery", new_callable=AsyncMock, side_effect=[False, True]):
-        assert await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is True
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._probe_waf_recovery",
+            new_callable=AsyncMock,
+            side_effect=[False, True],
+        ),
+    ):
+        assert (
+            await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -358,23 +498,49 @@ async def test_wait_for_waf_unblock_second_probe_succeeds() -> None:
 
 
 async def test_crawl_single_url_submit_fails_returns_none() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value=None):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
         assert await crawl_single_url(URL, _BC, _CC) is None
 
 
 async def test_crawl_single_url_poll_fails_returns_none() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value=None):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
         assert await crawl_single_url(URL, _BC, _CC) is None
 
 
 async def test_crawl_single_url_success() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [entry]}}):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [entry]}},
+        ),
+    ):
         assert await crawl_single_url(URL, _BC, _CC) == entry
 
 
@@ -388,56 +554,122 @@ async def test_crawl_batch_urls_empty_returns_empty() -> None:
 
 
 async def test_crawl_batch_urls_submit_fails_returns_nones() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value=None):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
 async def test_crawl_batch_urls_poll_fails_returns_nones() -> None:
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value=None):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
 async def test_crawl_batch_urls_clean_success() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [entry]}}):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [entry]}},
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [entry]
 
 
 async def test_crawl_batch_urls_transient_retry_succeeds() -> None:
     transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
     recovered = {"url": URL, "success": True, "status_code": 200}
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, side_effect=[
-             {"result": {"results": [transient]}},
-             {"result": {"results": [recovered]}},
-         ]), \
-         patch("enrichment.crawlers.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [transient]}},
+                {"result": {"results": [recovered]}},
+            ],
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
 async def test_crawl_batch_urls_waf_blocked_recovered() -> None:
     waf = {"url": URL, "success": True, "status_code": 405}
     recovered = {"url": URL, "success": True, "status_code": 200}
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, side_effect=[
-             {"result": {"results": [waf]}},
-             {"result": {"results": [recovered]}},
-         ]), \
-         patch("enrichment.crawlers.crawl4ai_docker._wait_for_waf_unblock", new_callable=AsyncMock, return_value=True):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},
+                {"result": {"results": [recovered]}},
+            ],
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
 async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
     waf = {"url": URL, "success": True, "status_code": 405}
-    with patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"), \
-         patch("enrichment.crawlers.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value="tid"), \
-         patch("enrichment.crawlers.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value={"result": {"results": [waf]}}), \
-         patch("enrichment.crawlers.crawl4ai_docker._wait_for_waf_unblock", new_callable=AsyncMock, return_value=False):
+    with (
+        patch("enrichment.crawlers.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [waf]}},
+        ),
+        patch(
+            "enrichment.crawlers.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]

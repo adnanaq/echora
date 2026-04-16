@@ -96,9 +96,7 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
                 os.path.join(temp_dir, "kitsu_episodes.jsonl") if temp_dir else None
             )
             characters_path = (
-                os.path.join(temp_dir, "kitsu_characters.jsonl")
-                if temp_dir
-                else None
+                os.path.join(temp_dir, "kitsu_characters.jsonl") if temp_dir else None
             )
 
             async with _cache_manager.get_aiohttp_session(
@@ -140,7 +138,9 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
                 )
                 canonical_characters = []
             logger.info(f"Kitsu episodes fetched: {len(canonical_episodes)} episodes")
-            logger.info(f"Kitsu characters fetched: {len(canonical_characters)} characters")
+            logger.info(
+                f"Kitsu characters fetched: {len(canonical_characters)} characters"
+            )
         except Exception:
             logger.exception(f"Kitsu fetch_all failed for ID {numeric_id}")
             return None
@@ -199,9 +199,7 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
                     payload = cast(dict[str, Any], await response.json())
                     from_cache = bool(getattr(response, "from_cache", False))
                     payload["_from_cache"] = from_cache
-                    logger.debug(
-                        f"{'CACHE' if from_cache else 'LIVE'} {response.url}"
-                    )
+                    logger.debug(f"{'CACHE' if from_cache else 'LIVE'} {response.url}")
                     return payload
 
         return await retry_with_backoff(

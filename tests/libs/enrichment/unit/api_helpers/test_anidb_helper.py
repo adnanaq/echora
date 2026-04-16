@@ -829,7 +829,9 @@ async def test_internal_parsers_granular(helper):
     new_callable=AsyncMock,
 )
 @patch("argparse.ArgumentParser.parse_args")
-async def test_main_cli_scenarios(mock_parse_args, mock_make_request, mock_parse_xml, tmp_path):
+async def test_main_cli_scenarios(
+    mock_parse_args, mock_make_request, mock_parse_xml, tmp_path
+):
     """Consolidated test for various CLI entry point scenarios."""
     from enrichment.api_helpers import anidb_helper
 

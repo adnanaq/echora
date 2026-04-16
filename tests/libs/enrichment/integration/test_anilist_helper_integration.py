@@ -99,9 +99,7 @@ async def test_anilist_pagination_caching(clean_helper):
     helper = clean_helper
 
     # Fetch characters (paginated)
-    characters_1 = await helper.fetch_characters(
-        21
-    )  # One Piece has many characters
+    characters_1 = await helper.fetch_characters(21)  # One Piece has many characters
 
     assert len(characters_1) > 0
     print(f"First fetch: {len(characters_1)} characters")

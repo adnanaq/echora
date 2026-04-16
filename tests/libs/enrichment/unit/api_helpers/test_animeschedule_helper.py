@@ -11,7 +11,10 @@ import pytest
 
 MINIMAL_RAW = {"id": "abc1", "title": "Test Anime", "route": "test-anime"}
 
-MAPPED_RESULT = {"title": "Test Anime", "sources": ["https://animeschedule.net/anime/test-anime"]}
+MAPPED_RESULT = {
+    "title": "Test Anime",
+    "sources": ["https://animeschedule.net/anime/test-anime"],
+}
 
 
 def _make_session(response: MagicMock) -> AsyncMock:
@@ -74,8 +77,13 @@ def test_match_by_sources_match_kitsu():
 def test_match_by_sources_match_animeplanet():
     from enrichment.api_helpers.animeschedule_helper import _match_by_sources
 
-    candidate = {"id": "1", "websites": {"animePlanet": "anime-planet.com/anime/one-piece"}}
-    result = _match_by_sources([candidate], ["https://anime-planet.com/anime/one-piece"])
+    candidate = {
+        "id": "1",
+        "websites": {"animePlanet": "anime-planet.com/anime/one-piece"},
+    }
+    result = _match_by_sources(
+        [candidate], ["https://anime-planet.com/anime/one-piece"]
+    )
     assert result is candidate
 
 
@@ -109,7 +117,9 @@ def test_match_by_sources_partial_is_prefix_of_our_source():
     from enrichment.api_helpers.animeschedule_helper import _match_by_sources
 
     candidate = {"id": "1", "websites": {"mal": "myanimelist.net/anime/21"}}
-    result = _match_by_sources([candidate], ["https://myanimelist.net/anime/21/One_Piece"])
+    result = _match_by_sources(
+        [candidate], ["https://myanimelist.net/anime/21/One_Piece"]
+    )
     assert result is candidate
 
 
@@ -171,7 +181,10 @@ def test_match_by_sources_filters_empty_source_strings():
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule", return_value=MAPPED_RESULT)
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule",
+    return_value=MAPPED_RESULT,
+)
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_success_no_sources(mock_cache, mock_mapper):
     from enrichment.api_helpers.animeschedule_helper import _fetch_all
@@ -186,7 +199,10 @@ async def test_fetch_success_no_sources(mock_cache, mock_mapper):
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule", return_value=MAPPED_RESULT)
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule",
+    return_value=MAPPED_RESULT,
+)
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_success_with_matching_sources(mock_cache, mock_mapper):
     from enrichment.api_helpers.animeschedule_helper import _fetch_all
@@ -245,7 +261,10 @@ async def test_fetch_null_response_returns_none(mock_cache):
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule", return_value=MAPPED_RESULT)
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.anime_from_animeschedule",
+    return_value=MAPPED_RESULT,
+)
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_writes_jsonl_output(mock_cache, mock_mapper):
     from enrichment.api_helpers.animeschedule_helper import _fetch_all

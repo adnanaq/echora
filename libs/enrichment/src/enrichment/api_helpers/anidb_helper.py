@@ -188,7 +188,7 @@ class AniDBEnrichmentHelper(BaseEnrichmentHelper):
             return None
 
         output_path = os.path.join(temp_dir, "anidb.jsonl") if temp_dir else None
-        
+
         anime_data = await self.get_anime_by_id(int(anidb_id))
         if not anime_data:
             return None

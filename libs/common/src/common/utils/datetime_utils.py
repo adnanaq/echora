@@ -98,11 +98,13 @@ def determine_anime_status(
     return AnimeStatus.ONGOING
 
 
-def normalize_to_utc(date_input: str | datetime | int | float | None) -> datetime | None:
+def normalize_to_utc(
+    date_input: str | datetime | int | float | None,
+) -> datetime | None:
     """Standardize any date input to a UTC-aware datetime object.
 
     Handles strings in multiple formats (ISO, AniSearch), Unix timestamps (int/float),
-    and converts them to UTC. If the input is a date-only string or a midnight 
+    and converts them to UTC. If the input is a date-only string or a midnight
     timestamp (Pseudo-UTC), it applies the 'Midnight JST' rule.
 
     Args:
@@ -271,4 +273,3 @@ def determine_anime_year(date_str: str | None) -> int | None:
         return year
     except (ValueError, TypeError, IndexError):
         return None
-

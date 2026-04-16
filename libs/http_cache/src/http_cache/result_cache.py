@@ -124,7 +124,9 @@ def _compute_schema_hash(
         return hashlib.sha256(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.sha256(getattr(func, "__name__", repr(func)).encode()).hexdigest()[:16]
+        return hashlib.sha256(
+            getattr(func, "__name__", repr(func)).encode()
+        ).hexdigest()[:16]
 
 
 def _generate_cache_key(

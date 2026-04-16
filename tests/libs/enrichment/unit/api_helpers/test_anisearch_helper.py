@@ -401,9 +401,7 @@ class TestAniSearchEnrichmentHelper:
 
     @pytest.mark.asyncio
     @patch("enrichment.api_helpers.anisearch_helper.fetch_anisearch_anime")
-    async def test_fetch_all_anime_only(
-        self, mock_anime, helper, sample_anime_data
-    ):
+    async def test_fetch_all_anime_only(self, mock_anime, helper, sample_anime_data):
         """Test fetching all data with episodes and characters disabled."""
         mock_anime.return_value = sample_anime_data
 

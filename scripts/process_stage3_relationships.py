@@ -493,9 +493,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     # Step 1: Process MAL relations (primary source)
     mal_anime, mal_manga = process_mal_relations(mal_data)
-    print(
-        f"MAL: {len(mal_anime)} anime relations, {len(mal_manga)} manga relations"
-    )
+    print(f"MAL: {len(mal_anime)} anime relations, {len(mal_manga)} manga relations")
 
     # Step 2: Process AnimePlanet relations (co-primary source)
     animeplanet_anime = process_animeplanet_relations(animeplanet_data)

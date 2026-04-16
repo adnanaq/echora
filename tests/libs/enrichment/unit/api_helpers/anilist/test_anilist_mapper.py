@@ -16,6 +16,7 @@ from enrichment.api_helpers.anilist.anilist_mapper import (
 # Fixtures
 # =============================================================================
 
+
 def _make_anime(**overrides) -> AniListAnime:
     """Minimal valid AniListAnime with sensible defaults."""
     data = {
@@ -52,7 +53,12 @@ def _make_character_edge(**overrides) -> AniListCharacterEdge:
     data = {
         "node": {
             "id": 40,
-            "name": {"full": "Monkey D. Luffy", "native": "モンキー・D・ルフィ", "alternative": ["Luffy"], "alternativeSpoiler": []},
+            "name": {
+                "full": "Monkey D. Luffy",
+                "native": "モンキー・D・ルフィ",
+                "alternative": ["Luffy"],
+                "alternativeSpoiler": [],
+            },
             "image": {"large": "https://anilist.co/img/luffy.jpg"},
             "description": None,
             "gender": "Male",
@@ -82,6 +88,7 @@ def _make_character_edge(**overrides) -> AniListCharacterEdge:
 # _fuzzy_date_str
 # =============================================================================
 
+
 def test_fuzzy_date_full() -> None:
     d = AniListFuzzyDate(year=1999, month=10, day=20)
     assert _fuzzy_date_str(d) == "1999-10-20"
@@ -109,6 +116,7 @@ def test_fuzzy_date_no_year() -> None:
 # =============================================================================
 # anime_from_anilist — scalars
 # =============================================================================
+
 
 def test_anime_title() -> None:
     result = anime_from_anilist(_make_anime())
@@ -230,6 +238,7 @@ def test_anime_synopsis() -> None:
 # anime_from_anilist — sources
 # =============================================================================
 
+
 def test_anime_sources_anilist_url() -> None:
     result = anime_from_anilist(_make_anime(id=21))
     assert "https://anilist.co/anime/21" in result["sources"]
@@ -249,6 +258,7 @@ def test_anime_sources_no_mal_url_when_id_mal_none() -> None:
 # anime_from_anilist — genres, synonyms, tags
 # =============================================================================
 
+
 def test_anime_genres() -> None:
     result = anime_from_anilist(_make_anime())
     assert result["genres"] == ["Action", "Adventure"]
@@ -260,27 +270,42 @@ def test_anime_synonyms() -> None:
 
 
 def test_anime_tag_demographic() -> None:
-    anime = _make_anime(tags=[{"name": "Shounen", "category": "Demographic", "isAdult": False}])
+    anime = _make_anime(
+        tags=[{"name": "Shounen", "category": "Demographic", "isAdult": False}]
+    )
     result = anime_from_anilist(anime)
     assert "Shounen" in result["demographics"]
     assert "Shounen" not in result.get("tags", [])
 
 
 def test_anime_tag_theme() -> None:
-    anime = _make_anime(tags=[{"name": "Travel", "description": "Moving around", "category": "Theme-Action", "isAdult": False}])
+    anime = _make_anime(
+        tags=[
+            {
+                "name": "Travel",
+                "description": "Moving around",
+                "category": "Theme-Action",
+                "isAdult": False,
+            }
+        ]
+    )
     result = anime_from_anilist(anime)
     themes = result["themes"]
     assert any(t["name"] == "Travel" for t in themes)
 
 
 def test_anime_tag_flat() -> None:
-    anime = _make_anime(tags=[{"name": "Pirates", "category": "Cast-Main Cast", "isAdult": False}])
+    anime = _make_anime(
+        tags=[{"name": "Pirates", "category": "Cast-Main Cast", "isAdult": False}]
+    )
     result = anime_from_anilist(anime)
     assert "Pirates" in result["tags"]
 
 
 def test_anime_tag_adult_goes_to_content_warnings() -> None:
-    anime = _make_anime(tags=[{"name": "Nudity", "category": "Theme-Ecchi", "isAdult": True}])
+    anime = _make_anime(
+        tags=[{"name": "Nudity", "category": "Theme-Ecchi", "isAdult": True}]
+    )
     result = anime_from_anilist(anime)
     assert "Nudity" in result["content_warnings"]
     assert "Nudity" not in result.get("tags", [])
@@ -291,20 +316,41 @@ def test_anime_tag_adult_goes_to_content_warnings() -> None:
 # anime_from_anilist — studios & producers
 # =============================================================================
 
+
 def test_anime_studios_split_from_producers() -> None:
-    anime = _make_anime(studios={"edges": [
-        {"node": {"id": 18, "name": "Toei Animation", "isAnimationStudio": True}},
-        {"node": {"id": 102, "name": "Funimation", "isAnimationStudio": False}},
-    ]})
+    anime = _make_anime(
+        studios={
+            "edges": [
+                {
+                    "node": {
+                        "id": 18,
+                        "name": "Toei Animation",
+                        "isAnimationStudio": True,
+                    }
+                },
+                {"node": {"id": 102, "name": "Funimation", "isAnimationStudio": False}},
+            ]
+        }
+    )
     result = anime_from_anilist(anime)
     assert any(s["name"] == "Toei Animation" for s in result["studios"])
     assert any(p["name"] == "Funimation" for p in result["producers"])
 
 
 def test_anime_studio_source_url() -> None:
-    anime = _make_anime(studios={"edges": [
-        {"node": {"id": 18, "name": "Toei Animation", "isAnimationStudio": True}},
-    ]})
+    anime = _make_anime(
+        studios={
+            "edges": [
+                {
+                    "node": {
+                        "id": 18,
+                        "name": "Toei Animation",
+                        "isAnimationStudio": True,
+                    }
+                },
+            ]
+        }
+    )
     result = anime_from_anilist(anime)
     assert result["studios"][0]["sources"] == ["https://anilist.co/studio/18"]
 
@@ -313,35 +359,59 @@ def test_anime_studio_source_url() -> None:
 # anime_from_anilist — streaming & external links
 # =============================================================================
 
+
 def test_anime_streaming_sources() -> None:
-    anime = _make_anime(externalLinks=[
-        {"id": 1, "url": "https://crunchyroll.com/one-piece", "site": "Crunchyroll", "type": "STREAMING"},
-    ])
+    anime = _make_anime(
+        externalLinks=[
+            {
+                "id": 1,
+                "url": "https://crunchyroll.com/one-piece",
+                "site": "Crunchyroll",
+                "type": "STREAMING",
+            },
+        ]
+    )
     result = anime_from_anilist(anime)
     assert any(s["platform"] == "Crunchyroll" for s in result["streaming_sources"])
 
 
 def test_anime_external_sources_info() -> None:
-    anime = _make_anime(externalLinks=[
-        {"id": 2, "url": "https://one-piece.com", "site": "Official Site", "type": "INFO"},
-    ])
+    anime = _make_anime(
+        externalLinks=[
+            {
+                "id": 2,
+                "url": "https://one-piece.com",
+                "site": "Official Site",
+                "type": "INFO",
+            },
+        ]
+    )
     result = anime_from_anilist(anime)
     assert result["external_sources"]["official site"] == "https://one-piece.com"
 
 
 def test_anime_external_sources_social() -> None:
-    anime = _make_anime(externalLinks=[
-        {"id": 3, "url": "https://twitter.com/onepiece", "site": "Twitter", "type": "SOCIAL"},
-    ])
+    anime = _make_anime(
+        externalLinks=[
+            {
+                "id": 3,
+                "url": "https://twitter.com/onepiece",
+                "site": "Twitter",
+                "type": "SOCIAL",
+            },
+        ]
+    )
     result = anime_from_anilist(anime)
     assert "twitter" in result["external_sources"]
 
 
 def test_anime_external_links_skips_missing_url_or_site() -> None:
-    anime = _make_anime(externalLinks=[
-        {"id": 4, "url": None, "site": "Broken", "type": "INFO"},
-        {"id": 5, "url": "https://example.com", "site": None, "type": "INFO"},
-    ])
+    anime = _make_anime(
+        externalLinks=[
+            {"id": 4, "url": None, "site": "Broken", "type": "INFO"},
+            {"id": 5, "url": "https://example.com", "site": None, "type": "INFO"},
+        ]
+    )
     result = anime_from_anilist(anime)
     assert result.get("external_sources", {}) == {}
 
@@ -350,8 +420,15 @@ def test_anime_external_links_skips_missing_url_or_site() -> None:
 # anime_from_anilist — trailer
 # =============================================================================
 
+
 def test_anime_youtube_trailer_mapped() -> None:
-    anime = _make_anime(trailer={"id": "abc123", "site": "youtube", "thumbnail": "https://img.youtube.com/abc123.jpg"})
+    anime = _make_anime(
+        trailer={
+            "id": "abc123",
+            "site": "youtube",
+            "thumbnail": "https://img.youtube.com/abc123.jpg",
+        }
+    )
     result = anime_from_anilist(anime)
     assert result["trailers"][0]["source"] == "https://youtu.be/abc123"
     assert result["trailers"][0]["thumbnail"] == "https://img.youtube.com/abc123.jpg"
@@ -372,8 +449,11 @@ def test_anime_no_trailer_excluded() -> None:
 # anime_from_anilist — images
 # =============================================================================
 
+
 def test_anime_cover_extra_large_preferred() -> None:
-    anime = _make_anime(coverImage={"extraLarge": "https://xl.jpg", "large": "https://l.jpg"})
+    anime = _make_anime(
+        coverImage={"extraLarge": "https://xl.jpg", "large": "https://l.jpg"}
+    )
     result = anime_from_anilist(anime)
     assert result["images"]["covers"][0] == "https://xl.jpg"
 
@@ -394,6 +474,7 @@ def test_anime_banner_image_mapped() -> None:
 # anime_from_anilist — statistics
 # =============================================================================
 
+
 def test_anime_statistics_score_normalized() -> None:
     result = anime_from_anilist(_make_anime(averageScore=87))
     assert result["statistics"]["anilist"]["score"] == 8.7
@@ -412,9 +493,16 @@ def test_anime_statistics_members_and_favorites() -> None:
 
 
 def test_anime_contextual_ranks_mapped() -> None:
-    anime = _make_anime(rankings=[
-        {"rank": 22, "context": "highest rated all time", "format": "TV", "allTime": True},
-    ])
+    anime = _make_anime(
+        rankings=[
+            {
+                "rank": 22,
+                "context": "highest rated all time",
+                "format": "TV",
+                "allTime": True,
+            },
+        ]
+    )
     result = anime_from_anilist(anime)
     ranks = result["statistics"]["anilist"]["contextual_ranks"]
     assert ranks[0]["rank"] == 22
@@ -431,8 +519,15 @@ def test_anime_no_rankings_excludes_contextual_ranks() -> None:
 # anime_from_anilist — broadcast
 # =============================================================================
 
+
 def test_anime_broadcast_next_episode_at() -> None:
-    anime = _make_anime(nextAiringEpisode={"episode": 1110, "airingAt": 1743865200, "timeUntilAiring": 600})
+    anime = _make_anime(
+        nextAiringEpisode={
+            "episode": 1110,
+            "airingAt": 1743865200,
+            "timeUntilAiring": 600,
+        }
+    )
     result = anime_from_anilist(anime)
     assert "broadcast" in result
     assert "next_episode_at" in result["broadcast"]
@@ -447,26 +542,59 @@ def test_anime_no_next_airing_episode_excludes_broadcast() -> None:
 # anime_from_anilist — relations
 # =============================================================================
 
+
 def test_anime_relations_anime_bucket() -> None:
-    anime = _make_anime(relations={"edges": [
-        {
-            "node": {"id": 100, "format": "MOVIE", "status": "FINISHED", "title": {"romaji": "OP Film"}, "seasonYear": 2000, "averageScore": 80, "coverImage": None, "episodes": 1, "chapters": None, "volumes": None},
-            "relationType": "SIDE_STORY",
+    anime = _make_anime(
+        relations={
+            "edges": [
+                {
+                    "node": {
+                        "id": 100,
+                        "format": "MOVIE",
+                        "status": "FINISHED",
+                        "title": {"romaji": "OP Film"},
+                        "seasonYear": 2000,
+                        "averageScore": 80,
+                        "coverImage": None,
+                        "episodes": 1,
+                        "chapters": None,
+                        "volumes": None,
+                    },
+                    "relationType": "SIDE_STORY",
+                }
+            ]
         }
-    ]})
+    )
     result = anime_from_anilist(anime)
     assert "SIDE_STORY" in result["related_anime"]
     assert result["related_anime"]["SIDE_STORY"][0]["title"] == "OP Film"
-    assert result["related_anime"]["SIDE_STORY"][0]["sources"] == ["https://anilist.co/anime/100"]
+    assert result["related_anime"]["SIDE_STORY"][0]["sources"] == [
+        "https://anilist.co/anime/100"
+    ]
 
 
 def test_anime_relations_source_material_bucket() -> None:
-    anime = _make_anime(relations={"edges": [
-        {
-            "node": {"id": 200, "format": "MANGA", "status": "ONGOING", "title": {"romaji": "OP Manga"}, "seasonYear": None, "averageScore": None, "coverImage": None, "episodes": None, "chapters": 1100, "volumes": 105},
-            "relationType": "ADAPTATION",
+    anime = _make_anime(
+        relations={
+            "edges": [
+                {
+                    "node": {
+                        "id": 200,
+                        "format": "MANGA",
+                        "status": "ONGOING",
+                        "title": {"romaji": "OP Manga"},
+                        "seasonYear": None,
+                        "averageScore": None,
+                        "coverImage": None,
+                        "episodes": None,
+                        "chapters": 1100,
+                        "volumes": 105,
+                    },
+                    "relationType": "ADAPTATION",
+                }
+            ]
         }
-    ]})
+    )
     result = anime_from_anilist(anime)
     assert "ADAPTATION" in result["related_source_material"]
     entry = result["related_source_material"]["ADAPTATION"][0]
@@ -476,24 +604,54 @@ def test_anime_relations_source_material_bucket() -> None:
 
 
 def test_anime_relation_source_material_cover_uses_extra_large() -> None:
-    anime = _make_anime(relations={"edges": [
-        {
-            "node": {"id": 200, "format": "MANGA", "status": "ONGOING", "title": {"romaji": "OP Manga"}, "seasonYear": None, "averageScore": None, "coverImage": {"extraLarge": "https://xl.jpg"}, "episodes": None, "chapters": None, "volumes": None},
-            "relationType": "ADAPTATION",
+    anime = _make_anime(
+        relations={
+            "edges": [
+                {
+                    "node": {
+                        "id": 200,
+                        "format": "MANGA",
+                        "status": "ONGOING",
+                        "title": {"romaji": "OP Manga"},
+                        "seasonYear": None,
+                        "averageScore": None,
+                        "coverImage": {"extraLarge": "https://xl.jpg"},
+                        "episodes": None,
+                        "chapters": None,
+                        "volumes": None,
+                    },
+                    "relationType": "ADAPTATION",
+                }
+            ]
         }
-    ]})
+    )
     result = anime_from_anilist(anime)
     entry = result["related_source_material"]["ADAPTATION"][0]
     assert entry["images"] == ["https://xl.jpg"]
 
 
 def test_anime_relation_anime_score_normalized() -> None:
-    anime = _make_anime(relations={"edges": [
-        {
-            "node": {"id": 300, "format": "TV", "status": "FINISHED", "title": {"romaji": "Sequel"}, "seasonYear": 2022, "averageScore": 90, "coverImage": None, "episodes": 12, "chapters": None, "volumes": None},
-            "relationType": "SEQUEL",
+    anime = _make_anime(
+        relations={
+            "edges": [
+                {
+                    "node": {
+                        "id": 300,
+                        "format": "TV",
+                        "status": "FINISHED",
+                        "title": {"romaji": "Sequel"},
+                        "seasonYear": 2022,
+                        "averageScore": 90,
+                        "coverImage": None,
+                        "episodes": 12,
+                        "chapters": None,
+                        "volumes": None,
+                    },
+                    "relationType": "SEQUEL",
+                }
+            ]
         }
-    ]})
+    )
     result = anime_from_anilist(anime)
     assert result["related_anime"]["SEQUEL"][0]["score"] == 9.0
 
@@ -501,6 +659,7 @@ def test_anime_relation_anime_score_normalized() -> None:
 # =============================================================================
 # character_from_anilist — scalars
 # =============================================================================
+
 
 def test_character_name() -> None:
     result = character_from_anilist(_make_character_edge())
@@ -561,6 +720,7 @@ def test_character_source_url_fallback_to_id() -> None:
 # character_from_anilist — attributes
 # =============================================================================
 
+
 def test_character_gender_attribute() -> None:
     result = character_from_anilist(_make_character_edge())
     assert result["attributes"]["gender"] == "Male"
@@ -592,13 +752,21 @@ def test_character_no_date_of_birth_excluded() -> None:
 # character_from_anilist — description parsing
 # =============================================================================
 
+
 def test_character_description_parsed_from_structured_lines() -> None:
     # Pass description through model_validate so the @model_validator runs on it
-    edge = _make_character_edge(node={
-        "id": 40,
-        "name": {"full": "Usopp", "native": None, "alternative": [], "alternativeSpoiler": []},
-        "description": "__Height:__ 174 cm\n\nUsopp is a liar.",
-    })
+    edge = _make_character_edge(
+        node={
+            "id": 40,
+            "name": {
+                "full": "Usopp",
+                "native": None,
+                "alternative": [],
+                "alternativeSpoiler": [],
+            },
+            "description": "__Height:__ 174 cm\n\nUsopp is a liar.",
+        }
+    )
     result = character_from_anilist(edge)
     assert result["description"] == "Usopp is a liar."
     assert result["attributes"]["height"] == "174 cm"
@@ -606,11 +774,18 @@ def test_character_description_parsed_from_structured_lines() -> None:
 
 def test_character_spoiler_in_description_goes_to_spoilers() -> None:
     # Pass description through model_validate so the @model_validator runs on it
-    edge = _make_character_edge(node={
-        "id": 40,
-        "name": {"full": "Usopp", "native": None, "alternative": [], "alternativeSpoiler": []},
-        "description": "__Bounty:__ ~!500,000,000!~\n\nUsopp is brave.",
-    })
+    edge = _make_character_edge(
+        node={
+            "id": 40,
+            "name": {
+                "full": "Usopp",
+                "native": None,
+                "alternative": [],
+                "alternativeSpoiler": [],
+            },
+            "description": "__Bounty:__ ~!500,000,000!~\n\nUsopp is brave.",
+        }
+    )
     result = character_from_anilist(edge)
     assert result["spoilers"]["bounty"] == "500,000,000"
     assert "bounty" not in result["attributes"]
@@ -618,11 +793,18 @@ def test_character_spoiler_in_description_goes_to_spoilers() -> None:
 
 def test_character_description_multiline_prose() -> None:
     """Multi-line prose: second+ lines must hit the in_prose=True continuation path."""
-    edge = _make_character_edge(node={
-        "id": 40,
-        "name": {"full": "Usopp", "native": None, "alternative": [], "alternativeSpoiler": []},
-        "description": "__Height:__ 174 cm\n\nFirst prose line.\nSecond prose line.",
-    })
+    edge = _make_character_edge(
+        node={
+            "id": 40,
+            "name": {
+                "full": "Usopp",
+                "native": None,
+                "alternative": [],
+                "alternativeSpoiler": [],
+            },
+            "description": "__Height:__ 174 cm\n\nFirst prose line.\nSecond prose line.",
+        }
+    )
     result = character_from_anilist(edge)
     assert "First prose line." in result["description"]
     assert "Second prose line." in result["description"]
@@ -639,6 +821,7 @@ def test_character_description_none_excluded() -> None:
 # character_from_anilist — nicknames (alternativeSpoiler)
 # =============================================================================
 
+
 def test_character_nicknames_from_alternative_spoiler() -> None:
     edge = _make_character_edge()
     edge.node.name.alternative_spoiler = ["God Usopp", "King of Snipers"]
@@ -650,6 +833,7 @@ def test_character_nicknames_from_alternative_spoiler() -> None:
 # =============================================================================
 # character_from_anilist — voice actors
 # =============================================================================
+
 
 def test_character_voice_actor_mapped() -> None:
     result = character_from_anilist(_make_character_edge())
@@ -685,12 +869,26 @@ def test_character_voice_actor_skipped_when_no_va() -> None:
 def test_character_multiple_voice_actors() -> None:
     edge = _make_character_edge()
     edge.voice_actor_roles = [
-        type(edge.voice_actor_roles[0]).model_validate({
-            "voiceActor": {"id": 95, "name": {"full": "Mayumi Tanaka"}, "languageV2": "Japanese", "siteUrl": "https://anilist.co/staff/95"},
-        }),
-        type(edge.voice_actor_roles[0]).model_validate({
-            "voiceActor": {"id": 360, "name": {"full": "Sonny Strait"}, "languageV2": "English", "siteUrl": "https://anilist.co/staff/360"},
-        }),
+        type(edge.voice_actor_roles[0]).model_validate(
+            {
+                "voiceActor": {
+                    "id": 95,
+                    "name": {"full": "Mayumi Tanaka"},
+                    "languageV2": "Japanese",
+                    "siteUrl": "https://anilist.co/staff/95",
+                },
+            }
+        ),
+        type(edge.voice_actor_roles[0]).model_validate(
+            {
+                "voiceActor": {
+                    "id": 360,
+                    "name": {"full": "Sonny Strait"},
+                    "languageV2": "English",
+                    "siteUrl": "https://anilist.co/staff/360",
+                },
+            }
+        ),
     ]
     result = character_from_anilist(edge)
     assert len(result["voice_actors"]) == 2

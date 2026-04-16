@@ -21,7 +21,6 @@ class PlatformIDExtractor:
     PATTERNS = {
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
-
         "anisearch_id": r"anisearch\.com/anime/(?:index/)?(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",

@@ -223,6 +223,7 @@ class TestNormalizeToUtc:
     def test_normalizes_utc_string(self):
         """Normalizes a UTC string with Z suffix."""
         from common.utils.datetime_utils import normalize_to_utc
+
         date_str = "2024-04-20T12:00:00Z"
         result = normalize_to_utc(date_str)
         assert result.tzinfo == UTC
@@ -232,6 +233,7 @@ class TestNormalizeToUtc:
     def test_normalizes_jst_string_to_utc(self):
         """Normalizes a JST (+09:00) string to UTC."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # 2024-04-20 09:00 JST should be 2024-04-20 00:00 UTC
         date_str = "2024-04-20T09:00:00+09:00"
         result = normalize_to_utc(date_str)
@@ -242,6 +244,7 @@ class TestNormalizeToUtc:
     def test_normalizes_jst_midnight_to_previous_day_utc(self):
         """Normalizes JST midnight to the previous day in UTC."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # 2024-04-20 00:00 JST should be 2024-04-19 15:00 UTC
         date_str = "2024-04-20T00:00:00+09:00"
         result = normalize_to_utc(date_str)
@@ -253,6 +256,7 @@ class TestNormalizeToUtc:
     def test_normalizes_anisearch_format_to_utc(self):
         """Normalizes AniSearch format (DD.MM.YYYY) using the Midnight JST rule."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # 04.10.2024 (AniSearch) -> Midnight JST -> 15:00 UTC previous day
         date_str = "04.10.2024"
         result = normalize_to_utc(date_str)
@@ -265,6 +269,7 @@ class TestNormalizeToUtc:
     def test_normalizes_iso_date_only_using_midnight_jst_rule(self):
         """Normalizes ISO date-only (YYYY-MM-DD) using the Midnight JST rule."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # 2024-10-04 (Standard) -> Midnight JST -> 15:00 UTC previous day
         date_str = "2024-10-04"
         result = normalize_to_utc(date_str)
@@ -275,6 +280,7 @@ class TestNormalizeToUtc:
     def test_handles_naive_datetime_string(self):
         """Handles naive datetime strings by assuming UTC and making them aware."""
         from common.utils.datetime_utils import normalize_to_utc
+
         date_str = "2024-04-20T12:00:00"
         result = normalize_to_utc(date_str)
         assert result.tzinfo == UTC
@@ -285,6 +291,7 @@ class TestNormalizeToUtc:
         from datetime import timedelta, timezone
 
         from common.utils.datetime_utils import normalize_to_utc
+
         jst = timezone(timedelta(hours=9))
         dt = datetime(2024, 4, 20, 9, 0, tzinfo=jst)
         result = normalize_to_utc(dt)
@@ -294,21 +301,25 @@ class TestNormalizeToUtc:
     def test_returns_none_for_none_input(self):
         """Returns None when input is None."""
         from common.utils.datetime_utils import normalize_to_utc
+
         assert normalize_to_utc(None) is None
 
     def test_returns_none_for_empty_string(self):
         """Returns None when input is empty string."""
         from common.utils.datetime_utils import normalize_to_utc
+
         assert normalize_to_utc("") is None
 
     def test_returns_none_for_invalid_format(self):
         """Returns None when date format is invalid."""
         from common.utils.datetime_utils import normalize_to_utc
+
         assert normalize_to_utc("not-a-date") is None
 
     def test_handles_unix_timestamp_int(self):
         """Handles integer Unix timestamps from AniList."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # 1727969160 is 2024-10-03 15:26:00 UTC
         ts = 1727969160
         result = normalize_to_utc(ts)
@@ -322,6 +333,7 @@ class TestNormalizeToUtc:
     def test_normalizes_pseudo_utc_midnight_to_jst_shift(self):
         """Treats a UTC-labeled midnight string as a JST air date and shifts it."""
         from common.utils.datetime_utils import normalize_to_utc
+
         # MAL/AnimSchedule often return this for air dates
         date_str = "2024-10-04T00:00:00+00:00"
         result = normalize_to_utc(date_str)
@@ -333,6 +345,7 @@ class TestNormalizeToUtc:
     def test_normalizes_z_suffix_midnight_to_jst_shift(self):
         """Treats a Z-suffixed midnight string as a JST air date."""
         from common.utils.datetime_utils import normalize_to_utc
+
         date_str = "2024-10-04T00:00:00Z"
         result = normalize_to_utc(date_str)
         assert result.tzinfo == UTC

@@ -123,7 +123,11 @@ class AniListHelper(BaseEnrichmentHelper):
         await self._ensure_session()
         assert self.session is not None  # guaranteed by _ensure_session
 
-        headers = {"Content-Type": "application/json", "Accept": "application/json", "X-Hishel-Body-Key": "true"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Hishel-Body-Key": "true",
+        }
         payload = {"query": query, "variables": variables or {}}
 
         max_rate_limit_waits = 3

@@ -253,9 +253,7 @@ class ProgrammaticEnrichmentPipeline:
 
         # No gaps found, return next sequential
         next_id = existing_ids[-1] + 1
-        logger.info(
-            f"No gaps: Using next agent ID {next_id}"
-        )
+        logger.info(f"No gaps: Using next agent ID {next_id}")
         return next_id
 
     def _create_temp_dir(self, anime_title: str) -> str:
