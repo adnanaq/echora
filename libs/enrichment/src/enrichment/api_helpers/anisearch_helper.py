@@ -2,13 +2,14 @@
 
 import logging
 import os
-import re
-from types import TracebackType
 from typing import Any
 
 from common.utils.jsonl_utils import append_jsonl
 
-from ..crawlers.anisearch_anime_crawler import fetch_anisearch_anime
+from ..crawlers.anisearch.anisearch_anime_crawler import (
+    BASE_ANIME_URL,
+    fetch_anisearch_anime,
+)
 from ..crawlers.anisearch_character_crawler import fetch_anisearch_characters
 from ..crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
 from .base_helper import BaseEnrichmentHelper
@@ -75,16 +76,19 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             logger.info(f"Fetching all AniSearch data for ID {anisearch_id}")
 
             # Fetch anime data (primary data)
-            anime_data = await self.fetch_anime_data(anisearch_id)
+            anime_data = await self.fetch_anime(anisearch_id)
 
             if not anime_data:
                 logger.warning(f"Failed to fetch anime data for ID {anisearch_id}")
                 return None
 
+            if output_path:
+                append_jsonl(output_path, anime_data)
+
             # Fetch episodes if requested
             if include_episodes:
                 try:
-                    episode_data = await self.fetch_episode_data(anisearch_id)
+                    episode_data = await self.fetch_episodes(anisearch_id)
                     if episode_data:
                         anime_data["episodes"] = episode_data
                         logger.info(
@@ -100,7 +104,7 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             # Fetch characters if requested
             if include_characters:
                 try:
-                    character_data = await self.fetch_character_data(anisearch_id)
+                    character_data = await self.fetch_characters(anisearch_id)
                     if character_data:
                         characters = character_data.get("characters", [])
                         anime_data["characters"] = characters
@@ -117,56 +121,13 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             logger.info(
                 f"Successfully fetched all AniSearch data for ID {anisearch_id}"
             )
-            if output_path:
-                append_jsonl(output_path, anime_data)
             return anime_data
 
         except Exception:
             logger.exception(f"Error in _fetch_all_impl for ID {anisearch_id}")
             return None
 
-    async def extract_anisearch_id_from_url(self, url: str) -> int | None:
-        """Extract AniSearch ID from URL.
-
-        Args:
-            url: AniSearch URL (e.g., "https://www.anisearch.com/anime/18878,dan-da-dan")
-
-        Returns:
-            AniSearch ID (e.g., 18878) or None if extraction fails
-        """
-        try:
-            # Pattern: https://www.anisearch.com/anime/18878,dan-da-dan
-            # or: https://www.anisearch.com/anime/18878
-            match = re.search(r"anisearch\.com/anime/(\d+)", url)
-            if match:
-                return int(match.group(1))
-            return None
-        except (AttributeError, TypeError, ValueError):
-            logger.exception(f"Error extracting AniSearch ID from URL {url}")
-            return None
-
-    async def find_anisearch_url(
-        self, offline_anime_data: dict[str, Any]
-    ) -> str | None:
-        """Find AniSearch URL from offline anime data sources.
-
-        Args:
-            offline_anime_data: Offline anime data containing sources list
-
-        Returns:
-            AniSearch URL or None if not found
-        """
-        try:
-            sources = offline_anime_data.get("sources", [])
-            for source in sources:
-                if isinstance(source, str) and "anisearch.com" in source:
-                    return source
-            return None
-        except (AttributeError, TypeError, KeyError):
-            logger.exception("Error finding AniSearch URL")
-            return None
-
-    async def fetch_anime_data(self, anisearch_id: int) -> dict[str, Any] | None:
+    async def fetch_anime(self, anisearch_id: int) -> dict[str, Any] | None:
         """
         Fetches anime metadata from AniSearch for the given AniSearch numeric ID.
 
@@ -179,10 +140,9 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
         try:
             logger.info(f"Fetching AniSearch anime data for ID {anisearch_id}")
 
-            # Call anime crawler with anime_id (accepts ID, path, or full URL)
             anime_data = await fetch_anisearch_anime(
-                anime_id=str(anisearch_id),  # Pass ID directly
-                output_path=None,  # No file output - return data only
+                f"{BASE_ANIME_URL}{anisearch_id}",
+                output_path=None,
             )
 
             if not anime_data:
@@ -199,7 +159,7 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             logger.exception(f"Error fetching anime data for ID {anisearch_id}")
             return None
 
-    async def fetch_episode_data(
+    async def fetch_episodes(
         self, anisearch_id: int
     ) -> list[dict[str, Any]] | None:
         """
@@ -233,7 +193,7 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             logger.exception(f"Error fetching episode data for ID {anisearch_id}")
             return None
 
-    async def fetch_character_data(self, anisearch_id: int) -> dict[str, Any] | None:
+    async def fetch_characters(self, anisearch_id: int) -> dict[str, Any] | None:
         """
         Retrieve character information for a given AniSearch anime ID.
 
@@ -266,34 +226,3 @@ class AniSearchEnrichmentHelper(BaseEnrichmentHelper):
             logger.exception(f"Error fetching character data for ID {anisearch_id}")
             return None
 
-    async def close(self) -> None:
-        """
-        Perform cleanup for the helper; currently a no-op since crawlers are stateless.
-        """
-        pass
-
-    async def __aenter__(self) -> "AniSearchEnrichmentHelper":
-        """
-        Enter the asynchronous context and make the helper available as the context value.
-
-        Returns:
-            AniSearchEnrichmentHelper: The same helper instance.
-        """
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> bool:
-        """
-        Perform cleanup when exiting the async context.
-
-        Calls the helper's cleanup routine and returns `False` to indicate any exception raised in the context should not be suppressed.
-
-        Returns:
-            `False` to indicate exceptions are not suppressed.
-        """
-        await self.close()
-        return False
