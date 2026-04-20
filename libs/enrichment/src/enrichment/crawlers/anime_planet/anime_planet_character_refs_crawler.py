@@ -73,9 +73,11 @@ async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
         return None
 
     status = result.get("status_code")
-    if status and status != 200:
+    if status and status >= 400:
         logger.error(f"HTTP {status} for characters page {url}")
         return None
+    if status and 300 <= status < 400:
+        logger.debug(f"HTTP {status} (redirect followed) for characters page {url}")
 
     items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
     if not items:

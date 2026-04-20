@@ -505,9 +505,11 @@ async def _fetch_animeplanet_anime_data(
     if status == 404:
         logger.warning(f"Anime not found (404): {url}")
         return None
-    if status and status != 200:
+    if status and status >= 400:
         logger.error(f"HTTP {status} for anime {url}")
         return None
+    if status and 300 <= status < 400:
+        logger.debug(f"HTTP {status} (redirect followed) for anime {url}")
 
     if not result.get("success"):
         logger.warning(f"Crawl failed for {url}: {result.get('error_message')}")

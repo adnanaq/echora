@@ -15,7 +15,6 @@ import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -233,43 +232,7 @@ def parse_duration_seconds(raw: str | None) -> int | None:
     return total if total > 0 else None
 
 
-def parse_iso_date(raw: str | None) -> str | None:
-    """Parse a MAL date string to an ISO 8601 date string (YYYY-MM-DD).
-
-    Handles:
-        "Oct 20, 1999"    → "1999-10-20"
-        "Oct  20, 1999"   → "1999-10-20" (extra space)
-        "?"               → None
-        None              → None
-
-    Args:
-        raw: Raw date string from MAL.
-
-    Returns:
-        ISO date string "YYYY-MM-DD", or None if not parseable.
-    """
-    if not raw or raw.strip() in ("?", "N/A", ""):
-        return None
-
-    raw = raw.strip()
-
-    # "Oct 20, 1999" or "Oct  20, 1999" (normalize extra whitespace first)
-    try:
-        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime(
-            "%Y-%m-%d"
-        )
-    except ValueError:
-        pass
-
-    # Already ISO-ish "1999-10-20"
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
-        return raw
-
-    # Year-only "2026" — upcoming anime with no specific date yet
-    if re.match(r"^\d{4}$", raw):
-        return f"{raw}-01-01"
-
-    return None
+from enrichment.crawlers.utils import parse_iso_date as parse_iso_date  # noqa: F401, E402
 
 
 def parse_aired_string(aired_raw: str | None) -> tuple[str | None, str | None]:
@@ -325,29 +288,7 @@ def parse_premiered(premiered_raw: str | None) -> tuple[str | None, int | None]:
     return None, None
 
 
-def parse_broadcast_string(
-    broadcast_raw: str | None,
-) -> tuple[str | None, str | None, str | None]:
-    """Parse a MAL broadcast string into (day, time, timezone).
-
-    Handles:
-        "Sundays at 23:15 (JST)"    → ("Sundays", "23:15", "JST")
-        "Saturdays at 00:00 (JST)"  → ("Saturdays", "00:00", "JST")
-        "Unknown"                   → (None, None, None)
-
-    Args:
-        broadcast_raw: Raw broadcast string from MAL sidebar.
-
-    Returns:
-        Tuple of (day, time, timezone), any may be None.
-    """
-    if not broadcast_raw or broadcast_raw.strip().lower() in ("unknown", "n/a", ""):
-        return None, None, None
-
-    match = re.match(r"(\w+)\s+at\s+(\d{2}:\d{2})\s+\((\w+)\)", broadcast_raw.strip())
-    if match:
-        return match.group(1), match.group(2), match.group(3)
-    return None, None, None
+from enrichment.crawlers.utils import parse_broadcast_string as parse_broadcast_string  # noqa: F401, E402
 
 
 def parse_episode_ranges(raw: str | None) -> list[tuple[int, int | None]]:

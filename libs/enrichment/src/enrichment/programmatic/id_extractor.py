@@ -50,7 +50,9 @@ class PlatformIDExtractor:
         ids["anilist_url"] = next(
             (s for s in sources if "anilist.co/anime/" in s), None
         )
-
+        ids["anisearch_id"] = next(
+            (s for s in sources if "anilist.co/anime/" in s), None
+        )
         # Extract IDs for each platform
         for platform, pattern in self.PATTERNS.items():
             ids[platform] = self._extract_id(sources, pattern)
@@ -104,7 +106,6 @@ class PlatformIDExtractor:
             # Validate numeric IDs
             if platform in [
                 "anidb_id",
-                "anisearch_id",
                 "livechart_id",
             ]:
                 try:

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from types import TracebackType
 from typing import Any
 
 
@@ -32,6 +33,6 @@ class BaseEnrichmentHelper(ABC):
     async def __aenter__(self) -> "BaseEnrichmentHelper":
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+    async def __aexit__(self, exc_type: type[BaseException], exc_val: BaseException, exc_tb: TracebackType) -> bool:
         await self.close()
         return False
