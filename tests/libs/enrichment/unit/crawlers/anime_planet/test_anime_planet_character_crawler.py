@@ -1,15 +1,11 @@
 """Unit tests for Anime-Planet character crawler, refs crawler, and mapper.
 
-Coverage targets:
-- All regex extraction helpers (pure functions, no I/O)
-- _build_character assembly
-- _fetch_character_data async branches (no result, HTTP error, empty content, success)
-- fetch_animeplanet_character URL normalization + success/failure
-- fetch_animeplanet_characters batch flows (all cached, all live, partial, chunked, on_result)
-- _fetch_refs_data async branches (XPath extracted_content path)
-- fetch_animeplanet_character_refs public wrapper
-- character_from_animeplanet mapper (roles, VAs, attributes, dedup)
-- main() CLI
+Baseline tests use real output captured from live AP pages:
+- ap_character_raw: https://www.anime-planet.com/characters/monkey-d-luffy (2026-04-17)
+  (output of _fetch_character_data — XPath fields + _html)
+
+Edge-case tests use synthetic HTML to isolate specific branches not
+reachable from the fixture (empty inputs, missing sections, malformed rows).
 """
 
 import json
@@ -51,6 +47,8 @@ from enrichment.crawlers.anime_planet.animeplanet_mapper import (
 )
 
 pytestmark = pytest.mark.asyncio
+
+_LUFFY_AP_URL = "https://www.anime-planet.com/characters/monkey-d-luffy"
 
 
 # =============================================================================
@@ -100,16 +98,16 @@ def test_parse_rank_no_digits() -> None:
 # =============================================================================
 
 
+def test_parse_loved_count_from_fixture(ap_character_raw) -> None:
+    assert _parse_loved_count(ap_character_raw["loved_count"]) == 36561
+
+
 def test_parse_loved_count_none() -> None:
     assert _parse_loved_count(None) is None
 
 
 def test_parse_loved_count_empty() -> None:
     assert _parse_loved_count("") is None
-
-
-def test_parse_loved_count_with_commas() -> None:
-    assert _parse_loved_count("36,485 users") == 36485
 
 
 def test_parse_loved_count_plain() -> None:
@@ -124,32 +122,23 @@ def test_parse_loved_count_no_digits() -> None:
 # _extract_entry_bar
 # =============================================================================
 
-_ENTRY_BAR_BOTH = (
-    '<section class="entryBar">Gender: Male<br>Hair Color: Black</section>'
-)
-_ENTRY_BAR_GENDER_ONLY = (
-    '<section class="entryBar someExtraClass">Gender: Female</section>'
-)
-_ENTRY_BAR_HAIR_ONLY = (
-    '<section class="someClass entryBar">Hair Color: Blonde</section>'
-)
-_ENTRY_BAR_NEITHER = '<section class="entryBar">Species: Human</section>'
 
-
-def test_extract_entry_bar_both() -> None:
-    result = _extract_entry_bar(_ENTRY_BAR_BOTH)
+def test_extract_entry_bar_from_fixture(ap_character_raw) -> None:
+    result = _extract_entry_bar(ap_character_raw["_html"])
     assert result["gender"] == "Male"
     assert result["hair_color"] == "Black"
 
 
 def test_extract_entry_bar_gender_only() -> None:
-    result = _extract_entry_bar(_ENTRY_BAR_GENDER_ONLY)
+    html = '<section class="entryBar someExtraClass">Gender: Female</section>'
+    result = _extract_entry_bar(html)
     assert result["gender"] == "Female"
     assert result["hair_color"] is None
 
 
 def test_extract_entry_bar_hair_only() -> None:
-    result = _extract_entry_bar(_ENTRY_BAR_HAIR_ONLY)
+    html = '<section class="someClass entryBar">Hair Color: Blonde</section>'
+    result = _extract_entry_bar(html)
     assert result["gender"] is None
     assert result["hair_color"] == "Blonde"
 
@@ -160,7 +149,7 @@ def test_extract_entry_bar_no_section() -> None:
 
 
 def test_extract_entry_bar_no_gender_or_hair() -> None:
-    result = _extract_entry_bar(_ENTRY_BAR_NEITHER)
+    result = _extract_entry_bar('<section class="entryBar">Species: Human</section>')
     assert result["gender"] is None
     assert result["hair_color"] is None
 
@@ -169,22 +158,11 @@ def test_extract_entry_bar_no_gender_or_hair() -> None:
 # _extract_metadata
 # =============================================================================
 
-_METADATA_MULTI = """
-<h3 class="EntryMetadata__title">Eye Color</h3>
-<div class="EntryMetadata__value">Black</div>
-<h3 class="EntryMetadata__title">Birthday</h3>
-<div class="EntryMetadata__value">May 5</div>
-"""
 
-_METADATA_EMPTY_KEY = """
-<h3 class="EntryMetadata__title">   </h3>
-<div class="EntryMetadata__value">Orphan</div>
-"""
-
-
-def test_extract_metadata_multiple() -> None:
-    result = _extract_metadata(_METADATA_MULTI)
-    assert result == {"Eye Color": "Black", "Birthday": "May 5"}
+def test_extract_metadata_from_fixture(ap_character_raw) -> None:
+    result = _extract_metadata(ap_character_raw["_html"])
+    assert result.get("Eye color") == "Black"
+    assert result.get("Birthday") == "May 5"
 
 
 def test_extract_metadata_empty_html() -> None:
@@ -192,7 +170,11 @@ def test_extract_metadata_empty_html() -> None:
 
 
 def test_extract_metadata_skips_empty_key() -> None:
-    assert _extract_metadata(_METADATA_EMPTY_KEY) == {}
+    html = """
+<h3 class="EntryMetadata__title">   </h3>
+<div class="EntryMetadata__value">Orphan</div>
+"""
+    assert _extract_metadata(html) == {}
 
 
 # =============================================================================
@@ -200,14 +182,13 @@ def test_extract_metadata_skips_empty_key() -> None:
 # =============================================================================
 
 
+def test_extract_alt_names_from_fixture(ap_character_raw) -> None:
+    assert _extract_alt_names(ap_character_raw["_html"]) == ["Straw Hat"]
+
+
 def test_extract_alt_names_comma_separated() -> None:
     html = '<h2 class="aka">Aka: Straw Hat, Monkey Luffy</h2>'
     assert _extract_alt_names(html) == ["Straw Hat", "Monkey Luffy"]
-
-
-def test_extract_alt_names_single() -> None:
-    html = '<h2 class="aka">Aka: Straw Hat</h2>'
-    assert _extract_alt_names(html) == ["Straw Hat"]
 
 
 def test_extract_alt_names_none() -> None:
@@ -224,16 +205,10 @@ def test_extract_alt_names_strips_inner_html() -> None:
 # =============================================================================
 
 
-def test_extract_description_plain() -> None:
-    html = '<div itemprop="description">A rubber man who dreams of becoming Pirate King.</div>'
-    assert (
-        _extract_description(html) == "A rubber man who dreams of becoming Pirate King."
-    )
-
-
-def test_extract_description_strips_tags() -> None:
-    html = '<div itemprop="description">Main <b>character</b> of <a href="#">One Piece</a>.</div>'
-    assert _extract_description(html) == "Main character of One Piece."
+def test_extract_description_from_fixture(ap_character_raw) -> None:
+    desc = _extract_description(ap_character_raw["_html"])
+    assert desc is not None
+    assert "Shanks" in desc
 
 
 def test_extract_description_no_match() -> None:
@@ -323,14 +298,37 @@ def test_extract_vas_url_stored() -> None:
 # _extract_anime_roles
 # =============================================================================
 
-_ANIME_ROLES_HTML = """
+
+def test_extract_anime_roles_from_fixture(ap_character_raw) -> None:
+    roles = _extract_anime_roles(ap_character_raw["_html"])
+    assert len(roles) == 25
+    op = next(r for r in roles if r.title == "One Piece")
+    assert op.role == "Main"
+    assert set(op.voice_actors.keys()) == {"jp", "us", "fr", "es", "de", "ko"}
+    assert op.voice_actors["jp"][0].name == "Mayumi TANAKA"
+    assert op.voice_actors["jp"][0].url == "/people/mayumi-tanaka"
+
+
+def test_extract_anime_roles_no_section() -> None:
+    assert _extract_anime_roles("<p>Nothing here</p>") == []
+
+
+def test_extract_anime_roles_skips_bad_rows() -> None:
+    html = """
 <h3>Anime Roles</h3>
 <table><tbody>
-<tr>
-<td><a href="/anime/one-piece">One Piece</a></td>
-<td>Main</td>
-<td><div class="flag flagJP"><a href="/people/mayumi-tanaka">Mayumi Tanaka</a></div></td>
-</tr>
+<tr><td>Only one cell</td></tr>
+<tr><td>No href here at all</td><td>Main</td></tr>
+<tr><td><img src="x.jpg"></td><td>Main</td></tr>
+</tbody></table>
+"""
+    assert _extract_anime_roles(html) == []
+
+
+def test_extract_anime_roles_empty_role_is_none() -> None:
+    html = """
+<h3>Anime Roles</h3>
+<table><tbody>
 <tr>
 <td><a href="/anime/one-piece-film">One Piece Film</a></td>
 <td></td>
@@ -338,8 +336,13 @@ _ANIME_ROLES_HTML = """
 </tr>
 </tbody></table>
 """
+    roles = _extract_anime_roles(html)
+    assert len(roles) == 1
+    assert roles[0].role is None
 
-_ANIME_ROLES_TWO_CELLS = """
+
+def test_extract_anime_roles_two_cells_no_actors() -> None:
+    html = """
 <h3>Anime Roles</h3>
 <table><tbody>
 <tr>
@@ -348,45 +351,7 @@ _ANIME_ROLES_TWO_CELLS = """
 </tr>
 </tbody></table>
 """
-
-_ANIME_ROLES_BAD_ROWS = """
-<h3>Anime Roles</h3>
-<table><tbody>
-<tr><td>Only one cell</td></tr>
-<tr><td>No href here at all</td><td>Main</td></tr>
-<tr><td><img src="x.jpg"></td><td>Main</td></tr>
-</tbody></table>
-"""
-
-
-def test_extract_anime_roles_title_url_role() -> None:
-    roles = _extract_anime_roles(_ANIME_ROLES_HTML)
-    assert roles[0].title == "One Piece"
-    assert roles[0].url == "/anime/one-piece"
-    assert roles[0].role == "Main"
-
-
-def test_extract_anime_roles_voice_actors_parsed() -> None:
-    roles = _extract_anime_roles(_ANIME_ROLES_HTML)
-    assert "jp" in roles[0].voice_actors
-    assert roles[0].voice_actors["jp"][0].name == "Mayumi Tanaka"
-
-
-def test_extract_anime_roles_empty_role_is_none() -> None:
-    roles = _extract_anime_roles(_ANIME_ROLES_HTML)
-    assert roles[1].role is None
-
-
-def test_extract_anime_roles_no_section() -> None:
-    assert _extract_anime_roles("<p>Nothing here</p>") == []
-
-
-def test_extract_anime_roles_skips_bad_rows() -> None:
-    assert _extract_anime_roles(_ANIME_ROLES_BAD_ROWS) == []
-
-
-def test_extract_anime_roles_two_cells_no_actors() -> None:
-    roles = _extract_anime_roles(_ANIME_ROLES_TWO_CELLS)
+    roles = _extract_anime_roles(html)
     assert len(roles) == 1
     assert roles[0].voice_actors == {}
 
@@ -395,23 +360,14 @@ def test_extract_anime_roles_two_cells_no_actors() -> None:
 # _extract_manga_roles
 # =============================================================================
 
-_MANGA_ROLES_HTML = """
-<h3>Manga Roles</h3>
-<table><tbody>
-<tr>
-<td><a href="/manga/one-piece">One Piece</a></td>
-<td>Main</td>
-</tr>
-</tbody></table>
-"""
 
-
-def test_extract_manga_roles_basic() -> None:
-    roles = _extract_manga_roles(_MANGA_ROLES_HTML)
-    assert len(roles) == 1
-    assert roles[0].title == "One Piece"
-    assert roles[0].url == "/manga/one-piece"
+def test_extract_manga_roles_from_fixture(ap_character_raw) -> None:
+    roles = _extract_manga_roles(ap_character_raw["_html"])
+    assert len(roles) == 16
+    assert roles[0].title == "Cross Epoch"
     assert roles[0].role == "Main"
+    op = next(r for r in roles if r.title == "One Piece")
+    assert op.role == "Main"
 
 
 def test_extract_manga_roles_no_section() -> None:
@@ -451,63 +407,40 @@ def test_extract_manga_roles_empty_role_is_none() -> None:
     </tr>
     </tbody></table>
     """
-    roles = _extract_manga_roles(html)
-    assert roles[0].role is None
+    assert _extract_manga_roles(html)[0].role is None
 
 
 # =============================================================================
 # _build_character
 # =============================================================================
 
-_BUILD_HTML = """
-<section class="entryBar">Gender: Male<br>Hair Color: Black</section>
-<h2 class="aka">Aka: Straw Hat</h2>
-<div itemprop="description">Pirate who dreams of being king.</div>
-<a href="/characters/tags/pirate">Pirate</a>
-<h3 class="EntryMetadata__title">Birthday</h3>
-<div class="EntryMetadata__value">May 5</div>
-<h3>Anime Roles</h3>
-<table><tbody>
-<tr>
-<td><a href="/anime/one-piece">One Piece</a></td>
-<td>Main</td>
-<td><div class="flag flagJP"><a href="/people/mayumi-tanaka">Mayumi Tanaka</a></div></td>
-</tr>
-</tbody></table>
-"""
 
-_CHAR_URL = "https://www.anime-planet.com/characters/monkey-d-luffy"
-
-
-def test_build_character_slug_extracted() -> None:
-    char = _build_character({}, "", _CHAR_URL)
-    assert char.slug == "monkey-d-luffy"
-    assert char.url == _CHAR_URL
-
-
-def test_build_character_full_assembly() -> None:
-    raw = {
-        "name": "Monkey D. Luffy",
-        "image": "https://cdn.ap.com/luffy.jpg",
-        "loved_rank": "42",
-        "hated_rank": "7",
-    }
-    char = _build_character(raw, _BUILD_HTML, _CHAR_URL)
+def test_build_character_from_fixture(ap_character_raw) -> None:
+    char = _build_character(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
     assert char.name == "Monkey D. Luffy"
-    assert char.image == "https://cdn.ap.com/luffy.jpg"
-    assert char.loved_rank == 42
-    assert char.hated_rank == 7
+    assert char.slug == "monkey-d-luffy"
+    assert char.url == _LUFFY_AP_URL
+    assert char.image is not None and "monkey-d-luffy" in char.image
+    assert char.loved_count == 36561
+    assert char.loved_rank is None
+    assert char.hated_rank is None
     assert char.gender == "Male"
     assert char.hair_color == "Black"
     assert char.alt_names == ["Straw Hat"]
-    assert char.description == "Pirate who dreams of being king."
-    assert "Pirate" in char.tags
+    assert char.description is not None and "Shanks" in char.description
     assert char.attributes.get("Birthday") == "May 5"
-    assert len(char.anime_roles) == 1
+    assert len(char.anime_roles) == 25
+    assert len(char.manga_roles) == 16
+
+
+def test_build_character_slug_extracted() -> None:
+    char = _build_character({}, "", _LUFFY_AP_URL)
+    assert char.slug == "monkey-d-luffy"
+    assert char.url == _LUFFY_AP_URL
 
 
 def test_build_character_empty_raw() -> None:
-    char = _build_character({}, "", _CHAR_URL)
+    char = _build_character({}, "", _LUFFY_AP_URL)
     assert char.name == ""
     assert char.image is None
     assert char.loved_rank is None
@@ -533,7 +466,6 @@ def test_get_character_schema_structure() -> None:
 
 
 def test_get_character_schema_no_body_html_field() -> None:
-    # body_html XPath extraction returns empty — must NOT be in schema
     schema = _get_character_schema()
     field_names = [f["name"] for f in schema["fields"]]
     assert "body_html" not in field_names
@@ -668,15 +600,13 @@ async def test_fetch_animeplanet_character_returns_character(mocker) -> None:
         new_callable=AsyncMock,
         return_value={"name": "Luffy", "_html": ""},
     )
-    result = await fetch_animeplanet_character(
-        "https://www.anime-planet.com/characters/monkey-d-luffy"
-    )
+    result = await fetch_animeplanet_character(_LUFFY_AP_URL)
     assert result is not None
     assert result["name"] == "Luffy"
 
 
 async def test_fetch_animeplanet_character_passes_full_url_unchanged(mocker) -> None:
-    """Crawler passes the URL directly to _fetch_character_data — no normalization."""
+    """Crawler passes URL directly to _fetch_character_data — no normalization."""
     captured: list[str] = []
 
     async def _fake_fetch(u: str):
@@ -687,9 +617,8 @@ async def test_fetch_animeplanet_character_passes_full_url_unchanged(mocker) -> 
         "enrichment.crawlers.anime_planet.anime_planet_character_crawler._fetch_character_data",
         side_effect=_fake_fetch,
     )
-    url = "https://www.anime-planet.com/characters/monkey-d-luffy"
-    await fetch_animeplanet_character(url)
-    assert captured[0] == url
+    await fetch_animeplanet_character(_LUFFY_AP_URL)
+    assert captured[0] == _LUFFY_AP_URL
 
 
 # =============================================================================
@@ -826,7 +755,7 @@ async def test_fetch_animeplanet_characters_404_returns_none(mocker) -> None:
 async def test_fetch_animeplanet_characters_307_redirect_returns_character(
     mocker,
 ) -> None:
-    """307 redirect — Playwright follows it, content is valid, character should be returned."""
+    """307 redirect — Playwright follows it, content is valid, character returned."""
     url = "https://www.anime-planet.com/characters/monkey-d-garp"
     mocker.patch.object(
         _fetch_character_data,
@@ -891,7 +820,6 @@ async def test_fetch_animeplanet_characters_partial_cache(mocker) -> None:
 
 
 async def test_fetch_animeplanet_characters_chunks_into_batches(mocker) -> None:
-    # _CHARACTER_BATCH_SIZE + 1 URLs forces exactly 2 batch crawl calls
     urls = [
         f"https://www.anime-planet.com/characters/char{i}"
         for i in range(_CHARACTER_BATCH_SIZE + 1)
@@ -943,13 +871,12 @@ async def test_fetch_animeplanet_characters_passes_full_urls_unchanged(mocker) -
         "enrichment.crawlers.anime_planet.anime_planet_character_crawler.crawl_batch_urls",
         side_effect=_batch,
     )
-    url = "https://www.anime-planet.com/characters/monkey-d-luffy"
-    await fetch_animeplanet_characters([url])
-    assert captured[0] == url
+    await fetch_animeplanet_characters([_LUFFY_AP_URL])
+    assert captured[0] == _LUFFY_AP_URL
 
 
 # =============================================================================
-# _fetch_refs_data — async branches (XPath extracted_content path)
+# _fetch_refs_data — async branches
 # =============================================================================
 
 _REFS_EXTRACTED = json.dumps(
@@ -1090,6 +1017,23 @@ def _make_char(**kwargs) -> AnimePlanetCharacter:
     return AnimePlanetCharacter(**{**defaults, **kwargs})
 
 
+def test_mapper_from_fixture(ap_character_raw) -> None:
+    char = _build_character(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
+    result = character_from_animeplanet(char)
+    assert result["name"] == "Monkey D. Luffy"
+    assert result["sources"] == [_LUFFY_AP_URL]
+    assert result["favorites"] == 36561
+    assert result["nicknames"] == ["Straw Hat"]
+    assert result["description"] is not None and "Shanks" in result["description"]
+    assert "MAIN" in result["roles"]
+    assert any(e["title"] == "One Piece" for e in result["animeography"])
+    assert any(e["title"] == "One Piece" for e in result["mangaography"])
+    attrs = result["attributes"]
+    assert attrs["gender"] == "Male"
+    assert attrs["hair_color"] == "Black"
+    assert attrs.get("birthday") == "May 5"
+
+
 def test_mapper_basic_fields() -> None:
     char = _make_char(description="A test description", tags=["Hero"])
     result = character_from_animeplanet(char)
@@ -1101,9 +1045,7 @@ def test_mapper_basic_fields() -> None:
 
 def test_mapper_optional_fields_absent_or_empty_when_not_provided() -> None:
     result = character_from_animeplanet(_make_char())
-    # None/missing fields are excluded by exclude_none=True
     assert "description" not in result
-    # List fields default to [] in the Character model
     assert result.get("traits", []) == []
     assert result.get("nicknames", []) == []
     assert result.get("images", []) == []
@@ -1165,7 +1107,7 @@ def test_mapper_roles_aggregated_from_anime_and_manga() -> None:
     )
     roles = character_from_animeplanet(char)["roles"]
     assert "MAIN" in roles
-    assert "BACKGROUND" in roles  # Minor → BACKGROUND via _missing_
+    assert "BACKGROUND" in roles
 
 
 def test_mapper_role_dedup() -> None:

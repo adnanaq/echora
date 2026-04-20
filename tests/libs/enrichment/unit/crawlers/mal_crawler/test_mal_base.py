@@ -16,10 +16,8 @@ from enrichment.crawlers.mal_crawler.mal_base import (
     get_shared_mal_rate_limiter,
     normalize_mal_anime_url,
     parse_aired_string,
-    parse_broadcast_string,
     parse_duration_seconds,
     parse_episode_ranges,
-    parse_iso_date,
     parse_number,
     parse_premiered,
     parse_sidebar_field,
@@ -73,29 +71,6 @@ def test_parse_number(raw: str | None, expected: int | None) -> None:
 )
 def test_parse_duration_seconds(raw: str | None, expected: int | None) -> None:
     assert parse_duration_seconds(raw) == expected
-
-
-# =============================================================================
-# parse_iso_date
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("Oct 20, 1999", "1999-10-20"),
-        ("Apr 5, 2003", "2003-04-05"),
-        ("Jan 1, 2000", "2000-01-01"),
-        ("?", None),
-        ("N/A", None),
-        (None, None),
-        ("", None),
-        ("1999-10-20", "1999-10-20"),  # Already ISO
-        ("2026", "2026-01-01"),  # Year-only (upcoming anime)
-    ],
-)
-def test_parse_iso_date(raw: str | None, expected: str | None) -> None:
-    assert parse_iso_date(raw) == expected
 
 
 # =============================================================================
@@ -156,31 +131,6 @@ def test_parse_premiered(
     assert season == expected_season
     assert year == expected_year
 
-
-# =============================================================================
-# parse_broadcast_string
-# =============================================================================
-
-
-def test_parse_broadcast_string_full() -> None:
-    day, time, tz = parse_broadcast_string("Sundays at 23:15 (JST)")
-    assert day == "Sundays"
-    assert time == "23:15"
-    assert tz == "JST"
-
-
-def test_parse_broadcast_string_unknown() -> None:
-    day, time, tz = parse_broadcast_string("Unknown")
-    assert day is None
-    assert time is None
-    assert tz is None
-
-
-def test_parse_broadcast_string_none() -> None:
-    day, time, tz = parse_broadcast_string(None)
-    assert day is None
-    assert time is None
-    assert tz is None
 
 
 # =============================================================================
@@ -423,16 +373,7 @@ def test_get_mal_scraping_limiter_returns_limiter() -> None:
 
 
 # =============================================================================
-# parse_iso_date — unrecognized format → None
-# =============================================================================
-
-
-def test_parse_iso_date_unrecognized_returns_none() -> None:
-    assert parse_iso_date("Some Random String") is None
-
-
-# =============================================================================
-# parse_premiered — unrecognized string → (None, None) (line 462)
+# parse_premiered — unrecognized string → (None, None)
 # =============================================================================
 
 
@@ -440,18 +381,6 @@ def test_parse_premiered_unrecognized_returns_none_none() -> None:
     season, year = parse_premiered("Not a season string")
     assert season is None
     assert year is None
-
-
-# =============================================================================
-# parse_broadcast_string — no-match string → (None, None, None) (line 487)
-# =============================================================================
-
-
-def test_parse_broadcast_string_no_match_returns_nones() -> None:
-    day, time, tz = parse_broadcast_string("Irregular schedule")
-    assert day is None
-    assert time is None
-    assert tz is None
 
 
 # =============================================================================

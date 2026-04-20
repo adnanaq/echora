@@ -1,7 +1,7 @@
 """Unit tests for mal_anime_crawler.py — schema structure and post-processing helpers.
 
-These tests validate the text-anchor + regex extraction pattern using in-memory raw
-dicts that mirror the shape of real extraction output. No network calls are made.
+Fixtures are real XPath extraction output captured from
+https://myanimelist.net/anime/21/One_Piece (2026-04-17).
 """
 
 import json
@@ -40,7 +40,6 @@ def test_schema_external_sources_uses_text_anchor() -> None:
     ext_field = next(f for f in schema["fields"] if f["name"] == "external_sources_raw")
     selector = ext_field["selector"]
     assert "Available At" in selector or "Resources" in selector
-    # Old broken class name must not be present
     assert "streaming-platform_links" not in selector
 
 
@@ -74,132 +73,277 @@ def test_schema_streaming_links_name_uses_title_attribute() -> None:
 
 
 # =============================================================================
-# _build_anime_from_raw — external and streaming link post-processing
+# _build_anime_from_raw — uses real fixture data
 # =============================================================================
 
 
-def _build(extra: dict | None = None):
-    """Helper: call _build_anime_from_raw with a minimal raw dict."""
-    raw: dict = {"title": "One Piece"}
-    if extra:
-        raw.update(extra)
+def _build(raw: dict, picture_urls: list[str] | None = None):
     return _build_anime_from_raw(
         raw,
         url="https://myanimelist.net/anime/21/One_Piece",
-        picture_urls=[],
+        picture_urls=picture_urls or [],
     )
 
 
-def test_build_external_sources_parsed() -> None:
-    """external_sources_raw list is converted to MalExternalLink objects."""
-    anime = _build(
-        {
-            "external_sources_raw": [
-                {"name": "Official Site", "source": "https://example.com"},
-                {"name": "Twitter", "source": "https://twitter.com/onepieceanime"},
-            ]
-        }
-    )
-    assert len(anime.external_sources) == 2
-    assert anime.external_sources[0].name == "Official Site"
-    assert anime.external_sources[1].name == "Twitter"
+def test_build_external_sources_from_fixture(mal_anime_raw) -> None:
+    """Real fixture has 11 external sources — all parsed."""
+    anime = _build(mal_anime_raw)
+    assert len(anime.external_sources) == 11
+    names = [e.name for e in anime.external_sources]
+    assert "Official Site" in names
+    assert "AniDB" in names
 
 
-def test_build_streaming_links_parsed() -> None:
-    """streaming_links_raw list is converted to MalExternalLink objects."""
-    anime = _build(
-        {
-            "streaming_links_raw": [
-                {"name": "Crunchyroll", "source": "https://crunchyroll.com/one-piece"},
-                {"name": "Netflix", "source": "https://netflix.com/title/80107103"},
-            ]
-        }
-    )
-    assert len(anime.streaming) == 2
-    assert anime.streaming[0].name == "Crunchyroll"
-    assert anime.streaming[1].name == "Netflix"
+def test_build_streaming_links_from_fixture(mal_anime_raw) -> None:
+    """Real fixture has 3 streaming links — all parsed."""
+    anime = _build(mal_anime_raw)
+    assert len(anime.streaming) == 3
+    names = [s.name for s in anime.streaming]
+    assert "Crunchyroll" in names
+    assert "Netflix" in names
 
 
-def test_build_empty_link_name_skipped() -> None:
+def test_build_empty_link_name_skipped(mal_anime_raw) -> None:
     """Link entries with empty name are skipped."""
-    anime = _build(
-        {
-            "external_sources_raw": [
-                {"name": "", "source": "https://example.com"},
-                {"name": "Valid Site", "source": "https://valid.com"},
-            ]
-        }
-    )
+    raw = {
+        **mal_anime_raw,
+        "external_sources_raw": [
+            {"name": "", "source": "https://example.com"},
+            {"name": "Valid Site", "source": "https://valid.com"},
+        ],
+    }
+    anime = _build(raw)
     assert len(anime.external_sources) == 1
     assert anime.external_sources[0].name == "Valid Site"
 
 
-def test_build_empty_link_source_skipped() -> None:
+def test_build_empty_link_source_skipped(mal_anime_raw) -> None:
     """Link entries with empty source are skipped."""
-    anime = _build(
-        {
-            "streaming_links_raw": [
-                {"name": "Crunchyroll", "source": ""},
-                {"name": "Netflix", "source": "https://netflix.com"},
-            ]
-        }
-    )
+    raw = {
+        **mal_anime_raw,
+        "streaming_links_raw": [
+            {"name": "Crunchyroll", "source": ""},
+            {"name": "Netflix", "source": "https://netflix.com"},
+        ],
+    }
+    anime = _build(raw)
     assert len(anime.streaming) == 1
     assert anime.streaming[0].name == "Netflix"
 
 
-def test_build_missing_link_fields_returns_empty_lists() -> None:
-    """None or missing external/streaming link lists result in empty lists."""
-    anime = _build()
+def test_build_missing_link_fields_returns_empty_lists(mal_anime_raw) -> None:
+    """Missing external/streaming link keys result in empty lists."""
+    raw = {k: v for k, v in mal_anime_raw.items()
+           if k not in ("external_sources_raw", "streaming_links_raw")}
+    anime = _build(raw)
     assert anime.external_sources == []
     assert anime.streaming == []
 
 
-def test_build_dbchanges_placeholder_filtered_from_companies() -> None:
-    """Licensors/studios/producers with dbchanges.php source ('add some') are dropped."""
-    anime = _build(
-        {
-            "licensors": [
-                {
-                    "name": "add some",
-                    "source": "https://myanimelist.net/dbchanges.php?aid=62312&t=producers",
-                }
-            ],
-            "studios": [
-                {
-                    "name": "add some",
-                    "source": "https://myanimelist.net/dbchanges.php?aid=63764&t=producers",
-                }
-            ],
-            "producers": [
-                {
-                    "name": "Arch",
-                    "source": "https://myanimelist.net/anime/producer/1966/Arch",
-                }
-            ],
-        }
-    )
+def test_build_dbchanges_placeholder_filtered_from_companies(mal_anime_raw) -> None:
+    """Licensors/studios with dbchanges.php source are dropped."""
+    raw = {
+        **mal_anime_raw,
+        "licensors": [
+            {
+                "name": "add some",
+                "source": "https://myanimelist.net/dbchanges.php?aid=62312&t=producers",
+            }
+        ],
+        "studios": [
+            {
+                "name": "add some",
+                "source": "https://myanimelist.net/dbchanges.php?aid=63764&t=producers",
+            }
+        ],
+        "producers": [
+            {
+                "name": "Arch",
+                "source": "https://myanimelist.net/anime/producer/1966/Arch",
+            }
+        ],
+    }
+    anime = _build(raw)
     assert anime.licensors == []
     assert anime.studios == []
     assert len(anime.producers) == 1
     assert anime.producers[0].name == "Arch"
 
 
-def test_build_both_link_types_populated_independently() -> None:
-    """External and streaming links are populated independently."""
-    anime = _build(
-        {
-            "external_sources_raw": [
-                {"name": "Official Site", "source": "https://example.com"},
-            ],
-            "streaming_links_raw": [
-                {"name": "Crunchyroll", "source": "https://crunchyroll.com"},
-            ],
-        }
-    )
-    assert len(anime.external_sources) == 1
-    assert len(anime.streaming) == 1
-    assert anime.external_sources[0].name != anime.streaming[0].name
+def test_build_both_link_types_populated_independently(mal_anime_raw) -> None:
+    """External and streaming links populated from fixture independently."""
+    anime = _build(mal_anime_raw)
+    ext_names = {e.name for e in anime.external_sources}
+    stream_names = {s.name for s in anime.streaming}
+    assert ext_names.isdisjoint(stream_names)
+
+
+def test_build_title_from_fixture(mal_anime_raw) -> None:
+    """Title parsed correctly from real fixture."""
+    anime = _build(mal_anime_raw)
+    assert anime.title == "One Piece"
+
+
+def test_build_score_from_fixture(mal_anime_raw) -> None:
+    """Score parsed as float from string in fixture."""
+    anime = _build(mal_anime_raw)
+    assert anime.score == pytest.approx(8.73)
+
+
+def test_build_studios_from_fixture(mal_anime_raw) -> None:
+    """Studios list built from relative MAL paths."""
+    anime = _build(mal_anime_raw)
+    assert len(anime.studios) == 1
+    assert anime.studios[0].name == "Toei Animation"
+    assert "myanimelist.net" in anime.studios[0].source
+
+
+def test_build_aired_from_fixture(mal_anime_raw) -> None:
+    """Aired dates parsed from 'Oct 20, 1999 to ?' string."""
+    anime = _build(mal_anime_raw)
+    assert anime.aired_from == "1999-10-20"
+    assert anime.aired_to is None
+
+
+def test_build_season_year_from_fixture(mal_anime_raw) -> None:
+    """Season and year from 'Fall 1999' premiered string."""
+    anime = _build(mal_anime_raw)
+    assert anime.season == "fall"
+    assert anime.year == 1999
+
+
+def test_build_broadcast_from_fixture(mal_anime_raw) -> None:
+    """Broadcast fields parsed from 'Sundays at 23:15 (JST)'."""
+    anime = _build(mal_anime_raw)
+    assert anime.broadcast_day == "Sundays"
+    assert anime.broadcast_time == "23:15"
+    assert anime.broadcast_timezone == "JST"
+
+
+def test_build_rank_from_fixture(mal_anime_raw) -> None:
+    """Rank extracted from rank_html field containing '#55<sup>...'."""
+    anime = _build(mal_anime_raw)
+    assert anime.rank == 55
+
+
+def test_build_episode_count_unknown_returns_none(mal_anime_raw) -> None:
+    """Fixture has episodes='Unknown' — episode_count must be None."""
+    anime = _build(mal_anime_raw)
+    assert anime.episode_count is None
+
+
+def test_build_episode_count_invalid_string_returns_none(mal_anime_raw) -> None:
+    """Non-numeric episode string triggers ValueError → episode_count is None."""
+    raw = {**mal_anime_raw, "episodes": "TBD"}
+    anime = _build(raw)
+    assert anime.episode_count is None
+
+
+def test_build_rank_extracted_from_rank_html(mal_anime_raw) -> None:
+    """Explicit #17 rank override parsed correctly."""
+    raw = {**mal_anime_raw, "rank_html": "#17<sup>2</sup>"}
+    anime = _build(raw)
+    assert anime.rank == 17
+
+
+def test_build_cover_url_without_l_suffix_gets_converted(mal_anime_raw) -> None:
+    """Cover URL ending in .jpg (not l.jpg) is converted to l.jpg large variant."""
+    raw = {
+        **mal_anime_raw,
+        "cover_image_src": "https://cdn.myanimelist.net/images/anime/1/123.jpg",
+    }
+    anime = _build(raw)
+    assert any("123l.jpg" in u for u in anime.picture_urls)
+
+
+def test_build_cover_url_from_fixture_converted(mal_anime_raw) -> None:
+    """Fixture cover_image_src (138851.jpg) converted to 138851l.jpg."""
+    anime = _build(mal_anime_raw)
+    assert any("138851l.jpg" in u for u in anime.picture_urls)
+
+
+def test_build_picture_urls_merged_with_fixture(mal_anime_raw) -> None:
+    """Extra gallery URLs merged with cover, deduped."""
+    extra = ["https://myanimelist.net/images/anime/1/123l.jpg"]
+    anime = _build(mal_anime_raw, picture_urls=extra)
+    assert any("123l.jpg" in u for u in anime.picture_urls)
+
+
+def test_build_background_from_fixture(mal_anime_raw) -> None:
+    """Real background text extracted from fixture."""
+    anime = _build(mal_anime_raw)
+    assert anime.background is not None
+    assert "hiatus" in anime.background.lower()
+
+
+def test_build_background_extracted() -> None:
+    bg_html = '<div id="background"><h2>Background</h2>The story begins in the Grand Line.</div>'
+    raw = {
+        "title": "Test",
+        "background_raw": bg_html,
+    }
+    anime = _build(raw)
+    assert anime.background is not None
+    assert "Grand Line" in anime.background
+
+
+def test_build_background_placeholder_ignored(mal_anime_raw) -> None:
+    bg_html = '<div id="background"><h2>Background</h2>No background information has been added to this title.</div>'
+    raw = {**mal_anime_raw, "background_raw": bg_html}
+    anime = _build(raw)
+    assert anime.background is None
+
+
+def test_build_genres_from_fixture(mal_anime_raw) -> None:
+    """Genres list built from nested name dicts."""
+    anime = _build(mal_anime_raw)
+    assert "Action" in anime.genres
+    assert "Adventure" in anime.genres
+
+
+def test_build_demographics_from_fixture(mal_anime_raw) -> None:
+    """Demographics list built from fixture."""
+    anime = _build(mal_anime_raw)
+    assert "Shounen" in anime.demographics
+
+
+def test_build_opening_themes_from_fixture(mal_anime_raw) -> None:
+    """Opening themes parsed — marketing junk entries skipped."""
+    anime = _build(mal_anime_raw)
+    titles = [t.title for t in anime.opening_themes]
+    assert "We Are! (ウィーアー!)" in titles
+    assert "Believe" in titles
+    # Spotify/Apple Music junk skipped
+    assert not any(t.title in ("Apple Music", "Youtube Music") for t in anime.opening_themes)
+
+
+def test_build_ending_themes_from_fixture(mal_anime_raw) -> None:
+    """Ending themes parsed from fixture."""
+    anime = _build(mal_anime_raw)
+    titles = [t.title for t in anime.ending_themes]
+    assert "memories" in titles
+
+
+def test_build_trailer_from_fixture(mal_anime_raw) -> None:
+    """Trailer parsed from youtube-nocookie embed URL in fixture."""
+    anime = _build(mal_anime_raw)
+    assert anime.trailer is not None
+    assert "-tviZNY6CSw" in anime.trailer.source
+
+
+def test_build_related_entries_from_fixture(mal_anime_raw) -> None:
+    """Related entries parsed from tile and table format."""
+    anime = _build(mal_anime_raw)
+    assert len(anime.related_entries) > 0
+    tile_titles = [e.title for e in anime.related_entries]
+    assert "One Piece" in tile_titles
+
+
+def test_build_synopsis_from_fixture(mal_anime_raw) -> None:
+    """Synopsis text preserved from fixture."""
+    anime = _build(mal_anime_raw)
+    assert anime.synopsis is not None
+    assert "Luffy" in anime.synopsis
 
 
 # =============================================================================
@@ -241,6 +385,13 @@ def test_parse_picture_urls_returns_matching_urls() -> None:
     result = _parse_picture_urls(pics)
     assert len(result) == 2
     assert all("myanimelist" in u for u in result)
+
+
+def test_parse_picture_urls_from_fixture(mal_anime_raw) -> None:
+    """Fixture _picture_urls already filtered — pass raw picture_urls_raw through helper."""
+    result = _parse_picture_urls(mal_anime_raw["picture_urls_raw"])
+    # picture_urls_raw contains character/people URLs, not images/anime/ URLs
+    assert result == []
 
 
 # =============================================================================
@@ -395,41 +546,12 @@ def test_parse_all_related_entries_skips_empty_title_or_source() -> None:
     assert entries == []
 
 
-# =============================================================================
-# _build_anime_from_raw — additional branches
-# =============================================================================
-
-
-def test_build_episode_count_invalid_string_returns_none() -> None:
-    """Non-numeric episode string triggers ValueError → episode_count is None."""
-    anime = _build({"episodes": "TBD"})
-    assert anime.episode_count is None
-
-
-def test_build_rank_extracted_from_rank_html() -> None:
-    anime = _build({"rank_html": "#17<sup>2</sup>"})
-    assert anime.rank == 17
-
-
-def test_build_cover_url_without_l_suffix_gets_converted() -> None:
-    """Cover URL ending in .jpg (not l.jpg) is converted to l.jpg large variant."""
-    anime = _build(
-        {"cover_image_src": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}
-    )
-    assert any("123l.jpg" in u for u in anime.picture_urls)
-
-
-def test_build_background_extracted() -> None:
-    bg_html = '<div id="background"><h2>Background</h2>The story begins in the Grand Line.</div>'
-    anime = _build({"background_raw": bg_html})
-    assert anime.background is not None
-    assert "Grand Line" in anime.background
-
-
-def test_build_background_placeholder_ignored() -> None:
-    bg_html = '<div id="background"><h2>Background</h2>No background information has been added to this title.</div>'
-    anime = _build({"background_raw": bg_html})
-    assert anime.background is None
+def test_parse_all_related_entries_from_fixture(mal_anime_raw) -> None:
+    """Fixture has tile (2) + table (5 relations with many hidden entries)."""
+    entries = _parse_all_related_entries(mal_anime_raw)
+    titles = [e.title for e in entries]
+    assert "One Piece" in titles  # tile entry (manga)
+    assert any("Ganzack" in t for t in titles)  # table entry (side story)
 
 
 # =============================================================================
@@ -514,19 +636,16 @@ async def test_fetch_mal_anime_data_empty_content(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_success(mocker) -> None:
+async def test_fetch_mal_anime_data_success(mocker, mal_anime_raw) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
-    raw = {"title": "One Piece"}
-    pics_raw = [
-        {
-            "picture_urls_raw": [
-                {"url": "https://cdn.myanimelist.net/images/anime/1/123.jpg"}
-            ]
-        }
-    ]
+    raw = {k: v for k, v in mal_anime_raw.items()
+           if not k.startswith("_")}
+    pics_raw = [{"picture_urls_raw": [
+        {"url": "https://cdn.myanimelist.net/images/anime/1/123l.jpg"}
+    ]}]
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
@@ -550,18 +669,18 @@ async def test_fetch_mal_anime_data_success(mocker) -> None:
     result = await _fetch_mal_anime_data("https://myanimelist.net/anime/21")
     assert result is not None
     assert result["title"] == "One Piece"
-    assert "123.jpg" in result["_picture_urls"][0]
+    assert "123l.jpg" in result["_picture_urls"][0]
     assert result["_url"] == "https://myanimelist.net/anime/21/One_Piece"
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker) -> None:
+async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker, mal_anime_raw) -> None:
     """When og:url is absent from metadata, _url falls back to result['url']."""
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
-    raw = {"title": "One Piece"}
+    raw = {k: v for k, v in mal_anime_raw.items() if not k.startswith("_")}
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
@@ -603,16 +722,11 @@ async def test_fetch_mal_anime_returns_none_when_no_data(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_returns_parsed_anime(mocker) -> None:
-    raw = {
-        "title": "One Piece",
-        "_picture_urls": [],
-        "_url": "https://myanimelist.net/anime/21/One_Piece",
-    }
+async def test_fetch_mal_anime_returns_parsed_anime(mocker, mal_anime_raw) -> None:
     mocker.patch(
         "enrichment.crawlers.mal_crawler.mal_anime_crawler._fetch_mal_anime_data",
         new_callable=AsyncMock,
-        return_value=raw,
+        return_value=mal_anime_raw,
     )
     result = await fetch_mal_anime("https://myanimelist.net/anime/21")
     assert result is not None
