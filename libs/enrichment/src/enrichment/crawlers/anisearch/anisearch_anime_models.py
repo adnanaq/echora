@@ -4,7 +4,7 @@ Field names mirror what AniSearch actually provides — no renaming to canonical
 names here.  The mapper (anisearch_mapper.py) handles all translation.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AniSearchStatistics(BaseModel):
@@ -67,3 +67,40 @@ class AniSearchAnime(BaseModel):
 
     # ── Source URL (injected by build_source_model) ───────────────────────
     url: str | None = None
+
+
+# =============================================================================
+# CHARACTER MODELS
+# =============================================================================
+
+
+class AniSearchVoiceActorRef(BaseModel):
+    name: str
+    language: str
+    url: str | None = None
+
+
+class AniSearchCharacterAnimeRole(BaseModel):
+    title: str
+    url: str | None = None
+    role: str | None = None
+
+
+class AniSearchCharacter(BaseModel):
+    """Scraped from https://www.anisearch.com/character/{id},{slug}."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    name: str | None = None
+    name_native: str | None = None
+    description: str | None = None
+    image: str | None = None
+    favorites: int | None = None
+    role: str | None = None
+    tags: list[str] = []
+    screenshot_images: list[str] = []
+    picture_images: list[str] = []
+    voice_actors: list[AniSearchVoiceActorRef] = []
+    anime_roles: list[AniSearchCharacterAnimeRole] = []
+    attributes: dict[str, str] = {}

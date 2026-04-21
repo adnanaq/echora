@@ -25,12 +25,16 @@ from common.models.anime import (
     AnimeRelationType,
     AnimeType,
     Broadcast,
+    Character,
+    CharacterRole,
     CompanyEntry,
+    Ography,
     RelatedAnime,
     RelatedSourceMaterial,
     SourceMaterialRelationType,
     SourceMaterialType,
     Statistics,
+    VoiceActor,
 )
 from common.utils.datetime_utils import (
     determine_anime_season,
@@ -41,6 +45,7 @@ from common.utils.datetime_utils import (
 
 from enrichment.crawlers.anisearch.anisearch_anime_models import (
     AniSearchAnime,
+    AniSearchCharacter,
     AniSearchRelatedEntry,
 )
 
@@ -196,3 +201,75 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     )
 
     return result.model_dump(mode="json", exclude_none=True)
+
+
+def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
+    """Map an AniSearchCharacter source model to canonical Character field values.
+
+    Args:
+        char: Validated AniSearchCharacter scraped model.
+
+    Returns:
+        Dict of canonical Character field name → normalized value (exclude_none applied).
+    """
+    result: dict[str, Any] = {
+        "name": char.name or "",
+        "sources": [char.source],
+    }
+
+    if char.name_native:
+        result["name_native"] = char.name_native
+    if char.description:
+        result["description"] = char.description
+    if char.favorites is not None:
+        result["favorites"] = char.favorites
+    all_images = (
+        ([char.image] if char.image else [])
+        + char.screenshot_images
+        + char.picture_images
+    )
+    if all_images:
+        result["images"] = all_images
+    if char.tags:
+        result["traits"] = char.tags
+
+    # ── Roles ─────────────────────────────────────────────────────────────
+    all_roles: set[CharacterRole] = set()
+    if char.role:
+        all_roles.add(CharacterRole(char.role))
+    for entry in char.anime_roles:
+        if entry.role:
+            all_roles.add(CharacterRole(entry.role))
+    if all_roles:
+        result["roles"] = [r.value for r in all_roles]
+
+    # ── Animeography ──────────────────────────────────────────────────────
+    if char.anime_roles:
+        result["animeography"] = [
+            Ography(
+                title=entry.title,
+                role=CharacterRole(entry.role or ""),
+                sources=[entry.url] if entry.url else [],
+            )
+            for entry in char.anime_roles
+            if entry.title
+        ]
+
+    # ── Voice actors ──────────────────────────────────────────────────────
+    if char.voice_actors:
+        result["voice_actors"] = [
+            VoiceActor(
+                name=va.name,
+                language=va.language,
+                sources=[va.url] if va.url else [],
+            )
+            for va in char.voice_actors
+            if va.name
+        ]
+
+    # ── Attributes ────────────────────────────────────────────────────────
+    if char.attributes:
+        result["attributes"] = char.attributes
+
+    character = Character.model_validate(result)
+    return character.model_dump(mode="json", exclude_none=True)
