@@ -15,7 +15,6 @@ import asyncio
 import logging
 import os
 import sys
-from types import TracebackType
 from typing import Any
 
 from common.utils.jsonl_utils import append_jsonl
@@ -188,25 +187,6 @@ class AnimePlanetEnrichmentHelper(BaseEnrichmentHelper):
             return None
         else:
             return anime
-
-    async def close(self) -> None:
-        """No-op — helper holds no persistent resources."""
-        pass
-
-    async def __aenter__(self) -> "AnimePlanetEnrichmentHelper":
-        """Return self."""
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> bool:
-        """Call close() and return False (exceptions not suppressed)."""
-        await self.close()
-        return False
-
 
 async def main() -> int:
     """CLI entry point for fetching Anime-Planet data."""
