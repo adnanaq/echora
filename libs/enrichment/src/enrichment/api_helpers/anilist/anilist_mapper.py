@@ -41,10 +41,17 @@ from enrichment.api_helpers.anilist.anilist_character_models import (
     AniListCharacterEdge,
     AniListFuzzyDate,
 )
+from enrichment.utils.text_utils import normalize_score
 
 # AniList relation types that represent the anime being the SOURCE of a relation
 # (i.e. the related item is what the anime was adapted FROM)
 _SOURCE_RELATION_TYPES = {"SOURCE", "ADAPTATION"}
+
+
+def _best_cover(cover_image) -> str | None:  # type: ignore[no-untyped-def]
+    if not cover_image:
+        return None
+    return cover_image.extra_large or cover_image.large or None
 
 
 def _fuzzy_date_str(d: "AniListFuzzyDate | None") -> str | None:
@@ -81,7 +88,7 @@ def _split_relations(
         if resolved_anime_type != AnimeType.UNKNOWN:
             # It's a media format (TV, MOVIE, OVA, etc.) → related_anime
             anime_rel_type = AnimeRelationType(rel_type_str)
-            cover = node.cover_image.extra_large if node.cover_image else None
+            cover = _best_cover(node.cover_image)
             related_anime[anime_rel_type].append(
                 RelatedAnime(
                     title=title,
@@ -89,7 +96,7 @@ def _split_relations(
                     sources=[f"https://anilist.co/anime/{node.id}"],
                     status=AnimeStatus(node.status or "") if node.status else None,
                     year=node.season_year,
-                    score=round(node.average_score / 10, 1)
+                    score=normalize_score(node.average_score)
                     if node.average_score
                     else None,
                     images=[cover] if cover else [],
@@ -100,14 +107,14 @@ def _split_relations(
             # Not a media format → source material (MANGA, NOVEL, ONE_SHOT, etc.)
             src_rel_type = SourceMaterialRelationType(rel_type_str)
             mat_type = SourceMaterialType(node_format)
-            cover = node.cover_image.extra_large if node.cover_image else None
+            cover = _best_cover(node.cover_image)
             related_source[src_rel_type].append(
                 RelatedSourceMaterial(
                     title=title,
                     type=mat_type,
                     sources=[f"https://anilist.co/manga/{node.id}"],
                     status=AnimeStatus(node.status or "") if node.status else None,
-                    score=round(node.average_score / 10, 1)
+                    score=normalize_score(node.average_score)
                     if node.average_score
                     else None,
                     images=[cover] if cover else [],
@@ -206,11 +213,9 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     # ── Images ───────────────────────────────────────────────────────────────
     covers: list[str] = []
     banners: list[str] = []
-    if anime.cover_image:
-        if anime.cover_image.extra_large:
-            covers.append(anime.cover_image.extra_large)
-        elif anime.cover_image.large:
-            covers.append(anime.cover_image.large)
+    cover = _best_cover(anime.cover_image)
+    if cover:
+        covers.append(cover)
     if anime.banner_image:
         banners.append(anime.banner_image)
 
@@ -227,7 +232,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         for r in anime.rankings
     ]
     anilist_stats = Statistics(
-        score=round(anime.average_score / 10, 1) if anime.average_score else None,
+        score=normalize_score(anime.average_score) if anime.average_score else None,
         members=anime.popularity,
         favorites=anime.favourites,
         contextual_ranks=contextual_ranks or None,

@@ -37,6 +37,10 @@ from .kitsu.kitsu_models import (
 
 logger = logging.getLogger(__name__)
 
+_PAGE_SIZE = 20
+_INTER_PAGE_SLEEP_S = 0.1
+_CHARACTER_CONCURRENCY = 5
+
 
 class KitsuEnrichmentHelper(BaseEnrichmentHelper):
     """Helper for Kitsu data fetching in AI enrichment pipeline."""
@@ -250,14 +254,13 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
         all_items: list[dict[str, Any]] = []
         all_included: list[dict[str, Any]] = []
         page = 0
-        page_size = 20
         base_params = dict(params or {})
         try:
             while True:
                 page_params = {
                     **base_params,
-                    "page[limit]": page_size,
-                    "page[offset]": page * page_size,
+                    "page[limit]": _PAGE_SIZE,
+                    "page[offset]": page * _PAGE_SIZE,
                 }
                 response = await self._make_request(
                     endpoint, page_params, session=session
@@ -270,11 +273,11 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
                 all_items.extend(items)
                 all_included.extend(response.get("included", []))
                 count = response.get("meta", {}).get("count", 0)
-                if len(all_items) >= count or len(items) < page_size:
+                if len(all_items) >= count or len(items) < _PAGE_SIZE:
                     break
                 page += 1
                 if not response.get("_from_cache", False):
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(_INTER_PAGE_SLEEP_S)
         except Exception:
             logger.exception(f"Kitsu pagination failed for {endpoint}")
         return all_items, all_included
@@ -564,13 +567,13 @@ class KitsuEnrichmentHelper(BaseEnrichmentHelper):
         resolved = [char for char in media_chars if char.character is not None]
         total = len(resolved)
 
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(_CHARACTER_CONCURRENCY)
 
         async def _fetch_one(char: KitsuMediaCharacter) -> dict[str, Any] | None:
-            char_id = char.character.id  # type: ignore[union-attr]  # resolved guarantees non-None
+            char_id = char.character.id  # ty: ignore[possibly-missing-attribute]  # resolved guarantees non-None
             char_name = (
-                char.character.attributes.canonicalName
-                or char.character.attributes.name
+                char.character.attributes.canonicalName  # ty: ignore[possibly-missing-attribute]
+                or char.character.attributes.name  # ty: ignore[possibly-missing-attribute]
                 or char_id
             )
             async with sem:

@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import sys
-from types import TracebackType
 from typing import Any
 
 import aiohttp
@@ -25,14 +24,20 @@ from ..exceptions import (
     ServiceNetworkError,
     ServiceRateLimitedError,
 )
-from .anilist.anilist_mapper import anime_from_anilist, character_from_anilist
 from .anilist.anilist_anime_models import AniListAnime
 from .anilist.anilist_character_models import AniListCharacterEdge
+from .anilist.anilist_mapper import anime_from_anilist, character_from_anilist
 from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
 
 _ANILIST_BASE = "https://anilist.co/anime"
+
+_MAX_RATE_LIMIT_WAITS = 3
+_RETRY_AFTER_DEFAULT_S = 60
+_RATE_LIMIT_REMAINING_THRESHOLD = 5
+_RATE_LIMIT_SLEEP_S = 60
+_INTER_PAGE_SLEEP_S = 0.5
 
 
 def _extract_anilist_id(url: str) -> int:
@@ -51,7 +56,6 @@ class AniListHelper(BaseEnrichmentHelper):
         self.base_url = "https://graphql.anilist.co"
         self.session: aiohttp.ClientSession | None = None
         self.rate_limit_remaining = 90
-        self._session_event_loop: asyncio.AbstractEventLoop | None = None
 
     async def fetch_all(
         self,
@@ -86,23 +90,12 @@ class AniListHelper(BaseEnrichmentHelper):
         return {"anime": anime, "characters": characters}
 
     async def _ensure_session(self) -> None:
-        """Lazily create (or recreate) the aiohttp session for the current event loop."""
-        current_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
-        if self.session is None or self._session_event_loop != current_loop:
-            if self.session is not None:
-                try:
-                    await self.session.close()
-                except Exception:
-                    logger.debug(
-                        "Ignoring error while closing old session", exc_info=True
-                    )
+        """Lazily create the aiohttp session on first use."""
+        if self.session is None:
             self.session = http_cache_manager.get_aiohttp_session(
                 "anilist",
                 timeout=aiohttp.ClientTimeout(total=None),
             )
-            logger.debug("AniList cached session created for current event loop")
-            self._session_event_loop = current_loop
-
         if self.session is None:
             raise RuntimeError("Failed to initialize AniList session")
 
@@ -130,8 +123,7 @@ class AniListHelper(BaseEnrichmentHelper):
         }
         payload = {"query": query, "variables": variables or {}}
 
-        max_rate_limit_waits = 3
-        for attempt in range(max_rate_limit_waits):
+        for attempt in range(_MAX_RATE_LIMIT_WAITS):
             try:
                 async with self.session.post(
                     self.base_url, json=payload, headers=headers
@@ -144,16 +136,16 @@ class AniListHelper(BaseEnrichmentHelper):
                         )
 
                     if response.status == 429:
-                        if attempt < max_rate_limit_waits - 1:
-                            retry_after = int(response.headers.get("Retry-After", 60))
+                        if attempt < _MAX_RATE_LIMIT_WAITS - 1:
+                            retry_after = int(response.headers.get("Retry-After", _RETRY_AFTER_DEFAULT_S))
                             logger.warning(
-                                f"AniList rate limit (attempt {attempt + 1}/{max_rate_limit_waits}). "
+                                f"AniList rate limit (attempt {attempt + 1}/{_MAX_RATE_LIMIT_WAITS}). "
                                 f"Waiting {retry_after}s..."
                             )
                             await asyncio.sleep(retry_after)
                             continue
                         raise ServiceRateLimitedError(
-                            service="anilist", attempts=max_rate_limit_waits
+                            service="anilist", attempts=_MAX_RATE_LIMIT_WAITS
                         )
 
                     if response.status == 403:
@@ -172,11 +164,11 @@ class AniListHelper(BaseEnrichmentHelper):
                     result["_from_cache"] = from_cache
 
                     # Client-side throttle when approaching rate limit
-                    if not from_cache and self.rate_limit_remaining < 5:
+                    if not from_cache and self.rate_limit_remaining < _RATE_LIMIT_REMAINING_THRESHOLD:
                         logger.warning(
-                            f"Rate limit low ({self.rate_limit_remaining}), sleeping 60s."
+                            f"Rate limit low ({self.rate_limit_remaining}), sleeping {_RATE_LIMIT_SLEEP_S}s."
                         )
-                        await asyncio.sleep(60)
+                        await asyncio.sleep(_RATE_LIMIT_SLEEP_S)
                         self.rate_limit_remaining = 90
 
                     return result
@@ -387,7 +379,7 @@ class AniListHelper(BaseEnrichmentHelper):
 
             # Only rate limit for network requests, not cache hits, and only between pages (not after the last)
             if not response.get("_from_cache", False) and has_next_page:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(_INTER_PAGE_SLEEP_S)
 
         return all_items
 

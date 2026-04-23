@@ -8,16 +8,19 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from types import TracebackType
-from typing import Any, cast
+from typing import Any
 
 from .api_fetcher import ApiFetcher
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
 logger = logging.getLogger(__name__)
+
+_AGENT_ID_RE = re.compile(r"_agent(\d+)")
 
 
 class ProgrammaticEnrichmentPipeline:
@@ -43,7 +46,7 @@ class ProgrammaticEnrichmentPipeline:
         self.id_extractor = PlatformIDExtractor()
         self.api_fetcher = ApiFetcher(config)
 
-        # Performance tracking
+        # Performance tracking — stores timing from the most recent enrich_anime call
         self.timing_breakdown: dict[str, float] = {}
 
         # Log configuration if verbose
@@ -71,12 +74,10 @@ class ProgrammaticEnrichmentPipeline:
                 - offline_data: The original input `offline_data`.
                 - extracted_ids: Validated platform IDs extracted from `offline_data`.
                 - api_data: Raw responses from the fetched APIs keyed by service name.
-                - processed_episodes: Episode data extracted from API responses.
                 - enrichment_metadata: Metadata about the enrichment run containing:
                     - method: The enrichment method used ("programmatic").
                     - total_time: Total elapsed time in seconds for the enrichment.
                     - timing_breakdown: Per-step timing information.
-                    - successful_apis: Count of successful API responses.
                     - temp_directory: Path to the temporary agent directory used.
 
         Notes:
@@ -84,6 +85,8 @@ class ProgrammaticEnrichmentPipeline:
         """
         start_time = time.time()
         anime_title = offline_data.get("title", "Unknown")
+        # Use a local dict to avoid race conditions when enrich_batch runs calls concurrently
+        timing: dict[str, float] = {}
 
         logger.info(f"Starting programmatic enrichment for: {anime_title}")
 
@@ -92,10 +95,10 @@ class ProgrammaticEnrichmentPipeline:
             step1_start = time.time()
             ids = self.id_extractor.extract_all_ids(offline_data)
             valid_ids = self.id_extractor.validate_ids(ids)
-            self.timing_breakdown["id_extraction"] = time.time() - step1_start
+            timing["id_extraction"] = time.time() - step1_start
 
             logger.info(
-                f"Extracted {len(valid_ids)} platform IDs in {self.timing_breakdown['id_extraction']:.3f}s"
+                f"Extracted {len(valid_ids)} platform IDs in {timing['id_extraction']:.3f}s"
             )
 
             # Create or use specified temp directory for this anime
@@ -119,11 +122,10 @@ class ProgrammaticEnrichmentPipeline:
             api_data = await self.api_fetcher.fetch_all_data(
                 valid_ids, offline_data, temp_dir, skip_services, only_services
             )
-            self.timing_breakdown["api_fetching"] = time.time() - step2_start
+            timing["api_fetching"] = time.time() - step2_start
 
-            # Step 3: Process episodes (instant)
-            step3_start = time.time()
-            self.timing_breakdown["episode_processing"] = time.time() - step3_start
+            total_time = time.time() - start_time
+            self.timing_breakdown = timing
 
             # Compile results
             result = {
@@ -132,13 +134,12 @@ class ProgrammaticEnrichmentPipeline:
                 "api_data": api_data,
                 "enrichment_metadata": {
                     "method": "programmatic",
-                    "total_time": time.time() - start_time,
-                    "timing_breakdown": self.timing_breakdown.copy(),
+                    "total_time": total_time,
+                    "timing_breakdown": timing,
                     "temp_directory": temp_dir,
                 },
             }
 
-            total_time = time.time() - start_time
             logger.info(f"✓ Enrichment complete for {anime_title} in {total_time:.2f}s")
 
             return result
@@ -158,11 +159,15 @@ class ProgrammaticEnrichmentPipeline:
         """
         Enrich multiple anime in parallel.
 
+        TODO: Not yet used in production. Parallel crawlers risk triggering Cloudflare
+        rate-limits. When this is enabled, AniListHelper.session should be scoped to
+        each fetch_all call (not shared on the instance) to avoid concurrent-call races.
+
         Args:
             anime_list: List of offline anime data
 
         Returns:
-            List of enriched anime data
+            List of enriched anime data for successful entries; failed entries are logged and dropped.
 
         Performance: Processes batch_size anime concurrently
         """
@@ -171,7 +176,7 @@ class ProgrammaticEnrichmentPipeline:
         # Create semaphore to limit concurrent processing
         semaphore = asyncio.Semaphore(self.config.batch_size)
 
-        async def enrich_with_limit(anime):
+        async def enrich_with_limit(anime: dict) -> dict[str, Any]:
             async with semaphore:
                 return await self.enrich_anime(anime)
 
@@ -188,8 +193,7 @@ class ProgrammaticEnrichmentPipeline:
                 logger.error(f"Failed to enrich {anime.get('title')}: {result}")
                 failed.append(anime)
             else:
-                # result is guaranteed to be Dict[str, Any] here due to the isinstance check above
-                successful.append(cast(dict[str, Any], result))
+                successful.append(result)
 
         logger.info(
             f"Batch complete: {len(successful)} successful, {len(failed)} failed"
@@ -197,55 +201,36 @@ class ProgrammaticEnrichmentPipeline:
 
         return successful
 
-    def _find_next_agent_id(self, anime_name: str) -> int:
+    def _find_next_agent_id(self) -> int:
         """
         Determine the next available global agent ID, preferring the lowest missing positive integer.
-
-        Parameters:
-            anime_name (str): Unused; retained for backward compatibility.
 
         Returns:
             int: The next available agent ID (fills gaps first, otherwise returns one greater than the current maximum).
         """
-        # Check if temp directory exists
-        temp_base = self.config.temp_dir
-        if not os.path.exists(temp_base):
-            return 1  # First agent
-
-        # Scan for ALL agent directories (any anime)
-        # Pattern: *_agent<N>
-        existing_ids = []
+        existing_ids: list[int] = []
 
         try:
-            for item in os.listdir(temp_base):
-                if "_agent" in item:
-                    try:
-                        # Split on "_agent" and get the part after it
-                        after_agent = item.split("_agent")[1]
-                        # Get first segment (number part before any additional "_")
-                        num_str = (
-                            after_agent.split("_")[0]
-                            if "_" in after_agent
-                            else after_agent
-                        )
-                        if num_str.isdigit():
-                            existing_ids.append(int(num_str))
-                    except (IndexError, ValueError):
-                        # Skip directories that don't match expected pattern
-                        continue
+            for item in os.listdir(self.config.temp_dir):
+                m = _AGENT_ID_RE.search(item)
+                if m:
+                    existing_ids.append(int(m.group(1)))
+        except FileNotFoundError:
+            return 1
         except Exception as e:
             logger.warning(f"Error scanning temp directory: {e}")
             return 1
 
         if not existing_ids:
-            return 1  # No existing agents
+            return 1
 
         # Sort existing IDs
         existing_ids.sort()
+        existing_set = set(existing_ids)
 
         # Find first missing ID (gap filling)
         for i in range(1, existing_ids[-1] + 1):
-            if i not in existing_ids:
+            if i not in existing_set:
                 logger.info(
                     f"Gap-filling agent ID: Using {i} (existing: {existing_ids})"
                 )
@@ -275,7 +260,7 @@ class ProgrammaticEnrichmentPipeline:
         clean_word = "".join(c for c in first_word if c.isalnum() or c in "-_")
 
         # Find next available agent ID
-        agent_id = self._find_next_agent_id(clean_word)
+        agent_id = self._find_next_agent_id()
         dir_name = f"{clean_word}_agent{agent_id}"
 
         temp_dir = os.path.join(self.config.temp_dir, dir_name)
@@ -284,6 +269,31 @@ class ProgrammaticEnrichmentPipeline:
         logger.info(f"Created temp directory: {temp_dir}")
 
         return temp_dir
+
+    def get_performance_report(self) -> str:
+        """
+        Produce a human-readable performance report for the pipeline.
+
+        The report includes the configured maximum concurrent APIs and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
+
+        Returns:
+            report (str): A multi-line string containing the assembled performance report.
+        """
+        report = ["Performance Report:"]
+        report.append(f"  Total APIs configured: {self.config.max_concurrent_apis}")
+        report.append(f"  Batch size: {self.config.batch_size}")
+
+        if self.timing_breakdown:
+            report.append("\nTiming Breakdown:")
+            for step, time_taken in self.timing_breakdown.items():
+                report.append(f"  {step}: {time_taken:.3f}s")
+
+        if self.api_fetcher.api_timings:
+            report.append("\nAPI Response Times:")
+            for api, time_taken in self.api_fetcher.api_timings.items():
+                report.append(f"  {api}: {time_taken:.2f}s")
+
+        return "\n".join(report)
 
     async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
         """
@@ -311,33 +321,8 @@ class ProgrammaticEnrichmentPipeline:
         await self.api_fetcher.__aexit__(exc_type, exc_val, exc_tb)
         return False
 
-    def get_performance_report(self) -> str:
-        """
-        Produce a human-readable performance report for the pipeline.
 
-        The report includes the configured maximum concurrent APIs and batch size. If available, it also lists a timing breakdown for pipeline steps and per-API response times.
-
-        Returns:
-            report (str): A multi-line string containing the assembled performance report.
-        """
-        report = ["Performance Report:"]
-        report.append(f"  Total APIs configured: {self.config.max_concurrent_apis}")
-        report.append(f"  Batch size: {self.config.batch_size}")
-
-        if self.timing_breakdown:
-            report.append("\nTiming Breakdown:")
-            for step, time_taken in self.timing_breakdown.items():
-                report.append(f"  {step}: {time_taken:.3f}s")
-
-        if self.api_fetcher.api_timings:
-            report.append("\nAPI Response Times:")
-            for api, time_taken in self.api_fetcher.api_timings.items():
-                report.append(f"  {api}: {time_taken:.2f}s")
-
-        return "\n".join(report)
-
-
-async def main() -> int:
+async def main() -> int:  # pragma: no cover
     """
     Run a test enrichment of the pipeline using sample anime data and save the results.
 
@@ -370,7 +355,6 @@ async def main() -> int:
         print("=" * 60)
 
         print(f"\nExtracted IDs: {result['extracted_ids']}")
-        print(f"\nSuccessful APIs: {result['enrichment_metadata']['successful_apis']}")
         print(f"Total Time: {result['enrichment_metadata']['total_time']:.2f}s")
 
         print("\n" + pipeline.get_performance_report())

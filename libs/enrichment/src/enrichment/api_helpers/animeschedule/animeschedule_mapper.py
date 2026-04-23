@@ -34,6 +34,7 @@ from common.models.anime import (
 from common.utils.datetime_utils import normalize_to_utc
 
 from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.utils.text_utils import normalize_score
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
     if anime.stats and anime.stats.rating_count:
         stats_data: dict[str, Any] = {}
         if anime.stats.average_score is not None:
-            stats_data["score"] = round(anime.stats.average_score / 10, 2)
+            stats_data["score"] = normalize_score(anime.stats.average_score)
         if anime.stats.rating_count is not None:
             stats_data["scored_by"] = anime.stats.rating_count
         if anime.stats.tracked_count is not None:

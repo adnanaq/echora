@@ -36,6 +36,7 @@ from enrichment.api_helpers.kitsu.kitsu_models import (
     KitsuEpisode,
     KitsuMediaCharacter,
 )
+from enrichment.utils.text_utils import normalize_score
 
 # Kitsu locale codes → canonical language name for VoiceActor.language
 _LOCALE_TO_LANGUAGE: dict[str, str] = {
@@ -157,7 +158,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         covers=[cover.original] if cover and cover.original else [],
     )
 
-    kitsu_score = float(attrs.averageRating) / 10.0 if attrs.averageRating else None
+    kitsu_score = normalize_score(float(attrs.averageRating)) if attrs.averageRating else None
     statistics: dict[str, Statistics] = {
         "kitsu": Statistics(
             score=kitsu_score,

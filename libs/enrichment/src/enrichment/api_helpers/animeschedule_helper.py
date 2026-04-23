@@ -3,21 +3,19 @@
 AnimSchedule Data Helper
 Fetches anime data from AnimSchedule API (async version).
 
+AnimSchedule has no persistent per-anime ID, so lookups are title-search-based:
+the helper searches by title and cross-validates the result against existing
+source URLs from offline data.
+
 Usage:
-    # Programmatic usage (no file output)
-    from enrichment.api_helpers.animeschedule_helper import fetch_all
-    data = await fetch_all("One Piece", sources=["https://myanimelist.net/anime/21"])
+    # Programmatic usage via class
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
+    helper = AnimescheduleHelper()
+    data = await helper.fetch_all(ids, offline_data)
 
-    # Programmatic usage (with file output)
-    data = await fetch_all("One Piece", output_path="temp/animeschedule.jsonl")
-
-    # CLI usage (default output to CWD)
+    # CLI usage
     python -m enrichment.api_helpers.animeschedule_helper "One Piece"
-    # Output: animeschedule.jsonl
-
-    # CLI usage (custom output path)
     python -m enrichment.api_helpers.animeschedule_helper "One Piece" --output temp/as.jsonl
-    # Output: temp/as.jsonl
 """
 
 import argparse
@@ -32,11 +30,12 @@ import aiohttp
 from common.utils.jsonl_utils import append_jsonl
 from http_cache.instance import http_cache_manager as _cache_manager
 
-from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
-from enrichment.exceptions import ServiceNetworkError, ServiceParseError
 from enrichment.api_helpers.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
 )
+from enrichment.api_helpers.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.exceptions import ServiceNetworkError, ServiceParseError
+
 from .base_helper import BaseEnrichmentHelper
 
 logger = logging.getLogger(__name__)
@@ -80,7 +79,14 @@ def _match_by_sources(candidates: list[dict], sources: list[str]) -> dict | None
 
 
 class AnimescheduleHelper(BaseEnrichmentHelper):
-    """Fetch AnimSchedule data for an anime by searching its title."""
+    """Fetch AnimSchedule data for an anime by title search.
+
+    AnimSchedule has no persistent per-anime ID, so this helper uses a
+    different lookup strategy than other enrichment helpers: it searches by
+    ``offline_data["title"]`` and validates the result by checking whether any
+    source URL from ``offline_data["sources"]`` appears in the AnimSchedule
+    response's ``websites`` dict. This is intentional — ``ids`` is unused.
+    """
 
     async def fetch_all(
         self,
@@ -90,16 +96,26 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
     ) -> dict[str, Any] | None:
         """Fetch and map AnimSchedule data for an anime.
 
+        Lookup strategy: searches by ``offline_data["title"]``, then cross-validates
+        each search result against ``offline_data["sources"]`` by checking whether any
+        known source URL appears in the result's ``websites`` dict. Returns the first
+        match. Falls back to the first result when no sources are provided.
+
+        Note: ``ids`` is intentionally unused — AnimSchedule has no platform ID system.
+
         Args:
-            ids: Dictionary of validated platform IDs/URLs.
-            offline_data: The original offline anime metadata.
+            ids: Unused. AnimSchedule is title-search-based with no platform ID.
+            offline_data: The original offline anime metadata. Must contain ``"title"``.
             temp_dir: Optional directory for intermediate JSONL storage.
 
         Returns:
-            Canonical anime dict, or None if no match is found.
+            Canonical anime dict, or None if no match is found or title is missing.
         """
         search_term = offline_data.get("title", "")
         if not search_term:
+            logger.warning(
+                "AnimescheduleHelper.fetch_all: offline_data missing 'title' — cannot search AnimSchedule"
+            )
             return None
 
         output_path = (
@@ -107,43 +123,46 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         )
         sources: list[str] = offline_data.get("sources", [])
 
-        return await _fetch_all(
+        return await self._search(
             search_term, sources=sources or None, output_path=output_path
         )
 
+    async def _search(
+        self,
+        search_term: str,
+        sources: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Search AnimSchedule by title and return a canonical mapped dict.
 
-async def _fetch_all(
-    search_term: str,
-    sources: list[str] | None = None,
-    output_path: str | None = None,
-) -> dict | None:
-    """Fetch and map AnimSchedule data for an anime by title.
+        When ``sources`` is provided, all search results are checked against the
+        cross-source URLs in each result's ``websites`` dict (mal, aniList, kitsu,
+        animePlanet, anidb). The first result whose website links match any of the
+        provided sources is returned. Falls back to the first result when no sources
+        are given.
 
-    When ``sources`` is provided, all search results are checked against the
-    cross-source URLs in each result's ``websites`` dict (mal, aniList, kitsu,
-    animePlanet, anidb). The first result whose website links match any of the
-    provided sources is returned — even if the search returned only one result.
-    Falls back to the first result only when no sources are given.
+        Args:
+            search_term: Anime title to search for.
+            sources: Canonical source URLs to validate the result against.
+            output_path: If provided, write the canonical mapped dict as JSONL to this path.
 
-    Args:
-        search_term: Anime title to search for.
-        sources: Canonical source URLs to validate the result against.
-        output_path: If provided, write the canonical mapped dict as JSONL to this path.
+        Returns:
+            Canonical anime dict if a match is found, None otherwise.
+        """
+        logger.info(f"Fetching AnimSchedule data for: {search_term}")
 
-    Returns:
-        Canonical anime dict if a match is found, None otherwise.
-    """
-    logger.info(f"Fetching AnimSchedule data for: {search_term}")
-
-    session = _cache_manager.get_aiohttp_session("animeschedule")
-
-    try:
         search_url = f"https://animeschedule.net/api/v3/anime?q={search_term}"
         logger.debug(f"AnimSchedule search URL: {search_url}")
 
-        async with session.get(search_url) as response:
-            response.raise_for_status()
-            search_results = await response.json()
+        try:
+            async with _cache_manager.get_aiohttp_session("animeschedule") as session:
+                async with session.get(search_url) as response:
+                    response.raise_for_status()
+                    search_results = await response.json()
+        except aiohttp.ClientError as e:
+            raise ServiceNetworkError(service="animeschedule", cause=e) from e
+        except json.JSONDecodeError as e:
+            raise ServiceParseError(service="animeschedule", cause=e) from e
 
         candidates: list[dict] = (search_results or {}).get("anime", [])
         if not candidates:
@@ -169,13 +188,6 @@ async def _fetch_all(
         logger.info(f"AnimSchedule data fetched: {search_term}")
         return result
 
-    except aiohttp.ClientError as e:
-        raise ServiceNetworkError(service="animeschedule", cause=e) from e
-    except json.JSONDecodeError as e:
-        raise ServiceParseError(service="animeschedule", cause=e) from e
-    finally:
-        await session.close()
-
 
 async def main() -> int:
     """CLI entry point for fetching AnimSchedule data.
@@ -195,12 +207,14 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
+    helper = AnimescheduleHelper()
     try:
-        result = await _fetch_all(args.search_term, output_path=args.output)
-        return 0 if result else 1
+        result = await helper._search(args.search_term, output_path=args.output)
     except Exception:
         logger.exception("Error fetching AnimSchedule data")
         return 1
+    else:
+        return 0 if result else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
