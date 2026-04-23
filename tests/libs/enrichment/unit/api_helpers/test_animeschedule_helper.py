@@ -17,8 +17,15 @@ MAPPED_RESULT = {
 }
 
 
+def _ok_response(payload: dict) -> AsyncMock:
+    r = AsyncMock()
+    r.raise_for_status = MagicMock()
+    r.json = AsyncMock(return_value=payload)
+    return r
+
+
 def _make_session(response: MagicMock) -> AsyncMock:
-    """Build an aiohttp-style async session mock."""
+    """Build an aiohttp-style async session mock (inner: session.get -> response)."""
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(return_value=response)
     cm.__aexit__ = AsyncMock(return_value=None)
@@ -27,11 +34,12 @@ def _make_session(response: MagicMock) -> AsyncMock:
     return session
 
 
-def _ok_response(payload: dict) -> AsyncMock:
-    r = AsyncMock()
-    r.raise_for_status = MagicMock()
-    r.json = AsyncMock(return_value=payload)
-    return r
+def _make_cache_cm(session: AsyncMock) -> AsyncMock:
+    """Wrap a session in an async CM for get_aiohttp_session (outer: async with ... as session)."""
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=session)
+    cm.__aexit__ = AsyncMock(return_value=None)
+    return cm
 
 
 # ── _match_by_sources ─────────────────────────────────────────────────────────
@@ -177,7 +185,7 @@ def test_match_by_sources_filters_empty_source_strings():
     assert _match_by_sources([candidate], ["", ""]) is None
 
 
-# ── fetch_all ──────────────────────────────────────────────────
+# ── AnimescheduleHelper._search ───────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -187,15 +195,14 @@ def test_match_by_sources_filters_empty_source_strings():
 )
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_success_no_sources(mock_cache, mock_mapper):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     session = _make_session(_ok_response({"anime": [MINIMAL_RAW]}))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    result = await _fetch_all("Test Anime")
+    result = await AnimescheduleHelper()._search("Test Anime")
 
     assert result == MAPPED_RESULT
-    session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -205,59 +212,55 @@ async def test_fetch_success_no_sources(mock_cache, mock_mapper):
 )
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_success_with_matching_sources(mock_cache, mock_mapper):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     raw = {**MINIMAL_RAW, "websites": {"mal": "myanimelist.net/anime/21"}}
     session = _make_session(_ok_response({"anime": [raw]}))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    result = await _fetch_all(
+    result = await AnimescheduleHelper()._search(
         "Test Anime", sources=["https://myanimelist.net/anime/21"]
     )
 
     assert result == MAPPED_RESULT
-    session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_sources_provided_no_match_returns_none(mock_cache):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     raw = {**MINIMAL_RAW, "websites": {"mal": "myanimelist.net/anime/99"}}
     session = _make_session(_ok_response({"anime": [raw]}))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    result = await _fetch_all(
+    result = await AnimescheduleHelper()._search(
         "Test Anime", sources=["https://myanimelist.net/anime/21"]
     )
 
     assert result is None
-    session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_empty_anime_list_returns_none(mock_cache):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     session = _make_session(_ok_response({"anime": []}))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    assert await _fetch_all("Test Anime") is None
-    session.close.assert_awaited_once()
+    assert await AnimescheduleHelper()._search("Test Anime") is None
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_null_response_returns_none(mock_cache):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     session = _make_session(_ok_response(None))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
-    assert await _fetch_all("Test Anime") is None
-    session.close.assert_awaited_once()
+    assert await AnimescheduleHelper()._search("Test Anime") is None
 
 
 @pytest.mark.asyncio
@@ -267,15 +270,15 @@ async def test_fetch_null_response_returns_none(mock_cache):
 )
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_writes_jsonl_output(mock_cache, mock_mapper):
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     session = _make_session(_ok_response({"anime": [MINIMAL_RAW]}))
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         tmp_path = tmp.name
 
-    await _fetch_all("Test Anime", output_path=tmp_path)
+    await AnimescheduleHelper()._search("Test Anime", output_path=tmp_path)
 
     with open(tmp_path, encoding="utf-8") as f:
         lines = f.readlines()
@@ -288,7 +291,7 @@ async def test_fetch_writes_jsonl_output(mock_cache, mock_mapper):
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_client_error_raises_service_network_error(mock_cache):
     import aiohttp
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
     from enrichment.exceptions import ServiceNetworkError
 
     cm = MagicMock()
@@ -296,36 +299,34 @@ async def test_fetch_client_error_raises_service_network_error(mock_cache):
     cm.__aexit__ = AsyncMock(return_value=None)
     session = AsyncMock()
     session.get = MagicMock(return_value=cm)
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
     with pytest.raises(ServiceNetworkError):
-        await _fetch_all("Test Anime")
-    session.close.assert_awaited_once()
+        await AnimescheduleHelper()._search("Test Anime")
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_json_decode_error_raises_service_parse_error(mock_cache):
     import json as _json
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
     from enrichment.exceptions import ServiceParseError
 
     r = AsyncMock()
     r.raise_for_status = MagicMock()
     r.json = AsyncMock(side_effect=_json.JSONDecodeError("bad", "", 0))
     session = _make_session(r)
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
     with pytest.raises(ServiceParseError):
-        await _fetch_all("Test Anime")
-    session.close.assert_awaited_once()
+        await AnimescheduleHelper()._search("Test Anime")
 
 
 @pytest.mark.asyncio
 @patch("enrichment.api_helpers.animeschedule_helper._cache_manager")
 async def test_fetch_http_error_raises_service_network_error(mock_cache):
     import aiohttp
-    from enrichment.api_helpers.animeschedule_helper import _fetch_all
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
     from enrichment.exceptions import ServiceNetworkError
 
     r = AsyncMock()
@@ -335,37 +336,35 @@ async def test_fetch_http_error_raises_service_network_error(mock_cache):
         )
     )
     session = _make_session(r)
-    mock_cache.get_aiohttp_session.return_value = session
+    mock_cache.get_aiohttp_session.return_value = _make_cache_cm(session)
 
     with pytest.raises(ServiceNetworkError):
-        await _fetch_all("Test Anime")
-    session.close.assert_awaited_once()
+        await AnimescheduleHelper()._search("Test Anime")
 
 
 # ── AnimescheduleHelper.fetch_all ────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper._fetch_all", new_callable=AsyncMock)
-async def test_helper_fetch_all_delegates_to_fetch_all(mock_fetch):
-    """AnimescheduleHelper.fetch_all extracts title/sources and calls _fetch_all."""
-    import tempfile
+async def test_helper_fetch_all_delegates_to_search():
+    """AnimescheduleHelper.fetch_all extracts title/sources and calls _search."""
     from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
-    mock_fetch.return_value = MAPPED_RESULT
     offline_data = {
         "title": "One Piece",
         "sources": ["https://myanimelist.net/anime/21"],
     }
 
-    with tempfile.TemporaryDirectory() as tmp:
-        result = await AnimescheduleHelper().fetch_all({}, offline_data, temp_dir=tmp)
+    with patch.object(AnimescheduleHelper, "_search", new_callable=AsyncMock) as mock_search:
+        mock_search.return_value = MAPPED_RESULT
+        with tempfile.TemporaryDirectory() as tmp:
+            result = await AnimescheduleHelper().fetch_all({}, offline_data, temp_dir=tmp)
 
     assert result == MAPPED_RESULT
-    mock_fetch.assert_awaited_once_with(
+    mock_search.assert_awaited_once_with(
         "One Piece",
         sources=["https://myanimelist.net/anime/21"],
-        output_path=mock_fetch.call_args.kwargs["output_path"],
+        output_path=mock_search.call_args.kwargs["output_path"],
     )
 
 
@@ -382,45 +381,57 @@ async def test_helper_fetch_all_returns_none_when_title_missing():
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper._fetch_all", new_callable=AsyncMock)
-async def test_main_success_default_output(mock_fetch):
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.AnimescheduleHelper._search",
+    new_callable=AsyncMock,
+)
+async def test_main_success_default_output(mock_search):
     from enrichment.api_helpers.animeschedule_helper import main
 
-    mock_fetch.return_value = MAPPED_RESULT
+    mock_search.return_value = MAPPED_RESULT
     with patch("sys.argv", ["script.py", "Test Anime"]):
         assert await main() == 0
 
-    mock_fetch.assert_awaited_once_with("Test Anime", output_path="animeschedule.jsonl")
+    mock_search.assert_awaited_once_with("Test Anime", output_path="animeschedule.jsonl")
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper._fetch_all", new_callable=AsyncMock)
-async def test_main_success_custom_output(mock_fetch):
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.AnimescheduleHelper._search",
+    new_callable=AsyncMock,
+)
+async def test_main_success_custom_output(mock_search):
     from enrichment.api_helpers.animeschedule_helper import main
 
-    mock_fetch.return_value = MAPPED_RESULT
+    mock_search.return_value = MAPPED_RESULT
     with patch("sys.argv", ["script.py", "Test Anime", "--output", "custom/out.jsonl"]):
         assert await main() == 0
 
-    mock_fetch.assert_awaited_once_with("Test Anime", output_path="custom/out.jsonl")
+    mock_search.assert_awaited_once_with("Test Anime", output_path="custom/out.jsonl")
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper._fetch_all", new_callable=AsyncMock)
-async def test_main_no_result_returns_1(mock_fetch):
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.AnimescheduleHelper._search",
+    new_callable=AsyncMock,
+)
+async def test_main_no_result_returns_1(mock_search):
     from enrichment.api_helpers.animeschedule_helper import main
 
-    mock_fetch.return_value = None
+    mock_search.return_value = None
     with patch("sys.argv", ["script.py", "nonexistent"]):
         assert await main() == 1
 
 
 @pytest.mark.asyncio
-@patch("enrichment.api_helpers.animeschedule_helper._fetch_all", new_callable=AsyncMock)
-async def test_main_exception_returns_1(mock_fetch):
+@patch(
+    "enrichment.api_helpers.animeschedule_helper.AnimescheduleHelper._search",
+    new_callable=AsyncMock,
+)
+async def test_main_exception_returns_1(mock_search):
     from enrichment.api_helpers.animeschedule_helper import main
 
-    mock_fetch.side_effect = RuntimeError("boom")
+    mock_search.side_effect = RuntimeError("boom")
     with patch("sys.argv", ["script.py", "Test Anime"]):
         assert await main() == 1
 

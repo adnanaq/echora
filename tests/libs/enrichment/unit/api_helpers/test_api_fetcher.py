@@ -276,59 +276,6 @@ class TestFetchAllData:
         mock_helper.fetch_all.assert_awaited_once_with(ids, offline, temp_dir)
 
 
-class TestAnilistSyncWrapper:
-    """Tests for _anilist_sync_wrapper (runs helper.fetch_all in a fresh event loop)."""
-
-    def test_success_returns_result(self):
-        """Wrapper creates new event loop, runs helper.fetch_all, returns result."""
-        fetcher = ApiFetcher()
-        mock_helper = MagicMock()
-        expected = {"title": "One Piece"}
-
-        with patch("asyncio.new_event_loop") as mock_new_loop:
-            with patch("asyncio.set_event_loop"):
-                mock_loop = MagicMock()
-                mock_loop.run_until_complete.return_value = expected
-                mock_new_loop.return_value = mock_loop
-
-                result = fetcher._anilist_sync_wrapper(mock_helper, {}, {}, None)
-
-        assert result == expected
-        mock_loop.close.assert_called_once()
-
-    def test_exception_propagates_and_loop_closes(self):
-        """Exceptions from run_until_complete propagate; loop is always closed."""
-        fetcher = ApiFetcher()
-        mock_helper = MagicMock()
-
-        with patch("asyncio.new_event_loop") as mock_new_loop:
-            with patch("asyncio.set_event_loop"):
-                mock_loop = MagicMock()
-                mock_loop.run_until_complete.side_effect = RuntimeError("network fail")
-                mock_new_loop.return_value = mock_loop
-
-                with pytest.raises(RuntimeError, match="network fail"):
-                    fetcher._anilist_sync_wrapper(mock_helper, {}, {}, None)
-
-        mock_loop.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_fetch_anilist_via_executor_calls_wrapper(self):
-        """_fetch_anilist_via_executor runs _anilist_sync_wrapper in a thread."""
-        fetcher = ApiFetcher()
-        mock_helper = AsyncMock()
-
-        with patch.object(
-            fetcher, "_anilist_sync_wrapper", return_value={"title": "Test"}
-        ) as mock_wrapper:
-            result = await fetcher._fetch_anilist_via_executor(
-                mock_helper, {}, {}, None
-            )
-
-        assert result == {"title": "Test"}
-        mock_wrapper.assert_called_once_with(mock_helper, {}, {}, None)
-
-
 class TestFetchService:
     """Tests for _fetch_service — the generic per-service dispatch."""
 
@@ -372,8 +319,8 @@ class TestFetchService:
             mock_helper.fetch_all.assert_awaited_once_with(ids, {}, tmp)
 
     @pytest.mark.asyncio
-    async def test_anilist_uses_executor(self):
-        """AniList service routes through executor (separate event loop)."""
+    async def test_anilist_uses_same_path_as_other_services(self):
+        """AniList routes through the same fetch_all path as every other service."""
         fetcher = ApiFetcher()
         mock_helper = AsyncMock()
         mock_helper.fetch_all = AsyncMock(return_value={"title": "One Piece"})
@@ -381,9 +328,9 @@ class TestFetchService:
         ids = {"anilist_url": "https://anilist.co/anime/21"}
         result = await fetcher._fetch_service("anilist", mock_helper, ids, {}, None)
 
-        # Result comes back (executor path still calls helper.fetch_all)
         assert result == {"title": "One Piece"}
         assert "anilist" in fetcher.api_timings
+        mock_helper.fetch_all.assert_awaited_once_with(ids, {}, None)
 
 
 class TestGather:

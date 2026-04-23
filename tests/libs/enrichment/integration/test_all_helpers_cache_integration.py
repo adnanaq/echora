@@ -355,33 +355,28 @@ async def test_anidb_helper_no_hardcoded_redis(mocker):
 @pytest.mark.asyncio
 async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
     """
-    Verify that fetch_all (AnimSchedule) uses the centralized HTTP cache session and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
+    Verify that AnimescheduleHelper._search uses the centralized HTTP cache session
+    and does not instantiate a Redis client via `redis.asyncio.Redis.from_url`.
 
-    Patches the HTTP cache manager to return a mocked aiohttp session, patches `Redis.from_url` to observe calls, invokes fetch_all, and asserts that no direct Redis connection was created. API errors during the fetch are tolerated.
+    Patches the HTTP cache manager to return a mocked aiohttp session, patches
+    `Redis.from_url` to observe calls, invokes _search, and asserts that no direct
+    Redis connection was created. API errors during the fetch are tolerated.
     """
-    from enrichment.api_helpers.animeschedule_helper import (
-        fetch_all as fetch_animeschedule_data,
-    )
+    from enrichment.api_helpers.animeschedule_helper import AnimescheduleHelper
 
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")
 
-    # Mock cache manager with async context manager wrapper
-    # This properly mocks the async context manager protocol for defensive consistency
+    # Mock cache manager returning an async context manager whose __aenter__ yields the session
     mock_session = mocker.AsyncMock()
-    mock_session.get = mocker.AsyncMock()
     mock_session.get.return_value.__aenter__.return_value.status = 200
     mock_session.get.return_value.__aenter__.return_value.json = mocker.AsyncMock(
         return_value=[]  # Empty results for search
     )
-    mock_session.close = mocker.AsyncMock()
 
-    # Create async context manager wrapper for get_aiohttp_session
     mock_cm = mocker.AsyncMock()
     mock_cm.__aenter__.return_value = mock_session
     mock_cm.__aexit__.return_value = False
-    mock_cm.get = mock_session.get
-    mock_cm.close = mock_session.close
 
     mocker.patch(
         "http_cache.instance.http_cache_manager.get_aiohttp_session",
@@ -389,8 +384,9 @@ async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
     )
 
     # Make request
+    helper = AnimescheduleHelper()
     try:
-        await fetch_animeschedule_data("Test Anime")
+        await helper._search("Test Anime")
     except Exception as e:  # noqa: BLE001 - Integration test: tolerate any API failure
         # API errors are expected/ignored here; only Redis usage matters
         print(f"API error ignored in AnimSchedule fetcher test: {e}")

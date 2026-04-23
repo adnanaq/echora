@@ -15,7 +15,7 @@ Tests validate:
 """
 
 import pytest
-from enrichment.utils.text_utils import _get_kakasi, normalize_japanese_text
+from enrichment.utils.text_utils import _get_kakasi, normalize_japanese_text, normalize_score
 
 
 class TestNormalizeJapaneseText:
@@ -319,6 +319,20 @@ class TestEdgeCases:
         result = normalize_japanese_text("Test\nText")
         # Should preserve or handle newlines appropriately
         assert isinstance(result, str)
+
+
+class TestNormalizeScore:
+    def test_normalize_score(self):
+        assert normalize_score(None) is None
+        assert normalize_score(0) == 0.0
+        assert normalize_score(100) == 10.0
+        assert normalize_score(80) == 8.0
+        assert normalize_score(75) == 7.5
+        assert normalize_score(78.34) == 7.83
+        assert normalize_score(78.36) == 7.84
+        assert normalize_score(-10) == 0.0    # negative clamped to 0
+        assert normalize_score(110) == 10.0   # above range clamped to 10
+        assert isinstance(normalize_score(50), float)
 
 
 class TestCachingBehavior:

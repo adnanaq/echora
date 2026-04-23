@@ -33,7 +33,6 @@ class TestAniListHelperInit:
         assert helper.base_url == "https://graphql.anilist.co"
         assert helper.session is None
         assert helper.rate_limit_remaining == 90
-        assert helper._session_event_loop is None
 
     def test_init_no_session_created(self):
         """Test that session is not created during init."""
@@ -72,7 +71,6 @@ class TestAniListHelperSessionManagement:
                 await helper._make_request("query { test }")
 
         assert helper.session is not None
-        assert helper._session_event_loop is not None
 
     @pytest.mark.asyncio
     async def test_cached_session_creation(self):
@@ -102,79 +100,6 @@ class TestAniListHelperSessionManagement:
                     await helper._make_request("query { test }")
 
         assert helper.session is mock_cached_session
-
-    @pytest.mark.asyncio
-    async def test_session_recreated_for_new_event_loop(self):
-        """Test that session is recreated when event loop changes."""
-        helper = AniListHelper()
-
-        # Create first session
-        mock_session_1 = MagicMock()
-        mock_session_1.close = AsyncMock()
-        mock_session_1.post = MagicMock()
-        helper.session = mock_session_1
-        helper._session_event_loop = "old_loop"
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"data": {"Media": {"id": 1}}})
-        mock_response.from_cache = False
-        mock_response.headers = {}
-
-        mock_session_2 = MagicMock()
-        mock_session_2.post = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
-            )
-        )
-
-        with patch(
-            "http_cache.aiohttp_adapter.CachedAiohttpSession",
-            side_effect=Exception("Cache failed"),
-        ):
-            with patch("aiohttp.ClientSession", return_value=mock_session_2):
-                await helper._make_request("query { test }")
-
-        # Old session should be closed
-        mock_session_1.close.assert_awaited_once()
-        # New session should be created
-        assert helper.session is mock_session_2
-        assert helper._session_event_loop == asyncio.get_running_loop()
-
-    @pytest.mark.asyncio
-    async def test_session_close_error_ignored(self):
-        """Test that errors closing old session are ignored."""
-        helper = AniListHelper()
-
-        # Create session that fails to close
-        mock_session_1 = MagicMock()
-        mock_session_1.close = AsyncMock(side_effect=Exception("Close failed"))
-        helper.session = mock_session_1
-        helper._session_event_loop = "old_loop"
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"data": {"Media": {"id": 1}}})
-        mock_response.from_cache = False
-        mock_response.headers = {}
-
-        mock_session_2 = MagicMock()
-        mock_session_2.post = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
-            )
-        )
-
-        with patch(
-            "http_cache.aiohttp_adapter.CachedAiohttpSession",
-            side_effect=Exception("Cache failed"),
-        ):
-            with patch("aiohttp.ClientSession", return_value=mock_session_2):
-                # Should not raise exception
-                await helper._make_request("query { test }")
-
-        # New session created despite close error
-        assert helper.session is mock_session_2
 
     @pytest.mark.asyncio
     async def test_cached_session_fallback_on_error(self):
