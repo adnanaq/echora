@@ -30,7 +30,7 @@ from crawl4ai.types import RunManyReturn
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
-from .utils import sanitize_output_path
+from enrichment.sources.base.utils import sanitize_output_path
 
 logger = logging.getLogger(__name__)
 

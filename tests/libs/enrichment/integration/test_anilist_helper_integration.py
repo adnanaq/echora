@@ -13,7 +13,7 @@ import logging
 import pytest
 import pytest_asyncio
 import redis
-from enrichment.api_helpers.anilist_helper import AniListHelper
+from enrichment.sources.anilist.anilist_helper import AniListHelper
 
 # Mark all tests in this module as integration tests
 # Use redis_client fixture for setup/teardown side effects

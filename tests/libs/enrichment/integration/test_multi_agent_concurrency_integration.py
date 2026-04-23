@@ -46,7 +46,7 @@ def temp_test_dir():
 @pytest.fixture
 def mock_config(temp_test_dir):
     """Create mock EnrichmentConfig for testing."""
-    from enrichment.programmatic.config import EnrichmentConfig
+    from enrichment.pipeline.config import EnrichmentConfig
 
     config = EnrichmentConfig(temp_dir=temp_test_dir)
     return config
@@ -66,7 +66,7 @@ class TestConcurrentAgentDirectoryCreation:
         - No ID collisions (each agent gets unique ID)
         - All directories exist after concurrent creation
         """
-        from enrichment.programmatic.enrichment_pipeline import (
+        from enrichment.pipeline.enrichment_pipeline import (
             ProgrammaticEnrichmentPipeline,
         )
 
@@ -137,7 +137,7 @@ class TestConcurrentRedisAccess:
 
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListHelper
+        from enrichment.sources.anilist.anilist_helper import AniListHelper
 
         num_agents = 3
         anilist_id = 1535  # Death Note (much smaller anime)
@@ -280,7 +280,7 @@ class TestAgentIDRaceConditions:
 
         Expected: No duplicate IDs, gap filled correctly
         """
-        from enrichment.programmatic.enrichment_pipeline import (
+        from enrichment.pipeline.enrichment_pipeline import (
             ProgrammaticEnrichmentPipeline,
         )
 
@@ -349,7 +349,7 @@ class TestConcurrentPipelineExecution:
         NOTE: Requires live AniList API and Redis.
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListHelper
+        from enrichment.sources.anilist.anilist_helper import AniListHelper
 
         # Use small anime for stress test (avoid huge episode/character lists)
         anime_configs = [
