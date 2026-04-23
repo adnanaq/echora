@@ -198,21 +198,25 @@ class CharacterRole(StrEnum):
 
         v = value.lower()
         _map = {
-            # MAL / AniList / AnimePlanet / AniSearch
+            # MAL ("Main", "Supporting") / AniList ("MAIN", "SUPPORTING", "BACKGROUND") / Kitsu ("main", "supporting")
             "main": cls.MAIN,
             "supporting": cls.SUPPORTING,
             "background": cls.BACKGROUND,
-            # AniDB
+            # AniDB (pre-normalized by anidb_helper to "Main", "Secondary", "Minor")
             "main character in": cls.MAIN,
             "secondary cast in": cls.SUPPORTING,
             "appears in": cls.BACKGROUND,
             "cameo appearance in": cls.BACKGROUND,
-            # AnimePlanet / AniSearch
+            # AnimePlanet / AniDB normalized ("Main", "Secondary", "Minor")
             "secondary": cls.SUPPORTING,
             "minor": cls.BACKGROUND,
+            # AniSearch refs page section labels
+            "main character": cls.MAIN,
+            "secondary character": cls.SUPPORTING,
             "extra": cls.BACKGROUND,
-            "other": cls.BACKGROUND,
+            "organisation": cls.BACKGROUND,
             # common / catch-all
+            "other": cls.BACKGROUND,
             "sub": cls.SUPPORTING,
             "unknown": cls.BACKGROUND,
         }
