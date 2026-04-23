@@ -174,6 +174,86 @@ def _get_character_schema() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Ography sub-page schema
+# ---------------------------------------------------------------------------
+
+
+def _get_ography_schema() -> dict[str, Any]:
+    """XPath schema for /anime and /manga character sub-pages.
+
+    Both pages share ul.covers with per-item anchor + span.title.
+    """
+    return {
+        "name": "AniSearchCharacterOgraphy",
+        "baseSelector": "//body",
+        "fields": [
+            {
+                "name": "entries",
+                "selector": "//ul[@class='covers']//a[contains(@href,'anime/') or contains(@href,'manga/')]",
+                "type": "list",
+                "fields": [
+                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {"name": "title", "selector": ".//span[@class='title']", "type": "text"},
+                ],
+            }
+        ],
+    }
+
+
+@cached_result(
+    ttl=TTL_ANISEARCH,
+    key_prefix="anisearch_character_ography",
+    dependencies=[_get_ography_schema],
+)
+async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None:
+    """Fetch a single /anime or /manga ography sub-page. Cached by URL."""
+    results = await crawl_batch_urls(
+        [url],
+        browser_config=get_docker_browser_config(),
+        crawler_config=get_docker_crawler_config(_get_ography_schema()),
+    )
+    result = results[0] if results else None
+    if not result:
+        return None
+    status = result.get("status_code")
+    if status and status >= 400:
+        logger.error(f"HTTP {status} for ography {url}")
+        return None
+    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
+    if not items:
+        return None
+    return [
+        {"url": _absolutize_anime_url(e["url"]), "title": (e.get("title") or "").strip()}
+        for e in (items[0].get("entries") or [])
+        if e.get("url") and (e.get("title") or "").strip()
+    ]
+
+
+def _parse_ography_result(result: dict[str, Any] | None, sub_url: str) -> list[dict[str, Any]] | None:
+    """Parse a raw crawl result for an ography sub-page."""
+    if not result:
+        return None
+    status = result.get("status_code")
+    if status and status >= 400:
+        logger.error(f"HTTP {status} for ography {sub_url}")
+        return None
+    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
+    if not items:
+        return None
+    return [
+        {"url": _absolutize_anime_url(e["url"]), "title": (e.get("title") or "").strip()}
+        for e in (items[0].get("entries") or [])
+        if e.get("url") and (e.get("title") or "").strip()
+    ]
+
+
+def _ography_to_roles(entries: list[dict[str, Any]] | None) -> list[AniSearchCharacterAnimeRole]:
+    if not entries:
+        return []
+    return [AniSearchCharacterAnimeRole(title=e["title"], url=e["url"]) for e in entries if e.get("title")]
+
+
+# ---------------------------------------------------------------------------
 # Regex helper — voice actors
 # ---------------------------------------------------------------------------
 
@@ -283,7 +363,12 @@ def _post_process_character(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_character(
-    raw: dict[str, Any], html: str, url: str, role: str | None = None
+    raw: dict[str, Any],
+    html: str,
+    url: str,
+    role: str | None = None,
+    anime_ography: list[dict[str, Any]] | None = None,
+    manga_ography: list[dict[str, Any]] | None = None,
 ) -> AniSearchCharacter:
     """Construct AniSearchCharacter from XPath-extracted fields and full page HTML."""
     description = (raw.get("description") or "").strip() or None
@@ -324,6 +409,8 @@ def _build_character(
         picture_images=picture_images,
         voice_actors=_extract_voice_actors(html),
         anime_roles=anime_roles,
+        anime_ography=_ography_to_roles(anime_ography),
+        manga_ography=_ography_to_roles(manga_ography),
         attributes=_extract_attributes(html),
     )
 
@@ -397,7 +484,12 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
         self, processed_raw: dict[str, Any], url: str
     ) -> AniSearchCharacter:
         return _build_character(
-            processed_raw, processed_raw.get("_html") or "", url, role=self._role
+            processed_raw,
+            processed_raw.get("_html") or "",
+            url,
+            role=self._role,
+            anime_ography=processed_raw.get("_anime_ography"),
+            manga_ography=processed_raw.get("_manga_ography"),
         )
 
     def map_to_canonical(self, source_model: AniSearchCharacter) -> dict[str, Any]:
@@ -420,8 +512,50 @@ async def fetch_anisearch_character(
     Returns:
         Canonical character dict on success, None on failure.
     """
+    raw = await _fetch_anisearch_character_data(url)
+    if raw is None:
+        return None
+    anime_ography, manga_ography = await _fetch_character_ography_data(
+        f"{url}/anime"
+    ), await _fetch_character_ography_data(f"{url}/manga")
+    raw["_anime_ography"] = anime_ography
+    raw["_manga_ography"] = manga_ography
+    char = _build_character(raw, raw.get("_html") or "", url, role=role,
+                            anime_ography=anime_ography, manga_ography=manga_ography)
+    canonical = character_from_anisearch(char)
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AniSearchCharacterCrawler(DockerTransport(), repo, role=role).crawl(url)
+    repo.save(canonical)
+    return canonical
+
+
+async def _batch_fetch_ography(sub_urls: list[str]) -> list[list[dict[str, Any]] | None]:
+    """Batch-fetch ography sub-pages with cache_batch_get/set.
+
+    sub_urls: list of absolute /anime or /manga URLs.
+    Returns list aligned to sub_urls.
+    """
+    cached_values, missing_indices = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+        sub_urls
+    )
+    results: list[list[dict[str, Any]] | None] = list(cached_values)
+
+    if missing_indices:
+        missing_urls = [sub_urls[i] for i in missing_indices]
+        raw_results = await crawl_batch_urls(
+            missing_urls,
+            browser_config=get_docker_browser_config(),
+            crawler_config=get_docker_crawler_config(_get_ography_schema()),
+        )
+        cache_values: list[list[dict[str, Any]] | None] = []
+        for i, result in enumerate(raw_results):
+            parsed = _parse_ography_result(result, missing_urls[i])
+            results[missing_indices[i]] = parsed
+            cache_values.append(parsed)
+        await _fetch_character_ography_data.cache_batch_set(  # type: ignore[attr-defined]
+            missing_urls, cache_values
+        )
+
+    return results
 
 
 async def fetch_anisearch_characters(
@@ -429,7 +563,7 @@ async def fetch_anisearch_characters(
     *,
     on_result: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any] | None]:
-    """Batch-fetch character detail pages for all refs.
+    """Batch-fetch character detail pages (+ ography sub-pages) for all refs.
 
     Args:
         refs: List of {"url": str, "role": str} dicts from fetch_anisearch_character_refs().
@@ -445,27 +579,12 @@ async def fetch_anisearch_characters(
     urls = [r["url"] for r in refs]
     logger.info(f"Batch fetching {len(urls)} AniSearch character details...")
 
+    # ── Step 1: detail pages ──────────────────────────────────────────────
     cached_values, missing_indices = await _fetch_anisearch_character_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
     )
 
-    characters: list[dict[str, Any] | None] = [None] * len(urls)
-
-    for idx, cached in enumerate(cached_values):
-        if cached is not None:
-            role = refs[idx].get("role")
-            canonical = character_from_anisearch(
-                _build_character(cached, cached.get("_html") or "", urls[idx], role=role)
-            )
-            characters[idx] = canonical
-            if on_result is not None:
-                on_result(canonical)
-        else:
-            if idx not in missing_indices:
-                missing_indices.append(idx)
-
-    if not missing_indices:
-        return characters
+    raw_data: list[dict[str, Any] | None] = list(cached_values)
 
     missing_indices = sorted(set(missing_indices))
     missing_urls = [urls[i] for i in missing_indices]
@@ -473,7 +592,7 @@ async def fetch_anisearch_characters(
     for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
         chunk_urls = missing_urls[offset : offset + _CHARACTER_BATCH_SIZE]
         chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
-        cache_values: list[dict[str, Any] | None] = [None] * len(chunk_urls)
+        cache_values_detail: list[dict[str, Any] | None] = [None] * len(chunk_urls)
 
         results = await crawl_batch_urls(
             chunk_urls,
@@ -484,39 +603,52 @@ async def fetch_anisearch_characters(
         for idx_in_chunk, result in enumerate(results):
             out_index = chunk_indices[idx_in_chunk]
             if not result:
-                characters[out_index] = None
                 continue
-
             url = result.get("url") or chunk_urls[idx_in_chunk]
             status = result.get("status_code")
             if status and status >= 400:
                 logger.error(f"HTTP {status} for character {url}")
-                characters[out_index] = None
                 continue
             if status and 300 <= status < 400:
                 logger.debug(f"HTTP {status} (redirect) for character {url}")
-
-            items: list[dict[str, Any]] = json.loads(
-                result.get("extracted_content") or "[]"
-            )
+            items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
             if not items:
-                characters[out_index] = None
                 continue
-
             raw = _post_process_character(items[0])
             raw["_html"] = result.get("html") or ""
-            role = refs[out_index].get("role")
-            canonical = character_from_anisearch(
-                _build_character(raw, raw["_html"], url, role=role)
-            )
-            characters[out_index] = canonical
-            cache_values[idx_in_chunk] = raw
-            if on_result is not None:
-                on_result(canonical)
+            raw_data[out_index] = raw
+            cache_values_detail[idx_in_chunk] = raw
 
         await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-            chunk_urls,
-            cache_values,
+            chunk_urls, cache_values_detail
         )
+
+    # ── Step 2: ography sub-pages (all characters in one batch) ──────────
+    anime_sub_urls = [f"{url}/anime" for url in urls]
+    manga_sub_urls = [f"{url}/manga" for url in urls]
+    anime_ography_list, manga_ography_list = await _batch_fetch_ography(
+        anime_sub_urls
+    ), await _batch_fetch_ography(manga_sub_urls)
+
+    # ── Step 3: build canonical characters ───────────────────────────────
+    characters: list[dict[str, Any] | None] = [None] * len(urls)
+    for idx, raw in enumerate(raw_data):
+        if raw is None:
+            continue
+        url = urls[idx]
+        role = refs[idx].get("role")
+        canonical = character_from_anisearch(
+            _build_character(
+                raw,
+                raw.get("_html") or "",
+                url,
+                role=role,
+                anime_ography=anime_ography_list[idx],
+                manga_ography=manga_ography_list[idx],
+            )
+        )
+        characters[idx] = canonical
+        if on_result is not None:
+            on_result(canonical)
 
     return characters

@@ -243,15 +243,28 @@ def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
     if all_roles:
         result["roles"] = [r.value for r in all_roles]
 
-    # ── Animeography ──────────────────────────────────────────────────────
-    if char.anime_roles:
+    # ── Animeography (full list from /anime sub-page; fallback to detail page) ──
+    ography_source = char.anime_ography or char.anime_roles
+    if ography_source:
         result["animeography"] = [
             Ography(
                 title=entry.title,
                 role=CharacterRole(entry.role or ""),
                 sources=[entry.url] if entry.url else [],
             )
-            for entry in char.anime_roles
+            for entry in ography_source
+            if entry.title
+        ]
+
+    # ── Mangaography ──────────────────────────────────────────────────────
+    if char.manga_ography:
+        result["mangaography"] = [
+            Ography(
+                title=entry.title,
+                role=CharacterRole(entry.role or ""),
+                sources=[entry.url] if entry.url else [],
+            )
+            for entry in char.manga_ography
             if entry.title
         ]
 

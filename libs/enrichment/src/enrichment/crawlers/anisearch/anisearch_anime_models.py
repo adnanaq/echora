@@ -103,4 +103,6 @@ class AniSearchCharacter(BaseModel):
     picture_images: list[str] = []
     voice_actors: list[AniSearchVoiceActorRef] = []
     anime_roles: list[AniSearchCharacterAnimeRole] = []
+    anime_ography: list[AniSearchCharacterAnimeRole] = []
+    manga_ography: list[AniSearchCharacterAnimeRole] = []
     attributes: dict[str, str] = {}
