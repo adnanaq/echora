@@ -996,6 +996,10 @@ class Episode(BaseModel):
     title: str = Field(..., description="Primary episode title")
     title_japanese: str | None = Field(None, description="Japanese episode title")
     title_romaji: str | None = Field(None, description="Romanized episode title")
+    titles: dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional titles keyed by BCP 47 language code (e.g. 'de', 'fr')",
+    )
 
     # =====================================================================
     # ARRAY FIELDS (alphabetical)

@@ -5,14 +5,20 @@ import os
 from typing import Any
 
 from common.utils.jsonl_utils import append_jsonl
-
 from enrichment.sources.anisearch.anisearch_anime_crawler import fetch_anisearch_anime
-from enrichment.sources.anisearch.anisearch_character_crawler import fetch_anisearch_characters
+from enrichment.sources.anisearch.anisearch_character_crawler import (
+    fetch_anisearch_characters,
+)
 from enrichment.sources.anisearch.anisearch_character_refs_crawler import (
     fetch_anisearch_character_refs,
 )
-from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
+from enrichment.sources.anisearch.anisearch_episode_crawler import (
+    fetch_anisearch_episodes,
+)
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +70,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
             if episode_data:
                 logger.info(f"Integrated {len(episode_data)} episodes")
         except Exception:
-            logger.warning(f"Failed to fetch episodes for {canonical_url}", exc_info=True)
+            logger.warning(
+                f"Failed to fetch episodes for {canonical_url}", exc_info=True
+            )
 
         characters = []
         try:
@@ -72,7 +80,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
             if characters:
                 logger.info(f"Integrated {len(characters)} characters")
         except Exception:
-            logger.warning(f"Failed to fetch characters for {canonical_url}", exc_info=True)
+            logger.warning(
+                f"Failed to fetch characters for {canonical_url}", exc_info=True
+            )
 
         return normalize_enrichment_payload(
             {
@@ -118,7 +128,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
         """
         try:
             logger.info(f"Fetching AniSearch episode data for {url}")
-            episode_data = await fetch_anisearch_episodes(anime_id=url, output_path=None)
+            episode_data = await fetch_anisearch_episodes(
+                anime_id=url, output_path=None
+            )
             if not episode_data:
                 logger.debug(f"No episode data found for {url}")
                 return None

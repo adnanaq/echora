@@ -28,6 +28,7 @@ from common.models.anime import (
     Character,
     CharacterRole,
     CompanyEntry,
+    Episode,
     Ography,
     RelatedAnime,
     RelatedSourceMaterial,
@@ -42,10 +43,10 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
-
 from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchAnime,
     AniSearchCharacter,
+    AniSearchEpisode,
     AniSearchRelatedEntry,
 )
 
@@ -128,7 +129,11 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     """
     # ── Scalars ───────────────────────────────────────────────────────────
     anime_type = AnimeType(anime.type or "")
-    source_material = SourceMaterialType(anime.source_material or "") if anime.source_material else None
+    source_material = (
+        SourceMaterialType(anime.source_material or "")
+        if anime.source_material
+        else None
+    )
     status = determine_anime_status(anime.start_date, anime.end_date)
     year = determine_anime_year(anime.start_date) if anime.start_date else None
     season = determine_anime_season(anime.start_date) if anime.start_date else None
@@ -166,8 +171,14 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
 
     # ── Companies ─────────────────────────────────────────────────────────
     studios = (
-        [CompanyEntry(name=anime.studio, sources=[anime.studio_url] if anime.studio_url else [])]
-        if anime.studio else []
+        [
+            CompanyEntry(
+                name=anime.studio,
+                sources=[anime.studio_url] if anime.studio_url else [],
+            )
+        ]
+        if anime.studio
+        else []
     )
 
     # ── Relations ─────────────────────────────────────────────────────────
@@ -175,7 +186,9 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     related_source_material = _build_related_source_material(anime.manga_relations)
 
     # ── External sources ──────────────────────────────────────────────────
-    external_sources = {w["name"]: w["url"] for w in anime.websites if w.get("name") and w.get("url")}
+    external_sources = {
+        w["name"]: w["url"] for w in anime.websites if w.get("name") and w.get("url")
+    }
 
     result = Anime(
         title=anime.title or anime.title_japanese or "",
@@ -286,3 +299,36 @@ def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
 
     character = Character.model_validate(result)
     return character.model_dump(mode="json", exclude_none=True)
+
+
+# =============================================================================
+# EPISODE MAPPER
+# =============================================================================
+
+
+def episode_from_anisearch(ep: AniSearchEpisode) -> dict[str, Any]:
+    """Map a pre-parsed AniSearchEpisode into canonical Episode field values.
+
+    All parsing (runtime → seconds, date string → ISO, title_ja split) is done
+    by the crawler before this function is called.  This function only maps
+    already-clean fields onto the canonical Episode model.
+
+    Args:
+        ep: Validated AniSearch episode source model with pre-parsed fields.
+
+    Returns:
+        Dict of canonical Episode field name → value (exclude_none=True).
+    """
+    episode = Episode(
+        aired=normalize_to_utc(ep.aired),
+        duration=ep.duration,
+        episode_number=ep.episode_number,
+        filler=ep.is_filler,
+        recap=ep.is_recap,
+        title=ep.title or f"Episode {ep.episode_number}",
+        title_japanese=ep.title_japanese,
+        title_romaji=ep.title_romaji,
+        titles=ep.titles,
+        sources=[ep.source] if ep.source else [],
+    )
+    return episode.model_dump(mode="json", exclude_none=True)

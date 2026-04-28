@@ -26,13 +26,13 @@ class AniSearchAnime(BaseModel):
     """Scraped anime data from anisearch.com."""
 
     # ── Titles ────────────────────────────────────────────────────────────
-    title: str | None = None           # primary display title (strong.f16)
+    title: str | None = None  # primary display title (strong.f16)
     title_japanese: str | None = None  # native script (div.grey)
     synonyms: list[str] = []
 
     # ── Classification ────────────────────────────────────────────────────
-    type: str | None = None            # raw: "TV-Series", "Movie", "OVA", etc.
-    source_material: str | None = None # raw: "Manga", "Light Novel", etc.
+    type: str | None = None  # raw: "TV-Series", "Movie", "OVA", etc.
+    source_material: str | None = None  # raw: "Manga", "Light Novel", etc.
 
     # ── Dates (DD.MM.YYYY — datetime_utils handles this format natively) ──
     start_date: str | None = None
@@ -67,6 +67,38 @@ class AniSearchAnime(BaseModel):
 
     # ── Source URL (injected by build_source_model) ───────────────────────
     url: str | None = None
+
+
+# =============================================================================
+# EPISODE MODELS
+# =============================================================================
+
+
+class AniSearchEpisode(BaseModel):
+    """Scraped from a single row of an anisearch.com /episodes page.
+
+    All fields are pre-parsed by the crawler before model construction:
+    runtime "24 min" → duration seconds, "20. Oct 1999" → aired ISO date,
+    "Romaji (Kanji)" → separate title_romaji and title_japanese fields.
+    """
+
+    episode_number: int
+    is_filler: bool = False
+    is_recap: bool = False
+    duration: int | None = None  # seconds, e.g. 1440
+    aired: str | None = None  # ISO date string, e.g. "1999-10-20"
+    title: str | None = None  # English title
+    title_romaji: str | None = None  # Romanized Japanese title
+    title_japanese: str | None = None  # Native script Japanese title
+    titles: dict[str, str] = {}  # Additional titles keyed by BCP 47 code (de, fr, it)
+    source: str | None = None  # /episodes page URL
+
+
+class AniSearchEpisodesPage(BaseModel):
+    """All episodes extracted from a single anisearch.com /episodes page."""
+
+    episodes: list[AniSearchEpisode] = []
+    source: str | None = None
 
 
 # =============================================================================

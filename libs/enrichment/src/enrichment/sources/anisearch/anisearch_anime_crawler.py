@@ -19,7 +19,6 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 )
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
 from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
 from enrichment.sources.base.crawler_config import (
     get_docker_browser_config,
     get_docker_crawler_config,
@@ -30,6 +29,7 @@ from enrichment.sources.base.framework import (
     FileRepository,
     NullRepository,
 )
+from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -56,7 +56,7 @@ def _extract_path_from_url(url: str) -> str:
     """
     if not url.startswith(BASE_ANIME_URL):
         raise ValueError(f"URL must start with {BASE_ANIME_URL!r}: {url!r}")
-    path = url[len(BASE_ANIME_URL):].strip("/")
+    path = url[len(BASE_ANIME_URL) :].strip("/")
     if not path:
         raise ValueError(f"URL does not contain anime path: {url!r}")
     return path
@@ -173,7 +173,12 @@ def _get_main_schema() -> dict[str, Any]:
                 "type": "nested_list",
                 "fields": [
                     {"name": "name", "selector": ".", "type": "text"},
-                    {"name": "url", "selector": ".", "type": "attribute", "attribute": "href"},
+                    {
+                        "name": "url",
+                        "selector": ".",
+                        "type": "attribute",
+                        "attribute": "href",
+                    },
                 ],
             },
         ],
@@ -274,7 +279,9 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
         else:
             # e.g. "2026 ‑ ?" — extract bare year and normalise to ISO
             year_match = re.search(r"\b(\d{4})\b", published)
-            data["start_date"] = parse_iso_date(year_match.group(1)) if year_match else None
+            data["start_date"] = (
+                parse_iso_date(year_match.group(1)) if year_match else None
+            )
         data["end_date"] = None
 
     data["studio"] = (raw.get("studio") or "").strip() or None
@@ -286,8 +293,10 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
 
     studio_url = (raw.get("studio_url") or "").strip()
     data["studio_url"] = (
-        f"https://www.anisearch.com{studio_url}" if studio_url.startswith("/")
-        else f"https://www.anisearch.com/{studio_url}" if studio_url
+        f"https://www.anisearch.com{studio_url}"
+        if studio_url.startswith("/")
+        else f"https://www.anisearch.com/{studio_url}"
+        if studio_url
         else None
     )
 
@@ -303,7 +312,9 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
     data["description"] = (raw.get("description") or "").strip() or None
 
     # Genres / tags: flatten list[{name: str}] → list[str]
-    data["genres"] = [item["name"] for item in raw.get("genres", []) if item.get("name")]
+    data["genres"] = [
+        item["name"] for item in raw.get("genres", []) if item.get("name")
+    ]
     data["tags"] = [item["name"] for item in raw.get("tags", []) if item.get("name")]
 
     data["websites"] = [
@@ -466,8 +477,12 @@ class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
         return await _fetch_anisearch_anime_data(_extract_path_from_url(url))
 
-    def build_source_model(self, processed_raw: dict[str, Any], url: str) -> AniSearchAnime:
-        return _build_anime_from_raw(processed_raw, processed_raw.get("_canonical_url", url))
+    def build_source_model(
+        self, processed_raw: dict[str, Any], url: str
+    ) -> AniSearchAnime:
+        return _build_anime_from_raw(
+            processed_raw, processed_raw.get("_canonical_url", url)
+        )
 
     def map_to_canonical(self, source_model: AniSearchAnime) -> dict[str, Any]:
         return anime_from_anisearch(source_model)

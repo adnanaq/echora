@@ -62,7 +62,11 @@ def _get_character_refs_schema() -> dict[str, Any]:
         }
         for section_id in _SECTION_ROLE_MAP
     ]
-    return {"name": "AniSearchCharacterRefs", "baseSelector": "//body", "fields": fields}
+    return {
+        "name": "AniSearchCharacterRefs",
+        "baseSelector": "//body",
+        "fields": fields,
+    }
 
 
 def _absolutize(href: str) -> str:

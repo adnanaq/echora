@@ -386,6 +386,7 @@ message Episode {
   repeated string sources = 18;
   repeated EpisodeCharacter characters = 19;
   repeated EpisodeStaff staff = 20;
+  map<string, string> titles = 21;
 }
 
 message Anime {
