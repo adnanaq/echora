@@ -10,7 +10,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.anisearch.anisearch_anime_crawler import (
     BASE_ANIME_URL,
     AniSearchAnimeCrawler,
@@ -73,13 +72,15 @@ def test_extract_path_empty_path_raises() -> None:
 
 
 def test_process_relation_tooltips_extracts_img_src() -> None:
-    rel = {"image": '<img src="https://cdn.anisearch.com/images/anime/cover/2/2227.webp" />'}
+    rel = {
+        "image": '<img src="https://cdn.anisearch.com/images/anime/cover/2/2227.webp" />'
+    }
     _process_relation_tooltips([rel])
     assert rel["image"] == "https://cdn.anisearch.com/images/anime/cover/2/2227.webp"
 
 
 def test_process_relation_tooltips_html_escaped_decoded() -> None:
-    escaped = '&lt;img src=&quot;https://cdn.anisearch.com/cover.webp&quot;&gt;'
+    escaped = "&lt;img src=&quot;https://cdn.anisearch.com/cover.webp&quot;&gt;"
     rel = {"image": escaped}
     _process_relation_tooltips([rel])
     assert rel["image"] == "https://cdn.anisearch.com/cover.webp"
@@ -108,7 +109,9 @@ def test_process_relation_tooltips_real_data(one_piece_relations_raw) -> None:
     for rel in rels:
         if rel.get("image"):
             assert not rel["image"].startswith("<"), "HTML tag not stripped from image"
-            assert rel["image"].startswith("https://"), "Image is not a URL after extraction"
+            assert rel["image"].startswith("https://"), (
+                "Image is not a URL after extraction"
+            )
 
 
 # =============================================================================
@@ -146,7 +149,9 @@ def test_main_schema_title_ja_targets_f16_strong() -> None:
 def test_main_schema_genres_anchor_on_genre_href() -> None:
     schema = _get_main_schema()
     field = next(f for f in schema["fields"] if f["name"] == "genres")
-    assert "/genre/main/" in field["selector"] or "/genre/subsidiary/" in field["selector"]
+    assert (
+        "/genre/main/" in field["selector"] or "/genre/subsidiary/" in field["selector"]
+    )
 
 
 def test_main_schema_tags_anchor_on_tag_href() -> None:
@@ -204,7 +209,12 @@ def test_unwrap_result_success_false_returns_none() -> None:
 
 
 def test_unwrap_result_empty_json_returns_none() -> None:
-    assert _unwrap_result({"success": True, "status_code": 200, "extracted_content": "[]"}, _URL) is None
+    assert (
+        _unwrap_result(
+            {"success": True, "status_code": 200, "extracted_content": "[]"}, _URL
+        )
+        is None
+    )
 
 
 def test_unwrap_result_valid_returns_first_item(one_piece_main_raw) -> None:
@@ -278,13 +288,19 @@ def test_post_process_broadcast_missing(one_piece_main_raw) -> None:
 
 def test_post_process_studio_url_without_leading_slash(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
-    assert data["studio_url"] == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    assert (
+        data["studio_url"]
+        == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    )
 
 
 def test_post_process_studio_url_with_leading_slash(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "studio_url": "/company/412,toei-animation-co-ltd"}
     data = _post_process_main(raw)
-    assert data["studio_url"] == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    assert (
+        data["studio_url"]
+        == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    )
 
 
 def test_post_process_studio_url_empty(one_piece_main_raw) -> None:
@@ -356,7 +372,12 @@ def test_post_process_trending_extracted(one_piece_main_raw) -> None:
 
 
 def test_post_process_stats_all_missing_returns_none(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "rating_score": None, "rank_toplist": None, "rank_trending": None}
+    raw = {
+        **one_piece_main_raw,
+        "rating_score": None,
+        "rank_toplist": None,
+        "rank_trending": None,
+    }
     assert _post_process_main(raw)["statistics"] is None
 
 
@@ -399,11 +420,15 @@ def test_parse_relations_real_data_manga_count(one_piece_relations_raw) -> None:
     assert len(manga) == len(one_piece_relations_raw["manga_relations"])
 
 
-def test_parse_relations_images_are_urls_after_processing(one_piece_relations_raw) -> None:
+def test_parse_relations_images_are_urls_after_processing(
+    one_piece_relations_raw,
+) -> None:
     anime, manga = _parse_relations(one_piece_relations_raw)
     for rel in anime + manga:
         if rel.get("image"):
-            assert rel["image"].startswith("https://"), f"Image not a URL: {rel['image']}"
+            assert rel["image"].startswith("https://"), (
+                f"Image not a URL: {rel['image']}"
+            )
 
 
 def test_parse_relations_manga_original_work(one_piece_relations_raw) -> None:
@@ -442,7 +467,9 @@ def test_build_anime_no_statistics(one_piece_processed) -> None:
     assert _build_anime_from_raw(raw, _URL).statistics is None
 
 
-def test_build_anime_relations_count(one_piece_processed, one_piece_relations_raw) -> None:
+def test_build_anime_relations_count(
+    one_piece_processed, one_piece_relations_raw
+) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert len(anime.anime_relations) == len(one_piece_relations_raw["anime_relations"])
     assert len(anime.manga_relations) == len(one_piece_relations_raw["manga_relations"])
@@ -508,7 +535,9 @@ async def test_fetch_main_page_none_returns_none(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_success_with_real_fixture(mocker, one_piece_main_raw, one_piece_relations_raw) -> None:
+async def test_fetch_success_with_real_fixture(
+    mocker, one_piece_main_raw, one_piece_relations_raw
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -517,8 +546,16 @@ async def test_fetch_success_with_real_fixture(mocker, one_piece_main_raw, one_p
         "enrichment.sources.anisearch.anisearch_anime_crawler.crawl_single_url",
         new_callable=AsyncMock,
         side_effect=[
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_main_raw])},
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_relations_raw])},
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_main_raw]),
+            },
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_relations_raw]),
+            },
         ],
     )
     result = await _fetch_anisearch_anime_data("2227,one-piece")
@@ -527,11 +564,15 @@ async def test_fetch_success_with_real_fixture(mocker, one_piece_main_raw, one_p
     assert result["type"] == "TV-Series"
     assert result["broadcast_day"] == "Sunday"
     assert result["statistics"]["score"] == pytest.approx(4.18)
-    assert len(result["anime_relations"]) == len(one_piece_main_raw.get("anime_relations", result["anime_relations"]))
+    assert len(result["anime_relations"]) == len(
+        one_piece_main_raw.get("anime_relations", result["anime_relations"])
+    )
 
 
 @pytest.mark.asyncio
-async def test_fetch_relations_none_still_returns_data(mocker, one_piece_main_raw) -> None:
+async def test_fetch_relations_none_still_returns_data(
+    mocker, one_piece_main_raw
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -540,7 +581,11 @@ async def test_fetch_relations_none_still_returns_data(mocker, one_piece_main_ra
         "enrichment.sources.anisearch.anisearch_anime_crawler.crawl_single_url",
         new_callable=AsyncMock,
         side_effect=[
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_main_raw])},
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_main_raw]),
+            },
             None,
         ],
     )
@@ -566,7 +611,9 @@ async def test_fetch_anisearch_anime_returns_none_when_no_data(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_anisearch_anime_returns_canonical_dict(mocker, one_piece_processed) -> None:
+async def test_fetch_anisearch_anime_returns_canonical_dict(
+    mocker, one_piece_processed
+) -> None:
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
         new_callable=AsyncMock,
@@ -583,7 +630,9 @@ async def test_fetch_anisearch_anime_returns_canonical_dict(mocker, one_piece_pr
 
 
 @pytest.mark.asyncio
-async def test_fetch_data_embeds_canonical_url_on_redirect(mocker, one_piece_main_raw, one_piece_relations_raw) -> None:
+async def test_fetch_data_embeds_canonical_url_on_redirect(
+    mocker, one_piece_main_raw, one_piece_relations_raw
+) -> None:
     """When crawl4ai returns a redirected_url, raw dict stores it as _canonical_url."""
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
@@ -599,7 +648,11 @@ async def test_fetch_data_embeds_canonical_url_on_redirect(mocker, one_piece_mai
                 "redirected_url": "https://www.anisearch.com/anime/2227,one-piece",
                 "extracted_content": json.dumps([one_piece_main_raw]),
             },
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_relations_raw])},
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_relations_raw]),
+            },
         ],
     )
     result = await _fetch_anisearch_anime_data("2227")
@@ -608,7 +661,9 @@ async def test_fetch_data_embeds_canonical_url_on_redirect(mocker, one_piece_mai
 
 
 @pytest.mark.asyncio
-async def test_fetch_data_no_canonical_url_when_no_redirect(mocker, one_piece_main_raw, one_piece_relations_raw) -> None:
+async def test_fetch_data_no_canonical_url_when_no_redirect(
+    mocker, one_piece_main_raw, one_piece_relations_raw
+) -> None:
     """When there is no redirect, _canonical_url is absent from the raw dict."""
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
@@ -618,8 +673,16 @@ async def test_fetch_data_no_canonical_url_when_no_redirect(mocker, one_piece_ma
         "enrichment.sources.anisearch.anisearch_anime_crawler.crawl_single_url",
         new_callable=AsyncMock,
         side_effect=[
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_main_raw])},
-            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_relations_raw])},
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_main_raw]),
+            },
+            {
+                "status_code": 200,
+                "success": True,
+                "extracted_content": json.dumps([one_piece_relations_raw]),
+            },
         ],
     )
     result = await _fetch_anisearch_anime_data("2227,one-piece")
@@ -645,7 +708,9 @@ def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None
 
 
 @pytest.mark.asyncio
-async def test_fetch_anisearch_anime_sources_uses_canonical_url(mocker, one_piece_processed) -> None:
+async def test_fetch_anisearch_anime_sources_uses_canonical_url(
+    mocker, one_piece_processed
+) -> None:
     """When raw contains _canonical_url, the final canonical dict sources reflect it."""
     canonical = "https://www.anisearch.com/anime/2227,one-piece"
     mocker.patch(

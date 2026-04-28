@@ -11,7 +11,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.anisearch.anisearch_character_refs_crawler import (
     _ANISEARCH_BASE_URL,
     _absolutize,
@@ -34,7 +33,14 @@ _ONE_PIECE_CHARS_URL = "https://www.anisearch.com/anime/2227,one-piece/character
 
 def test_refs_schema_structure() -> None:
     schema = _get_character_refs_schema()
-    assert {f["name"] for f in schema["fields"]} == {"chara1", "chara2", "chara3", "chara4", "chara5", "chara50"}
+    assert {f["name"] for f in schema["fields"]} == {
+        "chara1",
+        "chara2",
+        "chara3",
+        "chara4",
+        "chara5",
+        "chara50",
+    }
     for field in schema["fields"]:
         assert field["type"] == "list"
         assert "character/" in field["selector"]
@@ -119,15 +125,27 @@ def test_post_process_refs_count_invariants(one_piece_refs_raw) -> None:
 
 
 def test_post_process_refs_empty_sections_skipped() -> None:
-    raw = {"chara1": [{"url": "character/1,test"}], "chara2": [], "chara3": [],
-           "chara4": [], "chara5": [], "chara50": []}
+    raw = {
+        "chara1": [{"url": "character/1,test"}],
+        "chara2": [],
+        "chara3": [],
+        "chara4": [],
+        "chara5": [],
+        "chara50": [],
+    }
     refs = _post_process_refs(raw)
     assert len(refs) == 1
 
 
 def test_post_process_refs_missing_url_skipped() -> None:
-    raw = {"chara1": [{"url": ""}, {"url": "character/1,test"}],
-           "chara2": [], "chara3": [], "chara4": [], "chara5": [], "chara50": []}
+    raw = {
+        "chara1": [{"url": ""}, {"url": "character/1,test"}],
+        "chara2": [],
+        "chara3": [],
+        "chara4": [],
+        "chara5": [],
+        "chara50": [],
+    }
     refs = _post_process_refs(raw)
     assert len(refs) == 1
 
@@ -138,8 +156,10 @@ def test_post_process_refs_missing_url_skipped() -> None:
 
 
 async def test_fetch_refs_none_result_returns_none(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config",
-                 return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
         new_callable=AsyncMock,
@@ -149,8 +169,10 @@ async def test_fetch_refs_none_result_returns_none(mocker) -> None:
 
 
 async def test_fetch_refs_404_returns_none(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config",
-                 return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
         new_callable=AsyncMock,
@@ -160,8 +182,10 @@ async def test_fetch_refs_404_returns_none(mocker) -> None:
 
 
 async def test_fetch_refs_empty_extracted_content_returns_none(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config",
-                 return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
         new_callable=AsyncMock,
@@ -170,25 +194,37 @@ async def test_fetch_refs_empty_extracted_content_returns_none(mocker) -> None:
     assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
 
 
-async def test_fetch_refs_redirect_logs_debug_continues(mocker, one_piece_refs_raw) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config",
-                 return_value=mocker.MagicMock(cache_enabled=False))
+async def test_fetch_refs_redirect_logs_debug_continues(
+    mocker, one_piece_refs_raw
+) -> None:
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
         new_callable=AsyncMock,
-        return_value={"status_code": 301, "extracted_content": json.dumps([one_piece_refs_raw])},
+        return_value={
+            "status_code": 301,
+            "extracted_content": json.dumps([one_piece_refs_raw]),
+        },
     )
     refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
     assert refs is not None and len(refs) > 0
 
 
 async def test_fetch_refs_real_fixture_returns_refs(mocker, one_piece_refs_raw) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config",
-                 return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
         new_callable=AsyncMock,
-        return_value={"status_code": 200, "extracted_content": json.dumps([one_piece_refs_raw])},
+        return_value={
+            "status_code": 200,
+            "extracted_content": json.dumps([one_piece_refs_raw]),
+        },
     )
     refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
     assert refs is not None
@@ -210,7 +246,9 @@ async def test_fetch_character_refs_returns_empty_on_failure(mocker) -> None:
     assert await fetch_anisearch_character_refs("2227,one-piece") == []
 
 
-async def test_fetch_character_refs_returns_list_on_success(mocker, one_piece_refs_raw) -> None:
+async def test_fetch_character_refs_returns_list_on_success(
+    mocker, one_piece_refs_raw
+) -> None:
     expected = _post_process_refs(one_piece_refs_raw)
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler._fetch_anisearch_character_refs_data",
