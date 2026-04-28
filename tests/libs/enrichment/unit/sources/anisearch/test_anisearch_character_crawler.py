@@ -483,6 +483,40 @@ def test_parse_ography_result_valid_returns_absolute_list() -> None:
 
 
 # =============================================================================
+# AniSearchCharacterCrawler.post_process_raw_data
+# =============================================================================
+
+
+async def test_crawler_post_process_fetches_both_ography_pages(mocker) -> None:
+    ography_entry = [{"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}]
+    mock_ography = AsyncMock(return_value=ography_entry)
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
+        mock_ography,
+    )
+    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    result = await crawler.post_process_raw_data({"_html": ""}, _LUFFY_URL)
+    assert "_anime_ography" in result
+    assert "_manga_ography" in result
+    assert result["_anime_ography"] == ography_entry
+    assert result["_manga_ography"] == ography_entry
+    assert mock_ography.call_count == 2
+
+
+async def test_crawler_post_process_ography_none_on_failure(mocker) -> None:
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    result = await crawler.post_process_raw_data({"_html": "", "name": "Luffy"}, _LUFFY_URL)
+    assert result["_anime_ography"] is None
+    assert result["_manga_ography"] is None
+    assert result["name"] == "Luffy"
+
+
+# =============================================================================
 # fetch_anisearch_character (top-level, mocked)
 # =============================================================================
 
