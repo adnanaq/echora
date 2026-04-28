@@ -168,6 +168,15 @@ class TestBuildHelpers:
             h2 = fetcher._build_helpers(only_services=["kitsu"])
         assert h1["kitsu"] is not h2["kitsu"]
 
+    def test_injected_factories_override_registry(self):
+        """helper_factories kwarg bypasses _REGISTRY — only injected services are built."""
+        custom_cls = MagicMock(return_value=MagicMock())
+        fetcher = ApiFetcher(helper_factories={"custom_svc": custom_cls})
+        helpers = fetcher._build_helpers()
+        assert set(helpers.keys()) == {"custom_svc"}
+        assert "mal" not in helpers
+        custom_cls.assert_called_once()
+
 
 class TestFetchAllData:
     """Tests for fetch_all_data orchestrator."""
@@ -243,7 +252,7 @@ class TestFetchAllData:
     @pytest.mark.asyncio
     async def test_fetch_all_data_normalizes_mixed_helper_payload_shapes(self):
         fetcher = ApiFetcher()
-        ids = {"mal_url": "https://myanimelist.net/anime/21", "anisearch_id": "12"}
+        ids = {"mal_url": "https://myanimelist.net/anime/21", "anisearch_url": "https://www.anisearch.com/anime/12,some-slug"}
         offline = {"title": "One Piece", "sources": []}
 
         mock_mal = AsyncMock()

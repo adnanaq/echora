@@ -40,9 +40,15 @@ class ApiFetcher:
         "mal": MalHelper,
     }
 
-    def __init__(self, config: EnrichmentConfig | None = None):
+    def __init__(
+        self,
+        config: EnrichmentConfig | None = None,
+        *,
+        helper_factories: dict[str, type] | None = None,
+    ):
         """Initialize the parallel API fetcher."""
         self.config = config or EnrichmentConfig()
+        self._factories = helper_factories or self._REGISTRY
 
         # Track API performance
         self.api_timings: dict[str, float] = {}
@@ -69,7 +75,7 @@ class ApiFetcher:
         """Create a fresh helper instance per service for a single fetch run."""
         return {
             name: cls()
-            for name, cls in self._REGISTRY.items()
+            for name, cls in self._factories.items()
             if self._should_include(name, only_services, skip_services)
         }
 
