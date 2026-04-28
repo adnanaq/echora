@@ -96,6 +96,7 @@ class CharacterRole(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CHARACTER_ROLE_MAIN: _ClassVar[CharacterRole]
     CHARACTER_ROLE_SUPPORTING: _ClassVar[CharacterRole]
     CHARACTER_ROLE_BACKGROUND: _ClassVar[CharacterRole]
+    CHARACTER_ROLE_UNKNOWN: _ClassVar[CharacterRole]
 
 class AnimeRelationType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -187,6 +188,7 @@ CHARACTER_ROLE_UNSPECIFIED: CharacterRole
 CHARACTER_ROLE_MAIN: CharacterRole
 CHARACTER_ROLE_SUPPORTING: CharacterRole
 CHARACTER_ROLE_BACKGROUND: CharacterRole
+CHARACTER_ROLE_UNKNOWN: CharacterRole
 ANIME_RELATION_TYPE_UNSPECIFIED: AnimeRelationType
 ANIME_RELATION_TYPE_ADAPTATION: AnimeRelationType
 ANIME_RELATION_TYPE_ALTERNATIVE_VERSION: AnimeRelationType

@@ -185,7 +185,7 @@ class CharacterRole(StrEnum):
     BACKGROUND = "BACKGROUND"
     MAIN = "MAIN"
     SUPPORTING = "SUPPORTING"
-    UNSPECIFIED = "UNSPECIFIED"
+    UNKNOWN = "UNKNOWN"
 
     @classmethod
     def _missing_(cls, value: object) -> "CharacterRole":
@@ -194,7 +194,7 @@ class CharacterRole(StrEnum):
         Handles values from MAL, AniList, AnimePlanet, AniSearch, and AniDB.
         """
         if not isinstance(value, str):
-            return cls.UNSPECIFIED
+            return cls.UNKNOWN
 
         v = value.lower()
         _map = {
@@ -220,7 +220,7 @@ class CharacterRole(StrEnum):
             "sub": cls.SUPPORTING,
             "unknown": cls.BACKGROUND,
         }
-        return _map.get(v, cls.UNSPECIFIED)
+        return _map.get(v, cls.UNKNOWN)
 
 
 class SourceMaterialType(StrEnum):
@@ -443,7 +443,7 @@ class Ography(BaseModel):
 
     title: str = Field(..., description="Title of the anime or manga")
     role: CharacterRole = Field(
-        default=CharacterRole.UNSPECIFIED, description="Character's role in this title"
+        default=CharacterRole.UNKNOWN, description="Character's role in this title"
     )
     sources: list[str] = Field(
         default_factory=list,

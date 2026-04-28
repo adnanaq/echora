@@ -96,6 +96,7 @@ enum CharacterRole {
   CHARACTER_ROLE_MAIN = 1;
   CHARACTER_ROLE_SUPPORTING = 2;
   CHARACTER_ROLE_BACKGROUND = 3;
+  CHARACTER_ROLE_UNKNOWN = 4;
 }
 
 // Relation type between two anime entries (13 types).
