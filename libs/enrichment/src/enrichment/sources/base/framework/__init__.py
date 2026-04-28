@@ -7,7 +7,10 @@ Re-exports the core abstractions so callers only need to import from
 from enrichment.sources.base.framework.crawler import BaseCrawler
 from enrichment.sources.base.framework.interfaces import IRepository, ITransport
 from enrichment.sources.base.framework.repository import FileRepository, NullRepository
-from enrichment.sources.base.framework.transport import DockerTransport
+from enrichment.sources.base.framework.transport import (
+    DockerTransport,
+    RateLimitedTransport,
+)
 
 __all__ = [
     "BaseCrawler",
@@ -16,4 +19,5 @@ __all__ = [
     "IRepository",
     "ITransport",
     "NullRepository",
+    "RateLimitedTransport",
 ]

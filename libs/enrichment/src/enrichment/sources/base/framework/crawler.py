@@ -88,7 +88,7 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
                 return None
 
             # 3. Post-process raw data (if needed)
-            processed_raw = self.post_process_raw_data(raw_data, url)
+            processed_raw = await self.post_process_raw_data(raw_data, url)
 
             # 4. Build source-specific Pydantic model
             source_model = self.build_source_model(processed_raw, url)
@@ -135,19 +135,19 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
             fetch produced no usable data.
         """
 
-    def post_process_raw_data(
+    async def post_process_raw_data(
         self, raw_data: dict[str, Any], url: str
     ) -> dict[str, Any]:
-        """Optional hook to clean the raw dict before Pydantic model construction.
+        """Optional async hook to clean or enrich the raw dict before model construction.
 
         The default implementation is a pass-through.  Override to strip
-        unwanted keys, merge auxiliary data, or normalise field names before
-        ``build_source_model`` is called.
+        unwanted keys, merge auxiliary data, fetch related pages, or normalise
+        field names before ``build_source_model`` is called.
 
         Args:
             raw_data: Raw dict returned by ``fetch_raw_data``.
             url: Canonical URL (may be needed for context, e.g. extracting an
-                ID from the URL path).
+                ID from the URL path, or constructing sub-page URLs).
 
         Returns:
             Processed dict forwarded to ``build_source_model``.

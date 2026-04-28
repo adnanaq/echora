@@ -19,7 +19,6 @@ import json
 import logging
 import re
 import sys
-from pathlib import Path
 from typing import Any
 
 from enrichment.sources.base.crawl4ai_docker import crawl_batch_urls
@@ -28,6 +27,7 @@ from enrichment.sources.base.crawler_config import (
     get_docker_crawler_config,
 )
 from enrichment.sources.base.framework import (
+    BaseCrawler,
     DockerTransport,
     FileRepository,
     NullRepository,
@@ -42,17 +42,16 @@ from enrichment.sources.mal.mal_base import (
     parse_number,
     parse_premiered,
 )
+from enrichment.sources.mal.mal_mapper import anime_from_mal
 from enrichment.sources.mal.mal_models import (
+    MalAnime,
     MalCompanyRef,
     MalEpisodeRange,
     MalExternalLink,
     MalRelatedEntry,
-    MalAnime,
     MalThemeSong,
     MalTrailer,
 )
-from enrichment.sources.mal.mal_base_crawler import MalCrawlerBase
-from enrichment.sources.mal.mal_mapper import anime_from_mal
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -874,7 +873,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     return raw
 
 
-class MalAnimeCrawler(MalCrawlerBase[MalAnime, dict[str, Any]]):
+class MalAnimeCrawler(BaseCrawler[MalAnime, dict[str, Any]]):
     """Crawler for MyAnimeList anime detail pages."""
 
     def normalize_identifier(self, identifier: str) -> str:
@@ -883,9 +882,7 @@ class MalAnimeCrawler(MalCrawlerBase[MalAnime, dict[str, Any]]):
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
         return await _fetch_mal_anime_data(url)
 
-    def build_source_model(
-        self, processed_raw: dict[str, Any], url: str
-    ) -> MalAnime:
+    def build_source_model(self, processed_raw: dict[str, Any], url: str) -> MalAnime:
         picture_urls = processed_raw.pop("_picture_urls", [])
         saved_url = processed_raw.pop("_url", url)
         return _build_anime_from_raw(processed_raw, saved_url, picture_urls)

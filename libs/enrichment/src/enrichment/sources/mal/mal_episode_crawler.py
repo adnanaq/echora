@@ -28,6 +28,7 @@ from enrichment.sources.base.crawler_config import (
     get_docker_crawler_config,
 )
 from enrichment.sources.base.framework import (
+    BaseCrawler,
     DockerTransport,
     FileRepository,
     NullRepository,
@@ -36,7 +37,6 @@ from enrichment.sources.mal.mal_base import (
     parse_duration_seconds,
     parse_iso_date,
 )
-from enrichment.sources.mal.mal_base_crawler import MalCrawlerBase
 from enrichment.sources.mal.mal_mapper import episode_from_mal
 from enrichment.sources.mal.mal_models import (
     EpisodeCharacterRef,
@@ -391,7 +391,7 @@ def _build_episode_from_raw(
     )
 
 
-class MalEpisodeCrawler(MalCrawlerBase[MalEpisode, dict[str, Any]]):
+class MalEpisodeCrawler(BaseCrawler[MalEpisode, dict[str, Any]]):
     """Crawler for MyAnimeList episode detail pages."""
 
     def normalize_identifier(self, identifier: str) -> str:
@@ -400,9 +400,7 @@ class MalEpisodeCrawler(MalCrawlerBase[MalEpisode, dict[str, Any]]):
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
         return await _fetch_mal_episode_data(url)
 
-    def build_source_model(
-        self, processed_raw: dict[str, Any], url: str
-    ) -> MalEpisode:
+    def build_source_model(self, processed_raw: dict[str, Any], url: str) -> MalEpisode:
         m = re.search(r"/episode/(\d+)", url)
         episode_number = int(m.group(1)) if m else 0
         return _build_episode_from_raw(processed_raw, episode_number, url)

@@ -29,6 +29,7 @@ from enrichment.sources.base.crawler_config import (
     get_docker_crawler_config,
 )
 from enrichment.sources.base.framework import (
+    BaseCrawler,
     DockerTransport,
     FileRepository,
     NullRepository,
@@ -37,11 +38,10 @@ from enrichment.sources.mal.mal_base import (
     parse_number,
     parse_sidebar_field,
 )
-from enrichment.sources.mal.mal_base_crawler import MalCrawlerBase
 from enrichment.sources.mal.mal_mapper import character_from_mal
 from enrichment.sources.mal.mal_models import (
-    MalOgraphyEntry,
     MalCharacter,
+    MalOgraphyEntry,
     MalVoiceActorRef,
 )
 from http_cache.config import get_cache_config
@@ -442,7 +442,7 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalCharacter:
     )
 
 
-class MalCharacterCrawler(MalCrawlerBase[MalCharacter, dict[str, Any]]):
+class MalCharacterCrawler(BaseCrawler[MalCharacter, dict[str, Any]]):
     """Crawler for MyAnimeList character detail pages."""
 
     def normalize_identifier(self, identifier: str) -> str:
