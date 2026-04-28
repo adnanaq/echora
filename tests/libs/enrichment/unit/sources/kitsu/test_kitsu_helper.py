@@ -867,59 +867,50 @@ async def test_fetch_all_returns_none_when_no_kitsu_id():
 
 @pytest.mark.asyncio
 async def test_fetch_all_slug_resolution_http_failure():
-    """Non-200 from Kitsu slug endpoint → None before any fetch attempt."""
+    """Slug endpoint failure (exception from _make_request) → None before any fetch attempt."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
-    mock_resp = AsyncMock()
-    mock_resp.status = 503
-    mock_sess = AsyncMock()
-    mock_sess.get = MagicMock(return_value=_cm(mock_resp))
+    helper = KitsuHelper()
+    helper._make_request = AsyncMock(side_effect=aiohttp.ClientError("service down"))
 
-    with patch(
-        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession",
-        return_value=_cm(mock_sess),
-    ):
-        result = await KitsuHelper().fetch_all({"kitsu_id": "one-piece"}, {})
+    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
+        result = await helper.fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is None
+    mock_raw.assert_not_called()
+    helper._make_request.assert_awaited_once_with(
+        "/anime", params={"filter[slug]": "one-piece"}
+    )
 
 
 @pytest.mark.asyncio
 async def test_fetch_all_slug_resolution_no_data():
-    """Slug endpoint returns 200 but data[] is empty → None."""
+    """Slug endpoint returns empty data[] → None."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.json = AsyncMock(return_value={"data": []})
-    mock_sess = AsyncMock()
-    mock_sess.get = MagicMock(return_value=_cm(mock_resp))
+    helper = KitsuHelper()
+    helper._make_request = AsyncMock(
+        return_value={"data": [], "_from_cache": False}
+    )
 
-    with patch(
-        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession",
-        return_value=_cm(mock_sess),
-    ):
-        result = await KitsuHelper().fetch_all({"kitsu_id": "one-piece"}, {})
+    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
+        result = await helper.fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is None
+    mock_raw.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_fetch_all_slug_resolved_to_numeric_id():
-    """Slug resolves to numeric ID and fetch proceeds normally."""
+    """Slug resolves to numeric ID via _make_request and fetch proceeds normally."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.json = AsyncMock(return_value={"data": [{"id": "42"}]})
-    mock_sess = AsyncMock()
-    mock_sess.get = MagicMock(return_value=_cm(mock_resp))
-
     helper = KitsuHelper()
-    with patch(
-        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession",
-        return_value=_cm(mock_sess),
-    ):
+    helper._make_request = AsyncMock(
+        return_value={"data": [{"id": "42"}], "_from_cache": False}
+    )
+
+    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
         with patch(
             "enrichment.sources.kitsu.kitsu_helper._cache_manager.get_aiohttp_session",
             return_value=_cm(AsyncMock()),
@@ -929,16 +920,16 @@ async def test_fetch_all_slug_resolved_to_numeric_id():
                 "fetch_anime",
                 new=AsyncMock(return_value={"title": "Test", "sources": []}),
             ):
-                with patch.object(
-                    helper, "fetch_episodes", new=AsyncMock(return_value=[])
-                ):
-                    with patch.object(
-                        helper, "fetch_characters", new=AsyncMock(return_value=[])
-                    ):
+                with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
+                    with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
                         result = await helper.fetch_all({"kitsu_id": "one-piece"}, {})
 
     assert result is not None
     assert result["anime"]["title"] == "Test"
+    mock_raw.assert_not_called()
+    helper._make_request.assert_awaited_once_with(
+        "/anime", params={"filter[slug]": "one-piece"}
+    )
 
 
 @pytest.mark.asyncio

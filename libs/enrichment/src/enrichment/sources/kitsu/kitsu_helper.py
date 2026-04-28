@@ -74,22 +74,16 @@ class KitsuHelper(BaseEnrichmentHelper):
         except ValueError:
             # Slug — resolve to numeric ID first
             logger.info(f"Resolving Kitsu slug '{kitsu_id}' to numeric ID...")
-            async with aiohttp.ClientSession() as slug_session:
-                url = f"https://kitsu.io/api/edge/anime?filter[slug]={kitsu_id}"
-                async with slug_session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as response:
-                    if response.status != 200:
-                        logger.warning(
-                            f"Failed to resolve Kitsu slug: {response.status}"
-                        )
-                        return None
-                    data = await response.json()
-                    if not data.get("data"):
-                        logger.warning(f"No Kitsu anime found for slug: {kitsu_id}")
-                        return None
-                    numeric_id = int(data["data"][0]["id"])
-                    logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
+            try:
+                data = await self._make_request("/anime", params={"filter[slug]": kitsu_id})
+            except Exception:
+                logger.warning(f"Failed to resolve Kitsu slug: {kitsu_id}")
+                return None
+            if not data.get("data"):
+                logger.warning(f"No Kitsu anime found for slug: {kitsu_id}")
+                return None
+            numeric_id = int(data["data"][0]["id"])
+            logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
 
         logger.info(f"Fetching Kitsu data for: {numeric_id}")
         try:
