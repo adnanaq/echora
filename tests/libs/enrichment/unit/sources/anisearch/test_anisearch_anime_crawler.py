@@ -575,3 +575,84 @@ async def test_fetch_anisearch_anime_returns_canonical_dict(mocker, one_piece_pr
     result = await fetch_anisearch_anime(_URL)
     assert result is not None
     assert result["title"] == "One Piece"
+
+
+# =============================================================================
+# Canonical URL resolution — redirect slug extraction
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_embeds_canonical_url_on_redirect(mocker, one_piece_main_raw, one_piece_relations_raw) -> None:
+    """When crawl4ai returns a redirected_url, raw dict stores it as _canonical_url."""
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_anime_crawler.crawl_single_url",
+        new_callable=AsyncMock,
+        side_effect=[
+            {
+                "status_code": 302,
+                "success": True,
+                "redirected_url": "https://www.anisearch.com/anime/2227,one-piece",
+                "extracted_content": json.dumps([one_piece_main_raw]),
+            },
+            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_relations_raw])},
+        ],
+    )
+    result = await _fetch_anisearch_anime_data("2227")
+    assert result is not None
+    assert result["_canonical_url"] == "https://www.anisearch.com/anime/2227,one-piece"
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_no_canonical_url_when_no_redirect(mocker, one_piece_main_raw, one_piece_relations_raw) -> None:
+    """When there is no redirect, _canonical_url is absent from the raw dict."""
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_anime_crawler.crawl_single_url",
+        new_callable=AsyncMock,
+        side_effect=[
+            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_main_raw])},
+            {"status_code": 200, "success": True, "extracted_content": json.dumps([one_piece_relations_raw])},
+        ],
+    )
+    result = await _fetch_anisearch_anime_data("2227,one-piece")
+    assert result is not None
+    assert "_canonical_url" not in result
+
+
+def test_build_source_model_uses_canonical_url_from_raw(one_piece_processed) -> None:
+    """_canonical_url in raw overrides the input URL passed to build_source_model."""
+    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    canonical = "https://www.anisearch.com/anime/2227,one-piece"
+    raw = {**one_piece_processed, "_canonical_url": canonical}
+    model = crawler.build_source_model(raw, "https://www.anisearch.com/anime/2227")
+    assert model.url == canonical
+
+
+def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None:
+    """Without _canonical_url in raw, build_source_model uses the input URL."""
+    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    url = "https://www.anisearch.com/anime/2227,one-piece"
+    model = crawler.build_source_model(one_piece_processed, url)
+    assert model.url == url
+
+
+@pytest.mark.asyncio
+async def test_fetch_anisearch_anime_sources_uses_canonical_url(mocker, one_piece_processed) -> None:
+    """When raw contains _canonical_url, the final canonical dict sources reflect it."""
+    canonical = "https://www.anisearch.com/anime/2227,one-piece"
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
+        new_callable=AsyncMock,
+        return_value={**one_piece_processed, "_canonical_url": canonical},
+    )
+    result = await fetch_anisearch_anime("https://www.anisearch.com/anime/2227")
+    assert result is not None
+    assert result["sources"] == [canonical]

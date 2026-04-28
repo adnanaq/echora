@@ -370,17 +370,21 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
     browser = get_docker_browser_config()
 
     logger.info(f"Fetching AniSearch main page: {base_url}")
-    main_raw = _unwrap_result(
-        await crawl_single_url(
-            base_url,
-            browser_config=browser,
-            crawler_config=get_docker_crawler_config(_get_main_schema()),
-        ),
+    main_result = await crawl_single_url(
         base_url,
+        browser_config=browser,
+        crawler_config=get_docker_crawler_config(_get_main_schema()),
     )
+    main_raw = _unwrap_result(main_result, base_url)
     if main_raw is None:
         logger.warning(f"No data extracted from AniSearch main page: {base_url}")
         return None
+
+    # When the server redirected (slug-less URL), switch base_url to the canonical
+    # slug form so the relations fetch and all downstream callers use it.
+    redirected = (main_result or {}).get("redirected_url")
+    if redirected:
+        base_url = redirected
 
     rels_raw = _unwrap_result(
         await crawl_single_url(
@@ -393,6 +397,8 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
     data = _post_process_main(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
+    if redirected:
+        data["_canonical_url"] = redirected
     return data
 
 
@@ -461,7 +467,7 @@ class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
         return await _fetch_anisearch_anime_data(_extract_path_from_url(url))
 
     def build_source_model(self, processed_raw: dict[str, Any], url: str) -> AniSearchAnime:
-        return _build_anime_from_raw(processed_raw, url)
+        return _build_anime_from_raw(processed_raw, processed_raw.get("_canonical_url", url))
 
     def map_to_canonical(self, source_model: AniSearchAnime) -> dict[str, Any]:
         return anime_from_anisearch(source_model)

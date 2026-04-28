@@ -17,11 +17,18 @@ class PlatformIDExtractor:
     100% deterministic - same input always produces same output.
     """
 
-    # Define regex patterns for each platform
+    # Platforms where the full URL is the identifier (substring match, first wins)
+    _URL_KEYS: dict[str, str] = {
+        "mal_url": "myanimelist.net/anime/",
+        "anime_planet_url": "anime-planet.com/anime/",
+        "anilist_url": "anilist.co/anime/",
+        "anisearch_url": "anisearch.com/anime/",
+    }
+
+    # Platforms where a captured group from the URL is the identifier
     PATTERNS = {
         "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
-        "anisearch_id": r"anisearch\.com/anime/(?:index/)?(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",
     }
@@ -38,24 +45,21 @@ class PlatformIDExtractor:
 
         """
         sources = offline_data.get("sources", [])
-        ids = {}
+        ids: dict[str, str | None] = {k: None for k in self._URL_KEYS}
+        ids.update({k: None for k in self.PATTERNS})
 
-        # Pass full source URLs — no ID stripping needed
-        ids["mal_url"] = next(
-            (s for s in sources if "myanimelist.net/anime/" in s), None
-        )
-        ids["anime_planet_url"] = next(
-            (s for s in sources if "anime-planet.com/anime/" in s), None
-        )
-        ids["anilist_url"] = next(
-            (s for s in sources if "anilist.co/anime/" in s), None
-        )
-        ids["anisearch_id"] = next(
-            (s for s in sources if "anilist.co/anime/" in s), None
-        )
-        # Extract IDs for each platform
-        for platform, pattern in self.PATTERNS.items():
-            ids[platform] = self._extract_id(sources, pattern)
+        for source in sources:
+            for key, substring in self._URL_KEYS.items():
+                if ids[key] is None and substring in source:
+                    ids[key] = source
+            for platform, pattern in self.PATTERNS.items():
+                if ids[platform] is None:
+                    try:
+                        m = re.search(pattern, source, re.IGNORECASE)
+                        if m:
+                            ids[platform] = m.group(1)
+                    except Exception as e:
+                        logger.warning(f"Error extracting ID from {source}: {e}")
 
         # Log extracted IDs for context (following context-rich error messages pattern)
         non_null_ids = {k: v for k, v in ids.items() if v}
@@ -65,27 +69,6 @@ class PlatformIDExtractor:
             logger.warning(f"No platform IDs found in sources: {sources}")
 
         return ids
-
-    def _extract_id(self, sources: list[str], pattern: str) -> str | None:
-        """
-        Extract single ID using regex pattern.
-
-        Args:
-            sources: List of source URLs
-            pattern: Regex pattern to match
-
-        Returns:
-            Extracted ID or None if not found
-        """
-        for source in sources:
-            try:
-                match = re.search(pattern, source, re.IGNORECASE)
-                if match:
-                    return match.group(1)
-            except Exception as e:
-                logger.warning(f"Error extracting ID from {source}: {e}")
-
-        return None
 
     def validate_ids(self, ids: dict[str, str | None]) -> dict[str, str]:
         """
