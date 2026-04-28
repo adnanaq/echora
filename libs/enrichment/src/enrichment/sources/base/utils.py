@@ -71,6 +71,12 @@ def parse_iso_date(raw: str | None) -> str | None:
     except ValueError:
         pass
 
+    # "20. Oct 1999" (AniSearch episode format)
+    try:
+        return datetime.strptime(raw, "%d. %b %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        pass
+
     # Already ISO "1999-10-20"
     if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
         return raw
