@@ -22,7 +22,12 @@ from enrichment.sources.base.crawler_config import (
     get_docker_browser_config,
     get_docker_crawler_config,
 )
-from enrichment.sources.base.framework import BaseCrawler, DockerTransport, NullRepository
+from enrichment.sources.base.framework import (
+    BaseCrawler,
+    DockerTransport,
+    FileRepository,
+    NullRepository,
+)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -561,6 +566,9 @@ async def _fetch_animeplanet_anime_data(
 class AnimePlanetAnimeCrawler(BaseCrawler[AnimePlanetAnime, dict[str, Any]]):
     """Crawler for Anime-Planet anime detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_anime_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         return _normalize_anime_url(identifier)
 
@@ -577,14 +585,18 @@ class AnimePlanetAnimeCrawler(BaseCrawler[AnimePlanetAnime, dict[str, Any]]):
         return anime_from_animeplanet(source_model)
 
 
-async def fetch_animeplanet_anime(url: str) -> dict[str, Any] | None:
+async def fetch_animeplanet_anime(
+    url: str, output_path: str | None = None
+) -> dict[str, Any] | None:
     """Fetch and return canonical anime dict for an Anime-Planet anime URL.
 
     Args:
         url: Full Anime-Planet anime URL, slug, or path
             (e.g. "https://www.anime-planet.com/anime/dandadan" or "dandadan").
+        output_path: If provided, write the canonical dict to this JSON file.
 
     Returns:
         Canonical anime dict, or None if the fetch or validation fails.
     """
-    return await AnimePlanetAnimeCrawler(DockerTransport(), NullRepository()).crawl(url)
+    repo = FileRepository(output_path) if output_path else NullRepository()
+    return await AnimePlanetAnimeCrawler(DockerTransport(), repo).crawl(url)

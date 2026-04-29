@@ -295,7 +295,7 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 # ---------------------------------------------------------------------------
 
 
-def _build_character(raw: dict[str, Any], html: str, url: str) -> AnimePlanetCharacter:
+def _build_character_from_raw(raw: dict[str, Any], html: str, url: str) -> AnimePlanetCharacter:
     """Build AnimePlanetCharacter from XPath-extracted raw fields and full page HTML."""
     slug = url.rstrip("/").rsplit("/", 1)[-1]
     bar = _extract_entry_bar(html)
@@ -366,6 +366,9 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
 class AnimePlanetCharacterCrawler(BaseCrawler[AnimePlanetCharacter, dict[str, Any]]):
     """Crawler for Anime-Planet character detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_character_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
 
@@ -375,7 +378,7 @@ class AnimePlanetCharacterCrawler(BaseCrawler[AnimePlanetCharacter, dict[str, An
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
     ) -> AnimePlanetCharacter:
-        return _build_character(processed_raw, processed_raw.get("_html") or "", url)
+        return _build_character_from_raw(processed_raw, processed_raw.get("_html") or "", url)
 
     def map_to_canonical(self, source_model: AnimePlanetCharacter) -> dict[str, Any]:
         return character_from_animeplanet(source_model)
@@ -429,7 +432,7 @@ async def fetch_animeplanet_characters(
         if cached is not None:
             html = cached.get("_html") or ""
             canonical = character_from_animeplanet(
-                _build_character(cached, html, full_urls[idx])
+                _build_character_from_raw(cached, html, full_urls[idx])
             )
             characters[idx] = canonical
             if on_result is not None:
@@ -479,7 +482,7 @@ async def fetch_animeplanet_characters(
             page_html = result.get("html") or ""
             raw["_html"] = page_html  # store with raw for cache
             canonical = character_from_animeplanet(
-                _build_character(raw, page_html, url)
+                _build_character_from_raw(raw, page_html, url)
             )
             characters[out_index] = canonical
             cache_values[idx_in_chunk] = raw

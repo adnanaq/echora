@@ -128,9 +128,7 @@ class AniSearchHelper(BaseEnrichmentHelper):
         """
         try:
             logger.info(f"Fetching AniSearch episode data for {url}")
-            episode_data = await fetch_anisearch_episodes(
-                anime_id=url, output_path=None
-            )
+            episode_data = await fetch_anisearch_episodes(url, output_path=None)
             if not episode_data:
                 logger.debug(f"No episode data found for {url}")
                 return None

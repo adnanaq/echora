@@ -15,7 +15,7 @@ import pytest
 
 from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _CHARACTER_BATCH_SIZE,
-    _build_character,
+    _build_character_from_raw,
     _extract_alt_names,
     _extract_anime_roles,
     _extract_description,
@@ -411,12 +411,12 @@ def test_extract_manga_roles_empty_role_is_none() -> None:
 
 
 # =============================================================================
-# _build_character
+# _build_character_from_raw
 # =============================================================================
 
 
 def test_build_character_from_fixture(ap_character_raw) -> None:
-    char = _build_character(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
+    char = _build_character_from_raw(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
     assert char.name == "Monkey D. Luffy"
     assert char.slug == "monkey-d-luffy"
     assert char.url == _LUFFY_AP_URL
@@ -434,13 +434,13 @@ def test_build_character_from_fixture(ap_character_raw) -> None:
 
 
 def test_build_character_slug_extracted() -> None:
-    char = _build_character({}, "", _LUFFY_AP_URL)
+    char = _build_character_from_raw({}, "", _LUFFY_AP_URL)
     assert char.slug == "monkey-d-luffy"
     assert char.url == _LUFFY_AP_URL
 
 
 def test_build_character_empty_raw() -> None:
-    char = _build_character({}, "", _LUFFY_AP_URL)
+    char = _build_character_from_raw({}, "", _LUFFY_AP_URL)
     assert char.name == ""
     assert char.image is None
     assert char.loved_rank is None
@@ -1018,7 +1018,7 @@ def _make_char(**kwargs) -> AnimePlanetCharacter:
 
 
 def test_mapper_from_fixture(ap_character_raw) -> None:
-    char = _build_character(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
+    char = _build_character_from_raw(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
     result = character_from_animeplanet(char)
     assert result["name"] == "Monkey D. Luffy"
     assert result["sources"] == [_LUFFY_AP_URL]

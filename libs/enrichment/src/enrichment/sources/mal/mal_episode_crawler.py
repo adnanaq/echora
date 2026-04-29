@@ -394,6 +394,9 @@ def _build_episode_from_raw(
 class MalEpisodeCrawler(BaseCrawler[MalEpisode, dict[str, Any]]):
     """Crawler for MyAnimeList episode detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_episode_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
 

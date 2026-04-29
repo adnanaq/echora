@@ -30,7 +30,7 @@ TTL_MAL = _CACHE_CONFIG.ttl_jikan
 _limiter = get_mal_scraping_limiter()
 
 
-def _get_characters_schema() -> dict[str, Any]:
+def _get_character_refs_schema() -> dict[str, Any]:
     """XPath schema to extract character URLs from the MAL characters page.
 
     Each character is contained in a table.js-anime-character-table.
@@ -53,7 +53,7 @@ def _get_characters_schema() -> dict[str, Any]:
 @cached_result(
     ttl=TTL_MAL,
     key_prefix="mal_character_ids",
-    dependencies=[_get_characters_schema],
+    dependencies=[_get_character_refs_schema],
 )
 async def _fetch_mal_characters_data(url: str) -> list[dict[str, Any]] | None:
     """Fetch /anime/{id}/characters and extract character URLs. Cached by url."""
@@ -62,7 +62,7 @@ async def _fetch_mal_characters_data(url: str) -> list[dict[str, Any]] | None:
         url=url,
         browser_config=get_docker_browser_config(),
         crawler_config=get_docker_crawler_config(
-            _get_characters_schema(),
+            _get_character_refs_schema(),
             wait_until="networkidle",
             delay=2.0,
         ),

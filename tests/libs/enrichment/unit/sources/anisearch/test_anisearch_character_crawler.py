@@ -16,7 +16,7 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     AniSearchCharacterCrawler,
     _absolutize_anime_url,
     _batch_fetch_ography,
-    _build_character,
+    _build_character_from_raw,
     _extract_attributes,
     _extract_voice_actors,
     _fetch_anisearch_character_data,
@@ -243,33 +243,33 @@ def test_extract_attributes_empty_html_returns_empty() -> None:
 
 
 # =============================================================================
-# _build_character — uses processed fixture
+# _build_character_from_raw — uses processed fixture
 # =============================================================================
 
 
 def test_build_character_name(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.name == "Monkey D. Luffy"
 
 
 def test_build_character_name_native(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.name_native == "モンキー・D・ルフィ"
 
 
 def test_build_character_image(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.image is not None and char.image.startswith("https://")
 
 
 def test_build_character_favorites(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.favorites == 678
@@ -277,21 +277,21 @@ def test_build_character_favorites(luffy_char_processed) -> None:
 
 def test_build_character_description_placeholder_is_none(luffy_char_processed) -> None:
     # Luffy's page has AniSearch placeholder text — must be nulled out
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.description is None
 
 
 def test_build_character_source_url_injected(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert char.source == _LUFFY_URL
 
 
 def test_build_character_role_injected(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed,
         luffy_char_processed.get("_html", ""),
         _LUFFY_URL,
@@ -301,21 +301,21 @@ def test_build_character_role_injected(luffy_char_processed) -> None:
 
 
 def test_build_character_tags_populated(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert len(char.tags) > 0 and all(isinstance(t, str) for t in char.tags)
 
 
 def test_build_character_voice_actors_populated(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert len(char.voice_actors) > 0
 
 
 def test_build_character_anime_roles_urls_absolute(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     for role in char.anime_roles:
@@ -326,7 +326,7 @@ def test_build_character_anime_ography_injected(luffy_char_processed) -> None:
     ography = [
         {"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}
     ]
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed,
         luffy_char_processed.get("_html", ""),
         _LUFFY_URL,
@@ -337,14 +337,14 @@ def test_build_character_anime_ography_injected(luffy_char_processed) -> None:
 
 
 def test_build_character_screenshot_images(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert len(char.screenshot_images) > 0
 
 
 def test_build_character_attributes_populated(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     assert len(char.attributes) > 0
@@ -352,7 +352,7 @@ def test_build_character_attributes_populated(luffy_char_processed) -> None:
 
 def test_build_character_empty_name_is_none(luffy_char_processed) -> None:
     raw = {**luffy_char_processed, "name": ""}
-    char = _build_character(raw, "", _LUFFY_URL)
+    char = _build_character_from_raw(raw, "", _LUFFY_URL)
     assert char.name is None
 
 
@@ -361,7 +361,7 @@ def test_build_character_real_description_passes_through(luffy_char_processed) -
         **luffy_char_processed,
         "description": "A fearless pirate who wants to be King.",
     }
-    char = _build_character(raw, "", _LUFFY_URL)
+    char = _build_character_from_raw(raw, "", _LUFFY_URL)
     assert char.description == "A fearless pirate who wants to be King."
 
 
@@ -925,7 +925,7 @@ def test_crawler_build_source_model_with_role(luffy_char_processed) -> None:
 
 def test_crawler_map_to_canonical(luffy_char_processed) -> None:
     crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     result = crawler.map_to_canonical(char)
@@ -939,7 +939,7 @@ def test_crawler_map_to_canonical(luffy_char_processed) -> None:
 
 
 def test_character_from_anisearch_happy_path(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )
     result = character_from_anisearch(char)
@@ -955,7 +955,7 @@ def test_character_from_anisearch_happy_path(luffy_char_processed) -> None:
 
 
 def test_character_from_anisearch_role_in_roles(luffy_char_processed) -> None:
-    char = _build_character(
+    char = _build_character_from_raw(
         luffy_char_processed,
         luffy_char_processed.get("_html", ""),
         _LUFFY_URL,

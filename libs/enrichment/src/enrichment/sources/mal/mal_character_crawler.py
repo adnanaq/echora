@@ -407,7 +407,7 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     return raw_list[0], canonical_url
 
 
-def _parse_character_raw(raw: dict[str, Any], url: str) -> MalCharacter:
+def _build_character_from_raw(raw: dict[str, Any], url: str) -> MalCharacter:
     """Parse a raw extraction dict into a MalCharacter."""
     name, name_native = _extract_name_and_native(raw.get("name_header"))
 
@@ -445,6 +445,9 @@ def _parse_character_raw(raw: dict[str, Any], url: str) -> MalCharacter:
 class MalCharacterCrawler(BaseCrawler[MalCharacter, dict[str, Any]]):
     """Crawler for MyAnimeList character detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_character_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
 
@@ -458,7 +461,7 @@ class MalCharacterCrawler(BaseCrawler[MalCharacter, dict[str, Any]]):
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
     ) -> MalCharacter:
-        return _parse_character_raw(
+        return _build_character_from_raw(
             processed_raw["_raw"], processed_raw["_canonical_url"]
         )
 
@@ -520,7 +523,7 @@ async def fetch_mal_characters(
             return None
         if not isinstance(raw, dict) or not canonical_url:
             return None
-        return character_from_mal(_parse_character_raw(raw, canonical_url))
+        return character_from_mal(_build_character_from_raw(raw, canonical_url))
 
     for idx, cached in enumerate(cached_values):
         parsed = _parse_cached(cached)
@@ -566,7 +569,7 @@ async def fetch_mal_characters(
                 characters[out_index] = None
                 continue
             raw_for_cache = raw_list[0]
-            canonical = character_from_mal(_parse_character_raw(raw_for_cache, url))
+            canonical = character_from_mal(_build_character_from_raw(raw_for_cache, url))
             characters[out_index] = canonical
             cache_values[idx_in_chunk] = (raw_for_cache, url)
             if on_result is not None:

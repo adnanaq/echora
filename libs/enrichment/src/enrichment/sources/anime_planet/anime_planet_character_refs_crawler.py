@@ -28,7 +28,7 @@ TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 BASE_URL = "https://www.anime-planet.com"
 
 
-def _get_characters_list_schema() -> dict[str, Any]:
+def _get_character_refs_schema() -> dict[str, Any]:
     """XPath schema — extract character hrefs directly.
 
     Character links are server-rendered; domcontentloaded (the docker default)
@@ -59,14 +59,14 @@ def _get_characters_list_schema() -> dict[str, Any]:
 @cached_result(
     ttl=TTL_ANIME_PLANET,
     key_prefix="animeplanet_character_refs",
-    dependencies=[_get_characters_list_schema],
+    dependencies=[_get_character_refs_schema],
 )
 async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
     """Fetch /anime/{slug}/characters and extract character hrefs. Cached by url."""
     result = await crawl_single_url(
         url=url,
         browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_characters_list_schema()),
+        crawler_config=get_docker_crawler_config(_get_character_refs_schema()),
     )
     if not result:
         logger.error(f"No result for characters page {url}")

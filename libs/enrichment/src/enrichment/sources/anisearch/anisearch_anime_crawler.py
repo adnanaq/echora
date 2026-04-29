@@ -72,7 +72,7 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
                 rel["image"] = m.group(1)
 
 
-def _get_main_schema() -> dict[str, Any]:
+def _get_anime_schema() -> dict[str, Any]:
     """XPath extraction schema for the main AniSearch anime page."""
     return {
         "name": "AniSearchAnime",
@@ -364,7 +364,7 @@ def _parse_relations(
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_anime",
-    dependencies=[_get_main_schema, _get_relations_schema, _post_process_main],
+    dependencies=[_get_anime_schema, _get_relations_schema, _post_process_main],
 )
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
@@ -384,7 +384,7 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
     main_result = await crawl_single_url(
         base_url,
         browser_config=browser,
-        crawler_config=get_docker_crawler_config(_get_main_schema()),
+        crawler_config=get_docker_crawler_config(_get_anime_schema()),
     )
     main_raw = _unwrap_result(main_result, base_url)
     if main_raw is None:
@@ -468,6 +468,9 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
 
 class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
     """Crawler for AniSearch anime detail pages via the crawl4ai Docker REST API."""
+
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_anime_schema()
 
     def normalize_identifier(self, identifier: str) -> str:
         if not identifier.startswith(BASE_ANIME_URL):

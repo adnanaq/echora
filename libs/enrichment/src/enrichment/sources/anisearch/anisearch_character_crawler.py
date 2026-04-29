@@ -398,7 +398,7 @@ def _post_process_character(raw: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _build_character(
+def _build_character_from_raw(
     raw: dict[str, Any],
     html: str,
     url: str,
@@ -500,6 +500,9 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
 class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]]):
     """Crawler for AniSearch character detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_character_schema()
+
     def __init__(
         self,
         transport: ITransport,
@@ -532,7 +535,7 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
     ) -> AniSearchCharacter:
-        return _build_character(
+        return _build_character_from_raw(
             processed_raw,
             processed_raw.get("_html") or "",
             url,
@@ -688,7 +691,7 @@ async def fetch_anisearch_characters(
         url = urls[idx]
         role = refs[idx].get("role")
         canonical = character_from_anisearch(
-            _build_character(
+            _build_character_from_raw(
                 raw,
                 raw.get("_html") or "",
                 url,

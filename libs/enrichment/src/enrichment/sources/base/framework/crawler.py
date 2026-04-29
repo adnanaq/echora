@@ -107,6 +107,16 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
             return canonical
 
     @abstractmethod
+    def get_extraction_schema(self) -> dict[str, Any]:
+        """Return the primary XPath/CSS extraction schema for this crawler.
+
+        Used by ``fetch_raw_data`` to configure the transport extraction
+        strategy. Exposing it on the class makes schema inspection and
+        cache-dependency hashing discoverable without knowledge of the
+        concrete subclass.
+        """
+
+    @abstractmethod
     def normalize_identifier(self, identifier: str) -> str:
         """Convert a slug, path, or ID into a full canonical URL.
 

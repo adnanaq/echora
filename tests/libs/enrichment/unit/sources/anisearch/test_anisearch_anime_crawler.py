@@ -16,7 +16,7 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
     _build_anime_from_raw,
     _extract_path_from_url,
     _fetch_anisearch_anime_data,
-    _get_main_schema,
+    _get_anime_schema,
     _get_relations_schema,
     _parse_relations,
     _post_process_main,
@@ -120,34 +120,34 @@ def test_process_relation_tooltips_real_data(one_piece_relations_raw) -> None:
 
 
 def test_main_schema_has_fields_list() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     assert "fields" in schema
     assert isinstance(schema["fields"], list)
 
 
 def test_main_schema_cover_image_targets_details_cover_id() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "cover_image")
     assert "details-cover" in field["selector"]
     assert field.get("attribute") == "src"
 
 
 def test_main_schema_title_alt_targets_grey_div() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "title_alt")
     assert "grey" in field["selector"]
     assert "lang='ja'" in field["selector"]
 
 
 def test_main_schema_title_ja_targets_f16_strong() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "title_ja")
     assert "f16" in field["selector"]
     assert "strong" in field["selector"]
 
 
 def test_main_schema_genres_anchor_on_genre_href() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "genres")
     assert (
         "/genre/main/" in field["selector"] or "/genre/subsidiary/" in field["selector"]
@@ -155,13 +155,13 @@ def test_main_schema_genres_anchor_on_genre_href() -> None:
 
 
 def test_main_schema_tags_anchor_on_tag_href() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "tags")
     assert "/genre/tag/" in field["selector"]
 
 
 def test_main_schema_websites_is_nested_list() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "websites")
     assert field["type"] == "nested_list"
     names = [f["name"] for f in field["fields"]]
@@ -169,7 +169,7 @@ def test_main_schema_websites_is_nested_list() -> None:
 
 
 def test_main_schema_studio_url_reads_href_attribute() -> None:
-    schema = _get_main_schema()
+    schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "studio_url")
     assert field.get("attribute") == "href"
 

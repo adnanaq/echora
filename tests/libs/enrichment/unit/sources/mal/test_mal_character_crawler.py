@@ -21,7 +21,7 @@ from enrichment.sources.mal.mal_character_crawler import (
     _extract_voice_actors,
     _fetch_mal_character_data,
     _get_character_schema,
-    _parse_character_raw,
+    _build_character_from_raw,
     fetch_mal_character,
     fetch_mal_characters,
 )
@@ -30,7 +30,7 @@ _LUFFY_URL = "https://myanimelist.net/character/40/Luffy_Monkey_D"
 
 
 def _parse(raw: dict, url: str = _LUFFY_URL):
-    return _parse_character_raw(raw, url)
+    return _build_character_from_raw(raw, url)
 
 
 # =============================================================================
@@ -363,11 +363,11 @@ def test_extract_ography_row_without_title_skipped() -> None:
 
 
 # =============================================================================
-# _parse_character_raw — fixture-grounded
+# _build_character_from_raw — fixture-grounded
 # =============================================================================
 
 
-def test_parse_character_raw_from_fixture(mal_character_raw) -> None:
+def test_build_character_from_raw_from_fixture(mal_character_raw) -> None:
     char = _parse(mal_character_raw)
     assert char.name == "Luffy Monkey D."
     assert char.name_native == "モンキー・D・ルフィ"
@@ -380,22 +380,22 @@ def test_parse_character_raw_from_fixture(mal_character_raw) -> None:
     assert len(char.voice_actors) == 26
 
 
-def test_parse_character_raw_favorites_no_comma(mal_character_raw) -> None:
+def test_build_character_from_raw_favorites_no_comma(mal_character_raw) -> None:
     char = _parse({**mal_character_raw, "favorites": "12345"})
     assert char.favorites == 12345
 
 
-def test_parse_character_raw_missing_favorites_defaults_zero(mal_character_raw) -> None:
+def test_build_character_from_raw_missing_favorites_defaults_zero(mal_character_raw) -> None:
     char = _parse({k: v for k, v in mal_character_raw.items() if k != "favorites"})
     assert char.favorites == 0
 
 
-def test_parse_character_raw_missing_image_empty_list(mal_character_raw) -> None:
+def test_build_character_from_raw_missing_image_empty_list(mal_character_raw) -> None:
     char = _parse({**mal_character_raw, "image_src": None})
     assert char.images == []
 
 
-def test_parse_character_raw_url_from_explicit_arg(mal_character_raw) -> None:
+def test_build_character_from_raw_url_from_explicit_arg(mal_character_raw) -> None:
     custom_url = "https://myanimelist.net/character/40/SomeSlug"
     char = _parse(mal_character_raw, url=custom_url)
     assert char.source == custom_url

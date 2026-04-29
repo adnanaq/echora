@@ -216,7 +216,7 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
         get_docker_crawler_config,
     ],
 )
-async def _fetch_anisearch_episodes_raw(url: str) -> dict[str, Any] | None:
+async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch the /episodes page and return the raw body dict. Cached by URL."""
     result = await crawl_single_url(
         url=url,
@@ -252,13 +252,16 @@ class AniSearchEpisodeCrawler(BaseCrawler[AniSearchEpisodesPage, list[dict[str, 
     Repository persistence is not used here; callers handle file output.
     """
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_episode_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         if not identifier.startswith(_ANISEARCH_BASE_URL):
             raise ValueError(f"Not an AniSearch anime URL: {identifier!r}")
         return identifier
 
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
-        return await _fetch_anisearch_episodes_raw(url)
+        return await _fetch_anisearch_episode_data(url)
 
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
@@ -282,20 +285,20 @@ class AniSearchEpisodeCrawler(BaseCrawler[AniSearchEpisodesPage, list[dict[str, 
 
 
 async def fetch_anisearch_episodes(
-    anime_id: str,
+    url: str,
     output_path: str | None = None,
 ) -> list[dict[str, Any]] | None:
     """Fetch episode data for an AniSearch anime and optionally write to JSONL.
 
     Args:
-        anime_id: Full AniSearch anime URL (e.g. ``"https://www.anisearch.com/anime/2227,one-piece"``).
+        url: Full AniSearch anime URL (e.g. ``"https://www.anisearch.com/anime/2227,one-piece"``).
         output_path: If provided, append each episode as a JSON line to this path.
 
     Returns:
         List of canonical episode dicts or None if the page could not be fetched.
     """
     result = await AniSearchEpisodeCrawler(DockerTransport(), NullRepository()).crawl(
-        anime_id
+        url
     )
     if not result:
         return None
@@ -323,7 +326,7 @@ async def main() -> int:  # pragma: no cover
         description="Crawl episode data from anisearch.com."
     )
     parser.add_argument(
-        "anime_id",
+        "url",
         type=str,
         help="Full AniSearch anime URL (e.g. 'https://www.anisearch.com/anime/2227,one-piece')",
     )
@@ -331,7 +334,7 @@ async def main() -> int:  # pragma: no cover
     args = parser.parse_args()
 
     try:
-        data = await fetch_anisearch_episodes(args.anime_id, output_path=args.output)
+        data = await fetch_anisearch_episodes(args.url, output_path=args.output)
     except (ValueError, OSError):
         logger.exception("Failed to fetch AniSearch episode data")
         return 1

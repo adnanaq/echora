@@ -876,6 +876,9 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
 class MalAnimeCrawler(BaseCrawler[MalAnime, dict[str, Any]]):
     """Crawler for MyAnimeList anime detail pages."""
 
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return _get_anime_schema()
+
     def normalize_identifier(self, identifier: str) -> str:
         return _normalize_mal_url(identifier)
 

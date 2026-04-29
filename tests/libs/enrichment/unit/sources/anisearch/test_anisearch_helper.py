@@ -106,7 +106,7 @@ async def test_fetch_episodes_passes_url_directly(mock_fetch, helper, sample_epi
     mock_fetch.return_value = sample_episodes
     result = await helper.fetch_episodes(_URL_WITH_SLUG)
     assert result == sample_episodes
-    mock_fetch.assert_called_once_with(anime_id=_URL_WITH_SLUG, output_path=None)
+    mock_fetch.assert_called_once_with(_URL_WITH_SLUG, output_path=None)
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_fetch_episodes_without_slug(mock_fetch, helper, sample_episodes):
     """URL without slug also accepted — normalizer in episode crawler handles it."""
     mock_fetch.return_value = sample_episodes
     await helper.fetch_episodes(_URL_NO_SLUG)
-    mock_fetch.assert_called_once_with(anime_id=_URL_NO_SLUG, output_path=None)
+    mock_fetch.assert_called_once_with(_URL_NO_SLUG, output_path=None)
 
 
 @pytest.mark.asyncio
