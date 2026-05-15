@@ -65,6 +65,7 @@ async def _fetch_mal_characters_data(url: str) -> list[dict[str, Any]] | None:
             _get_character_refs_schema(),
             wait_until="networkidle",
             delay=2.0,
+            page_timeout=180_000,
         ),
     )
     if not result:

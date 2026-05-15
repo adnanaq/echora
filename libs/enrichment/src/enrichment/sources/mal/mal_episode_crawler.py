@@ -18,7 +18,6 @@ import json
 import logging
 import re
 import sys
-from collections.abc import Callable
 from typing import Any
 
 from enrichment.sources.base.crawl4ai_docker import crawl_batch_urls
@@ -432,7 +431,7 @@ async def fetch_mal_episode(
 async def fetch_mal_episodes(
     urls: list[str],
     *,
-    on_result: Callable[[dict[str, Any]], None] | None = None,
+    output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
     """Fetch multiple MAL episode pages as a single Docker batch job.
 
@@ -444,13 +443,14 @@ async def fetch_mal_episodes(
 
     Args:
         urls: List of full MAL episode URLs.
-        on_result: Optional callback invoked with each successfully parsed
-            canonical episode dict as results arrive (used for write-immediately streaming).
+        output_path: If provided, each canonical episode dict is appended as a
+            JSONL line to this file as it completes.
 
     Returns:
         List aligned to ``urls`` — None for any failed fetch.
     """
     logger.info(f"Fetching {len(urls)} MAL episodes...")
+    repo = FileRepository(output_path) if output_path else NullRepository()
 
     cached_values, missing_indices = await _fetch_mal_episode_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
@@ -473,8 +473,7 @@ async def fetch_mal_episodes(
         parsed = _parse_cached(cached, urls[idx])
         if parsed is not None:
             episodes[idx] = parsed
-            if on_result is not None:
-                on_result(parsed)
+            repo.save(parsed)
         else:
             if idx not in missing_indices:
                 missing_indices.append(idx)
@@ -532,8 +531,7 @@ async def fetch_mal_episodes(
             )
             episodes[out_index] = canonical
             cache_values[idx_in_chunk] = raw_for_cache
-            if on_result is not None:
-                on_result(canonical)
+            repo.save(canonical)
 
         await _fetch_mal_episode_data.cache_batch_set(  # type: ignore[attr-defined]
             chunk_urls,
