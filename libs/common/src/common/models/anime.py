@@ -229,7 +229,7 @@ class SourceMaterialType(StrEnum):
     BOOK = "BOOK"
     CARD_GAME = "CARD GAME"
     DOUJINSHI = "DOUJINSHI"
-    KOMA_4 = "4-KOMA"  # proto: SOURCE_MATERIAL_TYPE_4_KOMA — flipped because Python identifiers can't start with a digit
+    KOMA_4 = "4-KOMA"  # Python/Rust identifiers can't start with a digit
     GAME = "GAME"
     LIGHT_NOVEL = "LIGHT NOVEL"
     MANGA = "MANGA"

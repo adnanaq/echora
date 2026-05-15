@@ -99,7 +99,6 @@ class EnrichmentAssembler:
         "duration",
         "score",
         "episode_overrides",
-        "popularity_trends",
     }
 
     OMIT_IF_NULL = {
@@ -482,7 +481,6 @@ class EnrichmentAssembler:
             "duration",
             "external_sources",
             "images",
-            "popularity_trends",
             "score",
             "staff_data",
             "statistics",

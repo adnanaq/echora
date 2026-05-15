@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package shared_proto.v1;
 
-import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // =============================================================================
@@ -54,7 +53,7 @@ enum SourceMaterialType {
   SOURCE_MATERIAL_TYPE_NOVEL = 8;
   SOURCE_MATERIAL_TYPE_ONE_SHOT = 9;
   SOURCE_MATERIAL_TYPE_DOUJINSHI = 10;
-  SOURCE_MATERIAL_TYPE_4_KOMA = 11;
+  SOURCE_MATERIAL_TYPE_KOMA_4 = 11;
   SOURCE_MATERIAL_TYPE_MIXED_MEDIA = 12;
   SOURCE_MATERIAL_TYPE_MUSIC = 13;
   SOURCE_MATERIAL_TYPE_RADIO = 14;
@@ -427,14 +426,13 @@ message Anime {
   Broadcast broadcast = 33;
   map<string, string> external_sources = 34;
   AnimeImages images = 35;
-  google.protobuf.Struct popularity_trends = 36;
-  ScoreCalculations score = 37;
-  StaffData staff_data = 38;
-  map<string, Statistics> statistics = 39;
-  repeated CompanyEntry licensors = 40;
-  repeated CompanyEntry producers = 41;
-  repeated CompanyEntry studios = 42;
-  optional AnimeHiatus hiatus = 43;
+  ScoreCalculations score = 36;
+  StaffData staff_data = 37;
+  map<string, Statistics> statistics = 38;
+  repeated CompanyEntry licensors = 39;
+  repeated CompanyEntry producers = 40;
+  repeated CompanyEntry studios = 41;
+  optional AnimeHiatus hiatus = 42;
 }
 
 message AnimeRecord {

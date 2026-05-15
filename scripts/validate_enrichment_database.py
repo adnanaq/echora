@@ -132,7 +132,6 @@ class EnrichmentValidator:
         "score",
         "delay_information",
         "episode_overrides",
-        "popularity_trends",
         "character_pages",
     }
 
