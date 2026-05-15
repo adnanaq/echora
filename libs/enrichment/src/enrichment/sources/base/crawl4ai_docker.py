@@ -106,10 +106,10 @@ async def _poll_job(
     poll_interval: float,
 ) -> dict[str, Any] | None:
     """Poll GET /crawl/job/{task_id} until completed or timeout. Returns raw response or None."""
-    deadline = asyncio.get_event_loop().time() + timeout
+    deadline = asyncio.get_running_loop().time() + timeout
     url = f"{base_url}/crawl/job/{task_id}"
 
-    while asyncio.get_event_loop().time() < deadline:
+    while asyncio.get_running_loop().time() < deadline:
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -287,9 +287,9 @@ async def _wait_for_waf_unblock(
     Probes ``probe_url`` every ``_WAF_PROBE_INTERVAL`` seconds.
     Returns True when unblocked, False on timeout.
     """
-    deadline = asyncio.get_event_loop().time() + _WAF_MAX_WAIT
+    deadline = asyncio.get_running_loop().time() + _WAF_MAX_WAIT
     attempt = 0
-    while asyncio.get_event_loop().time() < deadline:
+    while asyncio.get_running_loop().time() < deadline:
         attempt += 1
         logger.info(
             f"WAF recovery: waiting {_WAF_PROBE_INTERVAL:.0f}s before probe #{attempt}..."
