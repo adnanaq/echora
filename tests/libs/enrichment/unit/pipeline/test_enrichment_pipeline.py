@@ -1,5 +1,5 @@
 """
-Tests for ProgrammaticEnrichmentPipeline.
+Tests for EnrichmentPipeline.
 """
 
 import os
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 import pytest
 
 from enrichment.pipeline.config import EnrichmentConfig
-from enrichment.pipeline.enrichment_pipeline import ProgrammaticEnrichmentPipeline
+from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ def config():
 
 @pytest.fixture
 def pipeline(config):
-    return ProgrammaticEnrichmentPipeline(config)
+    return EnrichmentPipeline(config)
 
 
 @pytest.fixture
@@ -43,11 +43,11 @@ def sample_anime():
 
 class TestInit:
     def test_uses_default_config_when_none_given(self):
-        p = ProgrammaticEnrichmentPipeline()
+        p = EnrichmentPipeline()
         assert isinstance(p.config, EnrichmentConfig)
 
     def test_uses_provided_config(self, config):
-        p = ProgrammaticEnrichmentPipeline(config)
+        p = EnrichmentPipeline(config)
         assert p.config is config
 
     def test_timing_breakdown_starts_empty(self, pipeline):
@@ -56,13 +56,13 @@ class TestInit:
     def test_verbose_logging_calls_log_configuration(self):
         config = EnrichmentConfig(verbose_logging=True)
         with patch.object(EnrichmentConfig, "log_configuration") as mock_log:
-            ProgrammaticEnrichmentPipeline(config)
+            EnrichmentPipeline(config)
         mock_log.assert_called_once()
 
     def test_no_verbose_logging_skips_log_configuration(self):
         config = EnrichmentConfig(verbose_logging=False)
         with patch.object(EnrichmentConfig, "log_configuration") as mock_log:
-            ProgrammaticEnrichmentPipeline(config)
+            EnrichmentPipeline(config)
         mock_log.assert_not_called()
 
 
@@ -105,60 +105,39 @@ class TestCreateTempDir:
     def test_creates_dir_with_correct_name(self, pipeline):
         with patch("os.listdir", return_value=[]):
             with patch("os.makedirs") as mock_makedirs:
-                with patch(
-                    "tempfile.mkdtemp",
-                    return_value=os.path.join(pipeline.config.temp_dir, "One_agentabc123"),
-                ):
-                    path = pipeline._create_temp_dir("One Piece")
+                path = pipeline._create_temp_dir("One Piece")
 
         assert "One_agent" in path
-        mock_makedirs.assert_called_once_with(pipeline.config.temp_dir, exist_ok=True)
+        assert mock_makedirs.call_count == 2
+        mock_makedirs.assert_any_call(pipeline.config.temp_dir, exist_ok=True)
 
     def test_sanitizes_special_characters(self, pipeline):
         with patch("os.listdir", return_value=[]):
             with patch("os.makedirs"):
-                with patch(
-                    "tempfile.mkdtemp",
-                    return_value=os.path.join(pipeline.config.temp_dir, "Sword_agentxyz"),
-                ):
-                    path = pipeline._create_temp_dir("Sword Art!!! Online")
+                path = pipeline._create_temp_dir("Sword Art!!! Online")
 
         assert "SwordArt" in path or "Sword" in path
 
     def test_empty_title_uses_unknown(self, pipeline):
         with patch("os.listdir", return_value=[]):
             with patch("os.makedirs"):
-                with patch(
-                    "tempfile.mkdtemp",
-                    return_value=os.path.join(pipeline.config.temp_dir, "unknown_agentxyz"),
-                ):
-                    path = pipeline._create_temp_dir("")
+                path = pipeline._create_temp_dir("")
 
         assert "unknown_agent" in path
 
     def test_returns_full_path_under_temp_dir(self, pipeline):
         with patch("os.listdir", return_value=[]):
             with patch("os.makedirs"):
-                with patch(
-                    "tempfile.mkdtemp",
-                    return_value=os.path.join(pipeline.config.temp_dir, "Naruto_agentxyz"),
-                ):
-                    path = pipeline._create_temp_dir("Naruto")
+                path = pipeline._create_temp_dir("Naruto")
 
         assert path.startswith(pipeline.config.temp_dir)
 
     def test_repeated_calls_do_not_reuse_same_path_when_scan_state_is_stale(self, pipeline):
-        with patch("os.listdir", return_value=[]):
+        # First scan returns empty → agent1; second scan returns agent1 dir → agent2
+        with patch("os.listdir", side_effect=[[], ["Naruto_agent1"]]):
             with patch("os.makedirs"):
-                with patch(
-                    "tempfile.mkdtemp",
-                    side_effect=[
-                        os.path.join(pipeline.config.temp_dir, "Naruto_agentabc123"),
-                        os.path.join(pipeline.config.temp_dir, "Naruto_agentdef456"),
-                    ],
-                ):
-                    first = pipeline._create_temp_dir("Naruto")
-                    second = pipeline._create_temp_dir("Naruto")
+                first = pipeline._create_temp_dir("Naruto")
+                second = pipeline._create_temp_dir("Naruto")
 
         assert first != second
 

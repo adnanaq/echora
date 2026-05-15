@@ -67,7 +67,7 @@ class TestConcurrentAgentDirectoryCreation:
         - All directories exist after concurrent creation
         """
         from enrichment.pipeline.enrichment_pipeline import (
-            ProgrammaticEnrichmentPipeline,
+            EnrichmentPipeline,
         )
 
         anime_title = "TestAnime"
@@ -76,7 +76,7 @@ class TestConcurrentAgentDirectoryCreation:
 
         async def create_agent_dir(agent_num: int) -> str:
             """Simulate concurrent agent directory creation."""
-            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
+            pipeline = EnrichmentPipeline(config=mock_config)
             # Create temp directory (triggers agent ID assignment)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
@@ -281,7 +281,7 @@ class TestAgentIDRaceConditions:
         Expected: No duplicate IDs, gap filled correctly
         """
         from enrichment.pipeline.enrichment_pipeline import (
-            ProgrammaticEnrichmentPipeline,
+            EnrichmentPipeline,
         )
 
         # Pre-create directories with gap
@@ -298,7 +298,7 @@ class TestAgentIDRaceConditions:
 
         async def create_agent_with_gap() -> str:
             """Create agent that should fill gap or get next ID."""
-            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
+            pipeline = EnrichmentPipeline(config=mock_config)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
 

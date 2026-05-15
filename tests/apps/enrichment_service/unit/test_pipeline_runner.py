@@ -66,7 +66,7 @@ async def test_run_pipeline_and_write_artifact_returns_full_payload(
             return {"anime": anime_data["title"], "kwargs": kwargs}
 
     monkeypatch.setattr(
-        pipeline_runner, "ProgrammaticEnrichmentPipeline", _FakePipeline
+        pipeline_runner, "EnrichmentPipeline", _FakePipeline
     )
 
     (

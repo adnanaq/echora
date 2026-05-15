@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _AGENT_ID_RE = re.compile(r"_agent(\d+)")
 
 
-class ProgrammaticEnrichmentPipeline:
+class EnrichmentPipeline:
     """
     Main orchestrator for programmatic enrichment.
     Implements Steps 1-3 of enrichment process programmatically.
@@ -31,7 +31,7 @@ class ProgrammaticEnrichmentPipeline:
 
     def __init__(self, config: EnrichmentConfig | None = None):
         """
-        Create a ProgrammaticEnrichmentPipeline configured for enrichment runs.
+        Create a EnrichmentPipeline configured for enrichment runs.
 
         Initializes internal components used by the pipeline (ID extractor, parallel API fetcher)
         and a timing breakdown store. When `config` is omitted, a default EnrichmentConfig is used;
@@ -291,12 +291,12 @@ class ProgrammaticEnrichmentPipeline:
 
         return "\n".join(report)
 
-    async def __aenter__(self) -> "ProgrammaticEnrichmentPipeline":
+    async def __aenter__(self) -> "EnrichmentPipeline":
         """
         Enter the asynchronous context for the pipeline.
 
         Returns:
-            ProgrammaticEnrichmentPipeline: The pipeline instance.
+            EnrichmentPipeline: The pipeline instance.
         """
         return self
 
@@ -341,7 +341,7 @@ async def main() -> int:  # pragma: no cover
         "status": "Currently Airing",
     }
 
-    async with ProgrammaticEnrichmentPipeline() as pipeline:
+    async with EnrichmentPipeline() as pipeline:
         # Run enrichment
         result = await pipeline.enrich_anime(sample_anime)
 
