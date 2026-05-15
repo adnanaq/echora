@@ -167,8 +167,12 @@ def _parse_date(date_str: str) -> datetime:
     # 3. Detect Date-Only or Pseudo-UTC Midnight
     # If it's date-only (length 10 like YYYY-MM-DD) OR exactly Midnight (T00:00:00),
     # we treat it as a Japanese Air Date (JST) regardless of the label.
+    # This intentionally overrides ALL midnight timestamps — including explicit
+    # "+00:00" or "+05:30" offsets — because upstream sources (MAL, Kitsu, etc.)
+    # commonly mislabel JST midnight as UTC midnight. A real non-JST midnight
+    # sent by a source will be shifted by up to ±9 h, but that trade-off is
+    # accepted; in practice these sources never send true non-JST midnight dates.
     if len(normalized) == 10 or "T00:00:00" in normalized:
-        # Standardize to JST Midnight before UTC shift
         normalized = normalized[:10] + "T00:00:00+09:00"
 
     dt = datetime.fromisoformat(normalized)
