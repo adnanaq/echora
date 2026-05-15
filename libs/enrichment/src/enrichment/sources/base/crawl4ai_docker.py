@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DOCKER_URL = "http://localhost:11235"
 
 # How long to wait between WAF recovery probes, and the max total wait time.
-_WAF_PROBE_INTERVAL = 30.0  # seconds between probe attempts
+_WAF_PROBE_INTERVAL = 60.0  # seconds between probe attempts
 _WAF_MAX_WAIT = 600.0  # give up after 10 minutes
 
 # HTTP status codes treated as soft WAF blocks (pause + retry).
@@ -44,9 +44,12 @@ _WAF_BLOCKED_CODES = frozenset({403, 405})
 
 # Transient error retry
 _TRANSIENT_RETRY_DELAY = 10.0  # seconds before retrying transient failures
+_TRANSIENT_MAX_RETRIES = 3
 _TRANSIENT_ERROR_FRAGMENTS = (
     "ERR_NAME_NOT_RESOLVED",
+    "ERR_CONNECTION_REFUSED",
     "Target page, context or browser has been closed",
+    "Timeout 90000ms exceeded",
 )
 
 
@@ -225,22 +228,27 @@ async def _retry_failed_urls(
     crawler_config: dict[str, Any],
     timeout: float,
     poll_interval: float,
-) -> list[dict[str, Any] | None]:
-    """Submit failed_urls as a new job and patch successes back into aligned."""
+) -> tuple[list[dict[str, Any] | None], list[str]]:
+    """Submit failed_urls as a new job and patch successes back into aligned.
+
+    Returns (aligned, newly_waf_blocked) so callers can fold WAF blocks from
+    the retry into the main WAF recovery pass instead of silently dropping them.
+    """
     task_id = await _submit_job(
         session, base_url, failed_urls, browser_config, crawler_config
     )
     if not task_id:
-        return aligned
+        return aligned, []
     response = await _poll_job(session, base_url, task_id, timeout, poll_interval)
     if not response:
-        return aligned
+        return aligned, []
     raw: list[dict[str, Any]] = response.get("result", {}).get("results") or []
+    newly_waf_blocked = _extract_waf_blocked_urls(raw)
     retry_by_url = dict(zip(failed_urls, _align_results(failed_urls, raw)))
     for i, url in enumerate(all_urls):
         if aligned[i] is None and retry_by_url.get(url) is not None:
             aligned[i] = retry_by_url[url]
-    return aligned
+    return aligned, newly_waf_blocked
 
 
 async def _probe_waf_recovery(
@@ -308,7 +316,7 @@ async def crawl_single_url(
     url: str,
     browser_config: dict[str, Any],
     crawler_config: dict[str, Any],
-    timeout: float = 90.0,
+    timeout: float = 200.0,
     poll_interval: float = 2.0,
 ) -> dict[str, Any] | None:
     """Submit one URL to the crawl4ai Docker server and return its result dict.
@@ -397,15 +405,18 @@ async def crawl_batch_urls(
         transient_failed = _extract_transient_failed_urls(raw_results)
         aligned = _align_results(urls, raw_results)
 
-        if transient_failed:
+        still_failing = transient_failed
+        for attempt in range(1, _TRANSIENT_MAX_RETRIES + 1):
+            if not still_failing:
+                break
             logger.warning(
-                f"{len(transient_failed)} URL(s) hit transient errors — retrying in {_TRANSIENT_RETRY_DELAY:.0f}s"
+                f"{len(still_failing)} URL(s) hit transient errors — retry {attempt}/{_TRANSIENT_MAX_RETRIES} in {_TRANSIENT_RETRY_DELAY:.0f}s"
             )
             await asyncio.sleep(_TRANSIENT_RETRY_DELAY)
-            aligned = await _retry_failed_urls(
+            aligned, retry_waf_blocked = await _retry_failed_urls(
                 session,
                 base_url,
-                transient_failed,
+                still_failing,
                 aligned,
                 urls,
                 browser_config,
@@ -413,6 +424,11 @@ async def crawl_batch_urls(
                 timeout,
                 poll_interval,
             )
+            waf_blocked = list(dict.fromkeys(waf_blocked + retry_waf_blocked))
+            still_failing = [
+                url for url in still_failing
+                if aligned[urls.index(url)] is None and url not in waf_blocked
+            ]
 
         if waf_blocked:
             blocked_codes = sorted(
@@ -431,7 +447,7 @@ async def crawl_batch_urls(
                 session, base_url, waf_blocked[0], browser_config, crawler_config
             )
             if recovered:
-                aligned = await _retry_failed_urls(
+                aligned, _ = await _retry_failed_urls(
                     session,
                     base_url,
                     waf_blocked,

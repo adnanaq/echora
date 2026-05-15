@@ -305,6 +305,17 @@ def test_extract_transient_ignores_missing_url() -> None:
     assert _extract_transient_failed_urls(raw) == []
 
 
+def test_extract_transient_page_timeout() -> None:
+    raw = [
+        {
+            "url": URL,
+            "success": False,
+            "error_message": "Failed on navigating ACS-GOTO:\nPage.goto: Timeout 90000ms exceeded.",
+        }
+    ]
+    assert _extract_transient_failed_urls(raw) == [URL]
+
+
 def test_extract_transient_ignores_unknown_error() -> None:
     raw = [{"url": URL, "success": False, "error_message": "some unknown error"}]
     assert _extract_transient_failed_urls(raw) == []
@@ -321,10 +332,11 @@ async def test_retry_failed_urls_submit_fails_returns_aligned() -> None:
         new_callable=AsyncMock,
         return_value=None,
     ):
-        result = await _retry_failed_urls(
+        aligned, waf_blocked = await _retry_failed_urls(
             AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
         )
-    assert result == [None]
+    assert aligned == [None]
+    assert waf_blocked == []
 
 
 async def test_retry_failed_urls_poll_fails_returns_aligned() -> None:
@@ -340,10 +352,11 @@ async def test_retry_failed_urls_poll_fails_returns_aligned() -> None:
             return_value=None,
         ),
     ):
-        result = await _retry_failed_urls(
+        aligned, waf_blocked = await _retry_failed_urls(
             AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
         )
-    assert result == [None]
+    assert aligned == [None]
+    assert waf_blocked == []
 
 
 async def test_retry_failed_urls_patches_aligned() -> None:
@@ -360,10 +373,33 @@ async def test_retry_failed_urls_patches_aligned() -> None:
             return_value={"result": {"results": [entry]}},
         ),
     ):
-        result = await _retry_failed_urls(
+        aligned, waf_blocked = await _retry_failed_urls(
             AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
         )
-    assert result == [entry]
+    assert aligned == [entry]
+    assert waf_blocked == []
+
+
+async def test_retry_failed_urls_returns_waf_blocked_from_retry() -> None:
+    """When a retry gets a 405, it must be returned in waf_blocked — not silently dropped."""
+    waf_entry = {"url": URL, "success": True, "status_code": 405}
+    with (
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [waf_entry]}},
+        ),
+    ):
+        aligned, waf_blocked = await _retry_failed_urls(
+            AsyncMock(), "http://x", [URL], [None], [URL], _BC, _CC, 10.0, 0.1
+        )
+    assert aligned == [None]
+    assert waf_blocked == [URL]
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +661,59 @@ async def test_crawl_batch_urls_transient_retry_succeeds() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
+async def test_crawl_batch_urls_transient_retry_succeeds_on_third_attempt() -> None:
+    transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [transient]}},  # original batch
+                {"result": {"results": [transient]}},  # retry 1 — still failing
+                {"result": {"results": [transient]}},  # retry 2 — still failing
+                {"result": {"results": [recovered]}},  # retry 3 — recovered
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
+
+
+async def test_crawl_batch_urls_transient_all_retries_exhausted() -> None:
+    transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [transient]}},  # original batch
+                {"result": {"results": [transient]}},  # retry 1
+                {"result": {"results": [transient]}},  # retry 2
+                {"result": {"results": [transient]}},  # retry 3
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [None]
+
+
 async def test_crawl_batch_urls_waf_blocked_recovered() -> None:
     waf = {"url": URL, "success": True, "status_code": 405}
     recovered = {"url": URL, "success": True, "status_code": 200}
@@ -670,6 +759,69 @@ async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
             new_callable=AsyncMock,
             return_value=False,
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [None]
+
+
+async def test_crawl_batch_urls_transient_retry_hits_waf_triggers_recovery() -> None:
+    """Gap scenario: transient failure → retry returns 405 → WAF recovery → URL recovered."""
+    transient = {"url": URL, "success": False, "error_message": "Target page, context or browser has been closed"}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            # original batch → transient failure; WAF retry → recovered
+            side_effect=[
+                {"result": {"results": [transient]}},
+                {"result": {"results": [recovered]}},
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
+
+
+async def test_crawl_batch_urls_transient_retry_hits_waf_recovery_fails() -> None:
+    """Gap scenario: transient failure → retry returns 405 → WAF recovery times out → None."""
+    transient = {"url": URL, "success": False, "error_message": "Target page, context or browser has been closed"}
+    waf = {"url": URL, "success": True, "status_code": 405}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [transient]}},
+                {"result": {"results": [waf]}},
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock
         ),
     ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
