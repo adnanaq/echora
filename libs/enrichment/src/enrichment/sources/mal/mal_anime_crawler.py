@@ -717,9 +717,6 @@ def _build_anime_from_raw(
     opening_themes = _parse_structured_themes(raw.get("opening_themes_raw", []))
     ending_themes = _parse_structured_themes(raw.get("ending_themes_raw", []))
 
-    # Relations
-    # related_entries = _parse_all_related_entries(raw)
-
     # Images — cover (large variant) first, then gallery; deduplicated via dict.fromkeys
     cover_url = raw.get("cover_image_src") or ""
     if cover_url and cover_url.endswith(".jpg") and not cover_url.endswith("l.jpg"):

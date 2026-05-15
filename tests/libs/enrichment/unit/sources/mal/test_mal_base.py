@@ -7,11 +7,9 @@ from enrichment.sources.base.crawler_config import (
 )
 from enrichment.sources.base.crawler_config import CrawlerRateLimiter
 from enrichment.sources.mal.mal_base import (
-    AntiDetectionLayer,
     _get_entity_id,
     diff_model_lists,
     diff_models,
-    get_browser_config,
     get_mal_scraping_limiter,
     get_shared_mal_rate_limiter,
     normalize_mal_anime_url,
@@ -331,26 +329,8 @@ def test_diff_model_lists_updated_when_field_changes() -> None:
 
 
 # =============================================================================
-# get_browser_config / get_docker_browser_config / get_docker_crawler_config
+# get_docker_browser_config / get_docker_crawler_config
 # =============================================================================
-
-
-def test_get_browser_config_stealth_default_returns_config() -> None:
-    cfg = get_browser_config()
-    assert cfg is not None
-
-
-def test_get_browser_config_warmup_cookie_with_cookies() -> None:
-    cfg = get_browser_config(
-        AntiDetectionLayer.WARMUP_COOKIE,
-        cookies=[{"name": "cf_clearance", "value": "x"}],
-    )
-    assert cfg is not None
-
-
-def test_get_browser_config_undetected_layer() -> None:
-    cfg = get_browser_config(AntiDetectionLayer.UNDETECTED)
-    assert cfg is not None
 
 
 def test_get_docker_browser_config_returns_typed_dict() -> None:

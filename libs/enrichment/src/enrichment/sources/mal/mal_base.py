@@ -1,7 +1,6 @@
 """Shared infrastructure for all MAL crawlers.
 
 Provides:
-- Anti-detection layers (stealth → curl_cffi → warmup cookie → undetected)
 - Sidebar parser utilities (text-anchor extraction for MAL sidebar fields)
 - ID extraction helpers (URL → numeric MAL ID)
 - Number parsing utilities ("2,644,378" → int, "#17" → int)
@@ -15,74 +14,17 @@ import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from enum import Enum
 from typing import Any
 
-from crawl4ai import BrowserConfig
 from enrichment.sources.base.crawler_config import CrawlerRateLimiter
-from enrichment.sources.base.crawler_config import DEFAULT_HEADERS as _MAL_BROWSER_HEADERS
+from enrichment.sources.base.utils import parse_broadcast_string as parse_broadcast_string  # noqa: F401
+from enrichment.sources.base.utils import parse_iso_date as parse_iso_date  # noqa: F401
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 # MAL base URL
 MAL_BASE_URL = "https://myanimelist.net"
-
-
-# =============================================================================
-# ANTI-DETECTION LAYERS
-# =============================================================================
-
-
-class AntiDetectionLayer(str, Enum):
-    """Progressive escalation strategy for bypassing MAL bot detection.
-
-    Start with STEALTH (cheapest). On 403/block, escalate to the next layer.
-    Most MAL pages work fine with STEALTH alone.
-    """
-
-    STEALTH = "stealth"  # Layer 1: Crawl4AI headless + enable_stealth=True
-    CURL_CFFI = "curl_cffi"  # Layer 2: TLS impersonation (no browser overhead)
-    WARMUP_COOKIE = "warmup"  # Layer 3: Solve challenge once, reuse cf_clearance cookie
-    UNDETECTED = "undetected"  # Layer 4: Camoufox / fingerprint spoofing
-    RESIDENTIAL_PROXY = "proxy"  # Layer 5: Rotating residential proxies
-
-
-def get_browser_config(
-    layer: AntiDetectionLayer = AntiDetectionLayer.STEALTH,
-    cookies: list[dict[str, str]] | None = None,
-) -> BrowserConfig:
-    """Build a BrowserConfig for the given anti-detection layer.
-
-    Args:
-        layer: Which anti-detection layer to configure. Defaults to STEALTH.
-        cookies: Optional cookies to inject (used for WARMUP_COOKIE layer).
-
-    Returns:
-        BrowserConfig ready for AsyncWebCrawler.
-    """
-    base_kwargs: dict[str, Any] = {
-        "headless": True,
-        "verbose": False,
-        "headers": _MAL_BROWSER_HEADERS,
-        "viewport_width": 1920,
-        "viewport_height": 1080,
-    }
-
-    if layer == AntiDetectionLayer.STEALTH:
-        base_kwargs["enable_stealth"] = True
-
-    elif layer == AntiDetectionLayer.WARMUP_COOKIE:
-        base_kwargs["enable_stealth"] = True
-        if cookies:
-            base_kwargs["cookies"] = cookies
-
-    elif layer == AntiDetectionLayer.UNDETECTED:
-        # Camoufox / UndetectedAdapter — full fingerprint spoofing
-        # For now falls back to stealth (override_navigator not supported by BrowserConfig)
-        base_kwargs["enable_stealth"] = True
-
-    return BrowserConfig(**base_kwargs)
 
 
 # =============================================================================
@@ -232,9 +174,6 @@ def parse_duration_seconds(raw: str | None) -> int | None:
     return total if total > 0 else None
 
 
-from enrichment.sources.base.utils import parse_iso_date as parse_iso_date  # noqa: F401, E402
-
-
 def parse_aired_string(aired_raw: str | None) -> tuple[str | None, str | None]:
     """Parse a MAL aired date range string into (from_date, to_date) ISO strings.
 
@@ -286,9 +225,6 @@ def parse_premiered(premiered_raw: str | None) -> tuple[str | None, int | None]:
     if match:
         return match.group(1).lower(), int(match.group(2))
     return None, None
-
-
-from enrichment.sources.base.utils import parse_broadcast_string as parse_broadcast_string  # noqa: F401, E402
 
 
 def parse_episode_ranges(raw: str | None) -> list[tuple[int, int | None]]:
