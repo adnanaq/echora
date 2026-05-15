@@ -11,7 +11,6 @@ extracted from the character detail page via XPath schema + Python regex helpers
 import json
 import logging
 import re
-from collections.abc import Callable
 from html import unescape
 from typing import Any
 
@@ -30,7 +29,12 @@ from enrichment.sources.base.crawler_config import (
     get_docker_browser_config,
     get_docker_crawler_config,
 )
-from enrichment.sources.base.framework import BaseCrawler, DockerTransport, NullRepository
+from enrichment.sources.base.framework import (
+    BaseCrawler,
+    DockerTransport,
+    FileRepository,
+    NullRepository,
+)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -401,7 +405,7 @@ async def fetch_animeplanet_character(url: str) -> dict[str, Any] | None:
 async def fetch_animeplanet_characters(
     urls: list[str],
     *,
-    on_result: Callable[[dict[str, Any]], None] | None = None,
+    output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
     """Fetch multiple character detail pages in a single batch Docker job.
 
@@ -410,8 +414,8 @@ async def fetch_animeplanet_characters(
 
     Args:
         urls: List of full character URLs (e.g. https://www.anime-planet.com/characters/luffy).
-        on_result: Optional callback invoked with each successfully parsed
-            canonical character dict as it completes (used for write-immediately streaming).
+        output_path: If provided, each canonical character dict is appended as a
+            JSONL line to this file as it completes.
 
     Returns:
         List aligned to urls — None for any failed fetch.
@@ -420,6 +424,7 @@ async def fetch_animeplanet_characters(
         return []
 
     full_urls = urls
+    repo = FileRepository(output_path) if output_path else NullRepository()
     logger.info(f"Batch fetching {len(full_urls)} AP character details...")
 
     cached_values, missing_indices = await _fetch_character_data.cache_batch_get(  # type: ignore[attr-defined]
@@ -435,8 +440,7 @@ async def fetch_animeplanet_characters(
                 _build_character_from_raw(cached, html, full_urls[idx])
             )
             characters[idx] = canonical
-            if on_result is not None:
-                on_result(canonical)
+            repo.save(canonical)
         else:
             if idx not in missing_indices:
                 missing_indices.append(idx)
@@ -486,8 +490,7 @@ async def fetch_animeplanet_characters(
             )
             characters[out_index] = canonical
             cache_values[idx_in_chunk] = raw
-            if on_result is not None:
-                on_result(canonical)
+            repo.save(canonical)
 
         await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
             chunk_urls,

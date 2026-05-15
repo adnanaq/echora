@@ -17,16 +17,20 @@ import os
 import sys
 from typing import Any
 
-from common.utils.jsonl_utils import append_jsonl
-
-from enrichment.sources.anime_planet.anime_planet_anime_crawler import fetch_animeplanet_anime
+from enrichment.sources.anime_planet.anime_planet_anime_crawler import (
+    fetch_animeplanet_anime,
+)
 from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     fetch_animeplanet_characters,
 )
 from enrichment.sources.anime_planet.anime_planet_character_refs_crawler import (
     fetch_animeplanet_character_refs,
 )
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
+from enrichment.sources.base.framework.repository import FileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +90,11 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
 
         canonical_url = _normalize_ap_url(url)
         try:
-            anime = await fetch_animeplanet_anime(canonical_url)
+            anime = await fetch_animeplanet_anime(canonical_url, output_path=anime_output_path)
             if not anime:
                 logger.warning(f"Crawler returned no data for '{canonical_url}'")
                 return None
             anime_data = anime
-
-            if anime_output_path:
-                append_jsonl(anime_output_path, anime_data)
 
             logger.info(
                 f"Anime-Planet anime fetched: {anime_data.get('title', canonical_url)}"
@@ -147,16 +148,8 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
                 return []
 
             urls = [f"{_AP_BASE_URL}{ref['url']}" for ref in refs]
-            results: list[dict[str, Any]] = []
-
-            _path = output_path
-
-            def _on_character(char: dict[str, Any]) -> None:
-                results.append(char)
-                if _path:
-                    append_jsonl(_path, char)
-
-            await fetch_animeplanet_characters(urls, on_result=_on_character)
+            raw = await fetch_animeplanet_characters(urls, output_path=output_path)
+            results = [r for r in raw if r is not None]
 
             logger.info(f"Fetched {len(results)} characters for '{canonical_url}'")
         except Exception:
@@ -237,16 +230,11 @@ async def main() -> int:
         if data is None:
             logger.error(f"No data for '{args.url}'")
             return 1
-        append_jsonl(args.output, data)
+        FileRepository(args.output).save(data)
         return 0
 
     if args.cmd == "characters":
-        out_path = args.output
-
-        def _on_char(char: dict[str, Any]) -> None:
-            append_jsonl(out_path, char)
-
-        await fetch_animeplanet_characters(args.urls, on_result=_on_char)
+        await fetch_animeplanet_characters(args.urls, output_path=args.output)
         return 0
 
     if args.cmd == "all":

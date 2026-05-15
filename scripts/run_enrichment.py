@@ -17,7 +17,7 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
 )
 
-from enrichment.programmatic.enrichment_pipeline import (
+from enrichment.pipeline.enrichment_pipeline import (
     ProgrammaticEnrichmentPipeline,
 )
 

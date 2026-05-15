@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import sys
-import tempfile
 import time
 from types import TracebackType
 from typing import Any
@@ -255,16 +254,13 @@ class ProgrammaticEnrichmentPipeline:
         Returns:
             str: Full path to the created temporary directory.
         """
-        # Get first word from title for directory name
         first_word = anime_title.split()[0] if anime_title else "unknown"
-        # Remove special characters
         clean_word = "".join(c for c in first_word if c.isalnum() or c in "-_")
 
         os.makedirs(self.config.temp_dir, exist_ok=True)
-        temp_dir = tempfile.mkdtemp(
-            prefix=f"{clean_word}_agent",
-            dir=self.config.temp_dir,
-        )
+        agent_id = self._find_next_agent_id()
+        temp_dir = os.path.join(self.config.temp_dir, f"{clean_word}_agent{agent_id}")
+        os.makedirs(temp_dir, exist_ok=True)
 
         logger.info(f"Created temp directory: {temp_dir}")
 

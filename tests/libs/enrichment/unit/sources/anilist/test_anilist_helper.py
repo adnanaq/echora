@@ -1767,13 +1767,10 @@ class TestAniListHelperCanonicalMethods:
             "enrichment.sources.anilist.anilist_helper.anime_from_anilist",
             return_value={"title": "One Piece"},
         ):
-            with patch(
-                "enrichment.sources.anilist.anilist_helper.append_jsonl"
-            ) as mock_append:
-                await helper.fetch_anime_canonical(
-                    "https://anilist.co/anime/21", temp_dir=None
-                )
-                mock_append.assert_not_called()
+            result = await helper.fetch_anime_canonical(
+                "https://anilist.co/anime/21", temp_dir=None
+            )
+        assert result == {"title": "One Piece"}
 
     # ------------------------------------------------------------------
     # fetch_characters_canonical
@@ -1880,7 +1877,7 @@ class TestAniListHelperCanonicalMethods:
         assert len(result) == 2
         out_file = tmp_path / "anilist_characters.jsonl"
         assert out_file.exists()
-        lines = [json.loads(l) for l in out_file.read_text().splitlines()]
+        lines = [json.loads(line) for line in out_file.read_text().splitlines()]
         assert lines[0]["name"] == "Luffy"
         assert lines[1]["name"] == "Zoro"
 

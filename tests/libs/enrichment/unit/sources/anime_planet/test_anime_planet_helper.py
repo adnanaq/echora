@@ -1,10 +1,8 @@
 """Unit tests for AnimePlanetHelper."""
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -195,28 +193,25 @@ async def test_fetch_all_returns_split_anime_and_characters():
 
 
 async def test_fetch_all_writes_anime_before_characters(tmp_path):
-    """Anime output file is written before character fetch begins."""
+    """Anime crawler is called with output_path before character fetch begins."""
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
-    write_calls: list[str] = []
+    call_order: list[str] = []
+
+    async def tracking_anime_fetch(url: str, *, output_path: str | None = None):
+        call_order.append("anime_fetched")
+        return _ANIME_CANONICAL
 
     async def slow_char_fetch(slug: str, *, output_path: str | None = None):
-        write_calls.append("char_fetch_started")
+        call_order.append("char_fetch_started")
         return []
 
     helper = AnimePlanetHelper()
 
-    def tracking_append(path: str, data: object) -> None:
-        write_calls.append(f"write:{os.path.basename(path)}")
-
     with (
         patch(
             "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
-            new=AsyncMock(return_value=_ANIME_CANONICAL),
-        ),
-        patch(
-            "enrichment.sources.anime_planet.anime_planet_helper.append_jsonl",
-            side_effect=tracking_append,
+            side_effect=tracking_anime_fetch,
         ),
         patch.object(helper, "fetch_characters", side_effect=slow_char_fetch),
     ):
@@ -226,9 +221,7 @@ async def test_fetch_all_writes_anime_before_characters(tmp_path):
             temp_dir=str(tmp_path),
         )
 
-    assert write_calls.index("write:anime_planet_anime.jsonl") < write_calls.index(
-        "char_fetch_started"
-    )
+    assert call_order.index("anime_fetched") < call_order.index("char_fetch_started")
 
 
 async def test_fetch_all_returns_none_when_anime_missing():
@@ -312,10 +305,7 @@ async def test_main_anime_subcommand_success(mock_helper_class, tmp_path):
     mock_helper.__aexit__ = AsyncMock(return_value=False)
     out = tmp_path / "out.jsonl"
 
-    with (
-        patch("sys.argv", ["prog", "anime", _AP_ANIME_URL, "--output", str(out)]),
-        patch("enrichment.sources.anime_planet.anime_planet_helper.append_jsonl"),
-    ):
+    with patch("sys.argv", ["prog", "anime", _AP_ANIME_URL, "--output", str(out)]):
         code = await main()
 
     assert code == 0
@@ -339,29 +329,24 @@ async def test_main_anime_subcommand_no_data_returns_1(mock_helper_class):
 
 
 async def test_main_characters_subcommand_streams_to_jsonl(tmp_path):
+
     from enrichment.sources.anime_planet.anime_planet_helper import main
 
     char_url = f"{_AP_WWW}/characters/monkey-d-luffy"
     out = tmp_path / "chars.jsonl"
-    char_dict = {"name": "Luffy"}
 
-    async def fake_fetch(urls: list[str], *, on_result=None) -> list[dict]:
-        if on_result:
-            on_result(char_dict)
-        return [char_dict]
-
+    mock_fetch = AsyncMock(return_value=[{"name": "Luffy"}])
     with (
         patch(
             "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_characters",
-            side_effect=fake_fetch,
+            mock_fetch,
         ),
-        patch("enrichment.sources.anime_planet.anime_planet_helper.append_jsonl") as mock_append,
         patch("sys.argv", ["prog", "characters", char_url, "--output", str(out)]),
     ):
         code = await main()
 
     assert code == 0
-    mock_append.assert_called_once_with(str(out), {"name": "Luffy"})
+    mock_fetch.assert_awaited_once_with([char_url], output_path=str(out))
 
 
 async def test_main_characters_subcommand_passes_urls_to_crawler(tmp_path):

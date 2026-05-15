@@ -14,20 +14,23 @@ import sys
 from typing import Any
 
 import aiohttp
-from common.utils.jsonl_utils import append_jsonl
 from common.utils.retry import retry_with_backoff
-from http_cache.instance import http_cache_manager
-
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
 from enrichment.sources.base.exceptions import (
     AniListGraphQLError,
     ServiceBlockedError,
     ServiceNetworkError,
     ServiceRateLimitedError,
 )
+from enrichment.sources.base.framework.repository import FileRepository, NullRepository
+from http_cache.instance import http_cache_manager
+
 from .anilist_anime_models import AniListAnime
 from .anilist_character_models import AniListCharacterEdge
 from .anilist_mapper import anime_from_anilist, character_from_anilist
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +117,7 @@ class AniListHelper(BaseEnrichmentHelper):
             ServiceNetworkError: Any other network / JSON decode failure.
         """
         await self._ensure_session()
-        assert self.session is not None  # guaranteed by _ensure_session
+        assert self.session is not None  # guaranteed by _ensure_session  # noqa: S101
 
         headers = {
             "Content-Type": "application/json",
@@ -457,9 +460,8 @@ class AniListHelper(BaseEnrichmentHelper):
         anime = AniListAnime.model_validate(raw)
         canonical = anime_from_anilist(anime)
 
-        if temp_dir:
-            append_jsonl(os.path.join(temp_dir, "anilist.jsonl"), canonical)
-
+        repo = FileRepository(os.path.join(temp_dir, "anilist.jsonl")) if temp_dir else NullRepository()
+        repo.save(canonical)
         return canonical
 
     async def fetch_characters_canonical(
@@ -480,17 +482,14 @@ class AniListHelper(BaseEnrichmentHelper):
         if not raw_edges:
             return []
 
-        out_path = (
-            os.path.join(temp_dir, "anilist_characters.jsonl") if temp_dir else None
-        )
+        repo = FileRepository(os.path.join(temp_dir, "anilist_characters.jsonl")) if temp_dir else NullRepository()
         canonical = []
         for edge in raw_edges:
             try:
                 char_edge = AniListCharacterEdge.model_validate(edge)
                 char = character_from_anilist(char_edge)
                 canonical.append(char)
-                if out_path:
-                    append_jsonl(out_path, char)
+                repo.save(char)
             except Exception:
                 logger.warning("Skipping invalid character edge", exc_info=True)
 

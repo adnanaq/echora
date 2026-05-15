@@ -90,7 +90,7 @@ class ApiFetcher:
         """Fetch data from multiple anime APIs concurrently with optional service filtering.
 
         Args:
-            ids: Platform-key → ID/URL map (e.g. ``"mal_url"``, ``"anilist_url"``, ``"kitsu_id"``).
+            ids: Platform-key → ID/URL map (e.g. ``"mal_url"``, ``"anilist_url"``, ``"kitsu_url"``).
             offline_data: Original offline anime metadata; used as input/fallback by some fetchers.
             temp_dir: Directory where per-service JSONL files are written when provided.
             skip_services: Services to omit. Ignored when ``only_services`` is set.

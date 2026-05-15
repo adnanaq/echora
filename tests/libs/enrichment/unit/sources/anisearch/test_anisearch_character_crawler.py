@@ -23,7 +23,6 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     _fetch_character_ography_data,
     _get_character_schema,
     _get_ography_schema,
-    _ography_to_roles,
     _parse_favorites,
     _parse_ography_result,
     _post_process_character,
@@ -677,9 +676,11 @@ async def test_fetch_anisearch_characters_all_cached_no_crawl(
     assert results[0]["name"] == "Monkey D. Luffy"
 
 
-async def test_fetch_anisearch_characters_on_result_callback_invoked(
-    mocker, luffy_char_processed
+async def test_fetch_anisearch_characters_writes_output_path(
+    mocker, luffy_char_processed, tmp_path
 ) -> None:
+    import json
+
     refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",
@@ -691,10 +692,11 @@ async def test_fetch_anisearch_characters_on_result_callback_invoked(
         new_callable=AsyncMock,
         side_effect=[[None], [None]],
     )
-    collected: list = []
-    await fetch_anisearch_characters(refs, on_result=collected.append)
-    assert len(collected) == 1
-    assert collected[0]["name"] == "Monkey D. Luffy"
+    out = str(tmp_path / "chars.jsonl")
+    await fetch_anisearch_characters(refs, output_path=out)
+    lines = (tmp_path / "chars.jsonl").read_text().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["name"] == "Monkey D. Luffy"
 
 
 async def test_fetch_anisearch_characters_uncached_crawl_succeeds(

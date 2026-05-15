@@ -306,21 +306,22 @@ async def test_fetch_all_returns_normalized_payload_shape(
 
 
 @pytest.mark.asyncio
-@patch("enrichment.sources.anisearch.anisearch_helper.append_jsonl")
 @patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
 @patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_episodes")
 @patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_character_refs")
 async def test_fetch_all_writes_jsonl_when_temp_dir(
-    mock_refs, mock_ep, mock_anime, mock_append, helper, sample_anime_data
+    mock_refs, mock_ep, mock_anime, helper, sample_anime_data, tmp_path
 ):
     mock_anime.return_value = sample_anime_data
     mock_ep.return_value = None
     mock_refs.return_value = []
     result = await helper.fetch_all(
-        {"anisearch_url": _URL_WITH_SLUG}, {}, temp_dir="/tmp"
+        {"anisearch_url": _URL_WITH_SLUG}, {}, temp_dir=str(tmp_path)
     )
     assert result is not None
-    mock_append.assert_called_once()
+    mock_anime.assert_called_once_with(
+        _URL_WITH_SLUG, output_path=str(tmp_path / "anisearch.jsonl")
+    )
 
 
 @pytest.mark.asyncio
@@ -451,6 +452,6 @@ async def test_fetch_all_uses_canonical_url_for_episodes_and_characters(
                 result = await helper.fetch_all({"anisearch_url": _URL_NO_SLUG}, {})
 
     assert result is not None
-    mock_fetch_anime.assert_called_once_with(_URL_NO_SLUG)
-    mock_fetch_episodes.assert_called_once_with(canonical_url)
-    mock_fetch_characters.assert_called_once_with(canonical_url)
+    mock_fetch_anime.assert_called_once_with(_URL_NO_SLUG, output_path=None)
+    mock_fetch_episodes.assert_called_once_with(canonical_url, output_path=None)
+    mock_fetch_characters.assert_called_once_with(canonical_url, output_path=None)

@@ -11,13 +11,15 @@ from typing import Any, cast
 
 import aiohttp
 from common.models.anime import ThemeEntry
-from common.utils.jsonl_utils import append_jsonl as _append_jsonl
-from common.utils.jsonl_utils import write_jsonl as _write_jsonl
 from common.utils.retry import retry_with_backoff
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
+from enrichment.sources.base.exceptions import ServiceNotFoundError
+from enrichment.sources.base.framework.repository import FileRepository, NullRepository
 from http_cache.instance import http_cache_manager as _cache_manager
 
-from enrichment.sources.base.exceptions import ServiceNotFoundError
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
 from .kitsu_mapper import (
     anime_from_kitsu,
     character_from_kitsu,
@@ -58,32 +60,33 @@ class KitsuHelper(BaseEnrichmentHelper):
         """Fetch canonical anime, episodes, and characters from Kitsu.
 
         Args:
-            ids: Dictionary of validated platform IDs/URLs. Must contain 'kitsu_id'.
+            ids: Dictionary of validated platform IDs/URLs. Must contain 'kitsu_url'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
 
         Returns:
             ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
         """
-        kitsu_id = ids.get("kitsu_id")
-        if not kitsu_id:
+        kitsu_url = ids.get("kitsu_url")
+        if not kitsu_url:
             return None
 
+        raw_id = kitsu_url.rstrip("/").split("/")[-1]
         try:
-            numeric_id = int(kitsu_id)
+            numeric_id = int(raw_id)
         except ValueError:
             # Slug — resolve to numeric ID first
-            logger.info(f"Resolving Kitsu slug '{kitsu_id}' to numeric ID...")
+            logger.info(f"Resolving Kitsu slug '{raw_id}' to numeric ID...")
             try:
-                data = await self._make_request("/anime", params={"filter[slug]": kitsu_id})
+                data = await self._make_request("/anime", params={"filter[slug]": raw_id})
             except Exception:
-                logger.warning(f"Failed to resolve Kitsu slug: {kitsu_id}")
+                logger.warning(f"Failed to resolve Kitsu slug: {raw_id}")
                 return None
             if not data.get("data"):
-                logger.warning(f"No Kitsu anime found for slug: {kitsu_id}")
+                logger.warning(f"No Kitsu anime found for slug: {raw_id}")
                 return None
             numeric_id = int(data["data"][0]["id"])
-            logger.info(f"Resolved slug '{kitsu_id}' to ID {numeric_id}")
+            logger.info(f"Resolved slug '{raw_id}' to ID {numeric_id}")
 
         logger.info(f"Fetching Kitsu data for: {numeric_id}")
         try:
@@ -498,8 +501,8 @@ class KitsuHelper(BaseEnrichmentHelper):
         result = anime_from_kitsu(anime_model)
         logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
 
-        if output_path:
-            _write_jsonl(output_path, [result])
+        repo = FileRepository(output_path) if output_path else NullRepository()
+        repo.save(result)
         return result
 
     async def fetch_episodes(
@@ -524,6 +527,7 @@ class KitsuHelper(BaseEnrichmentHelper):
         logger.info(f"Fetching Kitsu episodes for: {anime_id}")
         raw_episodes = await self.get_anime_episodes(anime_id, session=session)
         total = len(raw_episodes)
+        repo = FileRepository(output_path) if output_path else NullRepository()
         results: list[dict[str, Any]] = []
         for i, ep_raw in enumerate(raw_episodes, 1):
             ep = episode_from_kitsu(
@@ -531,8 +535,7 @@ class KitsuHelper(BaseEnrichmentHelper):
             )
             logger.debug(f"Episode {i}/{total}: {ep.get('title', '?')}")
             results.append(ep)
-            if output_path:
-                _append_jsonl(output_path, ep)
+            repo.save(ep)
         return results
 
     async def fetch_characters(
@@ -562,6 +565,7 @@ class KitsuHelper(BaseEnrichmentHelper):
         total = len(resolved)
 
         sem = asyncio.Semaphore(_CHARACTER_CONCURRENCY)
+        repo = FileRepository(output_path) if output_path else NullRepository()
 
         async def _fetch_one(char: KitsuMediaCharacter) -> dict[str, Any] | None:
             char_id = char.character.id  # ty: ignore[possibly-missing-attribute]  # resolved guarantees non-None
@@ -592,8 +596,7 @@ class KitsuHelper(BaseEnrichmentHelper):
                 logger.exception(f"character_from_kitsu failed for mediaChar {char.id}")
                 return None
             logger.debug(f"Character {char_name} ({total} total)")
-            if output_path:
-                _append_jsonl(output_path, result)
+            repo.save(result)
             return result
 
         char_results = await asyncio.gather(*[_fetch_one(char) for char in resolved])
@@ -617,32 +620,38 @@ class KitsuHelper(BaseEnrichmentHelper):
 
 
 async def main() -> int:
-    """CLI entry point: fetch Kitsu anime data and write to a JSON file."""
-    if len(sys.argv) != 3:
-        print("Usage: python kitsu_helper.py <anime_id> <output_file>", file=sys.stderr)
-        return 1
+    """CLI entry point for fetching Kitsu anime data."""
+    import argparse
+    import json as _json
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Fetch anime data from Kitsu")
+    parser.add_argument(
+        "url",
+        type=str,
+        help="Kitsu anime URL (e.g. https://kitsu.app/anime/47450)",
+    )
+    parser.add_argument("--output", type=str, default="kitsu_anime.json", help="Output file path")
     try:
-        anime_id = sys.argv[1]  # Support ID or slug
-        output_file = sys.argv[2]
-
-        helper = KitsuHelper()
-        ids = {"kitsu_id": anime_id}
-        data = await helper.fetch_all(ids, {})
-
-        if data:
-            import json as _json
-
-            with open(output_file, "w", encoding="utf-8") as f:
-                _json.dump(data, f, ensure_ascii=False, indent=4)
-            print(f"Data for {anime_id} saved to {output_file}")
-            return 0
-        else:
-            print(f"Could not fetch data for {anime_id}", file=sys.stderr)
-            return 1
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        args = parser.parse_args()
+    except SystemExit:
         return 1
+
+    helper = KitsuHelper()
+    try:
+        data = await helper.fetch_all({"kitsu_url": args.url}, {})
+    except Exception:
+        logger.exception(f"Failed to fetch Kitsu data for: {args.url}")
+        return 1
+
+    if not data:
+        logger.error(f"No data for: {args.url}")
+        return 1
+
+    with open(args.output, "w", encoding="utf-8") as f:
+        _json.dump(data, f, ensure_ascii=False, indent=4)
+    logger.info(f"Data saved to {args.output}")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

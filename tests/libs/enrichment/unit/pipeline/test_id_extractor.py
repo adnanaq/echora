@@ -1,8 +1,9 @@
 """Unit tests for PlatformIDExtractor."""
 
 import pytest
-
-from enrichment.pipeline.id_extractor import PlatformIDExtractor  # direct import avoids deep pipeline chain
+from enrichment.pipeline.id_extractor import (
+    PlatformIDExtractor,  # direct import avoids deep pipeline chain
+)
 
 
 @pytest.fixture
@@ -63,9 +64,9 @@ def test_anisearch_url_and_anilist_url_both_present(extractor: PlatformIDExtract
 # ---------------------------------------------------------------------------
 
 
-def test_kitsu_id_extracted(extractor: PlatformIDExtractor) -> None:
+def test_kitsu_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://kitsu.app/anime/one-piece"]}
-    assert extractor.extract_all_ids(data)["kitsu_id"] == "one-piece"
+    assert extractor.extract_all_ids(data)["kitsu_url"] == "https://kitsu.app/anime/one-piece"
 
 
 def test_anidb_id_extracted(extractor: PlatformIDExtractor) -> None:
@@ -123,7 +124,7 @@ def test_full_mixed_sources(extractor: PlatformIDExtractor) -> None:
     assert result["anime_planet_url"] == "https://www.anime-planet.com/anime/one-piece"
     assert result["anisearch_url"] == "https://www.anisearch.com/anime/458,one-piece"
     assert result["anidb_id"] == "69"
-    assert result["kitsu_id"] == "one-piece"
+    assert result["kitsu_url"] == "https://kitsu.app/anime/one-piece"
     assert result["notify_id"] == "0-A-5Fimg"
     assert result["livechart_id"] == "10959"
 
@@ -148,4 +149,4 @@ def test_validate_ids_drops_none_values(extractor: PlatformIDExtractor) -> None:
 
 
 def test_validate_ids_drops_empty_string(extractor: PlatformIDExtractor) -> None:
-    assert extractor.validate_ids({"kitsu_id": "   "}) == {}
+    assert extractor.validate_ids({"kitsu_url": "   "}) == {}

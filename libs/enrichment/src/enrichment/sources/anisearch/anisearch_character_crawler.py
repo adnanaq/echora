@@ -13,7 +13,6 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Callable
 from typing import Any
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
@@ -608,14 +607,14 @@ async def _batch_fetch_ography(
 async def fetch_anisearch_characters(
     refs: list[dict[str, str]],
     *,
-    on_result: Callable[[dict[str, Any]], None] | None = None,
+    output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
     """Batch-fetch character detail pages (+ ography sub-pages) for all refs.
 
     Args:
         refs: List of {"url": str, "role": str} dicts from fetch_anisearch_character_refs().
-        on_result: Optional callback invoked with each canonical character dict
-            as it is parsed (write-immediately streaming).
+        output_path: If provided, each canonical character dict is appended as a
+            JSONL line to this file as it completes.
 
     Returns:
         List aligned to refs — None for any failed fetch.
@@ -625,6 +624,7 @@ async def fetch_anisearch_characters(
 
     urls = [r["url"] for r in refs]
     logger.info(f"Batch fetching {len(urls)} AniSearch character details...")
+    repo = FileRepository(output_path) if output_path else NullRepository()
 
     # ── Step 1: detail pages ──────────────────────────────────────────────
     (
@@ -701,7 +701,6 @@ async def fetch_anisearch_characters(
             )
         )
         characters[idx] = canonical
-        if on_result is not None:
-            on_result(canonical)
+        repo.save(canonical)
 
     return characters

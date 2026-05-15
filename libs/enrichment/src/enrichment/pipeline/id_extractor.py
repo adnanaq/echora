@@ -27,7 +27,7 @@ class PlatformIDExtractor:
 
     # Platforms where a captured group from the URL is the identifier
     PATTERNS = {
-        "kitsu_id": r"kitsu\.(?:io|app)/anime/([^/\?]+)",
+        "kitsu_url": r"(https?://kitsu\.(?:io|app)/anime/[^/\?\s]+)",
         "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",

@@ -12,7 +12,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.anime_planet.anime_planet_character_crawler import (
     _CHARACTER_BATCH_SIZE,
     _build_character_from_raw,
@@ -643,17 +642,20 @@ async def test_fetch_animeplanet_characters_all_cached(mocker) -> None:
     assert result[0]["name"] == "Luffy"
 
 
-async def test_fetch_animeplanet_characters_cached_fires_on_result(mocker) -> None:
+async def test_fetch_animeplanet_characters_cached_writes_output_path(mocker, tmp_path) -> None:
+    import json
+
     url = "https://www.anime-planet.com/characters/luffy"
     mocker.patch.object(
         _fetch_character_data,
         "cache_batch_get",
         new=AsyncMock(return_value=([{"name": "Luffy", "_html": ""}], [])),
     )
-    fired: list[dict] = []
-    await fetch_animeplanet_characters([url], on_result=fired.append)
-    assert len(fired) == 1
-    assert fired[0]["name"] == "Luffy"
+    out = str(tmp_path / "chars.jsonl")
+    await fetch_animeplanet_characters([url], output_path=out)
+    lines = (tmp_path / "chars.jsonl").read_text().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["name"] == "Luffy"
 
 
 async def test_fetch_animeplanet_characters_live_success(mocker) -> None:
@@ -682,7 +684,9 @@ async def test_fetch_animeplanet_characters_live_success(mocker) -> None:
     cache_set.assert_awaited_once()
 
 
-async def test_fetch_animeplanet_characters_live_fires_on_result(mocker) -> None:
+async def test_fetch_animeplanet_characters_live_writes_output_path(mocker, tmp_path) -> None:
+    import json as _json
+
     url = "https://www.anime-planet.com/characters/nami"
     mocker.patch.object(
         _fetch_character_data,
@@ -701,10 +705,11 @@ async def test_fetch_animeplanet_characters_live_fires_on_result(mocker) -> None
             }
         ],
     )
-    fired: list[dict] = []
-    await fetch_animeplanet_characters([url], on_result=fired.append)
-    assert len(fired) == 1
-    assert fired[0]["name"] == "Nami"
+    out = str(tmp_path / "chars.jsonl")
+    await fetch_animeplanet_characters([url], output_path=out)
+    lines = (tmp_path / "chars.jsonl").read_text().splitlines()
+    assert len(lines) == 1
+    assert _json.loads(lines[0])["name"] == "Nami"
 
 
 async def test_fetch_animeplanet_characters_none_result(mocker) -> None:

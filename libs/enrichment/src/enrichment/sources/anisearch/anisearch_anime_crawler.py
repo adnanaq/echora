@@ -473,9 +473,12 @@ class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
         return _get_anime_schema()
 
     def normalize_identifier(self, identifier: str) -> str:
-        if not identifier.startswith(BASE_ANIME_URL):
+        normalized = identifier.replace(
+            "https://anisearch.com/", "https://www.anisearch.com/", 1
+        )
+        if not normalized.startswith(BASE_ANIME_URL):
             raise ValueError(f"Not an AniSearch anime URL: {identifier!r}")
-        return identifier
+        return normalized
 
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
         return await _fetch_anisearch_anime_data(_extract_path_from_url(url))

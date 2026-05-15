@@ -2,19 +2,10 @@
 Tests for ApiFetcher context manager protocol.
 """
 
-import os
 import tempfile
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from enrichment.sources.base.exceptions import (
-    AniListGraphQLError,
-    ServiceBlockedError,
-    ServiceNetworkError,
-    ServiceRateLimitedError,
-)
 from enrichment.pipeline.api_fetcher import ApiFetcher
 
 
@@ -187,7 +178,7 @@ class TestFetchAllData:
         mock_kitsu = AsyncMock()
         mock_kitsu.fetch_all = AsyncMock(return_value={"title": "One Piece"})
 
-        ids = {"kitsu_id": "12"}
+        ids = {"kitsu_url": "https://kitsu.app/anime/12"}
         offline = {"title": "One Piece", "sources": []}
 
         with patch.object(fetcher, "_build_helpers", return_value={"kitsu": mock_kitsu}):
