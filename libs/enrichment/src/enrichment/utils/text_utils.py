@@ -1,8 +1,4 @@
-"""Japanese text normalization utilities.
-
-This module provides utilities for normalizing Japanese text (Hiragana, Katakana, Kanji)
-to Romaji for consistent text processing and comparison.
-"""
+"""Text and data normalization utilities for enrichment."""
 
 import logging
 from functools import cache
@@ -12,7 +8,14 @@ import pykakasi
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["normalize_japanese_text"]
+__all__ = ["normalize_japanese_text", "normalize_score"]
+
+
+def normalize_score(raw: float | None) -> float | None:
+    """Normalize a 0–100 score to 0–10, rounded to 2 decimal places."""
+    if raw is None:
+        return None
+    return min(10.0, max(0.0, round(raw / 10, 2)))
 
 
 @cache

@@ -46,7 +46,7 @@ def temp_test_dir():
 @pytest.fixture
 def mock_config(temp_test_dir):
     """Create mock EnrichmentConfig for testing."""
-    from enrichment.programmatic.config import EnrichmentConfig
+    from enrichment.pipeline.config import EnrichmentConfig
 
     config = EnrichmentConfig(temp_dir=temp_test_dir)
     return config
@@ -66,8 +66,8 @@ class TestConcurrentAgentDirectoryCreation:
         - No ID collisions (each agent gets unique ID)
         - All directories exist after concurrent creation
         """
-        from enrichment.programmatic.enrichment_pipeline import (
-            ProgrammaticEnrichmentPipeline,
+        from enrichment.pipeline.enrichment_pipeline import (
+            EnrichmentPipeline,
         )
 
         anime_title = "TestAnime"
@@ -76,7 +76,7 @@ class TestConcurrentAgentDirectoryCreation:
 
         async def create_agent_dir(agent_num: int) -> str:
             """Simulate concurrent agent directory creation."""
-            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
+            pipeline = EnrichmentPipeline(config=mock_config)
             # Create temp directory (triggers agent ID assignment)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
@@ -137,7 +137,7 @@ class TestConcurrentRedisAccess:
 
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from enrichment.sources.anilist.anilist_helper import AniListHelper
 
         num_agents = 3
         anilist_id = 1535  # Death Note (much smaller anime)
@@ -147,7 +147,7 @@ class TestConcurrentRedisAccess:
 
         async def agent_fetch_data(agent_id: int) -> dict:
             """Simulate agent fetching data with Redis cache."""
-            helper = AniListEnrichmentHelper()
+            helper = AniListHelper()
 
             # Use _make_request directly to get _from_cache metadata
             query = helper._build_query_by_anilist_id()
@@ -280,8 +280,8 @@ class TestAgentIDRaceConditions:
 
         Expected: No duplicate IDs, gap filled correctly
         """
-        from enrichment.programmatic.enrichment_pipeline import (
-            ProgrammaticEnrichmentPipeline,
+        from enrichment.pipeline.enrichment_pipeline import (
+            EnrichmentPipeline,
         )
 
         # Pre-create directories with gap
@@ -298,7 +298,7 @@ class TestAgentIDRaceConditions:
 
         async def create_agent_with_gap() -> str:
             """Create agent that should fill gap or get next ID."""
-            pipeline = ProgrammaticEnrichmentPipeline(config=mock_config)
+            pipeline = EnrichmentPipeline(config=mock_config)
             temp_dir = pipeline._create_temp_dir(anime_title)
             return temp_dir
 
@@ -349,7 +349,7 @@ class TestConcurrentPipelineExecution:
         NOTE: Requires live AniList API and Redis.
         Set ENABLE_LIVE_CONCURRENCY_TESTS=1 to run this test.
         """
-        from enrichment.api_helpers.anilist_helper import AniListEnrichmentHelper
+        from enrichment.sources.anilist.anilist_helper import AniListHelper
 
         # Use small anime for stress test (avoid huge episode/character lists)
         anime_configs = [
@@ -362,13 +362,13 @@ class TestConcurrentPipelineExecution:
 
         async def run_enrichment_pipeline(anime_config: dict) -> dict:
             """Run full enrichment for one anime."""
-            helper = AniListEnrichmentHelper()
+            helper = AniListHelper()
 
             # Fetch from AniList concurrently
             start_time = time.time()
 
             # Use only fast service for stress test
-            anilist_data = await helper.fetch_anime_by_anilist_id(anime_config["id"])
+            anilist_data = await helper.fetch_anime(anime_config["id"])
 
             elapsed = time.time() - start_time
 

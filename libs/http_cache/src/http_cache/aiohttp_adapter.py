@@ -386,10 +386,13 @@ class CachedAiohttpSession:
             AsyncCacheProxy and called on cache misses.
         """
         self.storage = storage
-        # Use FilterPolicy with body-key enabled for GraphQL/POST caching
+        # Use FilterPolicy without global body-key. Body-key caching is opted in
+        # per-request via the X-Hishel-Body-Key header (GraphQL/POST), which sets
+        # request.metadata["hishel_body_key"]. Enabling use_body_key globally
+        # causes all GET requests (no body) to hash to SHA256(b"") — the same key —
+        # collapsing every URL into one cache slot.
         if policy is None:
             policy = FilterPolicy()
-            policy.use_body_key = True
         self.policy = policy
         self.force_cache = force_cache
         self.always_revalidate = always_revalidate
@@ -463,7 +466,9 @@ class CachedAiohttpSession:
                 # API caching this is rarely an issue (APIs don't typically send Set-Cookie).
                 _get_all = getattr(response.headers, "getall", None)
                 if _get_all is not None:
-                    res_headers = {k: ", ".join(_get_all(k)) for k in set(response.headers.keys())}
+                    res_headers = {
+                        k: ", ".join(_get_all(k)) for k in set(response.headers.keys())
+                    }
                 else:
                     res_headers = dict(response.headers)
 

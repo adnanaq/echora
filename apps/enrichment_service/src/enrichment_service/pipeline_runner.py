@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from enrichment.programmatic.enrichment_pipeline import ProgrammaticEnrichmentPipeline
+from enrichment.pipeline.enrichment_pipeline import ProgrammaticEnrichmentPipeline
 
 
 def _require_data_list(database: dict[str, Any]) -> list[dict[str, Any]]:

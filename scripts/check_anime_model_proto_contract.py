@@ -114,7 +114,9 @@ def _check_enums() -> list[str]:
     for enum_class in _module_enum_classes():
         proto_enum = proto_enums.get(enum_class.__name__)
         if proto_enum is None:
-            failures.append(f"Missing proto enum for model enum '{enum_class.__name__}'.")
+            failures.append(
+                f"Missing proto enum for model enum '{enum_class.__name__}'."
+            )
             continue
 
         prefix = _enum_prefix(enum_class.__name__)

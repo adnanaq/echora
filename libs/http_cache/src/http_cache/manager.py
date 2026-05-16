@@ -91,11 +91,10 @@ class HTTPCacheManager:
         self.config = config
         self._async_redis_client: AsyncRedis | None = None
         self._redis_event_loop: Any | None = None
-        # Enable body-key caching for POST requests (GraphQL queries)
-        # Body-key ensures different queries/variables in POST body have separate cache entries
-        # Add response filter to prevent caching of error responses
+        # Body-key caching is opted in per-request via X-Hishel-Body-Key header (GraphQL/POST).
+        # Enabling use_body_key globally causes all GET requests (no body) to hash to
+        # SHA256(b"") — the same key — collapsing every URL into one cache slot.
         self.policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
-        self.policy.use_body_key = True  # Include request body in cache key
 
         if self.config.cache_enabled:
             self._init_storage()

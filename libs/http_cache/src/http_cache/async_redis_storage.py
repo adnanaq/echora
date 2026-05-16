@@ -205,8 +205,25 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_key = self._entry_key(entry_id)
         index_key = self._index_key(key)
 
+        # Evict stale entries before writing the new one.
+        # The index is a set of UUIDs, one per cached variant. Our requests don't
+        # use Vary headers, so there is never more than one valid variant. Without
+        # pruning, the set accumulates one UUID per historical live fetch, causing
+        # O(n) hgetall calls in get_entries() on every cache hit.
+        stale_ids: set[bytes] = await cast(
+            "Awaitable[set[bytes]]", self.client.smembers(index_key)
+        )
+
         # Use pipeline for atomic operations
         pipe = self.client.pipeline()
+
+        # Delete stale entry + stream keys before replacing with the new one
+        for stale_id_bytes in stale_ids:
+            stale_id = uuid.UUID(stale_id_bytes.decode("utf-8"))
+            pipe.delete(self._entry_key(stale_id))
+            pipe.delete(self._stream_key(stale_id))
+        if stale_ids:
+            pipe.srem(index_key, *stale_ids)
 
         current_index_ttl: int | None = None
         if ttl is not None:

@@ -15,7 +15,7 @@ Tests validate:
 """
 
 import pytest
-from enrichment.utils.text_utils import _get_kakasi, normalize_japanese_text
+from enrichment.utils.text_utils import _get_kakasi, normalize_japanese_text, normalize_score
 
 
 class TestNormalizeJapaneseText:
@@ -57,7 +57,7 @@ class TestNormalizeJapaneseText:
 
         Real cross-source data shows name order variations:
         - AniDB/Anime-Planet: "Monkey D. Luffy" (family first)
-        - characters_detailed.json: "Luffy Monkey D." (given first)
+        - characters_detailed.jsonl: "Luffy Monkey D." (given first)
 
         normalize_japanese_text() preserves these (ai_character_matcher.py handles matching).
         """
@@ -76,7 +76,7 @@ class TestNormalizeJapaneseText:
 
         result = normalize_japanese_text(
             "Luffy Monkey D."
-        )  # characters_detailed.json format
+        )  # characters_detailed.jsonl format
         assert result == "luffy monkey d."
         # These remain different - character matching logic handles this
 
@@ -180,7 +180,7 @@ class TestRealCharacterData:
 
     def test_one_piece_main_characters(self):
         """Test normalization with main One Piece character names (Katakana)."""
-        # Real data from temp/One_agent1/characters_detailed.json
+        # Real data from temp/One_agent1/characters_detailed.jsonl
         test_cases = [
             (
                 "モンキー・D・ルフィ",
@@ -207,7 +207,7 @@ class TestRealCharacterData:
 
     def test_one_piece_antagonists(self):
         """Test normalization with One Piece antagonist names (mixed scripts)."""
-        # Real data from temp/One_agent1/characters_detailed.json
+        # Real data from temp/One_agent1/characters_detailed.jsonl
         test_cases = [
             ("バギー", "bagii"),  # Buggy - pykakasi uses "ii" for long vowels
             ("ネフェルタリ・ビビ", "neferutari"),  # Vivi Nefertari
@@ -263,12 +263,12 @@ class TestRealCharacterData:
         """Test that multiple calls with different real character names don't interfere.
 
         Also validates cross-source consistency: the same Japanese name from different
-        data sources (anidb.json, anime_planet.json, characters_detailed.json) always
+        data sources (anidb.json, anime_planet.json, characters_detailed.jsonl) always
         produces identical romaji output.
         """
         # Real names from temp/One_agent1/ - various sources use the same Japanese names
         names = [
-            "モンキー・D・ルフィ",  # Luffy - in anidb.json, anime_planet.json, characters_detailed.json
+            "モンキー・D・ルフィ",  # Luffy - in anidb.json, anime_planet.json, characters_detailed.jsonl
             "ニコ・ロビン",  # Robin - consistent across all sources
             "ロロノア・ゾロ",  # Zoro - consistent across all sources
             "サンジ",  # Sanji
@@ -319,6 +319,20 @@ class TestEdgeCases:
         result = normalize_japanese_text("Test\nText")
         # Should preserve or handle newlines appropriately
         assert isinstance(result, str)
+
+
+class TestNormalizeScore:
+    def test_normalize_score(self):
+        assert normalize_score(None) is None
+        assert normalize_score(0) == 0.0
+        assert normalize_score(100) == 10.0
+        assert normalize_score(80) == 8.0
+        assert normalize_score(75) == 7.5
+        assert normalize_score(78.34) == 7.83
+        assert normalize_score(78.36) == 7.84
+        assert normalize_score(-10) == 0.0    # negative clamped to 0
+        assert normalize_score(110) == 10.0   # above range clamped to 10
+        assert isinstance(normalize_score(50), float)
 
 
 class TestCachingBehavior:

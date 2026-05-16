@@ -3,10 +3,22 @@
 Extended to accept bytes for hset method parameters, matching actual runtime behavior.
 """
 
+from types import TracebackType
 from typing import Any, Self
 
 class Pipeline:
     """Redis pipeline for batched operations."""
+
+    async def __aenter__(self) -> Pipeline: ...
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None: ...
+    def setex(self, name: str | bytes, time: int, value: str | bytes) -> Pipeline:
+        """Queue a SETEX command. Returns self for chaining."""
+        ...
 
     def hset(
         self,
@@ -125,8 +137,12 @@ class Redis:
         """Incrementally iterate the keys space."""
         ...
 
-    async def get(self, name: str | bytes) -> bytes | None:
+    async def get(self, name: str | bytes) -> str | bytes | None:
         """Get the value of a key."""
+        ...
+
+    async def mget(self, keys: list[str] | list[bytes], *args: str | bytes) -> list[str | bytes | None]:
+        """Get the values of all given keys."""
         ...
 
     async def setex(self, name: str | bytes, time: int, value: str | bytes) -> bool:

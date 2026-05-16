@@ -1,6 +1,6 @@
 # Echora
 
-A production-ready anime data/search platform built as gRPC services on top of Qdrant and enrichment pipelines. The repo is a Pants monorepo with modular libraries for vector processing, database operations, and enrichment workflows.
+A anime data/search platform built as gRPC services on top of Qdrant and enrichment pipelines. The repo is a Pants monorepo with modular libraries for vector processing, database operations, and enrichment workflows.
 
 ## Features
 
@@ -267,29 +267,6 @@ Vector embedding generation and processing.
 - **Processors**: Text and vision processing with caching
 - **Field Mapping**: Anime-specific field extraction and preprocessing
 
-## Testing
-
-```bash
-# Run all tests (unit + integration)
-./pants test ::
-
-# Skip integration tests (fast, no DB/models required)
-./pants test :: -- -m "not integration"
-
-# Run ONLY integration tests (requires Qdrant + Redis + ML models)
-docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
-./pants test :: -- -m integration
-
-# Run tests for specific library
-./pants test libs/qdrant_db/tests/unit::
-
-# Run tests in specific directory
-./pants test tests/integration::
-
-# Run with coverage
-./pants test --coverage ::
-```
-
 ## Configuration
 
 ### Environment Detection
@@ -370,34 +347,11 @@ MODEL_CACHE_DIR=./cache
 # Install all dependencies
 uv sync
 
-# Add a new dependency
-uv add package-name
-
-# Add a dev dependency
-uv add --dev package-name
-
 # Update dependencies
 uv lock --upgrade
 
 # Run scripts
 uv run python script.py
-
-# List installed packages
-uv pip list
-
-# Manage Python versions
-uv python list                 # List installed Python versions
-uv python install 3.12         # Install Python 3.12
-```
-
-### Using Pip
-
-```bash
-# Install in editable mode
-pip install -e .
-
-# Install with dev dependencies
-pip install -e ".[dev]"
 ```
 
 ## Services And gRPC Contracts

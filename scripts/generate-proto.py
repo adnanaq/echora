@@ -148,9 +148,11 @@ def _rewrite_generated_imports(
         return
     # NOTE: rewrite order is significant. Ensure each "after" string does not
     # match any later rule's "before" pattern to avoid double rewriting.
-    for generated_file in list(out_root.rglob("*_pb2.py")) + list(
-        out_root.rglob("*_pb2_grpc.py")
-    ) + list(out_root.rglob("*_pb2.pyi")):
+    for generated_file in (
+        list(out_root.rglob("*_pb2.py"))
+        + list(out_root.rglob("*_pb2_grpc.py"))
+        + list(out_root.rglob("*_pb2.pyi"))
+    ):
         text = generated_file.read_text(encoding="utf-8")
         updated = text
         for before, after in rewrites:
@@ -192,14 +194,18 @@ def main() -> int:
         for entry in TARGETS:
             if entry["name"] not in per_target_protos:
                 continue
+            name = entry["name"]
             out_root = Path(entry["out_root"])
-            protos = per_target_protos[entry["name"]]
+            protos = per_target_protos[name]
             proto_include = Path(entry["proto_include"])
             proto_extra_includes = [
                 Path(include) for include in entry.get("proto_extra_includes", [])
             ]
             proto_rel = [p.relative_to(proto_include) for p in protos]
             v1_dir = out_root / "v1"
+
+            print(f"Generating {name} ({len(protos)} proto(s))...")
+
             if v1_dir.exists():
                 shutil.rmtree(v1_dir)
             if entry.get("relocate_shared_proto_v1_to_v1", False):
@@ -226,12 +232,16 @@ def main() -> int:
                 *(str(p) for p in proto_rel),
             ]
             _run(cmd)
+            print(f"  ✓ Compiled")
             if entry.get("relocate_shared_proto_v1_to_v1", False):
                 generated_shared_v1 = out_root / "shared_proto" / "v1"
                 if generated_shared_v1.exists():
                     shutil.move(str(generated_shared_v1), str(v1_dir))
                     shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
-            _rewrite_generated_imports(out_root, rewrites)
+                    print(f"  ✓ Relocated shared_proto/v1 → v1/")
+            if rewrites:
+                _rewrite_generated_imports(out_root, rewrites)
+                print(f"  ✓ Rewrote imports")
             init_root = out_root / "__init__.py"
             v1_dir.mkdir(parents=True, exist_ok=True)
             init_v1 = v1_dir / "__init__.py"
@@ -240,13 +250,16 @@ def main() -> int:
                     '"""Generated proto package."""\n', encoding="utf-8"
                 )
             if not init_v1.exists():
-                init_v1.write_text('"""Generated proto v1 package."""\n', encoding="utf-8")
+                init_v1.write_text(
+                    '"""Generated proto v1 package."""\n', encoding="utf-8"
+                )
     except _CommandFailedError as exc:
         return exc.returncode
     except ValueError as exc:
         print(f"Proto generation configuration error: {exc}", file=sys.stderr)
         return 2
 
+    print("\nAll proto targets generated.")
     return 0
 
 

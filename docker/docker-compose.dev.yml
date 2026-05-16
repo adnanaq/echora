@@ -1,3 +1,5 @@
+name: echora
+
 services:
   # Qdrant Vector Database
   qdrant:
@@ -11,7 +13,7 @@ services:
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
-      - vector-network
+      - echora-network
     healthcheck:
       test:
         [
@@ -39,7 +41,7 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
     networks:
-      - vector-network
+      - echora-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -57,7 +59,7 @@ services:
     volumes:
       - redisinsight-data:/data
     networks:
-      - vector-network
+      - echora-network
     depends_on:
       redis:
         condition: service_healthy
@@ -109,7 +111,7 @@ services:
     volumes:
       - model-cache:/app/cache
     networks:
-      - vector-network
+      - echora-network
     depends_on:
       qdrant:
         condition: service_healthy
@@ -143,10 +145,12 @@ services:
       - ../data:/app/data:ro
       - ../assets/seed_data:/app/assets/seed_data
     networks:
-      - vector-network
+      - echora-network
     depends_on:
       redis:
         condition: service_healthy
+      crawl4ai:
+        condition: service_started
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
@@ -155,8 +159,41 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Crawl4AI Docker Server
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: echora-crawl4ai
+    shm_size: "2gb" # Chromium needs large /dev/shm; default 64MB causes "browser has been closed" crashes
+    # Skip supervisord (and its bundled Redis) — use our echora-redis instead.
+    # The server reads redis.uri from config.yml mounted below.
+    command:
+      [
+        "uvicorn",
+        "server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "11235",
+        "--log-level",
+        "info",
+        "--timeout-keep-alive",
+        "300",
+      ]
+    ports:
+      - "11235:11235"
+    environment:
+      MAX_CONCURRENT_TASKS: "3" # 3 concurrent MAL tabs
+    volumes:
+      - ./crawl4ai-config.yml:/app/config.yml:ro
+    networks:
+      - echora-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
-  vector-network:
+  echora-network:
     driver: bridge
 
 volumes:

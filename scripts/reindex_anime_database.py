@@ -188,7 +188,7 @@ async def main() -> None:
                 temp_fd, temp_path = tempfile.mkstemp(
                     dir=os.path.dirname(args.data_file) or ".",
                     prefix=".tmp_anime_",
-                    suffix=".json"
+                    suffix=".json",
                 )
                 try:
                     with os.fdopen(temp_fd, "w", encoding="utf-8") as f:

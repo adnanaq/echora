@@ -1,0 +1,4757 @@
+{
+  "chara1": [
+    {
+      "url": "character/4852,monkey-d-luffy"
+    },
+    {
+      "url": "character/4853,roronoa-zoro"
+    },
+    {
+      "url": "character/4851,nami"
+    },
+    {
+      "url": "character/4854,usopp"
+    },
+    {
+      "url": "character/4835,sogeking"
+    },
+    {
+      "url": "character/4856,sanji"
+    },
+    {
+      "url": "character/796,tony-tony-chopper"
+    },
+    {
+      "url": "character/4836,nico-robin"
+    },
+    {
+      "url": "character/4855,franky"
+    },
+    {
+      "url": "character/783,brook"
+    },
+    {
+      "url": "character/53203,jimbei"
+    }
+  ],
+  "chara2": [
+    {
+      "url": "character/49864,gold-roger"
+    },
+    {
+      "url": "character/1021,coby"
+    },
+    {
+      "url": "character/590,alvida"
+    },
+    {
+      "url": "character/49917,alvida-devilfruit"
+    },
+    {
+      "url": "character/199,shanks"
+    },
+    {
+      "url": "character/3882,benn-beckman"
+    },
+    {
+      "url": "character/1173,yasopp"
+    },
+    {
+      "url": "character/3883,lucky-roux"
+    },
+    {
+      "url": "character/2129,dragon"
+    },
+    {
+      "url": "character/918,buggy"
+    },
+    {
+      "url": "character/2797,bellamy"
+    },
+    {
+      "url": "character/2798,mombran-cricket"
+    },
+    {
+      "url": "character/43000,trafalgar-law"
+    },
+    {
+      "url": "character/740,krieg"
+    },
+    {
+      "url": "character/52568,borsalino"
+    },
+    {
+      "url": "character/52789,magellan"
+    },
+    {
+      "url": "character/679,arlong"
+    },
+    {
+      "url": "character/1670,smoker"
+    },
+    {
+      "url": "character/809,tashigi"
+    },
+    {
+      "url": "character/786,klahadore"
+    },
+    {
+      "url": "character/2883,bartholomew-kuma"
+    },
+    {
+      "url": "character/3055,enel"
+    },
+    {
+      "url": "character/3006,wiper"
+    },
+    {
+      "url": "character/3110,foxy"
+    },
+    {
+      "url": "character/3230,kuzan"
+    },
+    {
+      "url": "character/3279,iceburg"
+    },
+    {
+      "url": "character/731,rob-lucci"
+    },
+    {
+      "url": "character/53836,sakazuki"
+    },
+    {
+      "url": "character/3851,gecko-moria"
+    },
+    {
+      "url": "character/52534,killer"
+    },
+    {
+      "url": "character/52354,keimi"
+    },
+    {
+      "url": "character/52566,basil-hawkins"
+    },
+    {
+      "url": "character/52564,eustass-kid"
+    },
+    {
+      "url": "character/52468,scratchmen-apoo"
+    },
+    {
+      "url": "character/52440,capone-bege"
+    },
+    {
+      "url": "character/52533,jewelry-bonney"
+    },
+    {
+      "url": "character/52530,urouge"
+    },
+    {
+      "url": "character/52532,x-drake"
+    },
+    {
+      "url": "character/1616,dracule-mihawk"
+    },
+    {
+      "url": "character/52690,boa-hancock"
+    },
+    {
+      "url": "character/52688,boa-sandersonia"
+    },
+    {
+      "url": "character/52687,boa-marigold"
+    },
+    {
+      "url": "character/52479,silvers-rayleigh"
+    },
+    {
+      "url": "character/55196,fisher-tiger"
+    },
+    {
+      "url": "character/53217,emporio-ivankov"
+    },
+    {
+      "url": "character/56239,brownbeard"
+    },
+    {
+      "url": "character/55192,neptune"
+    },
+    {
+      "url": "character/56214,charlotte-linlin"
+    },
+    {
+      "url": "character/56507,caesar-crown"
+    },
+    {
+      "url": "character/55193,hody-jones"
+    },
+    {
+      "url": "character/2156,princess-nefertari-vivi"
+    },
+    {
+      "url": "character/56505,isshou"
+    },
+    {
+      "url": "character/916,wapol"
+    },
+    {
+      "url": "character/149,portgaz-d-ace"
+    },
+    {
+      "url": "character/44,crocodile"
+    },
+    {
+      "url": "character/2841,marshall-d-teach"
+    },
+    {
+      "url": "character/2863,edward-newgate"
+    },
+    {
+      "url": "character/2868,sengoku"
+    },
+    {
+      "url": "character/2880,marco"
+    },
+    {
+      "url": "character/56504,kaido"
+    },
+    {
+      "url": "character/2866,donquixote-doflamingo"
+    },
+    {
+      "url": "character/56462,sabo"
+    },
+    {
+      "url": "character/56379,bartolomeo"
+    },
+    {
+      "url": "character/56420,one-legged-soldier"
+    },
+    {
+      "url": "character/56453,kinemon"
+    },
+    {
+      "url": "character/62389,charlotte-pudding"
+    },
+    {
+      "url": "character/138137,ichiji-vinsmoke"
+    },
+    {
+      "url": "character/138138,niji-vinsmoke"
+    },
+    {
+      "url": "character/62239,reiju-vinsmoke"
+    },
+    {
+      "url": "character/61997,yonji-vinsmoke"
+    },
+    {
+      "url": "character/62813,judge-vinsmoke"
+    },
+    {
+      "url": "character/114999,yamato"
+    },
+    {
+      "url": "character/2174,karoo"
+    }
+  ],
+  "chara3": [
+    {
+      "url": "character/42785,captain"
+    },
+    {
+      "url": "character/42784,pirate"
+    },
+    {
+      "url": "character/42790,pirate"
+    },
+    {
+      "url": "character/2051,heppoko"
+    },
+    {
+      "url": "character/2050,peppoko"
+    },
+    {
+      "url": "character/2049,poppoko"
+    },
+    {
+      "url": "character/42786,sailor"
+    },
+    {
+      "url": "character/42787,sailor"
+    },
+    {
+      "url": "character/42788,sailor"
+    },
+    {
+      "url": "character/42791,passenger"
+    },
+    {
+      "url": "character/1972,solo"
+    },
+    {
+      "url": "character/49360,careless"
+    },
+    {
+      "url": "character/49361,marine"
+    },
+    {
+      "url": "character/49362,marine"
+    },
+    {
+      "url": "character/49363,marine"
+    },
+    {
+      "url": "character/49364,marine"
+    },
+    {
+      "url": "character/650,helmeppo"
+    },
+    {
+      "url": "character/1974,rokkaku"
+    },
+    {
+      "url": "character/49403,ripper"
+    },
+    {
+      "url": "character/49404,marine"
+    },
+    {
+      "url": "character/49405,marine"
+    },
+    {
+      "url": "character/49406,marine"
+    },
+    {
+      "url": "character/1490,morgan"
+    },
+    {
+      "url": "character/1912,makino"
+    },
+    {
+      "url": "character/1913,woop-slap"
+    },
+    {
+      "url": "character/49802,woop-slapp"
+    },
+    {
+      "url": "character/1634,rika"
+    },
+    {
+      "url": "character/1779,ririka"
+    },
+    {
+      "url": "character/1003,kuina"
+    },
+    {
+      "url": "character/49410,bandit"
+    },
+    {
+      "url": "character/49411,bandit"
+    },
+    {
+      "url": "character/49416,superhuman-domingo"
+    },
+    {
+      "url": "character/49417,superhuman-domingo"
+    },
+    {
+      "url": "character/49418,superhuman-domingo"
+    },
+    {
+      "url": "character/49407,tightrope-walking-funan-bros"
+    },
+    {
+      "url": "character/49408,tightrope-walking-funan-bros"
+    },
+    {
+      "url": "character/49409,tightrope-walking-funan-bros"
+    },
+    {
+      "url": "character/1910,higuma"
+    },
+    {
+      "url": "character/49419,pirate"
+    },
+    {
+      "url": "character/49420,pirate"
+    },
+    {
+      "url": "character/49421,pirate"
+    },
+    {
+      "url": "character/49422,pirate"
+    },
+    {
+      "url": "character/49423,pirate"
+    },
+    {
+      "url": "character/2071,hocker"
+    },
+    {
+      "url": "character/1492,mohji"
+    },
+    {
+      "url": "character/1622,richie"
+    },
+    {
+      "url": "character/49450,pirate"
+    },
+    {
+      "url": "character/785,cabaji"
+    },
+    {
+      "url": "character/49451,pirate"
+    },
+    {
+      "url": "character/49452,pirate"
+    },
+    {
+      "url": "character/2063,polo"
+    },
+    {
+      "url": "character/49453,pirate"
+    },
+    {
+      "url": "character/49454,man"
+    },
+    {
+      "url": "character/49455,man"
+    },
+    {
+      "url": "character/49457,man"
+    },
+    {
+      "url": "character/49456,man"
+    },
+    {
+      "url": "character/49458,woman"
+    },
+    {
+      "url": "character/49478,gatekeeper"
+    },
+    {
+      "url": "character/49479,gatekeeper"
+    },
+    {
+      "url": "character/1558,boodle"
+    },
+    {
+      "url": "character/2070,chou-chou"
+    },
+    {
+      "url": "character/724,kaya"
+    },
+    {
+      "url": "character/924,jango"
+    },
+    {
+      "url": "character/1560,pepper"
+    },
+    {
+      "url": "character/812,orion"
+    },
+    {
+      "url": "character/1504,carrot"
+    },
+    {
+      "url": "character/49474,villager"
+    },
+    {
+      "url": "character/49475,villager"
+    },
+    {
+      "url": "character/49477,villager"
+    },
+    {
+      "url": "character/49476,villager"
+    },
+    {
+      "url": "character/49540,man"
+    },
+    {
+      "url": "character/49483,woman"
+    },
+    {
+      "url": "character/49538,girl"
+    },
+    {
+      "url": "character/49537,man"
+    },
+    {
+      "url": "character/1561,merry"
+    },
+    {
+      "url": "character/49539,doctor"
+    },
+    {
+      "url": "character/49541,pirate-captain"
+    },
+    {
+      "url": "character/1002,koshiro"
+    },
+    {
+      "url": "character/49542,pirate"
+    },
+    {
+      "url": "character/1503,siam"
+    },
+    {
+      "url": "character/778,butchie"
+    },
+    {
+      "url": "character/49561,dojo-instructor"
+    },
+    {
+      "url": "character/49562,student"
+    },
+    {
+      "url": "character/49563,student"
+    },
+    {
+      "url": "character/49571,student"
+    },
+    {
+      "url": "character/1615,nugire-yainu"
+    },
+    {
+      "url": "character/1943,banchina"
+    },
+    {
+      "url": "character/951,johnny"
+    },
+    {
+      "url": "character/49559,fighter"
+    },
+    {
+      "url": "character/680,zeff"
+    },
+    {
+      "url": "character/1708,gaimon"
+    },
+    {
+      "url": "character/861,yosaku"
+    },
+    {
+      "url": "character/2069,moody"
+    },
+    {
+      "url": "character/2068,mr-mozzel"
+    },
+    {
+      "url": "character/49567,cook"
+    },
+    {
+      "url": "character/49568,cook"
+    },
+    {
+      "url": "character/49565,man"
+    },
+    {
+      "url": "character/49569,lines"
+    },
+    {
+      "url": "character/49566,man"
+    },
+    {
+      "url": "character/49564,woman"
+    },
+    {
+      "url": "character/904,fullbody"
+    },
+    {
+      "url": "character/49570,man"
+    },
+    {
+      "url": "character/49572,man"
+    },
+    {
+      "url": "character/49573,pirate"
+    },
+    {
+      "url": "character/49574,pirate"
+    },
+    {
+      "url": "character/49575,pirate"
+    },
+    {
+      "url": "character/49577,pirate"
+    },
+    {
+      "url": "character/49578,pirate"
+    },
+    {
+      "url": "character/49581,pirate"
+    },
+    {
+      "url": "character/49582,pirate"
+    },
+    {
+      "url": "character/1488,patty"
+    },
+    {
+      "url": "character/49576,pirate"
+    },
+    {
+      "url": "character/49580,pirate"
+    },
+    {
+      "url": "character/715,gin"
+    },
+    {
+      "url": "character/867,carne"
+    },
+    {
+      "url": "character/49579,pirate"
+    },
+    {
+      "url": "character/2048,ideaman"
+    },
+    {
+      "url": "character/49597,pirate"
+    },
+    {
+      "url": "character/49598,pirate"
+    },
+    {
+      "url": "character/49599,pirate"
+    },
+    {
+      "url": "character/49601,pirate"
+    },
+    {
+      "url": "character/49602,pirate"
+    },
+    {
+      "url": "character/49603,pirate"
+    },
+    {
+      "url": "character/49604,pirate"
+    },
+    {
+      "url": "character/49605,pirate"
+    },
+    {
+      "url": "character/49606,pirate"
+    },
+    {
+      "url": "character/49607,pirate"
+    },
+    {
+      "url": "character/49608,pirate"
+    },
+    {
+      "url": "character/49609,pirate"
+    },
+    {
+      "url": "character/804,invincible-pearl"
+    },
+    {
+      "url": "character/49610,pirate"
+    },
+    {
+      "url": "character/49611,pirate"
+    },
+    {
+      "url": "character/49600,pirate"
+    },
+    {
+      "url": "character/49614,cook"
+    },
+    {
+      "url": "character/49615,cook"
+    },
+    {
+      "url": "character/49616,cook"
+    },
+    {
+      "url": "character/49613,crewmember"
+    },
+    {
+      "url": "character/49612,crewmember"
+    },
+    {
+      "url": "character/49617,cook"
+    },
+    {
+      "url": "character/49631,cook"
+    },
+    {
+      "url": "character/49632,cook"
+    },
+    {
+      "url": "character/49637,pirate"
+    },
+    {
+      "url": "character/49638,pirate"
+    },
+    {
+      "url": "character/49639,pirate"
+    },
+    {
+      "url": "character/49640,pirate"
+    },
+    {
+      "url": "character/49641,pirate"
+    },
+    {
+      "url": "character/49633,cook"
+    },
+    {
+      "url": "character/949,hatchan"
+    },
+    {
+      "url": "character/49634,cook"
+    },
+    {
+      "url": "character/1562,kuroobi"
+    },
+    {
+      "url": "character/982,nojiko"
+    },
+    {
+      "url": "character/49635,cook"
+    },
+    {
+      "url": "character/49636,cook"
+    },
+    {
+      "url": "character/779,chew"
+    },
+    {
+      "url": "character/703,genzo"
+    },
+    {
+      "url": "character/1573,mohmoo"
+    },
+    {
+      "url": "character/49649,fishman"
+    },
+    {
+      "url": "character/49650,fishman"
+    },
+    {
+      "url": "character/49651,fishman"
+    },
+    {
+      "url": "character/49652,fishman"
+    },
+    {
+      "url": "character/49653,fishman"
+    },
+    {
+      "url": "character/49654,fishman"
+    },
+    {
+      "url": "character/49658,pisaro"
+    },
+    {
+      "url": "character/2044,kaneshiro"
+    },
+    {
+      "url": "character/49655,man"
+    },
+    {
+      "url": "character/49657,shioyaki"
+    },
+    {
+      "url": "character/2042,take"
+    },
+    {
+      "url": "character/1576,nezumi"
+    },
+    {
+      "url": "character/727,bellemere"
+    },
+    {
+      "url": "character/49656,marine"
+    },
+    {
+      "url": "character/917,chabo"
+    },
+    {
+      "url": "character/49307,old-woman"
+    },
+    {
+      "url": "character/49699,meat-seller"
+    },
+    {
+      "url": "character/49700,fruit-seller"
+    },
+    {
+      "url": "character/850,dr-nako"
+    },
+    {
+      "url": "character/49701,man"
+    },
+    {
+      "url": "character/49702,man"
+    },
+    {
+      "url": "character/49750,man"
+    },
+    {
+      "url": "character/49751,fishman"
+    },
+    {
+      "url": "character/49752,fishman"
+    },
+    {
+      "url": "character/49753,man"
+    },
+    {
+      "url": "character/49754,man"
+    },
+    {
+      "url": "character/49796,man"
+    },
+    {
+      "url": "character/1666,brandnew"
+    },
+    {
+      "url": "character/1658,pudding-pudding"
+    },
+    {
+      "url": "character/49797,man"
+    },
+    {
+      "url": "character/1941,john-giant"
+    },
+    {
+      "url": "character/49724,gyoll"
+    },
+    {
+      "url": "character/49798,marine"
+    },
+    {
+      "url": "character/49799,marine"
+    },
+    {
+      "url": "character/49801,pirate"
+    },
+    {
+      "url": "character/49800,pirate"
+    },
+    {
+      "url": "character/1989,kumate"
+    },
+    {
+      "url": "character/49847,bear-paw"
+    },
+    {
+      "url": "character/49848,bear-paw"
+    },
+    {
+      "url": "character/2812,garry"
+    },
+    {
+      "url": "character/2031,yu"
+    },
+    {
+      "url": "character/49315,kose"
+    },
+    {
+      "url": "character/49316,packi"
+    },
+    {
+      "url": "character/1985,hanger"
+    },
+    {
+      "url": "character/49535,shop-owner"
+    },
+    {
+      "url": "character/49850,marine"
+    },
+    {
+      "url": "character/49862,marine"
+    },
+    {
+      "url": "character/49849,shopkeeper"
+    },
+    {
+      "url": "character/49861,yuus-father"
+    },
+    {
+      "url": "character/49863,executioner"
+    },
+    {
+      "url": "character/49860,tannes-wife"
+    },
+    {
+      "url": "character/1707,raul"
+    },
+    {
+      "url": "character/1857,petty-officer-mashikaku"
+    },
+    {
+      "url": "character/1699,carol-masterson"
+    },
+    {
+      "url": "character/49873,shopkeeper"
+    },
+    {
+      "url": "character/49872,pirate"
+    },
+    {
+      "url": "character/1754,leo"
+    },
+    {
+      "url": "character/1752,jose"
+    },
+    {
+      "url": "character/1847,sapi"
+    },
+    {
+      "url": "character/2030,eckori"
+    },
+    {
+      "url": "character/2029,shiyo-the-lizard"
+    },
+    {
+      "url": "character/2118,sam"
+    },
+    {
+      "url": "character/49536,fishmonger"
+    },
+    {
+      "url": "character/49482,umpire"
+    },
+    {
+      "url": "character/49877,minamoto-san"
+    },
+    {
+      "url": "character/49890,lieutenant-commander"
+    },
+    {
+      "url": "character/1675,matsu"
+    },
+    {
+      "url": "character/49878,police-chef"
+    },
+    {
+      "url": "character/1698,daddy-masterson"
+    },
+    {
+      "url": "character/49880,man"
+    },
+    {
+      "url": "character/49881,man"
+    },
+    {
+      "url": "character/49882,woman"
+    },
+    {
+      "url": "character/1743,carmen"
+    },
+    {
+      "url": "character/49883,policeman"
+    },
+    {
+      "url": "character/49884,policeman"
+    },
+    {
+      "url": "character/49885,man"
+    },
+    {
+      "url": "character/49886,man"
+    },
+    {
+      "url": "character/49887,man"
+    },
+    {
+      "url": "character/49888,man"
+    },
+    {
+      "url": "character/49889,marine"
+    },
+    {
+      "url": "character/2084,hardy"
+    },
+    {
+      "url": "character/49905,marine"
+    },
+    {
+      "url": "character/49906,marine"
+    },
+    {
+      "url": "character/49907,marine"
+    },
+    {
+      "url": "character/49908,marine"
+    },
+    {
+      "url": "character/1773,ryuji"
+    },
+    {
+      "url": "character/49909,woman"
+    },
+    {
+      "url": "character/49910,man"
+    },
+    {
+      "url": "character/49911,man"
+    },
+    {
+      "url": "character/49912,man"
+    },
+    {
+      "url": "character/49913,man"
+    },
+    {
+      "url": "character/49914,man"
+    },
+    {
+      "url": "character/49979,marine-officer"
+    },
+    {
+      "url": "character/49915,communication-officer"
+    },
+    {
+      "url": "character/1753,apis"
+    },
+    {
+      "url": "character/792,erik-the-whirlwind"
+    },
+    {
+      "url": "character/890,commodore-nelson"
+    },
+    {
+      "url": "character/49916,marine"
+    },
+    {
+      "url": "character/1774,crocus"
+    },
+    {
+      "url": "character/49976,marine"
+    },
+    {
+      "url": "character/49977,man"
+    },
+    {
+      "url": "character/49978,man"
+    },
+    {
+      "url": "character/730,laboon"
+    },
+    {
+      "url": "character/1780,pocudan"
+    },
+    {
+      "url": "character/2222,mr-13"
+    },
+    {
+      "url": "character/2229,ms-friday"
+    },
+    {
+      "url": "character/2269,garp"
+    },
+    {
+      "url": "character/3878,youki"
+    },
+    {
+      "url": "character/2119,miss-catharine"
+    },
+    {
+      "url": "character/2087,mister-beans"
+    },
+    {
+      "url": "character/50019,marine"
+    },
+    {
+      "url": "character/50018,marine"
+    },
+    {
+      "url": "character/2198,ms-goldenweek"
+    },
+    {
+      "url": "character/63,mr-2-bon-clay"
+    },
+    {
+      "url": "character/50026,marine"
+    },
+    {
+      "url": "character/49329,louis-arnot"
+    },
+    {
+      "url": "character/2200,mr-3"
+    },
+    {
+      "url": "character/2382,akumai"
+    },
+    {
+      "url": "character/49843,yuki"
+    },
+    {
+      "url": "character/2173,igaram"
+    },
+    {
+      "url": "character/1858,ms-monday"
+    },
+    {
+      "url": "character/2157,mr-9"
+    },
+    {
+      "url": "character/50108,giant"
+    },
+    {
+      "url": "character/50109,giant"
+    },
+    {
+      "url": "character/50107,giant"
+    },
+    {
+      "url": "character/2202,mr-5"
+    },
+    {
+      "url": "character/2201,ms-valentine"
+    },
+    {
+      "url": "character/2139,bogart"
+    },
+    {
+      "url": "character/50229,maria-onion-bear"
+    },
+    {
+      "url": "character/50129,villager"
+    },
+    {
+      "url": "character/50130,villager"
+    },
+    {
+      "url": "character/50131,villager"
+    },
+    {
+      "url": "character/50132,villager"
+    },
+    {
+      "url": "character/2140,robson"
+    },
+    {
+      "url": "character/743,broggy"
+    },
+    {
+      "url": "character/744,dorry"
+    },
+    {
+      "url": "character/2128,tamachibi"
+    },
+    {
+      "url": "character/2127,stool"
+    },
+    {
+      "url": "character/50133,wapols-henchman"
+    },
+    {
+      "url": "character/50134,injured-villager"
+    },
+    {
+      "url": "character/50135,villager"
+    },
+    {
+      "url": "character/844,dalton"
+    },
+    {
+      "url": "character/50136,villager"
+    },
+    {
+      "url": "character/50137,villager"
+    },
+    {
+      "url": "character/869,chess"
+    },
+    {
+      "url": "character/1841,kuromarimo"
+    },
+    {
+      "url": "character/2221,mr-11"
+    },
+    {
+      "url": "character/50138,villager"
+    },
+    {
+      "url": "character/2228,kureha"
+    },
+    {
+      "url": "character/50139,villager"
+    },
+    {
+      "url": "character/50195,wapols-henchman"
+    },
+    {
+      "url": "character/50196,wapols-henchman"
+    },
+    {
+      "url": "character/50197,wapols-henchman"
+    },
+    {
+      "url": "character/50204,villager"
+    },
+    {
+      "url": "character/50205,villager"
+    },
+    {
+      "url": "character/50206,villager"
+    },
+    {
+      "url": "character/50207,villager"
+    },
+    {
+      "url": "character/50208,villager"
+    },
+    {
+      "url": "character/50200,doctor"
+    },
+    {
+      "url": "character/50201,doctor"
+    },
+    {
+      "url": "character/50202,doctor"
+    },
+    {
+      "url": "character/50203,doctor"
+    },
+    {
+      "url": "character/50198,wapols-henchman"
+    },
+    {
+      "url": "character/50199,wapols-henchman"
+    },
+    {
+      "url": "character/50209,villager"
+    },
+    {
+      "url": "character/50210,villager"
+    },
+    {
+      "url": "character/50211,villager"
+    },
+    {
+      "url": "character/50212,villager"
+    },
+    {
+      "url": "character/50224,husband"
+    },
+    {
+      "url": "character/50225,wife"
+    },
+    {
+      "url": "character/2096,chessmarimo"
+    },
+    {
+      "url": "character/50226,villager"
+    },
+    {
+      "url": "character/2288,nefeltari-cobra"
+    },
+    {
+      "url": "character/2304,chaka"
+    },
+    {
+      "url": "character/50227,villager"
+    },
+    {
+      "url": "character/50228,villager"
+    },
+    {
+      "url": "character/50296,navigator"
+    },
+    {
+      "url": "character/49894,king-thalassa-lukas"
+    },
+    {
+      "url": "character/50294,villager"
+    },
+    {
+      "url": "character/2322,pell"
+    },
+    {
+      "url": "character/50295,villager"
+    },
+    {
+      "url": "character/853,hiriluk"
+    },
+    {
+      "url": "character/50292,doctor"
+    },
+    {
+      "url": "character/50293,doctor"
+    },
+    {
+      "url": "character/50302,pirate"
+    },
+    {
+      "url": "character/50301,pirate"
+    },
+    {
+      "url": "character/50298,resident-of-nanohana"
+    },
+    {
+      "url": "character/50299,resident-of-nanohana"
+    },
+    {
+      "url": "character/50300,resident-of-nanohana"
+    },
+    {
+      "url": "character/2496,eyelashes"
+    },
+    {
+      "url": "character/50297,resident-of-nanohana"
+    },
+    {
+      "url": "character/2383,yoshimoto"
+    },
+    {
+      "url": "character/50303,fruit-seller"
+    },
+    {
+      "url": "character/50304,fortuneteller"
+    },
+    {
+      "url": "character/49210,geronimo"
+    },
+    {
+      "url": "character/2407,mister-mellow"
+    },
+    {
+      "url": "character/50311,billion"
+    },
+    {
+      "url": "character/50305,royal-guard"
+    },
+    {
+      "url": "character/2341,puppu"
+    },
+    {
+      "url": "character/50306,royal-guard"
+    },
+    {
+      "url": "character/50307,man"
+    },
+    {
+      "url": "character/50308,man"
+    },
+    {
+      "url": "character/2253,lasa"
+    },
+    {
+      "url": "character/2286,zaba"
+    },
+    {
+      "url": "character/2323,koza"
+    },
+    {
+      "url": "character/49821,leader"
+    },
+    {
+      "url": "character/50330,desert-pirate"
+    },
+    {
+      "url": "character/2227,kamonegi"
+    },
+    {
+      "url": "character/2477,sonchou"
+    },
+    {
+      "url": "character/2478,pinhead"
+    },
+    {
+      "url": "character/50332,rebel"
+    },
+    {
+      "url": "character/50331,rebel"
+    },
+    {
+      "url": "character/50333,child"
+    },
+    {
+      "url": "character/50334,child"
+    },
+    {
+      "url": "character/50335,child"
+    },
+    {
+      "url": "character/2343,agotogi"
+    },
+    {
+      "url": "character/2449,aswa"
+    },
+    {
+      "url": "character/2426,natto"
+    },
+    {
+      "url": "character/2287,barbarbossa"
+    },
+    {
+      "url": "character/50364,okame"
+    },
+    {
+      "url": "character/50365,kebi"
+    },
+    {
+      "url": "character/50366,bandit"
+    },
+    {
+      "url": "character/50367,bandit"
+    },
+    {
+      "url": "character/50368,kohza"
+    },
+    {
+      "url": "character/2476,kamyu"
+    },
+    {
+      "url": "character/2534,mr-1"
+    },
+    {
+      "url": "character/2321,toto"
+    },
+    {
+      "url": "character/2308,dip"
+    },
+    {
+      "url": "character/50390,popo"
+    },
+    {
+      "url": "character/2365,kebi"
+    },
+    {
+      "url": "character/2408,okame"
+    },
+    {
+      "url": "character/2427,erik"
+    },
+    {
+      "url": "character/2366,falafla"
+    },
+    {
+      "url": "character/50435,innkeeper"
+    },
+    {
+      "url": "character/50434,marine"
+    },
+    {
+      "url": "character/2428,ultra-king"
+    },
+    {
+      "url": "character/50465,clerk"
+    },
+    {
+      "url": "character/50466,palace-guard"
+    },
+    {
+      "url": "character/50467,man"
+    },
+    {
+      "url": "character/2251,scorpion"
+    },
+    {
+      "url": "character/50468,rebel"
+    },
+    {
+      "url": "character/50469,marine"
+    },
+    {
+      "url": "character/2306,chip"
+    },
+    {
+      "url": "character/2533,lassou"
+    },
+    {
+      "url": "character/2535,ms-doublefinger"
+    },
+    {
+      "url": "character/2755,hyouta"
+    },
+    {
+      "url": "character/2514,mr-4"
+    },
+    {
+      "url": "character/2513,ms-merry-christmas"
+    },
+    {
+      "url": "character/2367,kappa"
+    },
+    {
+      "url": "character/2753,brahm"
+    },
+    {
+      "url": "character/2557,hina"
+    },
+    {
+      "url": "character/2776,arrow"
+    },
+    {
+      "url": "character/2754,barrel"
+    },
+    {
+      "url": "character/2752,mister-love"
+    },
+    {
+      "url": "character/2447,dr-hou"
+    },
+    {
+      "url": "character/2558,mayday"
+    },
+    {
+      "url": "character/2448,dr-potsuun"
+    },
+    {
+      "url": "character/2692,rice-rice"
+    },
+    {
+      "url": "character/2596,tajio"
+    },
+    {
+      "url": "character/49871,chef"
+    },
+    {
+      "url": "character/50570,resident-of-fireworks-island"
+    },
+    {
+      "url": "character/50569,resident-of-fireworks-island"
+    },
+    {
+      "url": "character/50568,launch-team-member"
+    },
+    {
+      "url": "character/50566,launch-team-member"
+    },
+    {
+      "url": "character/50565,launch-team-member"
+    },
+    {
+      "url": "character/2594,harry"
+    },
+    {
+      "url": "character/2498,mr-7"
+    },
+    {
+      "url": "character/2512,ms-fathers-day"
+    },
+    {
+      "url": "character/2595,billy"
+    },
+    {
+      "url": "character/50571,blacksmith"
+    },
+    {
+      "url": "character/2556,shine"
+    },
+    {
+      "url": "character/50574,bar-owner"
+    },
+    {
+      "url": "character/2270,terrakotta"
+    },
+    {
+      "url": "character/50572,man"
+    },
+    {
+      "url": "character/50573,man"
+    },
+    {
+      "url": "character/50576,corporal"
+    },
+    {
+      "url": "character/50575,marine"
+    },
+    {
+      "url": "character/50567,marine"
+    },
+    {
+      "url": "character/2573,kodama"
+    },
+    {
+      "url": "character/2575,odama"
+    },
+    {
+      "url": "character/2694,reik"
+    },
+    {
+      "url": "character/50616,isoka"
+    },
+    {
+      "url": "character/49371,innkeeper"
+    },
+    {
+      "url": "character/50577,marine"
+    },
+    {
+      "url": "character/50582,wettons-subordinate"
+    },
+    {
+      "url": "character/2574,dick"
+    },
+    {
+      "url": "character/50579,man"
+    },
+    {
+      "url": "character/50580,man"
+    },
+    {
+      "url": "character/2659,isoka"
+    },
+    {
+      "url": "character/2633,akibi"
+    },
+    {
+      "url": "character/2634,longo"
+    },
+    {
+      "url": "character/2660,pukau"
+    },
+    {
+      "url": "character/2616,zenny"
+    },
+    {
+      "url": "character/2816,jesus-burgess"
+    },
+    {
+      "url": "character/2615,minchi"
+    },
+    {
+      "url": "character/2614,moor"
+    },
+    {
+      "url": "character/50690,tunnel-digger"
+    },
+    {
+      "url": "character/2704,myure"
+    },
+    {
+      "url": "character/2733,rivers"
+    },
+    {
+      "url": "character/2686,rapanui-pasqua"
+    },
+    {
+      "url": "character/2687,whetton"
+    },
+    {
+      "url": "character/50584,whetton"
+    },
+    {
+      "url": "character/50583,henzo"
+    },
+    {
+      "url": "character/2779,spector"
+    },
+    {
+      "url": "character/2778,terry"
+    },
+    {
+      "url": "character/2734,ross"
+    },
+    {
+      "url": "character/2732,huett"
+    },
+    {
+      "url": "character/2635,ian"
+    },
+    {
+      "url": "character/2703,mani"
+    },
+    {
+      "url": "character/2780,masira"
+    },
+    {
+      "url": "character/50699,stronger"
+    },
+    {
+      "url": "character/2840,doc-q"
+    },
+    {
+      "url": "character/2658,henzo"
+    },
+    {
+      "url": "character/2814,pasqua"
+    },
+    {
+      "url": "character/2688,phillip"
+    },
+    {
+      "url": "character/2839,van-ogre"
+    },
+    {
+      "url": "character/50691,drunk"
+    },
+    {
+      "url": "character/2813,southbird"
+    },
+    {
+      "url": "character/50692,utan-diver-4"
+    },
+    {
+      "url": "character/2705,lily"
+    },
+    {
+      "url": "character/2838,raffit"
+    },
+    {
+      "url": "character/50685,ethanbaron-v-nusjuro"
+    },
+    {
+      "url": "character/50686,jaygarcia-saturn"
+    },
+    {
+      "url": "character/50687,marcus-mars"
+    },
+    {
+      "url": "character/50688,topman-warcury"
+    },
+    {
+      "url": "character/50689,shepherd-ju-peter"
+    },
+    {
+      "url": "character/50693,jobo"
+    },
+    {
+      "url": "character/2799,sarquiss"
+    },
+    {
+      "url": "character/2739,roshio"
+    },
+    {
+      "url": "character/50700,whitebeards-nurse"
+    },
+    {
+      "url": "character/50694,marine-officer"
+    },
+    {
+      "url": "character/50697,stainless"
+    },
+    {
+      "url": "character/50698,mozambia"
+    },
+    {
+      "url": "character/50696,senghoks-goat"
+    },
+    {
+      "url": "character/2796,shoujou"
+    },
+    {
+      "url": "character/2695,eddy"
+    },
+    {
+      "url": "character/2980,suu"
+    },
+    {
+      "url": "character/2879,jozu"
+    },
+    {
+      "url": "character/2942,holy"
+    },
+    {
+      "url": "character/2878,rockstar"
+    },
+    {
+      "url": "character/2864,tsuru"
+    },
+    {
+      "url": "character/2964,fuza"
+    },
+    {
+      "url": "character/3009,shandia-chief"
+    },
+    {
+      "url": "character/50835,man"
+    },
+    {
+      "url": "character/50836,man"
+    },
+    {
+      "url": "character/50837,alpha-wolf"
+    },
+    {
+      "url": "character/50838,gode"
+    },
+    {
+      "url": "character/3056,norla"
+    },
+    {
+      "url": "character/50839,isa"
+    },
+    {
+      "url": "character/2944,enforcers"
+    },
+    {
+      "url": "character/51016,enforcer"
+    },
+    {
+      "url": "character/2910,gan-fall"
+    },
+    {
+      "url": "character/2917,pierre"
+    },
+    {
+      "url": "character/2911,amazon"
+    },
+    {
+      "url": "character/51018,enforcer"
+    },
+    {
+      "url": "character/2909,conis"
+    },
+    {
+      "url": "character/2908,pagaya"
+    },
+    {
+      "url": "character/51017,enforcer"
+    },
+    {
+      "url": "character/2920,skyrider-shura"
+    },
+    {
+      "url": "character/2968,sky-boss-gedatsu"
+    },
+    {
+      "url": "character/2919,skybreeder-ohm"
+    },
+    {
+      "url": "character/49481,enels-servant"
+    },
+    {
+      "url": "character/51019,injured-sky-resident"
+    },
+    {
+      "url": "character/51020,mochi"
+    },
+    {
+      "url": "character/2918,mckinley"
+    },
+    {
+      "url": "character/3030,aisa"
+    },
+    {
+      "url": "character/3008,laki"
+    },
+    {
+      "url": "character/3007,kamakiri"
+    },
+    {
+      "url": "character/3027,braham"
+    },
+    {
+      "url": "character/3028,genbou"
+    },
+    {
+      "url": "character/2965,satori-of-the-forest"
+    },
+    {
+      "url": "character/51022,child"
+    },
+    {
+      "url": "character/51021,child"
+    },
+    {
+      "url": "character/2943,yama"
+    },
+    {
+      "url": "character/51025,genbou"
+    },
+    {
+      "url": "character/51023,kamakiri"
+    },
+    {
+      "url": "character/51024,braham"
+    },
+    {
+      "url": "character/51026,shandia"
+    },
+    {
+      "url": "character/51027,shandia"
+    },
+    {
+      "url": "character/51028,shandia"
+    },
+    {
+      "url": "character/3029,hotori"
+    },
+    {
+      "url": "character/3057,kotori"
+    },
+    {
+      "url": "character/51029,shaman"
+    },
+    {
+      "url": "character/51033,shandia-chief"
+    },
+    {
+      "url": "character/51032,kashigami"
+    },
+    {
+      "url": "character/51031,doctor"
+    },
+    {
+      "url": "character/51030,herb"
+    },
+    {
+      "url": "character/51056,norla"
+    },
+    {
+      "url": "character/51057,kashigamis-child"
+    },
+    {
+      "url": "character/51034,king-of-lyneel"
+    },
+    {
+      "url": "character/51058,god-of-skypia"
+    },
+    {
+      "url": "character/51128,petty-officer-second-class"
+    },
+    {
+      "url": "character/51134,sous-chef"
+    },
+    {
+      "url": "character/51135,marine"
+    },
+    {
+      "url": "character/51125,marine"
+    },
+    {
+      "url": "character/51126,marine"
+    },
+    {
+      "url": "character/2967,montblanc-noland"
+    },
+    {
+      "url": "character/2981,kalgara"
+    },
+    {
+      "url": "character/2982,mousse"
+    },
+    {
+      "url": "character/50986,seto"
+    },
+    {
+      "url": "character/51127,maintenance-crewman"
+    },
+    {
+      "url": "character/51138,billy"
+    },
+    {
+      "url": "character/51136,shinpachi"
+    },
+    {
+      "url": "character/51137,tom"
+    },
+    {
+      "url": "character/51174,marine-officer"
+    },
+    {
+      "url": "character/51132,marine-officer"
+    },
+    {
+      "url": "character/51129,marine"
+    },
+    {
+      "url": "character/2983,seto"
+    },
+    {
+      "url": "character/51133,cleaning-staff"
+    },
+    {
+      "url": "character/3096,doctor-kobato"
+    },
+    {
+      "url": "character/3059,jonathan"
+    },
+    {
+      "url": "character/3093,drake"
+    },
+    {
+      "url": "character/3095,jessica-jonathan"
+    },
+    {
+      "url": "character/3140,mekao"
+    },
+    {
+      "url": "character/51140,nurse"
+    },
+    {
+      "url": "character/51141,nurse"
+    },
+    {
+      "url": "character/51142,nurse"
+    },
+    {
+      "url": "character/51176,troop-leader-55-unit"
+    },
+    {
+      "url": "character/51175,captain"
+    },
+    {
+      "url": "character/3206,shelly"
+    },
+    {
+      "url": "character/3142,kiba"
+    },
+    {
+      "url": "character/51177,man"
+    },
+    {
+      "url": "character/51178,man"
+    },
+    {
+      "url": "character/51179,man"
+    },
+    {
+      "url": "character/51130,murray-brother"
+    },
+    {
+      "url": "character/51131,murray-brother"
+    },
+    {
+      "url": "character/51180,man"
+    },
+    {
+      "url": "character/51181,man"
+    },
+    {
+      "url": "character/51182,man"
+    },
+    {
+      "url": "character/51183,man"
+    },
+    {
+      "url": "character/51187,pirate"
+    },
+    {
+      "url": "character/51185,pirate"
+    },
+    {
+      "url": "character/51186,pirate"
+    },
+    {
+      "url": "character/3094,shepherd"
+    },
+    {
+      "url": "character/51240,pirate"
+    },
+    {
+      "url": "character/51239,rittont"
+    },
+    {
+      "url": "character/3205,tonjit"
+    },
+    {
+      "url": "character/51241,pirate"
+    },
+    {
+      "url": "character/51242,pirate"
+    },
+    {
+      "url": "character/51243,pirate"
+    },
+    {
+      "url": "character/51245,navigator"
+    },
+    {
+      "url": "character/51246,shipwright"
+    },
+    {
+      "url": "character/51244,pirate"
+    },
+    {
+      "url": "character/3164,monda"
+    },
+    {
+      "url": "character/3166,chuchuun"
+    },
+    {
+      "url": "character/51247,beauty"
+    },
+    {
+      "url": "character/51248,beauty"
+    },
+    {
+      "url": "character/51249,beauty"
+    },
+    {
+      "url": "character/51251,beauty"
+    },
+    {
+      "url": "character/51252,kaji-king-crew-member"
+    },
+    {
+      "url": "character/3112,porche"
+    },
+    {
+      "url": "character/3115,hamburg"
+    },
+    {
+      "url": "character/3141,itomimizu"
+    },
+    {
+      "url": "character/51253,referee"
+    },
+    {
+      "url": "character/3165,chiqicheetah"
+    },
+    {
+      "url": "character/3191,girari"
+    },
+    {
+      "url": "character/3188,juubei"
+    },
+    {
+      "url": "character/3189,masshikaku"
+    },
+    {
+      "url": "character/3187,rokuroshi"
+    },
+    {
+      "url": "character/51250,referee"
+    },
+    {
+      "url": "character/3163,kapoty"
+    },
+    {
+      "url": "character/3207,rittont"
+    },
+    {
+      "url": "character/3227,dream"
+    },
+    {
+      "url": "character/51272,hotel-manager"
+    },
+    {
+      "url": "character/51274,hotel-clerk"
+    },
+    {
+      "url": "character/51273,hotel-clerk"
+    },
+    {
+      "url": "character/3255,kokoro"
+    },
+    {
+      "url": "character/51275,dreams-mother"
+    },
+    {
+      "url": "character/51301,man"
+    },
+    {
+      "url": "character/3116,pickles"
+    },
+    {
+      "url": "character/3139,big-pan"
+    },
+    {
+      "url": "character/3211,chimney"
+    },
+    {
+      "url": "character/51372,shop-owner"
+    },
+    {
+      "url": "character/3253,yagara-bull"
+    },
+    {
+      "url": "character/51302,angler"
+    },
+    {
+      "url": "character/51371,man"
+    },
+    {
+      "url": "character/3558,tyrannosaurus"
+    },
+    {
+      "url": "character/51373,man"
+    },
+    {
+      "url": "character/3228,noko"
+    },
+    {
+      "url": "character/51374,man"
+    },
+    {
+      "url": "character/51395,woman"
+    },
+    {
+      "url": "character/51375,vendor"
+    },
+    {
+      "url": "character/51376,vendor"
+    },
+    {
+      "url": "character/3231,yokozuna"
+    },
+    {
+      "url": "character/51377,vendor"
+    },
+    {
+      "url": "character/51378,man"
+    },
+    {
+      "url": "character/51379,man"
+    },
+    {
+      "url": "character/3254,gonbe"
+    },
+    {
+      "url": "character/51380,old-woman"
+    },
+    {
+      "url": "character/3470,kiew"
+    },
+    {
+      "url": "character/3499,tamagon"
+    },
+    {
+      "url": "character/3426,zambai"
+    },
+    {
+      "url": "character/3451,cop"
+    },
+    {
+      "url": "character/3278,paulie"
+    },
+    {
+      "url": "character/437,kaku"
+    },
+    {
+      "url": "character/3280,califa"
+    },
+    {
+      "url": "character/3474,shorzou"
+    },
+    {
+      "url": "character/3256,mikazuki"
+    },
+    {
+      "url": "character/3307,peepley-lulu"
+    },
+    {
+      "url": "character/3306,tilestone"
+    },
+    {
+      "url": "character/3332,hattori"
+    },
+    {
+      "url": "character/51381,ishigo-shitemanna"
+    },
+    {
+      "url": "character/49723,clerk"
+    },
+    {
+      "url": "character/51394,man"
+    },
+    {
+      "url": "character/51390,man"
+    },
+    {
+      "url": "character/51391,man"
+    },
+    {
+      "url": "character/51392,man"
+    },
+    {
+      "url": "character/51393,vendor"
+    },
+    {
+      "url": "character/51434,kyuukyuu"
+    },
+    {
+      "url": "character/51435,journalist"
+    },
+    {
+      "url": "character/3473,happa"
+    },
+    {
+      "url": "character/51478,klabautermann"
+    },
+    {
+      "url": "character/51515,jorge"
+    },
+    {
+      "url": "character/51514,bar-owner"
+    },
+    {
+      "url": "character/3380,funk-freed"
+    },
+    {
+      "url": "character/3447,gomorrah"
+    },
+    {
+      "url": "character/3446,sodom"
+    },
+    {
+      "url": "character/51643,government-official"
+    },
+    {
+      "url": "character/3415,watchdog-unit-of-the-law"
+    },
+    {
+      "url": "character/3309,kiwi"
+    },
+    {
+      "url": "character/3308,mozu"
+    },
+    {
+      "url": "character/3371,corgi"
+    },
+    {
+      "url": "character/3282,blueno"
+    },
+    {
+      "url": "character/3331,tom"
+    },
+    {
+      "url": "character/3333,spandam"
+    },
+    {
+      "url": "character/51517,bushon"
+    },
+    {
+      "url": "character/51516,stevie"
+    },
+    {
+      "url": "character/3370,jerry"
+    },
+    {
+      "url": "character/3368,t-bone"
+    },
+    {
+      "url": "character/3445,the-just-eleven-jurymen"
+    },
+    {
+      "url": "character/3472,roji"
+    },
+    {
+      "url": "character/3365,nero"
+    },
+    {
+      "url": "character/3381,wanze"
+    },
+    {
+      "url": "character/3366,jyabura"
+    },
+    {
+      "url": "character/3379,kumadori"
+    },
+    {
+      "url": "character/3367,fukurou"
+    },
+    {
+      "url": "character/51645,boy"
+    },
+    {
+      "url": "character/3413,kashii"
+    },
+    {
+      "url": "character/3412,oimo"
+    },
+    {
+      "url": "character/51644,girl"
+    },
+    {
+      "url": "character/51649,girl"
+    },
+    {
+      "url": "character/3428,baskerville-princess"
+    },
+    {
+      "url": "character/3427,baskerville-kerville"
+    },
+    {
+      "url": "character/3429,baskerville-bas"
+    },
+    {
+      "url": "character/51646,mother"
+    },
+    {
+      "url": "character/51648,rint"
+    },
+    {
+      "url": "character/51655,roche"
+    },
+    {
+      "url": "character/51647,busshiri"
+    },
+    {
+      "url": "character/51656,gram"
+    },
+    {
+      "url": "character/51651,zadie"
+    },
+    {
+      "url": "character/51657,hocha"
+    },
+    {
+      "url": "character/51650,hack"
+    },
+    {
+      "url": "character/51653,laskey"
+    },
+    {
+      "url": "character/51861,oran"
+    },
+    {
+      "url": "character/3383,nico-olvia"
+    },
+    {
+      "url": "character/3389,professor-clover"
+    },
+    {
+      "url": "character/3382,spandine"
+    },
+    {
+      "url": "character/3414,jaguar-d-saul"
+    },
+    {
+      "url": "character/51862,marine"
+    },
+    {
+      "url": "character/51863,captain"
+    },
+    {
+      "url": "character/51866,kanezenny"
+    },
+    {
+      "url": "character/51865,nigeratta"
+    },
+    {
+      "url": "character/51864,chesskippa"
+    },
+    {
+      "url": "character/3501,momonga"
+    },
+    {
+      "url": "character/51868,government-official"
+    },
+    {
+      "url": "character/51867,marine"
+    },
+    {
+      "url": "character/51871,king"
+    },
+    {
+      "url": "character/51872,vassal"
+    },
+    {
+      "url": "character/51874,pirate-captain"
+    },
+    {
+      "url": "character/51869,captain"
+    },
+    {
+      "url": "character/51870,captain"
+    },
+    {
+      "url": "character/51873,vassal"
+    },
+    {
+      "url": "character/51875,captain"
+    },
+    {
+      "url": "character/3500,doberman"
+    },
+    {
+      "url": "character/3533,berry-good"
+    },
+    {
+      "url": "character/3502,onigumo"
+    },
+    {
+      "url": "character/51876,glove"
+    },
+    {
+      "url": "character/3531,yamakaji"
+    },
+    {
+      "url": "character/3559,sharinguru"
+    },
+    {
+      "url": "character/3560,michael"
+    },
+    {
+      "url": "character/3563,hoichael"
+    },
+    {
+      "url": "character/51877,newspaper-reporter"
+    },
+    {
+      "url": "character/3532,shuu"
+    },
+    {
+      "url": "character/53773,thatch"
+    },
+    {
+      "url": "character/3587,abi"
+    },
+    {
+      "url": "character/3586,aobire"
+    },
+    {
+      "url": "character/51884,abis-mother"
+    },
+    {
+      "url": "character/51883,abis-father"
+    },
+    {
+      "url": "character/51891,yagara-bull"
+    },
+    {
+      "url": "character/51881,man"
+    },
+    {
+      "url": "character/51882,man"
+    },
+    {
+      "url": "character/51885,man"
+    },
+    {
+      "url": "character/51886,man"
+    },
+    {
+      "url": "character/51887,man"
+    },
+    {
+      "url": "character/51888,man"
+    },
+    {
+      "url": "character/51889,man"
+    },
+    {
+      "url": "character/51890,man"
+    },
+    {
+      "url": "character/3585,kachan"
+    },
+    {
+      "url": "character/52186,yoko"
+    },
+    {
+      "url": "character/52190,yuuya"
+    },
+    {
+      "url": "character/52189,shou"
+    },
+    {
+      "url": "character/52188,ayako"
+    },
+    {
+      "url": "character/52187,akihiro"
+    },
+    {
+      "url": "character/52191,loan-shark"
+    },
+    {
+      "url": "character/52192,loan-sharks-aide"
+    },
+    {
+      "url": "character/52193,loan-sharks-aide"
+    },
+    {
+      "url": "character/52182,sword-vendor"
+    },
+    {
+      "url": "character/52183,man"
+    },
+    {
+      "url": "character/52184,man"
+    },
+    {
+      "url": "character/52185,man"
+    },
+    {
+      "url": "character/52196,spice-shop-owner"
+    },
+    {
+      "url": "character/52197,craftsman"
+    },
+    {
+      "url": "character/52198,craftsman"
+    },
+    {
+      "url": "character/52199,sailor"
+    },
+    {
+      "url": "character/52200,sailor"
+    },
+    {
+      "url": "character/52194,reporter"
+    },
+    {
+      "url": "character/52195,reporter"
+    },
+    {
+      "url": "character/3588,banba-jii"
+    },
+    {
+      "url": "character/3589,attack"
+    },
+    {
+      "url": "character/52202,marine-officer"
+    },
+    {
+      "url": "character/52205,policeman"
+    },
+    {
+      "url": "character/52208,girl"
+    },
+    {
+      "url": "character/52201,man"
+    },
+    {
+      "url": "character/52203,man"
+    },
+    {
+      "url": "character/52204,man"
+    },
+    {
+      "url": "character/52206,man"
+    },
+    {
+      "url": "character/52207,man"
+    },
+    {
+      "url": "character/52209,marine-officer"
+    },
+    {
+      "url": "character/52230,terry-gilteo"
+    },
+    {
+      "url": "character/52210,man"
+    },
+    {
+      "url": "character/3680,cerberus"
+    },
+    {
+      "url": "character/3763,zombies"
+    },
+    {
+      "url": "character/52213,zombie"
+    },
+    {
+      "url": "character/52212,zombie"
+    },
+    {
+      "url": "character/52214,lion-zombie"
+    },
+    {
+      "url": "character/52216,cat-zombie"
+    },
+    {
+      "url": "character/52215,tree-zombie"
+    },
+    {
+      "url": "character/3825,perona"
+    },
+    {
+      "url": "character/3704,shikiguma"
+    },
+    {
+      "url": "character/52217,mocdonald"
+    },
+    {
+      "url": "character/52211,unigaro"
+    },
+    {
+      "url": "character/52220,woman-painting-zombie"
+    },
+    {
+      "url": "character/52218,negative-hollow"
+    },
+    {
+      "url": "character/3624,puzzle"
+    },
+    {
+      "url": "character/3653,don-acchiino"
+    },
+    {
+      "url": "character/3652,kanpachiino"
+    },
+    {
+      "url": "character/3650,salco"
+    },
+    {
+      "url": "character/3623,jirou"
+    },
+    {
+      "url": "character/3658,vigaro"
+    },
+    {
+      "url": "character/3618,stansen"
+    },
+    {
+      "url": "character/3616,torof"
+    },
+    {
+      "url": "character/3614,reis"
+    },
+    {
+      "url": "character/3617,rago"
+    },
+    {
+      "url": "character/3621,satton"
+    },
+    {
+      "url": "character/3619,bajir"
+    },
+    {
+      "url": "character/3622,gairu"
+    },
+    {
+      "url": "character/3646,brindo"
+    },
+    {
+      "url": "character/3649,arabelle"
+    },
+    {
+      "url": "character/3647,lil"
+    },
+    {
+      "url": "character/3648,hockera"
+    },
+    {
+      "url": "character/3706,bikkuri-bako-zombie"
+    },
+    {
+      "url": "character/3848,absalom"
+    },
+    {
+      "url": "character/3797,hildon"
+    },
+    {
+      "url": "character/3681,mario"
+    },
+    {
+      "url": "character/3850,dr-hogback"
+    },
+    {
+      "url": "character/3822,victoria-cindry"
+    },
+    {
+      "url": "character/3707,buhichakku"
+    },
+    {
+      "url": "character/3711,bikkuri-zombie"
+    },
+    {
+      "url": "character/52221,painting-zombie"
+    },
+    {
+      "url": "character/52222,painting-zombie"
+    },
+    {
+      "url": "character/52223,zombie"
+    },
+    {
+      "url": "character/3798,ryuma-shimotsuki-zombie"
+    },
+    {
+      "url": "character/52219,zombie"
+    },
+    {
+      "url": "character/52224,zombie"
+    },
+    {
+      "url": "character/52225,zombie"
+    },
+    {
+      "url": "character/3741,kaba-shinshi"
+    },
+    {
+      "url": "character/52226,painting-zombie"
+    },
+    {
+      "url": "character/52260,penguin-with-bow-tie"
+    },
+    {
+      "url": "character/52261,penguin-with-scarf"
+    },
+    {
+      "url": "character/52227,koala-zombie"
+    },
+    {
+      "url": "character/52228,panda-zombie"
+    },
+    {
+      "url": "character/3764,elephant-zombie"
+    },
+    {
+      "url": "character/3765,zombie-general"
+    },
+    {
+      "url": "character/3705,spidermice"
+    },
+    {
+      "url": "character/52229,goat-gorilla-zombie"
+    },
+    {
+      "url": "character/52262,spidermouse"
+    },
+    {
+      "url": "character/3796,bearsy"
+    },
+    {
+      "url": "character/3735,spoil"
+    },
+    {
+      "url": "character/3682,bao"
+    },
+    {
+      "url": "character/3683,gyoro"
+    },
+    {
+      "url": "character/3684,nin"
+    },
+    {
+      "url": "character/52263,old-man-zombie"
+    },
+    {
+      "url": "character/52264,painting-zombie"
+    },
+    {
+      "url": "character/52265,pastor-zombie"
+    },
+    {
+      "url": "character/52258,risky-brother"
+    },
+    {
+      "url": "character/52259,risky-brother"
+    },
+    {
+      "url": "character/3734,captain-john"
+    },
+    {
+      "url": "character/52267,hare-gorilla-zombie"
+    },
+    {
+      "url": "character/52266,zombie"
+    },
+    {
+      "url": "character/3766,lola"
+    },
+    {
+      "url": "character/3733,inuppe"
+    },
+    {
+      "url": "character/52268,hare-zombie"
+    },
+    {
+      "url": "character/52269,hare-zombie"
+    },
+    {
+      "url": "character/52331,risky-brother-human"
+    },
+    {
+      "url": "character/52332,risky-brother-human"
+    },
+    {
+      "url": "character/52334,egana"
+    },
+    {
+      "url": "character/3794,jigorou-of-the-wind"
+    },
+    {
+      "url": "character/3793,talleran"
+    },
+    {
+      "url": "character/52333,asahija"
+    },
+    {
+      "url": "character/52335,goo"
+    },
+    {
+      "url": "character/52338,madaiski-mizuta"
+    },
+    {
+      "url": "character/52337,mawaritosuki-mizuta"
+    },
+    {
+      "url": "character/3820,oz"
+    },
+    {
+      "url": "character/52339,ships-doctor"
+    },
+    {
+      "url": "character/3875,sayo"
+    },
+    {
+      "url": "character/3877,munki"
+    },
+    {
+      "url": "character/52340,father"
+    },
+    {
+      "url": "character/52341,staff"
+    },
+    {
+      "url": "character/52276,victoria-cindry"
+    },
+    {
+      "url": "character/52342,customer"
+    },
+    {
+      "url": "character/3768,charlotte-lola"
+    },
+    {
+      "url": "character/3736,margarita"
+    },
+    {
+      "url": "character/52355,pappug"
+    },
+    {
+      "url": "character/52364,duval"
+    },
+    {
+      "url": "character/52361,gyaro"
+    },
+    {
+      "url": "character/52362,tansui"
+    },
+    {
+      "url": "character/52357,flying-fish-rider"
+    },
+    {
+      "url": "character/3893,doran"
+    },
+    {
+      "url": "character/3874,lina"
+    },
+    {
+      "url": "character/52358,flying-fish-rider"
+    },
+    {
+      "url": "character/52360,flying-fish-raider"
+    },
+    {
+      "url": "character/52359,flying-fish-raider"
+    },
+    {
+      "url": "character/52363,motobaro"
+    },
+    {
+      "url": "character/52444,shakuyak"
+    },
+    {
+      "url": "character/52435,antonio"
+    },
+    {
+      "url": "character/52434,bon-chari-seller"
+    },
+    {
+      "url": "character/52356,macro"
+    },
+    {
+      "url": "character/52436,woman"
+    },
+    {
+      "url": "character/52441,minoruba"
+    },
+    {
+      "url": "character/52442,kairiken"
+    },
+    {
+      "url": "character/52562,penguin"
+    },
+    {
+      "url": "character/52563,shachi"
+    },
+    {
+      "url": "character/52443,fire-tank-pirate"
+    },
+    {
+      "url": "character/52447,saint-charlos"
+    },
+    {
+      "url": "character/52536,jean-bart"
+    },
+    {
+      "url": "character/52439,saint-rosward"
+    },
+    {
+      "url": "character/52438,saint-shaluria"
+    },
+    {
+      "url": "character/52437,devil-diaz"
+    },
+    {
+      "url": "character/52471,charlos-bodyguard"
+    },
+    {
+      "url": "character/52472,marie"
+    },
+    {
+      "url": "character/52467,judy"
+    },
+    {
+      "url": "character/52469,doctor"
+    },
+    {
+      "url": "character/52464,sinful-monk-pirate"
+    },
+    {
+      "url": "character/52466,on-air-pirate"
+    },
+    {
+      "url": "character/52465,fire-tank-pirate"
+    },
+    {
+      "url": "character/52565,heat"
+    },
+    {
+      "url": "character/52561,wire"
+    },
+    {
+      "url": "character/52478,disko"
+    },
+    {
+      "url": "character/52610,sentoumaru"
+    },
+    {
+      "url": "character/52531,stansen"
+    },
+    {
+      "url": "character/52470,peterman"
+    },
+    {
+      "url": "character/52474,marin"
+    },
+    {
+      "url": "character/52473,slave-trader"
+    },
+    {
+      "url": "character/52475,byron"
+    },
+    {
+      "url": "character/52535,bepo"
+    },
+    {
+      "url": "character/52476,lacuba"
+    },
+    {
+      "url": "character/52477,pascia"
+    },
+    {
+      "url": "character/49306,mao"
+    },
+    {
+      "url": "character/52678,marguerite"
+    },
+    {
+      "url": "character/52677,sweet-pea"
+    },
+    {
+      "url": "character/52686,kikyou"
+    },
+    {
+      "url": "character/52694,nerine"
+    },
+    {
+      "url": "character/52693,pansy"
+    },
+    {
+      "url": "character/52692,poppy"
+    },
+    {
+      "url": "character/52695,daisy"
+    },
+    {
+      "url": "character/52696,cosmos"
+    },
+    {
+      "url": "character/52699,blue-fan"
+    },
+    {
+      "url": "character/52776,haredasu"
+    },
+    {
+      "url": "character/52777,kitton"
+    },
+    {
+      "url": "character/52780,tibany-man"
+    },
+    {
+      "url": "character/52779,tibany-woman"
+    },
+    {
+      "url": "character/52782,heracles"
+    },
+    {
+      "url": "character/52781,soran"
+    },
+    {
+      "url": "character/52783,stalker"
+    },
+    {
+      "url": "character/52676,aphelandra"
+    },
+    {
+      "url": "character/52784,pekkori"
+    },
+    {
+      "url": "character/52689,gloriosa"
+    },
+    {
+      "url": "character/53197,minotauros"
+    },
+    {
+      "url": "character/52691,belladonna"
+    },
+    {
+      "url": "character/52885,ryuudou"
+    },
+    {
+      "url": "character/52820,boss"
+    },
+    {
+      "url": "character/52697,ran"
+    },
+    {
+      "url": "character/52882,luigia"
+    },
+    {
+      "url": "character/52698,rindou"
+    },
+    {
+      "url": "character/52880,mendou"
+    },
+    {
+      "url": "character/52893,scarlet"
+    },
+    {
+      "url": "character/52700,enishida"
+    },
+    {
+      "url": "character/52922,sphinx"
+    },
+    {
+      "url": "character/53181,daigin"
+    },
+    {
+      "url": "character/52778,taroimo"
+    },
+    {
+      "url": "character/53198,minokoala"
+    },
+    {
+      "url": "character/53199,minorhinoceros"
+    },
+    {
+      "url": "character/53200,minozebra"
+    },
+    {
+      "url": "character/53180,bellett"
+    },
+    {
+      "url": "character/53179,bellett-female"
+    },
+    {
+      "url": "character/52786,hannyabal"
+    },
+    {
+      "url": "character/52785,domino"
+    },
+    {
+      "url": "character/53216,miss-olive"
+    },
+    {
+      "url": "character/52822,yoko"
+    },
+    {
+      "url": "character/52883,largo"
+    },
+    {
+      "url": "character/52823,corto"
+    },
+    {
+      "url": "character/52895,shiki-the-golden-lion"
+    },
+    {
+      "url": "character/52821,fabre"
+    },
+    {
+      "url": "character/53766,bunny-joe"
+    },
+    {
+      "url": "character/55132,sancrin"
+    },
+    {
+      "url": "character/53813,doma"
+    },
+    {
+      "url": "character/53772,delacuaji"
+    },
+    {
+      "url": "character/52881,mitsuboshi"
+    },
+    {
+      "url": "character/52894,indigo"
+    },
+    {
+      "url": "character/53780,decalvan-brother"
+    },
+    {
+      "url": "character/53781,decalvan-brother"
+    },
+    {
+      "url": "character/53201,shiryuu"
+    },
+    {
+      "url": "character/53183,saldeath"
+    },
+    {
+      "url": "character/53182,sady"
+    },
+    {
+      "url": "character/53812,a-o"
+    },
+    {
+      "url": "character/53826,blenheim"
+    },
+    {
+      "url": "character/53831,curiel"
+    },
+    {
+      "url": "character/53202,inazuma"
+    },
+    {
+      "url": "character/138501,inazuma"
+    },
+    {
+      "url": "character/53818,king-dew"
+    },
+    {
+      "url": "character/53829,atomos"
+    },
+    {
+      "url": "character/53828,izou"
+    },
+    {
+      "url": "character/53775,lonz"
+    },
+    {
+      "url": "character/53783,epoida"
+    },
+    {
+      "url": "character/53765,caroline"
+    },
+    {
+      "url": "character/53820,islewan"
+    },
+    {
+      "url": "character/53817,dalmatian"
+    },
+    {
+      "url": "character/53769,portgaz-d-rouge"
+    },
+    {
+      "url": "character/53768,lacroix"
+    },
+    {
+      "url": "character/53767,reuder"
+    },
+    {
+      "url": "character/53788,mcguy"
+    },
+    {
+      "url": "character/53822,bastille"
+    },
+    {
+      "url": "character/53814,squard"
+    },
+    {
+      "url": "character/53774,zodia"
+    },
+    {
+      "url": "character/53779,yukimura"
+    },
+    {
+      "url": "character/53811,ramba"
+    },
+    {
+      "url": "character/53784,karma"
+    },
+    {
+      "url": "character/53810,elmy"
+    },
+    {
+      "url": "character/53787,vista"
+    },
+    {
+      "url": "character/53819,blamenco"
+    },
+    {
+      "url": "character/53825,rakuyou"
+    },
+    {
+      "url": "character/53823,namur"
+    },
+    {
+      "url": "character/53808,blondie"
+    },
+    {
+      "url": "character/53785,wallem"
+    },
+    {
+      "url": "character/53786,brew"
+    },
+    {
+      "url": "character/53824,haruta"
+    },
+    {
+      "url": "character/53806,brocca"
+    },
+    {
+      "url": "character/53827,speed-jil"
+    },
+    {
+      "url": "character/53830,fossa"
+    },
+    {
+      "url": "character/53807,palms"
+    },
+    {
+      "url": "character/53815,kibin"
+    },
+    {
+      "url": "character/53777,whitey-bay"
+    },
+    {
+      "url": "character/55110,curly-dadan"
+    },
+    {
+      "url": "character/53816,pavlik"
+    },
+    {
+      "url": "character/53821,andre"
+    },
+    {
+      "url": "character/53778,hangan"
+    },
+    {
+      "url": "character/53782,amadob"
+    },
+    {
+      "url": "character/53776,little-oars-jr"
+    },
+    {
+      "url": "character/53833,avalo-pizarro"
+    },
+    {
+      "url": "character/53834,catharina-devon"
+    },
+    {
+      "url": "character/55118,dogra"
+    },
+    {
+      "url": "character/53809,bizarre"
+    },
+    {
+      "url": "character/55119,magra"
+    },
+    {
+      "url": "character/55120,bluejam"
+    },
+    {
+      "url": "character/55105,porcemy"
+    },
+    {
+      "url": "character/53832,san-juan-wolf"
+    },
+    {
+      "url": "character/55116,outlook-iii"
+    },
+    {
+      "url": "character/55115,sabos-mother"
+    },
+    {
+      "url": "character/55117,naguri"
+    },
+    {
+      "url": "character/55113,ahho-desunen-ix"
+    },
+    {
+      "url": "character/55112,ahho-zurako"
+    },
+    {
+      "url": "character/55111,saint-jalmack"
+    },
+    {
+      "url": "character/53835,vasco-shot"
+    },
+    {
+      "url": "character/55127,kong"
+    },
+    {
+      "url": "character/55128,fishbonen"
+    },
+    {
+      "url": "character/55129,haritsu-kendiyo"
+    },
+    {
+      "url": "character/55130,scotch"
+    },
+    {
+      "url": "character/55131,gorilla"
+    },
+    {
+      "url": "character/55153,demaro-black"
+    },
+    {
+      "url": "character/55134,chocolat"
+    },
+    {
+      "url": "character/55138,mounblutain"
+    },
+    {
+      "url": "character/55136,turco"
+    },
+    {
+      "url": "character/55137,manjarou"
+    },
+    {
+      "url": "character/55139,drip"
+    },
+    {
+      "url": "character/55135,cocoa"
+    },
+    {
+      "url": "character/56212,baron-tamago"
+    },
+    {
+      "url": "character/55133,nora-gitsune"
+    },
+    {
+      "url": "character/56222,lily-enstomach"
+    },
+    {
+      "url": "character/55140,albion"
+    },
+    {
+      "url": "character/55141,lip-doughty"
+    },
+    {
+      "url": "character/55157,caribou"
+    },
+    {
+      "url": "character/55156,coribou"
+    },
+    {
+      "url": "character/55155,catacombo"
+    },
+    {
+      "url": "character/55191,vander-decken-ix"
+    },
+    {
+      "url": "character/56243,monet"
+    },
+    {
+      "url": "character/56230,mocha"
+    },
+    {
+      "url": "character/56231,sind"
+    },
+    {
+      "url": "character/56232,konbu"
+    },
+    {
+      "url": "character/55182,megalo"
+    },
+    {
+      "url": "character/55202,wadatsumi"
+    },
+    {
+      "url": "character/55154,ankoro"
+    },
+    {
+      "url": "character/55180,hammond"
+    },
+    {
+      "url": "character/55165,kasagoba"
+    },
+    {
+      "url": "character/55188,hyouzou"
+    },
+    {
+      "url": "character/55158,ichika"
+    },
+    {
+      "url": "character/56241,fen-bock"
+    },
+    {
+      "url": "character/55159,nika"
+    },
+    {
+      "url": "character/55162,sanka"
+    },
+    {
+      "url": "character/56388,machvise"
+    },
+    {
+      "url": "character/55160,yonka"
+    },
+    {
+      "url": "character/56346,vergo"
+    },
+    {
+      "url": "character/56341,yarisugi"
+    },
+    {
+      "url": "character/55161,yonka-two"
+    },
+    {
+      "url": "character/55166,ishilly"
+    },
+    {
+      "url": "character/55169,adele"
+    },
+    {
+      "url": "character/56393,baby-5"
+    },
+    {
+      "url": "character/55170,hiramera"
+    },
+    {
+      "url": "character/56394,lao-g"
+    },
+    {
+      "url": "character/56364,giolla"
+    },
+    {
+      "url": "character/55171,fillonce"
+    },
+    {
+      "url": "character/56389,sugar"
+    },
+    {
+      "url": "character/55172,kairen"
+    },
+    {
+      "url": "character/56506,momonosuke-kouzuki"
+    },
+    {
+      "url": "character/56413,buffalo"
+    },
+    {
+      "url": "character/56349,breed"
+    },
+    {
+      "url": "character/56403,diamante"
+    },
+    {
+      "url": "character/56426,trebol"
+    },
+    {
+      "url": "character/55173,lulis"
+    },
+    {
+      "url": "character/56501,kyros"
+    },
+    {
+      "url": "character/56421,gatz"
+    },
+    {
+      "url": "character/55174,melo"
+    },
+    {
+      "url": "character/56503,viola"
+    },
+    {
+      "url": "character/55175,seira"
+    },
+    {
+      "url": "character/55176,sora"
+    },
+    {
+      "url": "character/55185,fukaboshi"
+    },
+    {
+      "url": "character/55183,manboshi"
+    },
+    {
+      "url": "character/56457,hack"
+    },
+    {
+      "url": "character/56378,sai"
+    },
+    {
+      "url": "character/56467,don-chinjao"
+    },
+    {
+      "url": "character/55206,sharley"
+    },
+    {
+      "url": "character/56422,boo"
+    },
+    {
+      "url": "character/56360,spartan"
+    },
+    {
+      "url": "character/56374,kelly-funk"
+    },
+    {
+      "url": "character/56377,bobby-funk"
+    },
+    {
+      "url": "character/56427,elizabello-ii"
+    },
+    {
+      "url": "character/56458,cavendish"
+    },
+    {
+      "url": "character/55184,ryuuboshi"
+    },
+    {
+      "url": "character/56425,abdullah"
+    },
+    {
+      "url": "character/56400,gladius"
+    },
+    {
+      "url": "character/55167,splash"
+    },
+    {
+      "url": "character/56402,riku-dold-iii"
+    },
+    {
+      "url": "character/56361,gambia"
+    },
+    {
+      "url": "character/56376,dagama"
+    },
+    {
+      "url": "character/56424,dellinger"
+    },
+    {
+      "url": "character/56502,rebecca"
+    },
+    {
+      "url": "character/56390,senor-pink"
+    },
+    {
+      "url": "character/56463,wicca"
+    },
+    {
+      "url": "character/55168,splatter"
+    },
+    {
+      "url": "character/55208,daruma"
+    },
+    {
+      "url": "character/56362,blue-gilly"
+    },
+    {
+      "url": "character/56404,tank-lepanto"
+    },
+    {
+      "url": "character/56391,maynard"
+    },
+    {
+      "url": "character/55209,ikaros-much"
+    },
+    {
+      "url": "character/55189,minister-of-the-right"
+    },
+    {
+      "url": "character/55190,minister-of-left"
+    },
+    {
+      "url": "character/56472,leo"
+    },
+    {
+      "url": "character/56399,kabu"
+    },
+    {
+      "url": "character/56363,gancho"
+    },
+    {
+      "url": "character/56385,flapper"
+    },
+    {
+      "url": "character/55207,dosun"
+    },
+    {
+      "url": "character/55210,zeo"
+    },
+    {
+      "url": "character/55181,hoe"
+    },
+    {
+      "url": "character/55177,junan"
+    },
+    {
+      "url": "character/55186,shirahoshi"
+    },
+    {
+      "url": "character/55187,den"
+    },
+    {
+      "url": "character/55199,otohime"
+    },
+    {
+      "url": "character/55195,aladdin"
+    },
+    {
+      "url": "character/3530,strawberry"
+    },
+    {
+      "url": "character/55178,gyro"
+    },
+    {
+      "url": "character/55194,koala"
+    },
+    {
+      "url": "character/55197,kadar"
+    },
+    {
+      "url": "character/56454,koala"
+    },
+    {
+      "url": "character/55198,saint-mjosgard"
+    },
+    {
+      "url": "character/55179,papaneel"
+    },
+    {
+      "url": "character/55200,togare"
+    },
+    {
+      "url": "character/55201,luca"
+    },
+    {
+      "url": "character/55203,harisenbon"
+    },
+    {
+      "url": "character/55204,nuru"
+    },
+    {
+      "url": "character/56211,pekoms"
+    },
+    {
+      "url": "character/56210,maria-napole"
+    },
+    {
+      "url": "character/56213,bobbin"
+    },
+    {
+      "url": "character/56221,ain"
+    },
+    {
+      "url": "character/56215,pike"
+    },
+    {
+      "url": "character/56237,rock"
+    },
+    {
+      "url": "character/56219,shuzo"
+    },
+    {
+      "url": "character/56220,bins"
+    },
+    {
+      "url": "character/56217,alpacacino"
+    },
+    {
+      "url": "character/56218,zephyr"
+    },
+    {
+      "url": "character/56216,panz-fry"
+    },
+    {
+      "url": "character/56233,ally"
+    },
+    {
+      "url": "character/56234,biyo"
+    },
+    {
+      "url": "character/56235,doran"
+    },
+    {
+      "url": "character/56236,uzu"
+    },
+    {
+      "url": "character/56238,scotch"
+    },
+    {
+      "url": "character/137811,dr-vegapunk"
+    },
+    {
+      "url": "character/56240,smoothie"
+    },
+    {
+      "url": "character/56455,kanjuro-kurozumi"
+    },
+    {
+      "url": "character/56345,smiley"
+    },
+    {
+      "url": "character/56375,orlumbus"
+    },
+    {
+      "url": "character/56242,chappe"
+    },
+    {
+      "url": "character/56340,bakezo"
+    },
+    {
+      "url": "character/56342,run"
+    },
+    {
+      "url": "character/56343,jero"
+    },
+    {
+      "url": "character/56344,gal"
+    },
+    {
+      "url": "character/56347,ginko"
+    },
+    {
+      "url": "character/56459,pica"
+    },
+    {
+      "url": "character/56380,suleiman"
+    },
+    {
+      "url": "character/56466,jeet"
+    },
+    {
+      "url": "character/56365,ideo"
+    },
+    {
+      "url": "character/56456,hajrudin"
+    },
+    {
+      "url": "character/56469,rampo"
+    },
+    {
+      "url": "character/56401,bomba"
+    },
+    {
+      "url": "character/56381,bobomba"
+    },
+    {
+      "url": "character/56368,jean-ango"
+    },
+    {
+      "url": "character/56398,ucy"
+    },
+    {
+      "url": "character/56384,bian"
+    },
+    {
+      "url": "character/56418,nubon"
+    },
+    {
+      "url": "character/56392,pellini"
+    },
+    {
+      "url": "character/56414,mansherry"
+    },
+    {
+      "url": "character/56366,esta"
+    },
+    {
+      "url": "character/56470,cotton"
+    },
+    {
+      "url": "character/56423,baxcon"
+    },
+    {
+      "url": "character/56465,inhel"
+    },
+    {
+      "url": "character/56386,milo"
+    },
+    {
+      "url": "character/56367,grabar"
+    },
+    {
+      "url": "character/56387,scarlett"
+    },
+    {
+      "url": "character/56370,rolling-logan"
+    },
+    {
+      "url": "character/56372,acilia"
+    },
+    {
+      "url": "character/56369,agyou"
+    },
+    {
+      "url": "character/56471,mummy"
+    },
+    {
+      "url": "character/62972,charlotte-chiffon"
+    },
+    {
+      "url": "character/56461,damask"
+    },
+    {
+      "url": "character/56371,gardoa"
+    },
+    {
+      "url": "character/56373,meadows"
+    },
+    {
+      "url": "character/56419,daikon"
+    },
+    {
+      "url": "character/56397,chao"
+    },
+    {
+      "url": "character/56382,ibusu"
+    },
+    {
+      "url": "character/56383,sanshita"
+    },
+    {
+      "url": "character/56468,uhho"
+    },
+    {
+      "url": "character/56395,maujii"
+    },
+    {
+      "url": "character/56396,qween"
+    },
+    {
+      "url": "character/56407,donquixote-homing"
+    },
+    {
+      "url": "character/56410,donquixote-rosinante"
+    },
+    {
+      "url": "character/56406,trafalgar-lamy"
+    },
+    {
+      "url": "character/56405,wellington"
+    },
+    {
+      "url": "character/56408,diez-barrels"
+    },
+    {
+      "url": "character/56409,uhoricia"
+    },
+    {
+      "url": "character/56411,gimlett"
+    },
+    {
+      "url": "character/56464,sheepshead"
+    },
+    {
+      "url": "character/56460,ginrummy"
+    },
+    {
+      "url": "character/56412,russian"
+    },
+    {
+      "url": "character/56415,tegata-ringana"
+    },
+    {
+      "url": "character/56416,shin-detamaruka"
+    },
+    {
+      "url": "character/56417,shin-jaiya"
+    },
+    {
+      "url": "character/58802,bill"
+    },
+    {
+      "url": "character/58807,desire"
+    },
+    {
+      "url": "character/58805,avelon"
+    },
+    {
+      "url": "character/58808,edward-weevil"
+    },
+    {
+      "url": "character/138498,karasu"
+    },
+    {
+      "url": "character/58831,bucking"
+    },
+    {
+      "url": "character/58806,gild-tesoro"
+    },
+    {
+      "url": "character/58800,tristan"
+    },
+    {
+      "url": "character/58801,jack"
+    },
+    {
+      "url": "character/58803,peseta"
+    },
+    {
+      "url": "character/58837,monjii"
+    },
+    {
+      "url": "character/58848,sicilian"
+    },
+    {
+      "url": "character/58804,mr-tanaka"
+    },
+    {
+      "url": "character/58851,cat-viper"
+    },
+    {
+      "url": "character/58833,roddy"
+    },
+    {
+      "url": "character/138600,vito"
+    },
+    {
+      "url": "character/58834,bariete"
+    },
+    {
+      "url": "character/137969,raizo"
+    },
+    {
+      "url": "character/58850,carrot"
+    },
+    {
+      "url": "character/58852,wanda"
+    },
+    {
+      "url": "character/58836,wany"
+    },
+    {
+      "url": "character/58832,blackback"
+    },
+    {
+      "url": "character/58835,pedro"
+    },
+    {
+      "url": "character/58838,yomo"
+    },
+    {
+      "url": "character/58849,dogstorm"
+    },
+    {
+      "url": "character/58839,miyagi"
+    },
+    {
+      "url": "character/138601,gotti"
+    },
+    {
+      "url": "character/138602,milky"
+    },
+    {
+      "url": "character/138604,zunesha"
+    },
+    {
+      "url": "character/63996,charlotte-perospero"
+    },
+    {
+      "url": "character/138944,shimoi-zappa"
+    },
+    {
+      "url": "character/138537,napoleon"
+    },
+    {
+      "url": "character/138026,zeus"
+    },
+    {
+      "url": "character/63124,charlotte-mont-dor"
+    },
+    {
+      "url": "character/138409,prometheus"
+    },
+    {
+      "url": "character/138470,kingbaum"
+    },
+    {
+      "url": "character/63539,charlotte-brulee"
+    },
+    {
+      "url": "character/87942,charlotte-katakuri"
+    },
+    {
+      "url": "character/137850,charlotte-smoothie"
+    },
+    {
+      "url": "character/62515,rabiyan"
+    },
+    {
+      "url": "character/137886,charlotte-amande"
+    },
+    {
+      "url": "character/63540,randolph"
+    },
+    {
+      "url": "character/62974,charlotte-moscato"
+    },
+    {
+      "url": "character/73546,pound"
+    },
+    {
+      "url": "character/62973,charlotte-opera"
+    },
+    {
+      "url": "character/63125,charlotte-galette"
+    },
+    {
+      "url": "character/63126,charlotte-praline"
+    },
+    {
+      "url": "character/63661,ichiji-vinsmoke"
+    },
+    {
+      "url": "character/138136,sora-vinsmoke"
+    },
+    {
+      "url": "character/63659,niji-vinsmoke"
+    },
+    {
+      "url": "character/63660,yonji-vinsmoke"
+    },
+    {
+      "url": "character/63997,capone-pez"
+    },
+    {
+      "url": "character/87941,charlotte-cracker"
+    },
+    {
+      "url": "character/138605,cosette"
+    },
+    {
+      "url": "character/87945,charlotte-counter"
+    },
+    {
+      "url": "character/87946,charlotte-cadenza"
+    },
+    {
+      "url": "character/62507,nitro"
+    },
+    {
+      "url": "character/87992,charlotte-cabaletta"
+    },
+    {
+      "url": "character/73547,charlotte-daifuku"
+    },
+    {
+      "url": "character/87944,streusen"
+    },
+    {
+      "url": "character/137877,stussy"
+    },
+    {
+      "url": "character/87943,charlotte-oven"
+    },
+    {
+      "url": "character/137901,morgans"
+    },
+    {
+      "url": "character/87995,charlotte-dosmarche"
+    },
+    {
+      "url": "character/138288,carmel"
+    },
+    {
+      "url": "character/87993,charlotte-nusstorte"
+    },
+    {
+      "url": "character/138471,lady-tree"
+    },
+    {
+      "url": "character/137887,charlotte-effilee"
+    },
+    {
+      "url": "character/100133,charlotte-flampe"
+    },
+    {
+      "url": "character/87994,charlotte-raisin"
+    },
+    {
+      "url": "character/138532,moda"
+    },
+    {
+      "url": "character/138499,morley"
+    },
+    {
+      "url": "character/138496,belo-betty"
+    },
+    {
+      "url": "character/138500,lindbergh"
+    },
+    {
+      "url": "character/137881,aramaki"
+    },
+    {
+      "url": "character/138495,tama-kurozumi"
+    },
+    {
+      "url": "character/138521,hitetsu-tenguyama"
+    },
+    {
+      "url": "character/137970,kikunojo"
+    },
+    {
+      "url": "character/138603,speed"
+    },
+    {
+      "url": "character/138022,denjiro"
+    },
+    {
+      "url": "character/138472,toki-kozuki"
+    },
+    {
+      "url": "character/138950,shinobu"
+    },
+    {
+      "url": "character/138534,jibuemon"
+    },
+    {
+      "url": "character/138023,ashura-doji"
+    },
+    {
+      "url": "character/137902,king"
+    },
+    {
+      "url": "character/137880,queen"
+    },
+    {
+      "url": "character/137922,orochi-kurozumi"
+    },
+    {
+      "url": "character/138474,kawamatsu"
+    },
+    {
+      "url": "character/138506,hyogoro"
+    },
+    {
+      "url": "character/138948,dobon"
+    },
+    {
+      "url": "character/138475,toko"
+    },
+    {
+      "url": "character/137964,page-one"
+    },
+    {
+      "url": "character/138473,hiyori-kozuki"
+    },
+    {
+      "url": "character/138476,yasuie-shimotsuki"
+    },
+    {
+      "url": "character/138953,o-cho"
+    },
+    {
+      "url": "character/138951,ushimaru-shimotsuki"
+    },
+    {
+      "url": "character/64618,scopper-gaban"
+    },
+    {
+      "url": "character/138949,higurashi-kurozumi"
+    },
+    {
+      "url": "character/137965,black-maria"
+    },
+    {
+      "url": "character/137943,whos-who"
+    },
+    {
+      "url": "character/137923,ulti"
+    },
+    {
+      "url": "character/138469,sasaki"
+    },
+    {
+      "url": "character/138533,hamlet"
+    },
+    {
+      "url": "character/138535,mizerka"
+    },
+    {
+      "url": "character/138408,hera"
+    },
+    {
+      "url": "character/115404,uta"
+    },
+    {
+      "url": "character/137909,momonosuke-kouzuki"
+    },
+    {
+      "url": "character/138520,sukiyaki-kozuki"
+    }
+  ],
+  "chara4": [
+    {
+      "url": "character/42789,alvidas-pirates"
+    },
+    {
+      "url": "character/49484,buggy-pirates"
+    },
+    {
+      "url": "character/49543,black-cat-pirates"
+    },
+    {
+      "url": "character/49756,pirate-armada"
+    },
+    {
+      "url": "character/49803,arlong-pirates"
+    },
+    {
+      "url": "character/50230,wapol-pirates"
+    },
+    {
+      "url": "character/50470,puppu-pirates"
+    },
+    {
+      "url": "character/50581,baroque-works"
+    },
+    {
+      "url": "character/50617,pumpkin-pirates"
+    },
+    {
+      "url": "character/50701,bellamy-pirates"
+    },
+    {
+      "url": "character/51303,foxy-pirates"
+    },
+    {
+      "url": "character/51878,galley-la-company"
+    },
+    {
+      "url": "character/51879,franky-family"
+    },
+    {
+      "url": "character/52040,phoenix-pirates"
+    },
+    {
+      "url": "character/52039,acchiino-family"
+    },
+    {
+      "url": "character/52343,moria-pirates"
+    },
+    {
+      "url": "character/64530,blackbeard-pirates"
+    }
+  ],
+  "chara5": [
+    {
+      "url": "character/108546,reiju-vinsmoke"
+    },
+    {
+      "url": "character/138524,buggy"
+    },
+    {
+      "url": "character/1984,lord-of-the-coast"
+    },
+    {
+      "url": "character/137966,monkey-d-luffy"
+    },
+    {
+      "url": "character/49459,silvers-rayleigh"
+    },
+    {
+      "url": "character/49560,roronoa-zoro"
+    },
+    {
+      "url": "character/49618,sanji"
+    },
+    {
+      "url": "character/138291,nami"
+    },
+    {
+      "url": "character/2041,den-den-mushi"
+    },
+    {
+      "url": "character/49793,den-den-mushi"
+    },
+    {
+      "url": "character/1942,news-ku"
+    },
+    {
+      "url": "character/49845,chick"
+    },
+    {
+      "url": "character/49846,green-giant-bird"
+    },
+    {
+      "url": "character/2342,banchi"
+    },
+    {
+      "url": "character/50105,transponder-snail"
+    },
+    {
+      "url": "character/2941,bananagators"
+    },
+    {
+      "url": "character/50106,black-transponder-snail"
+    },
+    {
+      "url": "character/2141,hiking-bear"
+    },
+    {
+      "url": "character/2142,lapahn"
+    },
+    {
+      "url": "character/2381,umi-neko"
+    },
+    {
+      "url": "character/2406,kung-fu-dugongs"
+    },
+    {
+      "url": "character/50391,lizard-runners"
+    },
+    {
+      "url": "character/50309,warusagi-birds"
+    },
+    {
+      "url": "character/50310,sandora-lizard"
+    },
+    {
+      "url": "character/2495,scissors"
+    },
+    {
+      "url": "character/50494,bourbon-jr"
+    },
+    {
+      "url": "character/50490,cowboy"
+    },
+    {
+      "url": "character/50493,hikoichi"
+    },
+    {
+      "url": "character/50489,ivan-x"
+    },
+    {
+      "url": "character/50491,kentauros"
+    },
+    {
+      "url": "character/50492,stomp"
+    },
+    {
+      "url": "character/50868,wiper"
+    },
+    {
+      "url": "character/50578,goats"
+    },
+    {
+      "url": "character/51512,iceburg"
+    },
+    {
+      "url": "character/51652,nico-robin"
+    },
+    {
+      "url": "character/51513,franky"
+    },
+    {
+      "url": "character/138410,rob-lucci-leopard-human"
+    },
+    {
+      "url": "character/51184,sea-monkey"
+    },
+    {
+      "url": "character/51880,going-merry"
+    },
+    {
+      "url": "character/52685,salome"
+    },
+    {
+      "url": "character/52684,bacura"
+    },
+    {
+      "url": "character/52787,blugori"
+    },
+    {
+      "url": "character/52819,basilisk"
+    },
+    {
+      "url": "character/20744,barbecue-pig"
+    },
+    {
+      "url": "character/20745,one-horned-bear"
+    },
+    {
+      "url": "character/20746,hungerilla-bird"
+    },
+    {
+      "url": "character/20747,caste-leo"
+    },
+    {
+      "url": "character/20760,knock-out-koala"
+    },
+    {
+      "url": "character/20761,cocoala"
+    },
+    {
+      "url": "character/15056,komatsu"
+    },
+    {
+      "url": "character/21870,coco"
+    },
+    {
+      "url": "character/21859,sunny"
+    },
+    {
+      "url": "character/21872,rin"
+    },
+    {
+      "url": "character/55121,sabo"
+    },
+    {
+      "url": "character/55114,stelly"
+    },
+    {
+      "url": "character/55205,surume"
+    },
+    {
+      "url": "character/29154,kung-fu-mynah-bird"
+    },
+    {
+      "url": "character/29175,expanda"
+    },
+    {
+      "url": "character/29176,mangronve"
+    },
+    {
+      "url": "character/29177,banjyan-tiger"
+    },
+    {
+      "url": "character/29178,octohorn"
+    },
+    {
+      "url": "character/29179,laochutan"
+    },
+    {
+      "url": "character/56348,camel"
+    },
+    {
+      "url": "character/56359,mario"
+    },
+    {
+      "url": "character/138525,shanks"
+    },
+    {
+      "url": "character/138536,nekomamushi"
+    }
+  ],
+  "chara50": [
+    {
+      "url": "character/63557,crane"
+    },
+    {
+      "url": "character/64576,seagull"
+    },
+    {
+      "url": "character/108547,strawhat-pirates"
+    },
+    {
+      "url": "character/113455,revolutionary-army"
+    },
+    {
+      "url": "character/113456,red-hair-pirates"
+    },
+    {
+      "url": "character/113457,bonney-pirates"
+    },
+    {
+      "url": "character/113458,kid-pirates"
+    },
+    {
+      "url": "character/113459,flying-pirates"
+    },
+    {
+      "url": "character/113460,barto-club"
+    },
+    {
+      "url": "character/113465,marines"
+    },
+    {
+      "url": "character/113466,sun-pirates"
+    },
+    {
+      "url": "character/113467,heart-pirates"
+    },
+    {
+      "url": "character/113468,big-mom-pirates"
+    },
+    {
+      "url": "character/113566,beasts-pirates"
+    },
+    {
+      "url": "character/114993,kozuki-oden"
+    },
+    {
+      "url": "character/137720,rocks-d-xebec"
+    },
+    {
+      "url": "character/137797,vegapunk-york"
+    },
+    {
+      "url": "character/137806,vegapunk-pythagoras"
+    },
+    {
+      "url": "character/137807,vegapunk-atlas"
+    },
+    {
+      "url": "character/137808,vegapunk-shaka"
+    },
+    {
+      "url": "character/137809,vegapunk-edison"
+    },
+    {
+      "url": "character/137810,vegapunk-lilith"
+    },
+    {
+      "url": "character/137849,whitebeard-pirates"
+    },
+    {
+      "url": "character/137851,charlotte-compote"
+    },
+    {
+      "url": "character/137878,imu"
+    },
+    {
+      "url": "character/137879,figarland-garling"
+    },
+    {
+      "url": "character/137900,world-government"
+    },
+    {
+      "url": "character/137903,cross-guild"
+    },
+    {
+      "url": "character/137904,joy-boy"
+    },
+    {
+      "url": "character/137905,emet"
+    },
+    {
+      "url": "character/137910,gloriosa"
+    },
+    {
+      "url": "character/137918,don-quixote-pirates"
+    },
+    {
+      "url": "character/137919,cook-pirates"
+    },
+    {
+      "url": "character/137920,spade-pirates"
+    },
+    {
+      "url": "character/137921,drake-pirates"
+    },
+    {
+      "url": "character/137942,whos-who-saber-tiger"
+    },
+    {
+      "url": "character/137944,kaido-dragon"
+    },
+    {
+      "url": "character/137967,monkey-d-luffy-sun-god-nika"
+    },
+    {
+      "url": "character/137968,marcus-mars-itsumade"
+    },
+    {
+      "url": "character/138044,fallen-monk-pirates"
+    },
+    {
+      "url": "character/138045,fire-tank-pirates"
+    },
+    {
+      "url": "character/138046,rocks-pirates"
+    },
+    {
+      "url": "character/138135,kamazo-the-manslayer"
+    },
+    {
+      "url": "character/138263,king-pteranodon"
+    },
+    {
+      "url": "character/138264,kaido-hybrid"
+    },
+    {
+      "url": "character/138265,momonosuke-kouzuki-dragon"
+    },
+    {
+      "url": "character/138266,queen-hybrid"
+    },
+    {
+      "url": "character/138267,queen-brachiosaurus"
+    },
+    {
+      "url": "character/138268,jack-mammoth"
+    },
+    {
+      "url": "character/138285,jaygarcia-saturn-gyuki"
+    },
+    {
+      "url": "character/138286,ethanbaron-v-nusjuro-hybrid"
+    },
+    {
+      "url": "character/138287,ethanbaron-v-nusjuro-bakotsu"
+    },
+    {
+      "url": "character/138289,bepo-sulong"
+    },
+    {
+      "url": "character/138290,topman-warcury-fengxi"
+    },
+    {
+      "url": "character/138292,momonosuke-kouzuki-dragon"
+    },
+    {
+      "url": "character/138293,ulti-hybrid"
+    },
+    {
+      "url": "character/138294,ulti-pachycephalosaurus"
+    },
+    {
+      "url": "character/138295,x-drake-allosaurus"
+    },
+    {
+      "url": "character/138296,page-one-spinosaurus"
+    },
+    {
+      "url": "character/138411,tony-tony-chopper-monster-point"
+    },
+    {
+      "url": "character/138497,ginny"
+    },
+    {
+      "url": "character/138502,jiron"
+    },
+    {
+      "url": "character/138503,ahiru"
+    },
+    {
+      "url": "character/138504,ushiano"
+    },
+    {
+      "url": "character/138505,gambo"
+    },
+    {
+      "url": "character/138507,hyogoro"
+    },
+    {
+      "url": "character/138522,crocus"
+    },
+    {
+      "url": "character/138523,roger-pirates"
+    },
+    {
+      "url": "character/138538,limejuice"
+    },
+    {
+      "url": "character/138593,orochi-kurozumi-yamato-no-orochi"
+    },
+    {
+      "url": "character/138594,dalton-bison"
+    },
+    {
+      "url": "character/138595,dalton-bison-human"
+    },
+    {
+      "url": "character/138596,enel-amaru"
+    },
+    {
+      "url": "character/138598,sasaki-triceratops-human"
+    },
+    {
+      "url": "character/138599,sasaki-triceratops"
+    },
+    {
+      "url": "character/138952,ryuma-shimotsuki"
+    }
+  ]
+}
