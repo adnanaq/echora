@@ -1,0 +1,565 @@
+{
+  "type": "TV",
+  "episodes": "Unknown",
+  "status": "Currently Airing",
+  "duration_raw": "24 min.",
+  "source_material": "Manga",
+  "rating": "PG-13 - Teens 13 or older",
+  "aired_raw": "Oct 20, 1999 to ?",
+  "premiered_raw": "Fall 1999",
+  "broadcast_raw": "Sundays at 23:15 (JST)",
+  "title_english": "One Piece",
+  "title_japanese": "ONE PIECE",
+  "synonyms_raw": "OP",
+  "rank_html": "<div class=\"spaceit_pad po-r js-statistics-info di-ib\" data-id=\"info2\">\n  <span class=\"dark_text\">Ranked:</span>\n  #55<sup>2</sup>\n    <div class=\"statistics-info info2\">\n    <small><sup>2</sup>\n    based on the <a href=\"/topanime.php\">top anime</a> page. Please note that 'Not yet aired' and 'R18+' titles are excluded.\n    </small>\n  </div>\n</div>\n",
+  "popularity": "17",
+  "members": "2,668,724",
+  "favorites": "251,008",
+  "genres": [
+    {
+      "name": "Action"
+    },
+    {
+      "name": "Adventure"
+    },
+    {
+      "name": "Fantasy"
+    }
+  ],
+  "themes": [],
+  "demographics": [
+    {
+      "name": "Shounen"
+    }
+  ],
+  "producers": [
+    {
+      "name": "Fuji TV",
+      "source": "/anime/producer/169/Fuji_TV"
+    },
+    {
+      "name": "TAP",
+      "source": "/anime/producer/416/TAP"
+    }
+  ],
+  "licensors": [
+    {
+      "name": "Funimation",
+      "source": "/anime/producer/102/Funimation"
+    },
+    {
+      "name": "4Kids Entertainment",
+      "source": "/anime/producer/252/4Kids_Entertainment"
+    }
+  ],
+  "studios": [
+    {
+      "name": "Toei Animation",
+      "source": "/anime/producer/18/Toei_Animation"
+    }
+  ],
+  "background_raw": "<td valign=\"top\" class=\"pb24\"><div class=\"pb16\"><div class=\"di-t w100 mt12\"><div class=\"anime-detail-header-stats di-tc va-t\"><div class=\"stats-block po-r clearfix\"><div class=\"fl-l score\" data-title=\"score\" data-user=\"1,523,840 users\" title=\"indicates a weighted score. Please note that 'Not yet aired' titles are excluded.\"><div class=\"score-label score-8\">8.73</div></div><div class=\"di-ib ml12 pl20 pt8\"><span class=\"numbers ranked\" title=\"based on the top anime page. Please note that 'Not yet aired' and 'R18+' titles are excluded.\">Ranked <strong>#55</strong></span><span class=\"numbers popularity\">Popularity <strong>#17</strong></span><span class=\"numbers members\">Members <strong>2,668,724</strong></span></div><div class=\"information-block\"><span class=\"information season\"><a href=\"https://myanimelist.net/anime/season/1999/fall\">Fall 1999</a></span><span class=\"information type\"><a href=\"https://myanimelist.net/topanime.php?type=tv\">TV</a></span><span class=\"information studio author\"><a href=\"/anime/producer/18/Toei_Animation\" title=\"Toei Animation\">Toei Animation</a></span></div></div><div class=\"user-status-block js-user-status-block fn-grey6 clearfix al mt8 po-r\"><input type=\"hidden\" id=\"myinfo_anime_id\" value=\"21\" /><input type=\"hidden\" id=\"myinfo_curstatus\" value=\"\" /><a href=\"https://myanimelist.net/ownlist/anime/add?selected_series_id=21&amp;hideLayout=1&amp;click_type=list-add-anime-title-btn-att-to-my-list&amp;more_type=1&amp;only_white=1\" class=\"js-form-user-status js-form-user-status-btn Lightbox_AddEdit btn-addEdit-large btn-user-status-add-list ga-click btn-add-list-anim-ripple ga-impression\" onclick=\"dataLayer.push({'event':'ga-js-event','ga-js-event-type':'list-add-anime-title-btn-att-to-my-list'})\" data-ga-click-type=\"list-add-anime-title-btn-att-to-my-list\" data-ga-impression-type=\"list-add-anime-title-btn-att-to-my-list\" data-class=\"\" data-gtm-vis-recent-on-screen13153650_175=\"191\" data-gtm-vis-first-on-screen13153650_175=\"191\" data-gtm-vis-total-visible-time13153650_175=\"100\" data-gtm-vis-has-fired13153650_175=\"1\">Add to My List</a><div id=\"tooltip-block\" style=\"display: none;\"><div class=\"mal-btn-toolbar mt12\"><a href=\"#\" class=\"mal-btn outline secondary\" data-status=\"1\">Watching</a><a href=\"#\" class=\"mal-btn outline secondary\" data-status=\"3\">On-Hold</a><a href=\"#\" class=\"mal-btn outline secondary\" data-status=\"6\">Plan to Watch</a></div></div><script type=\"text/javascript\">\n          (function($){\n            $(window).on('load', ()=&gt; {\n                            $('#myanimelist .user-status-block a.js-form-user-status').malTooltip({\n                header: 'Get started',\n                body: '&lt;p&gt;Try making your own Anime List! (No sign-up required)&lt;/p&gt;'\n              })\n                          })\n          })(jQuery);\n        </script><select name=\"myinfo_score\" id=\"myinfo_score\" class=\"form-user-score js-form-user-score ml8\" disabled=\"disabled\"><option selected=\"selected\" value=\"0\">Select</option><option value=\"10\">(10) Masterpiece</option><option value=\"9\">(9) Great</option><option value=\"8\">(8) Very Good</option><option value=\"7\">(7) Good</option><option value=\"6\">(6) Fine</option><option value=\"5\">(5) Average</option><option value=\"4\">(4) Bad</option><option value=\"3\">(3) Very Bad</option><option value=\"2\">(2) Horrible</option><option value=\"1\">(1) Appalling</option></select><div class=\"di-ib form-user-episode ml8 disabled\">\n          Episodes: <input type=\"text\" id=\"myinfo_watchedeps\" name=\"myinfo_watchedeps\" size=\"3\" class=\"inputtext js-user-episode-seen\" value=\"0\" disabled=\"disabled\" />/<span id=\"curEps\" data-num=\"0\">?</span><a href=\"javascript:void(0);\" class=\"js-btn-count increase ml4\"><i class=\"fa-solid fa-circle-plus\"></i></a></div></div></div><div class=\"anime-detail-header-video di-tc va-t pl16\" style=\"width:200px;\"><div class=\"video-promotion\"><a class=\"iframe js-fancybox-video video-unit promotion\" href=\"https://www.youtube-nocookie.com/embed/-tviZNY6CSw?enablejsapi=1&amp;wmode=opaque&amp;autoplay=1\" style=\"background-image:url('https://i.ytimg.com/vi/-tviZNY6CSw/mqdefault.jpg')\" rel=\"gallery\"><div class=\"info-container\"><span class=\"title pl4 pr4\">PV Madman 32, English dub version</span></div><span class=\"btn-play\" style=\"background-color: rgba(255, 255, 255, 0);\">play</span></a></div><div class=\"mt4 ar\"><a href=\"https://myanimelist.net/anime/21/One_Piece/video\">More videos</a></div></div></div><div class=\"js-myinfo-error badresult-text al pb4\" style=\"display:none;\"></div>\n</div><div><div class=\"floatRightHeader\"><a href=\"/dbchanges.php?aid=21&amp;t=synopsis\" style=\"font-weight: normal;\">Edit</a></div><h2 id=\"synopsis\">Synopsis</h2></div><p itemprop=\"description\">Barely surviving in a barrel after passing through a terrible whirlpool at sea, carefree Monkey D. Luffy ends up aboard a ship under attack by fearsome pirates. Despite being a naive-looking teenager, he is not to be underestimated. Unmatched in battle, Luffy is a pirate himself who resolutely pursues the coveted One Piece treasure and the King of the Pirates title that comes with it.<br />\n<br />\nThe late King of the Pirates, Gol D. Roger, stirred up the world before his death by disclosing the whereabouts of his hoard of riches and daring everyone to obtain it. Ever since then, countless powerful pirates have sailed dangerous seas for the prized One Piece only to never return. Although Luffy lacks a crew and a proper ship, he is endowed with a superhuman ability and an unbreakable spirit that make him not only a formidable adversary but also an inspiration to many.<br />\n<br />\nAs he faces numerous challenges with a big smile on his face, Luffy gathers one-of-a-kind companions to join him in his ambitious endeavor, together embracing perils and wonders on their once-in-a-lifetime adventure.<br />\n<br />\n[Written by MAL Rewrite]</p><div style=\"margin-top: 15px;\"><div class=\"floatRightHeader\"><a href=\"/dbchanges.php?aid=21&amp;t=background\" style=\"font-weight: normal;\">Edit</a></div><h2 id=\"background\">Background</h2></div>The anime had a hiatus from October 13, 2024, to April 6, 2025.<br />\n<br />\nThe airing time was Wednesdays 19:00 between October 20, 1999 - March 2001. The airing time was changed to Sundays 19:30 between April 2001 - December 2004. The airing time was changed to Sundays 9:30 between October 6, 2006 - October 13, 2024. The airing time was again changed to Sundays 23:15 on April 6, 2025.<br />\n<br />\nSeveral anime-original arcs have been adapted into light novels, and the series has inspired 50+ video games as of 2023.<br />\n<br />\nIn June 2004, <i>One Piece</i> was licensed in North America by 4Kids Entertainment, which partnered with Viz Media for home video distribution. As <i>One Piece</i> proved unsuitable for their target demographic, 4Kids Entertainment censored the show to meet their standards, and, in December 2006, they stopped its production. In April 2007, Funimation took over the series licensing, providing an uncut version that remained faithful to the original release.<br />\n<br />\nIn Japan, the anime's first 574 episodes were released exclusively on DVD by Avex Pictures from February 21, 2001, to December 4, 2013. Blu-rays also became available with the DVDs starting on January 8, 2014. In North America, Viz Media released the anime on DVD between February 28, 2006, and June 26, 2007. Funimation has re-released and continued the series since May 27, 2008. From March 23, 2021, the DVDs were accompanied by Blu-rays as well.<div class=\"border_top\" style=\"padding:16px 0px 0px 0px;margin:14px 0px 0px 0px;\"><div style=\"padding: 20px 0 20px 40px; float: left; position: relative; z-index: 1;\"><div class=\"kVwNpRmQxHtBjYcL-nvwtus\">\n      <a href=\"https://mangamirai.com/product_collections/5f95d828-1458-4b7e-b2d2-d575753347e3/products/12ab8449-62d4-4911-adb9-2514feba5ec2?utm_source=mal&amp;utm_medium=anime-desktop-ad-1\" target=\"_blank\" class=\"ga-click ga-impression\" data-ga-click-type=\"bs_anime-desktop-ad-1\" data-ga-impression-type=\"bs_anime-desktop-ad-1\" data-ga-click-param=\"general_20260301_general_357\" data-ga-impression-param=\"general_20260301_general_357\">\n  <img src=\"https://cdn.myanimelist.net/resources/mirai/MIR_357_general_20260301_general_general_title-rectangle_600x500_1.png\" style=\"max-width: 360px; max-height:250px\" width=\"600\" height=\"500\" />\n</a>\n\n    </div></div><div style=\"padding: 20px 40px 20px 0; float: right; position: relative;\"><div class=\"kVwNpRmQxHtBjYcL-nvwtus\">\n      <div id=\"D_300x250_2\" class=\"ad-sas mauto ac\" data-ad-target=\"%7B%22anime_id%22%3A%5B21%5D%2C%22display%22%3A%5B%22details%22%5D%2C%22genres%22%3A%5B1%2C2%2C10%5D%2C%22demographics%22%3A%5B27%5D%2C%22country%22%3A%5B%22CA%22%5D%7D\" data-ad-id=\"99456\" data-ad-pid=\"1362568\" data-ad-sid=\"394613\" style=\"width:300px; height:250px;\"></div><script data-moa-script=\"\" src=\"//flsrv.net/o.js?uid=23b140d5852e4a8c34dcb7c5\" type=\"text/javascript\"></script>\n    </div></div></div></td>",
+  "related_tile_entries": [
+    {
+      "relation_raw": "Adaptation\n                  (Manga)",
+      "title": "One Piece",
+      "source": "https://myanimelist.net/manga/13/One_Piece"
+    },
+    {
+      "relation_raw": "Adaptation\n                  (Light Novel)",
+      "title": "One Piece: Loguetown-hen",
+      "source": "https://myanimelist.net/manga/94534/One_Piece__Loguetown-hen"
+    }
+  ],
+  "related_table_entries": [
+    {
+      "relation": "Side Story:",
+      "links_html": "<td width=\"100%\" class=\"borderClass\">\n              <ul class=\"entries\">\n                                                    <li class=\"\"><a href=\"https://myanimelist.net/anime/466/One_Piece__Taose_Kaizoku_Ganzack\">One Piece: Taose! Kaizoku Ganzack</a> (OVA)</li>\n                                                                      <li class=\"\"><a href=\"https://myanimelist.net/anime/459/One_Piece_Movie_01\">One Piece Movie 01</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/1094/One_Piece__Umi_no_Heso_no_Daibouken-hen\">One Piece: Umi no Heso no Daibouken-hen</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/460/One_Piece_Movie_02__Nejimaki-jima_no_Daibouken\">One Piece Movie 02: Nejimaki-jima no Daibouken</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/2385/One_Piece__Jango_no_Dance_Carnival\">One Piece: Jango no Dance Carnival</a> (Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/461/One_Piece_Movie_03__Chinjuu-jima_no_Chopper_Oukoku\">One Piece Movie 03: Chinjuu-jima no Chopper Oukoku</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/2386/One_Piece__Yume_no_Soccer_Ou\">One Piece: Yume no Soccer Ou!</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/462/One_Piece_Movie_04__Dead_End_no_Bouken\">One Piece Movie 04: Dead End no Bouken</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/1237/One_Piece__Oounabara_ni_Hirake_Dekkai_Dekkai_Chichi_no_Yume\">One Piece: Oounabara ni Hirake! Dekkai Dekkai Chichi no Yume!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/1238/One_Piece__Mamore_Saigo_no_Oobutai\">One Piece: Mamore! Saigo no Oobutai</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/463/One_Piece_Movie_05__Norowareta_Seiken\">One Piece Movie 05: Norowareta Seiken</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/2490/One_Piece__Mezase_Kaizoku_Yakyuu_Ou\">One Piece: Mezase! Kaizoku Yakyuu Ou</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/464/One_Piece_Movie_06__Omatsuri_Danshaku_to_Himitsu_no_Shima\">One Piece Movie 06: Omatsuri Danshaku to Himitsu no Shima</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/2020/One_Piece__Nenmatsu_Tokubetsu_Kikaku_Mugiwara_no_Luffy_Oyabun_Torimonochou\">One Piece: Nenmatsu Tokubetsu Kikaku! Mugiwara no Luffy Oyabun Torimonochou</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/465/One_Piece_Movie_07__Karakuri-jou_no_Mecha_Kyohei\">One Piece Movie 07: Karakuri-jou no Mecha Kyohei</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/53878/One_Piece__Uchuu_tte_Omoshiree_Hoshizora_Jima-hen\">One Piece: Uchuu tte Omoshiree! Hoshizora Jima-hen</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/5252/One_Piece__Romance_Dawn_Story\">One Piece: Romance Dawn Story</a> (OVA)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/4155/One_Piece_Film__Strong_World\">One Piece Film: Strong World</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/8740/One_Piece_Film__Strong_World_Episode_0\">One Piece Film: Strong World Episode 0</a> (OVA)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/9999/One_Piece_3D__Mugiwara_Chase\">One Piece 3D: Mugiwara Chase</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/12001/One_Piece_3D__Gekisou_Trap_Coaster\">One Piece 3D: Gekisou! Trap Coaster</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/12859/One_Piece_Film__Z\">One Piece Film: Z</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/16239/One_Piece__Episode_of_Luffy_-_Hand_Island_no_Bouken\">One Piece: Episode of Luffy - Hand Island no Bouken</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/16468/One_Piece__Glorious_Island\">One Piece: Glorious Island</a> (ONA)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/53880/One_Piece_The_Planetarium\">One Piece The Planetarium</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/25161/One_Piece_3D2Y__Ace_no_Shi_wo_Koete_Luffy_Nakama_to_no_Chikai\">One Piece 3D2Y: Ace no Shi wo Koete! Luffy Nakama to no Chikai</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/32051/One_Piece__Adventure_of_Nebulandia\">One Piece: Adventure of Nebulandia</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/33606/One_Piece_Film__Gold_Episode_0_-_711_ver\">One Piece Film: Gold Episode 0 - 711 ver.</a> (ONA)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/33338/One_Piece__Heart_of_Gold\">One Piece: Heart of Gold</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/31490/One_Piece_Film__Gold\">One Piece Film: Gold</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/38234/One_Piece_Movie_14__Stampede\">One Piece Movie 14: Stampede</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/50410/One_Piece_Film__Red\">One Piece Film: Red</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/60022/One_Piece_Fan_Letter\">One Piece Fan Letter</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/60790/Luffy_Law\">Luffy, Law</a> (Movie)</li>\n                                                </ul>\n            </td>\n          "
+    },
+    {
+      "relation": "Summary:",
+      "links_html": "<td width=\"100%\" class=\"borderClass\">\n              <ul class=\"entries\">\n                                                                                                              <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/16143/One_Piece__Kinkyuu_Kikaku_One_Piece_Kanzen_Kouryakuhou\">One Piece: Kinkyuu Kikaku One Piece Kanzen Kouryakuhou</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/51162/One_Piece__Otoshidama_Special_-_Tokubetsu_Hou_Mugiwara_Kaizokudan_no_Himitsu\">One Piece: Otoshidama Special - Tokubetsu Hou Mugiwara Kaizokudan no Himitsu!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/2107/One_Piece_Movie_08__Episode_of_Alabasta_-_Sabaku_no_Oujo_to_Kaizoku-tachi\">One Piece Movie 08: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/8171/One_Piece_Recap\">One Piece Recap</a> (OVA)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/28683/One_Piece__Episode_of_Alabasta_-_Prologue\">One Piece: Episode of Alabasta - Prologue</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/15323/One_Piece__Episode_of_Nami_-_Koukaishi_no_Namida_to_Nakama_no_Kizuna\">One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/19123/One_Piece__Episode_of_Merry_-_Mou_Hitori_no_Nakama_no_Monogatari\">One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/31289/One_Piece__Episode_of_Sabo_-_3_Kyoudai_no_Kizuna_Kiseki_no_Saikai_to_Uketsugareru_Ishi\">One Piece: Episode of Sabo - 3 Kyoudai no Kizuna Kiseki no Saikai to Uketsugareru Ishi</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/32437/One_Piece__Long_Ring_Long_Land-hen\">One Piece: Long Ring Long Land-hen</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/50385/One_Piece_Characters_Log\">One Piece Characters Log</a> (Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/36215/One_Piece__Episode_of_East_Blue_-_Luffy_to_4-nin_no_Nakama_no_Daibouken\">One Piece: Episode of East Blue - Luffy to 4-nin no Nakama no Daibouken</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/37902/One_Piece__Episode_of_Sorajima\">One Piece: Episode of Sorajima</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/50696/One_Piece__Barto_no_Himitsu_no_Heya\">One Piece: Barto no Himitsu no Heya!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/52199/One_Piece__Dai_Tettei_Kaibou_Kouzuki_Oden_Densetsu\">One Piece: Dai Tettei Kaibou! Kouzuki Oden Densetsu!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/52921/One_Piece__Densetsu_no_Log_Akagami_no_Shanks\">One Piece: Densetsu no Log! Akagami no Shanks!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/53235/One_Piece__Dai_Tettei_Kaibou_Gekitou_5-nin_no_Shin_Sedai\">One Piece: Dai Tettei Kaibou! Gekitou! 5-nin no Shin Sedai</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/53890/One_Piece__Dai_Gekisen_Tokushuu_Mugiwara_no_Ichimi_vs_Tobi_Roppou\">One Piece: Dai Gekisen Tokushuu! Mugiwara no Ichimi vs. Tobi Roppou</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/55289/One_Piece__Dai_Gekisen_Tokushuu_Zoro_vs_Ookanban\">One Piece: Dai Gekisen Tokushuu! Zoro vs. Ookanban!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/55647/One_Piece__Dai_Gekisen_Tokushuu_Hangeki_Doumei_vs_Big_Mom\">One Piece: Dai Gekisen Tokushuu! Hangeki Doumei vs. Big Mom</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/57556/One_Piece__Dai_Tokushuu_Momonosuke_no_Mei_Shougun_e_no_Michi\">One Piece: Dai Tokushuu! Momonosuke no Mei Shougun e no Michi</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/58015/One_Piece__Dai_Tannou_Kikaku_Shi_no_Gekai_Trafalgar_Law\">One Piece: Dai Tannou Kikaku! \"Shi no Gekai\" Trafalgar Law</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/58663/One_Piece__Innen_no_Log_Mugiwara_no_Ichimi_to_Cipher_Pol\">One Piece: Innen no Log! Mugiwara no Ichimi to Cipher Pol</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59029/One_Piece__Kizamareru_Rekishi_Gekidou_no_Shinkyuu_Yonkou\">One Piece: Kizamareru Rekishi! Gekidou no Shinkyuu Yonkou!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59596/One_Piece__Araburu_Henkaku_no_Log__Anyaku_Suru_Kakumeigun\">One Piece: Araburu Henkaku no Log: Anyaku Suru Kakumeigun!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59908/One_Piece__Yuruganu_Seigi_Kaigun_no_Hokoritakaki_Log\">One Piece: Yuruganu Seigi! Kaigun no Hokoritakaki Log!</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/61393/One_Piece_Egghead_Arc_Recap\">One Piece Egghead Arc Recap</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/61674/One_Piece__Dr_Chopper_no_Bouken_Karte_-_Chichi_to_Musume_no_Ballad\">One Piece: Dr. Chopper no Bouken Karte - Chichi to Musume no Ballad</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/61892/One_Piece__Dr_Chopper_no_Bouken_Karte_-_Shinyuu-tachi_no_Crossroad\">One Piece: Dr. Chopper no Bouken Karte - Shinyuu-tachi no Crossroad</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/62394/One_Piece__Dr_Chopper_no_Bouken_Karte_-_Hokoritakaki_Gigant_Dream\">One Piece: Dr. Chopper no Bouken Karte - Hokoritakaki Gigant Dream</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/62593/One_Piece__Dr_Chopper_no_Bouken_Karte_-_Uragirimono-tachi_no_Masquerade\">One Piece: Dr. Chopper no Bouken Karte - Uragirimono-tachi no Masquerade</a> (TV Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/62969/One_Piece__Dr_Chopper_no_Bouken_Karte_-_Tensai_ga_Nokoshita_Last_Records\">One Piece: Dr. Chopper no Bouken Karte - Tensai ga Nokoshita \"Last Records\"</a> (TV Special)</li>\n                                                </ul>\n            </td>\n          "
+    },
+    {
+      "relation": "Alternative Version:",
+      "links_html": "<td width=\"100%\" class=\"borderClass\">\n              <ul class=\"entries\">\n                                                                                                              <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/3848/One_Piece_Movie_09__Episode_of_Chopper_Plus_-_Fuyu_ni_Saku_Kiseki_no_Sakura\">One Piece Movie 09: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/60108/One_Piece__Gyojin_Tou-hen\">One Piece: Gyojin Tou-hen</a> (TV)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/57557/The_One_Piece\">The One Piece</a> (ONA)</li>\n                                                </ul>\n            </td>\n          "
+    },
+    {
+      "relation": "Character:",
+      "links_html": "<td width=\"100%\" class=\"borderClass\">\n              <ul class=\"entries\">\n                                                                                                              <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/813/Dragon_Ball_Z\">Dragon Ball Z</a> (TV)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/23933/Kyutai_Panic_Adventure\">Kyutai Panic Adventure!</a> (Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/23935/Kyutai_Panic_Adventure_Returns\">Kyutai Panic Adventure Returns!</a> (Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/10033/Toriko\">Toriko</a> (TV)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/52139/Hungry_Days_x_Bump_of_Chicken__Kinen_Satsuei\">Hungry Days x Bump of Chicken: Kinen Satsuei</a> (Music)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59832/Annecy_Festival_60th_Anniversary_PVs\">Annecy Festival 60th Anniversary PVs</a> (PV)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/56055/Monsters__Ippyaku_Sanjou_Hiryuu_Jigoku\">Monsters: Ippyaku Sanjou Hiryuu Jigoku</a> (ONA)</li>\n                                                </ul>\n            </td>\n          "
+    },
+    {
+      "relation": "Other:",
+      "links_html": "<td width=\"100%\" class=\"borderClass\">\n              <ul class=\"entries\">\n                                                                                                              <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59959/Schick_x_One_Piece\">Schick x One Piece</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59801/UHA_Mikakutou_x_One_Piece\">UHA Mikakutou x One Piece</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/22661/One_Piece__Cry_Heart\">One Piece: Cry Heart</a> (Special)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/59822/Star_Wars_x_One_Piece\">Star Wars x One Piece</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/57413/Xfit_x_One_Piece\">Xfit x One Piece</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/34165/Oishi-sa_Hajikeru_One_Piece\">Oishi-sa Hajikeru! One Piece</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/38419/Tokyo_One_Piece_Tower__Tongari_Shima_no_Dai_Hihou\">Tokyo One Piece Tower: Tongari Shima no Dai Hihou</a> (Movie)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/36239/Sono_Me_ga_Mitsumeru_Mono\">Sono Me ga Mitsumeru Mono</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/40181/Look_Plus_One_Piece_Special_Movie\">Look Plus One Piece Special Movie</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/40970/A-ra-shi__Reborn\">A-ra-shi: Reborn</a> (Music)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/51163/One_Piece__Mugiwara_no_Ichimi_kara_no_Kansen_Yobou_Message\">One Piece: Mugiwara no Ichimi kara no Kansen Yobou Message</a> (CM)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/56015/Miraijima\">Miraijima</a> (Music)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/58307/One_Piece_x_Kawaisouni__Kono_Boushi_wo_Omae_ni_Azukeru\">One Piece x Kawaisouni: Kono Boushi wo Omae ni Azukeru</a> (PV)</li>\n                                                                                                                                <li class=\" hide-entry\" style=\"display: none;\"><a href=\"https://myanimelist.net/anime/63224/Tenshi_to_Akuma\">Tenshi to Akuma</a> (Music)</li>\n                                                </ul>\n            </td>\n          "
+    }
+  ],
+  "external_sources_raw": [
+    {
+      "name": "Official Site",
+      "source": "http://www.toei-anim.co.jp/tv/onep/"
+    },
+    {
+      "name": "@OnePieceAnime",
+      "source": "https://twitter.com/OnePieceAnime"
+    },
+    {
+      "name": "YouTube",
+      "source": "https://www.youtube.com/@onepieceofficial"
+    },
+    {
+      "name": "AniDB",
+      "source": "https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69"
+    },
+    {
+      "name": "ANN",
+      "source": "https://www.animenewsnetwork.com/encyclopedia/anime.php?id=836"
+    },
+    {
+      "name": "Wikipedia",
+      "source": "https://en.wikipedia.org/wiki/One_Piece#Anime"
+    },
+    {
+      "name": "Wikipedia",
+      "source": "https://ja.wikipedia.org/wiki/ONE_PIECE_%28%E3%82%A2%E3%83%8B%E3%83%A1%29"
+    },
+    {
+      "name": "Syoboi",
+      "source": "https://cal.syoboi.jp/tid/350"
+    },
+    {
+      "name": "Bangumi",
+      "source": "https://bangumi.tv/subject/975"
+    },
+    {
+      "name": "Baidu Baike",
+      "source": "https://baike.baidu.com/item/%E8%88%AA%E6%B5%B7%E7%8E%8B/6616881"
+    },
+    {
+      "name": "Douban",
+      "source": "https://movie.douban.com/subject/1453238/"
+    }
+  ],
+  "streaming_links_raw": [
+    {
+      "name": "Crunchyroll",
+      "source": "http://www.crunchyroll.com/series-257631"
+    },
+    {
+      "name": "Netflix",
+      "source": "https://www.netflix.com/title/80107103"
+    },
+    {
+      "name": "Shahid",
+      "source": "https://shahid.mbc.net/en/series/One-Piece/series-826519"
+    }
+  ],
+  "title": "One Piece",
+  "score": "8.73",
+  "scored_by": "1523840",
+  "synopsis": "Barely surviving in a barrel after passing through a terrible whirlpool at sea, carefree Monkey D. Luffy ends up aboard a ship under attack by fearsome pirates. Despite being a naive-looking teenager, he is not to be underestimated. Unmatched in battle, Luffy is a pirate himself who resolutely pursues the coveted One Piece treasure and the King of the Pirates title that comes with it.\n\nThe late King of the Pirates, Gol D. Roger, stirred up the world before his death by disclosing the whereabouts of his hoard of riches and daring everyone to obtain it. Ever since then, countless powerful pirates have sailed dangerous seas for the prized One Piece only to never return. Although Luffy lacks a crew and a proper ship, he is endowed with a superhuman ability and an unbreakable spirit that make him not only a formidable adversary but also an inspiration to many.\n\nAs he faces numerous challenges with a big smile on his face, Luffy gathers one-of-a-kind companions to join him in his ambitious endeavor, together embracing perils and wonders on their once-in-a-lifetime adventure.\n\n[Written by MAL Rewrite]",
+  "cover_image_src": "https://myanimelist.net/images/anime/1244/138851.jpg",
+  "opening_themes_raw": [
+    {
+      "title_text": "Apple Music"
+    },
+    {
+      "title_text": "Youtube Music"
+    },
+    {
+      "title_text": "1: \"We Are! (ウィーアー!)\" by Hiroshi Kitadani (きただにひろし) (eps 1-47,1000)",
+      "artist": "by Hiroshi Kitadani (きただにひろし)",
+      "episodes": "(eps 1-47,1000)"
+    },
+    {
+      "title_text": "2: \"Believe\" by Folder5 (eps 48-115)",
+      "artist": "by Folder5",
+      "episodes": "(eps 48-115)"
+    },
+    {
+      "title_text": "3: \"Hikari e (ヒカリヘ)\" by The Babystars (ザ・ベイビースターズ) (eps 116-168)",
+      "artist": "by The Babystars (ザ・ベイビースターズ)",
+      "episodes": "(eps 116-168)"
+    },
+    {
+      "title_text": "4: \"BON VOYAGE!\" by Bon-Bon Blanco (eps 169-206)",
+      "artist": "by Bon-Bon Blanco",
+      "episodes": "(eps 169-206)"
+    },
+    {
+      "title_text": "5: \"Kokoro no Chizu (ココロのちず)\" by BOYSTYLE (eps 207-263)",
+      "artist": "by BOYSTYLE",
+      "episodes": "(eps 207-263)"
+    },
+    {
+      "title_text": "6: \"BRAND NEW WORLD\" by D-51 (eps 264-278)",
+      "artist": "by D-51",
+      "episodes": "(eps 264-278)"
+    },
+    {
+      "title_text": "7: \"We Are! (ウィーアー! 〜7人の麦わら海賊団篇〜)\" by the 7-nin no Mugiwara Kaizokudan (7人の麦わら海賊団) (eps 279-283)",
+      "artist": "by the 7-nin no Mugiwara Kaizokudan (7人の麦わら海賊団)",
+      "episodes": "(eps 279-283)"
+    },
+    {
+      "title_text": "8: \"Crazy Rainbow\" by Tackey & Tsubasa (タッキー&翼) (eps 284-325)",
+      "artist": "by Tackey & Tsubasa (タッキー&翼)",
+      "episodes": "(eps 284-325)"
+    },
+    {
+      "title_text": "9: \"Jungle P\" by 5050 (eps 326-372)",
+      "artist": "by 5050",
+      "episodes": "(eps 326-372)"
+    },
+    {
+      "title_text": "10: \"We Are (ウィーアー! 〜10周年Ver.〜)\" by TVXQ (eps 373-394)",
+      "artist": "by TVXQ",
+      "episodes": "(eps 373-394)"
+    },
+    {
+      "title_text": "11: \"Share The World\" by TVXQ (eps 395-425)",
+      "artist": "by TVXQ",
+      "episodes": "(eps 395-425)"
+    },
+    {
+      "title_text": "12: \"Kaze wo Sagashite (風をさがして)\" by Mari Yaguchi to Straw Hat (矢口真里とストローハット) (eps 426-458)",
+      "artist": "by Mari Yaguchi to Straw Hat (矢口真里とストローハット)",
+      "episodes": "(eps 426-458)"
+    },
+    {
+      "title_text": "13: \"One day\" by The ROOTLESS (eps 459-491)",
+      "artist": "by The ROOTLESS",
+      "episodes": "(eps 459-491)"
+    },
+    {
+      "title_text": "14: \"Fight Together\" by Namie Amuro (安室奈美恵) (eps 493-516)",
+      "artist": "by Namie Amuro (安室奈美恵)",
+      "episodes": "(eps 493-516)"
+    },
+    {
+      "title_text": "15: \"We Go! (ウィーゴー!)\" by Hiroshi Kitadani (きただにひろし) (eps 517-541,543-589)",
+      "artist": "by Hiroshi Kitadani (きただにひろし)",
+      "episodes": "(eps 517-541,543-589)"
+    },
+    {
+      "title_text": "16: \"HANDS UP!\" by Kouta Shinzato (新里宏太) (eps 591-628)",
+      "artist": "by Kouta Shinzato (新里宏太)",
+      "episodes": "(eps 591-628)"
+    },
+    {
+      "title_text": "17: \"Wake up!\" by AAA (eps 629-686)",
+      "artist": "by AAA",
+      "episodes": "(eps 629-686)"
+    },
+    {
+      "title_text": "18: \"Hard Knock Days\" by GENERATIONS from EXILE TRIBE (eps 687-746)",
+      "artist": "by GENERATIONS from EXILE TRIBE",
+      "episodes": "(eps 687-746)"
+    },
+    {
+      "title_text": "19: \"We Can! (ウィーキャン!)\" by Kishidan to Hiroshi Kitadani (氣志團ときただにひろし) (eps 747-806)",
+      "artist": "by Kishidan to Hiroshi Kitadani (氣志團ときただにひろし)",
+      "episodes": "(eps 747-806)"
+    },
+    {
+      "title_text": "20: \"Hope\" by Namie Amuro (安室奈美恵) (eps 807-855)",
+      "artist": "by Namie Amuro (安室奈美恵)",
+      "episodes": "(eps 807-855)"
+    },
+    {
+      "title_text": "21: \"Super Powers\" by V6 (eps 856-891)",
+      "artist": "by V6",
+      "episodes": "(eps 856-891)"
+    },
+    {
+      "title_text": "22: \"OVER THE TOP\" by Hiroshi Kitadani (きただにひろし) (eps 892-934)",
+      "artist": "by Hiroshi Kitadani (きただにひろし)",
+      "episodes": "(eps 892-934)"
+    },
+    {
+      "title_text": "23: \"DREAMIN' ON\" by Da-iCE (eps 935-999,1001-1004)",
+      "artist": "by Da-iCE",
+      "episodes": "(eps 935-999,1001-1004)"
+    },
+    {
+      "title_text": "24: \"PAINT\" by I Don't Like Mondays. (eps 1005-1027,1031-1073)",
+      "artist": "by I Don't Like Mondays.",
+      "episodes": "(eps 1005-1027,1031-1073)"
+    },
+    {
+      "title_text": "25: \"Shinjidai (新時代)\" by Ado (eps 1028-1030)",
+      "artist": "by Ado",
+      "episodes": "(eps 1028-1030)"
+    },
+    {
+      "title_text": "26: \"Saikou Toutatsuten (最高到達点)\" by SEKAI NO OWARI (eps 1074-1088)",
+      "artist": "by SEKAI NO OWARI",
+      "episodes": "(eps 1074-1088)"
+    },
+    {
+      "title_text": "27: \"Uuus! (あーーっす！)\" by Hiroshi Kitadani (きただにひろし) (eps 1089-1122)",
+      "artist": "by Hiroshi Kitadani (きただにひろし)",
+      "episodes": "(eps 1089-1122)"
+    },
+    {
+      "title_text": "28: \"Tenshi to Akuma (天使と悪魔; ANGEL & DEVIL)\" by GRe4N BOYZ (eps 1124-1138)",
+      "artist": "by GRe4N BOYZ",
+      "episodes": "(eps 1124-1138)"
+    },
+    {
+      "title_text": "29: \"Carmine (カーマイン)\" by ELLEGARDEN (eps 1139-1155)",
+      "artist": "by ELLEGARDEN",
+      "episodes": "(eps 1139-1155)"
+    },
+    {
+      "title_text": "30: \"Luminous (ルミナス - Luminous)\" by AiNA THE END",
+      "artist": "by AiNA THE END"
+    }
+  ],
+  "ending_themes_raw": [
+    {
+      "title_text": "1: \"memories\" by Maki Otsuki (大槻真希) (eps 1-30,808,968)",
+      "artist": "by Maki Otsuki (大槻真希)",
+      "episodes": "(eps 1-30,808,968)"
+    },
+    {
+      "title_text": "2: \"RUN! RUN! RUN!\" by Maki Otsuki (大槻真希) (eps 31-63)",
+      "artist": "by Maki Otsuki (大槻真希)",
+      "episodes": "(eps 31-63)"
+    },
+    {
+      "title_text": "3: \"Watashi ga iru Yo (私がいるよ)\" by TOMATO CUBE (eps 64-73)",
+      "artist": "by TOMATO CUBE",
+      "episodes": "(eps 64-73)"
+    },
+    {
+      "title_text": "4: \"Shouchi no Suke (しょうちのすけ)\" by Suitei Shoujo (推定少女) (eps 74-81)",
+      "artist": "by Suitei Shoujo (推定少女)",
+      "episodes": "(eps 74-81)"
+    },
+    {
+      "title_text": "5: \"BEFORE DAWN\" by AI-SACHI (eps 82-94)",
+      "artist": "by AI-SACHI",
+      "episodes": "(eps 82-94)"
+    },
+    {
+      "title_text": "6: \"fish\" by The Kaleidoscope (eps 95-106)",
+      "artist": "by The Kaleidoscope",
+      "episodes": "(eps 95-106)"
+    },
+    {
+      "title_text": "7: \"GLORY -Kimi ga Iru kara- (GLORY-君がいるから-)\" by Takako Uehara (上原多香子) (eps 107-118)",
+      "artist": "by Takako Uehara (上原多香子)",
+      "episodes": "(eps 107-118)"
+    },
+    {
+      "title_text": "8: \"Shining ray\" by Janne Da Arc (eps 119-127,129-132)",
+      "artist": "by Janne Da Arc",
+      "episodes": "(eps 119-127,129-132)"
+    },
+    {
+      "title_text": "9: \"Family\" by Mugiwara Kaizokudan (麦わら海賊団) (eps 128)",
+      "artist": "by Mugiwara Kaizokudan (麦わら海賊団)",
+      "episodes": "(eps 128)"
+    },
+    {
+      "title_text": "10: \"Free Will\" by Ruppina (eps 133-156)",
+      "artist": "by Ruppina",
+      "episodes": "(eps 133-156)"
+    },
+    {
+      "title_text": "11: \"FAITH\" by Ruppina (eps 157-168)",
+      "artist": "by Ruppina",
+      "episodes": "(eps 157-168)"
+    },
+    {
+      "title_text": "12: \"A to Z ~One Piece Edition~ (A to Z〜ONE PIECE Edition〜)\" by ZZ (eps 169-181)",
+      "artist": "by ZZ",
+      "episodes": "(eps 169-181)"
+    },
+    {
+      "title_text": "13: \"Tsuki to Taiyou (月と太陽)\" by shela (eps 182-195)",
+      "artist": "by shela",
+      "episodes": "(eps 182-195)"
+    },
+    {
+      "title_text": "14: \"DREAMSHIP\" by Aiko Ikuta (イクタ☆アイコ) (eps 196-206)",
+      "artist": "by Aiko Ikuta (イクタ☆アイコ)",
+      "episodes": "(eps 196-206)"
+    },
+    {
+      "title_text": "15: \"Mirai Koukai (未来航海)\" by Tackey & Tsubasa (タッキー&翼) (eps 207-230)",
+      "artist": "by Tackey & Tsubasa (タッキー&翼)",
+      "episodes": "(eps 207-230)"
+    },
+    {
+      "title_text": "16: \"Eternal Pose (エターナルポーズ)\" by Asia Engineer (エイジアエンジニア) (eps 231-245)",
+      "artist": "by Asia Engineer (エイジアエンジニア)",
+      "episodes": "(eps 231-245)"
+    },
+    {
+      "title_text": "17: \"Dear friends\" by TRIPLANE (eps 246-255)",
+      "artist": "by TRIPLANE",
+      "episodes": "(eps 246-255)"
+    },
+    {
+      "title_text": "18: \"Asu wa Kuru kara (明日は来るから)\" by TVXQ (eps 256-263)",
+      "artist": "by TVXQ",
+      "episodes": "(eps 256-263)"
+    },
+    {
+      "title_text": "19: \"ADVENTURE WORLD\" by Delicatessen (デリカテッセン) (eps 264-278)",
+      "artist": "by Delicatessen (デリカテッセン)",
+      "episodes": "(eps 264-278)"
+    },
+    {
+      "title_text": "20: \"One Day\" by The ROOTLESS (eps 492)",
+      "artist": "by The ROOTLESS",
+      "episodes": "(eps 492)"
+    },
+    {
+      "title_text": "21: \"We go! (ウィーゴー!)\" by Hiroshi Kitadani (きただにひろし) (eps 542,590)",
+      "artist": "by Hiroshi Kitadani (きただにひろし)",
+      "episodes": "(eps 542,590)"
+    },
+    {
+      "title_text": "22: \"Raise\" by Chilli Beans. (eps 1071-1088)",
+      "artist": "by Chilli Beans.",
+      "episodes": "(eps 1071-1088)"
+    },
+    {
+      "title_text": "23: \"Dear sunrise\" by Maki Otsuki (大槻マキ) (eps 1089-1122)",
+      "artist": "by Maki Otsuki (大槻マキ)",
+      "episodes": "(eps 1089-1122)"
+    },
+    {
+      "title_text": "24: \"The 1\" by muque (eps 1123-1136,1138)",
+      "artist": "by muque",
+      "episodes": "(eps 1123-1136,1138)"
+    },
+    {
+      "title_text": "25: \"Tenshi to Akuma (天使と悪魔; ANGEL & DEVIL)\" by GRe4N BOYZ (eps 1137)",
+      "artist": "by GRe4N BOYZ",
+      "episodes": "(eps 1137)"
+    },
+    {
+      "title_text": "26: \"Punks\" by Chameleon Lime Whoopiepie (eps 1139-)",
+      "artist": "by Chameleon Lime Whoopiepie",
+      "episodes": "(eps 1139-)"
+    },
+    {
+      "title_text": "27: \"Sono Mirai (その未来)\" by Jisoku 36km (時速36km)",
+      "artist": "by Jisoku 36km (時速36km)"
+    }
+  ],
+  "trailer_embed_url": "https://www.youtube-nocookie.com/embed/-tviZNY6CSw?enablejsapi=1&wmode=opaque&autoplay=1",
+  "trailer_title": "PV Madman 32, English dub version",
+  "picture_urls_raw": [
+    {
+      "url": "https://myanimelist.net/character/40/Luffy_Monkey_D"
+    },
+    {
+      "url": "https://myanimelist.net/people/75/Mayumi_Tanaka"
+    },
+    {
+      "url": "https://myanimelist.net/character/62/Zoro_Roronoa"
+    },
+    {
+      "url": "https://myanimelist.net/people/123/Kazuya_Nakai"
+    },
+    {
+      "url": "https://myanimelist.net/character/305/Sanji"
+    },
+    {
+      "url": "https://myanimelist.net/people/125/Hiroaki_Hirata"
+    },
+    {
+      "url": "https://myanimelist.net/character/61/Robin_Nico"
+    },
+    {
+      "url": "https://myanimelist.net/people/130/Yuriko_Yamaguchi"
+    },
+    {
+      "url": "https://myanimelist.net/character/309/Chopper_Tony_Tony"
+    },
+    {
+      "url": "https://myanimelist.net/people/128/Ikue_Ootani"
+    },
+    {
+      "url": "https://myanimelist.net/character/723/Nami"
+    },
+    {
+      "url": "https://myanimelist.net/people/76/Akemi_Okamura"
+    },
+    {
+      "url": "https://myanimelist.net/character/724/Usopp"
+    },
+    {
+      "url": "https://myanimelist.net/people/67/Kappei_Yamaguchi"
+    },
+    {
+      "url": "https://myanimelist.net/character/5627/Brook"
+    },
+    {
+      "url": "https://myanimelist.net/people/898/Cho"
+    },
+    {
+      "url": "https://myanimelist.net/character/64/Franky"
+    },
+    {
+      "url": "https://myanimelist.net/people/131/Kazuki_Yao"
+    },
+    {
+      "url": "https://myanimelist.net/character/18938/Jinbe"
+    },
+    {
+      "url": "https://myanimelist.net/people/5317/Katsuhisa_Houki"
+    },
+    {
+      "url": "https://myanimelist.net/people/203/Justin_Cook"
+    },
+    {
+      "url": "https://myanimelist.net/people/79743/Miki_Kobayashi"
+    },
+    {
+      "url": "https://myanimelist.net/people/79744/Tetsushi_Akahori"
+    },
+    {
+      "url": "https://myanimelist.net/people/84315/Satoshi_Teramoto"
+    },
+    {
+      "url": "/news/74054145"
+    },
+    {
+      "url": "/news/73684906"
+    },
+    {
+      "url": "https://myanimelist.net/featured/2364/The_Disappearing_Art_of_Printing_Manga_and_Its_Rebirth_as_Manga_Art"
+    },
+    {
+      "url": "https://myanimelist.net/featured/2353/Shueisha_to_Market_Manga_Art_of_One_Piece_and_Other_Series_Worldwide"
+    }
+  ],
+  "_picture_urls": [
+    "https://myanimelist.net/images/anime/5/19082l.jpg",
+    "https://myanimelist.net/images/anime/11/20870l.jpg",
+    "https://myanimelist.net/images/anime/5/20871l.jpg",
+    "https://myanimelist.net/images/anime/10/66965l.jpg",
+    "https://myanimelist.net/images/anime/1178/92469l.jpg",
+    "https://myanimelist.net/images/anime/1386/100624l.jpg",
+    "https://myanimelist.net/images/anime/1249/102615l.jpg",
+    "https://myanimelist.net/images/anime/1056/109094l.jpg",
+    "https://myanimelist.net/images/anime/1460/110427l.jpg",
+    "https://myanimelist.net/images/anime/1245/113406l.jpg",
+    "https://myanimelist.net/images/anime/1451/114315l.jpg",
+    "https://myanimelist.net/images/anime/1706/114807l.jpg",
+    "https://myanimelist.net/images/anime/1460/119974l.jpg",
+    "https://myanimelist.net/images/anime/1011/120243l.jpg",
+    "https://myanimelist.net/images/anime/1113/121055l.jpg",
+    "https://myanimelist.net/images/anime/1860/123979l.jpg",
+    "https://myanimelist.net/images/anime/1026/135253l.jpg",
+    "https://myanimelist.net/images/anime/1207/137897l.jpg",
+    "https://myanimelist.net/images/anime/1244/138851l.jpg",
+    "https://myanimelist.net/images/anime/1810/139965l.jpg"
+  ],
+  "_url": "https://myanimelist.net/anime/21/One_Piece"
+}

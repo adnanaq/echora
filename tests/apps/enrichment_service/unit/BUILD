@@ -1,0 +1,13 @@
+python_tests(
+    name="unit",
+    sources=[
+        "**/test_*.py",
+        "**/*_test.py",
+        "**/tests.py",
+    ],
+    dependencies=[
+        "//:reqs0#pytest",
+        "//:reqs0#pytest-asyncio",
+        "//apps/enrichment_service/src/enrichment_service:enrichment_service",
+    ],
+)

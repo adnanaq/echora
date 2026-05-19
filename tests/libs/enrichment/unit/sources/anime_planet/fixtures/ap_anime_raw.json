@@ -1,0 +1,762 @@
+{
+  "name": "One Piece",
+  "schema_type": "TVSeries",
+  "description": "Long ago the infamous Gol D. Roger was the strongest and most powerful pirate on the seas. As he was about to be executed he revealed that he hid all of his wealth, including the legendary treasure known as One Piece, on an island at the end of the Grand Line - a treacherous and truly unpredictable sea. Monkey D. Luffy is a spirited, energetic and somewhat dim-witted young man with a very big dream: to find One Piece and become the Pirate King! However Luffy is no ordinary boy, as when he was younger he ate one of the Devil's Fruits and gained its power to become a Rubber Man. Now in this grand age of pirates Luffy sets out to gather a crew and sail to the most dangerous sea in the world so that he can fulfill his dream... and maybe even his appetite!",
+  "url": "https://www.anime-planet.com/anime/one-piece",
+  "start_date": "1999-10-20",
+  "end_date": null,
+  "number_of_episodes": 1157,
+  "genres": [
+    "Action",
+    "Adventure",
+    "Based on a Manga",
+    "Comedy",
+    "Fantasy",
+    "Pirates",
+    "Shounen",
+    "Superpowers"
+  ],
+  "aggregate_rating": {
+    "@type": "AggregateRating",
+    "ratingCount": 64725,
+    "bestRating": 5,
+    "worstRating": 0.5,
+    "ratingValue": 4.315,
+    "reviewCount": 276
+  },
+  "type_raw": "TV\n  \n  \n        \n  (1157+ eps)",
+  "season_url": "/anime/seasons/fall-1999",
+  "rank_text": "Rank #158",
+  "aka": "Alt title: ワンピース",
+  "cover": "https://cdn.anime-planet.com/anime/primary/one-piece-1-190x260.jpg?t=1625885349",
+  "studios": [
+    "Toei Animation"
+  ],
+  "tags": [
+    "Action",
+    "Adventure",
+    "Comedy",
+    "Fantasy",
+    "Shounen",
+    "Pirates",
+    "Superpowers",
+    "Based on a Manga"
+  ],
+  "slug": "one-piece",
+  "related_anime_raw": [
+    {
+      "url": "/anime/the-one-piece",
+      "title": "The One Piece",
+      "type": "Web",
+      "image": "https://cdn.anime-planet.com/anime/primary/the-one-piece-1-285x399.webp?t=1702808431"
+    },
+    {
+      "url": "/anime/one-piece-defeat-the-pirate-ganzak",
+      "title": "One Piece: Defeat the Pirate Ganzak!",
+      "relation_subtype": "Same Franchise",
+      "type": "OVA: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-defeat-the-pirate-ganzak-1-190x259.jpg?t=1625886240"
+    },
+    {
+      "url": "/anime/one-piece-kinkyuu-kikaku-one-piece-kanzen-kouryakuhou",
+      "title": "One Piece: Kinkyuu Kikaku One Piece Kanzen Kouryakuhou",
+      "relation_subtype": "Recap",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-kinkyuu-kikaku-one-piece-kanzen-kouryakuhou-1-190x266.jpg?t=1625898167"
+    },
+    {
+      "url": "/anime/one-piece-movie-1",
+      "title": "One Piece Movie 1",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-1-1-190x271.jpg?t=1625885657"
+    },
+    {
+      "url": "/anime/one-piece-special-adventure-in-the-oceans-naval",
+      "title": "One Piece Special 1: Adventure in the Ocean's Navel",
+      "relation_subtype": "Same Franchise",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-special-adventure-in-the-oceans-naval-1-190x265.jpg?t=1625886261"
+    },
+    {
+      "url": "/anime/one-piece-movie-2-clockwork-island-adventure",
+      "title": "One Piece Movie 2: Clockwork Island Adventure",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-2-clockwork-island-adventure-1-190x271.jpg?t=1625885650"
+    },
+    {
+      "url": "/anime/one-piece-djanjos-dance-carnival",
+      "title": "One Piece: Django's Dance Carnival",
+      "relation_subtype": "Same Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-djanjos-dance-carnival-1-190x285.jpg?t=1625886227"
+    },
+    {
+      "url": "/anime/one-piece-movie-3-chopper-kingdom-of-strange-animal-island",
+      "title": "One Piece Movie 3: Chopper Kingdom of Strange Animal Island",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-3-chopper-kingdom-of-strange-animal-island-1-190x271.jpg?t=1625885665"
+    },
+    {
+      "url": "/anime/one-piece-dream-soccer-king",
+      "title": "One Piece: Dream Soccer King!",
+      "relation_subtype": "Same Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-dream-soccer-king-1-190x266.jpg?t=1625886227"
+    },
+    {
+      "url": "/anime/one-piece-movie-4-dead-end-adventure",
+      "title": "One Piece Movie 4: Dead End Adventure",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-4-dead-end-adventure-1-190x271.jpg?t=1625885657"
+    },
+    {
+      "url": "/anime/one-piece-open-upon-the-great-sea-a-fathers-huge-huge-dream",
+      "title": "One Piece Special 2: Open Upon the Great Sea! A Father's Huge, HUGE Dream!",
+      "relation_subtype": "Same Franchise",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-open-upon-the-great-sea-a-fathers-huge-huge-dream-1-224x314.webp?t=1668561013"
+    },
+    {
+      "url": "/anime/one-piece-special-protect-the-last-great-stage",
+      "title": "One Piece Special 3: Protect! The Last Great Stage",
+      "relation_subtype": "Same Franchise",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-special-protect-the-last-great-stage-1-285x400.webp?t=1668561103"
+    },
+    {
+      "url": "/anime/one-piece-movie-5-the-curse-of-the-sacred-sword",
+      "title": "One Piece Movie 5: The Curse of the Sacred Sword",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-5-the-curse-of-the-sacred-sword-1-190x269.jpg?t=1625885788"
+    },
+    {
+      "url": "/anime/one-piece-take-aim-the-pirate-baseball-king",
+      "title": "One Piece: Take Aim! The Pirate Baseball King",
+      "relation_subtype": "Same Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-take-aim-the-pirate-baseball-king-1-190x266.jpg?t=1625886228"
+    },
+    {
+      "url": "/anime/one-piece-movie-6-baron-omatsuri-and-the-secret-island",
+      "title": "One Piece Movie 6: Baron Omatsuri and the Secret Island",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-6-baron-omatsuri-and-the-secret-island-1-190x266.jpg?t=1625885789"
+    },
+    {
+      "url": "/anime/one-piece-the-detective-memoirs-of-chief-straw-hat-luffy",
+      "title": "One Piece Special 4: The Detective Memoirs of Chief Straw Hat Luffy",
+      "relation_subtype": "Same Franchise",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-detective-memoirs-of-chief-straw-hat-luffy-1-190x267.jpg?t=1625886262"
+    },
+    {
+      "url": "/anime/one-piece-otoshidama-special-tokubetsu-hou-mugiwara-kaizoku-dan-no-himitsu",
+      "title": "One Piece: Otoshidama Special - Tokubetsu Hou Mugiwara Kaizoku-dan no Himitsu!",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/images/anime/default/default-anime-spring.png"
+    },
+    {
+      "url": "/anime/one-piece-movie-7-karakuri-castles-mecha-giant-soldier",
+      "title": "One Piece Movie 7: Karakuri Castle's Mecha Giant Soldier",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-7-karakuri-castles-mecha-giant-soldier-1-190x271.jpg?t=1625885799"
+    },
+    {
+      "url": "/anime/one-piece-straw-hat-theater",
+      "title": "One Piece: Straw Hat Theater",
+      "relation_subtype": "Omake",
+      "type": "DVD Special: 5 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-straw-hat-theater-1-190x266.jpg?t=1625886578"
+    },
+    {
+      "url": "/anime/one-piece-uchuutte-omoshiree-hoshizora-jima-hen",
+      "title": "One Piece: Uchuutte Omoshiree! Hoshizora Jima-hen",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-uchuutte-omoshiree-hoshizora-jima-hen-1-285x400.webp?t=1671999366"
+    },
+    {
+      "url": "/anime/one-piece-the-desert-princess-and-the-pirates-adventures-in-alabasta",
+      "title": "One Piece Movie 8: The Desert Princess and the Pirates - Adventures in Alabasta",
+      "relation_subtype": "Remake",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-desert-princess-and-the-pirates-adventures-in-alabasta-1-190x271.jpg?t=1625886154"
+    },
+    {
+      "url": "/anime/one-piece-the-desert-princess-and-the-pirates-adventures-in-alabasta-prologue",
+      "title": "One Piece: The Desert Princess and the Pirates - Adventures in Alabasta Prologue",
+      "relation_subtype": "Remake",
+      "type": "OVA: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-desert-princess-and-the-pirates-adventures-in-alabasta-prologue-1-190x266.jpg?t=1625897028"
+    },
+    {
+      "url": "/anime/one-piece-movie-9-episode-of-chopper-the-miracle-winter-cherry-blossom",
+      "title": "One Piece Movie 9: Episode of Chopper - The Miracle Winter Cherry Blossom",
+      "relation_subtype": "Remake",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-9-episode-of-chopper-the-miracle-winter-cherry-blossom-1-190x271.jpg?t=1625886263"
+    },
+    {
+      "url": "/anime/one-piece-movie-10-strong-world",
+      "title": "One Piece Movie 10: Strong World",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-10-strong-world-1-190x276.jpg?t=1625886663"
+    },
+    {
+      "url": "/anime/one-piece-recap",
+      "title": "One Piece Recap",
+      "relation_subtype": "Recap",
+      "type": "OVA: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-recap-1-190x272.jpg?t=1625886562"
+    },
+    {
+      "url": "/anime/one-piece-3d-mugiwara-chase",
+      "title": "One Piece 3D: Mugiwara Chase",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-3d-mugiwara-chase-1-190x272.jpg?t=1625895976"
+    },
+    {
+      "url": "/anime/one-piece-3d-gekisou-trap-coaster",
+      "title": "One Piece 3D: Gekisou! Trap Coaster",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-3d-gekisou-trap-coaster-1-190x269.jpg?t=1625898189"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-nami-koukaishi-no-namida-to-nakama-no-kizuna",
+      "title": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+      "relation_subtype": "Condensed Version",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-nami-koukaishi-no-namida-to-nakama-no-kizuna-1-190x271.jpg?t=1625896475"
+    },
+    {
+      "url": "/anime/one-piece-film-z",
+      "title": "One Piece Film: Z",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-film-z-1-190x271.jpg?t=1625896308"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-luffy-hand-island-no-bouken",
+      "title": "One Piece: Episode of Luffy - Hand Island no Bouken",
+      "relation_subtype": "Side Story",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-luffy-hand-island-no-bouken-1-190x271.jpg?t=1625896522"
+    },
+    {
+      "url": "/anime/one-piece-the-planetarium",
+      "title": "One Piece The Planetarium",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-planetarium-1-285x400.webp?t=1671999243"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-merry-mou-hitori-no-nakama-no-monogatari",
+      "title": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+      "relation_subtype": "Condensed Version",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-merry-mou-hitori-no-nakama-no-monogatari-1-190x271.jpg?t=1625896635"
+    },
+    {
+      "url": "/anime/one-piece-3d2y-overcoming-aces-death-luffys-pledge-to-his-friends",
+      "title": "One Piece 3D2Y: Overcoming Ace's Death! Luffy's Pledge to His Friends!",
+      "relation_subtype": "Side Story",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-3d2y-overcoming-aces-death-luffys-pledge-to-his-friends-1-190x270.jpg?t=1625896914"
+    },
+    {
+      "url": "/anime/tokyo-one-piece-tower-one-piece-4d",
+      "title": "Tokyo One Piece Tower: One Piece 4D",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/images/anime/default/default-anime-spring.png"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-sabo",
+      "title": "One Piece: Episode of Sabo",
+      "relation_subtype": "Side Story",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-sabo-1-190x271.jpg?t=1625897199"
+    },
+    {
+      "url": "/anime/one-piece-long-ring-long-land-hen",
+      "title": "One Piece: Long Ring Long Land-hen",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/images/anime/default/default-anime-spring.png"
+    },
+    {
+      "url": "/anime/one-piece-adventure-of-nebulandia",
+      "title": "One Piece: Adventure of Nebulandia",
+      "relation_subtype": "Side Story",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-adventure-of-nebulandia-1-190x270.jpg?t=1625897297"
+    },
+    {
+      "url": "/anime/one-piece-characters-log",
+      "title": "One Piece Characters Log",
+      "type": "TV Special: 9 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-characters-log-1-285x399.webp?t=1745005608"
+    },
+    {
+      "url": "/anime/one-piece-special-heart-of-gold",
+      "title": "One Piece Special: Heart of Gold",
+      "relation_subtype": "Side Story",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-special-heart-of-gold-1-190x273.jpg?t=1625897412"
+    },
+    {
+      "url": "/anime/one-piece-film-gold",
+      "title": "One Piece Film: Gold",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-film-gold-1-190x271.jpg?t=1625897226"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-east-blue",
+      "title": "One Piece: Episode of East Blue",
+      "relation_subtype": "Condensed Version",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-east-blue-1-190x285.jpg?t=1625897854"
+    },
+    {
+      "url": "/anime/one-piece-episode-of-skypiea",
+      "title": "One Piece: Episode of Skypiea",
+      "relation_subtype": "Condensed Version",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-episode-of-skypiea-1-190x285.jpg?t=1625898218"
+    },
+    {
+      "url": "/anime/one-piece-movie-14-stampede",
+      "title": "One Piece Movie 14: Stampede",
+      "relation_subtype": "Side Story",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-movie-14-stampede-1-285x399.jpg?t=1635267557"
+    },
+    {
+      "url": "/anime/one-piece-romance-dawn",
+      "title": "One Piece: Romance Dawn",
+      "relation_subtype": "Alternate Universe",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-romance-dawn-1-190x266.jpg?t=1625907683"
+    },
+    {
+      "url": "/anime/one-piece-5-fun-de-wakaru-kore-made-no-wano-kuni-hen",
+      "title": "One Piece: 5-fun de Wakaru - Kore made no Wano Kuni-hen",
+      "type": "Web: 2 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-5-fun-de-wakaru-kore-made-no-wano-kuni-hen-1-285x400.webp?t=1646116577"
+    },
+    {
+      "url": "/anime/one-piece-special-episode-bartos-secret-room",
+      "title": "One Piece Special Episode: Barto's Secret Room",
+      "type": "TV Special: 4 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-special-episode-bartos-secret-room-1-285x399.webp?t=1647840492"
+    },
+    {
+      "url": "/anime/one-piece-a-comprehensive-anatomy-the-legend-of-kozuki-oden",
+      "title": "One Piece: A Comprehensive Anatomy! The Legend of Kozuki Oden!",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-a-comprehensive-anatomy-the-legend-of-kozuki-oden-1-285x399.webp?t=1671978389"
+    },
+    {
+      "url": "/anime/one-piece-film-red",
+      "title": "One Piece Film: Red",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-film-red-1-285x400.webp?t=1659810130"
+    },
+    {
+      "url": "/anime/one-piece-the-captains-log-of-the-legend-red-haired-shanks",
+      "title": "One Piece: The Captain’s Log of the Legend! Red-Haired Shanks!",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-captains-log-of-the-legend-red-haired-shanks-1-285x400.webp?t=1671978628"
+    },
+    {
+      "url": "/anime/one-piece-a-comprehensive-anatomy-fierce-fight-the-five-from-the-new-generation",
+      "title": "One Piece: A Comprehensive Anatomy! Fierce Fight! The Five from the New Generation",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-a-comprehensive-anatomy-fierce-fight-the-five-from-the-new-generation-1-285x399.webp?t=1671977792"
+    },
+    {
+      "url": "/anime/one-piece-recapping-fierce-fights-zoro-vs-a-lead-performer",
+      "title": "One Piece: Recapping Fierce Fights! Zoro vs. A Lead Performer!",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-recapping-fierce-fights-zoro-vs-a-lead-performer-1-285x399.webp?t=1717287554"
+    },
+    {
+      "url": "/anime/one-piece-recapping-fierce-fights-the-countercharge-alliance-vs-big-mom",
+      "title": "One Piece: Recapping Fierce Fights! The Countercharge Alliance vs. Big Mom",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-recapping-fierce-fights-the-countercharge-alliance-vs-big-mom-1-285x399.webp?t=1691464875"
+    },
+    {
+      "url": "/anime/one-piece-a-very-special-feature-momonosukes-road-to-becoming-a-great-shogun",
+      "title": "One Piece: A Very Special Feature! Momonosuke's Road to Becoming a Great Shogun",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-a-very-special-feature-momonosukes-road-to-becoming-a-great-shogun-1-285x399.webp?t=1708368572"
+    },
+    {
+      "url": "/anime/one-piece-a-project-to-fully-enjoy-surgeon-of-death-trafalgar-law",
+      "title": "One Piece: A Project to Fully Enjoy! ‘Surgeon of Death’ Trafalgar Law",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-a-project-to-fully-enjoy-surgeon-of-death-trafalgar-law-1-285x399.webp?t=1708389257"
+    },
+    {
+      "url": "/anime/one-piece-x-kawaisouni-kono-boushi-wo-omae-ni-azukeru",
+      "title": "One Piece x Kawaisouni: Kono Boushi wo Omae ni Azukeru",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-x-kawaisouni-kono-boushi-wo-omae-ni-azukeru-1-285x399.webp?t=1733580519"
+    },
+    {
+      "url": "/anime/one-piece-the-log-of-the-rivalry-the-straw-hats-vs-cipher-pol",
+      "title": "One Piece: The Log of the Rivalry! The Straw Hats vs. Cipher Pol",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-log-of-the-rivalry-the-straw-hats-vs-cipher-pol-1-285x399.webp?t=1717287009"
+    },
+    {
+      "url": "/anime/one-piece-making-history-the-turbulent-old-and-new-four-emperors",
+      "title": "One Piece: Making History! The Turbulent Old and New Four Emperors!",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-making-history-the-turbulent-old-and-new-four-emperors-1-285x399.webp?t=1729287736"
+    },
+    {
+      "url": "/anime/one-piece-the-log-of-the-turbulent-revolution-the-revolutionary-army-maneuvers-in-secret",
+      "title": "One Piece: The Log of the Turbulent Revolution! The Revolutionary Army Maneuvers in Secret!",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-the-log-of-the-turbulent-revolution-the-revolutionary-army-maneuvers-in-secret-1-285x399.webp?t=1729287081"
+    },
+    {
+      "url": "/anime/one-piece-unwavering-justice-the-navys-proud-log",
+      "title": "One Piece: Unwavering Justice! The Navy's Proud Log!",
+      "relation_subtype": "Recap",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-unwavering-justice-the-navys-proud-log-1-285x399.webp?t=1729286300"
+    },
+    {
+      "url": "/anime/one-piece-fan-letter",
+      "title": "One Piece: Fan Letter",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-fan-letter-1-285x403.webp?t=1729383510"
+    },
+    {
+      "url": "/anime/one-piece-log-fish-man-island-saga",
+      "title": "One Piece Log: Fish-Man Island Saga",
+      "relation_subtype": "Condensed Version",
+      "type": "TV: 21 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-log-fish-man-island-saga-1-285x399.webp?t=1730820546"
+    },
+    {
+      "url": "/anime/luffy-law",
+      "title": "Luffy, Law",
+      "type": "Movie",
+      "image": "https://cdn.anime-planet.com/anime/primary/luffy-law-1-285x399.webp?t=1743883833"
+    },
+    {
+      "url": "/anime/koisuru-one-piece",
+      "title": "Koisuru One Piece",
+      "type": "Web: 5 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/koisuru-one-piece-1-285x403.webp?t=1743178968"
+    },
+    {
+      "url": "/anime/one-piece-egghead-hen",
+      "title": "One Piece: Egghead-hen",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-egghead-hen-1-285x399.webp?t=1744735095"
+    },
+    {
+      "url": "/anime/one-piece-dr-choppers-adventure-checkup-the-ballad-of-a-father-and-daughter",
+      "title": "One Piece: Dr. Chopper's Adventure Checkup - The Ballad of a Father and Daughter",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-dr-choppers-adventure-checkup-the-ballad-of-a-father-and-daughter-1-285x399.webp?t=1748289406"
+    },
+    {
+      "url": "/anime/one-piece-dr-choppers-adventure-checkup-good-friends-at-a-crossroad",
+      "title": "One Piece: Dr. Chopper's Adventure Checkup - Good Friends at a Crossroad",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-dr-choppers-adventure-checkup-good-friends-at-a-crossroad-1-285x399.webp?t=1766611320"
+    },
+    {
+      "url": "/anime/choppers",
+      "title": "CHOPPER's",
+      "type": "Web: 12 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/choppers-1-285x399.webp?t=1768883035"
+    }
+  ],
+  "related_anime_other_raw": [
+    {
+      "url": "/anime/kyuutai-panic-adventure",
+      "title": "Kyuutai Panic Adventure!",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 2 ep",
+      "image": "https://cdn.anime-planet.com/images/anime/default/default-anime-spring.png"
+    },
+    {
+      "url": "/anime/one-piece-romance-dawn-story",
+      "title": "One Piece: Romance Dawn Story",
+      "relation_subtype": "Other Franchise",
+      "type": "TV Special: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-romance-dawn-story-1-190x269.jpg?t=1625886265"
+    },
+    {
+      "url": "/anime/toriko-x-one-piece-collabo-special",
+      "title": "Toriko x One Piece Collabo Special",
+      "relation_subtype": "Other Franchise",
+      "type": "TV Special: 2 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/toriko-x-one-piece-collabo-special-1-190x247.jpg?t=1625896006"
+    },
+    {
+      "url": "/anime/toriko-x-one-piece-collabo-special-2",
+      "title": "Toriko x One Piece Collabo Special 2",
+      "relation_subtype": "Other Franchise",
+      "type": "TV Special: 2 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/toriko-x-one-piece-collabo-special-2-1-190x248.jpg?t=1625896358"
+    },
+    {
+      "url": "/anime/dream-9-toriko-x-one-piece-x-dragon-ball-z-super-collabo-special",
+      "title": "Dream 9 Toriko x One Piece x Dragon Ball Z Super Collabo Special",
+      "relation_subtype": "Other Franchise",
+      "type": "TV Special: 2 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/dream-9-toriko-x-one-piece-x-dragon-ball-z-super-collabo-special-1-190x260.jpg?t=1625896655"
+    },
+    {
+      "url": "/anime/one-piece-cry-heart",
+      "title": "One Piece: Cry Heart",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 3 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-cry-heart-1-190x293.jpg?t=1625896808"
+    },
+    {
+      "url": "/anime/fanta-x-one-piece",
+      "title": "Fanta x One Piece",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/fanta-x-one-piece-1-190x272.jpg?t=1625898590"
+    },
+    {
+      "url": "/anime/tokyo-one-piece-tower-tongari-shima-no-dai-hihou",
+      "title": "Tokyo One Piece Tower: Tongari Shima no Dai Hihou",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/tokyo-one-piece-tower-tongari-shima-no-dai-hihou-1-190x270.jpg?t=1625898959"
+    },
+    {
+      "url": "/anime/sante-fx-x-one-piece",
+      "title": "Sante FX x One Piece",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/sante-fx-x-one-piece-1-190x266.jpg?t=1625898319"
+    },
+    {
+      "url": "/anime/one-piece-fns-27-hour-tv",
+      "title": "One Piece: FNS 27 Hour TV",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-fns-27-hour-tv-1-190x266.jpg?t=1625908108"
+    },
+    {
+      "url": "/anime/hungry-days-x-one-piece",
+      "title": "Hungry Days x One Piece",
+      "relation_subtype": "Other Franchise",
+      "type": "Web: 4 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/hungry-days-x-one-piece-1-190x276.jpg?t=1625899396"
+    },
+    {
+      "url": "/anime/look-plus-x-one-piece-cm",
+      "title": "Look Plus x One Piece CM",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/look-plus-x-one-piece-cm-1-190x266.jpg?t=1625908511"
+    },
+    {
+      "url": "/anime/hungry-days-x-bump-of-chicken-kinen-satsuei",
+      "title": "Hungry Days x Bump of Chicken: Kinen Satsuei",
+      "relation_subtype": "Other Franchise",
+      "type": "Music Video: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/hungry-days-x-bump-of-chicken-kinen-satsuei-1-190x266.jpg?t=1625907895"
+    },
+    {
+      "url": "/anime/arashi-a-ra-shi-reborn",
+      "title": "ARASHI: A-RA-SHI : Reborn",
+      "relation_subtype": "Other Franchise",
+      "type": "Music Video: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/arashi-a-ra-shi-reborn-1-190x266.jpg?t=1625908076"
+    },
+    {
+      "url": "/anime/one-piece-mugiwara-no-ichimi-kara-no-kansen-yobou-message",
+      "title": "One Piece: Mugiwara no Ichimi kara no Kansen Yobou Message",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 9 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-mugiwara-no-ichimi-kara-no-kansen-yobou-message-1-285x399.webp?t=1654362023"
+    },
+    {
+      "url": "/anime/one-piece-annecy-festival-60th-anniversary",
+      "title": "One Piece: Annecy Festival 60th Anniversary",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 1 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/one-piece-annecy-festival-60th-anniversary-1-285x399.webp?t=1629402864"
+    },
+    {
+      "url": "/anime/mcdonalds-x-one-piece-cms",
+      "title": "McDonald's x One Piece CMs",
+      "relation_subtype": "Other Franchise",
+      "type": "Other: 2 ep",
+      "image": "https://cdn.anime-planet.com/anime/primary/mcdonalds-x-one-piece-cms-1-285x400.webp?t=1681799105"
+    }
+  ],
+  "related_manga_raw": [
+    {
+      "url": "/manga/romance-dawn",
+      "title": "Romance Dawn",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/romance-dawn-1-188x300.jpg?t=1625909442"
+    },
+    {
+      "url": "/manga/one-piece",
+      "title": "One Piece",
+      "vol_ch": "Vol: 114 - Ch: 1179+",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-1-285x432.jpg?t=1634713764"
+    },
+    {
+      "url": "/manga/one-piece-taose-kaizoku-ganzack-light-novel",
+      "title": "One Piece: Taose! Kaizoku Ganzack (Light Novel)",
+      "vol_ch": "Vol: 1 - Ch: 3",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-taose-kaizoku-ganzack-light-novel-1-190x293.jpg?t=1625914791"
+    },
+    {
+      "url": "/manga/one-piece-loguetown-hen-light-novel",
+      "title": "One Piece: Loguetown-hen (Light Novel)",
+      "vol_ch": "Vol: 1",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-loguetown-hen-light-novel-1-190x293.jpg?t=1625914792"
+    },
+    {
+      "url": "/manga/jump-super-stars",
+      "title": "Jump Super Stars",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/jump-super-stars-1-190x273.jpg?t=1625908803"
+    },
+    {
+      "url": "/manga/cross-epoch",
+      "title": "Cross Epoch",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/cross-epoch-1-190x295.jpg?t=1625908323"
+    },
+    {
+      "url": "/manga/one-piece-strong-world",
+      "title": "One Piece: Strong World",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-strong-world-1-190x266.jpg?t=1625908978"
+    },
+    {
+      "url": "/manga/chopperman",
+      "title": "Chopperman",
+      "vol_ch": "Vol: 5 - Ch: 25",
+      "image": "https://cdn.anime-planet.com/manga/primary/chopperman-1-189x300.jpg?t=1625910225"
+    },
+    {
+      "url": "/manga/chopperman-yuke-yuke-minna-no-chopper-sensei",
+      "title": "Chopperman: Yuke Yuke! Minna no Chopper-sensei",
+      "vol_ch": "Vol: 1 - Ch: 4",
+      "image": "https://cdn.anime-planet.com/manga/primary/chopperman-yuke-yuke-minna-no-chopper-sensei-1-190x297.jpg?t=1625917515"
+    },
+    {
+      "url": "/manga/one-piece-x-toriko-jisshoku-akuma-no-mi",
+      "title": "One Piece x Toriko: Jisshoku! Akuma no Mi!!",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-x-toriko-jisshoku-akuma-no-mi-1-190x276.jpg?t=1625909779"
+    },
+    {
+      "url": "/manga/one-piece-party",
+      "title": "One Piece Party",
+      "vol_ch": "Vol: 7 - Ch: 34",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-party-1-285x443.webp?t=1734210248"
+    },
+    {
+      "url": "/manga/one-piece-aces-story-light-novel",
+      "title": "One Piece Ace's Story (Light Novel)",
+      "vol_ch": "Vol: 2",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-aces-story-light-novel-1-285x427.webp?t=1749046846"
+    },
+    {
+      "url": "/manga/one-piece-novel-mugiwara-stories-light-novel",
+      "title": "One Piece Novel: Mugiwara Stories (Light Novel)",
+      "vol_ch": "Vol: 1 - Ch: 9",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-novel-mugiwara-stories-light-novel-1-186x300.jpg?t=1625929148"
+    },
+    {
+      "url": "/manga/one-piece-copy-ni-no-kobiyama-urifutatsu-nagi-no-daihihou",
+      "title": "One Piece: Copy-ni no Kobiyama - Urifutatsu Nagi no Daihihou",
+      "vol_ch": "Vol: 3 - Ch: 47",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-copy-ni-no-kobiyama-urifutatsu-nagi-no-daihihou-1-190x298.jpg?t=1625922077"
+    },
+    {
+      "url": "/manga/koisuru-one-piece",
+      "title": "Koisuru One Piece",
+      "vol_ch": "Vol: 8 - Ch: 141+",
+      "image": "https://cdn.anime-planet.com/manga/primary/koisuru-one-piece-1-285x450.jpg?t=1636218097"
+    },
+    {
+      "url": "/manga/one-piece-laws-story-light-novel",
+      "title": "One Piece: Law's Story (Light Novel)",
+      "vol_ch": "Vol: 1 - Ch: 5",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-laws-story-light-novel-1-285x399.webp?t=1762551897"
+    },
+    {
+      "url": "/manga/one-piece-roronoa-zoro-falls-into-the-sea",
+      "title": "One Piece: Roronoa Zoro Falls Into the Sea",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-roronoa-zoro-falls-into-the-sea-1-190x279.jpg?t=1625922765"
+    },
+    {
+      "url": "/manga/one-piece-gakuen",
+      "title": "One Piece Gakuen",
+      "vol_ch": "Vol: 6 - Ch: 32+",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-gakuen-1-190x300.jpg?t=1625923367"
+    },
+    {
+      "url": "/manga/one-piece-heroines-light-novel",
+      "title": "One Piece: Heroines (Light Novel)",
+      "vol_ch": "Vol: 2 - Ch: 8",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-heroines-light-novel-1-285x405.webp?t=1762553572"
+    },
+    {
+      "url": "/manga/one-piece-aces-story",
+      "title": "One Piece: Ace's Story",
+      "vol_ch": "Vol: 2 - Ch: 6",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-aces-story-1-285x427.webp?t=1700761481"
+    },
+    {
+      "url": "/manga/one-piece-1000-story-memorial",
+      "title": "One Piece 1000 Story Memorial",
+      "vol_ch": "Ch: 19",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-1000-story-memorial-1-285x399.webp?t=1687337188"
+    },
+    {
+      "url": "/manga/one-piece-naoshi-komi-covers-vivis-adventure",
+      "title": "One Piece: Naoshi Komi Covers Vivi's Adventure",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-naoshi-komi-covers-vivis-adventure-1-285x417.jpg?t=1630288255"
+    },
+    {
+      "url": "/manga/one-piece-nami-vs-kalifa",
+      "title": "One Piece: Nami vs Kalifa",
+      "vol_ch": "One Shot",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-nami-vs-kalifa-1-285x399.webp?t=1651171740"
+    },
+    {
+      "url": "/manga/one-piece-film-red-light-novel",
+      "title": "One Piece Film: Red (Light Novel)",
+      "vol_ch": "Vol: 1",
+      "image": "https://cdn.anime-planet.com/manga/primary/one-piece-film-red-light-novel-1-285x448.webp?t=1671022776"
+    }
+  ]
+}

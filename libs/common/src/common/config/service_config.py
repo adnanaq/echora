@@ -4,14 +4,31 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ServiceConfig(BaseModel):
-    """Configuration for the vector service API and runtime."""
+    """Configuration for service API and runtime settings."""
 
     # Host & Port
     vector_service_host: str = Field(
         default="0.0.0.0", description="Vector service host address"
     )
+    enrichment_service_host: str = Field(
+        default="0.0.0.0", description="Enrichment service host address"
+    )
     vector_service_port: int = Field(
         default=8002, ge=1, le=65535, description="Vector service port"
+    )
+    enrichment_service_port: int = Field(
+        default=8010, ge=1, le=65535, description="Enrichment service port"
+    )
+    enable_gpu: bool = Field(
+        default=False, description="Enable GPU usage for embedding models"
+    )
+    enrichment_default_file_path: str = Field(
+        default="data/qdrant_storage/anime-offline-database.json",
+        description="Default enrichment input JSON/JSONL file path",
+    )
+    enrichment_output_dir: str = Field(
+        default="assets/seed_data",
+        description="Directory for enrichment output artifacts",
     )
 
     # API Metadata

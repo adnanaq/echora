@@ -18,16 +18,18 @@ import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, Generic, ParamSpec, TypeVar, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from .config import get_cache_config
+from .exceptions import RedisInitializationError
+from .utils import _mask_url_credentials
 
-# Type variables for preserving function signatures
 P = ParamSpec("P")
 R = TypeVar("R")
+
 
 # --- Singleton Redis Client for @cached_result ---
 
@@ -36,16 +38,17 @@ _redis_client: Redis | None = None
 
 
 async def get_result_cache_redis_client() -> Redis:
-    """
-    Return the singleton async Redis client used for result-level caching.
+    """Return the singleton async Redis client used for result-level caching.
 
-    This function initializes the module-level Redis client once and returns the same instance on subsequent calls. Initialization is guarded by an internal async lock so that concurrent callers cannot race with client closure; callers can rely on a single shared client for the process lifetime until closed.
+    Initializes the client on first call; subsequent calls return the same
+    instance. Guarded by an async lock so concurrent callers cannot race
+    with client closure.
 
     Returns:
-        Redis: The initialized singleton Redis client for result caching.
+        The initialized singleton Redis client.
 
     Raises:
-        RuntimeError: If client initialization fails and no Redis instance could be created.
+        RedisInitializationError: If the client cannot be created.
     """
     global _redis_client
     async with _redis_lock:
@@ -55,7 +58,7 @@ async def get_result_cache_redis_client() -> Redis:
             config = get_cache_config()
             redis_url = config.redis_url or "redis://localhost:6379/0"
             logging.info(
-                f"Initializing singleton Redis client for result cache: {redis_url} "
+                f"Initializing singleton Redis client for result cache: {_mask_url_credentials(redis_url)} "
                 f"(max_connections={config.redis_max_connections})"
             )
             # Configure connection pool for multi-agent concurrency and reliability
@@ -71,15 +74,15 @@ async def get_result_cache_redis_client() -> Redis:
             )
         # After initialization, client must be non-None
         if _redis_client is None:
-            raise RuntimeError("Failed to initialize Redis client for result cache")
+            raise RedisInitializationError()
         return _redis_client
 
 
 async def close_result_cache_redis_client() -> None:
-    """
-    Close the module's singleton Redis client used for result caching.
+    """Close the singleton Redis client used for result caching.
 
-    If a client exists, acquires the module's global lock, closes the client asynchronously, and clears the singleton reference. Safe to call when no client is initialized (no-op).
+    Acquires the global lock, closes the client asynchronously, and clears
+    the singleton reference. Safe to call when no client is initialized (no-op).
     """
     global _redis_client
     async with _redis_lock:
@@ -92,51 +95,60 @@ async def close_result_cache_redis_client() -> None:
 # --- End Singleton ---
 
 
-# Type variable for generic function return type
-T = TypeVar("T")
+def _compute_schema_hash(
+    func: Callable[..., Any], dependencies: list[Callable[..., Any]] | None = None
+) -> str:
+    """Compute a 16-character hex hash of a function's source code.
 
-
-def _compute_schema_hash(func: Callable[..., Any]) -> str:
-    """
-    Compute a hash of the function's source code.
-
-    This hash changes whenever the function's implementation changes,
-    automatically invalidating cached results when code is modified.
+    When the function's implementation changes, the hash changes, automatically
+    invalidating cached results. If ``dependencies`` are provided, their source
+    is appended before hashing so changes to any helper also invalidate the cache.
+    For callables whose source cannot be retrieved (built-ins, C extensions,
+    lambdas), ``__name__`` is used as a stable fallback.
 
     Args:
-        func: Function to hash
+        func: Function to hash.
+        dependencies: Callables whose source should also be included in the hash.
 
     Returns:
-        16-character hexadecimal hash of the function's source code (64 bits)
+        A 16-character hexadecimal hash string (64-bit SHA-256 prefix).
     """
     try:
-        # Get the source code of the function
         source = inspect.getsource(func)
-        # Generate SHA-256 hash and take first 16 characters for 64-bit collision resistance
+        if dependencies:
+            for dep in dependencies:
+                try:
+                    source += inspect.getsource(dep)
+                except (OSError, TypeError):
+                    source += getattr(dep, "__name__", repr(dep))
         return hashlib.sha256(source.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         # If we can't get source (built-in, lambda, etc.), use function name
-        return hashlib.sha256(func.__name__.encode()).hexdigest()[:16]  # ty: ignore[unresolved-attribute]
+        return hashlib.sha256(
+            getattr(func, "__name__", repr(func)).encode()
+        ).hexdigest()[:16]
 
 
 def _generate_cache_key(
     prefix: str, schema_hash: str, *args: Any, **kwargs: Any
 ) -> str:
-    """
-    Create a stable Redis cache key for a function call that includes the provided prefix and schema hash.
+    """Create a stable Redis cache key for a function call.
 
-    Serializes positional and keyword arguments deterministically (keyword args sorted by key). Basic types (str, int, float, bool, None) are converted to strings; other values are JSON-serialized with sort_keys=True when possible and fall back to repr() on failure. If the assembled key exceeds the configured max cache key length, the function returns a hashed form to enforce the length limit.
+    Serializes arguments deterministically: primitives (str, int, float, bool,
+    None) as strings; complex types as JSON with sort_keys, falling back to
+    repr(). Keyword args are sorted by key. If the assembled key exceeds the
+    configured max length it is replaced with a SHA-256 hash.
 
-    Parameters:
-        prefix (str): Cache key prefix, typically the function name.
-        schema_hash (str): Short hash representing the function's source/schema.
+    Args:
+        prefix: Cache key prefix, typically the function name.
+        schema_hash: Short hash representing the function's source/schema.
         *args: Positional arguments to include in the key.
         **kwargs: Keyword arguments to include in the key.
 
     Returns:
-        str: A Redis key in one of two forms:
-             - "result_cache:{prefix}:{schema_hash}:{...parts...}" when the assembled key is within length limits.
-             - "result_cache:{prefix}:{schema_hash}:{sha256_hex}" when the assembled key exceeds the configured max length.
+        A Redis key of the form ``result_cache:{prefix}:{schema_hash}:{parts}``
+        or ``result_cache:{prefix}:{schema_hash}:{sha256_hex}`` when the key
+        exceeds the configured max length.
     """
     # Get max key length from config
     config = get_cache_config()
@@ -179,110 +191,274 @@ def _generate_cache_key(
     return f"result_cache:{key_string}"
 
 
+def _normalize_batch_args(
+    args_list: list[tuple[Any, ...]] | list[Any],
+    kwargs_list: list[dict[str, Any]] | None,
+) -> tuple[list[tuple[Any, ...]], list[dict[str, Any]]]:
+    """Normalize a batch args list and default kwargs_list.
+
+    Wraps bare non-tuple items in a single-element tuple so every entry is a
+    ``tuple[Any, ...]``. Defaults ``kwargs_list`` to a list of empty dicts when
+    None is passed.
+
+    Args:
+        args_list: Positional-args tuples, or bare values (auto-wrapped).
+        kwargs_list: Per-call keyword-arg dicts aligned to ``args_list``, or
+            None to use empty dicts for all calls.
+
+    Returns:
+        A ``(normalized_args, kwargs_list)`` pair ready for cache-key generation.
+
+    Raises:
+        ValueError: If ``kwargs_list`` is provided but its length differs from
+            ``args_list``.
+    """
+    normalized = [item if isinstance(item, tuple) else (item,) for item in args_list]
+    if kwargs_list is None:
+        return normalized, [{} for _ in normalized]
+    if len(kwargs_list) != len(normalized):
+        raise ValueError("kwargs_list length must match args_list length")
+    return normalized, kwargs_list
+
+
+class _CachedFunction(Generic[P, R]):
+    """Async callable produced by ``@cached_result`` with batch cache helpers.
+
+    Wraps the original function and exposes ``cache_batch_get`` / ``cache_batch_set``
+    as typed methods so callers do not need dynamic attribute access.
+    """
+
+    def __init__(
+        self,
+        func: Callable[P, Awaitable[R]],
+        schema_hash: str,
+        prefix: str,
+        ttl: int | None,
+    ) -> None:
+        """Initialise the cached wrapper.
+
+        Args:
+            func: The async function being wrapped.
+            schema_hash: Pre-computed source hash for cache-key generation.
+            prefix: Cache-key prefix (function name or custom override).
+            ttl: Time-to-live in seconds; None defaults to 86400 (24 h).
+        """
+        self._func = func
+        self._func_name: str = getattr(func, "__name__", repr(func))
+        self._schema_hash = schema_hash
+        self._prefix = prefix
+        self._ttl = ttl
+        functools.update_wrapper(self, func)
+
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """Return the cached result, or call the function and cache its return value.
+
+        On a cache hit, returns the deserialized value without calling the
+        original function. On a miss, executes the function once, stores the
+        non-None result with SETEX, and returns it. Redis and JSON errors are
+        best-effort and fall back to calling the original function. ``None``
+        results are returned but not cached.
+
+        Returns:
+            The cached or freshly computed result of the wrapped function.
+        """
+        config = get_cache_config()
+
+        if not config.cache_enabled or config.storage_type != "redis":
+            return await self._func(*args, **kwargs)
+
+        cache_key = _generate_cache_key(
+            self._prefix, self._schema_hash, *args, **kwargs
+        )
+
+        try:
+            redis_client = await get_result_cache_redis_client()
+            cached_data = await redis_client.get(cache_key)
+        except RedisError as e:
+            logging.warning(f"Cache read error in {self._func_name}: {e}")
+            return await self._func(*args, **kwargs)
+
+        if cached_data:
+            try:
+                return cast(R, json.loads(cached_data))
+            except json.JSONDecodeError as e:
+                # Corrupted cache entry — treat as miss and fall through
+                logging.warning(
+                    f"Cache decode error in {self._func_name} for key {cache_key}: {e}"
+                )
+
+        result = await self._func(*args, **kwargs)
+
+        if result is None:
+            return result
+
+        try:
+            # Best-effort write; failures must not re-invoke the function
+            serialized = json.dumps(result, ensure_ascii=False)
+            cache_ttl = self._ttl if self._ttl is not None else 86400
+            await redis_client.setex(cache_key, cache_ttl, serialized)
+        except (RedisError, TypeError) as e:
+            # RedisError: Redis connection/operation failures
+            # TypeError: JSON serialization fails for non-serializable objects
+            logging.warning(f"Cache write error in {self._func_name}: {e}")
+
+        return result
+
+    async def cache_batch_get(
+        self,
+        args_list: list[tuple[Any, ...]] | list[Any],
+        kwargs_list: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[R | None], list[int]]:
+        """Fetch multiple cache entries in a single Redis MGET.
+
+        Args:
+            args_list: Per-call positional-args tuples (or bare values).
+            kwargs_list: Per-call keyword-arg dicts aligned to ``args_list``.
+                Defaults to empty dicts when None.
+
+        Returns:
+            A ``(cached_values, missing_indices)`` tuple where ``cached_values``
+            is aligned to ``args_list`` (None for each miss or decode error)
+            and ``missing_indices`` lists the positions that need a fresh crawl.
+        """
+        if not args_list:
+            return [], []
+
+        normalized_args, kwargs_list = _normalize_batch_args(args_list, kwargs_list)
+
+        config = get_cache_config()
+        if not config.cache_enabled or config.storage_type != "redis":
+            return [None] * len(normalized_args), list(range(len(normalized_args)))
+
+        keys = [
+            _generate_cache_key(self._prefix, self._schema_hash, *args, **kw)
+            for args, kw in zip(normalized_args, kwargs_list, strict=False)
+        ]
+
+        try:
+            redis_client = await get_result_cache_redis_client()
+            cached_list = await redis_client.mget(keys)
+        except RedisError as e:
+            logging.warning(f"Cache batch read error in {self._func_name}: {e}")
+            return [None] * len(normalized_args), list(range(len(normalized_args)))
+
+        if not cached_list:
+            return [None] * len(normalized_args), list(range(len(normalized_args)))
+
+        results: list[R | None] = []
+        missing: list[int] = []
+        for idx, cached_data in enumerate(cached_list):
+            if cached_data:
+                try:
+                    results.append(cast(R, json.loads(cached_data)))
+                    continue
+                except json.JSONDecodeError as e:
+                    logging.warning(
+                        f"Cache decode error in {self._func_name} for key {keys[idx]}: {e}"
+                    )
+            results.append(None)
+            missing.append(idx)
+
+        return results, missing
+
+    async def cache_batch_set(
+        self,
+        args_list: list[tuple[Any, ...]] | list[Any],
+        values: list[R | None],
+        kwargs_list: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Write multiple cache entries in a single Redis pipeline.
+
+        None values in ``values`` are silently skipped. All non-None entries
+        are queued as SETEX commands and flushed in one round-trip.
+        Redis and serialization errors are logged and swallowed.
+
+        Args:
+            args_list: Per-call positional-args tuples (or bare values).
+            values: Values aligned to ``args_list``. None entries are skipped.
+            kwargs_list: Per-call keyword-arg dicts aligned to ``args_list``.
+                Defaults to empty dicts when None.
+
+        Raises:
+            ValueError: If ``values`` or ``kwargs_list`` length differs from
+                ``args_list``.
+        """
+        if not args_list:
+            return
+
+        normalized_args, kwargs_list = _normalize_batch_args(args_list, kwargs_list)
+
+        if len(values) != len(normalized_args):
+            raise ValueError("values length must match args_list length")
+
+        config = get_cache_config()
+        if not config.cache_enabled or config.storage_type != "redis":
+            return
+
+        cache_ttl = self._ttl if self._ttl is not None else 86400
+
+        try:
+            redis_client = await get_result_cache_redis_client()
+            async with redis_client.pipeline(transaction=False) as pipe:
+                for args, kw, value in zip(
+                    normalized_args, kwargs_list, values, strict=False
+                ):
+                    if value is None:
+                        continue
+                    try:
+                        cache_key = _generate_cache_key(
+                            self._prefix, self._schema_hash, *args, **kw
+                        )
+                        serialized = json.dumps(value, ensure_ascii=False)
+                        pipe.setex(cache_key, cache_ttl, serialized)
+                    except TypeError as e:
+                        logging.warning(f"Cache write error in {self._func_name}: {e}")
+                await pipe.execute()
+        except RedisError as e:
+            logging.warning(f"Cache batch write error in {self._func_name}: {e}")
+
+
 def cached_result(
     ttl: int | None = None,
     key_prefix: str | None = None,
-) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    """
-    Decorator to cache async function results in Redis with automatic schema invalidation.
+    dependencies: list[Callable[..., Any]] | None = None,
+) -> Callable[[Callable[P, Awaitable[R]]], _CachedFunction[P, R]]:
+    """Decorator to cache async function results in Redis with automatic schema invalidation.
 
-    The cache key includes a hash of the function's source code. When you modify
-    the function (change CSS selectors, extraction logic, etc.), the hash changes
-    and old cache entries are automatically invalidated.
+    The cache key includes a hash of the function's source code so that modifying
+    the function (e.g. changing CSS selectors or extraction logic) automatically
+    invalidates stale entries. The decorated function also gains ``cache_batch_get``
+    and ``cache_batch_set`` helpers for bulk cache operations.
 
-    Usage:
+    Example:
         @cached_result(ttl=86400, key_prefix="animeplanet_anime")
-        async def fetch_anime(slug: str) -> Optional[Dict[str, Any]]:
-            # Expensive crawler operation
-            return data
+        async def fetch_anime(slug: str) -> dict[str, Any] | None:
+            ...  # expensive crawler operation
 
     Args:
-        ttl: Time-to-live in seconds (None = use fixed 24h default, independent of CacheConfig)
-        key_prefix: Optional custom key prefix (default: function name)
+        ttl: Time-to-live in seconds. Defaults to 86400 (24 h), independent of
+            CacheConfig — result caching serves a different purpose than HTTP caching.
+        key_prefix: Cache key prefix. Defaults to the decorated function's name.
+        dependencies: Additional callables whose source is included in the schema
+            hash. Any change to a listed callable invalidates the cache.
 
     Returns:
-        Decorated function with caching
-
-    Note:
-        The default TTL is a fixed 24 hours (86400 seconds), independent of CacheConfig.
-        This is intentional as result caching serves a different purpose than HTTP caching.
+        A decorator that wraps the async function with Redis caching.
     """
 
-    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        # Compute schema hash once when decorator is applied
-        """
-        Wraps an async function to cache its return value in Redis using a schema-hash-based key.
+    def decorator(func: Callable[P, Awaitable[R]]) -> _CachedFunction[P, R]:
+        """Wrap an async function, returning a ``_CachedFunction`` with caching and batch helpers.
 
-        The returned wrapper will return a cached JSON-deserialized value when available; on a cache miss it will call the original function, store the JSON-serializable result in Redis, and return it. Caching is skipped and the original function is invoked if caching is disabled or Redis is not configured; Redis read/write failures are treated as best-effort and fall back to calling the original function. The wrapper never caches `None`. Cache keys include a hash of the wrapped function's source to invalidate entries when the function implementation changes. When `ttl` is not provided, a default TTL of 86400 seconds (24 hours) is used.
-
-        Parameters:
-            func (Callable): The async function to wrap.
+        Args:
+            func: The async function to wrap.
 
         Returns:
-            Callable: An async wrapper that returns the cached or newly computed result.
+            A ``_CachedFunction`` instance preserving the original function's
+            signature, docstring, and ``__wrapped__`` attribute.
         """
-        schema_hash = _compute_schema_hash(func)
-
-        @functools.wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            # Get cache config
-            """
-            Cache and return the wrapped function's result in Redis using a schema-based key.
-
-            Attempts to read a JSON-serialized cached value keyed by a prefix and a hash of the wrapped function's source; on cache hit the deserialized value is returned. On cache miss the wrapped function is executed exactly once, its non-None result is JSON-serialized and stored in Redis with the specified TTL (default 86400 seconds). Cache read/write errors or JSON decode/encode failures are treated as best-effort and do not change the function's behavior. `None` results are returned but not cached.
-
-            Returns:
-                The wrapped function's result; a cached value when available, otherwise the freshly computed result.
-            """
-            config = get_cache_config()
-
-            # Skip caching if disabled
-            if not config.enabled or config.storage_type != "redis":
-                return await func(*args, **kwargs)
-
-            # Generate cache key with schema hash
-            prefix = key_prefix or func.__name__  # ty: ignore[unresolved-attribute]
-            cache_key = _generate_cache_key(prefix, schema_hash, *args, **kwargs)
-
-            try:
-                # Get singleton Redis client and attempt cache read
-                redis_client = await get_result_cache_redis_client()
-                cached_data = await redis_client.get(cache_key)
-            except RedisError as e:
-                # On cache-read errors, fall back to direct call
-                logging.warning(f"Cache read error in {func.__name__}: {e}")  # ty: ignore[unresolved-attribute]
-                return await func(*args, **kwargs)
-
-            if cached_data:
-                try:
-                    # Deserialize cached data
-                    return cast(R, json.loads(cached_data))
-                except json.JSONDecodeError as e:
-                    # Corrupted cache entry - treat as cache miss
-                    logging.warning(
-                        f"Cache decode error in {func.__name__} for key {cache_key}: {e}"  # ty: ignore[unresolved-attribute]
-                    )
-                    # Fall through to execute function (cache miss)
-
-            # Cache miss - execute function exactly once
-            result = await func(*args, **kwargs)
-
-            if result is None:
-                return result
-
-            try:
-                # Best-effort cache write; failures should not re-call func
-                serialized = json.dumps(result, ensure_ascii=False)
-                # Fixed 24h default TTL (independent of CacheConfig, which is for HTTP caching)
-                cache_ttl = ttl if ttl is not None else 86400
-                await redis_client.setex(cache_key, cache_ttl, serialized)
-            except (RedisError, TypeError) as e:
-                # RedisError: Redis connection/operation failures
-                # TypeError: JSON serialization fails for non-serializable objects
-                logging.warning(f"Cache write error in {func.__name__}: {e}")  # ty: ignore[unresolved-attribute]
-
-            return result
-
-        return wrapper
+        # Schema hash computed once at decoration time; changes when source changes.
+        schema_hash = _compute_schema_hash(func, dependencies)
+        prefix = key_prefix or getattr(func, "__name__", repr(func))
+        return _CachedFunction(func, schema_hash, prefix, ttl)
 
     return decorator

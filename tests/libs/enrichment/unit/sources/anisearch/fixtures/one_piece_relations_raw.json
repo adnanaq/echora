@@ -1,0 +1,654 @@
+{
+  "anime_relations": [
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Heroines",
+      "url": "anime/20817,one-piece-heroines",
+      "details": "TV-Series, 12 (2026)",
+      "rating": "0.00 Not rated",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20817_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Heroines</div>"
+    },
+    {
+      "relation_type": "Other",
+      "title": "Chopper’s",
+      "url": "anime/21128,choppers",
+      "details": "TV-Series, 12 (2026)",
+      "rating": "4.00 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/21/21128_400.webp\" alt=\"\"><div class=\"f12\">Chopper’s</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Dr. Chopper’s Adventure Checkup - The Last Records That a Genius Left Behind",
+      "url": "anime/21035,one-piece-dr-choppers-adventure-checkup-the-last-records-that-a-genius-left-behind",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "3.00 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/21/21035_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Dr. Chopper’s Adventure Checkup - The Last Records That a Genius Left Behind</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Dr. Chopper’s Adventure Checkup - Traitors’ Masquerade",
+      "url": "anime/20956,one-piece-dr-choppers-adventure-checkup-traitors-masquerade",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "2.88 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20956_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Dr. Chopper’s Adventure Checkup - Traitors’ Masquerade</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Dr. Chopper’s Adventure Checkup - The Proud Dream of the Giants",
+      "url": "anime/20866,one-piece-dr-choppers-adventure-checkup-the-proud-dream-of-the-giants",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "3.12 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20866_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Dr. Chopper’s Adventure Checkup - The Proud Dream of the Giants</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Dr. Chopper’s Adventure Checkup - Good Friends at a Crossroad",
+      "url": "anime/20709,one-piece-dr-choppers-adventure-checkup-good-friends-at-a-crossroad",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "2.88 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20709_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Dr. Chopper’s Adventure Checkup - Good Friends at a Crossroad</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Dr. Chopper’s Adventure Checkup - The Ballad of a Father and Daughter",
+      "url": "anime/20613,one-piece-dr-choppers-adventure-checkup-the-ballad-of-a-father-and-daughter",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "3.22 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20613_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Dr. Chopper’s Adventure Checkup - The Ballad of a Father and Daughter</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Recap - Egghead Sosyuhen Special",
+      "url": "anime/20391,one-piece-recap-egghead-sosyuhen-special",
+      "details": "TV-Special, 1 (2025)",
+      "rating": "3.58 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20391_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Recap - Egghead Sosyuhen Special</div>"
+    },
+    {
+      "relation_type": "?",
+      "title": "Koisuru One Piece",
+      "url": "anime/20342,koisuru-one-piece",
+      "details": "Web, 25 (2025)",
+      "rating": "3.07 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20342_400.webp\" alt=\"\"><div class=\"f12\">Koisuru One Piece</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Luffy, Law",
+      "url": "anime/20096,one-piece-luffy-law",
+      "details": "Other, 1 (2025)",
+      "rating": "3.27 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/20/20096_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Luffy, Law</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece Log: Fish-Man Island Saga",
+      "url": "anime/19699,one-piece-log-fish-man-island-saga",
+      "details": "TV-Series, 21 (2024)",
+      "rating": "3.67 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19699_400.webp\" alt=\"\"><div class=\"f12\">One Piece Log: Fish-Man Island Saga</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece Fan Letter",
+      "url": "anime/19696,one-piece-fan-letter",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "4.14 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19696_400.webp\" alt=\"\"><div class=\"f12\">One Piece Fan Letter</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Unwavering Justice! The Navy’s Proud Log!",
+      "url": "anime/19724,one-piece-unwavering-justice-the-navys-proud-log",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "2.90 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19724_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Unwavering Justice! The Navy’s Proud Log!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: The Log of the Turbulent Revolution! The Revolutionary Army Maneuvers in Secret!",
+      "url": "anime/19723,one-piece-the-log-of-the-turbulent-revolution-the-revolutionary-army-maneuvers-in-secret",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "2.89 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19723_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Log of the Turbulent Revolution! The Revolutionary Army Maneuvers in Secret!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Making History! The Turbulent Old and New Four Emperors!",
+      "url": "anime/19430,one-piece-making-history-the-turbulent-old-and-new-four-emperors",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "3.31 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19430_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Making History! The Turbulent Old and New Four Emperors!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: The Log of the Rivalry! The Straw Hats vs. Cipher Pol",
+      "url": "anime/19229,one-piece-the-log-of-the-rivalry-the-straw-hats-vs-cipher-pol",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "3.03 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19229_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Log of the Rivalry! The Straw Hats vs. Cipher Pol</div>"
+    },
+    {
+      "relation_type": "?",
+      "title": "One Piece × Onkun Suko! Kono Boushi o Omae ni Azukeru",
+      "url": "anime/19271,one-piece-x-onkun-suko-kono-boushi-o-omae-ni-azukeru",
+      "details": "Web, 1 (2024)",
+      "rating": "1.83 Weak",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19271_400.webp\" alt=\"\"><div class=\"f12\">One Piece × Onkun Suko! Kono Boushi o Omae ni Azukeru</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: A Project to Fully Enjoy! ‘Surgeon of Death’ Trafalgar Law",
+      "url": "anime/19059,one-piece-a-project-to-fully-enjoy-surgeon-of-death-trafalgar-law",
+      "details": "TV-Special, 1 (2024)",
+      "rating": "2.97 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/19/19059_400.webp\" alt=\"\"><div class=\"f12\">One Piece: A Project to Fully Enjoy! ‘Surgeon of Death’ Trafalgar Law</div>"
+    },
+    {
+      "relation_type": "Shared Universe",
+      "title": "Monsters: 103 Mercies Dragon Damnation",
+      "url": "anime/18567,monsters-103-mercies-dragon-damnation",
+      "details": "Web, 1 (2024)",
+      "rating": "3.71 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18567_400.webp\" alt=\"\"><div class=\"f12\">Monsters: 103 Mercies Dragon Damnation</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: A Very Special Feature! Momonosuke’s Road to Becoming a Great Shogun",
+      "url": "anime/18942,one-piece-a-very-special-feature-momonosukes-road-to-becoming-a-great-shogun",
+      "details": "TV-Special, 1 (2023)",
+      "rating": "2.94 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18942_400.webp\" alt=\"\"><div class=\"f12\">One Piece: A Very Special Feature! Momonosuke’s Road to Becoming a Great Shogun</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Recapping Fierce Fights! The Countercharge Alliance vs. Big Mom",
+      "url": "anime/18589,one-piece-recapping-fierce-fights-the-countercharge-alliance-vs-big-mom",
+      "details": "TV-Special, 1 (2023)",
+      "rating": "3.14 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18589_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Recapping Fierce Fights! The Countercharge Alliance vs. Big Mom</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Recapping Fierce Fights! Zoro vs. A Lead Performer!",
+      "url": "anime/18623,one-piece-recapping-fierce-fights-zoro-vs-a-lead-performer",
+      "details": "TV-Special, 1 (2023)",
+      "rating": "3.15 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18623_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Recapping Fierce Fights! Zoro vs. A Lead Performer!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Recapping Fierce Fights! Straw Hats vs. Tobi Roppo",
+      "url": "anime/18101,one-piece-recapping-fierce-fights-straw-hats-vs-tobi-roppo",
+      "details": "TV-Special, 1 (2022)",
+      "rating": "3.10 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18101_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Recapping Fierce Fights! Straw Hats vs. Tobi Roppo</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: A Comprehensive Anatomy! Fierce Fight! The Five from the New Generation",
+      "url": "anime/18615,one-piece-a-comprehensive-anatomy-fierce-fight-the-five-from-the-new-generation",
+      "details": "TV-Special, 1 (2022)",
+      "rating": "3.14 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18615_400.webp\" alt=\"\"><div class=\"f12\">One Piece: A Comprehensive Anatomy! Fierce Fight! The Five from the New Generation</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: The Captain’s Log of the Legend! Red-Haired Shanks!",
+      "url": "anime/17650,one-piece-the-captains-log-of-the-legend-red-haired-shanks",
+      "details": "TV-Special, 1 (2022)",
+      "rating": "3.18 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/17/17650_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Captain’s Log of the Legend! Red-Haired Shanks!</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece Film: Red",
+      "url": "anime/16819,one-piece-film-red",
+      "details": "Movie, 1 (2022)",
+      "rating": "3.81 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/16/16819_400.webp\" alt=\"\"><div class=\"f12\">One Piece Film: Red</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: A Comprehensive Anatomy! The Legend of Kozuki Oden!",
+      "url": "anime/17460,one-piece-a-comprehensive-anatomy-the-legend-of-kozuki-oden",
+      "details": "TV-Special, 1 (2022)",
+      "rating": "2.91 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/17/17460_400.webp\" alt=\"\"><div class=\"f12\">One Piece: A Comprehensive Anatomy! The Legend of Kozuki Oden!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Special Episode - Barto’s Secret Room",
+      "url": "anime/17199,one-piece-special-episode-bartos-secret-room",
+      "details": "TV-Special, 4 (2021)",
+      "rating": "2.81 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/17/17199_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Special Episode - Barto’s Secret Room</div>"
+    },
+    {
+      "relation_type": "Character",
+      "title": "One Piece: Annecy Festival 60th Anniversary",
+      "url": "anime/21106,one-piece-annecy-festival-60th-anniversary",
+      "details": "CM, 1 (2021)",
+      "rating": "2.50 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/21/21106_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Annecy Festival 60th Anniversary</div>"
+    },
+    {
+      "relation_type": "Other",
+      "title": "One Piece PSA",
+      "url": "anime/15149,one-piece-psa",
+      "details": "TV-Special, 1 (2020)",
+      "rating": "2.57 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15149_400.webp\" alt=\"\"><div class=\"f12\">One Piece PSA</div>"
+    },
+    {
+      "relation_type": "Character",
+      "title": "A-ra-shi: Reborn",
+      "url": "anime/14982,a-ra-shi-reborn",
+      "details": "Music Video, 1 (2020)",
+      "rating": "2.93 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/14/14982_400.webp\" alt=\"\"><div class=\"f12\">A-ra-shi: Reborn</div>"
+    },
+    {
+      "relation_type": "Alternative Environment",
+      "title": "Kinen Satsuei",
+      "url": "anime/15205,kinen-satsuei",
+      "details": "Music Video, 1 (2019)",
+      "rating": "2.97 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15205_400.webp\" alt=\"\"><div class=\"f12\">Kinen Satsuei</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Stampede",
+      "url": "anime/13833,one-piece-stampede",
+      "details": "Movie, 1 (2019)",
+      "rating": "4.05 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/13/13833_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Stampede</div>"
+    },
+    {
+      "relation_type": "Character",
+      "title": "Rakuchin Osouji Ou ni, Ore wa Naru!",
+      "url": "anime/14571,rakuchin-osouji-ou-ni-ore-wa-naru",
+      "details": "CM, 1 (2019)",
+      "rating": "2.69 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/14/14571_400.webp\" alt=\"\"><div class=\"f12\">Rakuchin Osouji Ou ni, Ore wa Naru!</div>"
+    },
+    {
+      "relation_type": "Alternative Environment",
+      "title": "Hungry Days: One Piece",
+      "url": "anime/14420,hungry-days-one-piece",
+      "details": "CM, 4 (2019)",
+      "rating": "3.28 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/14/14420_400.webp\" alt=\"\"><div class=\"f12\">Hungry Days: One Piece</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Episode of Skypiea",
+      "url": "anime/13630,one-piece-episode-of-skypiea",
+      "details": "TV-Special, 1 (2018)",
+      "rating": "3.53 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/13/13630_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Skypiea</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Episode of East Blue",
+      "url": "anime/12595,one-piece-episode-of-east-blue",
+      "details": "TV-Special, 1 (2017)",
+      "rating": "3.70 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/12/12595_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of East Blue</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "Tokyo One Piece Tower: Tongarijima no Daihihou",
+      "url": "anime/15516,tokyo-one-piece-tower-tongarijima-no-daihihou",
+      "details": "Other, 1 (2016)",
+      "rating": "3.62 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15516_400.webp\" alt=\"\"><div class=\"f12\">Tokyo One Piece Tower: Tongarijima no Daihihou</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece Film: Gold",
+      "url": "anime/10975,one-piece-film-gold",
+      "details": "Movie, 1 (2016)",
+      "rating": "3.94 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/10/10975_400.webp\" alt=\"\"><div class=\"f12\">One Piece Film: Gold</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Characters Log",
+      "url": "anime/15379,one-piece-characters-log",
+      "details": "TV-Special, 9 (2016)",
+      "rating": "3.40 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15379_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Characters Log</div>"
+    },
+    {
+      "relation_type": "Character",
+      "title": "Xfit ONEPIECE",
+      "url": "anime/11145,xfit-onepiece",
+      "details": "CM, 1 (2016)",
+      "rating": "1.81 Weak",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/11/11145_400.webp\" alt=\"\"><div class=\"f12\">Xfit ONEPIECE</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Adventure of Nebulandia",
+      "url": "anime/11009,one-piece-adventure-of-nebulandia",
+      "details": "TV-Special, 1 (2015)",
+      "rating": "3.51 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/11/11009_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Adventure of Nebulandia</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Long Ring Long Land-hen - Ichiya Kagiri no Tokubetsu Henshuu-ban",
+      "url": "anime/12168,one-piece-long-ring-long-land-hen-ichiya-kagiri-no-tokubetsu-henshuu-ban",
+      "details": "TV-Special, 1 (2015)",
+      "rating": "3.50 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/12/12168_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Long Ring Long Land-hen - Ichiya Kagiri no Tokubetsu Henshuu-ban</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Episode of Sabo - The Three Brothers’ Bond, the Miraculous Reunion and the Inherited Will",
+      "url": "anime/10689,one-piece-episode-of-sabo-the-three-brothers-bond-the-miraculous-reunion-and-the-inherited-will",
+      "details": "TV-Special, 1 (2015)",
+      "rating": "3.70 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/10/10689_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Sabo - The Three Brothers’ Bond, the Miraculous Reunion and the Inherited Will</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece 3D2Y: Overcoming Ace’s Death! Luffy’s Pledge to His Friends",
+      "url": "anime/9793,one-piece-3d2y-overcoming-aces-death-luffys-pledge-to-his-friends",
+      "details": "TV-Special, 1 (2014)",
+      "rating": "3.80 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/9/9793_400.webp\" alt=\"\"><div class=\"f12\">One Piece 3D2Y: Overcoming Ace’s Death! Luffy’s Pledge to His Friends</div>"
+    },
+    {
+      "relation_type": "Other",
+      "title": "One Piece: Cry Heart",
+      "url": "anime/10931,one-piece-cry-heart",
+      "details": "Web, 3 (2014)",
+      "rating": "2.43 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/10/10931_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Cry Heart</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+      "url": "anime/8884,one-piece-episode-of-merry-mou-hitori-no-nakama-no-monogatari",
+      "details": "TV-Special, 1 (2013)",
+      "rating": "3.93 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/8/8884_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari</div>"
+    },
+    {
+      "relation_type": "Other",
+      "title": "One Piece Planetarium",
+      "url": "anime/18613,one-piece-planetarium",
+      "details": "Other, 1 (2013)",
+      "rating": "2.00 Weak",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18613_400.webp\" alt=\"\"><div class=\"f12\">One Piece Planetarium</div>"
+    },
+    {
+      "relation_type": "Crossover",
+      "title": "Dream 9 Toriko & One Piece & Dragon Ball Z Chou Collaboration Special!!",
+      "url": "anime/8592,dream-9-toriko-one-piece-dragon-ball-z-chou-collaboration-special",
+      "details": "TV-Special, 1 (2013)",
+      "rating": "3.11 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/8/8592_400.webp\" alt=\"\"><div class=\"f12\">Dream 9 Toriko & One Piece & Dragon Ball Z Chou Collaboration Special!!</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Romance Dawn",
+      "url": "anime/8279,one-piece-romance-dawn",
+      "details": "Other, 1 (2012)",
+      "rating": "3.40 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/8/8279_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Romance Dawn</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece Film: Z",
+      "url": "anime/7573,one-piece-film-z",
+      "details": "Movie, 1 (2012)",
+      "rating": "3.98 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/7/7573_400.webp\" alt=\"\"><div class=\"f12\">One Piece Film: Z</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+      "url": "anime/8028,one-piece-episode-of-nami-koukaishi-no-namida-to-nakama-no-kizuna",
+      "details": "TV-Special, 1 (2012)",
+      "rating": "3.91 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/8/8028_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna</div>"
+    },
+    {
+      "relation_type": "Crossover",
+      "title": "Toriko × One Piece Collabo Special 2",
+      "url": "anime/7778,toriko-x-one-piece-collabo-special-2",
+      "details": "TV-Special, 2 (2012)",
+      "rating": "2.77 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/7/7778_400.webp\" alt=\"\"><div class=\"f12\">Toriko × One Piece Collabo Special 2</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece 3D: Gekisou! Trap Coaster",
+      "url": "anime/7388,one-piece-3d-gekisou-trap-coaster",
+      "details": "Movie, 1 (2011)",
+      "rating": "3.15 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/7/7388_400.webp\" alt=\"\"><div class=\"f12\">One Piece 3D: Gekisou! Trap Coaster</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi Tokubetsu-hen",
+      "url": "anime/14746,one-piece-episode-of-alabasta-sabaku-no-oujo-to-kaizoku-tachi-tokubetsu-hen",
+      "details": "TV-Special, 1 (2011)",
+      "rating": "3.52 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/14/14746_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi Tokubetsu-hen</div>"
+    },
+    {
+      "relation_type": "Crossover",
+      "title": "Toriko × One Piece Collabo Special",
+      "url": "anime/6995,toriko-x-one-piece-collabo-special",
+      "details": "TV-Special, 2 (2011)",
+      "rating": "2.86 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/6/6995_400.webp\" alt=\"\"><div class=\"f12\">Toriko × One Piece Collabo Special</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Mugiwara Chase",
+      "url": "anime/6545,one-piece-mugiwara-chase",
+      "details": "Movie, 1 (2011)",
+      "rating": "2.97 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/6/6545_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Mugiwara Chase</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece Recap",
+      "url": "anime/9785,one-piece-recap",
+      "details": "OVA, 1 (2010)",
+      "rating": "3.06 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/9/9785_400.webp\" alt=\"\"><div class=\"f12\">One Piece Recap</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece Film: Strong World",
+      "url": "anime/5400,one-piece-film-strong-world",
+      "details": "Movie, 1 (2009)",
+      "rating": "4.00 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/5/5400_400.webp\" alt=\"\"><div class=\"f12\">One Piece Film: Strong World</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Romance Dawn Story",
+      "url": "anime/5131,one-piece-romance-dawn-story",
+      "details": "Web, 1 (2008)",
+      "rating": "3.28 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/5/5131_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Romance Dawn Story</div>"
+    },
+    {
+      "relation_type": "Alternative Version",
+      "title": "One Piece: Episode of Chopper Plus - The Miracle Winter Cherry Blossom",
+      "url": "anime/4495,one-piece-episode-of-chopper-plus-the-miracle-winter-cherry-blossom",
+      "details": "Movie, 1 (2008)",
+      "rating": "3.24 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/4/4495_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Episode of Chopper Plus - The Miracle Winter Cherry Blossom</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece: The Desert Princess and the Pirates - Adventures in Alabasta",
+      "url": "anime/3965,one-piece-the-desert-princess-and-the-pirates-adventures-in-alabasta",
+      "details": "Movie, 1 (2007)",
+      "rating": "2.75 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3965_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Desert Princess and the Pirates - Adventures in Alabasta</div>"
+    },
+    {
+      "relation_type": "Other",
+      "title": "One Piece: Mugiwara Gekijou",
+      "url": "anime/4158,one-piece-mugiwara-gekijou",
+      "details": "TV-Special, 5 (2006)",
+      "rating": "2.83 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/4/4158_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Mugiwara Gekijou</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Mega Mecha Soldier of Karakuri Castle",
+      "url": "anime/3359,one-piece-mega-mecha-soldier-of-karakuri-castle",
+      "details": "Movie, 1 (2006)",
+      "rating": "3.14 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3359_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Mega Mecha Soldier of Karakuri Castle</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "One Piece Otoshidama Special - Tokubetsu Hou Mugiwara Kaizoku-dan no Himitsu!",
+      "url": "anime/15495,one-piece-otoshidama-special-tokubetsu-hou-mugiwara-kaizoku-dan-no-himitsu",
+      "details": "TV-Special, 1 (2006)",
+      "rating": "3.29 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15495_400.webp\" alt=\"\"><div class=\"f12\">One Piece Otoshidama Special - Tokubetsu Hou Mugiwara Kaizoku-dan no Himitsu!</div>"
+    },
+    {
+      "relation_type": "Alternative Environment",
+      "title": "One Piece: Nenmatsu Tokubetsu Kikaku! Mugiwara no Luffy Oyabun Torimonochou",
+      "url": "anime/3941,one-piece-nenmatsu-tokubetsu-kikaku-mugiwara-no-luffy-oyabun-torimonochou",
+      "details": "TV-Special, 1 (2005)",
+      "rating": "3.00 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3941_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Nenmatsu Tokubetsu Kikaku! Mugiwara no Luffy Oyabun Torimonochou</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Baron Omatsuri and the Secret Island",
+      "url": "anime/2553,one-piece-baron-omatsuri-and-the-secret-island",
+      "details": "Movie, 1 (2005)",
+      "rating": "3.48 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/2/2553_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Baron Omatsuri and the Secret Island</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: The Cursed Holy Sword",
+      "url": "anime/2376,one-piece-the-cursed-holy-sword",
+      "details": "Movie, 1 (2004)",
+      "rating": "3.44 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/2/2376_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Cursed Holy Sword</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Mamore! Saigo no Oobutai",
+      "url": "anime/3836,one-piece-mamore-saigo-no-oobutai",
+      "details": "TV-Special, 1 (2003)",
+      "rating": "3.15 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3836_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Mamore! Saigo no Oobutai</div>"
+    },
+    {
+      "relation_type": "Crossover",
+      "title": "Kyuutai Panic Adventure!",
+      "url": "anime/11102,kyuutai-panic-adventure",
+      "details": "Other, 2 (2003)",
+      "rating": "2.75 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/11/11102_400.webp\" alt=\"\"><div class=\"f12\">Kyuutai Panic Adventure!</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Oounabara ni Hirake! Dekkai Dekkai Chichi no Yume!",
+      "url": "anime/3823,one-piece-oounabara-ni-hirake-dekkai-dekkai-chichi-no-yume",
+      "details": "TV-Special, 1 (2003)",
+      "rating": "3.20 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3823_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Oounabara ni Hirake! Dekkai Dekkai Chichi no Yume!</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: The Adventure of Dead End",
+      "url": "anime/3260,one-piece-the-adventure-of-dead-end",
+      "details": "Movie, 1 (2003)",
+      "rating": "3.61 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3260_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Adventure of Dead End</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Chopper’s Kingdom in the Strange Animal Island",
+      "url": "anime/1854,one-piece-choppers-kingdom-in-the-strange-animal-island",
+      "details": "Movie, 1 (2002)",
+      "rating": "2.94 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/1/1854_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Chopper’s Kingdom in the Strange Animal Island</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: The Adventure of Spiral Island",
+      "url": "anime/1815,one-piece-the-adventure-of-spiral-island",
+      "details": "Movie, 1 (2001)",
+      "rating": "3.18 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/1/1815_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Adventure of Spiral Island</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Luffy Rakka! Hikyou - Umi no Heso no Daibouken",
+      "url": "anime/3804,one-piece-luffy-rakka-hikyou-umi-no-heso-no-daibouken",
+      "details": "TV-Special, 1 (2000)",
+      "rating": "3.07 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/3/3804_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Luffy Rakka! Hikyou - Umi no Heso no Daibouken</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: The Movie",
+      "url": "anime/302,one-piece-the-movie",
+      "details": "Movie, 1 (2000)",
+      "rating": "3.03 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/0/302_400.webp\" alt=\"\"><div class=\"f12\">One Piece: The Movie</div>"
+    },
+    {
+      "relation_type": "Summary",
+      "title": "Kinkyuu Kikaku One Piece Kanzen Kouryakuhou",
+      "url": "anime/15494,kinkyuu-kikaku-one-piece-kanzen-kouryakuhou",
+      "details": "TV-Special, 1 (1999)",
+      "rating": "3.38 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/15/15494_400.webp\" alt=\"\"><div class=\"f12\">Kinkyuu Kikaku One Piece Kanzen Kouryakuhou</div>"
+    },
+    {
+      "relation_type": "Side Story",
+      "title": "One Piece: Taose! Kaizoku Ganzack",
+      "url": "anime/1369,one-piece-taose-kaizoku-ganzack",
+      "details": "Movie, 1 (1998)",
+      "rating": "2.53 Mediocre",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/1/1369_400.webp\" alt=\"\"><div class=\"f12\">One Piece: Taose! Kaizoku Ganzack</div>"
+    },
+    {
+      "relation_type": "Remake",
+      "title": "The One Piece",
+      "url": "anime/18939,the-one-piece",
+      "details": "Web, 12 (?)",
+      "rating": "0.00 Not rated",
+      "image": "<img src=\"https://cdn.anisearch.com/images/anime/cover/18/18939_400.webp\" alt=\"\"><div class=\"f12\">The One Piece</div>"
+    }
+  ],
+  "manga_relations": [
+    {
+      "relation_type": "Original Work",
+      "title": "One Piece",
+      "url": "manga/724,one-piece",
+      "details": "Manga, 114+/1166+ (1997)",
+      "rating": "4.51 Masterpiece",
+      "image": "<img src=\"https://cdn.anisearch.com/images/manga/cover/0/724_400.webp\" alt=\"\"><div class=\"f12\">One Piece</div>"
+    },
+    {
+      "relation_type": "Original Work",
+      "title": "Romance Dawn",
+      "url": "manga/11579,romance-dawn",
+      "details": "Manga, 1/3 (1996)",
+      "rating": "3.53 Excellent",
+      "image": "<img src=\"https://cdn.anisearch.com/images/manga/cover/11/11579_400.webp\" alt=\"\"><div class=\"f12\">Romance Dawn</div>"
+    }
+  ]
+}

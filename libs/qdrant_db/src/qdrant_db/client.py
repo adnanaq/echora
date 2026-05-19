@@ -734,7 +734,7 @@ class QdrantClient(VectorDBClient):
                 f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}"
             )
 
-    async def update_vectors(
+    async def update_vectors(  # ty: ignore[invalid-method-override]
         self,
         updates: list[BatchVectorUpdateItem],
         dedup_policy: DedupPolicy = "last-wins",
@@ -827,7 +827,7 @@ class QdrantClient(VectorDBClient):
         if not payload:
             raise ValidationError("Payload must not be empty")
 
-    async def update_payload(
+    async def update_payload(  # ty: ignore[invalid-method-override]
         self,
         updates: list[BatchPayloadUpdateItem],
         mode: PayloadUpdateMode = "merge",

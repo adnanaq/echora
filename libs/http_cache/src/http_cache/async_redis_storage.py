@@ -20,10 +20,16 @@ from typing import (
 )
 
 # Import Hishel core types
-from hishel._core._storages._async_base import AsyncBaseStorage
+from hishel import AsyncBaseStorage
 from hishel._core._storages._packing import pack, unpack
 from hishel._core.models import Entry, EntryMeta, Request, Response
 from redis.asyncio import Redis
+
+from .exceptions import (
+    EntryMismatchError,
+    InvalidStreamTypeError,
+    InvalidTTLError,
+)
 
 
 class AsyncRedisStorage(AsyncBaseStorage):
@@ -83,7 +89,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
                 health_check_interval=config.redis_health_check_interval,
             )
         if default_ttl is not None and default_ttl < 0:
-            raise ValueError("default_ttl must be non-negative")
+            raise InvalidTTLError(ttl_value=default_ttl, field_name="default_ttl")
         self.default_ttl = default_ttl
         self.refresh_ttl_on_access = refresh_ttl_on_access
         self.key_prefix = key_prefix
@@ -167,7 +173,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             The persisted Entry with its response.stream wrapped to save chunks to Redis.
 
         Raises:
-            TypeError: If `response.stream` is not an AsyncIterator.
+            InvalidStreamTypeError: If `response.stream` is not an AsyncIterator.
         """
         entry_id = id_ if id_ is not None else uuid.uuid4()
         entry_meta = EntryMeta(created_at=time.time())
@@ -175,9 +181,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         # Replace response stream with saving wrapper
         if not isinstance(response.stream, AsyncIterator):
-            raise TypeError(
-                f"Expected AsyncIterator for response.stream, got {type(response.stream).__name__}"
-            )
+            raise InvalidStreamTypeError(type(response.stream).__name__)
         response_with_stream = Response(
             status_code=response.status_code,
             headers=response.headers,
@@ -201,8 +205,25 @@ class AsyncRedisStorage(AsyncBaseStorage):
         entry_key = self._entry_key(entry_id)
         index_key = self._index_key(key)
 
+        # Evict stale entries before writing the new one.
+        # The index is a set of UUIDs, one per cached variant. Our requests don't
+        # use Vary headers, so there is never more than one valid variant. Without
+        # pruning, the set accumulates one UUID per historical live fetch, causing
+        # O(n) hgetall calls in get_entries() on every cache hit.
+        stale_ids: set[bytes] = await cast(
+            "Awaitable[set[bytes]]", self.client.smembers(index_key)
+        )
+
         # Use pipeline for atomic operations
         pipe = self.client.pipeline()
+
+        # Delete stale entry + stream keys before replacing with the new one
+        for stale_id_bytes in stale_ids:
+            stale_id = uuid.UUID(stale_id_bytes.decode("utf-8"))
+            pipe.delete(self._entry_key(stale_id))
+            pipe.delete(self._stream_key(stale_id))
+        if stale_ids:
+            pipe.srem(index_key, *stale_ids)
 
         current_index_ttl: int | None = None
         if ttl is not None:
@@ -354,7 +375,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             complete_entry = new_entry(current_entry)
 
         if current_entry.id != complete_entry.id:
-            raise ValueError("Entry ID mismatch")
+            raise EntryMismatchError()
 
         # Serialize and store
         entry_data = pack(complete_entry, kind="pair")
@@ -491,7 +512,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             Optional[float]: TTL in seconds as a float if configured, or `None` when no TTL is set.
 
         Raises:
-            ValueError: If `hishel_ttl` is present and is a negative number.
+            InvalidTTLError: If `hishel_ttl` is present and is a negative number.
         """
         # Check for per-request TTL
         if "hishel_ttl" in request.metadata:
@@ -499,7 +520,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             if isinstance(ttl_value, int | float):
                 ttl_float = float(ttl_value)
                 if ttl_float < 0:
-                    raise ValueError(f"TTL must be non-negative, got {ttl_float}")
+                    raise InvalidTTLError(ttl_float)
                 return ttl_float
 
         # Use default TTL

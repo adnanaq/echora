@@ -1,0 +1,45 @@
+# Development Dockerfile for enrichment_service
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    case "$arch" in \
+      amd64) probe_arch="amd64"; probe_sha256="8302d54fc41d4ffbfea6871b6a04584265d5eabbe738aee2966f9a574b6f17d1" ;; \
+      arm64) probe_arch="arm64"; probe_sha256="8ebe934e7cf29a65ca31d671a97949467fba6977d656b5e6d6c40902ae7402f6" ;; \
+      *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/grpc_health_probe \
+      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
+    echo "${probe_sha256}  /usr/local/bin/grpc_health_probe" | sha256sum -c -; \
+    chmod +x /usr/local/bin/grpc_health_probe
+
+COPY apps.enrichment_service/enrichment_service.pex /app/enrichment_service.pex
+
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --no-create-home appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=development
+
+EXPOSE 8010
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD grpc_health_probe -addr=localhost:8010 || exit 1
+
+# Development workflow:
+# PEX files are self-contained archives - volume mounts won't override the code inside.
+# To see code changes:
+#   1. Rebuild the PEX: pants package apps/enrichment_service:enrichment-service-dev
+#   2. Rebuild the image: docker compose build enrichment-service
+#   3. Restart the container: docker compose up -d enrichment-service
+
+ENTRYPOINT ["/app/enrichment_service.pex"]

@@ -9,6 +9,11 @@ import json
 import sys
 from pathlib import Path
 
+# Add scripts directory to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
 import pytest
 from process_stage4_statistics import (
     extract_all_statistics,
@@ -23,11 +28,6 @@ from process_stage4_statistics import (
     normalize_score,
     safe_get,
 )
-
-# Add scripts directory to path for imports
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 @pytest.fixture
@@ -134,7 +134,7 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_complete_data(self):
         """Test extraction with all fields present."""
-        jikan_data = {
+        mal_data = {
             "data": {
                 "score": 8.47,
                 "scored_by": 503637,
@@ -144,7 +144,7 @@ class TestExtractMALStatistics:
                 "favorites": 13839,
             }
         }
-        result = extract_mal_statistics(jikan_data)
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] == 8.47
         assert result["scored_by"] == 503637
@@ -155,8 +155,8 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_missing_fields(self):
         """Test extraction with missing fields."""
-        jikan_data = {"data": {"score": 8.0}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {"score": 8.0}}
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] == 8.0
         assert result["scored_by"] is None
@@ -164,22 +164,22 @@ class TestExtractMALStatistics:
 
     def test_extract_mal_empty_data(self):
         """Test extraction with empty data object."""
-        jikan_data = {"data": {}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {}}
+        result = extract_mal_statistics(mal_data)
 
         assert all(v is None for v in result.values())
 
     def test_extract_mal_no_data_key(self):
         """Test extraction when data key is missing."""
-        jikan_data = {}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {}
+        result = extract_mal_statistics(mal_data)
 
         assert all(v is None for v in result.values())
 
     def test_extract_mal_zero_score(self):
         """Test that zero score is treated as None."""
-        jikan_data = {"data": {"score": 0}}
-        result = extract_mal_statistics(jikan_data)
+        mal_data = {"data": {"score": 0}}
+        result = extract_mal_statistics(mal_data)
 
         assert result["score"] is None
 
@@ -518,19 +518,20 @@ class TestLoadSourceData:
     @pytest.fixture
     def temp_dir_with_sources(self, tmp_path):
         """Create temp directory with all source files."""
-        sources = {
-            "jikan": {"data": {"score": 8.5}},
+        # mal uses .jsonl; all others use .json
+        json_sources = {
             "anilist": {"averageScore": 85},
             "kitsu": {"anime": {"attributes": {"averageRating": "85"}}},
             "anidb": {"ratings": {"permanent": {"value": 8.5}}},
             "anime_planet": {"aggregate_rating": {"ratingValue": 4.25}},
             "animeschedule": {"stats": {"averageScore": 85}},
         }
-
-        for name, data in sources.items():
-            file_path = tmp_path / f"{name}.json"
-            with open(file_path, "w") as f:
+        for name, data in json_sources.items():
+            with open(tmp_path / f"{name}.json", "w") as f:
                 json.dump(data, f)
+
+        with open(tmp_path / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.5}}) + "\n")
 
         return str(tmp_path)
 
@@ -538,7 +539,7 @@ class TestLoadSourceData:
         """Test loading when all source files are present."""
         result = load_source_data(temp_dir_with_sources)
 
-        assert "jikan" in result
+        assert "mal" in result
         assert "anilist" in result
         assert "kitsu" in result
         assert "anidb" in result
@@ -555,25 +556,23 @@ class TestLoadSourceData:
 
     def test_load_source_data_partial_files(self, tmp_path):
         """Test loading when only some files are present."""
-        jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, "w") as f:
-            json.dump({"data": {"score": 8.0}}, f)
+        with open(tmp_path / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.0}}) + "\n")
 
         result = load_source_data(str(tmp_path))
 
-        assert result["jikan"] != {}
+        assert result["mal"] != {}
         assert result["anilist"] == {}
 
     def test_load_source_data_malformed_json(self, tmp_path):
         """Test handling of malformed JSON files."""
-        jikan_file = tmp_path / "jikan.json"
-        with open(jikan_file, "w") as f:
+        with open(tmp_path / "mal_anime.jsonl", "w") as f:
             f.write("{invalid json")
 
         result = load_source_data(str(tmp_path))
 
         # Should handle error and return empty dict for that source
-        assert result["jikan"] == {}
+        assert result["mal"] == {}
 
 
 class TestExtractAllStatistics:
@@ -583,7 +582,7 @@ class TestExtractAllStatistics:
     def all_sources_data(self):
         """Create data for all sources."""
         return {
-            "jikan": {
+            "mal": {
                 "data": {
                     "score": 8.47,
                     "scored_by": 500000,
@@ -635,7 +634,7 @@ class TestExtractAllStatistics:
     def test_extract_all_statistics_empty_sources(self):
         """Test extraction with empty sources."""
         sources = {
-            "jikan": {},
+            "mal": {},
             "anilist": {},
             "kitsu": {},
             "anidb": {},
@@ -650,7 +649,7 @@ class TestExtractAllStatistics:
     def test_extract_all_statistics_partial_sources(self):
         """Test extraction with only some sources having data."""
         sources = {
-            "jikan": {"data": {"score": 8.0, "scored_by": 1000}},
+            "mal": {"data": {"score": 8.0, "scored_by": 1000}},
             "anilist": {},
             "kitsu": {},
             "anidb": {},
@@ -665,7 +664,7 @@ class TestExtractAllStatistics:
     def test_extract_all_statistics_filters_empty_stats(self):
         """Test that sources with all None values are filtered out."""
         sources = {
-            "jikan": {"data": {"score": 8.0}},
+            "mal": {"data": {"score": 8.0}},
             "anilist": {},  # Will produce all None values
             "kitsu": {},
             "anidb": {},
@@ -688,20 +687,20 @@ class TestMainExecution:
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
 
-        # Create source files
-        sources = {
-            "jikan": {"data": {"score": 8.5, "scored_by": 1000}},
+        # Create source files (mal uses .jsonl; others use .json)
+        json_sources = {
             "anilist": {"averageScore": 85},
             "kitsu": {"anime": {"attributes": {"averageRating": "85"}}},
             "anidb": {"ratings": {"permanent": {"value": 8.5}}},
             "anime_planet": {"aggregate_rating": {"ratingValue": 4.25}},
             "animeschedule": {"stats": {"averageScore": 85}},
         }
-
-        for name, data in sources.items():
-            file_path = agent_dir / f"{name}.json"
-            with open(file_path, "w") as f:
+        for name, data in json_sources.items():
+            with open(agent_dir / f"{name}.json", "w") as f:
                 json.dump(data, f)
+
+        with open(agent_dir / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.5, "scored_by": 1000}}) + "\n")
 
         # Run script
         import subprocess
@@ -733,10 +732,8 @@ class TestMainExecution:
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
 
-        # Only create jikan file
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
-            json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
+        with open(agent_dir / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.0, "scored_by": 1000}}) + "\n")
 
         # Run script
         import subprocess
@@ -770,10 +767,8 @@ class TestMainExecution:
         agent_dir = custom_temp / "test_agent"
         agent_dir.mkdir()
 
-        # Create minimal data
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
-            json.dump({"data": {"score": 8.0}}, f)
+        with open(agent_dir / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.0}}) + "\n")
 
         # Run script with custom temp dir
         import subprocess
@@ -798,10 +793,8 @@ class TestMainExecution:
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
 
-        # Create minimal data
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w") as f:
-            json.dump({"data": {"score": 8.0, "scored_by": 1000}}, f)
+        with open(agent_dir / "mal_anime.jsonl", "w") as f:
+            f.write(json.dumps({"data": {"score": 8.0, "scored_by": 1000}}) + "\n")
 
         import subprocess
 
@@ -830,10 +823,8 @@ class TestMainExecution:
         agent_dir = tmp_path / "test_agent"
         agent_dir.mkdir()
 
-        # Create data with unicode
-        jikan_file = agent_dir / "jikan.json"
-        with open(jikan_file, "w", encoding="utf-8") as f:
-            json.dump({"data": {"score": 8.0}}, f)
+        with open(agent_dir / "mal_anime.jsonl", "w", encoding="utf-8") as f:
+            f.write(json.dumps({"data": {"score": 8.0}}) + "\n")
 
         import subprocess
 
