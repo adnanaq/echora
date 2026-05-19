@@ -133,15 +133,17 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
 
 def build_sparse_vector_config(
     config: QdrantConfig,
-) -> dict[str, SparseVectorParams] | None:
+) -> dict[str, SparseVectorParams]:
     """Create sparse vector configuration for collection creation.
+
+    Sparse vectors are always required alongside dense vectors. The config
+    validator enforces at least one entry in ``sparse_vector_names``.
 
     Args:
         config: Qdrant runtime settings.
 
     Returns:
-        Mapping of sparse vector name to :class:`SparseVectorParams` when
-        sparse vectors are configured, otherwise ``None``.
+        Mapping of sparse vector name to :class:`SparseVectorParams`.
     """
     modifier = Modifier.IDF if config.sparse_vector_modifier == "idf" else None
     sparse_vectors_config: dict[str, SparseVectorParams] = {}

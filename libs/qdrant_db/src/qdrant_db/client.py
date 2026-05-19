@@ -80,6 +80,7 @@ class QdrantClient(VectorDBClient):
         self._image_vector_name = config.primary_image_vector_name
         self._sparse_vector_names = set(config.sparse_vector_names)
         self._primary_sparse_vector_name = config.primary_sparse_vector_name
+        self._prefetch_limit_multiplier = config.prefetch_limit_multiplier
 
         self._vector_size = config.vector_names[self._text_vector_name]
         self._image_vector_size = config.vector_names[self._image_vector_name]
@@ -625,63 +626,46 @@ class QdrantClient(VectorDBClient):
             )
         qdrant_filter = build_filter(filter_conditions)
 
-        # Execute vector search based on request type
-        hits: list[SearchHit]
+        active_embeddings: list[tuple[str, list[float] | SparseVector]] = [
+            (name, vec)
+            for name, vec in (
+                (self._text_vector_name, request.text_embedding),
+                (self._image_vector_name, request.image_embedding),
+                (
+                    self._primary_sparse_vector_name,
+                    build_sparse_query(request.sparse_embedding)
+                    if request.sparse_embedding
+                    else None,
+                ),
+            )
+            if vec is not None
+        ]
 
-        if (
-            request.text_embedding is not None
-            and request.image_embedding is None
-            and request.sparse_embedding is None
-        ):
-            hits = await self._search_single_vector(
-                vector_name=self._text_vector_name,
-                vector_data=request.text_embedding,
+        if len(active_embeddings) == 1:
+            vector_name, vector_data = active_embeddings[0]
+            return await self._search_single_vector(
+                vector_name=vector_name,
+                vector_data=vector_data,
                 limit=request.limit,
                 filters=qdrant_filter,
             )
 
-        elif (
-            request.image_embedding is not None
-            and request.text_embedding is None
-            and request.sparse_embedding is None
-        ):
-            hits = await self._search_single_vector(
-                vector_name=self._image_vector_name,
-                vector_data=request.image_embedding,
-                limit=request.limit,
-                filters=qdrant_filter,
+        prefetch_queries = build_prefetch_queries(
+            request=request,
+            text_vector_name=self._text_vector_name,
+            image_vector_name=self._image_vector_name,
+            sparse_vector_name=self._primary_sparse_vector_name,
+            qdrant_filter=qdrant_filter,
+            prefetch_limit=request.limit * self._prefetch_limit_multiplier,
+        )
+
+        if len(prefetch_queries) < 2:
+            raise ValidationError(
+                "Fusion search requires at least two embeddings from text/image/sparse"
             )
 
-        elif (
-            request.sparse_embedding is not None
-            and request.text_embedding is None
-            and request.image_embedding is None
-        ):
-            hits = await self._search_single_vector(
-                vector_name=self._primary_sparse_vector_name,
-                vector_data=build_sparse_query(request.sparse_embedding),
-                limit=request.limit,
-                filters=qdrant_filter,
-            )
-
-        else:
-            prefetch_queries = build_prefetch_queries(
-                request=request,
-                text_vector_name=self._text_vector_name,
-                image_vector_name=self._image_vector_name,
-                sparse_vector_name=self._primary_sparse_vector_name,
-                qdrant_filter=qdrant_filter,
-            )
-
-            if len(prefetch_queries) < 2:
-                raise ValidationError(
-                    "Fusion search requires at least two embeddings from text/image/sparse"
-                )
-
-            hits = await self._search_fusion(
-                prefetch_queries=prefetch_queries,
-                limit=request.limit,
-                fusion_method=request.fusion_method,
-            )
-
-        return hits
+        return await self._search_fusion(
+            prefetch_queries=prefetch_queries,
+            limit=request.limit,
+            fusion_method=request.fusion_method,
+        )

@@ -56,6 +56,16 @@ class QdrantConfig(BaseModel):
         default=False,
         description="Store sparse index on disk instead of RAM",
     )
+    prefetch_limit_multiplier: int = Field(
+        default=10,
+        ge=2,
+        description=(
+            "Multiplier applied to the final search limit to determine the candidate pool "
+            "size for each prefetch branch in hybrid/fusion search. Higher values improve "
+            "recall at the cost of more server-side fusion work. "
+            "E.g. limit=10 with multiplier=10 prefetches 100 candidates per branch."
+        ),
+    )
     vector_priorities: dict[str, list[str]] = Field(
         default={
             "high": [

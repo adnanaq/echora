@@ -91,6 +91,7 @@ def build_prefetch_queries(
     image_vector_name: str,
     sparse_vector_name: str,
     qdrant_filter: Filter | None,
+    prefetch_limit: int,
 ) -> list[Prefetch]:
     """Assemble prefetch branches for fusion search.
 
@@ -100,6 +101,7 @@ def build_prefetch_queries(
         image_vector_name: Named image vector field.
         sparse_vector_name: Named sparse vector field.
         qdrant_filter: Optional pre-built Qdrant filter.
+        prefetch_limit: Candidate pool size per branch fed into fusion.
 
     Returns:
         List of prefetch query branches (one per active embedding signal).
@@ -111,7 +113,7 @@ def build_prefetch_queries(
             Prefetch(
                 using=text_vector_name,
                 query=request.text_embedding,
-                limit=request.limit * 2,
+                limit=prefetch_limit,
                 filter=qdrant_filter,
             )
         )
@@ -121,7 +123,7 @@ def build_prefetch_queries(
             Prefetch(
                 using=image_vector_name,
                 query=request.image_embedding,
-                limit=request.limit * 2,
+                limit=prefetch_limit,
                 filter=qdrant_filter,
             )
         )
@@ -131,7 +133,7 @@ def build_prefetch_queries(
             Prefetch(
                 using=sparse_vector_name,
                 query=build_sparse_query(request.sparse_embedding),
-                limit=request.limit * 2,
+                limit=prefetch_limit,
                 filter=qdrant_filter,
             )
         )

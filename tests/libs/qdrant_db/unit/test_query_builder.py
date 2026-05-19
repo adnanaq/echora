@@ -84,7 +84,7 @@ def _base_request(**kwargs) -> SearchRequest:  # type: ignore[no-untyped-def]
 
 def test_build_prefetch_text_only() -> None:
     request = _base_request()
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
     assert len(result) == 1
     assert result[0].using == "text_vec"
     assert result[0].limit == 20
@@ -93,17 +93,17 @@ def test_build_prefetch_text_only() -> None:
 
 def test_build_prefetch_image_only() -> None:
     request = SearchRequest(image_embedding=[0.2] * 768, limit=5)
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
     assert len(result) == 1
     assert result[0].using == "image_vec"
-    assert result[0].limit == 10
+    assert result[0].limit == 20
 
 
 def test_build_prefetch_sparse_only() -> None:
     request = SearchRequest(
         sparse_embedding={"indices": [1, 2], "values": [0.5, 0.3]}, limit=5
     )
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
     assert len(result) == 1
     assert result[0].using == "sparse_vec"
     assert isinstance(result[0].query, SparseVector)
@@ -113,7 +113,7 @@ def test_build_prefetch_text_and_image() -> None:
     request = SearchRequest(
         text_embedding=[0.1] * 1024, image_embedding=[0.2] * 768, limit=10
     )
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
     assert len(result) == 2
     assert {p.using for p in result} == {"text_vec", "image_vec"}
 
@@ -125,14 +125,14 @@ def test_build_prefetch_all_three_embeddings() -> None:
         sparse_embedding={"indices": [0], "values": [1.0]},
         limit=10,
     )
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
     assert len(result) == 3
 
 
 def test_build_prefetch_passes_filter() -> None:
     qdrant_filter = Filter(must=[])
     request = _base_request()
-    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", qdrant_filter)
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", qdrant_filter, prefetch_limit=20)
     assert result[0].filter is qdrant_filter
 
 
