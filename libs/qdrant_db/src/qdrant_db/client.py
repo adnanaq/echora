@@ -11,41 +11,33 @@ from typing import Any, TypeGuard, cast
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
-    BinaryQuantization,
-    BinaryQuantizationConfig,
     Distance,
     FieldCondition,
     Filter,
     Fusion,
     FusionQuery,
-    HnswConfigDiff,
     MatchAny,
     MatchValue,
-    Modifier,
-    MultiVectorComparator,
-    MultiVectorConfig,
-    OptimizersConfigDiff,
     OverwritePayloadOperation,
     PayloadSchemaType,
     PointStruct,
     PointVectors,
     Prefetch,
-    ProductQuantization,
-    QuantizationConfig,
     Range,
-    ScalarQuantization,
-    ScalarQuantizationConfig,
-    ScalarType,
     SetPayload,
     SetPayloadOperation,
-    SparseIndexParams,
     SparseVector,
-    SparseVectorParams,
-    VectorParams,
-    WalConfigDiff,
 )
 from vector_db_interface import VectorDBClient, VectorDocument
 
+from qdrant_db.collection.schema_builder import (
+    build_optimizers_config,
+    build_quantization_config,
+    build_sparse_vector_config,
+    build_vector_config,
+    build_wal_config,
+    validate_vector_config,
+)
 from qdrant_db.contracts import (
     BatchOperationResult,
     BatchPayloadUpdateItem,
@@ -61,7 +53,6 @@ from qdrant_db.contracts import (
 )
 from qdrant_db.errors import (
     CollectionCompatibilityError,
-    ConfigurationError,
     DuplicateUpdateError,
     PermanentQdrantError,
     ValidationError,
@@ -209,15 +200,15 @@ class QdrantClient(VectorDBClient):
                 incompatible with configured vectors.
         """
         if not await self.collection_exists():
-            vectors_config = self._create_multi_vector_config()
-            self._validate_vector_config(vectors_config)
+            vectors_config = build_vector_config(self.config)
+            validate_vector_config(self.config, vectors_config)
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=vectors_config,
-                sparse_vectors_config=self._create_sparse_vector_config(),
-                quantization_config=self._create_quantization_config(),
-                optimizers_config=self._create_optimized_optimizers_config(),
-                wal_config=self._create_wal_config(),
+                sparse_vectors_config=build_sparse_vector_config(self.config),
+                quantization_config=build_quantization_config(self.config),
+                optimizers_config=build_optimizers_config(self.config),
+                wal_config=build_wal_config(self.config),
             )
             logger.info("Created collection %s", self.collection_name)
             return
@@ -280,204 +271,6 @@ class QdrantClient(VectorDBClient):
                 "Collection missing required sparse vectors: "
                 + ", ".join(sorted(missing_sparse_vectors))
             )
-
-    def _validate_vector_config(self, vectors_config: dict[str, VectorParams]) -> None:
-        """Validate generated vector configuration before collection creation.
-
-        Args:
-            vectors_config: Generated mapping of vector names to params.
-
-        Raises:
-            ConfigurationError: If generated config is empty, has mismatched
-                vector count, or contains unexpected dimensions.
-        """
-        if not vectors_config:
-            raise ConfigurationError("Vector configuration is empty")
-
-        if len(vectors_config) != len(self.config.vector_names):
-            raise ConfigurationError(
-                "Vector count mismatch between generated config and settings"
-            )
-
-        for vector_name, vector_params in vectors_config.items():
-            expected_dim = self.config.vector_names.get(vector_name)
-            if expected_dim is None:
-                raise ConfigurationError(
-                    f"Vector {vector_name} is not present in configured vector_names"
-                )
-            if vector_params.size != expected_dim:
-                raise ConfigurationError(
-                    f"Vector {vector_name} size mismatch: expected {expected_dim}, got {vector_params.size}"
-                )
-
-    def _get_vector_priority(self, vector_name: str) -> str:
-        """Resolve priority bucket for a vector name.
-
-        Args:
-            vector_name: Vector name configured for the collection.
-
-        Returns:
-            Priority label used by HNSW/quantization lookup.
-        """
-        for priority, vectors in self.config.vector_priorities.items():
-            if vector_name in vectors:
-                return str(priority)
-        return "medium"
-
-    def _get_hnsw_config(self, priority: str) -> HnswConfigDiff:
-        """Build HNSW configuration for a priority class.
-
-        Args:
-            priority: Priority bucket key.
-
-        Returns:
-            Configured HNSW diff model.
-        """
-        hnsw_cfg = self.config.hnsw_config.get(priority, {})
-        return HnswConfigDiff(
-            ef_construct=hnsw_cfg.get("ef_construct", 200),
-            m=hnsw_cfg.get("m", 48),
-        )
-
-    def _get_quantization_config(self, priority: str) -> QuantizationConfig | None:
-        """Build per-vector quantization config for a priority class.
-
-        Args:
-            priority: Priority bucket key.
-
-        Returns:
-            Quantization config model when configured; otherwise ``None``.
-        """
-        quant_cfg = self.config.quantization_config.get(priority, {})
-        if quant_cfg.get("type") == "scalar":
-            return ScalarQuantization(
-                scalar=ScalarQuantizationConfig(
-                    type=ScalarType.INT8,
-                    always_ram=bool(quant_cfg.get("always_ram", False)),
-                )
-            )
-        if quant_cfg.get("type") == "binary":
-            return BinaryQuantization(
-                binary=BinaryQuantizationConfig(
-                    always_ram=bool(quant_cfg.get("always_ram", False))
-                )
-            )
-        return None
-
-    def _create_multi_vector_config(self) -> dict[str, VectorParams]:
-        """Create named-vector configuration for collection creation.
-
-        Returns:
-            Mapping of vector name to :class:`VectorParams`.
-        """
-        distance = self._DISTANCE_MAPPING.get(self._distance_metric, Distance.COSINE)
-        multivector_names = set(self.config.multivector_vectors)
-
-        vector_params: dict[str, VectorParams] = {}
-        for vector_name, dimension in self.config.vector_names.items():
-            priority = self._get_vector_priority(vector_name)
-            params_kwargs: dict[str, Any] = {
-                "size": dimension,
-                "distance": distance,
-                "hnsw_config": self._get_hnsw_config(priority),
-                "quantization_config": self._get_quantization_config(priority),
-            }
-            if vector_name in multivector_names:
-                params_kwargs["multivector_config"] = MultiVectorConfig(
-                    comparator=MultiVectorComparator.MAX_SIM
-                )
-            vector_params[vector_name] = VectorParams(**params_kwargs)
-
-        return vector_params
-
-    def _create_sparse_vector_config(self) -> dict[str, SparseVectorParams] | None:
-        """Create sparse vector configuration for collection creation.
-
-        Returns:
-            Mapping of sparse vector name to :class:`SparseVectorParams` when
-            sparse vectors are enabled, otherwise ``None``.
-        """
-        modifier = Modifier.IDF if self.config.sparse_vector_modifier == "idf" else None
-        sparse_vectors_config: dict[str, SparseVectorParams] = {}
-        for vector_name in self.config.sparse_vector_names:
-            params_kwargs: dict[str, Any] = {
-                "index": SparseIndexParams(on_disk=self.config.sparse_index_on_disk),
-            }
-            if modifier is not None:
-                params_kwargs["modifier"] = modifier
-            sparse_vectors_config[vector_name] = SparseVectorParams(**params_kwargs)
-
-        return sparse_vectors_config
-
-    def _create_optimized_optimizers_config(self) -> OptimizersConfigDiff | None:
-        """Create optimizer tuning parameters for collection creation.
-
-        Returns:
-            Optimizer config when construction succeeds, otherwise ``None``.
-        """
-        try:
-            return OptimizersConfigDiff(
-                default_segment_number=4,
-                indexing_threshold=20000,
-                memmap_threshold=self.config.memory_mapping_threshold_mb * 1024,
-            )
-        except Exception:
-            logger.exception("Failed to create optimizers config")
-            return None
-
-    def _create_quantization_config(
-        self,
-    ) -> BinaryQuantization | ScalarQuantization | ProductQuantization | None:
-        """Create global collection quantization config from settings.
-
-        Returns:
-            One quantization config model or ``None`` when disabled/invalid.
-        """
-        if not self.config.qdrant_enable_quantization:
-            return None
-
-        quantization_type = self.config.qdrant_quantization_type
-        always_ram = self.config.qdrant_quantization_always_ram
-
-        try:
-            if quantization_type == "binary":
-                return BinaryQuantization(
-                    binary=BinaryQuantizationConfig(always_ram=always_ram)
-                )
-            if quantization_type == "scalar":
-                return ScalarQuantization(
-                    scalar=ScalarQuantizationConfig(
-                        type=ScalarType.INT8,
-                        always_ram=always_ram,
-                    )
-                )
-            if quantization_type == "product":
-                from qdrant_client.models import (
-                    CompressionRatio,
-                    ProductQuantizationConfig,
-                )
-
-                return ProductQuantization(
-                    product=ProductQuantizationConfig(compression=CompressionRatio.X16)
-                )
-            return None
-        except Exception:
-            logger.exception("Failed to create quantization config")
-            return None
-
-    def _create_wal_config(self) -> WalConfigDiff | None:
-        """Create WAL config from settings.
-
-        Returns:
-            WAL config when enabled and valid; otherwise ``None``.
-        """
-        if not self.config.qdrant_enable_wal:
-            return None
-        try:
-            return WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
-        except Exception:
-            logger.exception("Failed to create WAL config")
-            return None
 
     async def setup_payload_indexes(self) -> None:
         """Create configured payload indexes for filterable metadata fields."""
