@@ -5,7 +5,7 @@ from qdrant_client.models import SparseVector
 
 from qdrant_db.contracts import SparseVectorData
 from qdrant_db.errors import ValidationError
-from qdrant_db.vectors.normalizer import (
+from qdrant_db.normalizer import (
     VectorNormalizer,
     is_float_vector,
     is_sparse_payload,

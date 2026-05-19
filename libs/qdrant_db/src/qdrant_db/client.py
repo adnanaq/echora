@@ -58,7 +58,7 @@ from qdrant_db.errors import (
     ValidationError,
 )
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
-from qdrant_db.vectors.normalizer import VectorNormalizer
+from qdrant_db.normalizer import VectorNormalizer
 
 logger = logging.getLogger(__name__)
 
