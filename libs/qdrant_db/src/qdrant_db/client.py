@@ -73,7 +73,7 @@ class QdrantClient(VectorDBClient):
         self.config = config
         self.url = url or config.qdrant_url
         self._collection_name = collection_name or config.qdrant_collection_name
-        self.client = async_qdrant_client
+        self._async_client = async_qdrant_client
         self._distance_metric = config.qdrant_distance_metric
 
         self._text_vector_name = config.primary_text_vector_name
@@ -171,7 +171,7 @@ class QdrantClient(VectorDBClient):
             ``True`` when Qdrant responds, else ``False``.
         """
         try:
-            await self.client.get_collections()
+            await self._async_client.get_collections()
             return True
         except Exception:
             logger.exception("Health check failed")
@@ -187,8 +187,8 @@ class QdrantClient(VectorDBClient):
             PermanentQdrantError: If stats retrieval fails.
         """
         try:
-            collection_info = await self.client.get_collection(self.collection_name)
-            count_result = await self.client.count(
+            collection_info = await self._async_client.get_collection(self.collection_name)
+            count_result = await self._async_client.count(
                 collection_name=self.collection_name,
                 count_filter=None,
                 exact=True,
@@ -208,13 +208,14 @@ class QdrantClient(VectorDBClient):
 
     async def get_collection_info(self) -> Any:
         """Return raw collection info object from Qdrant."""
-        return await self.client.get_collection(self.collection_name)
+        return await self._async_client.get_collection(self.collection_name)
 
     async def scroll(
         self,
         limit: int = 10,
         with_vectors: bool = False,
         offset: Any | None = None,
+        scroll_filter: list[SearchFilterCondition] | None = None,
     ) -> tuple[list[Any], Any | None]:
         """Scroll points from collection.
 
@@ -222,15 +223,17 @@ class QdrantClient(VectorDBClient):
             limit: Max number of points to return.
             with_vectors: Include vector payloads when ``True``.
             offset: Scroll cursor from previous call.
+            scroll_filter: Optional filter conditions to narrow results.
 
         Returns:
             Tuple of points list and next offset cursor.
         """
-        return await self.client.scroll(
+        return await self._async_client.scroll(
             collection_name=self.collection_name,
             limit=limit,
             with_vectors=with_vectors,
             offset=offset,
+            scroll_filter=build_filter(scroll_filter) if scroll_filter else None,
         )
 
     async def add_documents(
@@ -281,7 +284,7 @@ class QdrantClient(VectorDBClient):
 
         try:
             for start in range(0, len(points), batch_size):
-                await self.client.upsert(
+                await self._async_client.upsert(
                     collection_name=self.collection_name,
                     points=points[start : start + batch_size],
                     wait=True,
@@ -351,7 +354,7 @@ class QdrantClient(VectorDBClient):
         ]
 
         async def _perform_update() -> None:
-            await self.client.update_vectors(
+            await self._async_client.update_vectors(
                 collection_name=self.collection_name,
                 points=point_updates,
                 wait=True,
@@ -434,7 +437,7 @@ class QdrantClient(VectorDBClient):
                 )
 
         async def _perform_update() -> None:
-            await self.client.batch_update_points(
+            await self._async_client.batch_update_points(
                 collection_name=self.collection_name,
                 update_operations=operations,
                 wait=True,
@@ -472,7 +475,7 @@ class QdrantClient(VectorDBClient):
         Returns:
             Payload dictionary when found, else ``None``.
         """
-        points = await self.client.retrieve(
+        points = await self._async_client.retrieve(
             collection_name=self.collection_name,
             ids=[point_id],
             with_payload=True,
@@ -491,7 +494,7 @@ class QdrantClient(VectorDBClient):
         Returns:
             Normalized point dictionary or ``None`` when missing.
         """
-        points = await self.client.retrieve(
+        points = await self._async_client.retrieve(
             collection_name=self.collection_name,
             ids=[point_id],
             with_vectors=True,
@@ -536,7 +539,7 @@ class QdrantClient(VectorDBClient):
         Returns:
             List of normalized search hits.
         """
-        response = await self.client.query_points(
+        response = await self._async_client.query_points(
             collection_name=self.collection_name,
             query=vector_data,
             using=vector_name,
@@ -575,7 +578,7 @@ class QdrantClient(VectorDBClient):
         else:
             fusion = Fusion.RRF
 
-        response = await self.client.query_points(
+        response = await self._async_client.query_points(
             collection_name=self.collection_name,
             prefetch=prefetch_queries,
             query=FusionQuery(fusion=fusion),

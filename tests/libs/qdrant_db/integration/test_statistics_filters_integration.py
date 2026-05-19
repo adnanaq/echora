@@ -52,17 +52,8 @@ async def _test_single_filter(
         Test result dictionary with status and sample data
     """
     try:
-        # Use QdrantClient's _build_filter() method
-        qdrant_filter = client._build_filter(_to_search_filter_conditions(filter_dict))
-
-        # Use the underlying Qdrant SDK client's scroll method
-        results, _ = await client.client.scroll(
-            collection_name=client.collection_name,
-            scroll_filter=qdrant_filter,
-            limit=5,
-            with_payload=True,
-            with_vectors=False,
-        )
+        conditions = _to_search_filter_conditions(filter_dict)
+        results, _ = await client.scroll(limit=5, scroll_filter=conditions)
 
         points = results if isinstance(results, list) else []
 
@@ -279,15 +270,8 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         "statistics.mal.score": {"gte": 7.0},
         "statistics.anilist.score": {"gte": 7.0},
     }
-    multi_filter = client._build_filter(
-        _to_search_filter_conditions(multi_filter_dict)
-    )
-    multi_results, _ = await client.client.scroll(
-        collection_name=client.collection_name,
-        scroll_filter=multi_filter,
-        limit=5,
-        with_payload=True,
-        with_vectors=False,
+    multi_results, _ = await client.scroll(
+        limit=5, scroll_filter=_to_search_filter_conditions(multi_filter_dict)
     )
     # Should find some results with both scores high (test collection may be empty, so just check it doesn't error)
     assert isinstance(multi_results, list)
@@ -297,15 +281,8 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         "statistics.mal.members": {"gte": 50000},
         "score.arithmetic_mean": {"gte": 7.0},
     }
-    combo_filter = client._build_filter(
-        _to_search_filter_conditions(combo_filter_dict)
-    )
-    combo_results, _ = await client.client.scroll(
-        collection_name=client.collection_name,
-        scroll_filter=combo_filter,
-        limit=5,
-        with_payload=True,
-        with_vectors=False,
+    combo_results, _ = await client.scroll(
+        limit=5, scroll_filter=_to_search_filter_conditions(combo_filter_dict)
     )
     # Combination filters work without error
     assert isinstance(combo_results, list)

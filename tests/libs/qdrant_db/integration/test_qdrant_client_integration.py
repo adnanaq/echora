@@ -258,7 +258,7 @@ async def test_update_vectors_retries_transient_errors(client: QdrantClient) -> 
     doc_id = str(uuid.uuid4())
     await client.add_documents([_make_doc(doc_id=doc_id, title="Retry OK")], batch_size=1)
 
-    original_update = client.client.update_vectors
+    original_update = client._async_client.update_vectors
     attempts = 0
 
     async def flaky_update(*args, **kwargs):  # type: ignore[no-untyped-def]
@@ -268,7 +268,7 @@ async def test_update_vectors_retries_transient_errors(client: QdrantClient) -> 
             raise ConnectionError("temporary network failure")
         return await original_update(*args, **kwargs)
 
-    with patch.object(client.client, "update_vectors", new=AsyncMock(side_effect=flaky_update)):
+    with patch.object(client._async_client, "update_vectors", new=AsyncMock(side_effect=flaky_update)):
         result = await client.update_vectors(
             [
                 BatchVectorUpdateItem(
@@ -298,7 +298,7 @@ async def test_update_vectors_no_retry_on_non_transient(client: QdrantClient) ->
         attempts += 1
         raise ValueError("bad request shape")
 
-    with patch.object(client.client, "update_vectors", new=AsyncMock(side_effect=hard_fail)):
+    with patch.object(client._async_client, "update_vectors", new=AsyncMock(side_effect=hard_fail)):
         with pytest.raises(PermanentQdrantError, match="Failed to batch update vectors"):
             await client.update_vectors(
                 [
@@ -328,7 +328,7 @@ async def test_update_vectors_retry_exhausted_raises(client: QdrantClient) -> No
         attempts += 1
         raise ConnectionError("connection timeout")
 
-    with patch.object(client.client, "update_vectors", new=AsyncMock(side_effect=always_fail)):
+    with patch.object(client._async_client, "update_vectors", new=AsyncMock(side_effect=always_fail)):
         with pytest.raises(PermanentQdrantError, match="Failed to batch update vectors"):
             await client.update_vectors(
                 [

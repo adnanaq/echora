@@ -55,7 +55,7 @@ async def mock_sparse_client() -> QdrantClient:
 
 @pytest.mark.asyncio
 async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> None:
-    mock_client.client.query_points = AsyncMock(
+    mock_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(
             points=[
                 SimpleNamespace(
@@ -78,7 +78,7 @@ async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> Non
 
 @pytest.mark.asyncio
 async def test_search_multivector_uses_prefetch_fusion(mock_client: QdrantClient) -> None:
-    mock_client.client.query_points = AsyncMock(
+    mock_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(points=[])
     )
 
@@ -89,14 +89,14 @@ async def test_search_multivector_uses_prefetch_fusion(mock_client: QdrantClient
     )
     await mock_client.search(request)
 
-    call = mock_client.client.query_points.call_args.kwargs
+    call = mock_client._async_client.query_points.call_args.kwargs
     assert call["prefetch"]
     assert call["query"] is not None
 
 
 @pytest.mark.asyncio
 async def test_search_sparse_only_uses_query_api(mock_sparse_client: QdrantClient) -> None:
-    mock_sparse_client.client.query_points = AsyncMock(
+    mock_sparse_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(
             points=[
                 SimpleNamespace(
@@ -116,7 +116,7 @@ async def test_search_sparse_only_uses_query_api(mock_sparse_client: QdrantClien
 
     assert len(results) == 1
     assert results[0].id == "anime-123"
-    call = mock_sparse_client.client.query_points.call_args.kwargs
+    call = mock_sparse_client._async_client.query_points.call_args.kwargs
     assert call["using"] == "text_sparse_vector"
     assert isinstance(call["query"], SparseVector)
 
@@ -125,7 +125,7 @@ async def test_search_sparse_only_uses_query_api(mock_sparse_client: QdrantClien
 async def test_search_text_sparse_uses_prefetch_fusion(
     mock_sparse_client: QdrantClient,
 ) -> None:
-    mock_sparse_client.client.query_points = AsyncMock(
+    mock_sparse_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(points=[])
     )
 
@@ -136,7 +136,7 @@ async def test_search_text_sparse_uses_prefetch_fusion(
     )
     await mock_sparse_client.search(request)
 
-    call = mock_sparse_client.client.query_points.call_args.kwargs
+    call = mock_sparse_client._async_client.query_points.call_args.kwargs
     assert len(call["prefetch"]) == 2
     assert call["query"] is not None
 
@@ -145,7 +145,7 @@ async def test_search_text_sparse_uses_prefetch_fusion(
 async def test_add_documents_sparse_payload_converts_to_sparse_vector(
     mock_sparse_client: QdrantClient,
 ) -> None:
-    mock_sparse_client.client.upsert = AsyncMock(return_value=None)
+    mock_sparse_client._async_client.upsert = AsyncMock(return_value=None)
 
     result = await mock_sparse_client.add_documents(
         documents=[
@@ -162,7 +162,7 @@ async def test_add_documents_sparse_payload_converts_to_sparse_vector(
     )
 
     assert result.successful == 1
-    call = mock_sparse_client.client.upsert.call_args.kwargs
+    call = mock_sparse_client._async_client.upsert.call_args.kwargs
     points = call["points"]
     assert len(points) == 1
     assert isinstance(points[0].vector["text_sparse_vector"], SparseVector)
@@ -170,7 +170,7 @@ async def test_add_documents_sparse_payload_converts_to_sparse_vector(
 
 @pytest.mark.asyncio
 async def test_update_vectors_last_wins(mock_client: QdrantClient) -> None:
-    mock_client.client.update_vectors = AsyncMock(return_value=None)
+    mock_client._async_client.update_vectors = AsyncMock(return_value=None)
 
     result = await mock_client.update_vectors(
         updates=[
@@ -191,7 +191,7 @@ async def test_update_vectors_last_wins(mock_client: QdrantClient) -> None:
     assert result.successful == 1
     assert result.failed == 0
     assert result.duplicates_removed == 1
-    assert mock_client.client.update_vectors.call_count == 1
+    assert mock_client._async_client.update_vectors.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -218,7 +218,7 @@ async def test_update_vectors_duplicate_fail_raises(mock_client: QdrantClient) -
 async def test_update_payload_merge_uses_set_payload_operation(
     mock_client: QdrantClient,
 ) -> None:
-    mock_client.client.batch_update_points = AsyncMock(return_value=None)
+    mock_client._async_client.batch_update_points = AsyncMock(return_value=None)
 
     result = await mock_client.update_payload(
         updates=[
@@ -231,7 +231,7 @@ async def test_update_payload_merge_uses_set_payload_operation(
     )
 
     assert result.successful == 1
-    call = mock_client.client.batch_update_points.call_args.kwargs
+    call = mock_client._async_client.batch_update_points.call_args.kwargs
     operations = call["update_operations"]
     assert len(operations) == 1
     assert isinstance(operations[0], SetPayloadOperation)
@@ -241,7 +241,7 @@ async def test_update_payload_merge_uses_set_payload_operation(
 async def test_update_payload_overwrite_uses_overwrite_operation(
     mock_client: QdrantClient,
 ) -> None:
-    mock_client.client.batch_update_points = AsyncMock(return_value=None)
+    mock_client._async_client.batch_update_points = AsyncMock(return_value=None)
 
     result = await mock_client.update_payload(
         updates=[
@@ -254,7 +254,7 @@ async def test_update_payload_overwrite_uses_overwrite_operation(
     )
 
     assert result.successful == 1
-    call = mock_client.client.batch_update_points.call_args.kwargs
+    call = mock_client._async_client.batch_update_points.call_args.kwargs
     operations = call["update_operations"]
     assert len(operations) == 1
     assert isinstance(operations[0], OverwritePayloadOperation)
