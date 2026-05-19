@@ -6,7 +6,7 @@ All write and search entry points use explicit contract models and domain errors
 """
 
 import logging
-from typing import Any, TypeGuard, cast
+from typing import Any, cast
 
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
@@ -58,37 +58,9 @@ from qdrant_db.errors import (
     ValidationError,
 )
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
+from qdrant_db.vectors.normalizer import VectorNormalizer
 
 logger = logging.getLogger(__name__)
-
-
-def is_float_vector(vector: Any) -> TypeGuard[list[float]]:
-    """Check whether a value is a non-empty list.
-
-    Args:
-        vector: Value to validate.
-
-    Returns:
-        ``True`` when ``vector`` is a ``list`` containing at least one
-        element, otherwise ``False``.
-    """
-    return isinstance(vector, list) and len(vector) > 0
-
-
-def is_sparse_payload(vector: Any) -> TypeGuard[dict[str, list[int] | list[float]]]:
-    """Check whether a value looks like sparse vector ``indices``/``values`` data.
-
-    Args:
-        vector: Value to validate.
-
-    Returns:
-        ``True`` when the payload has ``indices`` and ``values`` list fields.
-    """
-    if not isinstance(vector, dict):
-        return False
-    indices = vector.get("indices")
-    values = vector.get("values")
-    return isinstance(indices, list) and isinstance(values, list)
 
 
 class QdrantClient(VectorDBClient):
@@ -128,6 +100,12 @@ class QdrantClient(VectorDBClient):
 
         self._vector_size = config.vector_names[self._text_vector_name]
         self._image_vector_size = config.vector_names[self._image_vector_name]
+
+        self._normalizer = VectorNormalizer(
+            sparse_vector_names=self._sparse_vector_names,
+            multivector_vectors=set(config.multivector_vectors),
+            vector_names=config.vector_names,
+        )
 
     @property
     def collection_name(self) -> str:
@@ -398,7 +376,7 @@ class QdrantClient(VectorDBClient):
                 str, list[float] | list[list[float]] | SparseVector
             ] = {}
             for vector_name, vector_data in vectors.items():
-                normalized_vectors[vector_name] = self._normalize_vector_payload(
+                normalized_vectors[vector_name] = self._normalizer.normalize_vector_payload(
                     vector_name=vector_name,
                     vector_data=vector_data,
                 )
@@ -428,104 +406,6 @@ class QdrantClient(VectorDBClient):
             successful=len(points),
             failed=0,
         )
-
-    def _to_sparse_vector_data(
-        self, vector_data: Any, vector_name: str
-    ) -> SparseVectorData:
-        """Validate and coerce sparse vector payload.
-
-        Args:
-            vector_data: Candidate sparse payload.
-            vector_name: Vector name for context in validation errors.
-
-        Returns:
-            Validated sparse vector data model.
-
-        Raises:
-            ValidationError: If sparse vectors are disabled or payload shape is invalid.
-        """
-        if isinstance(vector_data, SparseVectorData):
-            return vector_data
-
-        if not is_sparse_payload(vector_data):
-            raise ValidationError(
-                f"Sparse vector {vector_name} must be an object with indices and values lists"
-            )
-
-        try:
-            return SparseVectorData.model_validate(vector_data)
-        except Exception as error:
-            raise ValidationError(
-                f"Invalid sparse vector payload for {vector_name}"
-            ) from error
-
-    def _normalize_vector_payload(
-        self,
-        vector_name: str,
-        vector_data: Any,
-    ) -> list[float] | list[list[float]] | SparseVector:
-        """Normalize vector payload for Qdrant upsert/update APIs.
-
-        Args:
-            vector_name: Named vector field.
-            vector_data: Dense, multivector, or sparse payload.
-
-        Returns:
-            Normalized vector payload accepted by qdrant-client.
-        """
-        if vector_name in self._sparse_vector_names:
-            sparse_data = self._to_sparse_vector_data(vector_data, vector_name)
-            return SparseVector(indices=sparse_data.indices, values=sparse_data.values)
-        if is_sparse_payload(vector_data):
-            raise ValidationError(
-                f"Vector {vector_name} received sparse payload but is not configured as sparse"
-            )
-        return cast(list[float] | list[list[float]], vector_data)
-
-    def _validate_vector_update(
-        self,
-        vector_name: str,
-        vector_data: list[float] | list[list[float]] | SparseVectorData,
-    ) -> None:
-        """Validate vector update payload against configured schema.
-
-        Args:
-            vector_name: Vector field to update.
-            vector_data: Single-vector or multivector payload.
-
-        Raises:
-            ValidationError: If name, type, or dimensions are invalid.
-        """
-        expected_dim = self.config.vector_names.get(vector_name)
-        if vector_name in self._sparse_vector_names:
-            self._to_sparse_vector_data(vector_data, vector_name)
-            return
-
-        if expected_dim is None:
-            raise ValidationError(f"Invalid vector name: {vector_name}")
-
-        is_multivector = vector_name in set(self.config.multivector_vectors)
-
-        if is_multivector:
-            if not isinstance(vector_data, list) or len(vector_data) == 0:
-                raise ValidationError("Multivector data must be a non-empty list")
-            for idx, element in enumerate(vector_data):
-                if not is_float_vector(element):
-                    raise ValidationError(
-                        f"Multivector element {idx} is not a valid float vector"
-                    )
-                if len(element) != expected_dim:
-                    raise ValidationError(
-                        f"Multivector element {idx} dimension mismatch: expected {expected_dim}, got {len(element)}"
-                    )
-            return
-
-        if not is_float_vector(vector_data):
-            raise ValidationError("Vector data is not a valid float vector")
-        if len(vector_data) != expected_dim:
-            raise ValidationError(
-                f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}"
-            )
 
     async def update_vectors(  # ty: ignore[invalid-method-override]
         self,
@@ -569,9 +449,9 @@ class QdrantClient(VectorDBClient):
             str, dict[str, list[float] | list[list[float]] | SparseVector]
         ] = {}
         for update in deduplicated_updates:
-            self._validate_vector_update(update.vector_name, update.vector_data)
+            self._normalizer.validate_vector_update(update.vector_name, update.vector_data)
             grouped.setdefault(update.point_id, {})[update.vector_name] = (
-                self._normalize_vector_payload(
+                self._normalizer.normalize_vector_payload(
                     vector_name=update.vector_name,
                     vector_data=update.vector_data,
                 )
@@ -606,20 +486,6 @@ class QdrantClient(VectorDBClient):
             duplicates_removed=duplicates_removed,
         )
 
-    def _validate_payload_update(self, payload: dict[str, Any]) -> None:
-        """Validate payload update dictionary.
-
-        Args:
-            payload: Payload patch or replacement payload.
-
-        Raises:
-            ValidationError: If payload is not a non-empty dict.
-        """
-        if not isinstance(payload, dict):
-            raise ValidationError("Payload must be a dictionary")
-        if not payload:
-            raise ValidationError("Payload must not be empty")
-
     async def update_payload(  # ty: ignore[invalid-method-override]
         self,
         updates: list[BatchPayloadUpdateItem],
@@ -652,7 +518,7 @@ class QdrantClient(VectorDBClient):
             return BatchOperationResult(total=0, successful=0, failed=0)
 
         for update in updates:
-            self._validate_payload_update(update.payload)
+            self._normalizer.validate_payload_update(update.payload)
 
         try:
             deduplicated_updates, duplicates_removed = deduplicate_items(

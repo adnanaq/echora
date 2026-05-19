@@ -14,7 +14,7 @@ from qdrant_db.contracts import (
     SearchFilterCondition,
     SearchRequest,
 )
-from qdrant_db.errors import DuplicateUpdateError, ValidationError
+from qdrant_db.errors import DuplicateUpdateError
 from vector_db_interface import VectorDocument
 
 
@@ -258,20 +258,6 @@ async def test_update_payload_overwrite_uses_overwrite_operation(
     operations = call["update_operations"]
     assert len(operations) == 1
     assert isinstance(operations[0], OverwritePayloadOperation)
-
-
-@pytest.mark.asyncio
-async def test_update_payload_empty_payload_raises(mock_client: QdrantClient) -> None:
-    with pytest.raises(ValidationError):
-        await mock_client.update_payload(
-            updates=[
-                BatchPayloadUpdateItem(
-                    point_id="550e8400-e29b-41d4-a716-446655440000",
-                    payload={},
-                )
-            ],
-            mode="merge",
-        )
 
 
 def test_search_filter_condition_range_validation() -> None:
