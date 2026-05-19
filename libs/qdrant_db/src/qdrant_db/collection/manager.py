@@ -34,6 +34,13 @@ class QdrantCollectionManager:
         async_client: AsyncQdrantClient,
         collection_name: str,
     ) -> None:
+        """Initialize the collection manager.
+
+        Args:
+            config: Qdrant runtime settings.
+            async_client: Initialized async Qdrant transport client.
+            collection_name: Name of the collection to manage.
+        """
         self._config = config
         self._async_client = async_client
         self._collection_name = collection_name

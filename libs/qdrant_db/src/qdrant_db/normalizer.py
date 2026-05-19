@@ -50,6 +50,13 @@ class VectorNormalizer:
         multivector_vectors: set[str],
         vector_names: dict[str, int],
     ) -> None:
+        """Initialize normalizer with collection vector schema.
+
+        Args:
+            sparse_vector_names: Set of vector names configured as sparse.
+            multivector_vectors: Set of vector names configured as multivector.
+            vector_names: Mapping of vector name to expected dimension size.
+        """
         self._sparse_vector_names = sparse_vector_names
         self._multivector_vectors = multivector_vectors
         self._vector_names = vector_names

@@ -155,13 +155,11 @@ class QdrantClient(VectorDBClient):
             Initialized :class:`QdrantClient`.
         """
         client = cls(config, async_qdrant_client, url, collection_name)
-        await client._initialize_collection()
+        await client._collection_manager.initialize_collection()
         return client
 
-    async def _initialize_collection(self) -> None:
-        await self._collection_manager.initialize_collection()
-
     async def setup_payload_indexes(self) -> None:
+        """Delegate payload index creation to the collection manager."""
         await self._collection_manager.setup_payload_indexes()
 
     async def health_check(self) -> bool:
@@ -510,15 +508,19 @@ class QdrantClient(VectorDBClient):
         }
 
     async def clear_index(self) -> bool:
+        """Delete and recreate the collection, returning ``True`` on success."""
         return await self._collection_manager.clear_index()
 
     async def delete_collection(self) -> bool:
+        """Delete the collection, returning ``True`` on success."""
         return await self._collection_manager.delete_collection()
 
     async def collection_exists(self) -> bool:
+        """Return ``True`` when the configured collection is present."""
         return await self._collection_manager.collection_exists()
 
     async def create_collection(self) -> bool:
+        """Ensure the collection exists and is compatible, returning ``True`` on success."""
         return await self._collection_manager.create_collection()
 
     async def _search_single_vector(

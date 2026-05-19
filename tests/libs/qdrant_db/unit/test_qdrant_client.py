@@ -8,6 +8,7 @@ import pytest_asyncio
 from common.config import get_settings
 from qdrant_client.models import OverwritePayloadOperation, SetPayloadOperation, SparseVector
 from qdrant_db import QdrantClient
+from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.contracts import (
     BatchPayloadUpdateItem,
     BatchVectorUpdateItem,
@@ -23,7 +24,7 @@ async def mock_client() -> QdrantClient:
     settings = get_settings()
     mock_async_client = AsyncMock()
 
-    with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+    with patch.object(QdrantCollectionManager, "initialize_collection", new=AsyncMock()):
         client = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=mock_async_client,
@@ -44,7 +45,7 @@ async def mock_sparse_client() -> QdrantClient:
     )
     mock_async_client = AsyncMock()
 
-    with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
+    with patch.object(QdrantCollectionManager, "initialize_collection", new=AsyncMock()):
         client = await QdrantClient.create(
             config=sparse_config,
             async_qdrant_client=mock_async_client,

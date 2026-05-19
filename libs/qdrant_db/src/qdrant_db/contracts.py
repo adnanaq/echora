@@ -283,7 +283,13 @@ class BatchVectorUpdateItem(BaseModel):
 
 
 class BatchPayloadUpdateItem(BaseModel):
-    """Single payload update request."""
+    """Single payload update request for a batch payload operation.
+
+    Attributes:
+        point_id: ID of the point whose payload should be updated.
+        payload: Payload fields to merge into or overwrite on the point.
+        key: Optional nested key path for partial payload updates.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -293,7 +299,12 @@ class BatchPayloadUpdateItem(BaseModel):
 
 
 class OperationErrorDetail(BaseModel):
-    """Per-item failure detail for batch operations."""
+    """Per-item failure detail for a failed batch operation entry.
+
+    Attributes:
+        point_id: ID of the point that failed.
+        message: Human-readable failure reason.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -302,7 +313,15 @@ class OperationErrorDetail(BaseModel):
 
 
 class BatchOperationResult(BaseModel):
-    """Normalized batch operation result."""
+    """Normalized result summary for a batch write operation.
+
+    Attributes:
+        total: Total number of items processed.
+        successful: Count of items that succeeded.
+        failed: Count of items that failed.
+        duplicates_removed: Count of duplicate items removed before processing.
+        errors: Per-item failure details when individual items failed.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -314,7 +333,16 @@ class BatchOperationResult(BaseModel):
 
 
 class CollectionStats(BaseModel):
-    """Normalized collection stats model."""
+    """Normalized collection statistics returned by get_stats().
+
+    Attributes:
+        collection_name: Name of the Qdrant collection.
+        total_documents: Exact point count from a count query.
+        vector_size: Primary text vector dimension.
+        distance_metric: Configured distance metric (e.g. ``cosine``).
+        points_count: Point count reported by collection info (may be approximate).
+        indexed_vectors_count: Count of indexed vectors from collection info.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
