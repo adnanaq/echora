@@ -1,156 +1,23 @@
 """Abstract base class for vector database clients."""
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, TypedDict
+from abc import abstractmethod
+
+from vector_db_interface.interfaces.collection import CollectionManager
+from vector_db_interface.interfaces.document import DocumentReader, DocumentWriter
+from vector_db_interface.interfaces.monitor import CollectionMonitor
+from vector_db_interface.interfaces.search import VectorSearcher
+from vector_db_interface.types import SparseVectorData, VectorDocument
+
+__all__ = ["VectorDBClient", "VectorDocument", "SparseVectorData"]
 
 
-class SparseVectorData(TypedDict):
-    """Sparse vector payload represented as explicit index/value pairs.
+class VectorDBClient(CollectionManager, DocumentWriter, DocumentReader, VectorSearcher, CollectionMonitor):
+    """Composite ABC for vector database operations.
 
-    Attributes:
-        indices: Dimension indices for non-zero values.
-        values: Non-zero values aligned by position with ``indices``.
+    Composes all focused interfaces. Callers that only need a subset
+    can depend on the individual ABCs (CollectionManager, VectorSearcher, etc.)
+    instead of this full suite.
     """
-
-    indices: list[int]
-    values: list[float]
-
-
-@dataclass
-class VectorDocument:
-    """Provider-agnostic representation of a document with vectors.
-
-    Attributes:
-        id: Unique identifier for the document
-        vectors: Named vectors for multi-vector search. Supports single vectors
-            (e.g., {"text": [0.1, 0.2, ...]}) or multivectors for hierarchical
-            embeddings (e.g., {"episodes": [[0.1, ...], [0.2, ...]]}), and sparse
-            vectors (e.g., {"text_sparse": {"indices": [1, 7], "values": [0.2, 1.1]}})
-        payload: Metadata and searchable fields
-    """
-
-    id: str
-    vectors: dict[str, list[float] | list[list[float]] | SparseVectorData]
-    payload: dict[str, Any]
-
-
-class VectorDBClient(ABC):
-    """Abstract base class for vector database operations.
-
-    All vector database clients must implement this interface to ensure
-    consistent behavior across different vector database providers.
-    """
-
-    # ==================== Collection Management ====================
-
-    @abstractmethod
-    async def create_collection(self) -> bool:
-        """Create a new collection with configuration from settings."""
-        pass
-
-    @abstractmethod
-    async def delete_collection(self) -> bool:
-        """Delete the collection."""
-        pass
-
-    @abstractmethod
-    async def collection_exists(self) -> bool:
-        """Check if the collection exists."""
-        pass
-
-    # ==================== Document Operations ====================
-
-    @abstractmethod
-    async def add_documents(
-        self,
-        documents: list[VectorDocument],
-        batch_size: int = 100,
-    ) -> Any:
-        """Upsert documents to the collection in batches."""
-        pass
-
-    @abstractmethod
-    async def get_by_id(
-        self,
-        point_id: str,
-        with_vectors: bool = False,
-    ) -> dict[str, Any] | None:
-        """Retrieve a document by its ID."""
-        pass
-
-    @abstractmethod
-    async def search(self, request: Any) -> list[Any]:
-        """Run vector search with a strict request contract."""
-        pass
-
-    @abstractmethod
-    async def update_vectors(
-        self,
-        updates: list[Any],
-        dedup_policy: str = "last-wins",
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
-    ) -> Any:
-        """Batch update vectors for existing points.
-
-        Args:
-            updates: List of vector update items (implementation-specific type).
-            dedup_policy: Deduplication policy ("last-wins" or "fail").
-            max_retries: Maximum number of retry attempts.
-            retry_delay: Delay between retries in seconds.
-
-        Returns:
-            Operation result (implementation-specific type).
-
-        Note:
-            Implementations SHOULD override with stricter types for type safety
-            (e.g., list[BatchVectorUpdateItem] -> BatchOperationResult).
-            Type checkers may warn about LSP violations - these are safe to ignore
-            as runtime behavior accepts the stricter contract.
-        """
-        pass
-
-    @abstractmethod
-    async def update_payload(
-        self,
-        updates: list[Any],
-        mode: str = "merge",
-        dedup_policy: str = "last-wins",
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
-    ) -> Any:
-        """Batch update payload for existing points.
-
-        Args:
-            updates: List of payload update items (implementation-specific type).
-            mode: Update mode ("merge" or "overwrite").
-            dedup_policy: Deduplication policy ("last-wins" or "fail").
-            max_retries: Maximum number of retry attempts.
-            retry_delay: Delay between retries in seconds.
-
-        Returns:
-            Operation result (implementation-specific type).
-
-        Note:
-            Implementations SHOULD override with stricter types for type safety
-            (e.g., list[BatchPayloadUpdateItem] -> BatchOperationResult).
-            Type checkers may warn about LSP violations - these are safe to ignore
-            as runtime behavior accepts the stricter contract.
-        """
-        pass
-
-    # ==================== Health & Statistics ====================
-
-    @abstractmethod
-    async def health_check(self) -> bool:
-        """Check if the database connection is healthy."""
-        pass
-
-    @abstractmethod
-    async def get_stats(self) -> dict[str, Any]:
-        """Get database statistics."""
-        pass
 
     # ==================== Connection & Configuration ====================
 
