@@ -12,18 +12,14 @@ from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
-    FieldCondition,
     Filter,
     Fusion,
     FusionQuery,
-    MatchAny,
-    MatchValue,
     OverwritePayloadOperation,
     PayloadSchemaType,
     PointStruct,
     PointVectors,
     Prefetch,
-    Range,
     SetPayload,
     SetPayloadOperation,
     SparseVector,
@@ -47,7 +43,6 @@ from qdrant_db.contracts import (
     PayloadUpdateMode,
     SearchFilterCondition,
     SearchHit,
-    SearchRange,
     SearchRequest,
     SparseVectorData,
 )
@@ -59,6 +54,7 @@ from qdrant_db.errors import (
 )
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 from qdrant_db.normalizer import VectorNormalizer
+from qdrant_db.query_builder import build_filter, build_prefetch_queries, build_sparse_query
 
 logger = logging.getLogger(__name__)
 
@@ -569,49 +565,6 @@ class QdrantClient(VectorDBClient):
             duplicates_removed=duplicates_removed,
         )
 
-    def _build_filter(self, filters: list[SearchFilterCondition]) -> Filter | None:
-        """Convert contract filter conditions into Qdrant filter model.
-
-        Args:
-            filters: Typed filter conditions.
-
-        Returns:
-            Qdrant filter model or ``None`` when no filters are provided.
-        """
-        if not filters:
-            return None
-
-        conditions: list[FieldCondition] = []
-        for condition in filters:
-            if condition.operator == "eq":
-                conditions.append(
-                    FieldCondition(
-                        key=condition.field,
-                        match=MatchValue(value=condition.value),
-                    )
-                )
-                continue
-
-            if condition.operator == "in":
-                values = cast(list[Any], condition.value)
-                conditions.append(
-                    FieldCondition(
-                        key=condition.field,
-                        match=MatchAny(any=values),
-                    )
-                )
-                continue
-
-            if condition.operator == "range":
-                range_value = cast(SearchRange, condition.value)
-                conditions.append(
-                    FieldCondition(
-                        key=condition.field,
-                        range=Range(**range_value.model_dump(exclude_none=True)),
-                    )
-                )
-
-        return Filter(must=cast(Any, conditions)) if conditions else None
 
     async def get_by_id(
         self,
@@ -782,19 +735,6 @@ class QdrantClient(VectorDBClient):
             for point in response.points
         ]
 
-    def _build_sparse_query(self, sparse_embedding: SparseVectorData) -> SparseVector:
-        """Convert typed sparse contract model to Qdrant sparse query payload.
-
-        Args:
-            sparse_embedding: Typed sparse vector data contract.
-
-        Returns:
-            :class:`SparseVector` query model.
-        """
-        return SparseVector(
-            indices=sparse_embedding.indices,
-            values=sparse_embedding.values,
-        )
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
         """Execute strict-contract search request.
@@ -820,7 +760,7 @@ class QdrantClient(VectorDBClient):
                     value=request.entity_type,
                 )
             )
-        qdrant_filter = self._build_filter(filter_conditions)
+        qdrant_filter = build_filter(filter_conditions)
 
         # Execute vector search based on request type
         hits: list[SearchHit]
@@ -856,41 +796,19 @@ class QdrantClient(VectorDBClient):
         ):
             hits = await self._search_single_vector(
                 vector_name=self._primary_sparse_vector_name,
-                vector_data=self._build_sparse_query(request.sparse_embedding),
+                vector_data=build_sparse_query(request.sparse_embedding),
                 limit=request.limit,
                 filters=qdrant_filter,
             )
 
         else:
-            # Fusion search (multiple embeddings)
-            prefetch_queries: list[Prefetch] = []
-            if request.text_embedding is not None:
-                prefetch_queries.append(
-                    Prefetch(
-                        using=self._text_vector_name,
-                        query=request.text_embedding,
-                        limit=request.limit * 2,
-                        filter=qdrant_filter,
-                    )
-                )
-            if request.image_embedding is not None:
-                prefetch_queries.append(
-                    Prefetch(
-                        using=self._image_vector_name,
-                        query=request.image_embedding,
-                        limit=request.limit * 2,
-                        filter=qdrant_filter,
-                    )
-                )
-            if request.sparse_embedding is not None:
-                prefetch_queries.append(
-                    Prefetch(
-                        using=self._primary_sparse_vector_name,
-                        query=self._build_sparse_query(request.sparse_embedding),
-                        limit=request.limit * 2,
-                        filter=qdrant_filter,
-                    )
-                )
+            prefetch_queries = build_prefetch_queries(
+                request=request,
+                text_vector_name=self._text_vector_name,
+                image_vector_name=self._image_vector_name,
+                sparse_vector_name=self._primary_sparse_vector_name,
+                qdrant_filter=qdrant_filter,
+            )
 
             if len(prefetch_queries) < 2:
                 raise ValidationError(
