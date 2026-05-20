@@ -56,6 +56,17 @@ class QdrantConfig(BaseModel):
         default=False,
         description="Store sparse index on disk instead of RAM",
     )
+    rrf_k: int = Field(
+        default=2,
+        ge=1,
+        le=1000,
+        description=(
+            "RRF rank constant k in score = 1 / (k + rank). "
+            "Lower k (e.g. 2) strongly boosts top-ranked results from each branch. "
+            "Higher k (e.g. 60) flattens the curve, weighting all ranks more equally. "
+            "Qdrant default is 2. Tune against real queries — there is no universal optimum."
+        ),
+    )
     prefetch_limit_multiplier: int = Field(
         default=10,
         ge=2,

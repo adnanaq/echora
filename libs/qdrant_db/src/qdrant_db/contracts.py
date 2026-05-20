@@ -213,6 +213,16 @@ class SearchRequest(BaseModel):
     )
     entity_type: str | None = None
     limit: int = Field(default=10, ge=1, le=1000)
+    score_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum similarity score for returned hits. Results below this value "
+            "are dropped server-side. None means no threshold — Qdrant always returns "
+            "up to `limit` results. Applied to both single-vector and fusion searches."
+        ),
+    )
     filters: list[SearchFilterCondition] = Field(default_factory=list)
     fusion_method: FusionMethod = "rrf"
 

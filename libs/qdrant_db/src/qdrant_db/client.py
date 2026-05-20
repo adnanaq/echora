@@ -15,6 +15,8 @@ from qdrant_client.models import (
     Fusion,
     FusionQuery,
     OverwritePayloadOperation,
+    Rrf,
+    RrfQuery,
     PointStruct,
     PointVectors,
     Prefetch,
@@ -81,6 +83,7 @@ class QdrantClient(VectorDBClient):
         self._sparse_vector_names = set(config.sparse_vector_names)
         self._primary_sparse_vector_name = config.primary_sparse_vector_name
         self._prefetch_limit_multiplier = config.prefetch_limit_multiplier
+        self._rrf_k = config.rrf_k
 
         self._vector_size = config.vector_names[self._text_vector_name]
         self._image_vector_size = config.vector_names[self._image_vector_name]
@@ -530,6 +533,7 @@ class QdrantClient(VectorDBClient):
         vector_data: list[float] | SparseVector,
         limit: int,
         filters: Filter | None,
+        score_threshold: float | None = None,
     ) -> list[SearchHit]:
         """Run a single-vector query and normalize hits.
 
@@ -538,6 +542,7 @@ class QdrantClient(VectorDBClient):
             vector_data: Query vector values.
             limit: Max hit count.
             filters: Optional Qdrant filter.
+            score_threshold: Optional minimum score cutoff applied server-side.
 
         Returns:
             List of normalized search hits.
@@ -550,6 +555,7 @@ class QdrantClient(VectorDBClient):
             with_payload=True,
             with_vectors=False,
             query_filter=filters,
+            score_threshold=score_threshold,
         )
         return [
             SearchHit(
@@ -565,6 +571,7 @@ class QdrantClient(VectorDBClient):
         prefetch_queries: list[Prefetch],
         limit: int,
         fusion_method: str,
+        score_threshold: float | None = None,
     ) -> list[SearchHit]:
         """Run fused multi-query search using Query API prefetch + fusion.
 
@@ -572,22 +579,24 @@ class QdrantClient(VectorDBClient):
             prefetch_queries: Prepared prefetch branches for each query signal.
             limit: Max hit count.
             fusion_method: Fusion mode (``rrf`` or ``dbsf``).
+            score_threshold: Optional minimum score cutoff applied server-side.
 
         Returns:
             List of normalized search hits.
         """
         if fusion_method == "dbsf":
-            fusion = Fusion.DBSF
+            query = FusionQuery(fusion=Fusion.DBSF)
         else:
-            fusion = Fusion.RRF
+            query = RrfQuery(rrf=Rrf(k=self._rrf_k))
 
         response = await self._async_client.query_points(
             collection_name=self.collection_name,
             prefetch=prefetch_queries,
-            query=FusionQuery(fusion=fusion),
+            query=query,
             limit=limit,
             with_payload=True,
             with_vectors=False,
+            score_threshold=score_threshold,
         )
 
         return [
@@ -649,6 +658,7 @@ class QdrantClient(VectorDBClient):
                 vector_data=vector_data,
                 limit=request.limit,
                 filters=qdrant_filter,
+                score_threshold=request.score_threshold,
             )
 
         prefetch_queries = build_prefetch_queries(
@@ -669,4 +679,5 @@ class QdrantClient(VectorDBClient):
             prefetch_queries=prefetch_queries,
             limit=request.limit,
             fusion_method=request.fusion_method,
+            score_threshold=request.score_threshold,
         )
