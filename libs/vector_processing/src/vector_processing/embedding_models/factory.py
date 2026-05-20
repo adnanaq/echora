@@ -5,6 +5,7 @@ from vector_processing.reranking import RerankerModel, SentenceTransformerRerank
 
 from .text.base import TextEmbeddingModel
 from .text.fastembed_model import FastEmbedModel
+from .text.flagembedding_model import FlagEmbeddingModel
 from .text.huggingface_model import HuggingFaceModel
 from .text.sentence_transformer_model import SentenceTransformerModel
 from .vision.base import VisionEmbeddingModel
@@ -32,7 +33,13 @@ class EmbeddingModelFactory:
 
         logger.info(f"Creating text embedding model: {provider} - {model_name}")
 
-        if provider == "fastembed":
+        if provider == "flagembedding":
+            return FlagEmbeddingModel(
+                model_name,
+                cache_dir=cache_dir,
+                max_length=config.bge_max_length,
+            )
+        elif provider == "fastembed":
             return FastEmbedModel(model_name, cache_dir=cache_dir)
         elif provider == "huggingface":
             return HuggingFaceModel(model_name, cache_dir=cache_dir)

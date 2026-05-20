@@ -15,7 +15,6 @@ from common.models.anime import (
 from vector_db_interface import VectorDocument
 from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
-from vector_processing.processors.sparse_text_processor import SparseTextProcessor
 from vector_processing.processors.text_processor import TextProcessor
 from vector_processing.processors.vision_processor import VisionProcessor
 
@@ -37,10 +36,19 @@ def mock_field_mapper():
 @pytest.fixture
 def mock_text_processor():
     processor = MagicMock(spec=TextProcessor)
-    processor.encode_text.return_value = [0.1] * 1024
-    processor.encode_texts_batch.side_effect = lambda texts: [
-        [0.1] * 1024 for _ in texts
-    ]
+    processor.encode_text = AsyncMock(return_value=[0.1] * 1024)
+    processor.encode_texts_batch = AsyncMock(
+        side_effect=lambda texts: [[0.1] * 1024 for _ in texts]
+    )
+    processor.encode_text_with_sparse = AsyncMock(
+        return_value=([0.1] * 1024, None)
+    )
+    processor.encode_texts_batch_with_sparse = AsyncMock(
+        side_effect=lambda texts: (
+            [[0.1] * 1024 for _ in texts],
+            [None] * len(texts),
+        )
+    )
     processor.get_zero_embedding.return_value = [0.0] * 1024
     return processor
 
@@ -61,18 +69,6 @@ def mock_vision_processor():
     )
     return processor
 
-
-@pytest.fixture
-def mock_sparse_text_processor():
-    """Mock SparseTextProcessor for unit tests."""
-    processor = MagicMock(spec=SparseTextProcessor)
-    processor.encode_text = AsyncMock(return_value={"indices": [1, 5], "values": [0.4, 0.9]})
-    processor.encode_texts_batch = AsyncMock(
-        side_effect=lambda texts: [
-            {"indices": [idx + 1], "values": [0.5]} for idx, _ in enumerate(texts)
-        ]
-    )
-    return processor
 
 
 @pytest.fixture
@@ -186,19 +182,28 @@ async def test_process_anime_vectors_structure(
 
 
 @pytest.mark.asyncio
-async def test_process_anime_vectors_includes_sparse_when_configured(
+async def test_process_anime_vectors_includes_sparse_when_model_supports_it(
     mock_field_mapper,
     mock_text_processor,
     mock_vision_processor,
-    mock_sparse_text_processor,
     sample_record,
 ):
-    """Test sparse vector embedding is included when sparse processor is injected."""
+    """Test sparse vector is included when the text processor returns sparse output."""
+    sparse_data = {"indices": [1, 5], "values": [0.4, 0.9]}
+    mock_text_processor.encode_text_with_sparse = AsyncMock(
+        return_value=([0.1] * 1024, sparse_data)
+    )
+    mock_text_processor.encode_texts_batch_with_sparse = AsyncMock(
+        side_effect=lambda texts: (
+            [[0.1] * 1024 for _ in texts],
+            [sparse_data for _ in texts],
+        )
+    )
+
     manager = MultiVectorEmbeddingManager(
         text_processor=mock_text_processor,
         vision_processor=mock_vision_processor,
         field_mapper=mock_field_mapper,
-        sparse_text_processor=mock_sparse_text_processor,
         sparse_vector_name="text_sparse_vector",
     )
 

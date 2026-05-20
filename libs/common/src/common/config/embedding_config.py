@@ -8,8 +8,8 @@ class EmbeddingConfig(BaseModel):
 
     # Text Embedding
     text_embedding_provider: str = Field(
-        default="huggingface",
-        description="Text embedding provider: fastembed, huggingface, sentence-transformers",
+        default="flagembedding",
+        description="Text embedding provider: flagembedding, fastembed, huggingface, sentence-transformers",
     )
     text_embedding_model: str = Field(
         default="BAAI/bge-m3", description="Modern text embedding model name"
@@ -37,16 +37,6 @@ class EmbeddingConfig(BaseModel):
     )
     openclip_text_max_length: int = Field(
         default=77, description="OpenCLIP maximum text sequence length"
-    )
-
-    # Sparse Text Embedding
-    sparse_embedding_provider: str = Field(
-        default="fastembed",
-        description="Sparse embedding provider: fastembed",
-    )
-    sparse_embedding_model: str = Field(
-        default="Qdrant/bm25",
-        description="Sparse embedding model name for lexical retrieval",
     )
 
     # Image Processing
@@ -104,7 +94,7 @@ class EmbeddingConfig(BaseModel):
     @classmethod
     def validate_text_provider(cls, v: str) -> str:
         """Validate text embedding provider."""
-        valid_providers = ["fastembed", "huggingface", "sentence-transformers"]
+        valid_providers = ["flagembedding", "fastembed", "huggingface", "sentence-transformers"]
         if v.lower() not in valid_providers:
             raise ValueError(
                 f"Text embedding provider must be one of: {valid_providers}"
@@ -119,17 +109,6 @@ class EmbeddingConfig(BaseModel):
         if v.lower() not in valid_providers:
             raise ValueError(
                 f"Image embedding provider must be one of: {valid_providers}"
-            )
-        return v.lower()
-
-    @field_validator("sparse_embedding_provider")
-    @classmethod
-    def validate_sparse_provider(cls, v: str) -> str:
-        """Validate sparse embedding provider."""
-        valid_providers = ["fastembed"]
-        if v.lower() not in valid_providers:
-            raise ValueError(
-                f"Sparse embedding provider must be one of: {valid_providers}"
             )
         return v.lower()
 
