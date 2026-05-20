@@ -136,3 +136,30 @@ def test_build_prefetch_passes_filter() -> None:
     assert result[0].filter is qdrant_filter
 
 
+def test_build_prefetch_expanded_text_embeddings() -> None:
+    request = SearchRequest(
+        text_embedding=[0.1] * 1024,
+        expanded_text_embeddings=[[0.2] * 1024, [0.3] * 1024],
+        limit=10,
+    )
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
+    assert len(result) == 3
+    assert all(p.using == "text_vec" for p in result)
+    assert result[0].limit == 20
+
+
+def test_build_prefetch_expanded_with_other_modalities() -> None:
+    request = SearchRequest(
+        text_embedding=[0.1] * 1024,
+        image_embedding=[0.2] * 768,
+        expanded_text_embeddings=[[0.3] * 1024],
+        limit=10,
+    )
+    result = build_prefetch_queries(request, "text_vec", "image_vec", "sparse_vec", None, prefetch_limit=20)
+    assert len(result) == 3
+    text_branches = [p for p in result if p.using == "text_vec"]
+    image_branches = [p for p in result if p.using == "image_vec"]
+    assert len(text_branches) == 2
+    assert len(image_branches) == 1
+
+

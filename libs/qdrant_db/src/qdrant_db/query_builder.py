@@ -117,6 +117,15 @@ def build_prefetch_queries(
                 filter=qdrant_filter,
             )
         )
+        for expansion in request.expanded_text_embeddings or []:
+            prefetch.append(
+                Prefetch(
+                    using=text_vector_name,
+                    query=expansion,
+                    limit=prefetch_limit,
+                    filter=qdrant_filter,
+                )
+            )
 
     if request.image_embedding is not None:
         prefetch.append(

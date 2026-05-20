@@ -203,6 +203,14 @@ class SearchRequest(BaseModel):
     text_embedding: list[float] | None = None
     image_embedding: list[float] | None = None
     sparse_embedding: SparseVectorData | None = None
+    expanded_text_embeddings: list[list[float]] | None = Field(
+        default=None,
+        description=(
+            "Additional text embedding variants for query expansion. "
+            "Each variant is fused alongside the primary text_embedding via RRF. "
+            "Intended for LLM-generated query rephrasing — requires text_embedding to be set."
+        ),
+    )
     entity_type: str | None = None
     limit: int = Field(default=10, ge=1, le=1000)
     filters: list[SearchFilterCondition] = Field(default_factory=list)
@@ -239,6 +247,15 @@ class SearchRequest(BaseModel):
         ):
             if vector is not None and len(vector) == 0:
                 raise ValueError(f"{name} must not be empty")
+
+        if self.expanded_text_embeddings is not None:
+            if self.text_embedding is None:
+                raise ValueError(
+                    "expanded_text_embeddings requires text_embedding to be set"
+                )
+            for i, expansion in enumerate(self.expanded_text_embeddings):
+                if len(expansion) == 0:
+                    raise ValueError(f"expanded_text_embeddings[{i}] must not be empty")
 
         return self
 
