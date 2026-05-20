@@ -49,7 +49,7 @@ class QdrantConfig(BaseModel):
         description="Primary sparse vector used for sparse and hybrid text search",
     )
     sparse_vector_modifier: str = Field(
-        default="none",
+        default="idf",
         description="Sparse vector modifier: none or idf",
     )
     sparse_index_on_disk: bool = Field(

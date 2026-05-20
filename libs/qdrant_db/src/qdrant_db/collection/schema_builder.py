@@ -116,13 +116,16 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
     vector_params: dict[str, VectorParams] = {}
     for vector_name, dimension in config.vector_names.items():
         priority = get_vector_priority(config, vector_name)
+        is_multivector = vector_name in multivector_names
         params_kwargs: dict[str, Any] = {
             "size": dimension,
             "distance": distance,
-            "hnsw_config": get_hnsw_config(config, priority),
+            # MaxSim is asymmetric — HNSW assumes symmetric distances and cannot
+            # pre-compute valid neighbors for multivector. Disable it (m=0).
+            "hnsw_config": HnswConfigDiff(m=0) if is_multivector else get_hnsw_config(config, priority),
             "quantization_config": get_per_vector_quantization_config(config, priority),
         }
-        if vector_name in multivector_names:
+        if is_multivector:
             params_kwargs["multivector_config"] = MultiVectorConfig(
                 comparator=MultiVectorComparator.MAX_SIM
             )

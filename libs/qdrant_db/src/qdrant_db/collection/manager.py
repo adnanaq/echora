@@ -63,6 +63,10 @@ class QdrantCollectionManager:
                 optimizers_config=build_optimizers_config(self._config),
                 wal_config=build_wal_config(self._config),
             )
+
+            if self._config.qdrant_enable_payload_indexing:
+                await self.setup_payload_indexes()
+
             logger.info("Created collection %s", self._collection_name)
             return
 

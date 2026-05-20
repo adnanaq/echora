@@ -159,10 +159,6 @@ class QdrantClient(VectorDBClient):
         await client._collection_manager.initialize_collection()
         return client
 
-    async def setup_payload_indexes(self) -> None:
-        """Delegate payload index creation to the collection manager."""
-        await self._collection_manager.setup_payload_indexes()
-
     async def health_check(self) -> bool:
         """Check Qdrant reachability using a lightweight collection request.
 
@@ -524,6 +520,10 @@ class QdrantClient(VectorDBClient):
         """Ensure the collection exists and is compatible, returning ``True`` on success."""
         return await self._collection_manager.create_collection()
 
+    async def setup_payload_indexes(self) -> None:
+        """Create configured payload indexes for filterable metadata fields."""
+        await self._collection_manager.setup_payload_indexes()
+
     async def _search_single_vector(
         self,
         vector_name: str,
@@ -641,7 +641,8 @@ class QdrantClient(VectorDBClient):
             if vec is not None
         ]
 
-        if len(active_embeddings) == 1:
+        has_expansions = bool(request.expanded_text_embeddings)
+        if len(active_embeddings) == 1 and not has_expansions:
             vector_name, vector_data = active_embeddings[0]
             return await self._search_single_vector(
                 vector_name=vector_name,
