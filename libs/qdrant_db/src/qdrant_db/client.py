@@ -15,16 +15,16 @@ from qdrant_client.models import (
     Fusion,
     FusionQuery,
     OverwritePayloadOperation,
-    Rrf,
-    RrfQuery,
     PointStruct,
     PointVectors,
     Prefetch,
+    Rrf,
+    RrfQuery,
     SetPayload,
     SetPayloadOperation,
     SparseVector,
 )
-from vector_db_interface import VectorDBClient, VectorDocument
+from vector_db_interface import SearchHit, VectorDBClient, VectorDocument
 
 from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.contracts import (
@@ -35,7 +35,6 @@ from qdrant_db.contracts import (
     DedupPolicy,
     PayloadUpdateMode,
     SearchFilterCondition,
-    SearchHit,
     SearchRequest,
 )
 from qdrant_db.errors import (
@@ -185,7 +184,9 @@ class QdrantClient(VectorDBClient):
             PermanentQdrantError: If stats retrieval fails.
         """
         try:
-            collection_info = await self._async_client.get_collection(self.collection_name)
+            collection_info = await self._async_client.get_collection(
+                self.collection_name
+            )
             count_result = await self._async_client.count(
                 collection_name=self.collection_name,
                 count_filter=None,
@@ -265,33 +266,36 @@ class QdrantClient(VectorDBClient):
                 str, list[float] | list[list[float]] | SparseVector
             ] = {}
             for vector_name, vector_data in vectors.items():
-                normalized_vectors[vector_name] = self._normalizer.normalize_vector_payload(
-                    vector_name=vector_name,
-                    vector_data=vector_data,
+                normalized_vectors[vector_name] = (
+                    self._normalizer.normalize_vector_payload(
+                        vector_name=vector_name,
+                        vector_data=vector_data,
+                    )
                 )
             return normalized_vectors
 
-        points = [
-            PointStruct(
-                id=doc.id,
-                vector=cast(dict[str, Any], _normalize_point_vectors(doc.vectors)),
-                payload=doc.payload,
-            )
-            for doc in documents
-        ]
-
         try:
-            for start in range(0, len(points), batch_size):
+            for start in range(0, len(documents), batch_size):
+                points = [
+                    PointStruct(
+                        id=doc.id,
+                        vector=cast(
+                            dict[str, Any], _normalize_point_vectors(doc.vectors)
+                        ),
+                        payload=doc.payload,
+                    )
+                    for doc in documents[start : start + batch_size]
+                ]
                 await self._async_client.upsert(
                     collection_name=self.collection_name,
-                    points=points[start : start + batch_size],
+                    points=points,
                     wait=True,
                 )
         except Exception as error:
             raise PermanentQdrantError("Failed to upsert documents") from error
 
         return BatchOperationResult(
-            total=len(points),
+            total=len(documents),
             successful=len(points),
             failed=0,
         )
@@ -338,7 +342,9 @@ class QdrantClient(VectorDBClient):
             str, dict[str, list[float] | list[list[float]] | SparseVector]
         ] = {}
         for update in deduplicated_updates:
-            self._normalizer.validate_vector_update(update.vector_name, update.vector_data)
+            self._normalizer.validate_vector_update(
+                update.vector_name, update.vector_data
+            )
             grouped.setdefault(update.point_id, {})[update.vector_name] = (
                 self._normalizer.normalize_vector_payload(
                     vector_name=update.vector_name,
@@ -412,12 +418,16 @@ class QdrantClient(VectorDBClient):
         try:
             deduplicated_updates, duplicates_removed = deduplicate_items(
                 items=updates,
-                key_fn=lambda item: item.point_id,
+                key_fn=(
+                    (lambda item: (item.point_id, item.key))
+                    if mode == "merge"
+                    else (lambda item: item.point_id)
+                ),
                 dedup_policy=dedup_policy,
             )
         except DuplicateKeyError as error:
             raise DuplicateUpdateError(
-                f"Duplicate payload update found for point_id={error.key}"
+                f"Duplicate payload update found for key={error.key}"
             ) from error
 
         operations: list[SetPayloadOperation | OverwritePayloadOperation] = []
@@ -457,7 +467,6 @@ class QdrantClient(VectorDBClient):
             failed=0,
             duplicates_removed=duplicates_removed,
         )
-
 
     async def get_by_id(
         self,
@@ -607,7 +616,6 @@ class QdrantClient(VectorDBClient):
             )
             for point in response.points
         ]
-
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
         """Execute strict-contract search request.

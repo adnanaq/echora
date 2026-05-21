@@ -4,6 +4,7 @@ import logging
 
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PayloadSchemaType
 
 from qdrant_db.collection.schema_builder import (
@@ -55,14 +56,26 @@ class QdrantCollectionManager:
         if not await self.collection_exists():
             vectors_config = build_vector_config(self._config)
             validate_vector_config(self._config, vectors_config)
-            await self._async_client.create_collection(
-                collection_name=self._collection_name,
-                vectors_config=vectors_config,
-                sparse_vectors_config=build_sparse_vector_config(self._config),
-                quantization_config=build_quantization_config(self._config),
-                optimizers_config=build_optimizers_config(self._config),
-                wal_config=build_wal_config(self._config),
-            )
+            try:
+                await self._async_client.create_collection(
+                    collection_name=self._collection_name,
+                    vectors_config=vectors_config,
+                    sparse_vectors_config=build_sparse_vector_config(self._config),
+                    quantization_config=build_quantization_config(self._config),
+                    optimizers_config=build_optimizers_config(self._config),
+                    wal_config=build_wal_config(self._config),
+                )
+            except UnexpectedResponse as exc:
+                if exc.status_code == 400 and b"already exists" in exc.content:
+                    # Concurrent instance created the collection between our existence
+                    # check and create — validate compatibility and proceed.
+                    logger.info(
+                        "Collection %s created concurrently, validating compatibility",
+                        self._collection_name,
+                    )
+                    await self._validate_compatibility()
+                    return
+                raise
 
             if self._config.qdrant_enable_payload_indexing:
                 await self.setup_payload_indexes()
