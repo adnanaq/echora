@@ -10,8 +10,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
-from enrichment.sources.mal.mal_helper import MalHelper
 from enrichment.crawlers.mal_crawler.mal_base import get_shared_mal_rate_limiter
 
 # Mark all tests in this module as integration tests.

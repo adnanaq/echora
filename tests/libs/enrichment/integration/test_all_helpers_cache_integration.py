@@ -362,7 +362,9 @@ async def test_animeschedule_fetcher_no_hardcoded_redis(mocker):
     `Redis.from_url` to observe calls, invokes _search, and asserts that no direct
     Redis connection was created. API errors during the fetch are tolerated.
     """
-    from enrichment.sources.animeschedule.animeschedule_helper import AnimescheduleHelper
+    from enrichment.sources.animeschedule.animeschedule_helper import (
+        AnimescheduleHelper,
+    )
 
     # Mock Redis.from_url
     mock_redis_from_url = mocker.patch("redis.asyncio.Redis.from_url")

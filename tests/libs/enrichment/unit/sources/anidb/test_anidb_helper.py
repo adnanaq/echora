@@ -310,7 +310,8 @@ def maximal_anime_xml():
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_comprehensive(
     mock_fetch_char, helper, maximal_anime_xml
@@ -350,7 +351,8 @@ async def test_parse_anime_xml_comprehensive(
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_multilang_official_titles(mock_fetch_char, helper):
     """Test that non-en/ja official titles are preserved in title_others.
@@ -420,7 +422,8 @@ async def test_parse_anime_xml_multilang_official_titles(mock_fetch_char, helper
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_creator_missing_id(mock_fetch_char, helper):
     """Test that creators with missing IDs don't crash the parser.
@@ -456,7 +459,8 @@ async def test_parse_anime_xml_creator_missing_id(mock_fetch_char, helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_creator_non_numeric_id(mock_fetch_char, helper):
     """Test that creators with non-numeric IDs are handled safely.
@@ -489,7 +493,8 @@ async def test_parse_anime_xml_creator_non_numeric_id(mock_fetch_char, helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_related_anime_whitespace_handling(
     mock_fetch_char, helper
@@ -524,7 +529,8 @@ async def test_parse_anime_xml_related_anime_whitespace_handling(
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_episode_defensive_int_conversions(
     mock_fetch_char, helper
@@ -649,9 +655,7 @@ async def test_session_management(helper, mock_session):
 @patch("enrichment.sources.anidb.anidb_helper.time.time")
 async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
     """Test the logic of the adaptive rate limiter across different scenarios."""
-    helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(
-        helper
-    )
+    helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
 
     # Case 1: Normal operation (no wait)
     mock_time.return_value = 1000.0
@@ -686,9 +690,7 @@ async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
 @patch("enrichment.sources.anidb.anidb_helper.time.time")
 async def test_ensure_session_health(mock_time, mock_get_session, helper):
     """Test session creation and expiration logic."""
-    helper._ensure_session_health = (
-        AniDBHelper._ensure_session_health.__get__(helper)
-    )
+    helper._ensure_session_health = AniDBHelper._ensure_session_health.__get__(helper)
 
     # Mock session returned by cache manager
     mock_session = AsyncMock()
@@ -722,9 +724,7 @@ async def test_circuit_breaker_blocking(helper):
     with patch.object(
         helper, "_adaptive_rate_limit", new_callable=AsyncMock
     ) as mock_rate:
-        result = await AniDBHelper._make_request_with_retry(
-            helper, {"aid": 123}
-        )
+        result = await AniDBHelper._make_request_with_retry(helper, {"aid": 123})
         assert result is None
         mock_rate.assert_not_called()
 
@@ -759,7 +759,8 @@ async def test_reset_circuit_breaker_complete(helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
     """Test _parse_character_xml_basic and batch enrichment handle failures."""
@@ -885,7 +886,8 @@ async def test_context_manager_protocol(mock_getenv):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_batch_fetch_character_details(mock_fetch_char, helper):
     """Test batch character enrichment with controlled concurrency."""
@@ -909,7 +911,8 @@ async def test_batch_fetch_character_details(mock_fetch_char, helper):
 
 @pytest.mark.asyncio
 @patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character", new_callable=AsyncMock
+    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
+    new_callable=AsyncMock,
 )
 async def test_parse_anime_xml_with_enrich_characters_flag(mock_fetch_char, helper):
     """Test that enrich_characters flag controls character enrichment."""
@@ -1051,7 +1054,9 @@ async def test_fetch_all_returns_normalized_anime_only_payload(helper):
         "character_details": [{"name_main": "Hero"}],
     }
 
-    with patch.object(helper, "get_anime_by_id", new=AsyncMock(return_value=anime_data)):
+    with patch.object(
+        helper, "get_anime_by_id", new=AsyncMock(return_value=anime_data)
+    ):
         result = await helper.fetch_all({"anidb_id": "1"}, {})
 
     assert result == {

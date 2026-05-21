@@ -7,9 +7,8 @@ import re
 import sys
 from enum import Enum
 
-from pydantic import BaseModel
-
 from common.models import anime as anime_models
+from pydantic import BaseModel
 from shared_proto.v1 import anime_pb2
 
 # ProductionStaff accepts dynamic role fields by design.

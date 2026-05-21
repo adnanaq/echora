@@ -18,17 +18,24 @@ def extractor() -> PlatformIDExtractor:
 
 def test_mal_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://myanimelist.net/anime/21"]}
-    assert extractor.extract_all_ids(data)["mal_url"] == "https://myanimelist.net/anime/21"
+    assert (
+        extractor.extract_all_ids(data)["mal_url"] == "https://myanimelist.net/anime/21"
+    )
 
 
 def test_anilist_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://anilist.co/anime/21"]}
-    assert extractor.extract_all_ids(data)["anilist_url"] == "https://anilist.co/anime/21"
+    assert (
+        extractor.extract_all_ids(data)["anilist_url"] == "https://anilist.co/anime/21"
+    )
 
 
 def test_anime_planet_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://www.anime-planet.com/anime/one-piece"]}
-    assert extractor.extract_all_ids(data)["anime_planet_url"] == "https://www.anime-planet.com/anime/one-piece"
+    assert (
+        extractor.extract_all_ids(data)["anime_planet_url"]
+        == "https://www.anime-planet.com/anime/one-piece"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -44,10 +51,15 @@ def test_anisearch_url_not_set_from_anilist(extractor: PlatformIDExtractor) -> N
 
 def test_anisearch_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://www.anisearch.com/anime/458,one-piece"]}
-    assert extractor.extract_all_ids(data)["anisearch_url"] == "https://www.anisearch.com/anime/458,one-piece"
+    assert (
+        extractor.extract_all_ids(data)["anisearch_url"]
+        == "https://www.anisearch.com/anime/458,one-piece"
+    )
 
 
-def test_anisearch_url_and_anilist_url_both_present(extractor: PlatformIDExtractor) -> None:
+def test_anisearch_url_and_anilist_url_both_present(
+    extractor: PlatformIDExtractor,
+) -> None:
     data = {
         "sources": [
             "https://anilist.co/anime/21",
@@ -66,7 +78,10 @@ def test_anisearch_url_and_anilist_url_both_present(extractor: PlatformIDExtract
 
 def test_kitsu_url_extracted(extractor: PlatformIDExtractor) -> None:
     data = {"sources": ["https://kitsu.app/anime/one-piece"]}
-    assert extractor.extract_all_ids(data)["kitsu_url"] == "https://kitsu.app/anime/one-piece"
+    assert (
+        extractor.extract_all_ids(data)["kitsu_url"]
+        == "https://kitsu.app/anime/one-piece"
+    )
 
 
 def test_anidb_id_extracted(extractor: PlatformIDExtractor) -> None:
@@ -102,7 +117,9 @@ def test_first_match_wins_for_url_keys(extractor: PlatformIDExtractor) -> None:
             "https://myanimelist.net/anime/999",
         ]
     }
-    assert extractor.extract_all_ids(data)["mal_url"] == "https://myanimelist.net/anime/21"
+    assert (
+        extractor.extract_all_ids(data)["mal_url"] == "https://myanimelist.net/anime/21"
+    )
 
 
 def test_full_mixed_sources(extractor: PlatformIDExtractor) -> None:
@@ -143,9 +160,9 @@ def test_validate_ids_rejects_non_numeric_anidb(extractor: PlatformIDExtractor) 
 
 
 def test_validate_ids_drops_none_values(extractor: PlatformIDExtractor) -> None:
-    assert extractor.validate_ids({"mal_url": None, "anilist_url": "https://anilist.co/anime/21"}) == {
-        "anilist_url": "https://anilist.co/anime/21"
-    }
+    assert extractor.validate_ids(
+        {"mal_url": None, "anilist_url": "https://anilist.co/anime/21"}
+    ) == {"anilist_url": "https://anilist.co/anime/21"}
 
 
 def test_validate_ids_drops_empty_string(extractor: PlatformIDExtractor) -> None:

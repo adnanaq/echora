@@ -64,7 +64,8 @@ Note:
 
 import json
 import logging
-from collections.abc import AsyncIterator as AsyncIteratorABC, Callable
+from collections.abc import AsyncIterator as AsyncIteratorABC
+from collections.abc import Callable
 from types import TracebackType
 from typing import Any, cast
 

@@ -568,7 +568,9 @@ async def fetch_mal_characters(
                 characters[out_index] = None
                 continue
             raw_for_cache = raw_list[0]
-            canonical = character_from_mal(_build_character_from_raw(raw_for_cache, url))
+            canonical = character_from_mal(
+                _build_character_from_raw(raw_for_cache, url)
+            )
             characters[out_index] = canonical
             cache_values[idx_in_chunk] = (raw_for_cache, url)
             repo.save(canonical)

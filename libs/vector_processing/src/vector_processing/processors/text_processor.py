@@ -10,6 +10,7 @@ import logging
 from typing import Any, cast
 
 from common.config import EmbeddingConfig
+from vector_db_interface import SparseVectorData
 
 from ..embedding_models.text.base import TextEmbeddingModel
 
@@ -126,6 +127,92 @@ class TextProcessor:
                 result.append(zero_embedding.copy())
 
         return result
+
+    async def encode_text_with_sparse(
+        self, text: str
+    ) -> tuple[list[float] | None, SparseVectorData | None]:
+        """Encode a single text, returning dense and sparse vectors.
+
+        Uses one forward pass when the underlying model supports sparse output
+        (``model.supports_sparse``). Falls back to dense-only for other models.
+
+        Args:
+            text: Input text to encode.
+
+        Returns:
+            Tuple of ``(dense, sparse)`` where ``sparse`` is ``None`` when the
+            model does not produce sparse output.
+        """
+        if not text or not text.strip():
+            return self.get_zero_embedding(), None
+
+        try:
+            async with self._semaphore:
+                dense_list, sparse_list = await asyncio.to_thread(
+                    self.model.encode_with_sparse, [text]
+                )
+        except Exception:
+            logger.exception("Text encoding with sparse failed")
+            return None, None
+        else:
+            dense = dense_list[0] if dense_list else None
+            sparse = sparse_list[0] if sparse_list else None
+            return dense, sparse
+
+    async def encode_texts_batch_with_sparse(
+        self,
+        texts: list[str],
+    ) -> tuple[list[list[float] | None], list[SparseVectorData | None]]:
+        """Encode a batch of texts, returning aligned dense and sparse vectors.
+
+        Uses one forward pass per batch when the model supports sparse output.
+
+        Args:
+            texts: Input texts.
+
+        Returns:
+            Tuple of ``(dense_list, sparse_list)`` both aligned to input order.
+            Entries for empty texts are zero-vector / ``None``.
+        """
+        zero_embedding = self.get_zero_embedding()
+        valid_indices: list[int] = []
+        valid_texts: list[str] = []
+
+        for i, text in enumerate(texts):
+            if text and text.strip():
+                valid_indices.append(i)
+                valid_texts.append(text)
+
+        if not valid_texts:
+            return (
+                [zero_embedding.copy() for _ in texts],
+                [None] * len(texts),
+            )
+
+        try:
+            async with self._semaphore:
+                encoded_dense, encoded_sparse = await asyncio.to_thread(
+                    self.model.encode_with_sparse, valid_texts
+                )
+        except Exception:
+            logger.exception("Batch text encoding with sparse failed")
+            return [None] * len(texts), [None] * len(texts)
+
+        dense_result: list[list[float] | None] = []
+        sparse_result: list[SparseVectorData | None] = []
+        valid_idx = 0
+        valid_index_set = set(valid_indices)
+
+        for i in range(len(texts)):
+            if i in valid_index_set:
+                dense_result.append(cast(list[float] | None, encoded_dense[valid_idx]))
+                sparse_result.append(encoded_sparse[valid_idx])
+                valid_idx += 1
+            else:
+                dense_result.append(zero_embedding.copy())
+                sparse_result.append(None)
+
+        return dense_result, sparse_result
 
     def get_zero_embedding(self) -> list[float]:
         """Get a zero embedding vector matching model dimensions.

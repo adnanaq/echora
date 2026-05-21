@@ -1,13 +1,13 @@
 """Unit tests for mal_mapper.py — anime_from_mal value normalization."""
 
+from enrichment.sources.mal.mal_mapper import anime_from_mal
 from enrichment.sources.mal.mal_models import (
+    MalAnime,
     MalCompanyRef,
     MalRelatedEntry,
-    MalAnime,
     MalThemeSong,
     MalTrailer,
 )
-from enrichment.sources.mal.mal_mapper import anime_from_mal
 
 
 def _make_sample_anime() -> MalAnime:

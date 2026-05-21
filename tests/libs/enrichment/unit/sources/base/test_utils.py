@@ -1,9 +1,7 @@
 """Unit tests for enrichment.sources.base.utils — shared crawler utilities."""
 
 import pytest
-
 from enrichment.sources.base.utils import parse_broadcast_string, parse_iso_date
-
 
 # =============================================================================
 # parse_broadcast_string
@@ -61,7 +59,7 @@ def test_parse_broadcast_string_no_match() -> None:
         (None, None),
         ("", None),
         ("1999-10-20", "1999-10-20"),  # Already ISO
-        ("2026", "2026-01-01"),        # Year-only (upcoming anime)
+        ("2026", "2026-01-01"),  # Year-only (upcoming anime)
         ("20. Oct 1999", "1999-10-20"),  # AniSearch episode format
         ("5. Apr 2003", "2003-04-05"),
         ("1. Jan 2000", "2000-01-01"),

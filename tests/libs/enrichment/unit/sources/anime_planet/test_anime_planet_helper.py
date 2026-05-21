@@ -121,9 +121,7 @@ async def test_fetch_characters_expands_relative_ref_urls_to_full():
             new=AsyncMock(return_value=[]),
         ) as mock_chars,
     ):
-        await AnimePlanetHelper().fetch_characters(
-            f"{_AP_WWW}/anime/dandadan"
-        )
+        await AnimePlanetHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
 
     passed_urls = mock_chars.await_args[0][0]
     assert passed_urls == [
@@ -139,9 +137,7 @@ async def test_fetch_characters_returns_empty_list_when_no_refs():
         "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_character_refs",
         new=AsyncMock(return_value=[]),
     ):
-        result = await AnimePlanetHelper().fetch_characters(
-            f"{_AP_WWW}/anime/dandadan"
-        )
+        result = await AnimePlanetHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
 
     assert result == []
 
@@ -154,9 +150,7 @@ async def test_fetch_characters_builds_correct_refs_url():
         "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_character_refs",
         new=AsyncMock(return_value=[]),
     ) as mock_refs:
-        await AnimePlanetHelper().fetch_characters(
-            f"{_AP_WWW}/anime/one-piece"
-        )
+        await AnimePlanetHelper().fetch_characters(f"{_AP_WWW}/anime/one-piece")
 
     mock_refs.assert_awaited_once_with(f"{_AP_WWW}/anime/one-piece/characters")
 
@@ -329,7 +323,6 @@ async def test_main_anime_subcommand_no_data_returns_1(mock_helper_class):
 
 
 async def test_main_characters_subcommand_streams_to_jsonl(tmp_path):
-
     from enrichment.sources.anime_planet.anime_planet_helper import main
 
     char_url = f"{_AP_WWW}/characters/monkey-d-luffy"

@@ -23,12 +23,14 @@ import aiohttp
 import defusedxml.ElementTree as ET
 from common.utils.datetime_utils import determine_anime_status
 from common.utils.jsonl_utils import append_jsonl
-from http_cache.instance import http_cache_manager as _cache_manager
-
 from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
-from enrichment.sources.base.utils import sanitize_output_path
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
 from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
+from enrichment.sources.base.utils import sanitize_output_path
+from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 

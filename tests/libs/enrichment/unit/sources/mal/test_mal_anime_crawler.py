@@ -8,7 +8,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.mal.mal_anime_crawler import (
     _build_anime_from_raw,
     _fetch_mal_anime_data,
@@ -20,7 +19,6 @@ from enrichment.sources.mal.mal_anime_crawler import (
     _parse_trailer,
     fetch_mal_anime,
 )
-
 
 # =============================================================================
 # Schema structure — verifies the benchmark extraction pattern is in place
@@ -133,8 +131,11 @@ def test_build_empty_link_source_skipped(mal_anime_raw) -> None:
 
 def test_build_missing_link_fields_returns_empty_lists(mal_anime_raw) -> None:
     """Missing external/streaming link keys result in empty lists."""
-    raw = {k: v for k, v in mal_anime_raw.items()
-           if k not in ("external_sources_raw", "streaming_links_raw")}
+    raw = {
+        k: v
+        for k, v in mal_anime_raw.items()
+        if k not in ("external_sources_raw", "streaming_links_raw")
+    }
     anime = _build(raw)
     assert anime.external_sources == []
     assert anime.streaming == []
@@ -314,7 +315,9 @@ def test_build_opening_themes_from_fixture(mal_anime_raw) -> None:
     assert "We Are! (ウィーアー!)" in titles
     assert "Believe" in titles
     # Spotify/Apple Music junk skipped
-    assert not any(t.title in ("Apple Music", "Youtube Music") for t in anime.opening_themes)
+    assert not any(
+        t.title in ("Apple Music", "Youtube Music") for t in anime.opening_themes
+    )
 
 
 def test_build_ending_themes_from_fixture(mal_anime_raw) -> None:
@@ -641,11 +644,14 @@ async def test_fetch_mal_anime_data_success(mocker, mal_anime_raw) -> None:
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
-    raw = {k: v for k, v in mal_anime_raw.items()
-           if not k.startswith("_")}
-    pics_raw = [{"picture_urls_raw": [
-        {"url": "https://cdn.myanimelist.net/images/anime/1/123l.jpg"}
-    ]}]
+    raw = {k: v for k, v in mal_anime_raw.items() if not k.startswith("_")}
+    pics_raw = [
+        {
+            "picture_urls_raw": [
+                {"url": "https://cdn.myanimelist.net/images/anime/1/123l.jpg"}
+            ]
+        }
+    ]
     mocker.patch(
         "enrichment.sources.mal.mal_anime_crawler.crawl_batch_urls",
         side_effect=[
@@ -674,7 +680,9 @@ async def test_fetch_mal_anime_data_success(mocker, mal_anime_raw) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(mocker, mal_anime_raw) -> None:
+async def test_fetch_mal_anime_data_slug_falls_back_to_crawler_url(
+    mocker, mal_anime_raw
+) -> None:
     """When og:url is absent from metadata, _url falls back to result['url']."""
     mocker.patch(
         "http_cache.result_cache.get_cache_config",

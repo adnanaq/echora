@@ -45,9 +45,15 @@ _ONE_PIECE_URL = "https://www.anime-planet.com/anime/one-piece"
     [
         ("dandadan", "https://www.anime-planet.com/anime/dandadan"),
         ("/anime/dandadan", "https://www.anime-planet.com/anime/dandadan"),
-        ("https://www.anime-planet.com/anime/dandadan", "https://www.anime-planet.com/anime/dandadan"),
+        (
+            "https://www.anime-planet.com/anime/dandadan",
+            "https://www.anime-planet.com/anime/dandadan",
+        ),
         ("anime/one-piece", "https://www.anime-planet.com/anime/one-piece"),
-        ("https://anime-planet.com/anime/one-piece", "https://www.anime-planet.com/anime/one-piece"),
+        (
+            "https://anime-planet.com/anime/one-piece",
+            "https://www.anime-planet.com/anime/one-piece",
+        ),
     ],
 )
 def test_normalize_anime_url_valid(identifier, expected):
@@ -111,7 +117,9 @@ def test_extract_json_ld_html_entities_unescaped():
 
 
 def test_extract_json_ld_no_description():
-    html = '<html><script type="application/ld+json">{"name": "Dandadan"}</script></html>'
+    html = (
+        '<html><script type="application/ld+json">{"name": "Dandadan"}</script></html>'
+    )
     json_ld = _extract_json_ld(html)
     assert json_ld is not None
     assert "description" not in json_ld
@@ -153,7 +161,12 @@ def test_parse_aggregate_rating_valid():
 
 
 def test_parse_aggregate_rating_invalid_types():
-    assert _parse_aggregate_rating({"ratingValue": "not-a-float", "ratingCount": "not-an-int"}) is None
+    assert (
+        _parse_aggregate_rating(
+            {"ratingValue": "not-a-float", "ratingCount": "not-an-int"}
+        )
+        is None
+    )
     assert _parse_aggregate_rating({"ratingValue": None, "ratingCount": None}) is None
 
 
@@ -241,12 +254,19 @@ def test_build_related_anime_from_fixture(ap_anime_raw) -> None:
 
 
 def test_build_related_anime_other_count_from_fixture(ap_anime_raw) -> None:
-    assert len(_build_related_anime_entries(ap_anime_raw["related_anime_other_raw"])) == 17
+    assert (
+        len(_build_related_anime_entries(ap_anime_raw["related_anime_other_raw"])) == 17
+    )
 
 
 def test_build_related_anime_entries_basic():
     raw = [
-        {"url": "/anime/one-piece-film-red", "title": "One Piece Film: Red", "relation_subtype": "Sequel", "type": "Movie"},
+        {
+            "url": "/anime/one-piece-film-red",
+            "title": "One Piece Film: Red",
+            "relation_subtype": "Sequel",
+            "type": "Movie",
+        },
         {"url": "", "title": "No URL"},
         {"url": "/manga/dandadan", "title": "Wrong"},
     ]
@@ -258,7 +278,9 @@ def test_build_related_anime_entries_basic():
 
 
 def test_build_related_anime_entries_empty_subtype_becomes_none():
-    entries = _build_related_anime_entries([{"url": "/anime/slug", "title": "T", "relation_subtype": ""}])
+    entries = _build_related_anime_entries(
+        [{"url": "/anime/slug", "title": "T", "relation_subtype": ""}]
+    )
     assert entries[0].relation_subtype is None
 
 
@@ -276,8 +298,12 @@ def test_build_related_anime_entries_empty_subtype_becomes_none():
         ("Music Video: 1 ep", "Music Video", 1),
     ],
 )
-def test_build_related_anime_type_and_episode_parsing(raw_type, expected_type, expected_ep_count):
-    entries = _build_related_anime_entries([{"url": "/anime/slug", "title": "T", "type": raw_type}])
+def test_build_related_anime_type_and_episode_parsing(
+    raw_type, expected_type, expected_ep_count
+):
+    entries = _build_related_anime_entries(
+        [{"url": "/anime/slug", "title": "T", "type": raw_type}]
+    )
     assert entries[0].type == expected_type
     assert entries[0].episode_count == expected_ep_count
 
@@ -300,7 +326,11 @@ def test_build_related_manga_from_fixture(ap_anime_raw) -> None:
 
 def test_build_related_manga_entries_basic():
     raw = [
-        {"url": "/manga/one-piece", "title": "One Piece", "relation_subtype": "Original Manga"},
+        {
+            "url": "/manga/one-piece",
+            "title": "One Piece",
+            "relation_subtype": "Original Manga",
+        },
         {"url": "", "title": "No URL"},
         {"url": "/anime/dandadan", "title": "Wrong"},
     ]
@@ -324,8 +354,12 @@ def test_build_related_manga_entries_basic():
         ("- ?", None, None, None),
     ],
 )
-def test_build_related_manga_vol_ch_parsing(vol_ch, expected_type, expected_volumes, expected_chapters):
-    entries = _build_related_manga_entries([{"url": "/manga/slug", "title": "T", "vol_ch": vol_ch}])
+def test_build_related_manga_vol_ch_parsing(
+    vol_ch, expected_type, expected_volumes, expected_chapters
+):
+    entries = _build_related_manga_entries(
+        [{"url": "/manga/slug", "title": "T", "vol_ch": vol_ch}]
+    )
     assert entries[0].type == expected_type
     assert entries[0].volumes == expected_volumes
     assert entries[0].chapters == expected_chapters
@@ -360,7 +394,12 @@ def test_build_anime_from_raw_field_overrides(ap_anime_raw) -> None:
     assert _build_anime_from_raw({**ap_anime_raw, "rank_text": "Rank #42"}).rank == 42
     assert _build_anime_from_raw({**ap_anime_raw, "season_url": None}).season is None
     assert _build_anime_from_raw({**ap_anime_raw, "aka": None}).alt_title is None
-    assert _build_anime_from_raw({**ap_anime_raw, "aggregate_rating": None}).aggregate_rating is None
+    assert (
+        _build_anime_from_raw(
+            {**ap_anime_raw, "aggregate_rating": None}
+        ).aggregate_rating
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +420,9 @@ def test_mapper_from_fixture(ap_anime_raw) -> None:
     assert stats["score"] == pytest.approx(8.63)
     assert stats["scored_by"] == 64725
     assert stats["rank"] == 158
-    all_manga = [e for entries in canonical["related_source_material"].values() for e in entries]
+    all_manga = [
+        e for entries in canonical["related_source_material"].values() for e in entries
+    ]
     assert len(all_manga) == 24
     romance_dawn = next(e for e in all_manga if "Romance Dawn" in e["title"])
     assert romance_dawn["type"] == "ONE SHOT"
@@ -392,7 +433,9 @@ def test_mapper_from_fixture(ap_anime_raw) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_anime_with_related(related_anime=None, related_manga=None) -> AnimePlanetAnime:
+def _make_anime_with_related(
+    related_anime=None, related_manga=None
+) -> AnimePlanetAnime:
     return AnimePlanetAnime(
         name="Test Anime",
         slug="test-anime",
@@ -404,40 +447,99 @@ def _make_anime_with_related(related_anime=None, related_manga=None) -> AnimePla
 
 
 def test_mapper_related_anime_episode_count_passthrough():
-    from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetRelatedEntry
-    entry = AnimePlanetRelatedEntry(url="/anime/special", slug="special", title="Test Special", relation_subtype="Same Franchise", type="TV Special", episode_count=3)
+    from enrichment.sources.anime_planet.anime_planet_models import (
+        AnimePlanetRelatedEntry,
+    )
+
+    entry = AnimePlanetRelatedEntry(
+        url="/anime/special",
+        slug="special",
+        title="Test Special",
+        relation_subtype="Same Franchise",
+        type="TV Special",
+        episode_count=3,
+    )
     data = anime_from_animeplanet(_make_anime_with_related(related_anime=[entry]))
-    match = next(e for e in data["related_anime"].get("SIDE_STORY", []) if e["title"] == "Test Special")
+    match = next(
+        e
+        for e in data["related_anime"].get("SIDE_STORY", [])
+        if e["title"] == "Test Special"
+    )
     assert match["episode_count"] == 3
 
 
 def test_mapper_related_anime_no_episode_count_is_absent():
-    from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetRelatedEntry
-    entry = AnimePlanetRelatedEntry(url="/anime/film", slug="film", title="Test Movie", relation_subtype="Same Franchise", type="Movie", episode_count=None)
+    from enrichment.sources.anime_planet.anime_planet_models import (
+        AnimePlanetRelatedEntry,
+    )
+
+    entry = AnimePlanetRelatedEntry(
+        url="/anime/film",
+        slug="film",
+        title="Test Movie",
+        relation_subtype="Same Franchise",
+        type="Movie",
+        episode_count=None,
+    )
     data = anime_from_animeplanet(_make_anime_with_related(related_anime=[entry]))
-    match = next(e for e in data["related_anime"].get("SIDE_STORY", []) if e["title"] == "Test Movie")
+    match = next(
+        e
+        for e in data["related_anime"].get("SIDE_STORY", [])
+        if e["title"] == "Test Movie"
+    )
     assert "episode_count" not in match
 
 
 def test_mapper_related_source_material_volumes_and_chapters():
-    from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetMangaEntry
-    entry = AnimePlanetMangaEntry(url="/manga/some-manga", slug="some-manga", title="Some Manga", relation_subtype="Original Manga", volumes=7, chapters=62)
+    from enrichment.sources.anime_planet.anime_planet_models import (
+        AnimePlanetMangaEntry,
+    )
+
+    entry = AnimePlanetMangaEntry(
+        url="/manga/some-manga",
+        slug="some-manga",
+        title="Some Manga",
+        relation_subtype="Original Manga",
+        volumes=7,
+        chapters=62,
+    )
     data = anime_from_animeplanet(_make_anime_with_related(related_manga=[entry]))
-    all_manga = [e for entries in data["related_source_material"].values() for e in entries]
+    all_manga = [
+        e for entries in data["related_source_material"].values() for e in entries
+    ]
     match = next(e for e in all_manga if e["title"] == "Some Manga")
     assert match["volumes"] == 7
     assert match["chapters"] == 62
 
 
 def test_mapper_manga_type_edge_cases():
-    from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetMangaEntry
-    unknown = AnimePlanetMangaEntry(url="/manga/plain", slug="plain", title="Plain Manga", volumes=3, chapters=20)
-    one_shot = AnimePlanetMangaEntry(url="/manga/os", slug="os", title="Romance Dawn", type="One Shot", chapters=1)
-    ln = AnimePlanetMangaEntry(url="/manga/ln", slug="ln", title="Some Story (Light Novel)", volumes=2, chapters=8)
+    from enrichment.sources.anime_planet.anime_planet_models import (
+        AnimePlanetMangaEntry,
+    )
+
+    unknown = AnimePlanetMangaEntry(
+        url="/manga/plain", slug="plain", title="Plain Manga", volumes=3, chapters=20
+    )
+    one_shot = AnimePlanetMangaEntry(
+        url="/manga/os", slug="os", title="Romance Dawn", type="One Shot", chapters=1
+    )
+    ln = AnimePlanetMangaEntry(
+        url="/manga/ln",
+        slug="ln",
+        title="Some Story (Light Novel)",
+        volumes=2,
+        chapters=8,
+    )
     no_count = AnimePlanetMangaEntry(url="/manga/nc", slug="nc", title="No Count Manga")
 
-    data = anime_from_animeplanet(_make_anime_with_related(related_manga=[unknown, one_shot, ln, no_count]))
-    all_manga = {e["title"]: e for entries in data["related_source_material"].values() for e in entries}
+    data = anime_from_animeplanet(
+        _make_anime_with_related(related_manga=[unknown, one_shot, ln, no_count])
+    )
+    all_manga = {
+        e["title"]: e
+        for entries in data["related_source_material"].values()
+        for e in entries
+    }
 
     assert all_manga["Plain Manga"]["type"] == "UNKNOWN"
     assert all_manga["Romance Dawn"]["type"] == "ONE SHOT"
@@ -492,18 +594,36 @@ _BASE_XPATH = {
     "studios": [{"name": "Science SARU"}],
     "tags": [{"name": "Action"}, {"name": "Supernatural"}],
     "related_anime_raw": [
-        {"url": "/anime/dandadan-season-2", "title": "Dandadan Season 2", "relation_subtype": "Sequel", "type": "TV: 12 ep", "image": None}
+        {
+            "url": "/anime/dandadan-season-2",
+            "title": "Dandadan Season 2",
+            "relation_subtype": "Sequel",
+            "type": "TV: 12 ep",
+            "image": None,
+        }
     ],
     "related_anime_other_raw": [],
     "related_manga_raw": [
-        {"url": "/manga/dandadan", "title": "Dandadan Manga", "relation_subtype": "Original Manga", "vol_ch": "Vol: 15 - Ch: 170", "image": None}
+        {
+            "url": "/manga/dandadan",
+            "title": "Dandadan Manga",
+            "relation_subtype": "Original Manga",
+            "vol_ch": "Vol: 15 - Ch: 170",
+            "image": None,
+        }
     ],
 }
 
 
 def _make_crawl_result(xpath_data: dict, json_ld: dict) -> dict:
     html = f'<html><script type="application/ld+json">{json.dumps(json_ld)}</script></html>'
-    return {"success": True, "status_code": 200, "extracted_content": json.dumps([xpath_data]), "html": html, "error_message": None}
+    return {
+        "success": True,
+        "status_code": 200,
+        "extracted_content": json.dumps([xpath_data]),
+        "html": html,
+        "error_message": None,
+    }
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
@@ -531,7 +651,9 @@ async def test_fetch_animeplanet_anime_success(mock_crawl):
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.sources.anime_planet.anime_planet_anime_crawler.crawl_single_url")
-async def test_fetch_animeplanet_anime_one_piece_fixture_via_mock(mock_crawl, ap_anime_raw) -> None:
+async def test_fetch_animeplanet_anime_one_piece_fixture_via_mock(
+    mock_crawl, ap_anime_raw
+) -> None:
     """Full round-trip using one-piece fixture data injected via mock crawl result."""
     html = f'<html><script type="application/ld+json">{json.dumps({"@type": ap_anime_raw["schema_type"], "name": ap_anime_raw["name"], "url": ap_anime_raw["url"], "startDate": ap_anime_raw["start_date"], "numberOfEpisodes": ap_anime_raw["number_of_episodes"], "genre": ap_anime_raw["genres"], "aggregateRating": ap_anime_raw["aggregate_rating"]})}</script></html>'
     xpath = {
@@ -546,7 +668,13 @@ async def test_fetch_animeplanet_anime_one_piece_fixture_via_mock(mock_crawl, ap
         "related_anime_other_raw": ap_anime_raw["related_anime_other_raw"],
         "related_manga_raw": ap_anime_raw["related_manga_raw"],
     }
-    mock_crawl.return_value = {"success": True, "status_code": 200, "extracted_content": json.dumps([xpath]), "html": html, "error_message": None}
+    mock_crawl.return_value = {
+        "success": True,
+        "status_code": 200,
+        "extracted_content": json.dumps([xpath]),
+        "html": html,
+        "error_message": None,
+    }
 
     anime = await fetch_animeplanet_anime(_ONE_PIECE_URL)
     assert anime is not None
@@ -562,39 +690,101 @@ async def test_fetch_animeplanet_anime_one_piece_fixture_via_mock(mock_crawl, ap
 @patch("enrichment.sources.anime_planet.anime_planet_anime_crawler.crawl_single_url")
 async def test_fetch_animeplanet_anime_season_priority(mock_crawl):
     """season_url slug takes precedence; absent season_url falls back to start_date."""
-    mock_crawl.return_value = _make_crawl_result({**_BASE_XPATH, "season_url": "/anime/seasons/winter-2024"}, _BASE_JSON_LD)
-    assert (await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan"))["season"] == "WINTER"
+    mock_crawl.return_value = _make_crawl_result(
+        {**_BASE_XPATH, "season_url": "/anime/seasons/winter-2024"}, _BASE_JSON_LD
+    )
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+    )["season"] == "WINTER"
 
-    mock_crawl.return_value = _make_crawl_result({**_BASE_XPATH, "season_url": None}, {**_BASE_JSON_LD, "startDate": "2024-04-05"})
-    assert (await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan"))["season"] == "SPRING"
+    mock_crawl.return_value = _make_crawl_result(
+        {**_BASE_XPATH, "season_url": None},
+        {**_BASE_JSON_LD, "startDate": "2024-04-05"},
+    )
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+    )["season"] == "SPRING"
 
-    mock_crawl.return_value = _make_crawl_result({**_BASE_XPATH, "season_url": "/anime/not-a-season-url"}, {**_BASE_JSON_LD, "startDate": "2024-07-10"})
-    assert (await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan"))["season"] == "SUMMER"
+    mock_crawl.return_value = _make_crawl_result(
+        {**_BASE_XPATH, "season_url": "/anime/not-a-season-url"},
+        {**_BASE_JSON_LD, "startDate": "2024-07-10"},
+    )
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+    )["season"] == "SUMMER"
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.sources.anime_planet.anime_planet_anime_crawler.crawl_single_url")
 async def test_fetch_animeplanet_anime_failure_cases(mock_crawl):
     """No JSON-LD, 404, crawl failure, empty extraction, and HTTP 500 all return None."""
-    no_json_ld = {"success": True, "status_code": 200, "extracted_content": json.dumps([_BASE_XPATH]), "html": "<html></html>", "error_message": None}
+    no_json_ld = {
+        "success": True,
+        "status_code": 200,
+        "extracted_content": json.dumps([_BASE_XPATH]),
+        "html": "<html></html>",
+        "error_message": None,
+    }
     mock_crawl.return_value = no_json_ld
-    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+        is None
+    )
 
-    mock_crawl.return_value = {"success": False, "status_code": 404, "extracted_content": None, "html": "", "error_message": "Not found"}
-    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/nonexistent") is None
+    mock_crawl.return_value = {
+        "success": False,
+        "status_code": 404,
+        "extracted_content": None,
+        "html": "",
+        "error_message": "Not found",
+    }
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/nonexistent")
+        is None
+    )
 
-    mock_crawl.return_value = {"success": False, "status_code": 200, "extracted_content": None, "html": "", "error_message": "Browser crashed"}
-    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
+    mock_crawl.return_value = {
+        "success": False,
+        "status_code": 200,
+        "extracted_content": None,
+        "html": "",
+        "error_message": "Browser crashed",
+    }
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+        is None
+    )
 
-    mock_crawl.return_value = {"success": True, "status_code": 200, "extracted_content": "[]", "html": "", "error_message": None}
-    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
+    mock_crawl.return_value = {
+        "success": True,
+        "status_code": 200,
+        "extracted_content": "[]",
+        "html": "",
+        "error_message": None,
+    }
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+        is None
+    )
 
-    mock_crawl.return_value = {"success": True, "status_code": 500, "extracted_content": None, "html": "", "error_message": None}
-    assert await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan") is None
+    mock_crawl.return_value = {
+        "success": True,
+        "status_code": 500,
+        "extracted_content": None,
+        "html": "",
+        "error_message": None,
+    }
+    assert (
+        await fetch_animeplanet_anime("https://www.anime-planet.com/anime/dandadan")
+        is None
+    )
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
-@patch("enrichment.sources.anime_planet.anime_planet_anime_crawler._fetch_animeplanet_anime_data", new_callable=AsyncMock)
+@patch(
+    "enrichment.sources.anime_planet.anime_planet_anime_crawler._fetch_animeplanet_anime_data",
+    new_callable=AsyncMock,
+)
 async def test_fetch_animeplanet_anime_extracts_slug_from_url_for_cache(mock_inner):
     mock_inner.return_value = None
     await fetch_animeplanet_anime(_ONE_PIECE_URL)
@@ -621,9 +811,13 @@ async def test_fetch_animeplanet_anime_accepts_non_www_url(mock_crawl):
 )
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.sources.anime_planet.anime_planet_anime_crawler.crawl_single_url")
-async def test_fetch_anime_status_derivation(mock_crawl, start_date, end_date, expected_status):
+async def test_fetch_anime_status_derivation(
+    mock_crawl, start_date, end_date, expected_status
+):
     json_ld = {**_BASE_JSON_LD, "startDate": start_date, "endDate": end_date}
     mock_crawl.return_value = _make_crawl_result(_BASE_XPATH, json_ld)
-    anime = await fetch_animeplanet_anime("https://www.anime-planet.com/anime/status-test")
+    anime = await fetch_animeplanet_anime(
+        "https://www.anime-planet.com/anime/status-test"
+    )
     assert anime is not None
     assert anime["status"] == expected_status

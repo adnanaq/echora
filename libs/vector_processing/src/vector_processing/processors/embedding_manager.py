@@ -6,13 +6,13 @@ for the comprehensive anime search system.
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 from common.models.anime import AnimeRecord
 from common.utils.id_generation import (
     generate_deterministic_id,
 )
-from vector_db_interface.base import VectorDocument
+from vector_db_interface import SparseVectorData, VectorDocument
 
 from .anime_field_mapper import AnimeFieldMapper
 from .text_processor import TextProcessor
@@ -29,6 +29,7 @@ class MultiVectorEmbeddingManager:
         text_processor: TextProcessor,
         vision_processor: VisionProcessor,
         field_mapper: AnimeFieldMapper,
+        sparse_vector_name: str = "text_sparse_vector",
     ):
         """Initialize the embedding manager with injected processors.
 
@@ -36,10 +37,12 @@ class MultiVectorEmbeddingManager:
             text_processor: An initialized TextProcessor instance.
             vision_processor: An initialized VisionProcessor instance.
             field_mapper: An initialized AnimeFieldMapper instance.
+            sparse_vector_name: Named sparse vector field for generated payloads.
         """
         self.text_processor = text_processor
         self.vision_processor = vision_processor
         self.field_mapper = field_mapper
+        self.sparse_vector_name = sparse_vector_name
 
         logger.info("Initialized Hierarchical EmbeddingManager")
 
@@ -143,14 +146,19 @@ class MultiVectorEmbeddingManager:
         # 1. Extract text using field_mapper
         full_text = self.field_mapper.extract_anime_text(anime)
 
-        # 2. Generate Text Vector
-        embeddings: dict[str, list[float] | list[list[float]]] = {}
+        # 2. Generate Text Vector (dense + sparse in one pass when supported)
+        embeddings: dict[str, list[float] | list[list[float]] | SparseVectorData] = {}
 
-        text_vec = await self.text_processor.encode_text(full_text)
+        text_vec, sparse_embedding = await self.text_processor.encode_text_with_sparse(
+            full_text
+        )
         if text_vec:
             embeddings["text_vector"] = text_vec
         else:
             embeddings["text_vector"] = self.text_processor.get_zero_embedding()
+
+        if sparse_embedding:
+            embeddings[self.sparse_vector_name] = sparse_embedding
 
         # 3. Generate Image Vector (multivector matrix)
         image_urls = self.field_mapper.extract_image_urls(anime)
@@ -163,7 +171,9 @@ class MultiVectorEmbeddingManager:
         payload = anime.model_dump(exclude_none=True)
         payload["entity_type"] = "anime"
 
-        return VectorDocument(id=anime.id, vectors=embeddings, payload=payload)
+        return VectorDocument(
+            id=cast(str, anime.id), vectors=embeddings, payload=payload
+        )
 
     async def _create_character_points(
         self, record: AnimeRecord
@@ -197,8 +207,11 @@ class MultiVectorEmbeddingManager:
             texts_to_embed.append(full_text)
             valid_characters.append(char)
 
-        # Batch Embed text
-        embeddings_batch = await self.text_processor.encode_texts_batch(texts_to_embed)
+        # Batch Embed text (dense + sparse in one pass when supported)
+        (
+            embeddings_batch,
+            sparse_embeddings_batch,
+        ) = await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
 
         for i, char in enumerate(valid_characters):
             text_embedding = embeddings_batch[i]
@@ -210,9 +223,12 @@ class MultiVectorEmbeddingManager:
                 seed = f"{anime_id}_{char.name}"
                 char_id = generate_deterministic_id(seed)
 
-            vectors: dict[str, list[float] | list[list[float]]] = {
+            vectors: dict[str, list[float] | list[list[float]] | SparseVectorData] = {
                 "text_vector": text_embedding
             }
+            sparse_embedding = sparse_embeddings_batch[i]
+            if sparse_embedding:
+                vectors[self.sparse_vector_name] = sparse_embedding
 
             # Generate Image Vector (multivector matrix) for character
             image_urls = self.field_mapper.extract_character_image_urls(char)
@@ -265,8 +281,11 @@ class MultiVectorEmbeddingManager:
             texts_to_embed.append(full_text)
             valid_episodes.append(ep)
 
-        # Batch Embed
-        embeddings_batch = await self.text_processor.encode_texts_batch(texts_to_embed)
+        # Batch Embed (dense + sparse in one pass when supported)
+        (
+            embeddings_batch,
+            sparse_embeddings_batch,
+        ) = await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
 
         for i, ep in enumerate(valid_episodes):
             embedding = embeddings_batch[i]
@@ -281,9 +300,18 @@ class MultiVectorEmbeddingManager:
             payload["entity_type"] = "episode"
             payload["anime_id"] = anime_id
 
+            vectors: dict[str, list[float] | list[list[float]] | SparseVectorData] = {
+                "text_vector": embedding
+            }
+            sparse_embedding = sparse_embeddings_batch[i]
+            if sparse_embedding:
+                vectors[self.sparse_vector_name] = sparse_embedding
+
             documents.append(
                 VectorDocument(
-                    id=ep_id, vectors={"text_vector": embedding}, payload=payload
+                    id=ep_id,
+                    vectors=vectors,
+                    payload=payload,
                 )
             )
 

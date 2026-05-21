@@ -17,7 +17,9 @@ from functools import lru_cache
 from typing import Any
 
 from enrichment.sources.base.crawler_config import CrawlerRateLimiter
-from enrichment.sources.base.utils import parse_broadcast_string as parse_broadcast_string  # noqa: F401
+from enrichment.sources.base.utils import (
+    parse_broadcast_string as parse_broadcast_string,
+)  # noqa: F401
 from enrichment.sources.base.utils import parse_iso_date as parse_iso_date  # noqa: F401
 from pydantic import BaseModel
 

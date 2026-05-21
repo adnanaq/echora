@@ -32,7 +32,6 @@ from common.models.anime import (
     TrailerEntry,
     VoiceActor,
 )
-
 from enrichment.sources.anilist.anilist_anime_models import (
     AniListAnime,
     AniListRelationEdge,

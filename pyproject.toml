@@ -11,7 +11,8 @@ dependencies = [
     "pydantic-settings==2.10.0",
     "python-dotenv>=1.1.0",
     # Vector database
-    "qdrant-client[fastembed]==1.16.2",
+    "qdrant-client==1.16.2",
+    # "qdrant-client[fastembed]==1.16.2",  # Uncomment to enable FastEmbed dense provider
     # Embedding models
     "sentence-transformers==5.0.0",
     "transformers==4.55.0",
@@ -40,6 +41,7 @@ dependencies = [
     "grpcio==1.78.0",
     "grpcio-health-checking==1.78.0",
     "protobuf==6.33.5",
+    "flagembedding>=1.4.0",
 ]
 
 [project.optional-dependencies]

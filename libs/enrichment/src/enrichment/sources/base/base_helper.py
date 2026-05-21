@@ -99,6 +99,11 @@ class BaseEnrichmentHelper(ABC):
     async def __aenter__(self) -> "BaseEnrichmentHelper":
         return self
 
-    async def __aexit__(self, exc_type: type[BaseException], exc_val: BaseException, exc_tb: TracebackType) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException],
+        exc_val: BaseException,
+        exc_tb: TracebackType,
+    ) -> bool:
         await self.close()
         return False

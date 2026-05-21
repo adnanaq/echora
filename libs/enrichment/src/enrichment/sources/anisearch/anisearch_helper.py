@@ -50,8 +50,12 @@ class AniSearchHelper(BaseEnrichmentHelper):
             return None
 
         anime_output = os.path.join(temp_dir, "anisearch.jsonl") if temp_dir else None
-        ep_output = os.path.join(temp_dir, "anisearch_episodes.jsonl") if temp_dir else None
-        char_output = os.path.join(temp_dir, "anisearch_characters.jsonl") if temp_dir else None
+        ep_output = (
+            os.path.join(temp_dir, "anisearch_episodes.jsonl") if temp_dir else None
+        )
+        char_output = (
+            os.path.join(temp_dir, "anisearch_characters.jsonl") if temp_dir else None
+        )
 
         logger.info(f"Fetching AniSearch data for {url}")
 
@@ -64,7 +68,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
 
         episode_data = []
         try:
-            episode_data = await self.fetch_episodes(canonical_url, output_path=ep_output)
+            episode_data = await self.fetch_episodes(
+                canonical_url, output_path=ep_output
+            )
             if episode_data:
                 logger.info(f"Integrated {len(episode_data)} episodes")
         except Exception:
@@ -74,7 +80,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
 
         characters = []
         try:
-            characters = await self.fetch_characters(canonical_url, output_path=char_output)
+            characters = await self.fetch_characters(
+                canonical_url, output_path=char_output
+            )
             if characters:
                 logger.info(f"Integrated {len(characters)} characters")
         except Exception:
@@ -91,7 +99,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
             }
         )
 
-    async def fetch_anime(self, url: str, *, output_path: str | None = None) -> dict[str, Any] | None:
+    async def fetch_anime(
+        self, url: str, *, output_path: str | None = None
+    ) -> dict[str, Any] | None:
         """Fetch anime metadata from the given AniSearch URL.
 
         Parameters:
@@ -116,7 +126,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
             logger.exception(f"Error fetching anime data for {url}")
             return None
 
-    async def fetch_episodes(self, url: str, *, output_path: str | None = None) -> list[dict[str, Any]] | None:
+    async def fetch_episodes(
+        self, url: str, *, output_path: str | None = None
+    ) -> list[dict[str, Any]] | None:
         """Fetch episode data for the given AniSearch anime URL.
 
         Parameters:
@@ -150,7 +162,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
         logger.info(f"Fetching AniSearch character refs for {url}")
         return await fetch_anisearch_character_refs(url)
 
-    async def fetch_characters(self, url: str, *, output_path: str | None = None) -> list[dict[str, Any]] | None:
+    async def fetch_characters(
+        self, url: str, *, output_path: str | None = None
+    ) -> list[dict[str, Any]] | None:
         """Fetch full character detail pages for the given AniSearch anime URL.
 
         Internally fetches character refs (list page) then batch-fetches detail pages.

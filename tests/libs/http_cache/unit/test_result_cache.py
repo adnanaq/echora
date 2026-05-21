@@ -1483,7 +1483,6 @@ class TestGetResultCacheRedisClient:
         """RedisInitializationError raised when from_url somehow returns None."""
         from http_cache.exceptions import RedisInitializationError
         from http_cache.result_cache import (
-            _redis_client,
             close_result_cache_redis_client,
             get_result_cache_redis_client,
         )

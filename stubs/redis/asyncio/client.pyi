@@ -141,7 +141,9 @@ class Redis:
         """Get the value of a key."""
         ...
 
-    async def mget(self, keys: list[str] | list[bytes], *args: str | bytes) -> list[str | bytes | None]:
+    async def mget(
+        self, keys: list[str] | list[bytes], *args: str | bytes
+    ) -> list[str | bytes | None]:
         """Get the values of all given keys."""
         ...
 

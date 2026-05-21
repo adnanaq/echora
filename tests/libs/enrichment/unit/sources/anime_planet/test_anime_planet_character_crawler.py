@@ -415,7 +415,9 @@ def test_extract_manga_roles_empty_role_is_none() -> None:
 
 
 def test_build_character_from_fixture(ap_character_raw) -> None:
-    char = _build_character_from_raw(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
+    char = _build_character_from_raw(
+        ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL
+    )
     assert char.name == "Monkey D. Luffy"
     assert char.slug == "monkey-d-luffy"
     assert char.url == _LUFFY_AP_URL
@@ -642,7 +644,9 @@ async def test_fetch_animeplanet_characters_all_cached(mocker) -> None:
     assert result[0]["name"] == "Luffy"
 
 
-async def test_fetch_animeplanet_characters_cached_writes_output_path(mocker, tmp_path) -> None:
+async def test_fetch_animeplanet_characters_cached_writes_output_path(
+    mocker, tmp_path
+) -> None:
     import json
 
     url = "https://www.anime-planet.com/characters/luffy"
@@ -684,7 +688,9 @@ async def test_fetch_animeplanet_characters_live_success(mocker) -> None:
     cache_set.assert_awaited_once()
 
 
-async def test_fetch_animeplanet_characters_live_writes_output_path(mocker, tmp_path) -> None:
+async def test_fetch_animeplanet_characters_live_writes_output_path(
+    mocker, tmp_path
+) -> None:
     import json as _json
 
     url = "https://www.anime-planet.com/characters/nami"
@@ -1023,7 +1029,9 @@ def _make_char(**kwargs) -> AnimePlanetCharacter:
 
 
 def test_mapper_from_fixture(ap_character_raw) -> None:
-    char = _build_character_from_raw(ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL)
+    char = _build_character_from_raw(
+        ap_character_raw, ap_character_raw["_html"], _LUFFY_AP_URL
+    )
     result = character_from_animeplanet(char)
     assert result["name"] == "Monkey D. Luffy"
     assert result["sources"] == [_LUFFY_AP_URL]

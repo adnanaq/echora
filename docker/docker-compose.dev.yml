@@ -97,6 +97,8 @@ services:
       - QDRANT_ENABLE_QUANTIZATION=false
       - QDRANT_QUANTIZATION_TYPE=scalar
       - QDRANT_ENABLE_PAYLOAD_INDEXING=true
+      - QDRANT_PREFETCH_LIMIT_MULTIPLIER=10
+      - QDRANT_RRF_K=2
 
       # API Configuration
       - API_TITLE=Anime Vector Service

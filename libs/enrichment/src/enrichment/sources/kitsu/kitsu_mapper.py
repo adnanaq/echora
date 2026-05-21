@@ -30,7 +30,6 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
-
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
@@ -158,7 +157,9 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         covers=[cover.original] if cover and cover.original else [],
     )
 
-    kitsu_score = normalize_score(float(attrs.averageRating)) if attrs.averageRating else None
+    kitsu_score = (
+        normalize_score(float(attrs.averageRating)) if attrs.averageRating else None
+    )
     statistics: dict[str, Statistics] = {
         "kitsu": Statistics(
             score=kitsu_score,
