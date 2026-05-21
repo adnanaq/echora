@@ -2,7 +2,6 @@
 
 import pytest
 from qdrant_client.models import SparseVector
-
 from qdrant_db.contracts import SparseVectorData
 from qdrant_db.errors import ValidationError
 from qdrant_db.normalizer import (
@@ -10,7 +9,6 @@ from qdrant_db.normalizer import (
     is_float_vector,
     is_sparse_payload,
 )
-
 
 # ---------------------------------------------------------------------------
 # Module-level guards
@@ -86,7 +84,9 @@ def test_to_sparse_vector_data_coerces_dict() -> None:
 
 def test_to_sparse_vector_data_raises_for_non_sparse_shape() -> None:
     norm = _normalizer()
-    with pytest.raises(ValidationError, match="must be an object with indices and values"):
+    with pytest.raises(
+        ValidationError, match="must be an object with indices and values"
+    ):
         norm.to_sparse_vector_data([0.1, 0.2], "s")
 
 
@@ -95,7 +95,9 @@ def test_to_sparse_vector_data_raises_for_invalid_model() -> None:
     # so SparseVectorData.model_validate fails, hitting the except branch.
     norm = _normalizer()
     with pytest.raises(ValidationError, match="Invalid sparse vector payload"):
-        norm.to_sparse_vector_data({"indices": ["not_int", "also_not"], "values": [0.1, 0.2]}, "s")
+        norm.to_sparse_vector_data(
+            {"indices": ["not_int", "also_not"], "values": [0.1, 0.2]}, "s"
+        )
 
 
 # ---------------------------------------------------------------------------

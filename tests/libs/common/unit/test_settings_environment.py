@@ -219,14 +219,14 @@ class TestMultivectorConfiguration:
 
     def test_multivector_vectors_default(self):
         """Test default multivector configuration."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
             settings = Settings()
             assert "image_vector" in settings.qdrant.multivector_vectors
             assert settings.qdrant.multivector_vectors == ["image_vector"]
 
     def test_vector_names_unchanged(self):
         """Test vector_names still contains both vectors."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
             settings = Settings()
             assert settings.qdrant.vector_names == {
                 "text_vector": 1024,
@@ -247,7 +247,7 @@ class TestMultivectorConfiguration:
 
     def test_sparse_vectors_configured_by_default(self):
         """Test sparse vectors are configured by default."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
+        with patch.dict(os.environ, {"ENVIRONMENT": "development"}, clear=True):
             settings = Settings()
             assert settings.qdrant.sparse_vector_names == ["text_sparse_vector"]
             assert settings.qdrant.primary_sparse_vector_name == "text_sparse_vector"
@@ -261,6 +261,7 @@ class TestMultivectorConfiguration:
                 "SPARSE_VECTOR_NAMES": '["sparse_a"]',
                 "PRIMARY_SPARSE_VECTOR_NAME": "sparse_b",
             },
+            clear=True,
         ):
             with pytest.raises(
                 ValueError,

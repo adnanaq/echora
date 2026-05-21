@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from google.protobuf import struct_pb2
 from vector_proto.v1 import vector_search_pb2
 from vector_service.routes import search as search_route
 

@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from common.config import get_settings
-from qdrant_client.models import OverwritePayloadOperation, SetPayloadOperation, SparseVector
+from qdrant_client.models import (
+    OverwritePayloadOperation,
+    SetPayloadOperation,
+    SparseVector,
+)
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.contracts import (
@@ -24,7 +28,9 @@ async def mock_client() -> QdrantClient:
     settings = get_settings()
     mock_async_client = AsyncMock()
 
-    with patch.object(QdrantCollectionManager, "initialize_collection", new=AsyncMock()):
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
+    ):
         client = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=mock_async_client,
@@ -45,7 +51,9 @@ async def mock_sparse_client() -> QdrantClient:
     )
     mock_async_client = AsyncMock()
 
-    with patch.object(QdrantCollectionManager, "initialize_collection", new=AsyncMock()):
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
+    ):
         client = await QdrantClient.create(
             config=sparse_config,
             async_qdrant_client=mock_async_client,
@@ -78,7 +86,9 @@ async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> Non
 
 
 @pytest.mark.asyncio
-async def test_search_multivector_uses_prefetch_fusion(mock_client: QdrantClient) -> None:
+async def test_search_multivector_uses_prefetch_fusion(
+    mock_client: QdrantClient,
+) -> None:
     mock_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(points=[])
     )
@@ -96,7 +106,9 @@ async def test_search_multivector_uses_prefetch_fusion(mock_client: QdrantClient
 
 
 @pytest.mark.asyncio
-async def test_search_sparse_only_uses_query_api(mock_sparse_client: QdrantClient) -> None:
+async def test_search_sparse_only_uses_query_api(
+    mock_sparse_client: QdrantClient,
+) -> None:
     mock_sparse_client._async_client.query_points = AsyncMock(
         return_value=SimpleNamespace(
             points=[

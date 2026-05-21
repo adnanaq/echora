@@ -42,7 +42,9 @@ def test_deduplicate_items_fail_policy_raises_on_duplicate() -> None:
     items = [_Item(key="a", value=1), _Item(key="a", value=2)]
 
     with pytest.raises(DuplicateKeyError, match="Duplicate key found") as exc_info:
-        deduplicate_items(items=items, key_fn=lambda item: item.key, dedup_policy="fail")
+        deduplicate_items(
+            items=items, key_fn=lambda item: item.key, dedup_policy="fail"
+        )
 
     assert exc_info.value.key == "a"
 

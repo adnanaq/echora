@@ -299,7 +299,6 @@ def test_build_quantization_config_exception_returns_none() -> None:
     assert result is None
 
 
-
 # ---------------------------------------------------------------------------
 # build_optimizers_config
 # ---------------------------------------------------------------------------

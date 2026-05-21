@@ -46,7 +46,9 @@ async def test_retry_with_backoff_rejects_negative_max_retries() -> None:
 async def test_retry_with_backoff_rejects_negative_retry_delay() -> None:
     """Negative retry_delay must be rejected."""
     with pytest.raises(ValueError, match="retry_delay must be >= 0"):
-        await retry_with_backoff(operation=AsyncMock(return_value="ok"), retry_delay=-0.1)
+        await retry_with_backoff(
+            operation=AsyncMock(return_value="ok"), retry_delay=-0.1
+        )
 
 
 @pytest.mark.asyncio
@@ -247,7 +249,9 @@ def test_retry_module_import_guard_fallback_creates_placeholder_exception_types(
 ) -> None:
     """Import-guard fallback should define placeholder ApiException classes."""
     retry_path = Path(retry_module.__file__).resolve()
-    spec = importlib.util.spec_from_file_location("qdrant_retry_fallback_test", retry_path)
+    spec = importlib.util.spec_from_file_location(
+        "qdrant_retry_fallback_test", retry_path
+    )
     assert spec is not None and spec.loader is not None
 
     loaded_module = ModuleType("qdrant_retry_fallback_test")

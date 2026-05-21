@@ -1,13 +1,12 @@
 """Unit tests for QdrantCollectionManager."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 from common.config import get_settings
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance
-
 from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.errors import CollectionCompatibilityError
 
@@ -31,7 +30,9 @@ def _make_vector_params(
     distance: Distance = Distance.COSINE,
     multivector_config: object = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(size=size, distance=distance, multivector_config=multivector_config)
+    return SimpleNamespace(
+        size=size, distance=distance, multivector_config=multivector_config
+    )
 
 
 def _collection_info(vectors: object, sparse_vectors: object = None) -> SimpleNamespace:
@@ -50,7 +51,9 @@ def _collection_info(vectors: object, sparse_vectors: object = None) -> SimpleNa
 async def test_collection_exists_true() -> None:
     mock = AsyncMock()
     mock.get_collections = AsyncMock(
-        return_value=SimpleNamespace(collections=[SimpleNamespace(name="test_collection")])
+        return_value=SimpleNamespace(
+            collections=[SimpleNamespace(name="test_collection")]
+        )
     )
     manager = _make_manager(mock)
     assert await manager.collection_exists() is True
@@ -124,11 +127,12 @@ async def test_initialize_collection_validates_when_exists() -> None:
     )
     mock = AsyncMock()
     mock.get_collections = AsyncMock(
-        return_value=SimpleNamespace(collections=[SimpleNamespace(name="test_collection")])
+        return_value=SimpleNamespace(
+            collections=[SimpleNamespace(name="test_collection")]
+        )
     )
     vectors = {
-        name: _make_vector_params(size=dim)
-        for name, dim in config.vector_names.items()
+        name: _make_vector_params(size=dim) for name, dim in config.vector_names.items()
     }
     mock.get_collection = AsyncMock(
         return_value=_collection_info(
@@ -141,6 +145,49 @@ async def test_initialize_collection_validates_when_exists() -> None:
     )
     await manager.initialize_collection()
     mock.create_collection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_initialize_collection_idempotent_on_concurrent_creation() -> None:
+    """Existence check returns missing, create_collection races and raises already-exists,
+    compatibility validation then succeeds — startup must not fail."""
+    settings = get_settings()
+    config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "primary_sparse_vector_name": "text_sparse_vector",
+            "multivector_vectors": [],
+        },
+    )
+    mock = AsyncMock()
+    # First call: collection missing (triggers create path)
+    mock.get_collections = AsyncMock(return_value=SimpleNamespace(collections=[]))
+    # create_collection raises "already exists" — simulates concurrent instance winning the race
+    already_exists_exc = UnexpectedResponse(
+        status_code=400,
+        reason_phrase="Bad Request",
+        content=b'{"status":{"error":"already exists"}}',
+        headers={},
+    )
+    mock.create_collection = AsyncMock(side_effect=already_exists_exc)
+    # get_collection returns a compatible schema for the compatibility check
+    vectors = {
+        name: _make_vector_params(size=dim) for name, dim in config.vector_names.items()
+    }
+    mock.get_collection = AsyncMock(
+        return_value=_collection_info(
+            vectors=vectors,
+            sparse_vectors={"text_sparse_vector": {}},
+        )
+    )
+    manager = QdrantCollectionManager(
+        config=config, async_client=mock, collection_name="test_collection"
+    )
+    # Must not raise — concurrent creation should be handled gracefully
+    await manager.initialize_collection()
+    mock.create_collection.assert_called_once()
+    mock.get_collection.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +303,7 @@ async def test_validate_compatibility_raises_for_multivector_mismatch() -> None:
     )
     mock = AsyncMock()
     vectors = {
-        name: _make_vector_params(size=dim)
-        for name, dim in config.vector_names.items()
+        name: _make_vector_params(size=dim) for name, dim in config.vector_names.items()
     }
     mock.get_collection = AsyncMock(return_value=_collection_info(vectors=vectors))
     manager = QdrantCollectionManager(
@@ -272,20 +318,22 @@ async def test_validate_compatibility_raises_for_missing_sparse_config() -> None
     settings = get_settings()
     config = settings.qdrant.model_copy(
         deep=True,
-        update={"sparse_vector_names": ["text_sparse_vector"], "multivector_vectors": []},
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "multivector_vectors": [],
+        },
     )
     mock = AsyncMock()
     vectors = {
-        name: _make_vector_params(size=dim)
-        for name, dim in config.vector_names.items()
+        name: _make_vector_params(size=dim) for name, dim in config.vector_names.items()
     }
-    mock.get_collection = AsyncMock(
-        return_value=_collection_info(vectors=vectors)
-    )
+    mock.get_collection = AsyncMock(return_value=_collection_info(vectors=vectors))
     manager = QdrantCollectionManager(
         config=config, async_client=mock, collection_name="test_collection"
     )
-    with pytest.raises(CollectionCompatibilityError, match="missing sparse vector configuration"):
+    with pytest.raises(
+        CollectionCompatibilityError, match="missing sparse vector configuration"
+    ):
         await manager._validate_compatibility()
 
 
@@ -294,12 +342,14 @@ async def test_validate_compatibility_raises_for_missing_sparse_vector() -> None
     settings = get_settings()
     config = settings.qdrant.model_copy(
         deep=True,
-        update={"sparse_vector_names": ["text_sparse_vector"], "multivector_vectors": []},
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "multivector_vectors": [],
+        },
     )
     mock = AsyncMock()
     vectors = {
-        name: _make_vector_params(size=dim)
-        for name, dim in config.vector_names.items()
+        name: _make_vector_params(size=dim) for name, dim in config.vector_names.items()
     }
     mock.get_collection = AsyncMock(
         return_value=_collection_info(vectors=vectors, sparse_vectors={"other_vec": {}})
@@ -307,5 +357,7 @@ async def test_validate_compatibility_raises_for_missing_sparse_vector() -> None
     manager = QdrantCollectionManager(
         config=config, async_client=mock, collection_name="test_collection"
     )
-    with pytest.raises(CollectionCompatibilityError, match="missing required sparse vectors"):
+    with pytest.raises(
+        CollectionCompatibilityError, match="missing required sparse vectors"
+    ):
         await manager._validate_compatibility()

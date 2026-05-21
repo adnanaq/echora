@@ -29,7 +29,9 @@ def _to_search_filter_conditions(
             )
             continue
 
-        conditions.append(SearchFilterCondition(field=field, operator="eq", value=value))
+        conditions.append(
+            SearchFilterCondition(field=field, operator="eq", value=value)
+        )
 
     return conditions
 
