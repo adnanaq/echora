@@ -221,7 +221,8 @@ class SearchRequest(BaseModel):
             "are dropped server-side. None means no threshold — Qdrant always returns "
             "up to `limit` results. Applied to both single-vector and fusion searches. "
             "Valid range depends on distance metric: cosine [-1, 1], dot (-inf, +inf), "
-            "euclid/manhattan (<=0). Qdrant validates the value server-side."
+            "euclid/manhattan (-inf, 0] (Qdrant negates distances, so scores are non-positive). "
+            "Qdrant validates the value server-side."
         ),
     )
     filters: list[SearchFilterCondition] = Field(default_factory=list)

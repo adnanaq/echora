@@ -66,7 +66,7 @@ class QdrantCollectionManager:
                     wal_config=build_wal_config(self._config),
                 )
             except UnexpectedResponse as exc:
-                if exc.status_code == 400 and b"already exists" in exc.content:
+                if exc.status_code == 400 and b"already exists" in exc.content.lower():
                     # Concurrent instance created the collection between our existence
                     # check and create — validate compatibility and proceed.
                     logger.info(

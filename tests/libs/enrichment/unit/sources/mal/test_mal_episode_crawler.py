@@ -89,7 +89,7 @@ def test_parse_title_no_synopsis_ep_from_fixture(mal_episode_no_synopsis_raw) ->
 def test_parse_title_filler_newline_whitespace(mal_episode_filler_raw) -> None:
     """crawl4ai emits filler badge with leading newlines — whitespace collapse must handle it."""
     assert "\n" in mal_episode_filler_raw["title_header"]
-    title, *_, filler, recap = _parse_title_info(
+    title, *_, filler, _recap = _parse_title_info(
         mal_episode_filler_raw["title_header"], None, 50
     )
     assert filler is True
@@ -98,7 +98,7 @@ def test_parse_title_filler_newline_whitespace(mal_episode_filler_raw) -> None:
 
 def test_parse_title_recap_newline_whitespace(mal_episode_recap_raw) -> None:
     assert "\n" in mal_episode_recap_raw["title_header"]
-    title, *_, filler, recap = _parse_title_info(
+    title, *_, _filler, recap = _parse_title_info(
         mal_episode_recap_raw["title_header"], None, 279
     )
     assert recap is True

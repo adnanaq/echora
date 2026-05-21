@@ -296,7 +296,7 @@ class QdrantClient(VectorDBClient):
 
         return BatchOperationResult(
             total=len(documents),
-            successful=len(points),
+            successful=len(documents),
             failed=0,
         )
 
