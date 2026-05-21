@@ -13,7 +13,6 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.mal.mal_episode_crawler import (
     _build_episode_from_raw,
     _fetch_mal_episode_data,
@@ -51,7 +50,9 @@ def test_parse_title_ep1_from_fixture(mal_episode_raw) -> None:
 
 def test_parse_title_filler_from_fixture(mal_episode_filler_raw) -> None:
     title, jp, romaji, filler, recap = _parse_title_info(
-        mal_episode_filler_raw["title_header"], mal_episode_filler_raw["subtitle_raw"], 50
+        mal_episode_filler_raw["title_header"],
+        mal_episode_filler_raw["subtitle_raw"],
+        50,
     )
     assert title == "Usopp vs. Daddy the Parent! Showdown at High!"
     assert filler is True
@@ -62,7 +63,9 @@ def test_parse_title_filler_from_fixture(mal_episode_filler_raw) -> None:
 
 def test_parse_title_recap_from_fixture(mal_episode_recap_raw) -> None:
     title, jp, romaji, filler, recap = _parse_title_info(
-        mal_episode_recap_raw["title_header"], mal_episode_recap_raw["subtitle_raw"], 279
+        mal_episode_recap_raw["title_header"],
+        mal_episode_recap_raw["subtitle_raw"],
+        279,
     )
     assert title == "Jump Towards the Falls! Luffy's Feelings!"
     assert recap is True
@@ -73,7 +76,9 @@ def test_parse_title_recap_from_fixture(mal_episode_recap_raw) -> None:
 
 def test_parse_title_no_synopsis_ep_from_fixture(mal_episode_no_synopsis_raw) -> None:
     title, jp, romaji, filler, recap = _parse_title_info(
-        mal_episode_no_synopsis_raw["title_header"], mal_episode_no_synopsis_raw["subtitle_raw"], 1152
+        mal_episode_no_synopsis_raw["title_header"],
+        mal_episode_no_synopsis_raw["subtitle_raw"],
+        1152,
     )
     assert title == "Her Father and Mother's Legacy! Bonney's Nika Punch"
     assert jp == "父と母の想い! ボニーの解放の拳[ニカパンチ]"
@@ -84,14 +89,18 @@ def test_parse_title_no_synopsis_ep_from_fixture(mal_episode_no_synopsis_raw) ->
 def test_parse_title_filler_newline_whitespace(mal_episode_filler_raw) -> None:
     """crawl4ai emits filler badge with leading newlines — whitespace collapse must handle it."""
     assert "\n" in mal_episode_filler_raw["title_header"]
-    title, *_, filler, recap = _parse_title_info(mal_episode_filler_raw["title_header"], None, 50)
+    title, *_, filler, recap = _parse_title_info(
+        mal_episode_filler_raw["title_header"], None, 50
+    )
     assert filler is True
     assert "Filler" not in title
 
 
 def test_parse_title_recap_newline_whitespace(mal_episode_recap_raw) -> None:
     assert "\n" in mal_episode_recap_raw["title_header"]
-    title, *_, filler, recap = _parse_title_info(mal_episode_recap_raw["title_header"], None, 279)
+    title, *_, filler, recap = _parse_title_info(
+        mal_episode_recap_raw["title_header"], None, 279
+    )
     assert recap is True
     assert "Recap" not in title
 
@@ -155,16 +164,35 @@ def test_parse_episode_characters_empty_inputs() -> None:
 
 def test_parse_episode_characters_invalid_urls_skipped() -> None:
     assert _parse_episode_characters([{"char_name": "Luffy", "char_url": ""}]) == []
-    assert _parse_episode_characters([{"char_name": "Luffy", "char_url": "https://myanimelist.net/anime/21"}]) == []
+    assert (
+        _parse_episode_characters(
+            [{"char_name": "Luffy", "char_url": "https://myanimelist.net/anime/21"}]
+        )
+        == []
+    )
 
 
 def test_parse_episode_characters_role_defaults_to_supporting() -> None:
-    items = [{"char_name": "Minor", "char_url": "https://myanimelist.net/character/999", "role": None, "voice_actors_html": ""}]
+    items = [
+        {
+            "char_name": "Minor",
+            "char_url": "https://myanimelist.net/character/999",
+            "role": None,
+            "voice_actors_html": "",
+        }
+    ]
     assert _parse_episode_characters(items)[0].role == "Supporting"
 
 
 def test_parse_episode_characters_multiple_vas() -> None:
-    items = [{"char_name": "Luffy", "char_url": "https://myanimelist.net/character/40", "role": "Main", "voice_actors_html": _SAMPLE_VA_HTML}]
+    items = [
+        {
+            "char_name": "Luffy",
+            "char_url": "https://myanimelist.net/character/40",
+            "role": "Main",
+            "voice_actors_html": _SAMPLE_VA_HTML,
+        }
+    ]
     vas = _parse_episode_characters(items)[0].voice_actors
     assert vas[0].person_id == 70
     assert vas[0].language == "Japanese"
@@ -198,12 +226,40 @@ def test_parse_episode_staff_empty_inputs() -> None:
 
 
 def test_parse_episode_staff_invalid_entries_skipped() -> None:
-    assert _parse_episode_staff([{"name": "X", "person_url": "https://myanimelist.net/people/999", "role": ""}]) == []
-    assert _parse_episode_staff([{"name": "X", "person_url": "https://myanimelist.net/character/123", "role": "Script"}]) == []
+    assert (
+        _parse_episode_staff(
+            [
+                {
+                    "name": "X",
+                    "person_url": "https://myanimelist.net/people/999",
+                    "role": "",
+                }
+            ]
+        )
+        == []
+    )
+    assert (
+        _parse_episode_staff(
+            [
+                {
+                    "name": "X",
+                    "person_url": "https://myanimelist.net/character/123",
+                    "role": "Script",
+                }
+            ]
+        )
+        == []
+    )
 
 
 def test_parse_episode_staff_full_item() -> None:
-    items = [{"name": "Takegami, Junki", "person_url": "https://myanimelist.net/people/999/Takegami_Junki", "role": "Script"}]
+    items = [
+        {
+            "name": "Takegami, Junki",
+            "person_url": "https://myanimelist.net/people/999/Takegami_Junki",
+            "role": "Script",
+        }
+    ]
     result = _parse_episode_staff(items)
     assert len(result) == 1
     assert result[0].person_id == 999
@@ -290,17 +346,31 @@ async def test_fetch_mal_episodes_uses_cache_and_merges_results(
     raw1 = dict(mal_episode_raw)
     raw2 = dict(mal_episode_filler_raw)
 
-    mocker.patch.object(_fetch_mal_episode_data, "cache_batch_get", new=AsyncMock(return_value=([raw1, None], [1])))
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([raw1, None], [1])),
+    )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_episode_data, "cache_batch_set", new=cache_set)
     mocker.patch(
         "enrichment.sources.mal.mal_episode_crawler.crawl_batch_urls",
-        new=AsyncMock(return_value=[{"url": _EP50_URL, "status_code": 200, "extracted_content": json.dumps([raw2])}]),
+        new=AsyncMock(
+            return_value=[
+                {
+                    "url": _EP50_URL,
+                    "status_code": 200,
+                    "extracted_content": json.dumps([raw2]),
+                }
+            ]
+        ),
     )
 
     result = await fetch_mal_episodes([_EP1_URL, _EP50_URL])
     assert len(result) == 2
-    assert result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King of the Pirates!"
+    assert (
+        result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King of the Pirates!"
+    )
     assert result[1]["title"] == "Usopp vs. Daddy the Parent! Showdown at High!"
     assert result[1]["filler"] is True
     cache_set.assert_awaited_once()
@@ -311,14 +381,24 @@ async def test_fetch_mal_episodes_404_yields_none(mocker, mal_episode_raw) -> No
     raw1 = dict(mal_episode_raw)
     url2 = "https://myanimelist.net/anime/21/One_Piece/episode/99999"
 
-    mocker.patch.object(_fetch_mal_episode_data, "cache_batch_get", new=AsyncMock(return_value=([None, None], [0, 1])))
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None, None], [0, 1])),
+    )
     mocker.patch.object(_fetch_mal_episode_data, "cache_batch_set", new=AsyncMock())
     mocker.patch(
         "enrichment.sources.mal.mal_episode_crawler.crawl_batch_urls",
-        new=AsyncMock(return_value=[
-            {"url": _EP1_URL, "status_code": 200, "extracted_content": json.dumps([raw1])},
-            {"url": url2, "status_code": 404, "extracted_content": None},
-        ]),
+        new=AsyncMock(
+            return_value=[
+                {
+                    "url": _EP1_URL,
+                    "status_code": 200,
+                    "extracted_content": json.dumps([raw1]),
+                },
+                {"url": url2, "status_code": 404, "extracted_content": None},
+            ]
+        ),
     )
 
     result = await fetch_mal_episodes([_EP1_URL, url2])
@@ -328,17 +408,29 @@ async def test_fetch_mal_episodes_404_yields_none(mocker, mal_episode_raw) -> No
 
 @pytest.mark.asyncio
 async def test_fetch_mal_episodes_chunks_requests(mocker, mal_episode_raw) -> None:
-    urls = [f"https://myanimelist.net/anime/21/One_Piece/episode/{i}" for i in range(1, 37)]
+    urls = [
+        f"https://myanimelist.net/anime/21/One_Piece/episode/{i}" for i in range(1, 37)
+    ]
     raw = dict(mal_episode_raw)
 
-    mocker.patch.object(_fetch_mal_episode_data, "cache_batch_get", new=AsyncMock(return_value=([None] * len(urls), list(range(len(urls))))))
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None] * len(urls), list(range(len(urls))))),
+    )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_episode_data, "cache_batch_set", new=cache_set)
 
     async def _batch_result(batch_urls, **kwargs):
-        return [{"url": u, "status_code": 200, "extracted_content": json.dumps([raw])} for u in batch_urls]
+        return [
+            {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
+            for u in batch_urls
+        ]
 
-    mocker.patch("enrichment.sources.mal.mal_episode_crawler.crawl_batch_urls", side_effect=_batch_result)
+    mocker.patch(
+        "enrichment.sources.mal.mal_episode_crawler.crawl_batch_urls",
+        side_effect=_batch_result,
+    )
 
     result = await fetch_mal_episodes(urls)
     assert len(result) == len(urls)
@@ -351,11 +443,23 @@ async def test_fetch_mal_episodes_no_synopsis_ep_yields_none_synopsis(
     mocker, mal_episode_no_synopsis_raw
 ) -> None:
     raw = dict(mal_episode_no_synopsis_raw)
-    mocker.patch.object(_fetch_mal_episode_data, "cache_batch_get", new=AsyncMock(return_value=([None], [0])))
+    mocker.patch.object(
+        _fetch_mal_episode_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
     mocker.patch.object(_fetch_mal_episode_data, "cache_batch_set", new=AsyncMock())
     mocker.patch(
         "enrichment.sources.mal.mal_episode_crawler.crawl_batch_urls",
-        new=AsyncMock(return_value=[{"url": _EP1152_URL, "status_code": 200, "extracted_content": json.dumps([raw])}]),
+        new=AsyncMock(
+            return_value=[
+                {
+                    "url": _EP1152_URL,
+                    "status_code": 200,
+                    "extracted_content": json.dumps([raw]),
+                }
+            ]
+        ),
     )
 
     result = await fetch_mal_episodes([_EP1152_URL])

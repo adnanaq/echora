@@ -1,10 +1,10 @@
 """Unit tests for mal_mapper.py — character_from_mal value normalization."""
 
+from enrichment.sources.mal.mal_mapper import character_from_mal
 from enrichment.sources.mal.mal_models import (
     MalCharacter,
     MalVoiceActorRef,
 )
-from enrichment.sources.mal.mal_mapper import character_from_mal
 
 
 def _make_sample_character() -> MalCharacter:

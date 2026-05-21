@@ -1,12 +1,12 @@
 """Unit tests for mal_mapper.py — episode_from_mal value normalization."""
 
+from enrichment.sources.mal.mal_mapper import episode_from_mal
 from enrichment.sources.mal.mal_models import (
     EpisodeCharacterRef,
     EpisodeStaffRef,
     EpisodeVARef,
     MalEpisode,
 )
-from enrichment.sources.mal.mal_mapper import episode_from_mal
 
 
 def _make_sample_episode() -> MalEpisode:

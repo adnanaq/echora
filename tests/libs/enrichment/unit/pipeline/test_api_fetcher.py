@@ -48,7 +48,9 @@ class TestApiFetcherContextManager:
         mock_helper = AsyncMock()
 
         with patch.object(fetcher, "_build_helpers", return_value={"mal": mock_helper}):
-            with patch.object(fetcher, "_gather", side_effect=RuntimeError("gather boom")):
+            with patch.object(
+                fetcher, "_gather", side_effect=RuntimeError("gather boom")
+            ):
                 with pytest.raises(RuntimeError, match="gather boom"):
                     await fetcher.fetch_all_data({}, {})
 
@@ -181,7 +183,9 @@ class TestFetchAllData:
         ids = {"kitsu_url": "https://kitsu.app/anime/12"}
         offline = {"title": "One Piece", "sources": []}
 
-        with patch.object(fetcher, "_build_helpers", return_value={"kitsu": mock_kitsu}):
+        with patch.object(
+            fetcher, "_build_helpers", return_value={"kitsu": mock_kitsu}
+        ):
             with patch.object(
                 fetcher,
                 "_gather",
@@ -208,7 +212,9 @@ class TestFetchAllData:
         offline = {"title": "Test", "sources": []}
 
         mock_anidb = AsyncMock()
-        with patch.object(fetcher, "_build_helpers", return_value={"anidb": mock_anidb}):
+        with patch.object(
+            fetcher, "_build_helpers", return_value={"anidb": mock_anidb}
+        ):
             with patch.object(
                 fetcher, "_gather", new=AsyncMock(return_value={})
             ) as mock_gather:
@@ -243,7 +249,10 @@ class TestFetchAllData:
     @pytest.mark.asyncio
     async def test_fetch_all_data_normalizes_mixed_helper_payload_shapes(self):
         fetcher = ApiFetcher()
-        ids = {"mal_url": "https://myanimelist.net/anime/21", "anisearch_url": "https://www.anisearch.com/anime/12,some-slug"}
+        ids = {
+            "mal_url": "https://myanimelist.net/anime/21",
+            "anisearch_url": "https://www.anisearch.com/anime/12,some-slug",
+        }
         offline = {"title": "One Piece", "sources": []}
 
         mock_mal = AsyncMock()
@@ -261,7 +270,9 @@ class TestFetchAllData:
         )
 
         with patch.object(
-            fetcher, "_build_helpers", return_value={"mal": mock_mal, "anisearch": mock_anisearch}
+            fetcher,
+            "_build_helpers",
+            return_value={"mal": mock_mal, "anisearch": mock_anisearch},
         ):
             with patch.object(fetcher, "_log_performance_metrics"):
                 result = await fetcher.fetch_all_data(ids, offline)
@@ -319,7 +330,9 @@ class TestFetchAllData:
         offline = {"title": "Test", "sources": []}
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(fetcher, "_build_helpers", return_value={"anidb": mock_helper}):
+            with patch.object(
+                fetcher, "_build_helpers", return_value={"anidb": mock_helper}
+            ):
                 with patch.object(fetcher, "_log_performance_metrics"):
                     await fetcher.fetch_all_data(ids, offline, temp_dir=temp_dir)
 

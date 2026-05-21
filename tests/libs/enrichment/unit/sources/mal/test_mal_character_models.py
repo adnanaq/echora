@@ -1,13 +1,11 @@
 """Unit tests for MalCharacter and related character models."""
 
 import pytest
-from pydantic import ValidationError
-
 from enrichment.sources.mal.mal_models import (
     MalCharacter,
     MalVoiceActorRef,
 )
-
+from pydantic import ValidationError
 
 # =============================================================================
 # MalVoiceActorRef

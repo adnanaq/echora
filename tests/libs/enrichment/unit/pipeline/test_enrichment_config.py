@@ -3,9 +3,8 @@ Tests for EnrichmentConfig validation and logging.
 """
 
 import pytest
-from pydantic import ValidationError
-
 from enrichment.pipeline.config import EnrichmentConfig
+from pydantic import ValidationError
 
 
 class TestEnrichmentConfigDefaults:

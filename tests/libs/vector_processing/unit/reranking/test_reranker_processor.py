@@ -1,7 +1,6 @@
 """Unit tests for RerankerProcessor."""
 
 import pytest
-
 from common.config import EmbeddingConfig
 from vector_processing.processors import RerankerProcessor
 from vector_processing.reranking import SentenceTransformerReranker

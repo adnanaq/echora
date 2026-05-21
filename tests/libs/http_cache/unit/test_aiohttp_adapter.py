@@ -17,14 +17,13 @@ Focus:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from hishel import Request, Response
 from http_cache.aiohttp_adapter import CachedAiohttpSession, _CachedResponse
 from multidict import CIMultiDictProxy  # pants: no-infer-dep
 from yarl import URL  # pants: no-infer-dep
-
 
 # =============================================================================
 # Helpers

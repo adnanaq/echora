@@ -1,17 +1,15 @@
 """Unit tests for MalEpisode and related episode models."""
 
 import pytest
-from pydantic import ValidationError
-
 from enrichment.sources.mal.mal_models import (
     EpisodeCharacterRef,
     EpisodeStaffRef,
     EpisodeVARef,
-    MalFetchResult,
     MalAnime,
     MalEpisode,
+    MalFetchResult,
 )
-
+from pydantic import ValidationError
 
 # =============================================================================
 # EpisodeVARef

@@ -52,13 +52,17 @@ async def test_main_function_success(mock_helper_class, tmp_path):
     mock_helper_class.return_value = mock_helper
 
     output = str(tmp_path / "output.json")
-    with patch("sys.argv", ["script.py", "https://kitsu.app/anime/123", "--output", output]):
+    with patch(
+        "sys.argv", ["script.py", "https://kitsu.app/anime/123", "--output", output]
+    ):
         with patch("builtins.open", MagicMock()):
             exit_code = await main()
 
     assert exit_code == 0
     mock_helper_class.assert_called_once()
-    mock_helper.fetch_all.assert_awaited_once_with({"kitsu_url": "https://kitsu.app/anime/123"}, {})
+    mock_helper.fetch_all.assert_awaited_once_with(
+        {"kitsu_url": "https://kitsu.app/anime/123"}, {}
+    )
 
 
 @pytest.mark.asyncio
@@ -72,7 +76,9 @@ async def test_main_function_no_data_found(mock_helper_class, tmp_path):
     mock_helper_class.return_value = mock_helper
 
     output = str(tmp_path / "output.json")
-    with patch("sys.argv", ["script.py", "https://kitsu.app/anime/99999", "--output", output]):
+    with patch(
+        "sys.argv", ["script.py", "https://kitsu.app/anime/99999", "--output", output]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -89,7 +95,9 @@ async def test_main_function_error_handling(mock_helper_class, tmp_path):
     mock_helper_class.return_value = mock_helper
 
     output = str(tmp_path / "output.json")
-    with patch("sys.argv", ["script.py", "https://kitsu.app/anime/123", "--output", output]):
+    with patch(
+        "sys.argv", ["script.py", "https://kitsu.app/anime/123", "--output", output]
+    ):
         exit_code = await main()
 
     assert exit_code == 1
@@ -103,7 +111,6 @@ async def test_main_function_invalid_arguments():
         exit_code = await main()
 
     assert exit_code == 1
-
 
 
 # ---------------------------------------------------------------------------
@@ -550,7 +557,9 @@ async def test_fetch_anime_writes_output_path(tmp_path):
             with patch.object(
                 helper, "get_anime_categories", new=AsyncMock(return_value=[])
             ):
-                result = await helper.fetch_anime(12, output_path=out, session=MagicMock())
+                result = await helper.fetch_anime(
+                    12, output_path=out, session=MagicMock()
+                )
 
     assert result is not None
     lines = (tmp_path / "kitsu_anime.jsonl").read_text().splitlines()
@@ -583,7 +592,9 @@ async def test_fetch_episodes_writes_each_episode_to_output_path(tmp_path):
     ]
     out = str(tmp_path / "kitsu_episodes.jsonl")
 
-    with patch.object(helper, "get_anime_episodes", new=AsyncMock(return_value=raw_eps)):
+    with patch.object(
+        helper, "get_anime_episodes", new=AsyncMock(return_value=raw_eps)
+    ):
         results = await helper.fetch_episodes(12, output_path=out)
 
     assert len(results) == 2
@@ -741,7 +752,9 @@ async def test_fetch_characters_writes_to_output_path(tmp_path):
     out = str(tmp_path / "chars.jsonl")
 
     with patch.object(helper, "get_anime_characters", new=AsyncMock(return_value=[mc])):
-        with patch.object(helper, "get_character_voices", new=AsyncMock(return_value=[])):
+        with patch.object(
+            helper, "get_character_voices", new=AsyncMock(return_value=[])
+        ):
             with patch.object(
                 helper, "get_character_animeography", new=AsyncMock(return_value=[])
             ):
@@ -824,7 +837,9 @@ async def test_fetch_all_reuses_one_session_for_anime_and_episodes():
         side_effect=make_session_cm,
     ) as mock_get_session:
         with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
-            result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/12"}, {})
+            result = await helper.fetch_all(
+                {"kitsu_url": "https://kitsu.app/anime/12"}, {}
+            )
 
     assert result is not None
     assert result["anime"]["title"] == "One Piece"
@@ -851,7 +866,9 @@ async def test_fetch_all_returns_none_when_anime_not_found():
                 "enrichment.sources.kitsu.kitsu_helper._cache_manager.get_aiohttp_session",
                 side_effect=make_session_cm,
             ):
-                result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/99999"}, {})
+                result = await helper.fetch_all(
+                    {"kitsu_url": "https://kitsu.app/anime/99999"}, {}
+                )
 
     assert result is None
 
@@ -872,8 +889,12 @@ async def test_fetch_all_slug_resolution_http_failure():
     helper = KitsuHelper()
     helper._make_request = AsyncMock(side_effect=aiohttp.ClientError("service down"))
 
-    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
-        result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/one-piece"}, {})
+    with patch(
+        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession"
+    ) as mock_raw:
+        result = await helper.fetch_all(
+            {"kitsu_url": "https://kitsu.app/anime/one-piece"}, {}
+        )
 
     assert result is None
     mock_raw.assert_not_called()
@@ -888,12 +909,14 @@ async def test_fetch_all_slug_resolution_no_data():
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
     helper = KitsuHelper()
-    helper._make_request = AsyncMock(
-        return_value={"data": [], "_from_cache": False}
-    )
+    helper._make_request = AsyncMock(return_value={"data": [], "_from_cache": False})
 
-    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
-        result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/one-piece"}, {})
+    with patch(
+        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession"
+    ) as mock_raw:
+        result = await helper.fetch_all(
+            {"kitsu_url": "https://kitsu.app/anime/one-piece"}, {}
+        )
 
     assert result is None
     mock_raw.assert_not_called()
@@ -909,7 +932,9 @@ async def test_fetch_all_slug_resolved_to_numeric_id():
         return_value={"data": [{"id": "42"}], "_from_cache": False}
     )
 
-    with patch("enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession") as mock_raw:
+    with patch(
+        "enrichment.sources.kitsu.kitsu_helper.aiohttp.ClientSession"
+    ) as mock_raw:
         with patch(
             "enrichment.sources.kitsu.kitsu_helper._cache_manager.get_aiohttp_session",
             return_value=_cm(AsyncMock()),
@@ -919,9 +944,15 @@ async def test_fetch_all_slug_resolved_to_numeric_id():
                 "fetch_anime",
                 new=AsyncMock(return_value={"title": "Test", "sources": []}),
             ):
-                with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
-                    with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
-                        result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/one-piece"}, {})
+                with patch.object(
+                    helper, "fetch_episodes", new=AsyncMock(return_value=[])
+                ):
+                    with patch.object(
+                        helper, "fetch_characters", new=AsyncMock(return_value=[])
+                    ):
+                        result = await helper.fetch_all(
+                            {"kitsu_url": "https://kitsu.app/anime/one-piece"}, {}
+                        )
 
     assert result is not None
     assert result["anime"]["title"] == "Test"
@@ -954,7 +985,9 @@ async def test_fetch_all_episodes_exception_yields_empty_list():
                 with patch.object(
                     helper, "fetch_characters", new=AsyncMock(return_value=[])
                 ):
-                    result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/1"}, {})
+                    result = await helper.fetch_all(
+                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}
+                    )
 
     assert result is not None
     assert result["episodes"] == []
@@ -981,7 +1014,9 @@ async def test_fetch_all_characters_exception_yields_empty_list():
                     "fetch_characters",
                     new=AsyncMock(side_effect=RuntimeError("char fail")),
                 ):
-                    result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/1"}, {})
+                    result = await helper.fetch_all(
+                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}
+                    )
 
     assert result is not None
     assert result["characters"] == []

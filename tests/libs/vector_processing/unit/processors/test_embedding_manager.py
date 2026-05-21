@@ -40,9 +40,7 @@ def mock_text_processor():
     processor.encode_texts_batch = AsyncMock(
         side_effect=lambda texts: [[0.1] * 1024 for _ in texts]
     )
-    processor.encode_text_with_sparse = AsyncMock(
-        return_value=([0.1] * 1024, None)
-    )
+    processor.encode_text_with_sparse = AsyncMock(return_value=([0.1] * 1024, None))
     processor.encode_texts_batch_with_sparse = AsyncMock(
         side_effect=lambda texts: (
             [[0.1] * 1024 for _ in texts],
@@ -68,7 +66,6 @@ def mock_vision_processor():
         return_value=[[0.2] * 768]  # Returns matrix (list of lists)
     )
     return processor
-
 
 
 @pytest.fixture

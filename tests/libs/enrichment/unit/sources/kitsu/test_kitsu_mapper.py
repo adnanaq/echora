@@ -1,5 +1,13 @@
 """Unit tests for kitsu_mapper.py."""
 
+from common.models.anime import ThemeEntry
+from enrichment.sources.kitsu.kitsu_mapper import (
+    _strip_html,
+    _strip_preamble,
+    anime_from_kitsu,
+    character_from_kitsu,
+    episode_from_kitsu,
+)
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuAnimeAttributes,
@@ -19,15 +27,6 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuPersonAttributes,
     KitsuTitles,
 )
-from enrichment.sources.kitsu.kitsu_mapper import (
-    _strip_html,
-    _strip_preamble,
-    anime_from_kitsu,
-    character_from_kitsu,
-    episode_from_kitsu,
-)
-from common.models.anime import ThemeEntry
-
 
 # =============================================================================
 # Fixtures

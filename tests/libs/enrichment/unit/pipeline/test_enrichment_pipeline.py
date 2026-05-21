@@ -2,21 +2,18 @@
 Tests for EnrichmentPipeline.
 """
 
-import os
 import json
-import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from enrichment.pipeline.config import EnrichmentConfig
 from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def config():
@@ -40,6 +37,7 @@ def sample_anime():
 # ---------------------------------------------------------------------------
 # __init__
 # ---------------------------------------------------------------------------
+
 
 class TestInit:
     def test_uses_default_config_when_none_given(self):
@@ -69,6 +67,7 @@ class TestInit:
 # ---------------------------------------------------------------------------
 # _find_next_agent_id
 # ---------------------------------------------------------------------------
+
 
 class TestFindNextAgentId:
     def test_returns_1_when_temp_dir_missing(self, pipeline):
@@ -101,6 +100,7 @@ class TestFindNextAgentId:
 # _create_temp_dir
 # ---------------------------------------------------------------------------
 
+
 class TestCreateTempDir:
     def test_creates_dir_with_correct_name(self, pipeline):
         with patch("os.listdir", return_value=[]):
@@ -132,7 +132,9 @@ class TestCreateTempDir:
 
         assert path.startswith(pipeline.config.temp_dir)
 
-    def test_repeated_calls_do_not_reuse_same_path_when_scan_state_is_stale(self, pipeline):
+    def test_repeated_calls_do_not_reuse_same_path_when_scan_state_is_stale(
+        self, pipeline
+    ):
         # First scan returns empty → agent1; second scan returns agent1 dir → agent2
         with patch("os.listdir", side_effect=[[], ["Naruto_agent1"]]):
             with patch("os.makedirs"):
@@ -146,6 +148,7 @@ class TestCreateTempDir:
 # enrich_anime
 # ---------------------------------------------------------------------------
 
+
 class TestEnrichAnime:
     @pytest.mark.asyncio
     async def test_success_returns_full_result(self, pipeline, sample_anime, tmp_path):
@@ -158,9 +161,7 @@ class TestEnrichAnime:
         pipeline.id_extractor.validate_ids = MagicMock(return_value=mock_ids)
         pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value=mock_api_data)
 
-        result = await pipeline.enrich_anime(
-            sample_anime, agent_dir="One_agent1"
-        )
+        result = await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
 
         assert result["offline_data"] is sample_anime
         assert result["extracted_ids"] == mock_ids
@@ -186,7 +187,9 @@ class TestEnrichAnime:
         assert saved["title"] == "One Piece"
 
     @pytest.mark.asyncio
-    async def test_auto_generates_agent_dir_when_none(self, pipeline, sample_anime, tmp_path):
+    async def test_auto_generates_agent_dir_when_none(
+        self, pipeline, sample_anime, tmp_path
+    ):
         pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
 
         pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
@@ -213,8 +216,12 @@ class TestEnrichAnime:
         assert "api_fetching" in pipeline.timing_breakdown
 
     @pytest.mark.asyncio
-    async def test_exception_returns_partial_when_skip_enabled(self, pipeline, sample_anime, tmp_path):
-        pipeline.config = EnrichmentConfig(skip_failed_apis=True, temp_dir=str(tmp_path))
+    async def test_exception_returns_partial_when_skip_enabled(
+        self, pipeline, sample_anime, tmp_path
+    ):
+        pipeline.config = EnrichmentConfig(
+            skip_failed_apis=True, temp_dir=str(tmp_path)
+        )
 
         pipeline.id_extractor.extract_all_ids = MagicMock(
             side_effect=RuntimeError("ID extraction failed")
@@ -227,8 +234,12 @@ class TestEnrichAnime:
         assert result["offline_data"] is sample_anime
 
     @pytest.mark.asyncio
-    async def test_exception_raises_when_skip_disabled(self, pipeline, sample_anime, tmp_path):
-        pipeline.config = EnrichmentConfig(skip_failed_apis=False, temp_dir=str(tmp_path))
+    async def test_exception_raises_when_skip_disabled(
+        self, pipeline, sample_anime, tmp_path
+    ):
+        pipeline.config = EnrichmentConfig(
+            skip_failed_apis=False, temp_dir=str(tmp_path)
+        )
 
         pipeline.id_extractor.extract_all_ids = MagicMock(
             side_effect=RuntimeError("hard failure")
@@ -238,7 +249,9 @@ class TestEnrichAnime:
             await pipeline.enrich_anime(sample_anime, agent_dir="One_agent1")
 
     @pytest.mark.asyncio
-    async def test_only_services_forwarded_to_fetcher(self, pipeline, sample_anime, tmp_path):
+    async def test_only_services_forwarded_to_fetcher(
+        self, pipeline, sample_anime, tmp_path
+    ):
         pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
 
         pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
@@ -255,7 +268,9 @@ class TestEnrichAnime:
         assert call_kwargs[0][4] == ["kitsu"]  # only_services
 
     @pytest.mark.asyncio
-    async def test_skip_services_forwarded_to_fetcher(self, pipeline, sample_anime, tmp_path):
+    async def test_skip_services_forwarded_to_fetcher(
+        self, pipeline, sample_anime, tmp_path
+    ):
         pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
 
         pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
@@ -274,6 +289,7 @@ class TestEnrichAnime:
 # ---------------------------------------------------------------------------
 # enrich_batch
 # ---------------------------------------------------------------------------
+
 
 class TestEnrichBatch:
     @pytest.mark.asyncio
@@ -328,6 +344,7 @@ class TestEnrichBatch:
 # get_performance_report
 # ---------------------------------------------------------------------------
 
+
 class TestGetPerformanceReport:
     def test_report_contains_config_values(self, pipeline):
         report = pipeline.get_performance_report()
@@ -356,6 +373,7 @@ class TestGetPerformanceReport:
 # ---------------------------------------------------------------------------
 # Context manager protocol
 # ---------------------------------------------------------------------------
+
 
 class TestContextManager:
     @pytest.mark.asyncio

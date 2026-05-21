@@ -88,7 +88,9 @@ async def test_fetch_anime_skips_episode_count_resolution_when_known():
             "enrichment.sources.mal.mal_helper.fetch_mal_episode_count", new=mock_count
         ),
     ):
-        data = await MalHelper()._fetch_anime("https://myanimelist.net/anime/57334/Dandadan")
+        data = await MalHelper()._fetch_anime(
+            "https://myanimelist.net/anime/57334/Dandadan"
+        )
 
     mock_count.assert_not_awaited()
     assert data["episode_count"] == 12
@@ -148,7 +150,9 @@ async def test_fetch_episodes_maps_minimal_fields(tmp_path: Path):
         "enrichment.sources.mal.mal_helper.fetch_mal_episodes",
         new=AsyncMock(return_value=[ep1, ep2]),
     ) as mock_fetch:
-        episodes = await MalHelper()._fetch_episodes(_ANIME_URL, 2, output_path=str(out))
+        episodes = await MalHelper()._fetch_episodes(
+            _ANIME_URL, 2, output_path=str(out)
+        )
 
     assert len(episodes) == 2
     assert episodes[0]["mal_id"] == 1
@@ -219,7 +223,9 @@ async def test_fetch_character_with_output_path_passes_path_to_crawler(tmp_path:
     out = tmp_path / "chars.jsonl"
     mock_crawler = AsyncMock(return_value={"name": "Luffy", "sources": [_CHAR_URL]})
 
-    with patch("enrichment.sources.mal.mal_helper.fetch_mal_character", new=mock_crawler):
+    with patch(
+        "enrichment.sources.mal.mal_helper.fetch_mal_character", new=mock_crawler
+    ):
         await MalHelper()._fetch_character(_CHAR_URL, output_path=str(out))
 
     mock_crawler.assert_awaited_once_with(_CHAR_URL, output_path=str(out))
@@ -229,7 +235,11 @@ async def test_fetch_character_with_output_path_passes_path_to_crawler(tmp_path:
 async def test_fetch_characters_returns_full_character_data(tmp_path: Path):
     """_fetch_characters fetches refs then batch-fetches details."""
     char_urls = ["https://myanimelist.net/character/100/A"]
-    mapped = {"name": "A", "role": "MAIN", "sources": ["https://myanimelist.net/character/100/A"]}
+    mapped = {
+        "name": "A",
+        "role": "MAIN",
+        "sources": ["https://myanimelist.net/character/100/A"],
+    }
     out = tmp_path / "chars.jsonl"
 
     with (
@@ -413,7 +423,9 @@ async def test_fetch_all_returns_none_on_invalid_url():
 @pytest.mark.asyncio
 async def test_fetch_all_returns_none_on_slugless_url():
     """fetch_all returns None when mal_url has no slug (numeric-only URL)."""
-    result = await MalHelper().fetch_all({"mal_url": "https://myanimelist.net/anime/21"}, {})
+    result = await MalHelper().fetch_all(
+        {"mal_url": "https://myanimelist.net/anime/21"}, {}
+    )
     assert result is None
 
 

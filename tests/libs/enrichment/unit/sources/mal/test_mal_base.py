@@ -2,10 +2,10 @@
 
 import pytest
 from enrichment.sources.base.crawler_config import (
+    CrawlerRateLimiter,
     get_docker_browser_config,
     get_docker_crawler_config,
 )
-from enrichment.sources.base.crawler_config import CrawlerRateLimiter
 from enrichment.sources.mal.mal_base import (
     _get_entity_id,
     diff_model_lists,
@@ -128,7 +128,6 @@ def test_parse_premiered(
     season, year = parse_premiered(raw)
     assert season == expected_season
     assert year == expected_year
-
 
 
 # =============================================================================
@@ -293,20 +292,12 @@ def test_diff_model_lists_added_and_removed() -> None:
     from enrichment.sources.mal.mal_models import MalCharacter
 
     old_chars = [
-        MalCharacter(
-            source="https://myanimelist.net/character/40/Luffy", name="Luffy"
-        ),
-        MalCharacter(
-            source="https://myanimelist.net/character/41/Zoro", name="Zoro"
-        ),
+        MalCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalCharacter(source="https://myanimelist.net/character/41/Zoro", name="Zoro"),
     ]
     new_chars = [
-        MalCharacter(
-            source="https://myanimelist.net/character/40/Luffy", name="Luffy"
-        ),
-        MalCharacter(
-            source="https://myanimelist.net/character/42/Nami", name="Nami"
-        ),
+        MalCharacter(source="https://myanimelist.net/character/40/Luffy", name="Luffy"),
+        MalCharacter(source="https://myanimelist.net/character/42/Nami", name="Nami"),
     ]
     list_diff = diff_model_lists(old_chars, new_chars, "character")
     assert "https://myanimelist.net/character/42/Nami" in list_diff.added
@@ -315,9 +306,7 @@ def test_diff_model_lists_added_and_removed() -> None:
 
 
 def test_diff_model_lists_updated_when_field_changes() -> None:
-    old = [
-        MalCharacter(source="https://myanimelist.net/character/40", name="Luffy")
-    ]
+    old = [MalCharacter(source="https://myanimelist.net/character/40", name="Luffy")]
     new = [
         MalCharacter(
             source="https://myanimelist.net/character/40", name="Luffy Updated"

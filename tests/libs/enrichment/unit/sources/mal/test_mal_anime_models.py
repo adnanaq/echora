@@ -1,16 +1,13 @@
 """Unit tests for MalAnime and related anime models."""
 
 import pytest
-from pydantic import ValidationError
-
 from enrichment.sources.mal.mal_models import (
-    MalCompanyRef,
-    MalExternalLink,
-    MalRelatedEntry,
     MalAnime,
+    MalCompanyRef,
+    MalRelatedEntry,
     MalThemeSong,
 )
-
+from pydantic import ValidationError
 
 # =============================================================================
 # MalCompanyRef

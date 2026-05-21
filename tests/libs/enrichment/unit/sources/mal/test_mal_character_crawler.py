@@ -12,8 +12,8 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-
 from enrichment.sources.mal.mal_character_crawler import (
+    _build_character_from_raw,
     _extract_bio_data,
     _extract_description,
     _extract_name_and_native,
@@ -21,7 +21,6 @@ from enrichment.sources.mal.mal_character_crawler import (
     _extract_voice_actors,
     _fetch_mal_character_data,
     _get_character_schema,
-    _build_character_from_raw,
     fetch_mal_character,
     fetch_mal_characters,
 )
@@ -385,7 +384,9 @@ def test_build_character_from_raw_favorites_no_comma(mal_character_raw) -> None:
     assert char.favorites == 12345
 
 
-def test_build_character_from_raw_missing_favorites_defaults_zero(mal_character_raw) -> None:
+def test_build_character_from_raw_missing_favorites_defaults_zero(
+    mal_character_raw,
+) -> None:
     char = _parse({k: v for k, v in mal_character_raw.items() if k != "favorites"})
     assert char.favorites == 0
 
@@ -419,37 +420,85 @@ def test_get_character_schema_has_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_no_results(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", return_value=[])
-    mocker.patch.object(_fetch_mal_character_data.__wrapped__.__globals__["_limiter"], "acquire", return_value=None)
-    assert await _fetch_mal_character_data("https://myanimelist.net/character/999") is None
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", return_value=[]
+    )
+    mocker.patch.object(
+        _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
+        "acquire",
+        return_value=None,
+    )
+    assert (
+        await _fetch_mal_character_data("https://myanimelist.net/character/999") is None
+    )
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_http_error(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", return_value=[{"status_code": 403, "extracted_content": None}])
-    mocker.patch.object(_fetch_mal_character_data.__wrapped__.__globals__["_limiter"], "acquire", return_value=None)
-    assert await _fetch_mal_character_data("https://myanimelist.net/character/998") is None
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
+        return_value=[{"status_code": 403, "extracted_content": None}],
+    )
+    mocker.patch.object(
+        _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
+        "acquire",
+        return_value=None,
+    )
+    assert (
+        await _fetch_mal_character_data("https://myanimelist.net/character/998") is None
+    )
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_empty_content(mocker) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", return_value=[{"status_code": 200, "extracted_content": "[]"}])
-    mocker.patch.object(_fetch_mal_character_data.__wrapped__.__globals__["_limiter"], "acquire", return_value=None)
-    assert await _fetch_mal_character_data("https://myanimelist.net/character/997") is None
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
+        return_value=[{"status_code": 200, "extracted_content": "[]"}],
+    )
+    mocker.patch.object(
+        _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
+        "acquire",
+        return_value=None,
+    )
+    assert (
+        await _fetch_mal_character_data("https://myanimelist.net/character/997") is None
+    )
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_data_success(mocker, mal_character_raw) -> None:
-    mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
     raw = {k: v for k, v in mal_character_raw.items() if not k.startswith("_")}
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"status_code": 200, "metadata": {"og:url": _LUFFY_URL}, "extracted_content": json.dumps([raw])}],
+        return_value=[
+            {
+                "status_code": 200,
+                "metadata": {"og:url": _LUFFY_URL},
+                "extracted_content": json.dumps([raw]),
+            }
+        ],
     )
-    mocker.patch.object(_fetch_mal_character_data.__wrapped__.__globals__["_limiter"], "acquire", return_value=None)
+    mocker.patch.object(
+        _fetch_mal_character_data.__wrapped__.__globals__["_limiter"],
+        "acquire",
+        return_value=None,
+    )
     result = await _fetch_mal_character_data(_LUFFY_URL)
     assert result is not None
     result_raw, canonical_url = result
@@ -464,12 +513,18 @@ async def test_fetch_mal_character_data_success(mocker, mal_character_raw) -> No
 
 @pytest.mark.asyncio
 async def test_fetch_mal_character_returns_none_when_no_data(mocker) -> None:
-    mocker.patch("enrichment.sources.mal.mal_character_crawler._fetch_mal_character_data", new_callable=AsyncMock, return_value=None)
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler._fetch_mal_character_data",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     assert await fetch_mal_character(_LUFFY_URL) is None
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_character_returns_parsed_character(mocker, mal_character_raw) -> None:
+async def test_fetch_mal_character_returns_parsed_character(
+    mocker, mal_character_raw
+) -> None:
     raw = {k: v for k, v in mal_character_raw.items() if not k.startswith("_")}
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler._fetch_mal_character_data",
@@ -495,43 +550,72 @@ async def test_fetch_mal_characters_empty_list() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_none_result(mocker) -> None:
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([None], [0])))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=AsyncMock())
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", return_value=[None])
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
+        return_value=[None],
+    )
     assert await fetch_mal_characters([_LUFFY_URL]) == [None]
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_http_error(mocker) -> None:
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([None], [0])))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=AsyncMock())
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": _LUFFY_URL, "status_code": 403, "extracted_content": None}],
+        return_value=[
+            {"url": _LUFFY_URL, "status_code": 403, "extracted_content": None}
+        ],
     )
     assert await fetch_mal_characters([_LUFFY_URL]) == [None]
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_empty_content(mocker) -> None:
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([None], [0])))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=AsyncMock())
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": _LUFFY_URL, "status_code": 200, "extracted_content": "[]"}],
+        return_value=[
+            {"url": _LUFFY_URL, "status_code": 200, "extracted_content": "[]"}
+        ],
     )
     assert await fetch_mal_characters([_LUFFY_URL]) == [None]
 
 
 @pytest.mark.asyncio
 async def test_fetch_mal_characters_success(mocker, mal_character_raw) -> None:
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([None], [0])))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None], [0])),
+    )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=cache_set)
     raw = {k: v for k, v in mal_character_raw.items() if not k.startswith("_")}
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": _LUFFY_URL, "status_code": 200, "extracted_content": json.dumps([raw])}],
+        return_value=[
+            {
+                "url": _LUFFY_URL,
+                "status_code": 200,
+                "extracted_content": json.dumps([raw]),
+            }
+        ],
     )
     result = await fetch_mal_characters([_LUFFY_URL])
     assert len(result) == 1
@@ -541,18 +625,26 @@ async def test_fetch_mal_characters_success(mocker, mal_character_raw) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_characters_uses_cache_and_merges_results(mocker, mal_character_raw) -> None:
+async def test_fetch_mal_characters_uses_cache_and_merges_results(
+    mocker, mal_character_raw
+) -> None:
     url1 = _LUFFY_URL
     url2 = "https://myanimelist.net/character/41/Roronoa_Zoro"
     raw1 = {k: v for k, v in mal_character_raw.items() if not k.startswith("_")}
     raw2 = {**raw1, "name_header": "Zoro Roronoa"}
 
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([[raw1, url1], None], [1])))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([[raw1, url1], None], [1])),
+    )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=cache_set)
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
-        return_value=[{"url": url2, "status_code": 200, "extracted_content": json.dumps([raw2])}],
+        return_value=[
+            {"url": url2, "status_code": 200, "extracted_content": json.dumps([raw2])}
+        ],
     )
 
     result = await fetch_mal_characters([url1, url2])
@@ -567,14 +659,24 @@ async def test_fetch_mal_characters_chunks_requests(mocker, mal_character_raw) -
     urls = [f"https://myanimelist.net/character/{i}" for i in range(1, 32)]
     raw = {k: v for k, v in mal_character_raw.items() if not k.startswith("_")}
 
-    mocker.patch.object(_fetch_mal_character_data, "cache_batch_get", new=AsyncMock(return_value=([None] * len(urls), list(range(len(urls))))))
+    mocker.patch.object(
+        _fetch_mal_character_data,
+        "cache_batch_get",
+        new=AsyncMock(return_value=([None] * len(urls), list(range(len(urls))))),
+    )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=cache_set)
 
     async def _batch_result(batch_urls, **kwargs):
-        return [{"url": u, "status_code": 200, "extracted_content": json.dumps([raw])} for u in batch_urls]
+        return [
+            {"url": u, "status_code": 200, "extracted_content": json.dumps([raw])}
+            for u in batch_urls
+        ]
 
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.crawl_batch_urls", side_effect=_batch_result)
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.crawl_batch_urls",
+        side_effect=_batch_result,
+    )
 
     result = await fetch_mal_characters(urls)
     assert len(result) == len(urls)
@@ -589,15 +691,27 @@ async def test_fetch_mal_characters_chunks_requests(mocker, mal_character_raw) -
 
 @pytest.mark.asyncio
 async def test_main_returns_1_when_no_character(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")])
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.fetch_mal_character", return_value=None)
+    mocker.patch(
+        "sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")]
+    )
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.fetch_mal_character",
+        return_value=None,
+    )
     from enrichment.sources.mal.mal_character_crawler import main
+
     assert await main() == 1
 
 
 @pytest.mark.asyncio
 async def test_main_returns_0_on_success(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")])
-    mocker.patch("enrichment.sources.mal.mal_character_crawler.fetch_mal_character", return_value={"name": "Luffy Monkey D."})
+    mocker.patch(
+        "sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")]
+    )
+    mocker.patch(
+        "enrichment.sources.mal.mal_character_crawler.fetch_mal_character",
+        return_value={"name": "Luffy Monkey D."},
+    )
     from enrichment.sources.mal.mal_character_crawler import main
+
     assert await main() == 0

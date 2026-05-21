@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from enrichment.sources.mal.mal_episode_count_crawler import (
     fetch_mal_episode_count,
 )
