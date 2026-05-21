@@ -11,7 +11,9 @@ from vector_db_interface.types import SparseVectorData, VectorDocument
 __all__ = ["VectorDBClient", "VectorDocument", "SparseVectorData"]
 
 
-class VectorDBClient(CollectionManager, DocumentWriter, DocumentReader, VectorSearcher, CollectionMonitor):
+class VectorDBClient(
+    CollectionManager, DocumentWriter, DocumentReader, VectorSearcher, CollectionMonitor
+):
     """Composite ABC for vector database operations.
 
     Composes all focused interfaces. Callers that only need a subset

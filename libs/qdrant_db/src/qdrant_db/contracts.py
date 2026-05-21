@@ -3,6 +3,7 @@
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from vector_db_interface.types import SearchHit as SearchHit
 
 DedupPolicy = Literal["last-wins", "fail"]
 PayloadUpdateMode = Literal["merge", "overwrite"]
@@ -215,12 +216,12 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=1000)
     score_threshold: float | None = Field(
         default=None,
-        ge=0.0,
-        le=1.0,
         description=(
             "Minimum similarity score for returned hits. Results below this value "
             "are dropped server-side. None means no threshold — Qdrant always returns "
-            "up to `limit` results. Applied to both single-vector and fusion searches."
+            "up to `limit` results. Applied to both single-vector and fusion searches. "
+            "Valid range depends on distance metric: cosine [-1, 1], dot (-inf, +inf), "
+            "euclid/manhattan (<=0). Qdrant validates the value server-side."
         ),
     )
     filters: list[SearchFilterCondition] = Field(default_factory=list)
@@ -268,19 +269,6 @@ class SearchRequest(BaseModel):
                     raise ValueError(f"expanded_text_embeddings[{i}] must not be empty")
 
         return self
-
-
-class SearchHit(BaseModel):
-    """Normalized search hit returned by QdrantClient."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    score: float  # Vector similarity score
-    reranking_score: float | None = (
-        None  # Cross-encoder relevance score (if reranking applied)
-    )
-    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class BatchVectorUpdateItem(BaseModel):

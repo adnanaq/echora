@@ -1,6 +1,6 @@
 """Provider-agnostic data types shared across vector DB interfaces."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 
@@ -32,3 +32,20 @@ class VectorDocument:
     id: str
     vectors: dict[str, list[float] | list[list[float]] | SparseVectorData]
     payload: dict[str, Any]
+
+
+@dataclass
+class SearchHit:
+    """Provider-agnostic search result returned by a vector search operation.
+
+    Attributes:
+        id: Point identifier.
+        score: Vector similarity score from the search index.
+        reranking_score: Cross-encoder relevance score if reranking was applied.
+        payload: Metadata fields stored alongside the vector.
+    """
+
+    id: str
+    score: float
+    reranking_score: float | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
