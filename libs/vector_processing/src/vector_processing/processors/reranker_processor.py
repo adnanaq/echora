@@ -5,6 +5,7 @@ import logging
 from typing import TypeVar
 
 from common.config import EmbeddingConfig
+
 from vector_processing.reranking.base import RerankerModel
 
 logger = logging.getLogger(__name__)

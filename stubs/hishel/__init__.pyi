@@ -421,7 +421,6 @@ class AsyncCacheProxy:
         """
         ...
 
-
 # Cache Policy Classes (v1.1.9+)
 class CachePolicy:
     """Base class for cache policies controlling RFC 9111 behavior."""
@@ -430,7 +429,6 @@ class CachePolicy:
     """Include request body in cache key computation (for GraphQL/POST caching)."""
 
     def __init__(self) -> None: ...
-
 
 class BaseFilter[T]:
     """Base class for request/response filters in FilterPolicy."""
@@ -451,7 +449,6 @@ class BaseFilter[T]:
             True to allow caching, False to prevent caching.
         """
         ...
-
 
 class FilterPolicy(CachePolicy):
     """Cache policy with request/response filtering support (v1.1.9+)."""

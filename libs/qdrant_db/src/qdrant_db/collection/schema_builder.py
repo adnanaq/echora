@@ -122,7 +122,9 @@ def build_vector_config(config: QdrantConfig) -> dict[str, VectorParams]:
             "distance": distance,
             # MaxSim is asymmetric — HNSW assumes symmetric distances and cannot
             # pre-compute valid neighbors for multivector. Disable it (m=0).
-            "hnsw_config": HnswConfigDiff(m=0) if is_multivector else get_hnsw_config(config, priority),
+            "hnsw_config": HnswConfigDiff(m=0)
+            if is_multivector
+            else get_hnsw_config(config, priority),
             "quantization_config": get_per_vector_quantization_config(config, priority),
         }
         if is_multivector:

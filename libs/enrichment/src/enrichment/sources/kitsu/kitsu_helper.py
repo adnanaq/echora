@@ -78,7 +78,9 @@ class KitsuHelper(BaseEnrichmentHelper):
             # Slug — resolve to numeric ID first
             logger.info(f"Resolving Kitsu slug '{raw_id}' to numeric ID...")
             try:
-                data = await self._make_request("/anime", params={"filter[slug]": raw_id})
+                data = await self._make_request(
+                    "/anime", params={"filter[slug]": raw_id}
+                )
             except Exception:
                 logger.warning(f"Failed to resolve Kitsu slug: {raw_id}")
                 return None
@@ -146,11 +148,13 @@ class KitsuHelper(BaseEnrichmentHelper):
             logger.exception(f"Kitsu fetch_all failed for ID {numeric_id}")
             return None
         else:
-            return normalize_enrichment_payload({
-                "anime": canonical_anime,
-                "episodes": canonical_episodes,
-                "characters": canonical_characters,
-            })
+            return normalize_enrichment_payload(
+                {
+                    "anime": canonical_anime,
+                    "episodes": canonical_episodes,
+                    "characters": canonical_characters,
+                }
+            )
 
     async def _make_request(
         self,
@@ -624,14 +628,18 @@ async def main() -> int:
     import argparse
     import json as _json
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     parser = argparse.ArgumentParser(description="Fetch anime data from Kitsu")
     parser.add_argument(
         "url",
         type=str,
         help="Kitsu anime URL (e.g. https://kitsu.app/anime/47450)",
     )
-    parser.add_argument("--output", type=str, default="kitsu_anime.json", help="Output file path")
+    parser.add_argument(
+        "--output", type=str, default="kitsu_anime.json", help="Output file path"
+    )
     try:
         args = parser.parse_args()
     except SystemExit:

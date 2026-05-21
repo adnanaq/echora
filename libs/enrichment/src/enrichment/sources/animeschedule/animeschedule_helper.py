@@ -28,15 +28,16 @@ from typing import Any
 
 import aiohttp
 from common.utils.jsonl_utils import append_jsonl
-from http_cache.instance import http_cache_manager as _cache_manager
-
 from enrichment.sources.animeschedule.animeschedule_mapper import (
     anime_from_animeschedule,
 )
 from enrichment.sources.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.sources.base.base_helper import (
+    BaseEnrichmentHelper,
+    normalize_enrichment_payload,
+)
 from enrichment.sources.base.exceptions import ServiceNetworkError, ServiceParseError
-
-from enrichment.sources.base.base_helper import BaseEnrichmentHelper, normalize_enrichment_payload
+from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 

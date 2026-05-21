@@ -140,7 +140,11 @@ class AniListHelper(BaseEnrichmentHelper):
 
                     if response.status == 429:
                         if attempt < _MAX_RATE_LIMIT_WAITS - 1:
-                            retry_after = int(response.headers.get("Retry-After", _RETRY_AFTER_DEFAULT_S))
+                            retry_after = int(
+                                response.headers.get(
+                                    "Retry-After", _RETRY_AFTER_DEFAULT_S
+                                )
+                            )
                             logger.warning(
                                 f"AniList rate limit (attempt {attempt + 1}/{_MAX_RATE_LIMIT_WAITS}). "
                                 f"Waiting {retry_after}s..."
@@ -167,7 +171,10 @@ class AniListHelper(BaseEnrichmentHelper):
                     result["_from_cache"] = from_cache
 
                     # Client-side throttle when approaching rate limit
-                    if not from_cache and self.rate_limit_remaining < _RATE_LIMIT_REMAINING_THRESHOLD:
+                    if (
+                        not from_cache
+                        and self.rate_limit_remaining < _RATE_LIMIT_REMAINING_THRESHOLD
+                    ):
                         logger.warning(
                             f"Rate limit low ({self.rate_limit_remaining}), sleeping {_RATE_LIMIT_SLEEP_S}s."
                         )
@@ -460,7 +467,11 @@ class AniListHelper(BaseEnrichmentHelper):
         anime = AniListAnime.model_validate(raw)
         canonical = anime_from_anilist(anime)
 
-        repo = FileRepository(os.path.join(temp_dir, "anilist.jsonl")) if temp_dir else NullRepository()
+        repo = (
+            FileRepository(os.path.join(temp_dir, "anilist.jsonl"))
+            if temp_dir
+            else NullRepository()
+        )
         repo.save(canonical)
         return canonical
 
@@ -482,7 +493,11 @@ class AniListHelper(BaseEnrichmentHelper):
         if not raw_edges:
             return []
 
-        repo = FileRepository(os.path.join(temp_dir, "anilist_characters.jsonl")) if temp_dir else NullRepository()
+        repo = (
+            FileRepository(os.path.join(temp_dir, "anilist_characters.jsonl"))
+            if temp_dir
+            else NullRepository()
+        )
         canonical = []
         for edge in raw_edges:
             try:

@@ -4,7 +4,6 @@ import logging
 from typing import Any, cast
 
 import numpy as np
-
 from vector_db_interface import SparseVectorData
 
 from .base import TextEmbeddingModel

@@ -94,7 +94,12 @@ class EmbeddingConfig(BaseModel):
     @classmethod
     def validate_text_provider(cls, v: str) -> str:
         """Validate text embedding provider."""
-        valid_providers = ["flagembedding", "fastembed", "huggingface", "sentence-transformers"]
+        valid_providers = [
+            "flagembedding",
+            "fastembed",
+            "huggingface",
+            "sentence-transformers",
+        ]
         if v.lower() not in valid_providers:
             raise ValueError(
                 f"Text embedding provider must be one of: {valid_providers}"

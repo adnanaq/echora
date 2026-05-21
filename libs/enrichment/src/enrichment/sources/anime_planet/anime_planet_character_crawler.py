@@ -299,7 +299,9 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 # ---------------------------------------------------------------------------
 
 
-def _build_character_from_raw(raw: dict[str, Any], html: str, url: str) -> AnimePlanetCharacter:
+def _build_character_from_raw(
+    raw: dict[str, Any], html: str, url: str
+) -> AnimePlanetCharacter:
     """Build AnimePlanetCharacter from XPath-extracted raw fields and full page HTML."""
     slug = url.rstrip("/").rsplit("/", 1)[-1]
     bar = _extract_entry_bar(html)
@@ -382,7 +384,9 @@ class AnimePlanetCharacterCrawler(BaseCrawler[AnimePlanetCharacter, dict[str, An
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
     ) -> AnimePlanetCharacter:
-        return _build_character_from_raw(processed_raw, processed_raw.get("_html") or "", url)
+        return _build_character_from_raw(
+            processed_raw, processed_raw.get("_html") or "", url
+        )
 
     def map_to_canonical(self, source_model: AnimePlanetCharacter) -> dict[str, Any]:
         return character_from_animeplanet(source_model)

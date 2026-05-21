@@ -146,7 +146,9 @@ def _build_filter_conditions(
         if isinstance(value, dict):
             if "any" in value:
                 conditions.append(
-                    SearchFilterCondition(field=field, operator="in", value=value["any"])
+                    SearchFilterCondition(
+                        field=field, operator="in", value=value["any"]
+                    )
                 )
             else:
                 conditions.append(
@@ -241,9 +243,10 @@ async def search(
         text_embedding: list[float] | None = None
         sparse_embedding: SparseVectorData | None = None
         if query_text:
-            text_embedding, _sparse_dict = (
-                await runtime.text_processor.encode_text_with_sparse(query_text)
-            )
+            (
+                text_embedding,
+                _sparse_dict,
+            ) = await runtime.text_processor.encode_text_with_sparse(query_text)
             if _sparse_dict is not None:
                 sparse_embedding = SparseVectorData(**_sparse_dict)
             if not text_embedding:

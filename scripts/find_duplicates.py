@@ -85,7 +85,7 @@ def find_duplicates(file_path):
 
     # ── Internal duplicates ───────────────────────────────────────────────────
     print(f"\n{SEP}")
-    print(f"  INTERNAL DUPLICATES  (same provider appears twice in one entry)")
+    print("  INTERNAL DUPLICATES  (same provider appears twice in one entry)")
     print(f"{SEP}")
     if not internal_duplicates:
         print("  None found.")
@@ -134,7 +134,7 @@ def find_duplicates(file_path):
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print(f"{SEP}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{SEP}")
     print(f"  Total entries              : {total_count:,}")
     print(f"  Internal duplicates        : {len(internal_duplicates):,}")
@@ -146,7 +146,10 @@ def find_duplicates(file_path):
 
 
 if __name__ == "__main__":
-    import sys, io, contextlib, os
+    import contextlib
+    import io
+    import os
+    import sys
 
     file_path = (
         sys.argv[1]

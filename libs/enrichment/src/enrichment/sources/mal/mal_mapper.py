@@ -42,7 +42,6 @@ from common.models.anime import (
     VoiceActor,
 )
 from common.utils.datetime_utils import normalize_to_utc
-
 from enrichment.sources.mal.mal_models import (
     MalAnime,
     MalCharacter,

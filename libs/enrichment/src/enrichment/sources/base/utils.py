@@ -67,7 +67,9 @@ def parse_iso_date(raw: str | None) -> str | None:
 
     # "Oct 20, 1999" or "Oct  20, 1999"
     try:
-        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime("%Y-%m-%d")
+        return datetime.strptime(re.sub(r"\s+", " ", raw), "%b %d, %Y").strftime(
+            "%Y-%m-%d"
+        )
     except ValueError:
         pass
 

@@ -232,16 +232,16 @@ def main() -> int:
                 *(str(p) for p in proto_rel),
             ]
             _run(cmd)
-            print(f"  ✓ Compiled")
+            print("  ✓ Compiled")
             if entry.get("relocate_shared_proto_v1_to_v1", False):
                 generated_shared_v1 = out_root / "shared_proto" / "v1"
                 if generated_shared_v1.exists():
                     shutil.move(str(generated_shared_v1), str(v1_dir))
                     shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
-                    print(f"  ✓ Relocated shared_proto/v1 → v1/")
+                    print("  ✓ Relocated shared_proto/v1 → v1/")
             if rewrites:
                 _rewrite_generated_imports(out_root, rewrites)
-                print(f"  ✓ Rewrote imports")
+                print("  ✓ Rewrote imports")
             init_root = out_root / "__init__.py"
             v1_dir.mkdir(parents=True, exist_ok=True)
             init_v1 = v1_dir / "__init__.py"

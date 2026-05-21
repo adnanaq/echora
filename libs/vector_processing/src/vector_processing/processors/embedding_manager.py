@@ -149,7 +149,9 @@ class MultiVectorEmbeddingManager:
         # 2. Generate Text Vector (dense + sparse in one pass when supported)
         embeddings: dict[str, list[float] | list[list[float]] | SparseVectorData] = {}
 
-        text_vec, sparse_embedding = await self.text_processor.encode_text_with_sparse(full_text)
+        text_vec, sparse_embedding = await self.text_processor.encode_text_with_sparse(
+            full_text
+        )
         if text_vec:
             embeddings["text_vector"] = text_vec
         else:
@@ -169,7 +171,9 @@ class MultiVectorEmbeddingManager:
         payload = anime.model_dump(exclude_none=True)
         payload["entity_type"] = "anime"
 
-        return VectorDocument(id=cast(str, anime.id), vectors=embeddings, payload=payload)
+        return VectorDocument(
+            id=cast(str, anime.id), vectors=embeddings, payload=payload
+        )
 
     async def _create_character_points(
         self, record: AnimeRecord
@@ -204,9 +208,10 @@ class MultiVectorEmbeddingManager:
             valid_characters.append(char)
 
         # Batch Embed text (dense + sparse in one pass when supported)
-        embeddings_batch, sparse_embeddings_batch = (
-            await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
-        )
+        (
+            embeddings_batch,
+            sparse_embeddings_batch,
+        ) = await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
 
         for i, char in enumerate(valid_characters):
             text_embedding = embeddings_batch[i]
@@ -277,9 +282,10 @@ class MultiVectorEmbeddingManager:
             valid_episodes.append(ep)
 
         # Batch Embed (dense + sparse in one pass when supported)
-        embeddings_batch, sparse_embeddings_batch = (
-            await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
-        )
+        (
+            embeddings_batch,
+            sparse_embeddings_batch,
+        ) = await self.text_processor.encode_texts_batch_with_sparse(texts_to_embed)
 
         for i, ep in enumerate(valid_episodes):
             embedding = embeddings_batch[i]

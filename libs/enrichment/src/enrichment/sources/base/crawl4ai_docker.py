@@ -426,7 +426,8 @@ async def crawl_batch_urls(
             )
             waf_blocked = list(dict.fromkeys(waf_blocked + retry_waf_blocked))
             still_failing = [
-                url for url in still_failing
+                url
+                for url in still_failing
                 if aligned[urls.index(url)] is None and url not in waf_blocked
             ]
 

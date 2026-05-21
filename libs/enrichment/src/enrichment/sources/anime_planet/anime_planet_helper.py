@@ -90,7 +90,9 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
 
         canonical_url = _normalize_ap_url(url)
         try:
-            anime = await fetch_animeplanet_anime(canonical_url, output_path=anime_output_path)
+            anime = await fetch_animeplanet_anime(
+                canonical_url, output_path=anime_output_path
+            )
             if not anime:
                 logger.warning(f"Crawler returned no data for '{canonical_url}'")
                 return None
@@ -116,7 +118,9 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
             logger.exception(f"Error in fetch_all for URL '{url}'")
             return None
         else:
-            return normalize_enrichment_payload({"anime": anime_data, "characters": characters})
+            return normalize_enrichment_payload(
+                {"anime": anime_data, "characters": characters}
+            )
 
     async def fetch_characters(
         self,
@@ -180,6 +184,7 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
             return None
         else:
             return anime
+
 
 async def main() -> int:
     """CLI entry point for fetching Anime-Planet data."""

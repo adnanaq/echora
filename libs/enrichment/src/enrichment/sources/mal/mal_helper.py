@@ -93,7 +93,9 @@ class MalHelper(BaseEnrichmentHelper):
                     url, episode_count, output_path=episodes_output_path
                 )
             except Exception as e:
-                logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
+                logger.warning(
+                    f"Episode fetch failed, continuing without episodes: {e}"
+                )
 
         characters_data: list[dict[str, Any]] = []
         try:
@@ -101,16 +103,20 @@ class MalHelper(BaseEnrichmentHelper):
                 url, output_path=characters_output_path
             )
         except Exception as e:
-            logger.warning(f"Character detail fetch failed, continuing without characters: {e}")
+            logger.warning(
+                f"Character detail fetch failed, continuing without characters: {e}"
+            )
 
         logger.info(f"MAL episodes fetched: {len(episodes_data)} episodes")
         logger.info(f"MAL characters fetched: {len(characters_data)} characters")
 
-        return normalize_enrichment_payload({
-            "anime": anime_info,
-            "episodes": episodes_data,
-            "characters": characters_data,
-        })
+        return normalize_enrichment_payload(
+            {
+                "anime": anime_info,
+                "episodes": episodes_data,
+                "characters": characters_data,
+            }
+        )
 
     async def _fetch_anime(
         self, url: str, *, output_path: str | None = None
@@ -225,20 +231,23 @@ async def main() -> int:
 
     p_anime = sub.add_parser("anime", help="Fetch anime detail page")
     p_anime.add_argument(
-        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)"
+        "anime_url",
+        help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)",
     )
     p_anime.add_argument("output_file", help="Output JSON file")
 
     p_eps = sub.add_parser("episodes", help="Fetch episode detail pages")
     p_eps.add_argument(
-        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)"
+        "anime_url",
+        help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)",
     )
     p_eps.add_argument("episode_count", type=int, help="Number of episodes to fetch")
     p_eps.add_argument("output_file", help="Output JSON file")
 
     p_chars = sub.add_parser("characters", help="Fetch character detail pages")
     p_chars.add_argument(
-        "anime_url", help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)"
+        "anime_url",
+        help="Full MAL anime URL (e.g. https://myanimelist.net/anime/21/One_Piece)",
     )
     p_chars.add_argument("output_file", help="Output JSON file")
 
