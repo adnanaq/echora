@@ -27,7 +27,18 @@ _PII_PATTERNS = [
     (re.compile(r"(?i)email\s*[:=]\s*[\w\.-]+@[\w\.-]+\.\w+"), "email: [REDACTED]"),
 ]
 
+class _NonBlockingQueueHandler(QueueHandler):
+    """QueueHandler that drops records instead of blocking when the queue is full."""
+
+    def enqueue(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        try:
+            self.queue.put_nowait(record)
+        except queue.Full:
+            pass  # drop the record rather than blocking the asyncio event loop
+
+
 _LOG_LISTENER: QueueListener | None = None
+_LOGGER_PROVIDER: LoggerProvider | None = None
 
 # Log levels that are always passed through regardless of sample rate.
 _UNSAMPLED_LEVELS = frozenset({"warning", "error", "critical"})
@@ -40,6 +51,7 @@ def setup_logging(
     environment: str = "development",
     endpoint: str = "http://localhost:4317",
     log_sample_rate: float = 1.0,
+    insecure: bool = True,
 ) -> None:
     """Configures structlog for JSON production-grade logging.
 
@@ -52,8 +64,10 @@ def setup_logging(
             WARN/ERROR/CRITICAL are never sampled out. Defaults to 1.0 (keep
             all). Set to 0.1 in high-throughput production environments to
             reduce log volume by ~10× without losing actionable signals.
+        insecure: Disable TLS on the gRPC connection. True for local/dev
+            (plain http://); set False for production with an https:// endpoint.
     """
-    global _LOG_LISTENER
+    global _LOG_LISTENER, _LOGGER_PROVIDER
 
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
@@ -83,9 +97,10 @@ def setup_logging(
         ),
     )
     logger_provider = LoggerProvider(resource=resource)
+    _LOGGER_PROVIDER = logger_provider
     set_logger_provider(logger_provider)
 
-    exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
+    exporter = OTLPLogExporter(endpoint=endpoint, insecure=insecure)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
     # This handler bridges Python logging to OpenTelemetry
@@ -94,7 +109,8 @@ def setup_logging(
     )
 
     # 2. Setup non-blocking logging using QueueHandler
-    log_queue: queue.Queue = queue.Queue(-1)
+    # Bounded to prevent unbounded memory growth if stdout stalls under backpressure.
+    log_queue: queue.Queue = queue.Queue(maxsize=10000)
 
     # Base handler that actually writes to stdout
     stdout_handler = logging.StreamHandler()
@@ -117,7 +133,7 @@ def setup_logging(
     root_logger.addHandler(otel_handler)
 
     # QueueHandler + QueueListener handles non-blocking stdout output only.
-    root_logger.addHandler(QueueHandler(log_queue))
+    root_logger.addHandler(_NonBlockingQueueHandler(log_queue))
 
     # Start the listener in a background thread
     if _LOG_LISTENER is not None:
@@ -139,10 +155,13 @@ def setup_logging(
 
 def stop_logging() -> None:
     """Gracefully stop the background logging listener."""
-    global _LOG_LISTENER
+    global _LOG_LISTENER, _LOGGER_PROVIDER
     if _LOG_LISTENER:
         _LOG_LISTENER.stop()
         _LOG_LISTENER = None
+    if _LOGGER_PROVIDER:
+        _LOGGER_PROVIDER.shutdown()
+        _LOGGER_PROVIDER = None
 
 
 def redact_pii(

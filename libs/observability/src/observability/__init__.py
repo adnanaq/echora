@@ -1,6 +1,7 @@
 """Shared observability bootstrap for Echora services."""
 
 import logging as std_logging
+import threading
 
 from .context import (
     extract_context_from_nats_headers,
@@ -26,6 +27,8 @@ from .tracing import create_linked_span, setup_tracing
 logger = std_logging.getLogger(__name__)
 _telemetry_initialized = False
 _telemetry_init_signature: tuple[object, ...] | None = None
+# Guards against concurrent initialization if setup_telemetry is ever called from multiple threads.
+_telemetry_lock = threading.Lock()
 
 __all__ = [
     "AioServerInterceptor",
@@ -68,6 +71,7 @@ def setup_telemetry(
     metric_export_interval_millis: int = 15000,
     trace_sample_ratio: float = 1.0,
     log_sample_rate: float = 1.0,
+    insecure: bool = True,
 ) -> None:
     """Initialize logging, tracing, metrics, and optional instrumentation.
 
@@ -94,6 +98,8 @@ def setup_telemetry(
         log_sample_rate: Fraction of INFO/DEBUG log events to emit (0.0–1.0).
             WARN/ERROR/CRITICAL are never sampled out. Defaults to 1.0 (keep
             all). Set to 0.1 in production to reduce log volume by ~10×.
+        insecure: Disable TLS on all OTLP gRPC exporters. True for local/dev
+            (plain http://); set False for production with an https:// endpoint.
     """
     global _telemetry_initialized, _telemetry_init_signature
 
@@ -114,55 +120,60 @@ def setup_telemetry(
         metric_export_interval_millis,
         trace_sample_ratio,
         log_sample_rate,
+        insecure,
     )
-    if _telemetry_initialized:
-        if _telemetry_init_signature != init_signature:
-            logger.warning(
-                "setup_telemetry called with different config after initialization; "
-                "ignoring re-initialization request"
+    with _telemetry_lock:
+        if _telemetry_initialized:
+            if _telemetry_init_signature != init_signature:
+                logger.warning(
+                    "setup_telemetry called with different config after initialization; "
+                    "ignoring re-initialization request"
+                )
+            return
+
+        resource_attributes = {
+            "service.version": version,
+            "deployment.environment": environment,
+        }
+
+        if enable_logging:
+            setup_logging(
+                level=log_level,
+                service_name=service_name,
+                environment=environment,
+                endpoint=endpoint,
+                log_sample_rate=log_sample_rate,
+                insecure=insecure,
             )
-        return
 
-    resource_attributes = {
-        "service.version": version,
-        "deployment.environment": environment,
-    }
+        if enable_tracing:
+            setup_tracing(
+                service_name=service_name,
+                endpoint=endpoint,
+                resource_attributes=resource_attributes,
+                sample_ratio=trace_sample_ratio,
+                insecure=insecure,
+            )
 
-    if enable_logging:
-        setup_logging(
-            level=log_level,
-            service_name=service_name,
-            environment=environment,
-            endpoint=endpoint,
-            log_sample_rate=log_sample_rate,
-        )
+        if enable_metrics:
+            setup_metrics(
+                service_name=service_name,
+                endpoint=endpoint,
+                resource_attributes=resource_attributes,
+                export_interval_millis=metric_export_interval_millis,
+                insecure=insecure,
+            )
 
-    if enable_tracing:
-        setup_tracing(
-            service_name=service_name,
-            endpoint=endpoint,
-            resource_attributes=resource_attributes,
-            sample_ratio=trace_sample_ratio,
-        )
+        if enable_grpc_server_instrumentation:
+            instrument_grpc_server()
+        if enable_grpc_client_instrumentation:
+            instrument_grpc_client()
+        if enable_aiohttp_client_instrumentation:
+            instrument_aiohttp_client()
+        if enable_qdrant_client_instrumentation:
+            instrument_qdrant_client()
+        if enable_redis_instrumentation:
+            instrument_redis()
 
-    if enable_metrics:
-        setup_metrics(
-            service_name=service_name,
-            endpoint=endpoint,
-            resource_attributes=resource_attributes,
-            export_interval_millis=metric_export_interval_millis,
-        )
-
-    if enable_grpc_server_instrumentation:
-        instrument_grpc_server()
-    if enable_grpc_client_instrumentation:
-        instrument_grpc_client()
-    if enable_aiohttp_client_instrumentation:
-        instrument_aiohttp_client()
-    if enable_qdrant_client_instrumentation:
-        instrument_qdrant_client()
-    if enable_redis_instrumentation:
-        instrument_redis()
-
-    _telemetry_initialized = True
-    _telemetry_init_signature = init_signature
+        _telemetry_initialized = True
+        _telemetry_init_signature = init_signature

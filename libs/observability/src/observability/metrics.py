@@ -1,5 +1,6 @@
 """OpenTelemetry metrics configuration."""
 
+import threading
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
@@ -69,6 +70,9 @@ _CACHE_OP_DURATION_BUCKETS = [
     1.0,
 ]
 
+_METRICS_LOCK = threading.Lock()
+_METRICS_CONFIGURED = False
+
 _HISTOGRAM_VIEWS = [
     View(
         instrument_name="echora_rpc_duration_seconds",
@@ -125,6 +129,7 @@ def setup_metrics(
     endpoint: str,
     resource_attributes: dict | None = None,
     export_interval_millis: int = 15000,
+    insecure: bool = True,
 ) -> None:
     """Configures OpenTelemetry metrics with OTLP exporter.
 
@@ -136,25 +141,33 @@ def setup_metrics(
             Default is 15 000 ms (15 s) — the minimum resolution required for
             multi-window burn-rate SLO alerting. Using 60 s creates up to a
             60 s alert lag, making fast-burn detection unreliable.
+        insecure: Disable TLS on the gRPC connection. True for local/dev
+            (plain http://); set False for production with an https:// endpoint.
     """
-    attributes = {"service.name": service_name}
-    if resource_attributes:
-        attributes.update(resource_attributes)
+    global _METRICS_CONFIGURED
+    with _METRICS_LOCK:
+        if _METRICS_CONFIGURED:
+            return
 
-    resource = get_aggregated_resources(
-        detectors=[],
-        initial_resource=Resource.create(attributes),
-    )
+        attributes = {"service.name": service_name}
+        if resource_attributes:
+            attributes.update(resource_attributes)
 
-    exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
-    reader = PeriodicExportingMetricReader(
-        exporter, export_interval_millis=export_interval_millis
-    )
+        resource = get_aggregated_resources(
+            detectors=[],
+            initial_resource=Resource.create(attributes),
+        )
 
-    provider = MeterProvider(
-        resource=resource,
-        metric_readers=[reader],
-        views=_HISTOGRAM_VIEWS,
-        exemplar_filter=TraceBasedExemplarFilter(),
-    )
-    metrics.set_meter_provider(provider)
+        exporter = OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+        reader = PeriodicExportingMetricReader(
+            exporter, export_interval_millis=export_interval_millis
+        )
+
+        provider = MeterProvider(
+            resource=resource,
+            metric_readers=[reader],
+            views=_HISTOGRAM_VIEWS,
+            exemplar_filter=TraceBasedExemplarFilter(),
+        )
+        metrics.set_meter_provider(provider)
+        _METRICS_CONFIGURED = True
