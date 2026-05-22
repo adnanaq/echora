@@ -120,7 +120,7 @@ def test_normalize_dense_vector_passthrough() -> None:
     assert result is vec
 
 
-def test_normalize_raises_when_sparse_payload_sent_to_dense_vector() -> None:
+def test_sparse_payload_to_dense_vector_raises() -> None:
     norm = _normalizer()
     with pytest.raises(ValidationError, match="not configured as sparse"):
         norm.normalize_vector_payload("text_vector", SPARSE_DICT)
@@ -151,7 +151,7 @@ def test_validate_vector_update_raises_for_empty_multivector() -> None:
         norm.validate_vector_update("text_vector", [])
 
 
-def test_validate_vector_update_raises_for_non_list_multivector_element() -> None:
+def test_validate_update_non_list_multivector_element_raises() -> None:
     norm = _normalizer(
         multivector={"text_vector"},
         vector_names={"text_vector": 4},
@@ -160,7 +160,7 @@ def test_validate_vector_update_raises_for_non_list_multivector_element() -> Non
         norm.validate_vector_update("text_vector", [{"bad": True}])
 
 
-def test_validate_vector_update_raises_for_multivector_dim_mismatch() -> None:
+def test_validate_update_multivector_dim_mismatch_raises() -> None:
     norm = _normalizer(
         multivector={"text_vector"},
         vector_names={"text_vector": 4},

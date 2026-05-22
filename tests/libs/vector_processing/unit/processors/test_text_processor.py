@@ -242,7 +242,7 @@ class TestEncodeTextsBatch:
         )
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_zero_vectors_are_independent(
+    async def test_zero_vectors_independent(
         self, mock_text_model, mock_settings
     ):
         """Test that zero vectors are independent copies, not the same object.
@@ -274,7 +274,7 @@ class TestEncodeTextsBatch:
         assert result[3][0] == 0.0  # Should NOT be affected
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_all_empty_produces_independent_vectors(
+    async def test_all_empty_batch_produces_independent_vectors(
         self, mock_text_model, mock_settings
     ):
         """Test all-empty case produces independent zero vectors.

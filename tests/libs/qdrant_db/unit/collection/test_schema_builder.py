@@ -167,7 +167,7 @@ def test_build_vector_config_dot_distance() -> None:
     assert result["text_vector"].distance == Distance.DOT
 
 
-def test_build_vector_config_multivector_only_on_configured_vectors() -> None:
+def test_build_vector_config_multivector_only_on_configured() -> None:
     config = _base_config()
     result = build_vector_config(config)
     assert result["image_vector"].multivector_config is not None

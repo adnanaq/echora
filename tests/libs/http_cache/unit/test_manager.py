@@ -338,7 +338,7 @@ class TestGetOrCreateRedisClient:
                 mock_threadsafe.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_old_client_cleanup_exception_is_swallowed(self) -> None:
+    async def test_old_client_cleanup_exception_swallowed(self) -> None:
         """Exception during old-client cleanup is caught and logged (L275-276)."""
         config = CacheConfig(cache_enabled=True, storage_type="redis")
 

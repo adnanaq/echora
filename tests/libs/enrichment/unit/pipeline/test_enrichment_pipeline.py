@@ -132,9 +132,7 @@ class TestCreateTempDir:
 
         assert path.startswith(pipeline.config.temp_dir)
 
-    def test_repeated_calls_do_not_reuse_same_path_when_scan_state_is_stale(
-        self, pipeline
-    ):
+    def test_repeated_calls_get_different_paths(self, pipeline):
         # First scan returns empty → agent1; second scan returns agent1 dir → agent2
         with patch("os.listdir", side_effect=[[], ["Naruto_agent1"]]):
             with patch("os.makedirs"):

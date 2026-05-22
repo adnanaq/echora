@@ -435,7 +435,7 @@ async def test_fetch_all_anime_exception(mock_anime, helper):
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_uses_canonical_url_for_episodes_and_characters(
+async def test_fetch_all_uses_canonical_url_after_anime_fetch(
     helper, sample_episodes, sample_characters
 ) -> None:
     """When fetch_anime returns sources with a slug URL, subsequent calls use it — not the slug-less input."""

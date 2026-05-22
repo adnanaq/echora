@@ -130,7 +130,7 @@ Age: 17<br>
 """
 
 
-def test_extract_bio_data_spoiler_value_only_in_spoilers_not_attrs() -> None:
+def test_bio_data_spoiler_only_value_not_in_attrs() -> None:
     attrs, spoilers = _extract_bio_data(_SPOILER_ONLY_HTML)
     assert "bounty" not in attrs
     assert "bounty" in spoilers
@@ -384,7 +384,7 @@ def test_build_character_from_raw_favorites_no_comma(mal_character_raw) -> None:
     assert char.favorites == 12345
 
 
-def test_build_character_from_raw_missing_favorites_defaults_zero(
+def test_missing_favorites_defaults_to_zero(
     mal_character_raw,
 ) -> None:
     char = _parse({k: v for k, v in mal_character_raw.items() if k != "favorites"})

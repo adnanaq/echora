@@ -44,7 +44,7 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_initial_readiness_sets_serving_for_healthy_qdrant() -> None:
+async def test_initial_readiness_serving_when_healthy() -> None:
     runtime = SimpleNamespace(
         qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=True))
     )
@@ -64,9 +64,7 @@ async def test_publish_initial_readiness_sets_serving_for_healthy_qdrant() -> No
 
 
 @pytest.mark.asyncio
-async def test_publish_initial_readiness_sets_not_serving_for_unhealthy_qdrant() -> (
-    None
-):
+async def test_initial_readiness_not_serving_when_unhealthy() -> None:
     runtime = SimpleNamespace(
         qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=False))
     )

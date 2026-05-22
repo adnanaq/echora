@@ -28,7 +28,7 @@ def _setup_tracer() -> trace.Tracer:
     return _TRACER
 
 
-def test_trace_context_round_trip_preserves_parent_child_relationship() -> None:
+def test_trace_context_round_trip_parent_child() -> None:
     tracer = _setup_tracer()
 
     with tracer.start_as_current_span("parent") as parent_span:

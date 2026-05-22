@@ -468,7 +468,7 @@ def test_mapper_related_anime_episode_count_passthrough():
     assert match["episode_count"] == 3
 
 
-def test_mapper_related_anime_no_episode_count_is_absent():
+def test_mapper_related_anime_no_episode_count_absent():
     from enrichment.sources.anime_planet.anime_planet_models import (
         AnimePlanetRelatedEntry,
     )
@@ -651,7 +651,7 @@ async def test_fetch_animeplanet_anime_success(mock_crawl):
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")
 @patch("enrichment.sources.anime_planet.anime_planet_anime_crawler.crawl_single_url")
-async def test_fetch_animeplanet_anime_one_piece_fixture_via_mock(
+async def test_one_piece_fixture_round_trip_via_mock(
     mock_crawl, ap_anime_raw
 ) -> None:
     """Full round-trip using one-piece fixture data injected via mock crawl result."""
@@ -785,7 +785,7 @@ async def test_fetch_animeplanet_anime_failure_cases(mock_crawl):
     "enrichment.sources.anime_planet.anime_planet_anime_crawler._fetch_animeplanet_anime_data",
     new_callable=AsyncMock,
 )
-async def test_fetch_animeplanet_anime_extracts_slug_from_url_for_cache(mock_inner):
+async def test_extracts_slug_from_url_for_cache(mock_inner):
     mock_inner.return_value = None
     await fetch_animeplanet_anime(_ONE_PIECE_URL)
     mock_inner.assert_called_once_with("one-piece")

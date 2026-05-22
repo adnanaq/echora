@@ -89,7 +89,7 @@ async def test_run_pipeline_and_write_artifact_returns_full_payload(
 
 
 @pytest.mark.asyncio
-async def test_run_pipeline_and_write_artifact_rejects_conflicting_selectors(
+async def test_artifact_rejects_conflicting_selectors(
     tmp_path: Path,
 ) -> None:
     input_path = tmp_path / "anime.json"
@@ -111,7 +111,7 @@ async def test_run_pipeline_and_write_artifact_rejects_conflicting_selectors(
 
 
 @pytest.mark.asyncio
-async def test_run_pipeline_and_write_artifact_rejects_missing_selectors(
+async def test_artifact_rejects_missing_selectors(
     tmp_path: Path,
 ) -> None:
     input_path = tmp_path / "anime.json"

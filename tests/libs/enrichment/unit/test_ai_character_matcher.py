@@ -79,7 +79,7 @@ class TestCharacterNamePreprocessorRomaji:
         assert result["romaji"], "Romaji field should not be empty"
         assert isinstance(result["romaji"], str), "Romaji should be a string"
 
-    def test_process_japanese_name_romaji_is_lowercase_ascii(self, preprocessor):
+    def test_process_japanese_name_romaji_lowercase_ascii(self, preprocessor):
         """Test that romaji output is lowercase ASCII."""
         result = preprocessor.preprocess_name("モンキー", "japanese")
         romaji = result["romaji"]

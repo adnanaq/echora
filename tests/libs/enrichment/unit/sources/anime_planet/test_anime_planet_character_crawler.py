@@ -324,7 +324,7 @@ def test_extract_anime_roles_skips_bad_rows() -> None:
     assert _extract_anime_roles(html) == []
 
 
-def test_extract_anime_roles_empty_role_is_none() -> None:
+def test_extract_anime_roles_empty_role_none() -> None:
     html = """
 <h3>Anime Roles</h3>
 <table><tbody>
@@ -396,7 +396,7 @@ def test_extract_manga_roles_skips_single_cell_row() -> None:
     assert _extract_manga_roles(html) == []
 
 
-def test_extract_manga_roles_empty_role_is_none() -> None:
+def test_extract_manga_roles_empty_role_none() -> None:
     html = """
     <h3>Manga Roles</h3>
     <table><tbody>
@@ -581,7 +581,7 @@ async def test_fetch_character_data_success(mocker) -> None:
 # =============================================================================
 
 
-async def test_fetch_animeplanet_character_returns_none_on_failure(mocker) -> None:
+async def test_character_returns_none_on_failure(mocker) -> None:
     mocker.patch(
         "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_character_data",
         new_callable=AsyncMock,
@@ -606,7 +606,7 @@ async def test_fetch_animeplanet_character_returns_character(mocker) -> None:
     assert result["name"] == "Luffy"
 
 
-async def test_fetch_animeplanet_character_passes_full_url_unchanged(mocker) -> None:
+async def test_character_passes_full_url_unchanged(mocker) -> None:
     """Crawler passes URL directly to _fetch_character_data — no normalization."""
     captured: list[str] = []
 
@@ -644,7 +644,7 @@ async def test_fetch_animeplanet_characters_all_cached(mocker) -> None:
     assert result[0]["name"] == "Luffy"
 
 
-async def test_fetch_animeplanet_characters_cached_writes_output_path(
+async def test_characters_cached_writes_output_path(
     mocker, tmp_path
 ) -> None:
     import json
@@ -688,7 +688,7 @@ async def test_fetch_animeplanet_characters_live_success(mocker) -> None:
     cache_set.assert_awaited_once()
 
 
-async def test_fetch_animeplanet_characters_live_writes_output_path(
+async def test_characters_live_writes_output_path(
     mocker, tmp_path
 ) -> None:
     import json as _json
@@ -763,7 +763,7 @@ async def test_fetch_animeplanet_characters_404_returns_none(mocker) -> None:
     assert await fetch_animeplanet_characters([url]) == [None]
 
 
-async def test_fetch_animeplanet_characters_307_redirect_returns_character(
+async def test_characters_307_redirect_returns_character(
     mocker,
 ) -> None:
     """307 redirect — Playwright follows it, content is valid, character returned."""
@@ -790,7 +790,7 @@ async def test_fetch_animeplanet_characters_307_redirect_returns_character(
     assert result[0]["name"] == "Garp"
 
 
-async def test_fetch_animeplanet_characters_empty_extracted_content(mocker) -> None:
+async def test_characters_empty_extracted_content(mocker) -> None:
     url = "https://www.anime-planet.com/characters/empty"
     mocker.patch.object(
         _fetch_character_data,
@@ -830,7 +830,7 @@ async def test_fetch_animeplanet_characters_partial_cache(mocker) -> None:
     assert result[1]["name"] == "Char2"
 
 
-async def test_fetch_animeplanet_characters_chunks_into_batches(mocker) -> None:
+async def test_characters_chunks_into_batches(mocker) -> None:
     urls = [
         f"https://www.anime-planet.com/characters/char{i}"
         for i in range(_CHARACTER_BATCH_SIZE + 1)
@@ -864,7 +864,7 @@ async def test_fetch_animeplanet_characters_chunks_into_batches(mocker) -> None:
     assert cache_set.await_count == 2
 
 
-async def test_fetch_animeplanet_characters_passes_full_urls_unchanged(mocker) -> None:
+async def test_characters_passes_full_urls_unchanged(mocker) -> None:
     """Crawler passes URLs directly to crawl_batch_urls — no normalization."""
     mocker.patch.object(
         _fetch_character_data,
@@ -1056,7 +1056,7 @@ def test_mapper_basic_fields() -> None:
     assert result["traits"] == ["Hero"]
 
 
-def test_mapper_optional_fields_absent_or_empty_when_not_provided() -> None:
+def test_mapper_optional_fields_absent_when_not_provided() -> None:
     result = character_from_animeplanet(_make_char())
     assert "description" not in result
     assert result.get("traits", []) == []

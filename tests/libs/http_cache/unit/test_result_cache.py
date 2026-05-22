@@ -1125,7 +1125,7 @@ class TestCachedResultBatchHelper:
             assert missing == [0, 1]
 
     @pytest.mark.asyncio
-    async def test_batch_set_empty_args_is_noop(self) -> None:
+    async def test_batch_set_empty_args_noop(self) -> None:
         @cached_result(ttl=60, key_prefix="test_batch")
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
@@ -1146,7 +1146,7 @@ class TestCachedResultBatchHelper:
             await fetch_data.cache_batch_set([("a",), ("b",)], [{"id": "a"}])  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
-    async def test_batch_set_cache_disabled_is_noop(self) -> None:
+    async def test_batch_set_cache_disabled_noop(self) -> None:
         @cached_result(ttl=60, key_prefix="test_batch")
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
@@ -1162,7 +1162,7 @@ class TestCachedResultBatchHelper:
                 mock_get_client.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_batch_set_type_error_on_serialization_is_skipped(self) -> None:
+    async def test_batch_set_type_error_on_serialization_skipped(self) -> None:
         @cached_result(ttl=60, key_prefix="test_batch")
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
@@ -1188,7 +1188,7 @@ class TestCachedResultBatchHelper:
             mock_pipe.setex.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_batch_set_redis_error_on_pipeline_is_swallowed(self) -> None:
+    async def test_batch_set_redis_error_on_pipeline_swallowed(self) -> None:
         @cached_result(ttl=60, key_prefix="test_batch")
         async def fetch_data(item_id: str) -> dict[str, str]:
             return {"id": item_id}
@@ -1597,7 +1597,7 @@ class TestComputeSchemaHashWithDependencies:
         assert hash_a_only != hash_both
         assert hash_b_only != hash_both
 
-    def test_hash_is_stable(self) -> None:
+    def test_hash_stable(self) -> None:
         """Same function + same dependencies always produce the same hash."""
 
         def dep() -> str:
@@ -1646,7 +1646,7 @@ class TestComputeSchemaHashWithDependencies:
         # The builtin adds its name, so the hash must differ from good_dep alone
         assert hash_good_only != hash_with_builtin
 
-    def test_result_is_16_char_hex(self) -> None:
+    def test_result_16_char_hex(self) -> None:
         """Result with dependencies is still a 16-character hex string."""
 
         def dep() -> None:

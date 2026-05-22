@@ -182,7 +182,7 @@ async def test_fetch_episodes_skips_none_results():
 
 
 @pytest.mark.asyncio
-async def test_fetch_episodes_returns_empty_when_count_is_zero():
+async def test_fetch_episodes_empty_when_count_zero():
     """_fetch_episodes returns [] immediately when episode_count is 0."""
     assert await MalHelper()._fetch_episodes(_ANIME_URL, 0) == []
 

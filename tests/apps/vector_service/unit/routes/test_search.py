@@ -47,9 +47,7 @@ async def test_image_value_error_returns_invalid_image_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_value_error_from_qdrant_search_is_not_labeled_invalid_image_input() -> (
-    None
-):
+async def test_qdrant_value_error_not_labeled_invalid_image_input() -> None:
     """ValueError from downstream qdrant search is NOT misclassified as INVALID_IMAGE_INPUT."""
     runtime = _runtime()
     runtime.qdrant_client.search = AsyncMock(
