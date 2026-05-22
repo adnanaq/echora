@@ -9,4 +9,5 @@ route:
   repeat_interval: 3h
 
 receivers:
+  # Placeholder — configure notification targets (email, Slack, webhook) for production.
   - name: default

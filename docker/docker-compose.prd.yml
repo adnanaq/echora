@@ -84,7 +84,8 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration (for Enrichment Pipeline)
+      # CACHE_ENABLED controls HTTP response caching (disabled for vector service).
+      # REDIS_URL is used separately for the embedding vector cache — always active when set.
       - CACHE_ENABLED=false
       - REDIS_URL=redis://redis:6379/0
     networks:
