@@ -2,7 +2,7 @@
 name = "echora"
 version = "0.1.0"
 description = "Microservice for anime vector database operations with semantic search capabilities"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     # Core FastAPI dependencies
     "fastapi==0.115.13",
@@ -129,8 +129,8 @@ dev = [
 ]
 
 [tool.ty.environment]
-# Python version must match project requirement (>=3.12)
-python-version = "3.12"
+# Python version must match project requirement (>=3.13)
+python-version = "3.13"
 
 # Additional search paths for module resolution
 # Includes both first-party monorepo libs and custom third-party stubs
@@ -163,7 +163,7 @@ respect-type-ignore-comments = false
 [tool.ruff]
 # Same as Black
 line-length = 88
-target-version = "py312"
+target-version = "py313"
 exclude = [
     ".git",
     ".mypy_cache",
@@ -185,7 +185,7 @@ ignore = [
     "E501",   # Line too long (handled by formatter)
     "N805",   # First argument should be `self` (false positive for Pydantic validators using `cls`)
     "N817",   # CamelCase imported as acronym (e.g., ElementTree as ET)
-    "UP047",  # Generic function type parameters (not needed for Python 3.12)
+    "UP047",  # Generic function type parameters (not needed for Python 3.13)
 ]
 
 # Per-file ignores
