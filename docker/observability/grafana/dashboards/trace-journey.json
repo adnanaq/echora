@@ -12,18 +12,7 @@
   "version": 2,
   "refresh": "15s",
   "templating": {
-    "list": [
-      {
-        "name": "service_name",
-        "type": "textbox",
-        "label": "service_name",
-        "query": "echora-.*",
-        "current": {
-          "text": "echora-.*",
-          "value": "echora-.*"
-        }
-      }
-    ]
+    "list": []
   },
   "panels": [
     {

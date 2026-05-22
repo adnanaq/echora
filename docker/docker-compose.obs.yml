@@ -20,13 +20,13 @@ services:
     ports:
       - "9090:9090"
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-remote-write-receiver'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-remote-write-receiver"
     networks:
-      - vector-network
+      - observability-network
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.1
@@ -35,10 +35,10 @@ services:
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Internal Metrics
-      - "8889:8889"   # App Metrics
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8888:8888" # Internal Metrics
+      - "8889:8889" # App Metrics
     depends_on:
       - prometheus
       - loki
@@ -50,7 +50,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - vector-network
+      - observability-network
 
   loki:
     image: grafana/loki:3.6.7
@@ -62,7 +62,7 @@ services:
       - loki-data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     networks:
-      - vector-network
+      - observability-network
 
   tempo:
     image: grafana/tempo:2.10.1
@@ -72,10 +72,10 @@ services:
       - ./observability/tempo-config.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
     ports:
-      - "3200:3200"   # Tempo
-      - "4317"        # OTLP gRPC
+      - "3200:3200" # Tempo
+      - "4317" # OTLP gRPC
     networks:
-      - vector-network
+      - observability-network
 
   grafana:
     image: grafana/grafana:12.4.0
@@ -96,7 +96,7 @@ services:
       - loki
       - tempo
     networks:
-      - vector-network
+      - observability-network
 
   alertmanager:
     image: prom/alertmanager:v0.31.1
@@ -107,14 +107,14 @@ services:
       - ./observability/alertmanager.yaml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     networks:
-      - vector-network
+      - observability-network
 
 networks:
-  vector-network:
-    name: echora_vector-network
+  observability-network:
+    name: echora_observability-network
     external: true
 
 volumes:

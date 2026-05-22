@@ -11,9 +11,6 @@
 #     -f docker/docker-compose.obs.yml \
 #     -f docker/docker-compose.obs.scale.yml up -d
 #
-# Docs:
-# - docs/observability_local_runbook.md
-# - docs/plan/observabilit_implementation_plan.md
 # -----------------------------------------------------------------------------
 services:
   # OTel Collector Agent
@@ -32,7 +29,7 @@ services:
     depends_on:
       - otel-collector-gateway
     networks:
-      - vector-network
+      - observability-network
     restart: unless-stopped
 
   # OTel Collector Gateway
@@ -52,5 +49,5 @@ services:
       - loki
       - tempo
     networks:
-      - vector-network
+      - observability-network
     restart: unless-stopped
