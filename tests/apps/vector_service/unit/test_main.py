@@ -38,8 +38,13 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
 
     assert captured["service_name"] == "echora-vector-service"
     assert captured["version"] == "9.9.9"
+    assert captured["environment"] == "development"
     assert captured["endpoint"] == "http://localhost:4317"
+    assert captured["enable_logging"] is True
+    assert captured["enable_tracing"] is True
+    assert captured["enable_metrics"] is True
     assert captured["enable_grpc_server_instrumentation"] is True
+    assert captured["enable_grpc_client_instrumentation"] is True
     assert captured["enable_aiohttp_client_instrumentation"] is False
 
 

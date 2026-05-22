@@ -322,3 +322,34 @@ async def test_initialize_collection_includes_sparse_vectors_config() -> None:
     call = mock_async_client.create_collection.call_args.kwargs
     assert call["sparse_vectors_config"] is not None
     assert "text_sparse_vector" in call["sparse_vectors_config"]
+
+
+@pytest.mark.asyncio
+async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) -> None:
+    class _ExplodingTelemetry:
+        class DB_QUERY_DURATION:
+            @staticmethod
+            def record(*_a: object, **_kw: object) -> None:
+                raise RuntimeError("telemetry boom")
+
+        class DB_ERRORS:
+            @staticmethod
+            def add(*_a: object, **_kw: object) -> None:
+                raise RuntimeError("telemetry boom")
+
+    mock_client._telemetry = _ExplodingTelemetry()  # type: ignore[assignment]
+
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(id="anime-1", payload={"title": "Naruto"}, score=0.9)
+        ]
+    )
+
+    from qdrant_db.contracts import SearchRequest
+
+    results = await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=1)
+    )
+    assert len(results) == 1
+    assert results[0].id == "anime-1"

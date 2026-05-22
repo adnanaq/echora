@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,36 +17,21 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
 
     monkeypatch.setattr(main, "setup_telemetry", _fake_setup_telemetry)
 
-    settings = type(
-        "Settings",
-        (),
-        {
-            "service": type(
-                "Service",
-                (),
-                {
-                    "api_version": "1.0.0",
-                    "log_level": "DEBUG",
-                },
-            )(),
-            "observability": type(
-                "Observability",
-                (),
-                {
-                    "otel_enabled": True,
-                    "otel_exporter_otlp_endpoint": "http://otel:4317",
-                    "otel_enable_metrics": True,
-                    "otel_enable_tracing": True,
-                    "otel_enable_logging": True,
-                    "otel_enable_grpc_server_instrumentation": True,
-                    "otel_enable_grpc_client_instrumentation": True,
-                    "otel_enable_aiohttp_client_instrumentation": True,
-                    "otel_enable_redis_instrumentation": False,
-                },
-            )(),
-            "environment": type("Env", (), {"value": "staging"})(),
-        },
-    )()
+    settings = SimpleNamespace(
+        service=SimpleNamespace(api_version="1.0.0", log_level="DEBUG"),
+        observability=SimpleNamespace(
+            otel_enabled=True,
+            otel_exporter_otlp_endpoint="http://otel:4317",
+            otel_enable_metrics=True,
+            otel_enable_tracing=True,
+            otel_enable_logging=True,
+            otel_enable_grpc_server_instrumentation=True,
+            otel_enable_grpc_client_instrumentation=True,
+            otel_enable_aiohttp_client_instrumentation=True,
+            otel_enable_redis_instrumentation=False,
+        ),
+        environment=SimpleNamespace(value="staging"),
+    )
 
     main._setup_observability(settings)
 

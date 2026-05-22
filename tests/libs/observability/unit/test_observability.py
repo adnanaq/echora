@@ -15,21 +15,21 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
     monkeypatch.setattr(
         observability,
         "setup_logging",
-        lambda *, level, service_name, environment: calls.append(
+        lambda *, level, service_name, environment, **_: calls.append(
             ("logging", (level, service_name, environment))
         ),
     )
     monkeypatch.setattr(
         observability,
         "setup_tracing",
-        lambda *, service_name, endpoint, resource_attributes: calls.append(
+        lambda *, service_name, endpoint, resource_attributes, **_: calls.append(
             ("tracing", (service_name, endpoint, resource_attributes))
         ),
     )
     monkeypatch.setattr(
         observability,
         "setup_metrics",
-        lambda *, service_name, endpoint, resource_attributes: calls.append(
+        lambda *, service_name, endpoint, resource_attributes, **_: calls.append(
             ("metrics", (service_name, endpoint, resource_attributes))
         ),
     )
@@ -98,7 +98,7 @@ def test_setup_telemetry_respects_signal_toggles(monkeypatch) -> None:
     assert calls == ["metrics"]
 
 
-def test_setup_telemetry_is_idempotent_for_repeated_calls(monkeypatch) -> None:
+def test_setup_telemetry_idempotent_repeated_calls(monkeypatch) -> None:
     _reset_telemetry_state(monkeypatch)
     calls: list[str] = []
 
