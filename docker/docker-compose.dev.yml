@@ -127,6 +127,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      otel-collector:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
       interval: 30s
@@ -169,6 +171,8 @@ services:
         condition: service_healthy
       crawl4ai:
         condition: service_started
+      otel-collector:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s

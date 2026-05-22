@@ -43,6 +43,12 @@ services:
       - prometheus
       - loki
       - tempo
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - vector-network
 
