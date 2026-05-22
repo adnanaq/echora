@@ -37,7 +37,7 @@ processors:
     log_statements:
       - context: log
         statements:
-          - replace_pattern(body, "(?i)(api[_-]?key|password|token)\\s*[:=]\\s*[^\\s,;]+", "$1: [REDACTED]")
+          - replace_pattern(body, "(?i)(api[_-]?key|password|token|secret|credential|authorization|bearer|private[_-]?key)\\s*[:=]\\s*[^\\s,;]+", "$1: [REDACTED]")
 
   batch:
     timeout: 5s
