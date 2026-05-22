@@ -8,5 +8,6 @@ python_sources(
         "//:reqs0#torch",
         "//:reqs0#open-clip-torch",
         "//:reqs0#pillow",
+        "//:reqs0#flagembedding",
     ],
 )

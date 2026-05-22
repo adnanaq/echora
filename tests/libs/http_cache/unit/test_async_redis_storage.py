@@ -603,6 +603,87 @@ class TestCreateEntry:
                 key="test_key",
             )
 
+    @pytest.mark.asyncio
+    async def test_create_entry_evicts_stale_entries(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """Creating an entry for a key that already has indexed UUIDs must delete
+        all stale entry + stream keys and srem them from the index before writing
+        the new entry. This prevents unbounded index growth that causes O(n)
+        hgetall calls in get_entries()."""
+        stale_id = uuid.uuid4()
+        stale_id_bytes = str(stale_id).encode("utf-8")
+
+        mock_redis_client.smembers.return_value = {stale_id_bytes}
+        mock_redis_client.ttl.return_value = -2
+
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.delete = MagicMock()
+        mock_pipeline.srem = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key="test_key",
+            )
+
+        stale_entry_key = f"test_cache:entry:{stale_id}"
+        stale_stream_key = f"test_cache:stream:{stale_id}"
+        mock_pipeline.delete.assert_any_call(stale_entry_key)
+        mock_pipeline.delete.assert_any_call(stale_stream_key)
+        mock_pipeline.srem.assert_called_once()
+        # New entry still written correctly
+        mock_pipeline.hset.assert_called_once()
+        mock_pipeline.sadd.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_entry_no_eviction_when_index_empty(
+        self,
+        storage_with_mock_client: AsyncRedisStorage,
+        mock_request: Request,
+        mock_response: Response,
+        mock_redis_client: AsyncMock,
+    ) -> None:
+        """When there are no existing entries in the index, no delete or srem
+        calls should be added to the pipeline."""
+        mock_redis_client.smembers.return_value = set()
+        mock_redis_client.ttl.return_value = -2
+
+        mock_pipeline = AsyncMock()
+        mock_redis_client.pipeline.return_value = mock_pipeline
+        mock_pipeline.hset = MagicMock()
+        mock_pipeline.sadd = MagicMock()
+        mock_pipeline.delete = MagicMock()
+        mock_pipeline.srem = MagicMock()
+        mock_pipeline.expire = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        with patch("http_cache.async_redis_storage.pack") as mock_pack:
+            mock_pack.return_value = b"serialized_entry"
+
+            await storage_with_mock_client.create_entry(
+                request=mock_request,
+                response=mock_response,
+                key="test_key",
+            )
+
+        mock_pipeline.delete.assert_not_called()
+        mock_pipeline.srem.assert_not_called()
+        mock_pipeline.hset.assert_called_once()
+        mock_pipeline.sadd.assert_called_once()
+
 
 # ============================================================================
 # Test Class: Get Entries

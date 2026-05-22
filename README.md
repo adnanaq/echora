@@ -1,6 +1,6 @@
 # Echora
 
-A production-ready anime data/search platform built as gRPC services on top of Qdrant and enrichment pipelines. The repo is a Pants monorepo with modular libraries for vector processing, database operations, and enrichment workflows.
+A anime data/search platform built as gRPC services on top of Qdrant and enrichment pipelines. The repo is a Pants monorepo with modular libraries for vector processing, database operations, and enrichment workflows.
 
 ## Features
 
@@ -14,50 +14,70 @@ A production-ready anime data/search platform built as gRPC services on top of Q
 
 ```text
 echora/
-├── apps/                          # Applications
-│   ├── vector_service/            # gRPC search/admin service
+├── apps/                              # Applications
+│   ├── vector_service/                # gRPC search/admin service
 │   │   └── src/vector_service/
-│   └── enrichment_service/        # gRPC enrichment orchestration service
-│       └── src/enrichment_service/
-├── libs/                          # Shared libraries
-│   ├── common/                    # Common models and configuration
+│   │       └── routes/                # Search and admin gRPC handlers
+│   ├── enrichment_service/            # gRPC enrichment orchestration service
+│   │   └── src/enrichment_service/
+│   └── agent_service/                 # gRPC agent service
+│       └── src/agent_service/
+│           ├── routes/                # Agent gRPC handlers
+│           └── utils/
+├── libs/                              # Shared libraries
+│   ├── common/                        # Common models and configuration
 │   │   └── src/common/
-│   │       ├── config/            # Settings and configuration
-│   │       └── models/            # Shared data models (AnimeRecord, etc.)
-│   ├── enrichment/                # Anime data enrichment pipeline
+│   │       ├── config/                # Settings and configuration
+│   │       ├── grpc/                  # Shared gRPC utilities
+│   │       ├── models/                # Shared data models (AnimeRecord, etc.)
+│   │       └── utils/                 # ID generation, datetime helpers
+│   ├── enrichment/                    # Anime data enrichment pipeline
 │   │   └── src/enrichment/
-│   │       ├── api_helpers/       # External API integrations (AniList, Kitsu, etc.)
-│   │       ├── crawlers/          # Web crawlers (Crawl4ai-based)
-│   │       ├── programmatic/      # Multi-stage enrichment pipeline
-│   │       └── similarity/        # Character similarity (CCIP)
-│   ├── http_cache/                # HTTP response caching (Redis-backed)
-│   │   └── src/http_cache/        # Cache manager, aiohttp adapter
-│   ├── qdrant_db/                 # Qdrant database client
-│   │   ├── src/qdrant_db/         # Client implementation with retry logic
-│   │   └── tests/                 # Unit and integration tests
-│   ├── vector_db_interface/       # Database-agnostic vector interface
+│   │       ├── crawlers/              # Crawl4ai-based web crawlers
+│   │       ├── pipeline/              # Multi-stage enrichment pipeline
+│   │       ├── similarity/            # Character similarity (CCIP)
+│   │       ├── sources/               # External source integrations
+│   │       │   ├── base/              # Base helper + crawler framework
+│   │       │   ├── anidb/
+│   │       │   ├── anilist/
+│   │       │   ├── anime_planet/
+│   │       │   ├── animeschedule/
+│   │       │   ├── anisearch/
+│   │       │   ├── kitsu/
+│   │       │   └── mal/               # MyAnimeList (anime, characters, episodes)
+│   │       └── utils/
+│   ├── http_cache/                    # HTTP response caching (Redis-backed)
+│   │   └── src/http_cache/            # Cache manager, aiohttp adapter
+│   ├── qdrant_db/                     # Qdrant vector database client
+│   │   └── src/qdrant_db/
+│   │       ├── collection/            # Collection lifecycle + schema builder
+│   │       └── utils/                 # Retry, dedup utilities
+│   ├── vector_db_interface/           # Provider-agnostic vector DB interface
 │   │   └── src/vector_db_interface/
-│   └── vector_processing/         # Vector embedding processing
-│       ├── src/vector_processing/
-│       │   ├── embedding_models/  # Model implementations (FastEmbed, OpenCLIP)
-│       │   ├── processors/        # Text/Vision processors, field mapping
-│       │   └── utils/             # Image downloading, caching
-│       └── tests/                 # Unit tests
-├── scripts/                       # Utility scripts (reindexing, validation, etc.)
-├── tests/                         # Test suite (mirrors source structure)
-│   ├── conftest.py                # Root fixtures (settings, clients)
-│   ├── integration/               # Cross-library integration tests
-│   ├── apps/vector_service/       # Service tests (unit/, integration/)
-│   ├── libs/                      # Per-library test suites
-│   │   ├── common/                # Common library tests
-│   │   ├── enrichment/            # Enrichment tests (unit/, integration/)
-│   │   ├── http_cache/            # HTTP cache tests (unit/, integration/)
-│   │   ├── qdrant_db/             # Qdrant DB tests (unit/, integration/)
-│   │   ├── vector_db_interface/   # Vector DB interface tests
-│   │   └── vector_processing/     # Vector processing tests (unit/)
-│   ├── scripts/                   # Script tests
-│   └── utils/                     # Test utilities
-└── data/                          # Data storage (Qdrant, anime databases)
+│   │       └── interfaces/            # ABCs: search, document, collection, monitor
+│   └── vector_processing/             # Vector embedding generation
+│       └── src/vector_processing/
+│           ├── embedding_models/      # Model backends
+│           │   ├── text/              # Text model implementations (BGE-M3, etc.)
+│           │   └── vision/            # Vision model implementations (OpenCLIP)
+│           ├── processors/            # Embedding manager, reranker processor
+│           ├── reranking/             # Cross-encoder reranking
+│           └── utils/                 # Image downloading, caching
+├── scripts/                           # Utility scripts (reindexing, validation, etc.)
+├── tests/                             # Test suite (mirrors source structure)
+│   ├── conftest.py                    # Root fixtures (settings, clients)
+│   ├── apps/                          # App-level tests
+│   │   ├── vector_service/            # unit/, integration/
+│   │   └── enrichment_service/        # unit/
+│   ├── libs/                          # Per-library test suites
+│   │   ├── common/                    # unit/, integration/
+│   │   ├── enrichment/                # unit/ (sources, pipeline, crawlers), integration/
+│   │   ├── http_cache/                # unit/, integration/
+│   │   ├── qdrant_db/                 # unit/ (collection), integration/
+│   │   ├── vector_db_interface/       # unit/, integration/
+│   │   └── vector_processing/         # unit/ (embedding_models, processors, reranking)
+│   └── scripts/                       # Script tests
+└── data/                              # Data storage (Qdrant, anime databases)
 ```
 
 ## Quick Start
@@ -169,10 +189,10 @@ This project supports both UV and Pants for development:
 ./pants test libs/qdrant_db::
 
 # Run a specific test file
-./pants test libs/qdrant_db/tests/unit/test_qdrant_client.py
+./pants test tests/libs/qdrant_db/unit/test_qdrant_client.py
 
 # Run integration tests only
-./pants test tests/integration::
+./pants test :: -- -m integration
 
 # Run with coverage
 ./pants test --coverage ::
@@ -251,44 +271,21 @@ Shared models and configuration used across all libraries and the main applicati
 
 ### `libs/qdrant_db`
 
-Qdrant vector database client with retry logic and batch operations.
+Qdrant vector database client with strict typed contracts and batch operations.
 
-- Async operations with connection pooling
-- Automatic retry with exponential backoff
-- Multi-vector search support
-- Comprehensive test suite (55 tests)
+- Async operations with typed request/response contracts (`SearchRequest`, `BatchOperationResult`)
+- Automatic retry with exponential backoff for transient failures
+- Multi-vector and hybrid (RRF/DBSF) search support
+- Collection lifecycle management with race-safe initialization
 
 ### `libs/vector_processing`
 
 Vector embedding generation and processing.
 
-- **Text Models**: FastEmbed, HuggingFace Transformers, Sentence Transformers
+- **Text Models**: FlagEmbedding (BGE-M3), HuggingFace Transformers, Sentence Transformers
 - **Vision Models**: OpenCLIP
-- **Processors**: Text and vision processing with caching
+- **Processors**: Multi-vector embedding manager, cross-encoder reranker
 - **Field Mapping**: Anime-specific field extraction and preprocessing
-
-## Testing
-
-```bash
-# Run all tests (unit + integration)
-./pants test ::
-
-# Skip integration tests (fast, no DB/models required)
-./pants test :: -- -m "not integration"
-
-# Run ONLY integration tests (requires Qdrant + Redis + ML models)
-docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
-./pants test :: -- -m integration
-
-# Run tests for specific library
-./pants test libs/qdrant_db/tests/unit::
-
-# Run tests in specific directory
-./pants test tests/integration::
-
-# Run with coverage
-./pants test --coverage ::
-```
 
 ## Configuration
 
@@ -372,34 +369,11 @@ MODEL_CACHE_DIR=./cache
 # Install all dependencies
 uv sync
 
-# Add a new dependency
-uv add package-name
-
-# Add a dev dependency
-uv add --dev package-name
-
 # Update dependencies
 uv lock --upgrade
 
 # Run scripts
 uv run python script.py
-
-# List installed packages
-uv pip list
-
-# Manage Python versions
-uv python list                 # List installed Python versions
-uv python install 3.12         # Install Python 3.12
-```
-
-### Using Pip
-
-```bash
-# Install in editable mode
-pip install -e .
-
-# Install with dev dependencies
-pip install -e ".[dev]"
 ```
 
 ## Services And gRPC Contracts

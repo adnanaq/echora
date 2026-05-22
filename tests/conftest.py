@@ -4,25 +4,32 @@ Root test configuration for all tests.
 Provides isolated test collection to avoid touching production data.
 """
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator, Generator
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from common.config.settings import Settings, get_settings
-from qdrant_client import AsyncQdrantClient
-from qdrant_db import QdrantClient
-from vector_processing import (
-    AnimeFieldMapper,
-    MultiVectorEmbeddingManager,
-    TextProcessor,
-    VisionProcessor,
-)
+
+if TYPE_CHECKING:
+    from common.config.settings import Settings
+    from qdrant_client import AsyncQdrantClient
+    from qdrant_db import QdrantClient
+    from vector_processing import (
+        AnimeFieldMapper,
+        MultiVectorEmbeddingManager,
+        TextProcessor,
+        VisionProcessor,
+    )
 
 
 @pytest.fixture(scope="session")
 def field_mapper() -> AnimeFieldMapper:
     """Create shared AnimeFieldMapper for tests."""
+    from vector_processing import AnimeFieldMapper
+
     return AnimeFieldMapper()
 
 
@@ -55,6 +62,8 @@ def settings() -> Settings:
     Returns:
         settings: Settings instance with `qdrant_collection_name` set to "anime_database_test".
     """
+    from common.config.settings import get_settings
+
     settings = get_settings()
     # Override to use test collection for ALL tests
     settings.qdrant.qdrant_collection_name = "anime_database_test"
@@ -64,9 +73,9 @@ def settings() -> Settings:
 @pytest_asyncio.fixture(scope="session")
 async def text_processor(settings: Settings) -> TextProcessor:
     """Create TextProcessor for tests."""
+    from vector_processing import TextProcessor
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
-    # Create text model using factory
     text_model = EmbeddingModelFactory.create_text_model(settings.embedding)
     return TextProcessor(model=text_model, config=settings.embedding)
 
@@ -74,10 +83,10 @@ async def text_processor(settings: Settings) -> TextProcessor:
 @pytest_asyncio.fixture(scope="session")
 async def vision_processor(settings: Settings) -> VisionProcessor:
     """Create VisionProcessor for tests."""
+    from vector_processing import VisionProcessor
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.utils.image_downloader import ImageDownloader
 
-    # Create vision model and downloader using factory
     vision_model = EmbeddingModelFactory.create_vision_model(settings.embedding)
     downloader = ImageDownloader(settings.embedding.model_cache_dir)
     return VisionProcessor(
@@ -94,6 +103,8 @@ async def embedding_manager(
     field_mapper: AnimeFieldMapper,
 ) -> MultiVectorEmbeddingManager:
     """Create MultiVectorEmbeddingManager for tests."""
+    from vector_processing import MultiVectorEmbeddingManager
+
     return MultiVectorEmbeddingManager(
         text_processor=text_processor,
         vision_processor=vision_processor,
@@ -115,11 +126,12 @@ async def client(
         embedding_manager: Unused parameter, declared to ensure embedding models
                           are loaded before client initialization (fixture dependency ordering)
     """
+    from qdrant_client import AsyncQdrantClient
+    from qdrant_db import QdrantClient
 
     async_qdrant_client: AsyncQdrantClient | None = None
 
     try:
-        # Initialize AsyncQdrantClient from qdrant-client library
         if settings.qdrant.qdrant_api_key:
             async_qdrant_client = AsyncQdrantClient(
                 url=settings.qdrant.qdrant_url,
@@ -128,7 +140,6 @@ async def client(
         else:
             async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
-        # Initialize our QdrantClient wrapper with injected dependencies
         client = await QdrantClient.create(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
@@ -140,17 +151,13 @@ async def client(
 
     yield client
 
-    # Cleanup: Delete test collection after tests for isolation
     try:
         await client.delete_collection()
     except Exception as e:
-        # Ignore cleanup errors to avoid test failures, but log for visibility
         print(f"Warning: failed to delete test collection: {e}")
 
-    # Close AsyncQdrantClient connection to release resources
     try:
         if async_qdrant_client:
             await async_qdrant_client.close()
     except Exception as e:
-        # Ignore close errors to avoid test failures, but log for visibility
         print(f"Warning: failed to close AsyncQdrantClient: {e}")

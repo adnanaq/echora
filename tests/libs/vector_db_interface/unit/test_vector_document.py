@@ -30,3 +30,18 @@ def test_vector_document_multivector():
     assert doc.id == "test-id"
     assert len(doc.vectors["image_vector"]) == 2
     assert doc.vectors["image_vector"][0] == [0.4, 0.5, 0.6]
+
+
+def test_vector_document_sparse_vector():
+    """Test VectorDocument with sparse vector payload."""
+    doc = VectorDocument(
+        id="test-id",
+        vectors={
+            "text_vector": [0.1, 0.2, 0.3],
+            "text_sparse_vector": {"indices": [1, 4], "values": [0.8, 0.2]},
+        },
+        payload={"type": "anime"},
+    )
+    assert doc.id == "test-id"
+    assert doc.vectors["text_sparse_vector"]["indices"] == [1, 4]
+    assert doc.vectors["text_sparse_vector"]["values"] == [0.8, 0.2]

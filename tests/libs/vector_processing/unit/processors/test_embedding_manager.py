@@ -36,10 +36,17 @@ def mock_field_mapper():
 @pytest.fixture
 def mock_text_processor():
     processor = MagicMock(spec=TextProcessor)
-    processor.encode_text.return_value = [0.1] * 1024
-    processor.encode_texts_batch.side_effect = lambda texts: [
-        [0.1] * 1024 for _ in texts
-    ]
+    processor.encode_text = AsyncMock(return_value=[0.1] * 1024)
+    processor.encode_texts_batch = AsyncMock(
+        side_effect=lambda texts: [[0.1] * 1024 for _ in texts]
+    )
+    processor.encode_text_with_sparse = AsyncMock(return_value=([0.1] * 1024, None))
+    processor.encode_texts_batch_with_sparse = AsyncMock(
+        side_effect=lambda texts: (
+            [[0.1] * 1024 for _ in texts],
+            [None] * len(texts),
+        )
+    )
     processor.get_zero_embedding.return_value = [0.0] * 1024
     return processor
 
@@ -169,6 +176,43 @@ async def test_process_anime_vectors_structure(
     # No separate Image Points
     image_docs = [d for d in documents if d.payload["entity_type"] == "image"]
     assert len(image_docs) == 0  # Images embedded in parent entities
+
+
+@pytest.mark.asyncio
+async def test_process_anime_vectors_includes_sparse_when_model_supports_it(
+    mock_field_mapper,
+    mock_text_processor,
+    mock_vision_processor,
+    sample_record,
+):
+    """Test sparse vector is included when the text processor returns sparse output."""
+    sparse_data = {"indices": [1, 5], "values": [0.4, 0.9]}
+    mock_text_processor.encode_text_with_sparse = AsyncMock(
+        return_value=([0.1] * 1024, sparse_data)
+    )
+    mock_text_processor.encode_texts_batch_with_sparse = AsyncMock(
+        side_effect=lambda texts: (
+            [[0.1] * 1024 for _ in texts],
+            [sparse_data for _ in texts],
+        )
+    )
+
+    manager = MultiVectorEmbeddingManager(
+        text_processor=mock_text_processor,
+        vision_processor=mock_vision_processor,
+        field_mapper=mock_field_mapper,
+        sparse_vector_name="text_sparse_vector",
+    )
+
+    documents = await manager.process_anime_vectors(sample_record)
+    anime_doc = next(d for d in documents if d.payload["entity_type"] == "anime")
+    char_doc = next(d for d in documents if d.payload["entity_type"] == "character")
+    ep_doc = next(d for d in documents if d.payload["entity_type"] == "episode")
+
+    assert "text_sparse_vector" in anime_doc.vectors
+    assert "text_sparse_vector" in char_doc.vectors
+    assert "text_sparse_vector" in ep_doc.vectors
+    assert anime_doc.vectors["text_sparse_vector"]["indices"] == [1, 5]
 
 
 @pytest.mark.asyncio

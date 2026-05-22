@@ -177,8 +177,12 @@ async def main() -> None:
                 points,
                 batch_size=64,  # Use a reasonable batch size for efficiency
             )
-            if result["success"]:
-                print(f"\nSuccessfully indexed {len(points)} documents.")
+            if result.successful > 0:
+                print(
+                    f"\nSuccessfully indexed {result.successful}/{result.total} documents."
+                )
+                if result.failed > 0:
+                    print(f"   Failed documents: {result.failed}")
 
                 # Save updated anime data with generated IDs using atomic write
                 print(
@@ -188,7 +192,7 @@ async def main() -> None:
                 temp_fd, temp_path = tempfile.mkstemp(
                     dir=os.path.dirname(args.data_file) or ".",
                     prefix=".tmp_anime_",
-                    suffix=".json"
+                    suffix=".json",
                 )
                 try:
                     with os.fdopen(temp_fd, "w", encoding="utf-8") as f:

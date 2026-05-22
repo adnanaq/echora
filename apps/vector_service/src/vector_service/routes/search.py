@@ -17,6 +17,7 @@ from common.grpc.error_details import build_error_details as error
 from google.protobuf import json_format
 from observability import registry
 from opentelemetry import trace
+from qdrant_db.contracts import SearchFilterCondition, SearchRequest, SparseVectorData
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
@@ -132,6 +133,45 @@ def _normalize_limit(raw_limit: int) -> int:
     return min(raw_limit, 100)
 
 
+def _build_filter_conditions(
+    filters: dict[str, Any] | None,
+) -> list[SearchFilterCondition]:
+    """Convert a flat filter dict into typed filter conditions.
+
+    Args:
+        filters: Dict of ``{field: value}`` where value may be a scalar,
+            list, or range dict with ``gte``/``lte``/``gt``/``lt`` keys.
+
+    Returns:
+        List of :class:`SearchFilterCondition` ready for ``SearchRequest``.
+    """
+    if not filters:
+        return []
+
+    conditions: list[SearchFilterCondition] = []
+    for field, value in filters.items():
+        if isinstance(value, dict):
+            if "any" in value:
+                conditions.append(
+                    SearchFilterCondition(
+                        field=field, operator="in", value=value["any"]
+                    )
+                )
+            else:
+                conditions.append(
+                    SearchFilterCondition(field=field, operator="range", value=value)
+                )
+        elif isinstance(value, list):
+            conditions.append(
+                SearchFilterCondition(field=field, operator="in", value=value)
+            )
+        else:
+            conditions.append(
+                SearchFilterCondition(field=field, operator="eq", value=value)
+            )
+    return conditions
+
+
 async def _encode_image_bytes(
     runtime: VectorRuntime, image_bytes: bytes
 ) -> list[float] | None:
@@ -218,8 +258,14 @@ async def search(
         current_span.add_event("validation.complete")
 
         text_embedding: list[float] | None = None
+        sparse_embedding: SparseVectorData | None = None
         if query_text:
-            text_embedding = await runtime.text_processor.encode_text(query_text)
+            (
+                text_embedding,
+                _sparse_dict,
+            ) = await runtime.text_processor.encode_text_with_sparse(query_text)
+            if _sparse_dict is not None:
+                sparse_embedding = SparseVectorData(**_sparse_dict)
             if not text_embedding:
                 return vector_search_pb2.SearchResponse(
                     error=error(
@@ -252,12 +298,16 @@ async def search(
                 "embedding.image.complete", {"embedding_dim": len(image_embedding)}
             )
 
+        filter_conditions = _build_filter_conditions(filters)
         raw_hits = await runtime.qdrant_client.search(
-            text_embedding=text_embedding,
-            image_embedding=image_embedding,
-            entity_type=entity_type or None,
-            limit=_normalize_limit(raw_limit),
-            filters=filters,
+            SearchRequest(
+                text_embedding=text_embedding,
+                image_embedding=image_embedding,
+                sparse_embedding=sparse_embedding,
+                entity_type=entity_type or None,
+                limit=_normalize_limit(raw_limit),
+                filters=filter_conditions,
+            )
         )
 
         result_count = len(raw_hits)
@@ -270,11 +320,9 @@ async def search(
 
         data = [
             vector_search_pb2.SearchData(
-                id=str(hit.get("id", "")),
-                similarity_score=float(
-                    hit.get("score", hit.get("similarity_score", 0.0))
-                ),
-                payload_json=json.dumps(hit.get("payload", {}), ensure_ascii=False),
+                id=hit.id,
+                similarity_score=hit.score,
+                payload_json=json.dumps(hit.payload, ensure_ascii=False),
             )
             for hit in raw_hits
         ]

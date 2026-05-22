@@ -1,21 +1,6 @@
-# -----------------------------------------------------------------------------
-# Production-Like Application Stack
-#
-# Purpose:
-# - Run Echora app services with production-oriented settings and limits
-# - Suitable for staging/perf-style local validation
-#
-# Run:
-#   docker compose -f docker/docker-compose.prd.yml up -d
-#
-# Docs:
-# - README.md
-# - docs/technical.md
-# -----------------------------------------------------------------------------
+name: echora
+
 services:
-  # Qdrant Vector Database
-  # - Primary vector storage backend
-  # - Exposes API on :6333
   qdrant:
     image: qdrant/qdrant:v1.16.2
     container_name: echora-qdrant
@@ -26,18 +11,19 @@ services:
     environment:
       - QDRANT__LOG_LEVEL=INFO
     networks:
-      - vector-network
+      - echora-network
     healthcheck:
-      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     restart: unless-stopped
 
-  # Redis Cache
-  # - Shared cache backend
-  # - Exposes Redis on :6379
   redis:
     image: redis:7
     container_name: echora-redis
@@ -47,7 +33,7 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
     networks:
-      - vector-network
+      - echora-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -56,9 +42,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Vector Service (gRPC)
-  # - Semantic/vector search and vector admin operations
-  # - Exposes gRPC on :8001
   vector-service:
     build:
       context: ..
@@ -69,10 +52,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 4G
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 2G
     environment:
       # Environment (enforces production safety)
@@ -93,6 +76,8 @@ services:
       - QDRANT_ENABLE_QUANTIZATION=false
       - QDRANT_QUANTIZATION_TYPE=scalar
       - QDRANT_ENABLE_PAYLOAD_INDEXING=true
+      - QDRANT_PREFETCH_LIMIT_MULTIPLIER=10
+      - QDRANT_RRF_K=2
 
       - API_TITLE=Anime Vector Service
       - API_VERSION=1.0.0
@@ -103,7 +88,7 @@ services:
       - CACHE_ENABLED=false
       - REDIS_URL=redis://redis:6379/0
     networks:
-      - vector-network
+      - echora-network
     volumes:
       - model_cache:/app/model_cache
     depends_on:
@@ -121,9 +106,6 @@ services:
       start_period: 15m
     restart: unless-stopped
 
-  # Enrichment Service (gRPC)
-  # - Metadata enrichment and pipeline orchestration
-  # - Exposes gRPC on :8002
   enrichment-service:
     build:
       context: ..
@@ -134,10 +116,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 4G
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 2G
     environment:
       - ENVIRONMENT=production
@@ -151,7 +133,7 @@ services:
       - ../data:/app/data:ro
       - ../assets/seed_data:/app/assets/seed_data
     networks:
-      - vector-network
+      - echora-network
     depends_on:
       redis:
         condition: service_healthy
@@ -164,7 +146,7 @@ services:
     restart: unless-stopped
 
 networks:
-  vector-network:
+  echora-network:
     driver: bridge
 volumes:
   qdrant_data:
