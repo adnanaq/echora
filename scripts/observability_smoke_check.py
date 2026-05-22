@@ -6,6 +6,7 @@ This script emits a test trace and metric to an OTLP collector endpoint.
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 
 from opentelemetry import metrics, trace
@@ -65,10 +66,26 @@ def main() -> None:
         span.set_attribute("smoke.check", True)
         counter.add(1, {"env": "ci"})
 
-    # Give exporters a moment to flush one batch.
+    # Give the periodic metric reader (500 ms interval) time to attempt one export.
     time.sleep(2)
-    tracer_provider.force_flush()
-    metric_reader.force_flush()
+
+    # Note: the OTel SDK swallows UNAVAILABLE export errors internally; force_flush
+    # only returns False / raises on *timeout*, not on collector-unreachable errors.
+    # Shutdown is always called via finally to drain any pending buffers before exit.
+    try:
+        traces_ok = tracer_provider.force_flush(timeout_millis=10000)
+        meter_provider.force_flush(timeout_millis=10000)
+    except Exception as exc:  # noqa: BLE001
+        print(f"OTLP smoke emission failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        tracer_provider.shutdown()
+        meter_provider.shutdown()
+
+    if not traces_ok:
+        print("OTLP smoke emission failed: trace flush timed out", file=sys.stderr)
+        sys.exit(1)
+
     print("OTLP smoke emission complete")
 
 
