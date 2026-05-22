@@ -33,7 +33,7 @@ jobs:
           docker compose -f docker/docker-compose.obs.yml -f docker/docker-compose.obs.scale.yml config
 
       - name: Create shared Docker network
-        run: docker network create echora_vector-network || true
+        run: docker network create echora_observability-network || true
 
       - name: Start observability stack
         run: docker compose -f docker/docker-compose.obs.yml up -d
@@ -57,7 +57,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install smoke dependencies
         run: |
