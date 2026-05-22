@@ -57,6 +57,7 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
     async_qdrant_client: AsyncQdrantClient | None = None
+    embedding_cache: EmbeddingCache | None = None
     try:
         if settings.qdrant.qdrant_api_key:
             async_qdrant_client = AsyncQdrantClient(
@@ -67,7 +68,6 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
             async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
 
         # Build optional embedding cache from Redis config
-        embedding_cache: EmbeddingCache | None = None
         if settings.redis.redis_url:
             from redis.asyncio import Redis
 
@@ -125,4 +125,6 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
     except Exception:
         if async_qdrant_client is not None:
             await async_qdrant_client.close()
+        if embedding_cache is not None:
+            await embedding_cache.close()
         raise
