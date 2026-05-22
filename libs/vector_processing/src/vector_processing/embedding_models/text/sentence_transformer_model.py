@@ -28,8 +28,10 @@ class SentenceTransformerModel(TextEmbeddingModel):
             self._embedding_size = cast(
                 int, self.model.get_sentence_embedding_dimension()
             )
-            # max_seq_length can be None for some pipeline configurations
+            # max_seq_length can be None for some pipeline configurations; write the
+            # fallback back to the model so tokenize() enforces it via max_length=.
             self._max_length = self.model.max_seq_length or 512
+            self.model.max_seq_length = self._max_length
 
             logger.info(f"Initialized Sentence Transformers model: {model_name}")
 
