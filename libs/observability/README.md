@@ -68,7 +68,7 @@ graph TD
 The platform produces three observability signals from three instrumentation layers.
 Understanding which layer owns which signal prevents duplication and cardinality bugs.
 
-```
+```text
 gRPC call arrives
       │
       ▼
