@@ -1,7 +1,6 @@
 name: echora
 
 services:
-  # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: echora-qdrant
@@ -31,7 +30,6 @@ services:
         soft: 65536
         hard: 65536
 
-  # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
     image: redis:7
     container_name: echora-redis
@@ -50,7 +48,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # RedisInsight (GUI for Redis debugging and monitoring)
   redisinsight:
     image: redis/redisinsight:latest
     container_name: echora-redisinsight
@@ -65,9 +62,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Anime Vector Service
-  # Build with Pants: pants package apps/vector_service:vector-service-dev
-  # Or use docker-compose build with updated path:
   vector-service:
     build:
       context: ..
@@ -88,11 +82,18 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      # Modern Embedding Configuration
+      # Embedding Configuration
       - TEXT_EMBEDDING_PROVIDER=huggingface
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
       - IMAGE_EMBEDDING_PROVIDER=openclip
       - IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
+
+      # Model cache — all three vars must agree; they match the Dockerfile defaults.
+      # Override here only if you need a non-standard cache location.
+      - HF_HOME=/app/model_cache
+      - TORCH_HOME=/app/model_cache/torch
+      - MODEL_CACHE_DIR=/app/model_cache
+
       # Performance Configuration
       - QDRANT_ENABLE_QUANTIZATION=false
       - QDRANT_QUANTIZATION_TYPE=scalar
@@ -106,12 +107,19 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration (for Enrichment Pipeline)
+      # Observability
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_ENABLE_TRACING=true
+      - OTEL_ENABLE_METRICS=true
+      - OTEL_ENABLE_LOGGING=true
+
+      # HTTP Cache Configuration
       - CACHE_ENABLED=true
       - REDIS_URL=redis://redis:6379/0
       - FORCE_CACHE=true
     volumes:
-      - model-cache:/app/cache
+      - model-cache:/app/model_cache
     networks:
       - echora-network
     depends_on:
@@ -119,15 +127,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      otel-collector:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      timeout: 15s
+      retries: 5
+      # start_period covers first-run model download (BGE-M3 + ViT-L-14 ≈ 2.2 GB).
+      # On subsequent starts with a warm cache this grace period is unused.
+      start_period: 15m
     restart: unless-stopped
 
-  # Enrichment Service
   enrichment-service:
     build:
       context: ..
@@ -141,6 +152,13 @@ services:
       - ENRICHMENT_SERVICE_PORT=8002
       - ENRICHMENT_DEFAULT_FILE_PATH=/app/data/qdrant_storage/anime-offline-database.json
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
+      # Observability
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_ENABLE_TRACING=true
+      - OTEL_ENABLE_METRICS=true
+      - OTEL_ENABLE_LOGGING=true
+      - OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION=true
       - CACHE_ENABLED=true
       - REDIS_URL=redis://redis:6379/0
     volumes:
@@ -153,6 +171,8 @@ services:
         condition: service_healthy
       crawl4ai:
         condition: service_started
+      otel-collector:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
@@ -161,7 +181,6 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # Crawl4AI Docker Server
   crawl4ai:
     image: unclecode/crawl4ai:latest
     container_name: echora-crawl4ai
@@ -205,5 +224,14 @@ volumes:
     driver: local
   redisinsight-data:
     driver: local
+  # Model cache for embedding models (BGE-M3 + ViT-L-14, ~4 GB total).
+  # Stored under $HOME to avoid filling the root partition.
+  # Docker manages this as a named volume so lifecycle matches other volumes
+  # (inspect/rm via `docker volume`). In production replace driver_opts with
+  # a real volume on persistent storage.
   model-cache:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.local/share/echora/model-cache

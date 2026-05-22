@@ -399,5 +399,5 @@ def test_get_shared_mal_rate_limiter_returns_singleton() -> None:
     assert a is b
 
 
-def test_get_shared_mal_rate_limiter_is_crawler_rate_limiter_instance() -> None:
+def test_shared_mal_rate_limiter_crawler_rate_limiter() -> None:
     assert isinstance(get_shared_mal_rate_limiter(), CrawlerRateLimiter)

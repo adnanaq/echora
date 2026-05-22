@@ -14,12 +14,15 @@ import time
 from types import TracebackType
 from typing import Any
 
+from opentelemetry import trace as otel_trace
+
 from .api_fetcher import ApiFetcher
 from .config import EnrichmentConfig
 from .id_extractor import PlatformIDExtractor
 
 logger = logging.getLogger(__name__)
 
+_tracer = otel_trace.get_tracer("echora.enrichment")
 _AGENT_ID_RE = re.compile(r"_agent(\d+)")
 
 
@@ -93,8 +96,12 @@ class EnrichmentPipeline:
         try:
             # Step 1: Extract platform IDs (instant)
             step1_start = time.time()
-            ids = self.id_extractor.extract_all_ids(offline_data)
-            valid_ids = self.id_extractor.validate_ids(ids)
+            with _tracer.start_as_current_span(
+                "enrichment.id_extraction",
+                attributes={"anime.title": anime_title},
+            ):
+                ids = self.id_extractor.extract_all_ids(offline_data)
+                valid_ids = self.id_extractor.validate_ids(ids)
             timing["id_extraction"] = time.time() - step1_start
 
             logger.info(
@@ -119,9 +126,15 @@ class EnrichmentPipeline:
 
             # Step 2: Parallel API fetching (5-10 seconds)
             step2_start = time.time()
-            api_data = await self.api_fetcher.fetch_all_data(
-                valid_ids, offline_data, temp_dir, skip_services, only_services
-            )
+            with _tracer.start_as_current_span("enrichment.api_fetch") as _api_span:
+                api_data = await self.api_fetcher.fetch_all_data(
+                    valid_ids, offline_data, temp_dir, skip_services, only_services
+                )
+                successful_apis = sum(1 for v in api_data.values() if v)
+                _api_span.add_event(
+                    "api_fetch.complete",
+                    {"successful_apis": successful_apis, "total_apis": len(api_data)},
+                )
             timing["api_fetching"] = time.time() - step2_start
 
             total_time = time.time() - start_time

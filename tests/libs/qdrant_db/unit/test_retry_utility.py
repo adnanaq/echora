@@ -7,8 +7,8 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from qdrant_db.utils import retry as retry_module
-from qdrant_db.utils.retry import (
+from common.utils import retry as retry_module
+from common.utils.retry import (
     _extract_status_code,
     default_is_transient_error,
     retry_with_backoff,
@@ -36,14 +36,14 @@ class _StatusError(Exception):
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_rejects_negative_max_retries() -> None:
+async def test_negative_max_retries_rejected() -> None:
     """Negative max_retries must be rejected."""
     with pytest.raises(ValueError, match="max_retries must be >= 0"):
         await retry_with_backoff(operation=AsyncMock(return_value="ok"), max_retries=-1)
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_rejects_negative_retry_delay() -> None:
+async def test_negative_retry_delay_rejected() -> None:
     """Negative retry_delay must be rejected."""
     with pytest.raises(ValueError, match="retry_delay must be >= 0"):
         await retry_with_backoff(
@@ -52,7 +52,7 @@ async def test_retry_with_backoff_rejects_negative_retry_delay() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_passes_operation_args_and_kwargs() -> None:
+async def test_operation_args_and_kwargs_forwarded() -> None:
     """Operation args and kwargs should be forwarded to the callable."""
 
     async def operation(a: int, b: int, *, c: int) -> int:
@@ -67,7 +67,7 @@ async def test_retry_with_backoff_passes_operation_args_and_kwargs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_retries_transient_error_until_success(
+async def test_retry_transient_error_until_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Transient errors should trigger retries and exponential delays."""
@@ -105,7 +105,7 @@ async def test_retry_with_backoff_retries_transient_error_until_success(
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_non_transient_error_fails_without_retry(
+async def test_non_transient_error_fails_immediately(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Non-transient errors should fail immediately without sleeping."""
@@ -121,7 +121,7 @@ async def test_retry_with_backoff_non_transient_error_fails_without_retry(
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_honors_custom_transient_checker() -> None:
+async def test_custom_transient_checker_controls_retry() -> None:
     """Custom transient checker should control retry behavior."""
     operation = AsyncMock(side_effect=RuntimeError("temporary issue"))
     checker = Mock(return_value=False)
@@ -138,7 +138,7 @@ async def test_retry_with_backoff_honors_custom_transient_checker() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retry_with_backoff_raises_after_max_retries(
+async def test_raises_after_max_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retry loop should re-raise after max retry attempts are exhausted."""
@@ -178,13 +178,13 @@ def test_extract_status_code_returns_none_when_missing() -> None:
     assert _extract_status_code(Exception("no status")) is None
 
 
-def test_default_is_transient_error_for_timeout_and_connection() -> None:
+def test_timeout_connection_errors_transient() -> None:
     """Built-in timeout/connection exceptions should be transient."""
     assert default_is_transient_error(TimeoutError("timeout"))
     assert default_is_transient_error(ConnectionError("connection error"))
 
 
-def test_default_is_transient_error_for_response_handling_exception(
+def test_response_handling_exception_transient(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Response handling exceptions should be considered transient."""
@@ -201,7 +201,7 @@ def test_default_is_transient_error_for_response_handling_exception(
     assert default_is_transient_error(_FakeResponseHandlingException("decode error"))
 
 
-def test_default_is_transient_error_for_api_exception_retryable_status(
+def test_api_exception_retryable_status_transient(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ApiException with retryable status should be classified as transient."""
@@ -217,7 +217,7 @@ def test_default_is_transient_error_for_api_exception_retryable_status(
     assert default_is_transient_error(_FakeApiException(503))
 
 
-def test_default_is_transient_error_for_api_exception_non_retryable_status(
+def test_api_exception_non_retryable_status_not_transient(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ApiException with non-retryable status should not be transient."""
@@ -232,19 +232,19 @@ def test_default_is_transient_error_for_api_exception_non_retryable_status(
     assert not default_is_transient_error(_FakeApiException(400))
 
 
-def test_default_is_transient_error_for_generic_status_code() -> None:
+def test_generic_retryable_status_code_transient() -> None:
     """Generic exceptions with retryable status_code should be transient."""
     assert default_is_transient_error(_StatusError(status_code=504))
     assert not default_is_transient_error(_StatusError(status_code=422))
 
 
-def test_default_is_transient_error_keyword_fallback() -> None:
+def test_keyword_fallback_classifies_transient_messages() -> None:
     """Keyword fallback should classify clearly transient error messages."""
     assert default_is_transient_error(Exception("temporary network unavailable"))
     assert not default_is_transient_error(Exception("invalid payload schema"))
 
 
-def test_retry_module_import_guard_fallback_creates_placeholder_exception_types(
+def test_import_guard_fallback_stub_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Import-guard fallback should define placeholder ApiException classes."""

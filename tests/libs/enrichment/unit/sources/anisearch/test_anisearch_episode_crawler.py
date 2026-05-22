@@ -285,7 +285,7 @@ async def test_fetch_episodes_filters_out_unparseable_rows(
 
 
 @pytest.mark.asyncio
-async def test_cache_key_is_url_not_output_path(
+async def test_cache_key_url_not_output_path(
     tmp_path, mocker, one_piece_episodes_raw: list
 ) -> None:
     mocker.patch(

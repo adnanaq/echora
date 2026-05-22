@@ -42,7 +42,7 @@ class TestApiFetcherContextManager:
         mock_helper.close.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_closes_helpers_on_gather_exception(self):
+    async def test_helpers_closed_on_gather_exception(self):
         """Helpers are closed even when _gather raises."""
         fetcher = ApiFetcher()
         mock_helper = AsyncMock()
@@ -247,7 +247,7 @@ class TestFetchAllData:
             assert name in task_names
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_normalizes_mixed_helper_payload_shapes(self):
+    async def test_normalizes_mixed_helper_payload_shapes(self):
         fetcher = ApiFetcher()
         ids = {
             "mal_url": "https://myanimelist.net/anime/21",
@@ -339,7 +339,7 @@ class TestFetchAllData:
         mock_helper.fetch_all.assert_awaited_once_with(ids, offline, temp_dir)
 
     @pytest.mark.asyncio
-    async def test_fetch_all_data_does_not_reuse_helper_instances_between_runs(self):
+    async def test_fetch_all_data_fresh_helpers_each_run(self):
         """Each fetch_all_data call gets a fresh set of helper instances."""
         fetcher = ApiFetcher()
         seen_ids: list[int] = []

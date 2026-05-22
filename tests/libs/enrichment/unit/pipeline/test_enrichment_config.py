@@ -65,10 +65,10 @@ class TestValidateBatchSize:
 class TestValidateCacheTtl:
     """validate_cache_ttl rejects negative values."""
 
-    def test_zero_is_valid(self):
+    def test_zero_valid(self):
         assert EnrichmentConfig(cache_ttl=0).cache_ttl == 0
 
-    def test_positive_is_valid(self):
+    def test_positive_valid(self):
         assert EnrichmentConfig(cache_ttl=3600).cache_ttl == 3600
 
     def test_negative_raises(self):

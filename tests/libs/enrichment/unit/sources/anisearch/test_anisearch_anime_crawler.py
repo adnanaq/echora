@@ -160,7 +160,7 @@ def test_main_schema_tags_anchor_on_tag_href() -> None:
     assert "/genre/tag/" in field["selector"]
 
 
-def test_main_schema_websites_is_nested_list() -> None:
+def test_main_schema_websites_nested_list() -> None:
     schema = _get_anime_schema()
     field = next(f for f in schema["fields"] if f["name"] == "websites")
     assert field["type"] == "nested_list"
@@ -420,7 +420,7 @@ def test_parse_relations_real_data_manga_count(one_piece_relations_raw) -> None:
     assert len(manga) == len(one_piece_relations_raw["manga_relations"])
 
 
-def test_parse_relations_images_are_urls_after_processing(
+def test_parse_relations_images_urls_after_processing(
     one_piece_relations_raw,
 ) -> None:
     anime, manga = _parse_relations(one_piece_relations_raw)

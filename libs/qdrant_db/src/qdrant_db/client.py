@@ -6,7 +6,8 @@ All write and search entry points use explicit contract models and domain errors
 """
 
 import logging
-from typing import Any, cast
+import time
+from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
 from qdrant_client import AsyncQdrantClient
@@ -53,6 +54,12 @@ from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_bac
 logger = logging.getLogger(__name__)
 
 
+class _Telemetry(Protocol):
+    DB_QUERY_DURATION: Any
+    DB_ERRORS: Any
+
+
+
 class QdrantClient(VectorDBClient):
     """Qdrant client wrapper with strict request/response contracts."""
 
@@ -62,6 +69,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        telemetry: _Telemetry | None = None,
     ):
         """Initialize a strict-contract Qdrant client instance.
 
@@ -70,11 +78,13 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
+            telemetry: Optional telemetry registry for recording metrics.
         """
         self.config = config
         self.url = url or config.qdrant_url
         self._collection_name = collection_name or config.qdrant_collection_name
         self._async_client = async_qdrant_client
+        self._telemetry = telemetry
         self._distance_metric = config.qdrant_distance_metric
 
         self._text_vector_name = config.primary_text_vector_name
@@ -145,6 +155,7 @@ class QdrantClient(VectorDBClient):
         async_qdrant_client: AsyncQdrantClient,
         url: str | None = None,
         collection_name: str | None = None,
+        telemetry: _Telemetry | None = None,
     ) -> "QdrantClient":
         """Create a client and ensure collection state is initialized.
 
@@ -153,11 +164,12 @@ class QdrantClient(VectorDBClient):
             async_qdrant_client: Initialized async Qdrant transport client.
             url: Optional override for Qdrant URL.
             collection_name: Optional override for collection name.
+            telemetry: Optional telemetry registry for recording metrics.
 
         Returns:
             Initialized :class:`QdrantClient`.
         """
-        client = cls(config, async_qdrant_client, url, collection_name)
+        client = cls(config, async_qdrant_client, url, collection_name, telemetry)
         await client._collection_manager.initialize_collection()
         return client
 
@@ -536,6 +548,13 @@ class QdrantClient(VectorDBClient):
         """Create configured payload indexes for filterable metadata fields."""
         await self._collection_manager.setup_payload_indexes()
 
+    def _emit_telemetry(self, emit: Any, operation: str) -> None:
+        # Telemetry must never mask real exceptions or fail search paths.
+        try:
+            emit()
+        except Exception:
+            logger.debug("Telemetry emission failed for %s", operation, exc_info=True)
+
     async def _search_single_vector(
         self,
         vector_name: str,
@@ -556,24 +575,43 @@ class QdrantClient(VectorDBClient):
         Returns:
             List of normalized search hits.
         """
-        response = await self._async_client.query_points(
-            collection_name=self.collection_name,
-            query=vector_data,
-            using=vector_name,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-            query_filter=filters,
-            score_threshold=score_threshold,
+        _start = time.perf_counter()
+        try:
+            response = await self._async_client.query_points(
+                collection_name=self.collection_name,
+                query=vector_data,
+                using=vector_name,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+                query_filter=filters,
+                score_threshold=score_threshold,
         )
-        return [
-            SearchHit(
-                id=str(point.id),
-                payload=dict(point.payload) if point.payload else {},
-                score=float(point.score),
-            )
-            for point in response.points
-        ]
+            if self._telemetry:
+                _elapsed = time.perf_counter() - _start
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_QUERY_DURATION.record(
+                        _elapsed, {"operation": "search_single_vector"}
+                    ),
+                    "search_single_vector.duration",
+                )
+            return [
+                SearchHit(
+                    id=str(point.id),
+                    payload=dict(point.payload) if point.payload else {},
+                    score=float(point.score),
+                )
+                for point in response.points
+            ]
+        except Exception:
+            if self._telemetry:
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_single_vector"}),
+                    "search_single_vector.error",
+                )
+            raise
 
     async def _search_fusion(
         self,
@@ -598,24 +636,42 @@ class QdrantClient(VectorDBClient):
         else:
             query = RrfQuery(rrf=Rrf(k=self._rrf_k))
 
-        response = await self._async_client.query_points(
-            collection_name=self.collection_name,
-            prefetch=prefetch_queries,
-            query=query,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-            score_threshold=score_threshold,
-        )
-
-        return [
-            SearchHit(
-                id=str(point.id),
-                payload=dict(point.payload) if point.payload else {},
-                score=float(point.score),
+        _start = time.perf_counter()
+        try:
+            response = await self._async_client.query_points(
+                collection_name=self.collection_name,
+                prefetch=prefetch_queries,
+                query=query,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+                score_threshold=score_threshold,
             )
-            for point in response.points
-        ]
+            if self._telemetry:
+                _elapsed = time.perf_counter() - _start
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_QUERY_DURATION.record(
+                        _elapsed, {"operation": "search_fusion"}
+                    ),
+                    "search_fusion.duration",
+                )
+            return [
+                SearchHit(
+                    id=str(point.id),
+                    payload=dict(point.payload) if point.payload else {},
+                    score=float(point.score),
+                )
+                for point in response.points
+            ]
+        except Exception:
+            if self._telemetry:
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_fusion"}),
+                    "search_fusion.error",
+                )
+            raise
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
         """Execute strict-contract search request.

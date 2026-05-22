@@ -1,0 +1,79 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  
+  tail_sampling:
+    decision_wait: 30s
+    num_traces: 100000
+    expected_new_traces_per_sec: 100
+    policies:
+      - name: keep-errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: keep-slow
+        type: latency
+        latency:
+          threshold_ms: 2000
+      - name: keep-enrichment
+        type: string_attribute
+        string_attribute:
+          key: service.name
+          values: [echora-enrichment-service]
+      - name: sample-rest
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+  transform/log-redaction:
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(body, "(?i)(api[_-]?key|password|token|secret|credential|authorization|bearer|private[_-]?key)\\s*[:=]\\s*[^\\s,;]+", "$1: [REDACTED]")
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/log-redaction, batch]
+      exporters: [otlphttp/loki]

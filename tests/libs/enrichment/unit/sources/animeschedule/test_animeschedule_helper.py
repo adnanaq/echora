@@ -110,7 +110,7 @@ def test_match_by_sources_http_scheme_stripped():
     assert result is candidate
 
 
-def test_match_by_sources_our_source_is_prefix_of_partial():
+def test_match_by_sources_our_source_prefix_of_partial():
     """Our source is ID-only; AS partial has trailing slug."""
     from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
 
@@ -119,7 +119,7 @@ def test_match_by_sources_our_source_is_prefix_of_partial():
     assert result is candidate
 
 
-def test_match_by_sources_partial_is_prefix_of_our_source():
+def test_match_by_sources_partial_prefix_of_our_source():
     """AS partial is shorter; our source has the full slug."""
     from enrichment.sources.animeschedule.animeschedule_helper import _match_by_sources
 

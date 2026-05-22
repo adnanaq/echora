@@ -1,7 +1,6 @@
 name: echora
 
 services:
-  # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:v1.16.2
     container_name: echora-qdrant
@@ -14,14 +13,17 @@ services:
     networks:
       - echora-network
     healthcheck:
-      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     restart: unless-stopped
 
-  # Redis Cache (for HTTP caching in enrichment pipeline)
   redis:
     image: redis:7
     container_name: echora-redis
@@ -40,7 +42,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Anime Vector Service
   vector-service:
     build:
       context: ..
@@ -51,10 +52,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 4G
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 2G
     environment:
       # Environment (enforces production safety)
@@ -83,13 +84,14 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # HTTP Cache Configuration (for Enrichment Pipeline)
+      # CACHE_ENABLED controls HTTP response caching (disabled for vector service).
+      # REDIS_URL is used separately for the embedding vector cache — always active when set.
       - CACHE_ENABLED=false
       - REDIS_URL=redis://redis:6379/0
     networks:
       - echora-network
     volumes:
-      - model_cache:/app/cache
+      - model_cache:/app/model_cache
     depends_on:
       qdrant:
         condition: service_healthy
@@ -98,12 +100,13 @@ services:
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      timeout: 15s
+      retries: 5
+      # start_period covers first-run model download (BGE-M3 + ViT-L-14 ≈ 2.2 GB).
+      # On subsequent starts with a warm cache this grace period is unused.
+      start_period: 15m
     restart: unless-stopped
 
-  # Enrichment Service
   enrichment-service:
     build:
       context: ..
@@ -114,10 +117,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 4G
         reservations:
-          cpus: '1'
+          cpus: "1"
           memory: 2G
     environment:
       - ENVIRONMENT=production

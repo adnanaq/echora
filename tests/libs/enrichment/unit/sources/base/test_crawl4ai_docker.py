@@ -230,7 +230,7 @@ def test_align_results_reordered() -> None:
     assert aligned[1]["url"] == url_b
 
 
-def test_align_results_unicode_submitted_percent_encoded_returned() -> None:
+def test_align_results_unicode_matches_percent_encoded_result() -> None:
     """Playwright percent-encodes URLs; submitted Unicode must still match."""
     unicode_url = "https://myanimelist.net/character/270864/Broyé_Charlotte"
     encoded_url = "https://myanimelist.net/character/270864/Broy%C3%A9_Charlotte"
@@ -239,7 +239,7 @@ def test_align_results_unicode_submitted_percent_encoded_returned() -> None:
     assert result == [entry]
 
 
-def test_align_results_percent_encoded_submitted_unicode_returned() -> None:
+def test_align_results_percent_encoded_matches_unicode_result() -> None:
     """Symmetric: percent-encoded submitted URL matches Unicode result URL."""
     unicode_url = "https://myanimelist.net/character/152902/Brûlée_Charlotte"
     encoded_url = "https://myanimelist.net/character/152902/Br%C3%BBl%C3%A9e_Charlotte"
@@ -661,7 +661,7 @@ async def test_crawl_batch_urls_transient_retry_succeeds() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_urls_transient_retry_succeeds_on_third_attempt() -> None:
+async def test_crawl_batch_transient_retry_succeeds_on_third_attempt() -> None:
     transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
     recovered = {"url": URL, "success": True, "status_code": 200}
     with (
@@ -766,7 +766,7 @@ async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_transient_retry_hits_waf_triggers_recovery() -> None:
+async def test_crawl_batch_transient_retry_hits_waf_triggers_recovery() -> None:
     """Gap scenario: transient failure → retry returns 405 → WAF recovery → URL recovered."""
     transient = {
         "url": URL,
@@ -803,7 +803,7 @@ async def test_crawl_batch_urls_transient_retry_hits_waf_triggers_recovery() -> 
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_urls_transient_retry_hits_waf_recovery_fails() -> None:
+async def test_crawl_batch_transient_retry_hits_waf_recovery_fails() -> None:
     """Gap scenario: transient failure → retry returns 405 → WAF recovery times out → None."""
     transient = {
         "url": URL,

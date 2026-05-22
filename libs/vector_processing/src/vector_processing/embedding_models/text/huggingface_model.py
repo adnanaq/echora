@@ -71,16 +71,22 @@ class HuggingFaceModel(TextEmbeddingModel):
             # Generate embedding
             with torch.no_grad():
                 outputs = self.model(**inputs)
-                # Use CLS token or mean pooling
-                if hasattr(outputs, "last_hidden_state"):
-                    embeddings = outputs.last_hidden_state.mean(dim=1)
-                else:
-                    embeddings = outputs.pooler_output
 
-                # Normalize
+                # Attention-mask-weighted mean pooling.
+                # Simple .mean(dim=1) is wrong for padded batches: it averages
+                # real tokens together with zero-padded positions, biasing every
+                # embedding.  We weight by the attention mask so only real tokens
+                # contribute to the mean.
+                token_embeddings = outputs.last_hidden_state
+                attention_mask = inputs["attention_mask"]
+                mask = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                summed = (token_embeddings * mask).sum(dim=1)
+                counts = mask.sum(dim=1).clamp(min=1e-9)
+                embeddings = summed / counts
+
+                # Normalize for cosine similarity
                 embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
 
-                # Convert to list of lists
                 return cast(list[list[float]], embeddings.cpu().numpy().tolist())
 
         except Exception:

@@ -179,7 +179,7 @@ async def test_process_anime_vectors_structure(
 
 
 @pytest.mark.asyncio
-async def test_process_anime_vectors_includes_sparse_when_model_supports_it(
+async def test_sparse_vector_included_when_model_supports(
     mock_field_mapper,
     mock_text_processor,
     mock_vision_processor,
@@ -405,7 +405,7 @@ async def test_multiple_images_creates_multivector_matrix(
 
 
 @pytest.mark.asyncio
-async def test_character_anime_ids_empty_list_adds_current_anime(
+async def test_empty_anime_ids_adds_current_anime(
     mock_field_mapper, mock_text_processor, mock_vision_processor
 ):
     """Test that character with empty anime_ids gets current anime_id added."""
@@ -444,7 +444,7 @@ async def test_character_anime_ids_empty_list_adds_current_anime(
 
 
 @pytest.mark.asyncio
-async def test_character_anime_ids_missing_creates_list_with_current_anime(
+async def test_missing_anime_ids_initialized_with_current(
     mock_field_mapper, mock_text_processor, mock_vision_processor
 ):
     """Test that character with missing anime_ids gets initialized with current anime_id."""
@@ -484,7 +484,7 @@ async def test_character_anime_ids_missing_creates_list_with_current_anime(
 
 
 @pytest.mark.asyncio
-async def test_character_anime_ids_existing_list_merges_new_anime(
+async def test_existing_anime_ids_merges_new_anime(
     mock_field_mapper, mock_text_processor, mock_vision_processor
 ):
     """Test that character with existing anime_ids gets new anime_id appended."""
@@ -565,7 +565,7 @@ async def test_character_anime_ids_prevents_duplicates(
 
 
 @pytest.mark.asyncio
-async def test_character_anime_ids_preserves_order_and_adds_new(
+async def test_anime_ids_preserves_order_and_adds_new(
     mock_field_mapper, mock_text_processor, mock_vision_processor
 ):
     """Test that existing anime_ids order is preserved when adding new anime_id."""

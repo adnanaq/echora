@@ -1,7 +1,13 @@
 """Common library unit tests."""
 
 python_tests(
+    name="unit",
+    sources=[
+        "test_*.py",
+        "*_test.py",
+    ],
     dependencies=[
-        "//libs/common/src/common",
+        "//:reqs0#pytest",
+        "//libs/common/src/common:common",
     ],
 )

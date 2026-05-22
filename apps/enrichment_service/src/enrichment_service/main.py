@@ -15,11 +15,40 @@ import grpc
 from common.config import get_settings
 from enrichment_proto.v1 import enrichment_service_pb2_grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+from observability import setup_telemetry
 
 from .routes import EnrichmentRoutes
 from .runtime import build_runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _setup_observability(settings) -> None:
+    if not settings.observability.otel_enabled:
+        return
+
+    setup_telemetry(
+        service_name="echora-enrichment-service",
+        version=settings.service.api_version,
+        environment=settings.environment.value,
+        endpoint=settings.observability.otel_exporter_otlp_endpoint,
+        log_level=settings.service.log_level,
+        enable_logging=settings.observability.otel_enable_logging,
+        enable_tracing=settings.observability.otel_enable_tracing,
+        enable_metrics=settings.observability.otel_enable_metrics,
+        enable_grpc_server_instrumentation=(
+            settings.observability.otel_enable_grpc_server_instrumentation
+        ),
+        enable_grpc_client_instrumentation=(
+            settings.observability.otel_enable_grpc_client_instrumentation
+        ),
+        enable_aiohttp_client_instrumentation=(
+            settings.observability.otel_enable_aiohttp_client_instrumentation
+        ),
+        enable_redis_instrumentation=(
+            settings.observability.otel_enable_redis_instrumentation
+        ),
+    )
 
 
 def _register_sigterm_shutdown(
@@ -64,13 +93,22 @@ async def serve() -> None:
         None. This coroutine runs until the server receives termination.
     """
     settings = get_settings()
-    logging.basicConfig(
-        level=getattr(logging, settings.service.log_level),
-        format=settings.service.log_format,
-    )
+    # 1. Initialize Telemetry (MUST BE FIRST)
+    _setup_observability(settings)
 
     runtime = await build_runtime(settings)
-    server = grpc.aio.server()
+
+    # 2. Configure server with interceptors
+    interceptors = []
+    if (
+        settings.observability.otel_enabled
+        and settings.observability.otel_enable_grpc_server_instrumentation
+    ):
+        from observability import AioServerInterceptor
+
+        interceptors.append(AioServerInterceptor())
+
+    server = grpc.aio.server(interceptors=interceptors)
 
     servicer = EnrichmentRoutes(runtime=runtime)
     enrichment_service_pb2_grpc.add_EnrichmentServiceServicer_to_server(
@@ -98,6 +136,9 @@ async def serve() -> None:
     finally:
         logger.info("Shutting down enrichment_service gRPC server")
         await server.stop(grace=5)
+        from observability import stop_logging
+
+        stop_logging()
 
 
 if __name__ == "__main__":

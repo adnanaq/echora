@@ -13,6 +13,7 @@ import logging
 import grpc
 from common.config import get_settings
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
+from observability import setup_telemetry, stop_logging
 from vector_proto.v1 import vector_admin_pb2_grpc, vector_search_pb2_grpc
 
 from .routes import VectorAdminRoutes, VectorSearchRoutes
@@ -25,6 +26,31 @@ _SERVICE_NAMES = (
     "vector_service.v1.VectorAdminService",
     "vector_service.v1.VectorSearchService",
 )
+
+
+def _setup_observability(settings) -> None:
+    if not settings.observability.otel_enabled:
+        return
+
+    setup_telemetry(
+        service_name="echora-vector-service",
+        version=settings.service.api_version,
+        environment=settings.environment.value,
+        endpoint=settings.observability.otel_exporter_otlp_endpoint,
+        log_level=settings.service.log_level,
+        enable_logging=settings.observability.otel_enable_logging,
+        enable_tracing=settings.observability.otel_enable_tracing,
+        enable_metrics=settings.observability.otel_enable_metrics,
+        enable_grpc_server_instrumentation=(
+            settings.observability.otel_enable_grpc_server_instrumentation
+        ),
+        enable_grpc_client_instrumentation=(
+            settings.observability.otel_enable_grpc_client_instrumentation
+        ),
+        enable_aiohttp_client_instrumentation=(
+            settings.observability.otel_enable_aiohttp_client_instrumentation
+        ),
+    )
 
 
 async def _set_health_statuses(
@@ -63,13 +89,22 @@ async def serve() -> None:
     services and health checks, and blocks until termination.
     """
     settings = get_settings()
-    logging.basicConfig(
-        level=getattr(logging, settings.service.log_level),
-        format=settings.service.log_format,
-    )
+    # 1. Initialize Telemetry (MUST BE FIRST)
+    _setup_observability(settings)
 
     runtime = await build_runtime(settings)
-    server = grpc.aio.server()
+
+    # 2. Configure server with interceptors
+    interceptors = []
+    if (
+        settings.observability.otel_enabled
+        and settings.observability.otel_enable_grpc_server_instrumentation
+    ):
+        from observability import AioServerInterceptor
+
+        interceptors.append(AioServerInterceptor())
+
+    server = grpc.aio.server(interceptors=interceptors)
 
     admin_servicer = VectorAdminRoutes(runtime=runtime, settings=settings)
     search_servicer = VectorSearchRoutes(runtime=runtime)
@@ -105,7 +140,10 @@ async def serve() -> None:
         except Exception:
             logger.exception("Failed to publish NOT_SERVING during shutdown")
         await server.stop(grace=5)
+        if runtime.embedding_cache is not None:
+            await runtime.embedding_cache.close()
         await runtime.async_qdrant_client.close()
+        stop_logging()
 
 
 if __name__ == "__main__":

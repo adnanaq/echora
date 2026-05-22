@@ -78,7 +78,7 @@ def test_character_schema_name_targets_htitle() -> None:
     assert "htitle" in field["selector"]
 
 
-def test_character_schema_anime_roles_is_list_with_url_and_title() -> None:
+def test_character_schema_anime_roles_list_url_title() -> None:
     schema = _get_character_schema()
     field = next(f for f in schema["fields"] if f["name"] == "anime_roles")
     assert field["type"] == "list"
@@ -98,7 +98,7 @@ def test_character_schema_name_native_targets_infoblock_ja() -> None:
 # =============================================================================
 
 
-def test_ography_schema_entries_is_list_with_url_and_title() -> None:
+def test_ography_schema_entries_list_url_title() -> None:
     schema = _get_ography_schema()
     entries = next(f for f in schema["fields"] if f["name"] == "entries")
     assert entries["type"] == "list"
@@ -170,7 +170,7 @@ def test_post_process_favorites_none_stays_none(luffy_char_raw) -> None:
     assert _post_process_character(raw)["favorites"] is None
 
 
-def test_post_process_favorites_empty_string_is_none(luffy_char_raw) -> None:
+def test_post_process_favorites_empty_string_none(luffy_char_raw) -> None:
     raw = {**luffy_char_raw, "favorites": ""}
     assert _post_process_character(raw)["favorites"] is None
 
@@ -274,7 +274,7 @@ def test_build_character_favorites(luffy_char_processed) -> None:
     assert char.favorites == 678
 
 
-def test_build_character_description_placeholder_is_none(luffy_char_processed) -> None:
+def test_character_description_placeholder_none(luffy_char_processed) -> None:
     # Luffy's page has AniSearch placeholder text — must be nulled out
     char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
@@ -349,7 +349,7 @@ def test_build_character_attributes_populated(luffy_char_processed) -> None:
     assert len(char.attributes) > 0
 
 
-def test_build_character_empty_name_is_none(luffy_char_processed) -> None:
+def test_build_character_empty_name_none(luffy_char_processed) -> None:
     raw = {**luffy_char_processed, "name": ""}
     char = _build_character_from_raw(raw, "", _LUFFY_URL)
     assert char.name is None
@@ -736,7 +736,7 @@ async def test_fetch_anisearch_characters_uncached_crawl_succeeds(
     assert results[0]["name"] == "Monkey D. Luffy"
 
 
-async def test_fetch_anisearch_characters_uncached_crawl_empty_items_raw_stays_none(
+async def test_uncached_crawl_empty_items_stays_none(
     mocker,
 ) -> None:
     # empty items → raw_data[0] stays None → step 3 skips (covers `if raw is None: continue`)
@@ -764,7 +764,7 @@ async def test_fetch_anisearch_characters_uncached_crawl_empty_items_raw_stays_n
     assert results == [None]
 
 
-async def test_fetch_anisearch_characters_uncached_crawl_none_result_skipped(
+async def test_uncached_crawl_none_result_skipped(
     mocker,
 ) -> None:
     # crawl returns None for the result item → `if not result: continue`
@@ -818,7 +818,7 @@ async def test_fetch_anisearch_characters_uncached_crawl_4xx_skipped(mocker) -> 
     assert results == [None]
 
 
-async def test_fetch_anisearch_characters_uncached_crawl_3xx_logs_and_continues(
+async def test_uncached_crawl_3xx_logs_and_continues(
     mocker, luffy_char_raw
 ) -> None:
     # 3xx redirect in batch loop → debug log, still parses content

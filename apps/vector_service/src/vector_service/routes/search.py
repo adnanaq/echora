@@ -15,12 +15,19 @@ from typing import Any
 import grpc
 from common.grpc.error_details import build_error_details as error
 from google.protobuf import json_format
+from observability import registry
+from opentelemetry import trace
 from qdrant_db.contracts import SearchFilterCondition, SearchRequest, SparseVectorData
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
 
 logger = logging.getLogger(__name__)
+
+# Entity types that carry known cardinality.  Any value outside this set is
+# normalised to "unknown" before being used as a metric attribute, preventing
+# cardinality explosions if callers pass arbitrary free-text entity types.
+_KNOWN_ENTITY_TYPES = frozenset({"anime", "manga", "character", ""})
 
 
 class InvalidFiltersPayloadError(ValueError):
@@ -204,6 +211,9 @@ async def search(
         Search results or structured error payload.
     """
     del context
+    # AioServerInterceptor handles RPC-level tracing, duration, and error metrics.
+    # This handler records finer-grained embedding and search-quality signals.
+    current_span = trace.get_current_span()
     try:
         query_text = (
             request.query_text.strip() if request.HasField("query_text") else ""
@@ -238,7 +248,14 @@ async def search(
         entity_type = (
             request.entity_type.strip() if request.HasField("entity_type") else ""
         )
+        # Normalise entity_type to a bounded set of known values before using
+        # it as a metric attribute — prevents cardinality explosion.
+        safe_entity_type = (
+            entity_type if entity_type in _KNOWN_ENTITY_TYPES else "unknown"
+        )
         raw_limit = request.limit if request.HasField("limit") else 10
+
+        current_span.add_event("validation.complete")
 
         text_embedding: list[float] | None = None
         sparse_embedding: SparseVectorData | None = None
@@ -257,6 +274,9 @@ async def search(
                         retryable=True,
                     )
                 )
+            current_span.add_event(
+                "embedding.text.complete", {"embedding_dim": len(text_embedding)}
+            )
 
         image_embedding: list[float] | None = None
         if has_image:
@@ -274,6 +294,9 @@ async def search(
                         retryable=True,
                     )
                 )
+            current_span.add_event(
+                "embedding.image.complete", {"embedding_dim": len(image_embedding)}
+            )
 
         filter_conditions = _build_filter_conditions(filters)
         raw_hits = await runtime.qdrant_client.search(
@@ -286,6 +309,14 @@ async def search(
                 filters=filter_conditions,
             )
         )
+
+        result_count = len(raw_hits)
+        registry.SEARCH_RESULTS_COUNT.record(
+            result_count, {"entity_type": safe_entity_type}
+        )
+        if result_count == 0:
+            registry.SEARCH_EMPTY_RESULTS.add(1, {"entity_type": safe_entity_type})
+        current_span.add_event("search.complete", {"result_count": result_count})
 
         data = [
             vector_search_pb2.SearchData(

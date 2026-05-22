@@ -389,7 +389,7 @@ async def test_get_anime_characters_resolves_from_included():
 
 
 @pytest.mark.asyncio
-async def test_get_anime_characters_missing_included_yields_none_character():
+async def test_missing_included_yields_none_character():
     """When a character is not found in included[], media_char.character stays None."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -620,7 +620,7 @@ async def test_fetch_characters_returns_empty_when_no_characters():
 
 
 @pytest.mark.asyncio
-async def test_fetch_characters_maps_character_with_voices_and_animeography():
+async def test_fetch_characters_maps_voices_and_animeography():
     """Happy path: character mapped via character_from_kitsu."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -775,7 +775,7 @@ async def test_fetch_characters_writes_to_output_path(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_reuses_one_session_for_anime_and_episodes():
+async def test_fetch_all_reuses_one_session():
     """fetch_all should open a single cached session for anime + episodes."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -994,7 +994,7 @@ async def test_fetch_all_episodes_exception_yields_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_characters_exception_yields_empty_list():
+async def test_fetch_all_characters_exception_yields_empty():
     """fetch_characters raising inside gather → canonical_characters = []."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from enrichment.pipeline.enrichment_pipeline import ProgrammaticEnrichmentPipeline
+from enrichment.pipeline.enrichment_pipeline import EnrichmentPipeline
 
 
 def _require_data_list(database: dict[str, Any]) -> list[dict[str, Any]]:
@@ -178,7 +178,7 @@ async def run_pipeline_and_write_artifact(
     else:
         anime_data = get_anime_by_title(database, title or "")
 
-    async with ProgrammaticEnrichmentPipeline() as pipeline:
+    async with EnrichmentPipeline() as pipeline:
         result = await pipeline.enrich_anime(
             anime_data,
             agent_dir=agent_dir,

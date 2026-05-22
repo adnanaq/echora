@@ -10,6 +10,9 @@ import time
 from types import TracebackType
 from typing import Any, ClassVar
 
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
+
 from enrichment.sources.anidb.anidb_helper import AniDBHelper
 from enrichment.sources.anilist.anilist_helper import AniListHelper
 from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
@@ -22,6 +25,18 @@ from enrichment.sources.mal.mal_helper import MalHelper
 from .config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
+
+_tracer = otel_trace.get_tracer("echora.enrichment")
+_meter = otel_metrics.get_meter("echora.enrichment")
+_api_duration = _meter.create_histogram(
+    "echora_enrichment_api_duration_seconds",
+    unit="s",
+    description="External API fetch duration per service",
+)
+_api_requests = _meter.create_counter(
+    "echora_enrichment_api_requests_total",
+    description="Total external API fetch attempts by service and status",
+)
 
 
 class ApiFetcher:
@@ -135,6 +150,41 @@ class ApiFetcher:
 
         return results
 
+    async def _fetch_with_telemetry(self, service: str, coro: Any) -> Any:
+        """Wrap an API fetch coroutine with a child span and per-service metrics.
+
+        Records a CLIENT span named ``enrichment.api.<service>`` and increments
+        ``echora_enrichment_api_requests_total`` / ``echora_enrichment_api_duration_seconds``
+        regardless of whether the fetch succeeded, returned no data, or timed out.
+        """
+        with _tracer.start_as_current_span(
+            f"enrichment.api.{service}",
+            kind=otel_trace.SpanKind.CLIENT,
+            attributes={"api.service": service},
+        ) as span:
+            _start = time.perf_counter()
+            result: Any = None
+            try:
+                result = await coro
+            except Exception as exc:
+                span.set_status(otel_trace.StatusCode.ERROR, str(exc))
+                raise
+            else:
+                if result is None:
+                    span.set_status(
+                        otel_trace.StatusCode.ERROR,
+                        f"{service} returned no data",
+                    )
+                return result
+            finally:
+                _api_duration.record(
+                    time.perf_counter() - _start, {"service": service}
+                )
+                _api_requests.add(
+                    1,
+                    {"service": service, "status": "success" if result is not None else "error"},
+                )
+
     async def _fetch_service(
         self,
         name: str,
@@ -146,7 +196,9 @@ class ApiFetcher:
         """Generic fetcher for any registered service."""
         try:
             start = time.time()
-            result = await helper.fetch_all(ids, offline_data, temp_dir)
+            result = await self._fetch_with_telemetry(
+                name, helper.fetch_all(ids, offline_data, temp_dir)
+            )
             self.api_timings[name] = time.time() - start
         except Exception as e:
             logger.exception(f"API {name} fetch failed")

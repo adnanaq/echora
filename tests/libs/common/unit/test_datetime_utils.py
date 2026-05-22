@@ -56,7 +56,7 @@ class TestDetermineAnimeStatus:
         )
         assert status == AnimeStatus.FINISHED
 
-    def test_returns_finished_when_end_date_is_today(self):
+    def test_returns_finished_when_end_date_today(self):
         """Returns FINISHED when end_date is same as current date."""
         current = datetime(2024, 12, 20, 12, 0, 0, tzinfo=UTC)
         start = "2024-10-04"

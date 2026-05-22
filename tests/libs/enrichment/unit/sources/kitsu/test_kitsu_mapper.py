@@ -461,7 +461,7 @@ def test_strip_preamble_narrative_with_internal_double_spaces():
     assert result == "First sentence of narrative. Second sentence after double space."
 
 
-def test_strip_preamble_character_description_uses_strip_preamble():
+def test_character_description_strips_preamble():
     """character_from_kitsu strips preamble from description before storing."""
     preamble_desc = (
         "Name: Franky Age: 34 Height: 225 cm"

@@ -29,7 +29,7 @@ def test_helper_exposes_fetch_anime_not_fetch_anime_data():
     assert not hasattr(helper, "fetch_anime_data")
 
 
-def test_helper_exposes_fetch_characters_not_fetch_character_data():
+def test_exposes_fetch_characters_not_fetch_character_data():
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
     helper = AnimePlanetHelper()
@@ -56,7 +56,7 @@ async def test_fetch_anime_passes_www_url_to_crawler():
     mock_crawl.assert_awaited_once_with(_AP_ANIME_URL)
 
 
-async def test_fetch_anime_normalizes_non_www_url_before_passing_to_crawler():
+async def test_fetch_anime_normalizes_non_www_url():
     """Non-www AP URL is normalized to www before being passed to the crawler."""
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
@@ -267,7 +267,7 @@ async def test_context_manager_protocol():
         assert isinstance(helper, AnimePlanetHelper)
 
 
-async def test_context_manager_close_is_callable():
+async def test_context_manager_close_callable():
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
     helper = AnimePlanetHelper()
