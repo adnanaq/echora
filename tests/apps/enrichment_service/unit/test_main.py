@@ -40,6 +40,7 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
                     "otel_enable_grpc_server_instrumentation": True,
                     "otel_enable_grpc_client_instrumentation": True,
                     "otel_enable_aiohttp_client_instrumentation": True,
+                    "otel_enable_redis_instrumentation": False,
                 },
             )(),
             "environment": type("Env", (), {"value": "staging"})(),

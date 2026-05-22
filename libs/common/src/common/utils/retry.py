@@ -11,7 +11,15 @@ logger = logging.getLogger(__name__)
 
 _RETRYABLE_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
-from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
+try:
+    from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
+except ImportError:
+    # Fallback stubs for environments where qdrant_client is not installed.
+    class ApiException(Exception):  # type: ignore[no-redef]
+        pass
+
+    class ResponseHandlingException(Exception):  # type: ignore[no-redef]
+        pass
 
 
 def _extract_status_code(error: Exception) -> int | None:
