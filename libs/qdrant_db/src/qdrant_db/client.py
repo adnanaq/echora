@@ -548,6 +548,13 @@ class QdrantClient(VectorDBClient):
         """Create configured payload indexes for filterable metadata fields."""
         await self._collection_manager.setup_payload_indexes()
 
+    def _emit_telemetry(self, emit: Any, operation: str) -> None:
+        # Telemetry must never mask real exceptions or fail search paths.
+        try:
+            emit()
+        except Exception:
+            logger.debug("Telemetry emission failed for %s", operation, exc_info=True)
+
     async def _search_single_vector(
         self,
         vector_name: str,
@@ -581,8 +588,13 @@ class QdrantClient(VectorDBClient):
                 score_threshold=score_threshold,
         )
             if self._telemetry:
-                self._telemetry.DB_QUERY_DURATION.record(
-                    time.perf_counter() - _start, {"operation": "search_single_vector"}
+                _elapsed = time.perf_counter() - _start
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_QUERY_DURATION.record(
+                        _elapsed, {"operation": "search_single_vector"}
+                    ),
+                    "search_single_vector.duration",
                 )
             return [
                 SearchHit(
@@ -594,7 +606,11 @@ class QdrantClient(VectorDBClient):
             ]
         except Exception:
             if self._telemetry:
-                self._telemetry.DB_ERRORS.add(1, {"operation": "search_single_vector"})
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_single_vector"}),
+                    "search_single_vector.error",
+                )
             raise
 
     async def _search_fusion(
@@ -632,8 +648,13 @@ class QdrantClient(VectorDBClient):
                 score_threshold=score_threshold,
             )
             if self._telemetry:
-                self._telemetry.DB_QUERY_DURATION.record(
-                    time.perf_counter() - _start, {"operation": "search_fusion"}
+                _elapsed = time.perf_counter() - _start
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_QUERY_DURATION.record(
+                        _elapsed, {"operation": "search_fusion"}
+                    ),
+                    "search_fusion.duration",
                 )
             return [
                 SearchHit(
@@ -645,7 +666,11 @@ class QdrantClient(VectorDBClient):
             ]
         except Exception:
             if self._telemetry:
-                self._telemetry.DB_ERRORS.add(1, {"operation": "search_fusion"})
+                _tel = self._telemetry
+                self._emit_telemetry(
+                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_fusion"}),
+                    "search_fusion.error",
+                )
             raise
 
     async def search(self, request: SearchRequest) -> list[SearchHit]:
