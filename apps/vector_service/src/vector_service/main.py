@@ -13,7 +13,7 @@ import logging
 import grpc
 from common.config import get_settings
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
-from observability import setup_telemetry
+from observability import setup_telemetry, stop_logging
 from vector_proto.v1 import vector_admin_pb2_grpc, vector_search_pb2_grpc
 
 from .routes import VectorAdminRoutes, VectorSearchRoutes
@@ -143,8 +143,6 @@ async def serve() -> None:
         if runtime.embedding_cache is not None:
             await runtime.embedding_cache.close()
         await runtime.async_qdrant_client.close()
-        from observability import stop_logging
-
         stop_logging()
 
 
