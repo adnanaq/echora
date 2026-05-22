@@ -242,9 +242,11 @@ class VisionProcessor:
         uncached_positions: list[int] = []
 
         if self._cache is not None:
-            for i, path in enumerate(local_paths):
+            for _, path in enumerate(local_paths):
                 try:
-                    file_hashes.append(self._hash_file(path))
+                    file_hashes.append(
+                        await asyncio.to_thread(self._hash_file, path)
+                    )
                 except Exception:
                     file_hashes.append(None)
 
