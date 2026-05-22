@@ -25,6 +25,6 @@ datasources:
     jsonData:
       tracesToLogsV2:
         datasourceUid: loki
-        tags: ["service", "env"]
+        tags: ["service_name", "deployment_environment"]
       serviceMap:
         datasourceUid: prometheus

@@ -117,7 +117,7 @@
       ]
     },
     {
-      "type": "logs",
+      "type": "timeseries",
       "title": "Error Rate by Code",
       "gridPos": {
         "h": 10,

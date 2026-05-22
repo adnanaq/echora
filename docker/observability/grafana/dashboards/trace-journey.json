@@ -47,7 +47,7 @@
       ]
     },
     {
-      "type": "logs",
+      "type": "timeseries",
       "title": "RPC Latency P95 by Method",
       "gridPos": {
         "h": 12,
