@@ -398,9 +398,9 @@ async def test_update_payload_merge_and_overwrite(client: QdrantClient) -> None:
     )
     assert overwrite_result.successful == 1
 
-    payload = await client.get_by_id(doc_id, with_vectors=False)
-    assert payload is not None
-    assert payload.get("title") == "Overwritten"
+    result = await client.get_by_id(doc_id, with_vectors=False)
+    assert result is not None
+    assert result["payload"].get("title") == "Overwritten"
 
 
 @pytest.mark.asyncio
@@ -612,8 +612,8 @@ async def test_sparse_vector_empty_results(client: QdrantClient):
 @pytest.mark.asyncio
 async def test_collection_compatibility_with_sparse_vectors(client: QdrantClient):
     """Collection exposes configured sparse vectors."""
-    collection_info = await client.get_collection_info()
-    sparse_vectors = getattr(collection_info.config.params, "sparse_vectors", None)
+    collection_info = await client.get_stats()
+    sparse_vectors = collection_info.get("config", {}).get("params", {}).get("sparse_vectors")
     assert sparse_vectors is not None
     assert isinstance(sparse_vectors, dict)
     assert "text_sparse_vector" in sparse_vectors

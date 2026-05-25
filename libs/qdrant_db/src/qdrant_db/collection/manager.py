@@ -8,6 +8,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, PayloadSchemaType
 
 from qdrant_db.collection.schema_builder import (
+    _DISTANCE_MAPPING,
     build_optimizers_config,
     build_quantization_config,
     build_sparse_vector_config,
@@ -22,12 +23,6 @@ logger = logging.getLogger(__name__)
 
 class QdrantCollectionManager:
     """Owns all collection I/O: creation, deletion, compatibility checks, and indexing."""
-
-    _DISTANCE_MAPPING = {
-        "cosine": Distance.COSINE,
-        "euclid": Distance.EUCLID,
-        "dot": Distance.DOT,
-    }
 
     def __init__(
         self,
@@ -172,7 +167,7 @@ class QdrantCollectionManager:
                 "Collection uses single-vector layout but config expects named vectors"
             )
 
-        expected_distance = self._DISTANCE_MAPPING.get(
+        expected_distance = _DISTANCE_MAPPING.get(
             self._config.qdrant_distance_metric, Distance.COSINE
         )
         expected_multivectors = set(self._config.multivector_vectors)

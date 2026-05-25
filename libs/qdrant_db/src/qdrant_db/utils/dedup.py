@@ -1,11 +1,12 @@
 """Deduplication helpers used by strict batch update APIs."""
 
 from collections.abc import Callable, Hashable
-from typing import Literal, TypeVar
+from typing import TypeVar
+
+from qdrant_db.contracts import DedupPolicy
 
 T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)
-DedupPolicy = Literal["last-wins", "fail"]
 
 
 class DuplicateKeyError(ValueError):

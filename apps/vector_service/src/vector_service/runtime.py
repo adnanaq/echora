@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from common.config import Settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
+from qdrant_db.errors import ConfigurationError
 from vector_processing import (
     AnimeFieldMapper,
     EmbeddingCache,
@@ -37,6 +38,37 @@ class VectorRuntime:
     vision_processor: VisionProcessor
     embedding_manager: MultiVectorEmbeddingManager
     embedding_cache: EmbeddingCache | None
+
+
+def _validate_model_dimensions(
+    settings: Settings,
+    text_processor: TextProcessor,
+    vision_processor: VisionProcessor,
+) -> None:
+    """Assert model output dimensions match vector_names in config.
+
+    Raises:
+        ConfigurationError: If any model's embedding size differs from the
+            configured dimension for its primary vector name.
+    """
+    checks = (
+        (
+            settings.qdrant.primary_text_vector_name,
+            text_processor.model.embedding_size,
+        ),
+        (
+            settings.qdrant.primary_image_vector_name,
+            vision_processor.model.embedding_size,
+        ),
+    )
+    for vector_name, actual_dim in checks:
+        expected_dim = settings.qdrant.vector_names[vector_name]
+        if actual_dim != expected_dim:
+            raise ConfigurationError(
+                f"Embedding dimension mismatch for '{vector_name}': "
+                f"model produces {actual_dim}-dim vectors but config expects {expected_dim}. "
+                f"Update vector_names['{vector_name}'] or change the embedding model."
+            )
 
 
 async def build_runtime(settings: Settings) -> VectorRuntime:
@@ -100,6 +132,11 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
             vision_processor=vision_processor,
             field_mapper=field_mapper,
         )
+
+        # Verify model output dimensions match configured vector_names before
+        # any Qdrant I/O. Catches model/config drift (e.g. wrong IMAGE_EMBEDDING_MODEL
+        # env var) at the earliest possible moment — before collection init or writes.
+        _validate_model_dimensions(settings, text_processor, vision_processor)
 
         telemetry_registry = None
         if settings.observability.otel_enabled:

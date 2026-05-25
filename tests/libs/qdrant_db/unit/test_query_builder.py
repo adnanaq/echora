@@ -4,6 +4,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchAny,
+    MatchExcept,
     MatchValue,
     Range,
     SparseVector,
@@ -73,6 +74,72 @@ def test_build_filter_multiple_conditions() -> None:
     )
     assert isinstance(result, Filter)
     assert len(result.must) == 2
+
+
+def test_build_filter_ne_operator() -> None:
+    result = build_filter(
+        [SearchFilterCondition(field="status", operator="ne", value="CANCELLED")]
+    )
+    assert isinstance(result, Filter)
+    cond = result.must[0]
+    assert isinstance(cond, FieldCondition)
+    assert cond.key == "status"
+    assert isinstance(cond.match, MatchExcept)
+    assert cond.match.except_ == ["CANCELLED"]
+
+
+def test_build_filter_not_in_operator() -> None:
+    result = build_filter(
+        [SearchFilterCondition(field="type", operator="not_in", value=["MUSIC", "CM"])]
+    )
+    assert isinstance(result, Filter)
+    cond = result.must[0]
+    assert isinstance(cond, FieldCondition)
+    assert isinstance(cond.match, MatchExcept)
+    assert cond.match.except_ == ["MUSIC", "CM"]
+
+
+def test_build_filter_must_not_clause() -> None:
+    result = build_filter(
+        [
+            SearchFilterCondition(field="status", operator="eq", value="CANCELLED", clause="must_not"),
+        ]
+    )
+    assert isinstance(result, Filter)
+    assert result.must is None
+    assert result.should is None
+    assert len(result.must_not) == 1
+    cond = result.must_not[0]
+    assert isinstance(cond, FieldCondition)
+    assert cond.key == "status"
+
+
+def test_build_filter_should_clause() -> None:
+    result = build_filter(
+        [
+            SearchFilterCondition(field="type", operator="eq", value="TV", clause="should"),
+            SearchFilterCondition(field="type", operator="eq", value="MOVIE", clause="should"),
+        ]
+    )
+    assert isinstance(result, Filter)
+    assert result.must is None
+    assert result.must_not is None
+    assert len(result.should) == 2
+
+
+def test_build_filter_mixed_clauses() -> None:
+    result = build_filter(
+        [
+            SearchFilterCondition(field="year", operator="range", value={"gte": 2020}),
+            SearchFilterCondition(field="status", operator="ne", value="CANCELLED", clause="must_not"),
+            SearchFilterCondition(field="type", operator="eq", value="TV", clause="should"),
+            SearchFilterCondition(field="type", operator="eq", value="OVA", clause="should"),
+        ]
+    )
+    assert isinstance(result, Filter)
+    assert len(result.must) == 1
+    assert len(result.must_not) == 1
+    assert len(result.should) == 2
 
 
 # ---------------------------------------------------------------------------

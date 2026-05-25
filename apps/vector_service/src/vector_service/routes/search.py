@@ -1,6 +1,6 @@
 """Handle vector_service search RPC.
 
-This module parses search request filters, executes Qdrant search calls,
+This module validates typed filter conditions, executes Qdrant search calls,
 and maps success or failure states into proto response objects.
 """
 
@@ -14,10 +14,9 @@ from typing import Any
 
 import grpc
 from common.grpc.error_details import build_error_details as error
-from google.protobuf import json_format
 from observability import registry
 from opentelemetry import trace
-from qdrant_db.contracts import SearchFilterCondition, SearchRequest, SparseVectorData
+from qdrant_db.contracts import FilterClause, FilterOperator, SearchFilterCondition, SearchRequest, SparseVectorData
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
@@ -29,6 +28,24 @@ logger = logging.getLogger(__name__)
 # cardinality explosions if callers pass arbitrary free-text entity types.
 _KNOWN_ENTITY_TYPES = frozenset({"anime", "manga", "character", ""})
 
+# Maps proto FilterOperator enum values to qdrant_db contract operator strings.
+_OPERATOR_MAP: dict[int, FilterOperator] = {
+    vector_search_pb2.FILTER_OPERATOR_EQ: "eq",
+    vector_search_pb2.FILTER_OPERATOR_NE: "ne",
+    vector_search_pb2.FILTER_OPERATOR_IN: "in",
+    vector_search_pb2.FILTER_OPERATOR_NOT_IN: "not_in",
+    vector_search_pb2.FILTER_OPERATOR_RANGE: "range",
+}
+
+# Maps proto FilterClause enum values to qdrant_db contract clause strings.
+# UNSPECIFIED defaults to "must" — matches proto3 zero-value convention.
+_CLAUSE_MAP: dict[int, FilterClause] = {
+    vector_search_pb2.FILTER_CLAUSE_UNSPECIFIED: "must",
+    vector_search_pb2.FILTER_CLAUSE_MUST: "must",
+    vector_search_pb2.FILTER_CLAUSE_MUST_NOT: "must_not",
+    vector_search_pb2.FILTER_CLAUSE_SHOULD: "should",
+}
+
 
 class InvalidFiltersPayloadError(ValueError):
     """Raised when incoming gRPC filters cannot be represented safely."""
@@ -37,86 +54,98 @@ class InvalidFiltersPayloadError(ValueError):
         super().__init__(message)
 
 
-def _raise_invalid_filters() -> None:
+def _raise_invalid_filters(message: str = "Invalid filter payload.") -> None:
     """Raise the canonical invalid-filters exception.
 
     Raises:
         InvalidFiltersPayloadError: Always raised to signal invalid filters.
     """
-    raise InvalidFiltersPayloadError()
+    raise InvalidFiltersPayloadError(message)
 
 
-def _normalize_struct_numbers(value: Any) -> Any:
-    """Normalize numbers parsed from protobuf Struct payloads.
+def _proto_value_to_python(v: Any) -> Any:
+    """Convert a google.protobuf.Value to a native Python value.
 
-    Protobuf Struct uses floating-point representation for all numeric values.
-    This converts whole-number floats (for example `2006.0`) back to integers.
-
-    Args:
-        value: Parsed Struct value that may include nested lists and dicts.
-
-    Returns:
-        Normalized value with whole-number floats converted to integers.
-    """
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, dict):
-        return {k: _normalize_struct_numbers(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_normalize_struct_numbers(v) for v in value]
-    if isinstance(value, tuple):
-        return tuple(_normalize_struct_numbers(v) for v in value)
-    return value
-
-
-def _is_valid_filter_payload(filters: dict[str, Any]) -> bool:
-    """Return whether a filter payload shape is supported.
+    Handles all Value kinds: bool, number (int/float), string, list, struct.
+    Whole-number floats are converted to int to preserve type fidelity across
+    the protobuf boundary (protobuf encodes all numbers as float64).
 
     Args:
-        filters: Candidate filter payload to validate.
+        v: A google.protobuf.Value instance.
 
     Returns:
-        True when the payload only contains supported scalar/list/range shapes.
+        Equivalent Python scalar, list, or dict.
     """
-    for _key, value in filters.items():
-        if value is None:
-            continue
-
-        if isinstance(value, dict):
-            is_range = any(bound in value for bound in ("gte", "lte", "gt", "lt"))
-            if is_range:
-                continue
-            if "any" in value:
-                any_values = value["any"]
-                if not isinstance(any_values, list | tuple):
-                    return False
-                continue
-            return False
-
-        if isinstance(value, list | tuple):
-            continue
-
-        if isinstance(value, str | int | float | bool):
-            continue
-
-        return False
-    return True
+    kind = v.WhichOneof("kind")
+    if kind == "bool_value":
+        return v.bool_value
+    if kind == "number_value":
+        n = v.number_value
+        return int(n) if isinstance(n, float) and n.is_integer() else n
+    if kind == "string_value":
+        return v.string_value
+    if kind == "list_value":
+        return [_proto_value_to_python(item) for item in v.list_value.values]
+    if kind == "struct_value":
+        return {k: _proto_value_to_python(val) for k, val in v.struct_value.fields.items()}
+    return None
 
 
-def _clean_filter_payload(raw_filters: Any) -> dict[str, Any]:
-    """Normalize filter payload before forwarding to Qdrant.
+def _validate_filter_fields(
+    proto_conditions: Any,
+    allowed_fields: frozenset[str],
+) -> None:
+    """Reject any condition whose field is not in the indexed payload whitelist.
+
+    Filtering on non-indexed fields silently triggers full collection scans in
+    Qdrant. Rejecting them early surfaces misconfigured clients immediately.
 
     Args:
-        raw_filters: Raw parsed JSON object from request filters.
+        proto_conditions: Repeated FilterCondition from the gRPC request.
+        allowed_fields: Set of indexed payload field names from QdrantClient.
+
+    Raises:
+        InvalidFiltersPayloadError: When a condition references an unknown field.
+    """
+    for cond in proto_conditions:
+        if cond.field not in allowed_fields:
+            _raise_invalid_filters(
+                f"Field '{cond.field}' is not indexed and cannot be filtered."
+            )
+
+
+def _map_filter_conditions(
+    proto_conditions: Any,
+) -> list[SearchFilterCondition]:
+    """Map typed proto FilterCondition objects to SearchFilterCondition contracts.
+
+    Args:
+        proto_conditions: Repeated FilterCondition from the gRPC request.
 
     Returns:
-        Filter map supported by qdrant_db search helper.
-        This currently passes through valid dict payloads unchanged and acts as
-        a single extension point for future sanitization.
+        List of SearchFilterCondition ready for SearchRequest.
+
+    Raises:
+        InvalidFiltersPayloadError: When an operator is UNSPECIFIED.
     """
-    if not isinstance(raw_filters, dict):
-        return {}
-    return raw_filters
+    conditions: list[SearchFilterCondition] = []
+    for proto_cond in proto_conditions:
+        operator = _OPERATOR_MAP.get(proto_cond.operator)
+        if operator is None:
+            _raise_invalid_filters(
+                f"Unknown filter operator value: {proto_cond.operator}"
+            )
+        clause = _CLAUSE_MAP.get(proto_cond.clause, "must")
+        value = _proto_value_to_python(proto_cond.value)
+        conditions.append(
+            SearchFilterCondition(
+                field=proto_cond.field,
+                operator=operator,  # type: ignore[arg-type]
+                value=value,
+                clause=clause,
+            )
+        )
+    return conditions
 
 
 def _normalize_limit(raw_limit: int) -> int:
@@ -131,45 +160,6 @@ def _normalize_limit(raw_limit: int) -> int:
     if raw_limit <= 0:
         return 10
     return min(raw_limit, 100)
-
-
-def _build_filter_conditions(
-    filters: dict[str, Any] | None,
-) -> list[SearchFilterCondition]:
-    """Convert a flat filter dict into typed filter conditions.
-
-    Args:
-        filters: Dict of ``{field: value}`` where value may be a scalar,
-            list, or range dict with ``gte``/``lte``/``gt``/``lt`` keys.
-
-    Returns:
-        List of :class:`SearchFilterCondition` ready for ``SearchRequest``.
-    """
-    if not filters:
-        return []
-
-    conditions: list[SearchFilterCondition] = []
-    for field, value in filters.items():
-        if isinstance(value, dict):
-            if "any" in value:
-                conditions.append(
-                    SearchFilterCondition(
-                        field=field, operator="in", value=value["any"]
-                    )
-                )
-            else:
-                conditions.append(
-                    SearchFilterCondition(field=field, operator="range", value=value)
-                )
-        elif isinstance(value, list):
-            conditions.append(
-                SearchFilterCondition(field=field, operator="in", value=value)
-            )
-        else:
-            conditions.append(
-                SearchFilterCondition(field=field, operator="eq", value=value)
-            )
-    return conditions
 
 
 async def _encode_image_bytes(
@@ -228,21 +218,17 @@ async def search(
                 )
             )
 
-        filters: dict[str, Any] | None = None
-        if request.HasField("filters"):
-            invalid_filters = False
+        filter_conditions: list[SearchFilterCondition] = []
+        if request.filters:
             try:
-                parsed = json_format.MessageToDict(
-                    request.filters, preserving_proto_field_name=True
+                _validate_filter_fields(
+                    request.filters, runtime.qdrant_client.indexed_fields
                 )
-                normalized = _normalize_struct_numbers(parsed)
-                filters = _clean_filter_payload(normalized)
-                invalid_filters = not _is_valid_filter_payload(filters)
-            except (json_format.Error, TypeError, ValueError) as exc:
-                logger.debug("Filter parsing failed: %s", exc)
-                invalid_filters = True
-
-            if invalid_filters:
+                filter_conditions = _map_filter_conditions(request.filters)
+            except InvalidFiltersPayloadError:
+                raise
+            except Exception as exc:
+                logger.debug("Filter mapping failed: %s", exc)
                 _raise_invalid_filters()
 
         entity_type = (
@@ -298,7 +284,6 @@ async def search(
                 "embedding.image.complete", {"embedding_dim": len(image_embedding)}
             )
 
-        filter_conditions = _build_filter_conditions(filters)
         raw_hits = await runtime.qdrant_client.search(
             SearchRequest(
                 text_embedding=text_embedding,

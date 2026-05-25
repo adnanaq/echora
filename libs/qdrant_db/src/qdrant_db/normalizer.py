@@ -118,51 +118,6 @@ class VectorNormalizer:
             )
         return cast(list[float] | list[list[float]], vector_data)
 
-    def validate_vector_update(
-        self,
-        vector_name: str,
-        vector_data: list[float] | list[list[float]] | SparseVectorData,
-    ) -> None:
-        """Validate vector update payload against configured schema.
-
-        Args:
-            vector_name: Vector field to update.
-            vector_data: Single-vector or multivector payload.
-
-        Raises:
-            ValidationError: If name, type, or dimensions are invalid.
-        """
-        expected_dim = self._vector_names.get(vector_name)
-        if vector_name in self._sparse_vector_names:
-            self.to_sparse_vector_data(vector_data, vector_name)
-            return
-
-        if expected_dim is None:
-            raise ValidationError(f"Invalid vector name: {vector_name}")
-
-        is_multivector = vector_name in self._multivector_vectors
-
-        if is_multivector:
-            if not isinstance(vector_data, list) or len(vector_data) == 0:
-                raise ValidationError("Multivector data must be a non-empty list")
-            for idx, element in enumerate(vector_data):
-                if not is_float_vector(element):
-                    raise ValidationError(
-                        f"Multivector element {idx} is not a valid float vector"
-                    )
-                if len(element) != expected_dim:
-                    raise ValidationError(
-                        f"Multivector element {idx} dimension mismatch: expected {expected_dim}, got {len(element)}"
-                    )
-            return
-
-        if not is_float_vector(vector_data):
-            raise ValidationError("Vector data is not a valid float vector")
-        if len(vector_data) != expected_dim:
-            raise ValidationError(
-                f"Vector dimension mismatch: expected {expected_dim}, got {len(vector_data)}"
-            )
-
     def validate_payload_update(self, payload: dict[str, Any]) -> None:
         """Validate payload update dictionary.
 

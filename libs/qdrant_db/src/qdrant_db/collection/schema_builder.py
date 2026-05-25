@@ -216,8 +216,8 @@ def build_optimizers_config(config: QdrantConfig) -> OptimizersConfigDiff | None
     """
     try:
         return OptimizersConfigDiff(
-            default_segment_number=4,
-            indexing_threshold=20000,
+            default_segment_number=config.default_segment_number,
+            indexing_threshold=config.indexing_threshold,
             memmap_threshold=config.memory_mapping_threshold_mb * 1024,
         )
     except Exception:
@@ -237,7 +237,10 @@ def build_wal_config(config: QdrantConfig) -> WalConfigDiff | None:
     if not config.qdrant_enable_wal:
         return None
     try:
-        return WalConfigDiff(wal_capacity_mb=32, wal_segments_ahead=0)
+        return WalConfigDiff(
+            wal_capacity_mb=config.wal_capacity_mb,
+            wal_segments_ahead=config.wal_segments_ahead,
+        )
     except Exception:
         logger.exception("Failed to create WAL config")
         return None
