@@ -56,9 +56,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    # Build tooling
-    "grpcio-tools==1.78.0",
-
     # Testing dependencies
     # Note: pytest 8.4.1 is bundled with Pants, but we declare it explicitly
     # for version control and to allow BUILD files to reference it
@@ -66,11 +63,7 @@ dev = [
     "pytest-asyncio==1.0.0",  # Required plugin for async test support
     "httpx>=0.28.1",           # HTTP client for testing
     "pytest-mock==3.14.1",     # Required plugin for mocking
-
-    # Development dependencies
-    # Note: ty is specified in [dependency-groups] dev for uv/pdm compatibility
-    "ruff==0.14.10",
-    "types-requests>=2.32.0",
+    "grpcio-tools==1.78.0",    # Proto stub generation (referenced by scripts/BUILD)
 ]
 
 [tool.pytest.ini_options]

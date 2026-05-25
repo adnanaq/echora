@@ -8,7 +8,8 @@ from vector_db_interface.types import SearchHit as SearchHit
 DedupPolicy = Literal["last-wins", "fail"]
 PayloadUpdateMode = Literal["merge", "overwrite"]
 FusionMethod = Literal["rrf", "dbsf"]
-FilterOperator = Literal["eq", "in", "range"]
+FilterOperator = Literal["eq", "ne", "in", "not_in", "range"]
+FilterClause = Literal["must", "must_not", "should"]
 
 
 def _is_scalar_filter_value(value: Any) -> bool:
@@ -50,13 +51,21 @@ class SearchRange(BaseModel):
 
 
 class SearchFilterCondition(BaseModel):
-    """Explicit filter condition for Qdrant payload filtering."""
+    """Explicit filter condition for Qdrant payload filtering.
+
+    The ``clause`` field controls which logical group the condition belongs to:
+
+    - ``must`` (default) — AND logic; all must-conditions must match.
+    - ``must_not`` — NOT logic; points matching any must_not-condition are excluded.
+    - ``should`` — OR logic; at least one should-condition must match.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     field: str = Field(min_length=1)
     operator: FilterOperator
     value: Any
+    clause: FilterClause = "must"
 
     @model_validator(mode="after")
     def validate_value(self) -> "SearchFilterCondition":
@@ -68,16 +77,16 @@ class SearchFilterCondition(BaseModel):
         Raises:
             ValueError: If filter values do not match operator requirements.
         """
-        if self.operator == "eq":
+        if self.operator in ("eq", "ne"):
             if not _is_scalar_filter_value(self.value):
-                raise ValueError("eq filter value must be scalar")
+                raise ValueError(f"{self.operator} filter value must be scalar")
             return self
 
-        if self.operator == "in":
+        if self.operator in ("in", "not_in"):
             if not isinstance(self.value, list) or len(self.value) == 0:
-                raise ValueError("in filter value must be a non-empty list")
+                raise ValueError(f"{self.operator} filter value must be a non-empty list")
             if not all(_is_scalar_filter_value(item) for item in self.value):
-                raise ValueError("in filter values must be scalar")
+                raise ValueError(f"{self.operator} filter values must be scalar")
             return self
 
         if self.operator == "range":
@@ -347,24 +356,3 @@ class BatchOperationResult(BaseModel):
     duplicates_removed: int = 0
     errors: list[OperationErrorDetail] = Field(default_factory=list)
 
-
-class CollectionStats(BaseModel):
-    """Normalized collection statistics returned by get_stats().
-
-    Attributes:
-        collection_name: Name of the Qdrant collection.
-        total_documents: Exact point count from a count query.
-        vector_size: Primary text vector dimension.
-        distance_metric: Configured distance metric (e.g. ``cosine``).
-        points_count: Point count reported by collection info (may be approximate).
-        indexed_vectors_count: Count of indexed vectors from collection info.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    collection_name: str
-    total_documents: int
-    vector_size: int
-    distance_metric: str
-    points_count: int | None = None
-    indexed_vectors_count: int | None = None

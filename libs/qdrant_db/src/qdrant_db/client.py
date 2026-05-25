@@ -32,7 +32,6 @@ from qdrant_db.contracts import (
     BatchOperationResult,
     BatchPayloadUpdateItem,
     BatchVectorUpdateItem,
-    CollectionStats,
     DedupPolicy,
     PayloadUpdateMode,
     SearchFilterCondition,
@@ -119,6 +118,11 @@ class QdrantClient(VectorDBClient):
         return self._vector_size
 
     @property
+    def indexed_fields(self) -> frozenset[str]:
+        """Return the set of payload field names that have a Qdrant index."""
+        return frozenset(self.config.qdrant_indexed_payload_fields.keys())
+
+    @property
     def image_vector_size(self) -> int:
         """Return the primary image vector size."""
         return self._image_vector_size
@@ -187,10 +191,17 @@ class QdrantClient(VectorDBClient):
             return False
 
     async def get_stats(self) -> dict[str, Any]:
-        """Return normalized collection statistics.
+        """Return full collection statistics and schema.
+
+        Merges the complete Qdrant ``CollectionInfo`` response with local
+        config fields not present in the SDK response. The result includes
+        all nested config (HNSW, optimizer, WAL, quantization, payload schema,
+        vector and sparse vector definitions) alongside operational counts.
 
         Returns:
-            Dictionary generated from :class:`CollectionStats`.
+            Dictionary with all ``CollectionInfo`` fields plus
+            ``collection_name``, ``total_documents``, ``vector_size``, and
+            ``distance_metric``.
 
         Raises:
             PermanentQdrantError: If stats retrieval fails.
@@ -204,22 +215,19 @@ class QdrantClient(VectorDBClient):
                 count_filter=None,
                 exact=True,
             )
-            stats = CollectionStats(
-                collection_name=self.collection_name,
-                total_documents=count_result.count,
-                vector_size=self._vector_size,
-                distance_metric=self._distance_metric,
-                indexed_vectors_count=collection_info.indexed_vectors_count,
-                points_count=collection_info.points_count,
+            stats = collection_info.model_dump()
+            stats.update(
+                {
+                    "collection_name": self.collection_name,
+                    "total_documents": count_result.count,
+                    "vector_size": self._vector_size,
+                    "distance_metric": self._distance_metric,
+                }
             )
-            return stats.model_dump()
+            return stats
         except Exception as error:
             logger.exception("Failed to get stats")
             raise PermanentQdrantError("Failed to retrieve collection stats") from error
-
-    async def get_collection_info(self) -> Any:
-        """Return raw collection info object from Qdrant."""
-        return await self._async_client.get_collection(self.collection_name)
 
     async def scroll(
         self,
@@ -251,19 +259,28 @@ class QdrantClient(VectorDBClient):
         self,
         documents: list[VectorDocument],
         batch_size: int = 100,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ) -> BatchOperationResult:
-        """Upsert documents in batches.
+        """Upsert documents in batches with per-batch retry.
+
+        Each batch is retried independently on transient failures. If a batch
+        fails permanently after all retries, earlier batches are already
+        committed to Qdrant. Because upserts are idempotent, re-running the
+        full call is safe to recover from a partial commit.
 
         Args:
             documents: Documents with vectors/payload to upsert.
             batch_size: Number of points per upsert request.
+            max_retries: Retry attempts per batch for transient failures.
+            retry_delay: Initial backoff delay in seconds (doubles each retry).
 
         Returns:
             Batch operation summary.
 
         Raises:
             ValidationError: If ``batch_size`` is invalid.
-            PermanentQdrantError: If Qdrant upsert fails.
+            PermanentQdrantError: If any batch fails after all retries.
         """
         if batch_size <= 0:
             raise ValidationError("batch_size must be >= 1")
@@ -286,25 +303,33 @@ class QdrantClient(VectorDBClient):
                 )
             return normalized_vectors
 
-        try:
-            for start in range(0, len(documents), batch_size):
-                points = [
-                    PointStruct(
-                        id=doc.id,
-                        vector=cast(
-                            dict[str, Any], _normalize_point_vectors(doc.vectors)
-                        ),
-                        payload=doc.payload,
-                    )
-                    for doc in documents[start : start + batch_size]
-                ]
+        for start in range(0, len(documents), batch_size):
+            batch_points = [
+                PointStruct(
+                    id=doc.id,
+                    vector=cast(
+                        dict[str, Any], _normalize_point_vectors(doc.vectors)
+                    ),
+                    payload=doc.payload,
+                )
+                for doc in documents[start : start + batch_size]
+            ]
+
+            async def _upsert(pts: list[PointStruct] = batch_points) -> None:
                 await self._async_client.upsert(
                     collection_name=self.collection_name,
-                    points=points,
+                    points=pts,
                     wait=True,
                 )
-        except Exception as error:
-            raise PermanentQdrantError("Failed to upsert documents") from error
+
+            try:
+                await retry_with_backoff(
+                    operation=_upsert,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                )
+            except Exception as error:
+                raise PermanentQdrantError("Failed to upsert documents") from error
 
         return BatchOperationResult(
             total=len(documents),
@@ -354,9 +379,6 @@ class QdrantClient(VectorDBClient):
             str, dict[str, list[float] | list[list[float]] | SparseVector]
         ] = {}
         for update in deduplicated_updates:
-            self._normalizer.validate_vector_update(
-                update.vector_name, update.vector_data
-            )
             grouped.setdefault(update.point_id, {})[update.vector_name] = (
                 self._normalizer.normalize_vector_payload(
                     vector_name=update.vector_name,
@@ -485,14 +507,15 @@ class QdrantClient(VectorDBClient):
         point_id: str,
         with_vectors: bool = False,
     ) -> dict[str, Any] | None:
-        """Fetch payload for a single point id.
+        """Fetch a single point by ID, returning id, payload, and optionally vectors.
 
         Args:
             point_id: Point identifier.
-            with_vectors: Include vectors in underlying fetch request.
+            with_vectors: When ``True``, include vectors in the response.
 
         Returns:
-            Payload dictionary when found, else ``None``.
+            Dictionary with ``id``, ``payload``, and (if requested) ``vector``
+            when found, else ``None``.
         """
         points = await self._async_client.retrieve(
             collection_name=self.collection_name,
@@ -502,31 +525,14 @@ class QdrantClient(VectorDBClient):
         )
         if not points:
             return None
-        return dict(points[0].payload) if points[0].payload else {}
-
-    async def get_point(self, point_id: str) -> dict[str, Any] | None:
-        """Fetch raw point info with vector and payload.
-
-        Args:
-            point_id: Point identifier.
-
-        Returns:
-            Normalized point dictionary or ``None`` when missing.
-        """
-        points = await self._async_client.retrieve(
-            collection_name=self.collection_name,
-            ids=[point_id],
-            with_vectors=True,
-            with_payload=True,
-        )
-        if not points:
-            return None
         point = points[0]
-        return {
+        result: dict[str, Any] = {
             "id": str(point.id),
-            "vector": point.vector,
             "payload": dict(point.payload) if point.payload else {},
         }
+        if with_vectors:
+            result["vector"] = point.vector
+        return result
 
     async def clear_index(self) -> bool:
         """Delete and recreate the collection, returning ``True`` on success."""

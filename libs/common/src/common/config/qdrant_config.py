@@ -125,6 +125,27 @@ class QdrantConfig(BaseModel):
         description="Anime-optimized HNSW parameters per vector priority for similarity matching",
     )
 
+    # Optimizer
+    default_segment_number: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "Number of segments Qdrant maintains per collection. "
+            "More segments improve parallel indexing throughput; "
+            "fewer reduce merge overhead on small collections."
+        ),
+    )
+    indexing_threshold: int = Field(
+        default=20000,
+        ge=0,
+        description=(
+            "Minimum number of vectors in a segment before HNSW indexing starts. "
+            "Vectors below this threshold are searched by brute-force. "
+            "Lower values index sooner (higher RAM use); higher values defer indexing "
+            "until the segment is large enough to benefit."
+        ),
+    )
+
     # Memory & Storage
     qdrant_memory_mapping_threshold: int | None = Field(
         default=None, description="Memory mapping threshold in KB"
@@ -136,6 +157,24 @@ class QdrantConfig(BaseModel):
     qdrant_enable_wal: bool | None = Field(
         default=None, description="Enable Write-Ahead Logging"
     )
+    wal_capacity_mb: int = Field(
+        default=32,
+        ge=1,
+        description=(
+            "Maximum WAL segment size in MB before Qdrant rolls to a new segment. "
+            "Larger values reduce segment rotation frequency at the cost of more "
+            "disk space per uncommitted segment."
+        ),
+    )
+    wal_segments_ahead: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of WAL segments to pre-allocate ahead of the current write position. "
+            "0 disables pre-allocation (default). Higher values smooth write latency "
+            "spikes on slow disks by avoiding on-demand allocation during writes."
+        ),
+    )
 
     # Indexing
     qdrant_enable_payload_indexing: bool = Field(
@@ -145,21 +184,20 @@ class QdrantConfig(BaseModel):
         default={
             # Core searchable fields
             "id": "keyword",
+            "entity_type": "keyword",
             "anime_id": "keyword",
             "anime_ids": "keyword",
             "title": "keyword",
-            "title_text": "text",
             "type": "keyword",
             "status": "keyword",
-            "episodes": "integer",
             "rating": "keyword",
             "source_material": "keyword",
             "nsfw": "bool",
             # Categorical fields
             "genres": "keyword",
             "tags": "keyword",
-            "demographics": "text",
-            "content_warnings": "text",
+            "demographics": "keyword",
+            "content_warnings": "keyword",
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",
@@ -169,32 +207,19 @@ class QdrantConfig(BaseModel):
             # Statistics - MAL
             "statistics.mal.score": "float",
             "statistics.mal.scored_by": "integer",
-            "statistics.mal.members": "integer",
-            "statistics.mal.favorites": "integer",
-            "statistics.mal.rank": "integer",
-            "statistics.mal.popularity_rank": "integer",
             # Statistics - AniList
             "statistics.anilist.score": "float",
-            "statistics.anilist.favorites": "integer",
-            "statistics.anilist.popularity_rank": "integer",
             # Statistics - AniDB
             "statistics.anidb.score": "float",
             "statistics.anidb.scored_by": "integer",
             # Statistics - Anime-Planet
             "statistics.animeplanet.score": "float",
             "statistics.animeplanet.scored_by": "integer",
-            "statistics.animeplanet.rank": "integer",
             # Statistics - Kitsu
             "statistics.kitsu.score": "float",
-            "statistics.kitsu.members": "integer",
-            "statistics.kitsu.favorites": "integer",
-            "statistics.kitsu.rank": "integer",
-            "statistics.kitsu.popularity_rank": "integer",
             # Statistics - AnimeSchedule
             "statistics.animeschedule.score": "float",
             "statistics.animeschedule.scored_by": "integer",
-            "statistics.animeschedule.members": "integer",
-            "statistics.animeschedule.rank": "integer",
             # Aggregate score
             "score.arithmetic_mean": "float",
         },

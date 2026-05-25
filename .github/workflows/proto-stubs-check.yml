@@ -98,4 +98,3 @@ jobs:
             libs/common/src/shared_proto \
             apps/vector_service/src/vector_proto \
             apps/enrichment_service/src/enrichment_proto
-

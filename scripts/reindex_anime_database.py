@@ -207,9 +207,9 @@ async def main() -> None:
                     raise
 
                 # Verify results using wrapper methods
-                info = await client.get_collection_info()
+                info = await client.get_stats()
                 print("\n Final collection status:")
-                print(f"   Points: {info.points_count}")
+                print(f"   Points: {info['total_documents']}")
                 print(f"   Expected: {len(points)} points")
 
             else:

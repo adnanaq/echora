@@ -9,6 +9,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchAny,
+    MatchExcept,
     MatchValue,
     Prefetch,
     Range,
@@ -23,8 +24,53 @@ from qdrant_db.contracts import (
 )
 
 
+def _build_field_condition(condition: SearchFilterCondition) -> FieldCondition:
+    """Translate a single contract condition to a Qdrant FieldCondition.
+
+    Args:
+        condition: Typed filter condition.
+
+    Returns:
+        Qdrant field condition model.
+    """
+    if condition.operator == "eq":
+        return FieldCondition(
+            key=condition.field,
+            match=MatchValue(value=condition.value),
+        )
+
+    if condition.operator == "ne":
+        return FieldCondition(
+            key=condition.field,
+            match=MatchExcept(**{"except": [condition.value]}),
+        )
+
+    if condition.operator == "in":
+        return FieldCondition(
+            key=condition.field,
+            match=MatchAny(any=cast(list[Any], condition.value)),
+        )
+
+    if condition.operator == "not_in":
+        return FieldCondition(
+            key=condition.field,
+            match=MatchExcept(**{"except": cast(list[Any], condition.value)}),
+        )
+
+    # range
+    range_value = cast(SearchRange, condition.value)
+    return FieldCondition(
+        key=condition.field,
+        range=Range(**range_value.model_dump(exclude_none=True)),
+    )
+
+
 def build_filter(filters: list[SearchFilterCondition]) -> Filter | None:
     """Convert contract filter conditions into a Qdrant filter model.
+
+    Conditions are grouped by their ``clause`` field into ``must`` (AND),
+    ``must_not`` (NOT), and ``should`` (OR) buckets. Only non-empty buckets
+    are passed to Qdrant.
 
     Args:
         filters: Typed filter conditions.
@@ -35,39 +81,24 @@ def build_filter(filters: list[SearchFilterCondition]) -> Filter | None:
     if not filters:
         return None
 
-    conditions: list[FieldCondition] = []
+    must: list[FieldCondition] = []
+    must_not: list[FieldCondition] = []
+    should: list[FieldCondition] = []
+
     for condition in filters:
-        if condition.operator == "eq":
-            conditions.append(
-                FieldCondition(
-                    key=condition.field,
-                    match=MatchValue(value=condition.value),
-                )
-            )
-            continue
+        fc = _build_field_condition(condition)
+        if condition.clause == "must_not":
+            must_not.append(fc)
+        elif condition.clause == "should":
+            should.append(fc)
+        else:
+            must.append(fc)
 
-        if condition.operator == "in":
-            values = cast(list[Any], condition.value)
-            conditions.append(
-                FieldCondition(
-                    key=condition.field,
-                    match=MatchAny(any=values),
-                )
-            )
-            continue
-
-        if condition.operator == "range":
-            range_value = cast(SearchRange, condition.value)
-            conditions.append(
-                FieldCondition(
-                    key=condition.field,
-                    range=Range(**range_value.model_dump(exclude_none=True)),
-                )
-            )
-
-    if not conditions:
-        return None  # pragma: no cover
-    return Filter(must=cast(Any, conditions))
+    return Filter(
+        must=cast(Any, must) or None,
+        must_not=cast(Any, must_not) or None,
+        should=cast(Any, should) or None,
+    )
 
 
 def build_sparse_query(sparse_embedding: SparseVectorData) -> SparseVector:

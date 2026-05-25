@@ -11,6 +11,37 @@ service VectorSearchService {
   rpc Search(SearchRequest) returns (SearchResponse);
 }
 
+// Comparison operator for a filter condition.
+enum FilterOperator {
+  FILTER_OPERATOR_UNSPECIFIED = 0;
+  FILTER_OPERATOR_EQ = 1;
+  FILTER_OPERATOR_NE = 2;
+  FILTER_OPERATOR_IN = 3;
+  FILTER_OPERATOR_NOT_IN = 4;
+  FILTER_OPERATOR_RANGE = 5;
+}
+
+// Logical clause grouping for filter conditions.
+enum FilterClause {
+  // Defaults to MUST when not set.
+  FILTER_CLAUSE_UNSPECIFIED = 0;
+  FILTER_CLAUSE_MUST = 1;
+  FILTER_CLAUSE_MUST_NOT = 2;
+  FILTER_CLAUSE_SHOULD = 3;
+}
+
+// A single typed filter condition.
+message FilterCondition {
+  // Indexed payload field name (e.g. "status", "year", "genres").
+  string field = 1;
+  // Comparison operator.
+  FilterOperator operator = 2;
+  // Scalar, list, or range object depending on the operator.
+  google.protobuf.Value value = 3;
+  // Logical clause (default: MUST).
+  FilterClause clause = 4;
+}
+
 message SearchRequest {
   // Text query for semantic search (optional if image provided).
   optional string query_text = 1;
@@ -20,8 +51,8 @@ message SearchRequest {
   optional string entity_type = 3;
   // Maximum number of results to return (default: 10, max: 100).
   optional int32 limit = 4;
-  // Structured filter conditions for metadata-based filtering.
-  google.protobuf.Struct filters = 5;
+  // Typed filter conditions for metadata-based filtering.
+  repeated FilterCondition filters = 5;
 }
 
 message SearchData {

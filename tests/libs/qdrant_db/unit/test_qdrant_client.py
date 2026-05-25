@@ -21,7 +21,7 @@ from qdrant_db.contracts import (
     SearchRequest,
     SparseVectorData,
 )
-from qdrant_db.errors import DuplicateUpdateError
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
 from vector_db_interface import VectorDocument
 
 
@@ -275,7 +275,6 @@ async def test_update_payload_overwrite_uses_overwrite_operation(
     assert isinstance(operations[0], OverwritePayloadOperation)
 
 
-
 def test_search_filter_condition_range_validation() -> None:
     with pytest.raises(ValueError):
         SearchFilterCondition(field="score", operator="range", value={})
@@ -353,3 +352,155 @@ async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) 
     )
     assert len(results) == 1
     assert results[0].id == "anime-1"
+
+
+@pytest.mark.asyncio
+async def test_add_documents_batch_size_zero_raises(mock_client: QdrantClient) -> None:
+    with pytest.raises(ValidationError, match="batch_size must be >= 1"):
+        await mock_client.add_documents(
+            documents=[
+                VectorDocument(
+                    id="anime-1",
+                    vectors={"text_vector": [0.1] * 1024},
+                    payload={},
+                )
+            ],
+            batch_size=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_documents_retries_on_transient_failure(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    # First call raises a transient error; second succeeds.
+    async_mock.upsert.side_effect = [ConnectionError("temporary"), None]
+
+    result = await mock_client.add_documents(
+        documents=[
+            VectorDocument(
+                id="anime-1",
+                vectors={"text_vector": [0.1] * 1024},
+                payload={},
+            )
+        ],
+        max_retries=1,
+        retry_delay=0.0,
+    )
+
+    assert result.successful == 1
+    assert async_mock.upsert.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_documents_raises_permanent_after_all_retries(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.upsert.side_effect = ConnectionError("always fails")
+
+    with pytest.raises(PermanentQdrantError):
+        await mock_client.add_documents(
+            documents=[
+                VectorDocument(
+                    id="anime-1",
+                    vectors={"text_vector": [0.1] * 1024},
+                    payload={},
+                )
+            ],
+            max_retries=1,
+            retry_delay=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_entity_type_filter_appended(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5, entity_type="anime")
+    )
+
+    call = async_mock.query_points.call_args.kwargs
+    qdrant_filter = call["query_filter"]
+    assert qdrant_filter is not None
+    assert any(
+        getattr(c, "key", None) == "entity_type" for c in qdrant_filter.must
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_score_threshold_forwarded_to_query(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5, score_threshold=0.75)
+    )
+
+    call = async_mock.query_points.call_args.kwargs
+    assert call["score_threshold"] == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_none_when_not_found(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.retrieve.return_value = []
+
+    result = await mock_client.get_by_id("nonexistent-id")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_id_and_payload(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=None)
+    async_mock.retrieve.return_value = [fake_point]
+
+    result = await mock_client.get_by_id("abc")
+
+    assert result is not None
+    assert result["id"] == "abc"
+    assert result["payload"] == {"title": "Bebop"}
+    assert "vector" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_with_vectors_includes_vector(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    fake_vector = {"text_vector": [0.1, 0.2]}
+    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=fake_vector)
+    async_mock.retrieve.return_value = [fake_point]
+
+    result = await mock_client.get_by_id("abc", with_vectors=True)
+
+    assert result is not None
+    assert result["vector"] == fake_vector
+
+
+@pytest.mark.asyncio
+async def test_update_vectors_sparse_data_normalized(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.update_vectors.return_value = None
+
+    result = await mock_sparse_client.update_vectors(
+        updates=[
+            BatchVectorUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                vector_name="text_sparse_vector",
+                vector_data={"indices": [1, 3], "values": [0.8, 0.6]},
+            )
+        ]
+    )
+
+    assert result.successful == 1
+    call = async_mock.update_vectors.call_args.kwargs
+    points = call["points"]
+    assert isinstance(points[0].vector["text_sparse_vector"], SparseVector)
