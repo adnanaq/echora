@@ -10,8 +10,6 @@ on:
       - "libs/common/src/shared_proto/**"
       - "apps/vector_service/src/vector_proto/**"
       - "apps/enrichment_service/src/enrichment_proto/**"
-      - "scripts/BUILD"
-      - "pants.toml"
       - "pyproject.toml"
       - "uv.lock"
       - "buf.yaml"
@@ -25,8 +23,6 @@ on:
       - "libs/common/src/shared_proto/**"
       - "apps/vector_service/src/vector_proto/**"
       - "apps/enrichment_service/src/enrichment_proto/**"
-      - "scripts/BUILD"
-      - "pants.toml"
       - "pyproject.toml"
       - "uv.lock"
       - "buf.yaml"
@@ -43,11 +39,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
       - name: Install buf
         run: |
           BUF_VERSION="1.50.0"
@@ -58,13 +49,14 @@ jobs:
       - name: Lint proto files
         run: buf lint
 
-      - name: Restore Pants cache
-        uses: actions/cache@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          path: ~/.cache/pants
-          key: ${{ runner.os }}-pants-${{ hashFiles('pants.toml', 'pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pants-
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --group dev
 
       - name: Enforce anime model/proto co-change
         if: github.event_name == 'pull_request'
@@ -87,10 +79,10 @@ jobs:
           fi
 
       - name: Regenerate protobuf stubs
-        run: ./pants run scripts/generate-proto.py
+        run: uv run --group dev python scripts/generate-proto.py
 
       - name: Validate anime model/proto contract
-        run: ./pants run scripts/check_anime_model_proto_contract.py
+        run: uv run --group dev python scripts/check_anime_model_proto_contract.py
 
       - name: Fail on generated stub drift
         run: |
