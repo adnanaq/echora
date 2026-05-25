@@ -223,5 +223,6 @@ _bmad-output/
 .claude/commands/bmad/
 .claude/config/
 .claude/hooks/
+.claude/skills/
 
 .obsidian/

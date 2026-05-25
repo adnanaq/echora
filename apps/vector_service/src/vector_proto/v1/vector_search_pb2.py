@@ -26,19 +26,25 @@ from shared_proto.v1 import error_pb2 as shared__proto_dot_v1_dot_error__pb2
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16v1/vector_search.proto\x12\x11vector_service.v1\x1a\x1bshared_proto/v1/error.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xb8\x01\n\rSearchRequest\x12\x17\n\nquery_text\x18\x01 \x01(\tH\x00\x88\x01\x01\x12\r\n\x05image\x18\x02 \x01(\x0c\x12\x18\n\x0b\x65ntity_type\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x12\n\x05limit\x18\x04 \x01(\x05H\x02\x88\x01\x01\x12(\n\x07\x66ilters\x18\x05 \x01(\x0b\x32\x17.google.protobuf.StructB\r\n\x0b_query_textB\x0e\n\x0c_entity_typeB\x08\n\x06_limit\"H\n\nSearchData\x12\n\n\x02id\x18\x01 \x01(\t\x12\x18\n\x10similarity_score\x18\x02 \x01(\x01\x12\x14\n\x0cpayload_json\x18\x03 \x01(\t\"k\n\x0eSearchResponse\x12+\n\x04\x64\x61ta\x18\x01 \x03(\x0b\x32\x1d.vector_service.v1.SearchData\x12,\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails2d\n\x13VectorSearchService\x12M\n\x06Search\x12 .vector_service.v1.SearchRequest\x1a!.vector_service.v1.SearchResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16v1/vector_search.proto\x12\x11vector_service.v1\x1a\x1bshared_proto/v1/error.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xad\x01\n\x0f\x46ilterCondition\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\x33\n\x08operator\x18\x02 \x01(\x0e\x32!.vector_service.v1.FilterOperator\x12%\n\x05value\x18\x03 \x01(\x0b\x32\x16.google.protobuf.Value\x12/\n\x06\x63lause\x18\x04 \x01(\x0e\x32\x1f.vector_service.v1.FilterClause\"\xc3\x01\n\rSearchRequest\x12\x17\n\nquery_text\x18\x01 \x01(\tH\x00\x88\x01\x01\x12\r\n\x05image\x18\x02 \x01(\x0c\x12\x18\n\x0b\x65ntity_type\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x12\n\x05limit\x18\x04 \x01(\x05H\x02\x88\x01\x01\x12\x33\n\x07\x66ilters\x18\x05 \x03(\x0b\x32\".vector_service.v1.FilterConditionB\r\n\x0b_query_textB\x0e\n\x0c_entity_typeB\x08\n\x06_limit\"H\n\nSearchData\x12\n\n\x02id\x18\x01 \x01(\t\x12\x18\n\x10similarity_score\x18\x02 \x01(\x01\x12\x14\n\x0cpayload_json\x18\x03 \x01(\t\"k\n\x0eSearchResponse\x12+\n\x04\x64\x61ta\x18\x01 \x03(\x0b\x32\x1d.vector_service.v1.SearchData\x12,\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x1d.shared_proto.v1.ErrorDetails*\xb0\x01\n\x0e\x46ilterOperator\x12\x1f\n\x1b\x46ILTER_OPERATOR_UNSPECIFIED\x10\x00\x12\x16\n\x12\x46ILTER_OPERATOR_EQ\x10\x01\x12\x16\n\x12\x46ILTER_OPERATOR_NE\x10\x02\x12\x16\n\x12\x46ILTER_OPERATOR_IN\x10\x03\x12\x1a\n\x16\x46ILTER_OPERATOR_NOT_IN\x10\x04\x12\x19\n\x15\x46ILTER_OPERATOR_RANGE\x10\x05*{\n\x0c\x46ilterClause\x12\x1d\n\x19\x46ILTER_CLAUSE_UNSPECIFIED\x10\x00\x12\x16\n\x12\x46ILTER_CLAUSE_MUST\x10\x01\x12\x1a\n\x16\x46ILTER_CLAUSE_MUST_NOT\x10\x02\x12\x18\n\x14\x46ILTER_CLAUSE_SHOULD\x10\x03\x32\x64\n\x13VectorSearchService\x12M\n\x06Search\x12 .vector_service.v1.SearchRequest\x1a!.vector_service.v1.SearchResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'v1.vector_search_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_SEARCHREQUEST']._serialized_start=105
-  _globals['_SEARCHREQUEST']._serialized_end=289
-  _globals['_SEARCHDATA']._serialized_start=291
-  _globals['_SEARCHDATA']._serialized_end=363
-  _globals['_SEARCHRESPONSE']._serialized_start=365
-  _globals['_SEARCHRESPONSE']._serialized_end=472
-  _globals['_VECTORSEARCHSERVICE']._serialized_start=474
-  _globals['_VECTORSEARCHSERVICE']._serialized_end=574
+  _globals['_FILTEROPERATOR']._serialized_start=662
+  _globals['_FILTEROPERATOR']._serialized_end=838
+  _globals['_FILTERCLAUSE']._serialized_start=840
+  _globals['_FILTERCLAUSE']._serialized_end=963
+  _globals['_FILTERCONDITION']._serialized_start=105
+  _globals['_FILTERCONDITION']._serialized_end=278
+  _globals['_SEARCHREQUEST']._serialized_start=281
+  _globals['_SEARCHREQUEST']._serialized_end=476
+  _globals['_SEARCHDATA']._serialized_start=478
+  _globals['_SEARCHDATA']._serialized_end=550
+  _globals['_SEARCHRESPONSE']._serialized_start=552
+  _globals['_SEARCHRESPONSE']._serialized_end=659
+  _globals['_VECTORSEARCHSERVICE']._serialized_start=965
+  _globals['_VECTORSEARCHSERVICE']._serialized_end=1065
 # @@protoc_insertion_point(module_scope)

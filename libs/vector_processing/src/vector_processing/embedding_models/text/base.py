@@ -6,6 +6,8 @@ Defines the contract that all text embedding model implementations must follow.
 from abc import ABC, abstractmethod
 from typing import Any
 
+from vector_db_interface import SparseVectorData
+
 
 class TextEmbeddingModel(ABC):
     """Abstract base class for text embedding models.
@@ -62,6 +64,31 @@ class TextEmbeddingModel(ABC):
             True if multilingual support, False otherwise
         """
         return False
+
+    @property
+    def supports_sparse(self) -> bool:
+        """Check if this model can produce sparse (lexical) vectors.
+
+        Returns:
+            True when ``encode_with_sparse`` returns real sparse data.
+        """
+        return False
+
+    def encode_with_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVectorData | None]]:
+        """Encode texts to dense vectors; sparse is ``None`` for all entries.
+
+        Override in subclasses that produce native sparse output.
+
+        Args:
+            texts: Input texts.
+
+        Returns:
+            Tuple of ``(dense_list, sparse_list)`` where every sparse entry
+            is ``None``.
+        """
+        return self.encode(texts), [None] * len(texts)
 
     def get_model_info(self) -> dict[str, Any]:
         """Get comprehensive information about this text embedding model.

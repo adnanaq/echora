@@ -4,5 +4,6 @@ python_requirements(
     module_mapping={
         "open-clip-torch": ["open_clip"],
         "protobuf": ["google.protobuf"],
+        "flagembedding": ["FlagEmbedding"],
     },
 )

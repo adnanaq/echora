@@ -7,11 +7,18 @@ Supports multiple input methods: index, title search, or custom file.
 import argparse
 import asyncio
 import json
+import logging
+import os
 import sys
 from typing import Any, cast
 
-from enrichment.programmatic.enrichment_pipeline import (
-    ProgrammaticEnrichmentPipeline,
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+)
+
+from enrichment.pipeline.enrichment_pipeline import (
+    EnrichmentPipeline,
 )
 
 
@@ -72,7 +79,7 @@ async def main():
     """
     Orchestrates command-line parsing, selection of an anime entry from an offline JSON database, and runs the enrichment pipeline for that entry.
 
-    Parses CLI options (--file, --index, --title, --agent, --skip, --only), validates mutually exclusive and required arguments, loads the specified database file, selects an anime entry by index or title, and invokes ProgrammaticEnrichmentPipeline.enrich_anime with optional service filtering and agent directory. Prints progress, the selected entry summary, per-API success indicators, and total enrichment time. Exits the process with a non-zero status on argument validation failures or when the requested anime entry cannot be found.
+    Parses CLI options (--file, --index, --title, --agent, --skip, --only), validates mutually exclusive and required arguments, loads the specified database file, selects an anime entry by index or title, and invokes EnrichmentPipeline.enrich_anime with optional service filtering and agent directory. Prints progress, the selected entry summary, per-API success indicators, and total enrichment time. Exits the process with a non-zero status on argument validation failures or when the requested anime entry cannot be found.
     """
     parser = argparse.ArgumentParser(
         description="Run enrichment pipeline on anime from offline database",
@@ -85,21 +92,21 @@ Examples:
   python run_enrichment.py --file custom.json --index 5 # Use custom database file
 
   # Service filtering
-  python run_enrichment.py --title "Dandadan" --skip jikan anidb          # Skip slow services
+  python run_enrichment.py --title "Dandadan" --skip mal anidb          # Skip slow services
   python run_enrichment.py --title "Dandadan" --only anime_planet         # Only fetch anime_planet
 
   # Agent directory control
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1"   # Use existing agent directory
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1" --only anime_planet  # Combine with filtering
 
-Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
+Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animeschedule
         """,
     )
 
     parser.add_argument(
         "--file",
-        default="data/qdrant_storage/anime-offline-database.json",
-        help="Path to anime database JSON file (default: data/qdrant_storage/anime-offline-database.json)",
+        default="assets/seed_data/anime-offline-database.json",
+        help="Path to anime database JSON file (default: ./assets/seed_data/anime-offline-database.json)",
     )
     parser.add_argument(
         "--index", type=int, help="Index of anime entry in database (0-based)"
@@ -116,7 +123,7 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
         "--skip",
         nargs="+",
         metavar="SERVICE",
-        help="Skip specific services (e.g., --skip jikan anidb)",
+        help="Skip specific services (e.g., --skip mal anidb)",
     )
     parser.add_argument(
         "--only",
@@ -167,7 +174,7 @@ Available services: jikan, anilist, kitsu, anidb, anime_planet, anisearch, anime
     print(f"Status: {anime_data.get('status', 'Unknown')}")
     print(f"{'=' * 60}\n")
 
-    async with ProgrammaticEnrichmentPipeline() as pipeline:
+    async with EnrichmentPipeline() as pipeline:
         # Run enrichment with optional service filtering and agent directory
         result = await pipeline.enrich_anime(
             anime_data,

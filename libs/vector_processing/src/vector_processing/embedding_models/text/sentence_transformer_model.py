@@ -28,7 +28,10 @@ class SentenceTransformerModel(TextEmbeddingModel):
             self._embedding_size = cast(
                 int, self.model.get_sentence_embedding_dimension()
             )
-            self._max_length = self.model.max_seq_length
+            # max_seq_length can be None for some pipeline configurations; write the
+            # fallback back to the model so tokenize() enforces it via max_length=.
+            self._max_length = self.model.max_seq_length or 512
+            self.model.max_seq_length = self._max_length
 
             logger.info(f"Initialized Sentence Transformers model: {model_name}")
 
@@ -48,11 +51,15 @@ class SentenceTransformerModel(TextEmbeddingModel):
             List of embedding vectors
         """
         try:
-            # Generate embeddings
-            # sentence-transformers returns numpy array by default
-            embeddings = self.model.encode(texts)
+            # normalize_embeddings=True makes this backend consistent with the
+            # HuggingFace backend (which always L2-normalises before returning).
+            # batch_size=32 is explicit to cap memory on long input lists.
+            embeddings = self.model.encode(
+                texts,
+                batch_size=32,
+                normalize_embeddings=True,
+            )
 
-            # Convert to list of lists
             return cast(list[list[float]], embeddings.tolist())
 
         except Exception:

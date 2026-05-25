@@ -43,7 +43,9 @@ class TestSentenceTransformerModel:
 
         assert len(embeddings) == 2
         assert embeddings == [[0.1, 0.2], [0.3, 0.4]]
-        mock_sentence_transformer.encode.assert_called_with(texts)
+        mock_sentence_transformer.encode.assert_called_with(
+            texts, batch_size=32, normalize_embeddings=True
+        )
 
     def test_encode_failure(self, mock_sentence_transformer):
         """Test encoding failure handling."""

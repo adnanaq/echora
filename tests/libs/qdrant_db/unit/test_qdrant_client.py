@@ -1,433 +1,506 @@
-"""Unit tests for QdrantClient retry functionality using retry_with_backoff utility.
+"""Unit tests for strict-contract QdrantClient."""
 
-This test file uses TDD approach to verify that:
-1. update_single_point_vector uses retry_with_backoff correctly
-2. update_batch_point_vectors uses retry_with_backoff correctly
-3. Both methods maintain their existing functionality
-"""
-
-import asyncio
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 from common.config import get_settings
+from qdrant_client.models import (
+    OverwritePayloadOperation,
+    SetPayloadOperation,
+    SparseVector,
+)
 from qdrant_db import QdrantClient
+from qdrant_db.collection.manager import QdrantCollectionManager
+from qdrant_db.contracts import (
+    BatchPayloadUpdateItem,
+    BatchVectorUpdateItem,
+    SearchFilterCondition,
+    SearchRequest,
+    SparseVectorData,
+)
+from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
+from vector_db_interface import VectorDocument
 
 
-class TestUpdateSinglePointVectorRetry:
-    """Test suite for update_single_point_vector with retry functionality."""
+@pytest_asyncio.fixture
+async def mock_client() -> QdrantClient:
+    settings = get_settings()
+    mock_async_client = AsyncMock()
 
-    @pytest_asyncio.fixture
-    async def mock_client(self):
-        """Create a mock QdrantClient instance."""
-        settings = get_settings()
-        mock_async_client = AsyncMock()
-
-        # Mock _initialize_collection to avoid DB calls in unit tests
-        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
-            # Create client instance using async factory
-            client = await QdrantClient.create(
-                config=settings.qdrant,
-                async_qdrant_client=mock_async_client,
-            )
-
-        return client
-
-    @pytest.mark.asyncio
-    async def test_update_single_point_vector_success_first_attempt(self, mock_client):
-        """RED: Test successful update on first attempt uses retry utility."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock(return_value=None)
-
-        # Execute
-        result = await mock_client.update_single_point_vector(
-            point_id="550e8400-e29b-41d4-a716-446655440000",
-            vector_name="text_vector",
-            vector_data=[0.1] * 1024,
-        )
-
-        # Verify
-        assert result is True
-        assert mock_client.client.update_vectors.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_update_single_point_vector_retries_on_transient_error(
-        self, mock_client
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
     ):
-        """RED: Test that transient errors trigger retry using retry utility."""
-        # Setup - fail twice with transient errors, then succeed
-        mock_client.client.update_vectors = AsyncMock()
-        mock_client.client.update_vectors.side_effect = [
-            Exception("Connection timeout"),
-            Exception("Network error"),
-            None,  # Success on third attempt
-        ]
-
-        # Execute
-        result = await mock_client.update_single_point_vector(
-            point_id="550e8400-e29b-41d4-a716-446655440000",
-            vector_name="text_vector",
-            vector_data=[0.1] * 1024,
-            max_retries=3,
-            retry_delay=0.01,
+        client = await QdrantClient.create(
+            config=settings.qdrant,
+            async_qdrant_client=mock_async_client,
         )
 
-        # Verify
-        assert result is True
-        assert mock_client.client.update_vectors.call_count == 3
+    return client
 
-    @pytest.mark.asyncio
-    async def test_update_single_point_vector_fails_on_non_transient_error(
-        self, mock_client
+
+@pytest_asyncio.fixture
+async def mock_sparse_client() -> QdrantClient:
+    settings = get_settings()
+    sparse_config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "primary_sparse_vector_name": "text_sparse_vector",
+        },
+    )
+    mock_async_client = AsyncMock()
+
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
     ):
-        """RED: Test that non-transient errors fail immediately without retry."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock(
-            side_effect=ValueError("Invalid vector dimension")
+        client = await QdrantClient.create(
+            config=sparse_config,
+            async_qdrant_client=mock_async_client,
         )
 
-        # Execute
-        result = await mock_client.update_single_point_vector(
-            point_id="550e8400-e29b-41d4-a716-446655440000",
-            vector_name="text_vector",
-            vector_data=[0.1] * 1024,
-        )
-
-        # Verify - should fail and return False, only called once
-        assert result is False
-        assert mock_client.client.update_vectors.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_update_single_point_vector_max_retries_exceeded(self, mock_client):
-        """RED: Test that exceeding max retries returns False."""
-        # Setup - always fail with transient error
-        mock_client.client.update_vectors = AsyncMock(
-            side_effect=Exception("Connection timeout")
-        )
-
-        # Execute
-        result = await mock_client.update_single_point_vector(
-            point_id="550e8400-e29b-41d4-a716-446655440000",
-            vector_name="text_vector",
-            vector_data=[0.1] * 1024,
-            max_retries=2,
-            retry_delay=0.01,
-        )
-
-        # Verify - should fail after max_retries + 1 attempts
-        assert result is False
-        assert (
-            mock_client.client.update_vectors.call_count == 3
-        )  # 1 initial + 2 retries
-
-    @pytest.mark.asyncio
-    async def test_update_single_point_vector_validation_fails_no_retry(
-        self, mock_client
-    ):
-        """RED: Test that validation errors don't trigger retry."""
-        # Execute with invalid vector name
-        result = await mock_client.update_single_point_vector(
-            point_id="550e8400-e29b-41d4-a716-446655440000",
-            vector_name="invalid_vector",
-            vector_data=[0.1] * 1024,
-        )
-
-        # Verify - should fail validation, no retry attempted
-        assert result is False
-        assert mock_client.client.update_vectors.call_count == 0
+    return client
 
 
-class TestUpdateBatchPointVectorsRetry:
-    """Test suite for update_batch_point_vectors with retry functionality."""
-
-    @pytest_asyncio.fixture
-    async def mock_client(self):
-        """Create a mock QdrantClient instance."""
-        settings = get_settings()
-        mock_async_client = AsyncMock()
-
-        # Mock _initialize_collection to avoid DB calls in unit tests
-        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
-            client = await QdrantClient.create(
-                config=settings.qdrant,
-                async_qdrant_client=mock_async_client,
+@pytest.mark.asyncio
+async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(
+                id="anime-123",
+                payload={"title": "Naruto"},
+                score=0.91,
             )
-
-        return client
-
-    @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_success_first_attempt(self, mock_client):
-        """RED: Test successful batch update on first attempt."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock(return_value=None)
-
-        updates = [
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",
-                "vector_name": "text_vector",
-                "vector_data": [0.1] * 1024,
-            },
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440002",
-                "vector_name": "text_vector",
-                "vector_data": [0.2] * 1024,
-            },
         ]
+    )
 
-        # Execute
-        result = await mock_client.update_batch_point_vectors(
-            updates=updates,
-            dedup_policy="last-wins",
-        )
+    request = SearchRequest(text_embedding=[0.1] * 1024, limit=5)
+    results = await mock_client.search(request)
 
-        # Verify
-        assert result["success"] == 2
-        assert result["failed"] == 0
-        assert mock_client.client.update_vectors.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_retries_on_transient_error(
-        self, mock_client
-    ):
-        """RED: Test that batch update retries on transient errors."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock()
-        mock_client.client.update_vectors.side_effect = [
-            Exception("Connection timeout"),
-            Exception("Network unavailable"),
-            None,  # Success on third attempt
-        ]
-
-        updates = [
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",
-                "vector_name": "text_vector",
-                "vector_data": [0.1] * 1024,
-            },
-        ]
-
-        # Execute
-        result = await mock_client.update_batch_point_vectors(
-            updates=updates,
-            max_retries=3,
-            retry_delay=0.01,
-        )
-
-        # Verify
-        assert result["success"] == 1
-        assert result["failed"] == 0
-        assert mock_client.client.update_vectors.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_deduplication_still_works(
-        self, mock_client
-    ):
-        """RED: Test that deduplication logic is preserved."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock(return_value=None)
-
-        updates = [
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",
-                "vector_name": "text_vector",
-                "vector_data": [0.1] * 1024,
-            },
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",  # Duplicate
-                "vector_name": "text_vector",  # Duplicate
-                "vector_data": [0.2] * 1024,  # Different data (last-wins)
-            },
-        ]
-
-        # Execute
-        result = await mock_client.update_batch_point_vectors(
-            updates=updates,
-            dedup_policy="last-wins",
-        )
-
-        # Verify - should deduplicate to 1 update
-        assert result["duplicates_removed"] == 1
-        assert result["success"] == 1
-        assert mock_client.client.update_vectors.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_max_retries_exceeded(self, mock_client):
-        """RED: Test that batch update fails after max retries."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock(
-            side_effect=Exception("Connection timeout")
-        )
-
-        updates = [
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",
-                "vector_name": "text_vector",
-                "vector_data": [0.1] * 1024,
-            },
-        ]
-
-        # Execute
-        result = await mock_client.update_batch_point_vectors(
-            updates=updates,
-            max_retries=2,
-            retry_delay=0.01,
-        )
-
-        # Verify - should fail all updates
-        assert result["success"] == 0
-        assert result["failed"] == 1
-        assert mock_client.client.update_vectors.call_count == 3  # 1 + 2 retries
-
-    @pytest.mark.asyncio
-    async def test_update_batch_point_vectors_exponential_backoff(self, mock_client):
-        """RED: Test that retry uses exponential backoff."""
-        # Setup
-        mock_client.client.update_vectors = AsyncMock()
-        mock_client.client.update_vectors.side_effect = [
-            Exception("timeout"),
-            Exception("timeout"),
-            None,
-        ]
-
-        updates = [
-            {
-                "point_id": "550e8400-e29b-41d4-a716-446655440001",
-                "vector_name": "text_vector",
-                "vector_data": [0.1] * 1024,
-            },
-        ]
-
-        # Execute and measure time
-        start_time = asyncio.get_event_loop().time()
-
-        result = await mock_client.update_batch_point_vectors(
-            updates=updates,
-            max_retries=3,
-            retry_delay=0.1,
-        )
-
-        end_time = asyncio.get_event_loop().time()
-        elapsed = end_time - start_time
-
-        # Verify - first retry: 0.1s, second retry: 0.2s (exponential)
-        # Total should be at least 0.3s
-        assert elapsed >= 0.3
-        assert result["success"] == 1
+    assert len(results) == 1
+    assert results[0].id == "anime-123"
+    assert results[0].payload["title"] == "Naruto"
+    assert results[0].score == pytest.approx(0.91)
 
 
-class TestUnifiedSearch:
-    """Test suite for unified search method."""
+@pytest.mark.asyncio
+async def test_search_multivector_uses_prefetch_fusion(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
 
-    @pytest_asyncio.fixture
-    async def mock_qdrant_client(self):
-        """Create a mock QdrantClient instance for search tests."""
-        settings = get_settings()
-        mock_async_client = AsyncMock()
+    request = SearchRequest(
+        text_embedding=[0.1] * 1024,
+        image_embedding=[0.2] * 768,
+        limit=10,
+    )
+    await mock_client.search(request)
 
-        # Mock _initialize_collection to avoid DB calls in unit tests
-        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
-            client = await QdrantClient.create(
-                config=settings.qdrant,
-                async_qdrant_client=mock_async_client,
+    call = async_mock.query_points.call_args.kwargs
+    assert call["prefetch"]
+    assert call["query"] is not None
+
+
+@pytest.mark.asyncio
+async def test_search_sparse_only_uses_query_api(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(
+                id="anime-123",
+                payload={"title": "Naruto"},
+                score=0.83,
             )
+        ]
+    )
 
-        return client
+    request = SearchRequest(
+        sparse_embedding=SparseVectorData(indices=[1, 5], values=[0.7, 0.3]),
+        limit=5,
+    )
+    results = await mock_sparse_client.search(request)
 
-    @pytest.mark.asyncio
-    async def test_search_text_only(self, mock_qdrant_client):
-        """Test unified search with text embedding only."""
-        text_embedding = [0.1] * 1024
+    assert len(results) == 1
+    assert results[0].id == "anime-123"
+    call = async_mock.query_points.call_args.kwargs
+    assert call["using"] == "text_sparse_vector"
+    assert isinstance(call["query"], SparseVector)
 
-        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
-            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
 
-            await mock_qdrant_client.search(text_embedding=text_embedding)
+@pytest.mark.asyncio
+async def test_search_text_sparse_uses_prefetch_fusion(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
 
-            mock_search.assert_called_once()
-            call_args = mock_search.call_args
-            assert call_args.kwargs["vector_name"] == "text_vector"
+    request = SearchRequest(
+        text_embedding=[0.1] * 1024,
+        sparse_embedding=SparseVectorData(indices=[1, 4], values=[0.9, 0.2]),
+        limit=10,
+    )
+    await mock_sparse_client.search(request)
 
-    @pytest.mark.asyncio
-    async def test_search_image_only(self, mock_qdrant_client):
-        """Test unified search with image embedding only."""
-        image_embedding = [0.1] * 768
+    call = async_mock.query_points.call_args.kwargs
+    assert len(call["prefetch"]) == 2
+    assert call["query"] is not None
 
-        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
-            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
 
-            await mock_qdrant_client.search(image_embedding=image_embedding)
+@pytest.mark.asyncio
+async def test_add_documents_sparse_payload_converts_to_sparse_vector(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.upsert.return_value = None
 
-            mock_search.assert_called_once()
-            call_args = mock_search.call_args
-            assert call_args.kwargs["vector_name"] == "image_vector"
-
-    @pytest.mark.asyncio
-    async def test_search_multimodal(self, mock_qdrant_client):
-        """Test unified search with both text and image embeddings."""
-        text_embedding = [0.1] * 1024
-        image_embedding = [0.1] * 768
-
-        with patch.object(mock_qdrant_client, "search_multi_vector") as mock_search:
-            mock_search.return_value = [{"id": "test", "similarity_score": 0.9}]
-
-            await mock_qdrant_client.search(
-                text_embedding=text_embedding, image_embedding=image_embedding
+    result = await mock_sparse_client.add_documents(
+        documents=[
+            VectorDocument(
+                id="anime-123",
+                vectors={
+                    "text_vector": [0.1] * 1024,
+                    "text_sparse_vector": {"indices": [1, 5], "values": [0.9, 0.4]},
+                },
+                payload={"title": "Naruto", "entity_type": "anime"},
             )
+        ],
+        batch_size=1,
+    )
 
-            mock_search.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_with_entity_type_filter(self, mock_qdrant_client):
-        """Test unified search with entity type filter."""
-        text_embedding = [0.1] * 1024
-
-        with patch.object(mock_qdrant_client, "search_single_vector") as mock_search:
-            mock_search.return_value = []
-
-            await mock_qdrant_client.search(
-                text_embedding=text_embedding, entity_type="character"
-            )
-
-            call_args = mock_search.call_args
-            assert call_args.kwargs["filters"] is not None
-
-    @pytest.mark.asyncio
-    async def test_search_requires_embedding(self, mock_qdrant_client):
-        """Test that search raises error without any embedding."""
-        with pytest.raises(ValueError, match="At least one"):
-            await mock_qdrant_client.search()
+    assert result.successful == 1
+    call = async_mock.upsert.call_args.kwargs
+    points = call["points"]
+    assert len(points) == 1
+    assert isinstance(points[0].vector["text_sparse_vector"], SparseVector)
 
 
-class TestMultivectorConfiguration:
-    """Test suite for multivector collection configuration."""
+@pytest.mark.asyncio
+async def test_update_vectors_last_wins(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.update_vectors.return_value = None
 
-    @pytest_asyncio.fixture
-    async def mock_client(self):
-        """Create a mock QdrantClient instance."""
-        settings = get_settings()
-        mock_async_client = AsyncMock()
+    result = await mock_client.update_vectors(
+        updates=[
+            BatchVectorUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                vector_name="text_vector",
+                vector_data=[0.1] * 1024,
+            ),
+            BatchVectorUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                vector_name="text_vector",
+                vector_data=[0.2] * 1024,
+            ),
+        ],
+        dedup_policy="last-wins",
+    )
 
-        with patch.object(QdrantClient, "_initialize_collection", new=AsyncMock()):
-            client = await QdrantClient.create(
-                config=settings.qdrant,
-                async_qdrant_client=mock_async_client,
-            )
+    assert result.successful == 1
+    assert result.failed == 0
+    assert result.duplicates_removed == 1
+    assert async_mock.update_vectors.call_count == 1
 
-        return client
 
-    def test_create_multi_vector_config_with_multivector(self, mock_client):
-        """Test that image_vector gets multivector_config with MAX_SIM."""
-        from qdrant_client.models import MultiVectorComparator
-
-        config = mock_client._create_multi_vector_config()
-
-        # text_vector should NOT have multivector_config
-        assert config["text_vector"].multivector_config is None
-
-        # image_vector SHOULD have multivector_config with MAX_SIM
-        assert config["image_vector"].multivector_config is not None
-        assert (
-            config["image_vector"].multivector_config.comparator
-            == MultiVectorComparator.MAX_SIM
+@pytest.mark.asyncio
+async def test_update_vectors_duplicate_fail_raises(mock_client: QdrantClient) -> None:
+    with pytest.raises(DuplicateUpdateError):
+        await mock_client.update_vectors(
+            updates=[
+                BatchVectorUpdateItem(
+                    point_id="550e8400-e29b-41d4-a716-446655440000",
+                    vector_name="text_vector",
+                    vector_data=[0.1] * 1024,
+                ),
+                BatchVectorUpdateItem(
+                    point_id="550e8400-e29b-41d4-a716-446655440000",
+                    vector_name="text_vector",
+                    vector_data=[0.2] * 1024,
+                ),
+            ],
+            dedup_policy="fail",
         )
+
+
+@pytest.mark.asyncio
+async def test_update_payload_merge_uses_set_payload_operation(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.batch_update_points.return_value = None
+
+    result = await mock_client.update_payload(
+        updates=[
+            BatchPayloadUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                payload={"title": "A"},
+            )
+        ],
+        mode="merge",
+    )
+
+    assert result.successful == 1
+    call = async_mock.batch_update_points.call_args.kwargs
+    operations = call["update_operations"]
+    assert len(operations) == 1
+    assert isinstance(operations[0], SetPayloadOperation)
+
+
+@pytest.mark.asyncio
+async def test_update_payload_overwrite_uses_overwrite_operation(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.batch_update_points.return_value = None
+
+    result = await mock_client.update_payload(
+        updates=[
+            BatchPayloadUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                payload={"title": "A"},
+            )
+        ],
+        mode="overwrite",
+    )
+
+    assert result.successful == 1
+    call = async_mock.batch_update_points.call_args.kwargs
+    operations = call["update_operations"]
+    assert len(operations) == 1
+    assert isinstance(operations[0], OverwritePayloadOperation)
+
+
+def test_search_filter_condition_range_validation() -> None:
+    with pytest.raises(ValueError):
+        SearchFilterCondition(field="score", operator="range", value={})
+
+
+def test_search_request_requires_embedding() -> None:
+    with pytest.raises(ValueError):
+        SearchRequest(limit=10)
+
+
+def test_search_request_accepts_sparse_embedding() -> None:
+    request = SearchRequest(sparse_embedding=SparseVectorData(indices=[1], values=[0.2]), limit=5)
+    assert request.sparse_embedding is not None
+    assert request.sparse_embedding.indices == [1]
+
+
+def test_search_request_rejects_sparse_length_mismatch() -> None:
+    with pytest.raises(ValueError):
+        SearchRequest(
+            sparse_embedding=SparseVectorData(indices=[1, 2], values=[0.2]),
+            limit=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_initialize_collection_includes_sparse_vectors_config() -> None:
+    settings = get_settings()
+    sparse_config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "primary_sparse_vector_name": "text_sparse_vector",
+        },
+    )
+    mock_async_client = AsyncMock()
+    mock_async_client.get_collections = AsyncMock(
+        return_value=SimpleNamespace(collections=[])
+    )
+    mock_async_client.create_collection = AsyncMock(return_value=True)
+
+    client = QdrantClient(config=sparse_config, async_qdrant_client=mock_async_client)
+    await client.create_collection()
+
+    call = mock_async_client.create_collection.call_args.kwargs
+    assert call["sparse_vectors_config"] is not None
+    assert "text_sparse_vector" in call["sparse_vectors_config"]
+
+
+@pytest.mark.asyncio
+async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) -> None:
+    class _ExplodingTelemetry:
+        class DB_QUERY_DURATION:
+            @staticmethod
+            def record(*_a: object, **_kw: object) -> None:
+                raise RuntimeError("telemetry boom")
+
+        class DB_ERRORS:
+            @staticmethod
+            def add(*_a: object, **_kw: object) -> None:
+                raise RuntimeError("telemetry boom")
+
+    mock_client._telemetry = _ExplodingTelemetry()  # type: ignore[assignment]
+
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(
+        points=[
+            SimpleNamespace(id="anime-1", payload={"title": "Naruto"}, score=0.9)
+        ]
+    )
+
+    from qdrant_db.contracts import SearchRequest
+
+    results = await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=1)
+    )
+    assert len(results) == 1
+    assert results[0].id == "anime-1"
+
+
+@pytest.mark.asyncio
+async def test_add_documents_batch_size_zero_raises(mock_client: QdrantClient) -> None:
+    with pytest.raises(ValidationError, match="batch_size must be >= 1"):
+        await mock_client.add_documents(
+            documents=[
+                VectorDocument(
+                    id="anime-1",
+                    vectors={"text_vector": [0.1] * 1024},
+                    payload={},
+                )
+            ],
+            batch_size=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_documents_retries_on_transient_failure(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    # First call raises a transient error; second succeeds.
+    async_mock.upsert.side_effect = [ConnectionError("temporary"), None]
+
+    result = await mock_client.add_documents(
+        documents=[
+            VectorDocument(
+                id="anime-1",
+                vectors={"text_vector": [0.1] * 1024},
+                payload={},
+            )
+        ],
+        max_retries=1,
+        retry_delay=0.0,
+    )
+
+    assert result.successful == 1
+    assert async_mock.upsert.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_add_documents_raises_permanent_after_all_retries(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.upsert.side_effect = ConnectionError("always fails")
+
+    with pytest.raises(PermanentQdrantError):
+        await mock_client.add_documents(
+            documents=[
+                VectorDocument(
+                    id="anime-1",
+                    vectors={"text_vector": [0.1] * 1024},
+                    payload={},
+                )
+            ],
+            max_retries=1,
+            retry_delay=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_entity_type_filter_appended(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5, entity_type="anime")
+    )
+
+    call = async_mock.query_points.call_args.kwargs
+    qdrant_filter = call["query_filter"]
+    assert qdrant_filter is not None
+    assert any(
+        getattr(c, "key", None) == "entity_type" for c in qdrant_filter.must
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_score_threshold_forwarded_to_query(
+    mock_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5, score_threshold=0.75)
+    )
+
+    call = async_mock.query_points.call_args.kwargs
+    assert call["score_threshold"] == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_none_when_not_found(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.retrieve.return_value = []
+
+    result = await mock_client.get_by_id("nonexistent-id")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_id_and_payload(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=None)
+    async_mock.retrieve.return_value = [fake_point]
+
+    result = await mock_client.get_by_id("abc")
+
+    assert result is not None
+    assert result["id"] == "abc"
+    assert result["payload"] == {"title": "Bebop"}
+    assert "vector" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_with_vectors_includes_vector(mock_client: QdrantClient) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    fake_vector = {"text_vector": [0.1, 0.2]}
+    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=fake_vector)
+    async_mock.retrieve.return_value = [fake_point]
+
+    result = await mock_client.get_by_id("abc", with_vectors=True)
+
+    assert result is not None
+    assert result["vector"] == fake_vector
+
+
+@pytest.mark.asyncio
+async def test_update_vectors_sparse_data_normalized(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.update_vectors.return_value = None
+
+    result = await mock_sparse_client.update_vectors(
+        updates=[
+            BatchVectorUpdateItem(
+                point_id="550e8400-e29b-41d4-a716-446655440000",
+                vector_name="text_sparse_vector",
+                vector_data={"indices": [1, 3], "values": [0.8, 0.6]},
+            )
+        ]
+    )
+
+    assert result.successful == 1
+    call = async_mock.update_vectors.call_args.kwargs
+    points = call["points"]
+    assert isinstance(points[0].vector["text_sparse_vector"], SparseVector)

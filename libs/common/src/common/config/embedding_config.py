@@ -8,8 +8,8 @@ class EmbeddingConfig(BaseModel):
 
     # Text Embedding
     text_embedding_provider: str = Field(
-        default="huggingface",
-        description="Text embedding provider: fastembed, huggingface, sentence-transformers",
+        default="flagembedding",
+        description="Text embedding provider: flagembedding, fastembed, huggingface, sentence-transformers",
     )
     text_embedding_model: str = Field(
         default="BAAI/bge-m3", description="Modern text embedding model name"
@@ -69,11 +69,37 @@ class EmbeddingConfig(BaseModel):
         description="Maximum concurrent embedding tasks per process",
     )
 
+    # ==================== Reranking Configuration ====================
+
+    reranking_enabled: bool = Field(
+        default=False,
+        description="Enable cross-encoder reranking for search results",
+    )
+    reranking_provider: str = Field(
+        default="sentence-transformers",
+        description="Reranking provider (currently only sentence-transformers)",
+    )
+    reranking_model: str = Field(
+        default="BAAI/bge-reranker-v2-m3",
+        description="Cross-encoder model for reranking",
+    )
+    reranking_batch_size: int = Field(
+        default=32,
+        ge=1,
+        le=256,
+        description="Batch size for reranking inference",
+    )
+
     @field_validator("text_embedding_provider")
     @classmethod
     def validate_text_provider(cls, v: str) -> str:
         """Validate text embedding provider."""
-        valid_providers = ["fastembed", "huggingface", "sentence-transformers"]
+        valid_providers = [
+            "flagembedding",
+            "fastembed",
+            "huggingface",
+            "sentence-transformers",
+        ]
         if v.lower() not in valid_providers:
             raise ValueError(
                 f"Text embedding provider must be one of: {valid_providers}"
@@ -107,4 +133,13 @@ class EmbeddingConfig(BaseModel):
         valid_sizes = ["small", "base", "large"]
         if v.lower() not in valid_sizes:
             raise ValueError(f"BGE model size must be one of: {valid_sizes}")
+        return v.lower()
+
+    @field_validator("reranking_provider")
+    @classmethod
+    def validate_reranking_provider(cls, v: str) -> str:
+        """Validate reranking provider."""
+        valid = ["sentence-transformers"]
+        if v.lower() not in valid:
+            raise ValueError(f"reranking_provider must be one of: {valid}")
         return v.lower()

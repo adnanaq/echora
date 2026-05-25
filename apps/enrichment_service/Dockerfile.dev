@@ -1,45 +1,82 @@
-# Development Dockerfile for enrichment_service
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.6
+# =============================================================================
+# Enrichment Service — development image (uv multi-stage)
+#
+# Build:  docker compose -f docker/docker-compose.dev.yml build enrichment-service
+# Run:    docker compose -f docker/docker-compose.dev.yml up -d enrichment-service
+#
+# No Pants step required. BuildKit caches the dependency layer separately from
+# source so rebuilds after a code change take ~5-10 s instead of 10-15 min.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — install Python dependencies
+# Only re-runs when pyproject.toml / uv.lock change, not on source edits.
+# -----------------------------------------------------------------------------
+FROM python:3.13-slim AS deps
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.18 /uv /usr/local/bin/uv
+
+WORKDIR /build
+
+COPY pyproject.toml uv.lock ./
+
+# Shared lockfile includes torch for vector-service; install CPU-only torch
+# first so uv does not pull the 4+ GB CUDA stack when resolving deps.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv export --frozen --no-dev --no-hashes --no-annotate \
+        | grep -vE "^(torch|triton|nvidia-|#)" > /tmp/reqs-cpu.txt \
+ && uv venv .venv \
+ && uv pip install --python .venv/bin/python \
+        torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+ && uv pip install --python .venv/bin/python -r /tmp/reqs-cpu.txt
+
+# -----------------------------------------------------------------------------
+# Stage 2 — runtime image
+# -----------------------------------------------------------------------------
+FROM python:3.13-slim AS app
+
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && set -eux; \
+       arch="${TARGETARCH:-amd64}"; \
+       case "$arch" in \
+         amd64) probe_arch="amd64"; probe_sha256="8302d54fc41d4ffbfea6871b6a04584265d5eabbe738aee2966f9a574b6f17d1" ;; \
+         arm64) probe_arch="arm64"; probe_sha256="8ebe934e7cf29a65ca31d671a97949467fba6977d656b5e6d6c40902ae7402f6" ;; \
+         *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
+       esac; \
+       curl -fsSL -o /usr/local/bin/grpc_health_probe \
+         "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
+       echo "${probe_sha256}  /usr/local/bin/grpc_health_probe" | sha256sum -c -; \
+       chmod +x /usr/local/bin/grpc_health_probe
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=deps /build/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
-ARG TARGETARCH
-RUN set -eux; \
-    arch="${TARGETARCH:-amd64}"; \
-    case "$arch" in \
-      amd64) probe_arch="amd64"; probe_sha256="8302d54fc41d4ffbfea6871b6a04584265d5eabbe738aee2966f9a574b6f17d1" ;; \
-      arm64) probe_arch="arm64"; probe_sha256="8ebe934e7cf29a65ca31d671a97949467fba6977d656b5e6d6c40902ae7402f6" ;; \
-      *) echo "Unsupported arch for grpc_health_probe: $arch"; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /usr/local/bin/grpc_health_probe \
-      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.37/grpc_health_probe-linux-${probe_arch}"; \
-    echo "${probe_sha256}  /usr/local/bin/grpc_health_probe" | sha256sum -c -; \
-    chmod +x /usr/local/bin/grpc_health_probe
+COPY libs/common/src/              /app/libs/common/src/
+COPY libs/observability/src/       /app/libs/observability/src/
+COPY libs/http_cache/src/          /app/libs/http_cache/src/
+COPY libs/enrichment/src/          /app/libs/enrichment/src/
+COPY apps/enrichment_service/src/  /app/apps/enrichment_service/src/
 
-COPY apps.enrichment_service/enrichment_service.pex /app/enrichment_service.pex
+ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src"
 
-RUN groupadd --gid 1000 appuser && \
-    useradd --uid 1000 --gid appuser --no-create-home appuser && \
-    chown -R appuser:appuser /app
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --create-home appuser \
+    && chown -R appuser:appuser /app
+
 USER appuser
 
-ENV PYTHONUNBUFFERED=1
-ENV ENVIRONMENT=development
+ENV PYTHONUNBUFFERED=1 \
+    ENVIRONMENT=development
 
-EXPOSE 8010
+EXPOSE 8002
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD grpc_health_probe -addr=localhost:8010 || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD grpc_health_probe -addr=localhost:8002 || exit 1
 
-# Development workflow:
-# PEX files are self-contained archives - volume mounts won't override the code inside.
-# To see code changes:
-#   1. Rebuild the PEX: pants package apps/enrichment_service:enrichment-service-dev
-#   2. Rebuild the image: docker compose build enrichment-service
-#   3. Restart the container: docker compose up -d enrichment-service
-
-ENTRYPOINT ["/app/enrichment_service.pex"]
+ENTRYPOINT ["python", "-m", "enrichment_service.main"]

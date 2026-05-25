@@ -124,7 +124,7 @@ class EnrichmentValidator:
     # Objects that should be OMITTED when empty
     OMIT_EMPTY_OBJECTS = {
         "images",
-        "external_links",
+        "external_sources",
         "staff_data",
         "aired_dates",
         "broadcast",
@@ -132,7 +132,7 @@ class EnrichmentValidator:
         "hiatus",
         "score",
         "episode_overrides",
-        "popularity_trends",
+        "character_pages",
     }
 
     # Scalar fields that should be OMITTED when null/empty
@@ -309,7 +309,7 @@ class EnrichmentValidator:
             "name_variations",
             "nicknames",
             "images",
-            "character_traits",
+            "traits",
             "sources",
         }
         char_empty_objects = {"character_ids"}
@@ -379,7 +379,7 @@ class EnrichmentValidator:
         issues = []
 
         # Check top-level staff_data empty collections
-        staff_empty_collections = {"licensors"}
+        staff_empty_collections = {"studios", "producers"}
         for field in staff_empty_collections:
             if (
                 field in staff_data
@@ -754,7 +754,7 @@ class EnrichmentValidator:
                     "name_variations",
                     "nicknames",
                     "images",
-                    "character_traits",
+                    "traits",
                 }:
                     if (
                         field in char
@@ -799,7 +799,7 @@ class EnrichmentValidator:
             staff_data = fixed_entry["staff_data"]
 
             # Remove empty collections from top-level staff_data
-            for field in ["licensors"]:
+            for field in ["studios", "producers"]:
                 if (
                     field in staff_data
                     and isinstance(staff_data[field], list)

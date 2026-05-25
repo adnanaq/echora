@@ -211,7 +211,7 @@ class TestGetCacheConfig:
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("cache_enabled",) for error in errors)
 
-    def test_get_cache_config_storage_type_is_redis(self) -> None:
+    def test_get_cache_config_storage_type_redis(self) -> None:
         """Test that storage_type is always 'redis' (hardcoded, not configurable)."""
         get_cache_config.cache_clear()
         config = get_cache_config()

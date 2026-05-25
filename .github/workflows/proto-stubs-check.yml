@@ -46,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install buf
         run: |
@@ -123,4 +123,3 @@ jobs:
             libs/common/src/shared_proto \
             apps/vector_service/src/vector_proto \
             apps/enrichment_service/src/enrichment_proto
-

@@ -103,6 +103,7 @@ async def health(
         Health state and compact database payload for readiness checks.
     """
     del request, context
+    # The AioServerInterceptor handles tracing, duration, and metrics.
     try:
         db_healthy = await runtime.qdrant_client.health_check()
         stats: dict[str, object] = {}
@@ -158,6 +159,7 @@ async def get_stats(
         JSON payload with collection stats and vector/model metadata.
     """
     del request, context
+    # The AioServerInterceptor handles tracing, duration, and metrics.
     try:
         stats = await runtime.qdrant_client.get_stats()
         stats_error = _extract_stats_error(stats)

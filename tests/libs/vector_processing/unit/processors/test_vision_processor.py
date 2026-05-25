@@ -1,12 +1,13 @@
 """Unit tests for VisionProcessor.
 
 Tests cover all code paths including initialization, image encoding,
-cache management, hashing, and edge cases.
+cache management, hashing, embedding cache integration, and edge cases.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from vector_processing.cache import EmbeddingCache
 from vector_processing.processors.vision_processor import VisionProcessor
 
 # Fixtures mock_vision_model, mock_downloader, and mock_settings are provided by conftest.py
@@ -969,3 +970,196 @@ class TestConfigurationIntegration:
         init_log = [msg for msg in log_messages if "max_concurrent_downloads" in msg]
         assert len(init_log) > 0, "Concurrency limit not logged"
         assert "15" in init_log[0]
+
+
+# --- Embedding Cache Integration Tests ---
+
+
+@pytest.fixture
+def mock_embedding_cache():
+    """Create a mock EmbeddingCache for unit tests."""
+    cache = AsyncMock(spec=EmbeddingCache)
+    cache.get.return_value = None
+    cache.set.return_value = None
+    cache.get_batch.return_value = []
+    cache.set_batch.return_value = None
+    return cache
+
+
+class TestEncodeImageWithCache:
+    """Tests for encode_image with embedding cache."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_model_inference(
+        self, mock_vision_model, mock_downloader, mock_settings, mock_embedding_cache
+    ):
+        """Test that a cache hit returns cached embedding without model call."""
+        cached_embedding = [0.9] * 768
+        mock_embedding_cache.get.return_value = cached_embedding
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        with patch.object(VisionProcessor, "_hash_file", return_value="fakehash"):
+            result = await processor.encode_image("/path/to/image.jpg")
+
+        assert result == cached_embedding
+        mock_vision_model.encode_image.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_runs_model_and_stores(
+        self, mock_vision_model, mock_downloader, mock_settings, mock_embedding_cache
+    ):
+        """Test that a cache miss runs inference and writes back to cache."""
+        mock_embedding_cache.get.return_value = None
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        with patch.object(VisionProcessor, "_hash_file", return_value="fakehash"):
+            result = await processor.encode_image("/path/to/image.jpg")
+
+        assert result == [0.2] * 768
+        mock_vision_model.encode_image.assert_called_once()
+        mock_embedding_cache.set.assert_awaited_once_with(
+            "test-vision-model", "fakehash", [0.2] * 768
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_cache_works_as_before(
+        self, mock_vision_model, mock_downloader, mock_settings
+    ):
+        """Test that cache=None path works identically to the original code."""
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+        )
+
+        result = await processor.encode_image("/path/to/image.jpg")
+
+        assert result == [0.2] * 768
+        mock_vision_model.encode_image.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hash_failure_falls_through_to_inference(
+        self, mock_vision_model, mock_downloader, mock_settings, mock_embedding_cache
+    ):
+        """Test that file hash failure degrades gracefully to uncached inference."""
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        with patch.object(
+            VisionProcessor, "_hash_file", side_effect=OSError("File not found")
+        ):
+            result = await processor.encode_image("/path/to/image.jpg")
+
+        assert result == [0.2] * 768
+        mock_vision_model.encode_image.assert_called_once()
+        # Cache get should NOT have been called (hash failed before lookup)
+        mock_embedding_cache.get.assert_not_awaited()
+
+
+class TestEncodeImagesBatchWithCache:
+    """Tests for encode_images_batch with embedding cache."""
+
+    @pytest.mark.asyncio
+    async def test_all_cache_hits_skips_encoding(
+        self, mock_vision_model, mock_settings, mock_embedding_cache
+    ):
+        """Test that all cache hits means no model inference."""
+        mock_downloader = AsyncMock()
+        mock_downloader.download_and_cache_image.side_effect = [
+            "/cache/img1.jpg",
+            "/cache/img2.jpg",
+        ]
+
+        cached = [[0.5] * 768, [0.6] * 768]
+        mock_embedding_cache.get_batch.return_value = cached
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        with patch.object(VisionProcessor, "_hash_file", side_effect=["h1", "h2"]):
+            result = await processor.encode_images_batch(
+                ["http://example.com/1.jpg", "http://example.com/2.jpg"]
+            )
+
+        assert len(result) == 2
+        assert result[0] == [0.5] * 768
+        mock_vision_model.encode_image.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_partial_cache_hits_encodes_only_misses(
+        self, mock_vision_model, mock_settings, mock_embedding_cache
+    ):
+        """Test that only uncached images are sent to the model."""
+        mock_downloader = AsyncMock()
+        mock_downloader.download_and_cache_image.side_effect = [
+            "/cache/img1.jpg",
+            "/cache/img2.jpg",
+        ]
+
+        cached_emb = [0.5] * 768
+        mock_embedding_cache.get_batch.return_value = [cached_emb, None]
+        mock_vision_model.encode_image.return_value = [[0.7] * 768]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+            embedding_cache=mock_embedding_cache,
+        )
+
+        with patch.object(VisionProcessor, "_hash_file", side_effect=["h1", "h2"]):
+            result = await processor.encode_images_batch(
+                ["http://example.com/1.jpg", "http://example.com/2.jpg"]
+            )
+
+        assert len(result) == 2
+        # Model should only encode the 1 uncached image
+        mock_vision_model.encode_image.assert_called_once_with(["/cache/img2.jpg"])
+        mock_embedding_cache.set_batch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_cache_encodes_all(
+        self, mock_vision_model, mock_settings
+    ):
+        """Test that without cache, all downloaded images are encoded."""
+        mock_downloader = AsyncMock()
+        mock_downloader.download_and_cache_image.side_effect = [
+            "/cache/img1.jpg",
+            "/cache/img2.jpg",
+        ]
+        mock_vision_model.encode_image.return_value = [[0.1] * 768, [0.2] * 768]
+
+        processor = VisionProcessor(
+            model=mock_vision_model,
+            downloader=mock_downloader,
+            config=mock_settings,
+        )
+
+        result = await processor.encode_images_batch(
+            ["http://example.com/1.jpg", "http://example.com/2.jpg"]
+        )
+
+        assert len(result) == 2
+        mock_vision_model.encode_image.assert_called_once_with(
+            ["/cache/img1.jpg", "/cache/img2.jpg"]
+        )

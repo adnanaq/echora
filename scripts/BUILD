@@ -12,3 +12,13 @@ python_sources(
         "reindex_anime_database.py": {"run_goal_use_sandbox": False},
     },
 )
+
+pex_binary(
+    name="populate_vector_observability",
+    entry_point="populate_vector_observability",
+    dependencies=[
+        ":scripts",
+        "//apps/vector_service/src/vector_proto:proto",
+        "//libs/common/src/shared_proto:proto",
+    ],
+)

@@ -24,7 +24,7 @@ def _runtime_with_stats(stats_payload: dict[str, object]) -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_get_stats_returns_error_when_qdrant_payload_contains_error() -> None:
+async def test_get_stats_error_on_qdrant_error_payload() -> None:
     runtime = _runtime_with_stats({"error": "collection does not exist"})
 
     response = await admin.get_stats(
@@ -40,7 +40,7 @@ async def test_get_stats_returns_error_when_qdrant_payload_contains_error() -> N
 
 
 @pytest.mark.asyncio
-async def test_get_stats_returns_payload_when_qdrant_stats_are_valid() -> None:
+async def test_get_stats_returns_payload_when_qdrant_stats_valid() -> None:
     runtime = _runtime_with_stats(
         {"collection_name": "anime_database", "total_documents": 42}
     )

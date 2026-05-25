@@ -117,7 +117,7 @@ class TestSemanticDeduplication:
         # Should fall back to keeping unique values by normalized comparison
         assert len(result) == 2
 
-    def test_deduplicate_semantic_fallback_uses_normalized_comparison(self):
+    def test_semantic_fallback_uses_normalized_comparison(self):
         """Test that embedding failure fallback uses case-insensitive deduplication."""
         # Mock model that raises RuntimeError (common ML library exception)
         mock_model = Mock()

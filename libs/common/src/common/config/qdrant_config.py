@@ -28,9 +28,54 @@ class QdrantConfig(BaseModel):
         },
         description="Unified semantic architecture (BGE-M3 text: 1024-dim, OpenCLIP images: 768-dim)",
     )
+    primary_text_vector_name: str = Field(
+        default="text_vector",
+        description="Explicit primary text vector name used for text search routing",
+    )
+    primary_image_vector_name: str = Field(
+        default="image_vector",
+        description="Explicit primary image vector name used for image search routing",
+    )
     multivector_vectors: list[str] = Field(
         default=["image_vector"],
         description="Vector names that use multivector storage (list of vectors per point)",
+    )
+    sparse_vector_names: list[str] = Field(
+        default=["text_sparse_vector"],
+        description="Named sparse vectors configured for the collection",
+    )
+    primary_sparse_vector_name: str = Field(
+        default="text_sparse_vector",
+        description="Primary sparse vector used for sparse and hybrid text search",
+    )
+    sparse_vector_modifier: str = Field(
+        default="idf",
+        description="Sparse vector modifier: none or idf",
+    )
+    sparse_index_on_disk: bool = Field(
+        default=False,
+        description="Store sparse index on disk instead of RAM",
+    )
+    rrf_k: int = Field(
+        default=2,
+        ge=1,
+        le=1000,
+        description=(
+            "RRF rank constant k in score = 1 / (k + rank). "
+            "Lower k (e.g. 2) strongly boosts top-ranked results from each branch. "
+            "Higher k (e.g. 60) flattens the curve, weighting all ranks more equally. "
+            "Qdrant default is 2. Tune against real queries — there is no universal optimum."
+        ),
+    )
+    prefetch_limit_multiplier: int = Field(
+        default=10,
+        ge=2,
+        description=(
+            "Multiplier applied to the final search limit to determine the candidate pool "
+            "size for each prefetch branch in hybrid/fusion search. Higher values improve "
+            "recall at the cost of more server-side fusion work. "
+            "E.g. limit=10 with multiplier=10 prefetches 100 candidates per branch."
+        ),
     )
     vector_priorities: dict[str, list[str]] = Field(
         default={
@@ -80,6 +125,27 @@ class QdrantConfig(BaseModel):
         description="Anime-optimized HNSW parameters per vector priority for similarity matching",
     )
 
+    # Optimizer
+    default_segment_number: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "Number of segments Qdrant maintains per collection. "
+            "More segments improve parallel indexing throughput; "
+            "fewer reduce merge overhead on small collections."
+        ),
+    )
+    indexing_threshold: int = Field(
+        default=20000,
+        ge=0,
+        description=(
+            "Minimum number of vectors in a segment before HNSW indexing starts. "
+            "Vectors below this threshold are searched by brute-force. "
+            "Lower values index sooner (higher RAM use); higher values defer indexing "
+            "until the segment is large enough to benefit."
+        ),
+    )
+
     # Memory & Storage
     qdrant_memory_mapping_threshold: int | None = Field(
         default=None, description="Memory mapping threshold in KB"
@@ -91,6 +157,24 @@ class QdrantConfig(BaseModel):
     qdrant_enable_wal: bool | None = Field(
         default=None, description="Enable Write-Ahead Logging"
     )
+    wal_capacity_mb: int = Field(
+        default=32,
+        ge=1,
+        description=(
+            "Maximum WAL segment size in MB before Qdrant rolls to a new segment. "
+            "Larger values reduce segment rotation frequency at the cost of more "
+            "disk space per uncommitted segment."
+        ),
+    )
+    wal_segments_ahead: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of WAL segments to pre-allocate ahead of the current write position. "
+            "0 disables pre-allocation (default). Higher values smooth write latency "
+            "spikes on slow disks by avoiding on-demand allocation during writes."
+        ),
+    )
 
     # Indexing
     qdrant_enable_payload_indexing: bool = Field(
@@ -100,25 +184,20 @@ class QdrantConfig(BaseModel):
         default={
             # Core searchable fields
             "id": "keyword",
+            "entity_type": "keyword",
             "anime_id": "keyword",
             "anime_ids": "keyword",
             "title": "keyword",
-            "title_text": "text",
             "type": "keyword",
             "status": "keyword",
-            "episodes": "integer",
             "rating": "keyword",
             "source_material": "keyword",
             "nsfw": "bool",
             # Categorical fields
             "genres": "keyword",
             "tags": "keyword",
-            "demographics": "text",
-            "content_warnings": "text",
-            # Character physical attributes (AnimePlanet)
-            "characters.hair_color": "keyword",
-            "characters.eye_color": "keyword",
-            "characters.character_traits": "keyword",
+            "demographics": "keyword",
+            "content_warnings": "keyword",
             # Temporal fields (flattened)
             "year": "integer",
             "season": "keyword",
@@ -128,32 +207,19 @@ class QdrantConfig(BaseModel):
             # Statistics - MAL
             "statistics.mal.score": "float",
             "statistics.mal.scored_by": "integer",
-            "statistics.mal.members": "integer",
-            "statistics.mal.favorites": "integer",
-            "statistics.mal.rank": "integer",
-            "statistics.mal.popularity_rank": "integer",
             # Statistics - AniList
             "statistics.anilist.score": "float",
-            "statistics.anilist.favorites": "integer",
-            "statistics.anilist.popularity_rank": "integer",
             # Statistics - AniDB
             "statistics.anidb.score": "float",
             "statistics.anidb.scored_by": "integer",
             # Statistics - Anime-Planet
             "statistics.animeplanet.score": "float",
             "statistics.animeplanet.scored_by": "integer",
-            "statistics.animeplanet.rank": "integer",
             # Statistics - Kitsu
             "statistics.kitsu.score": "float",
-            "statistics.kitsu.members": "integer",
-            "statistics.kitsu.favorites": "integer",
-            "statistics.kitsu.rank": "integer",
-            "statistics.kitsu.popularity_rank": "integer",
             # Statistics - AnimeSchedule
             "statistics.animeschedule.score": "float",
             "statistics.animeschedule.scored_by": "integer",
-            "statistics.animeschedule.members": "integer",
-            "statistics.animeschedule.rank": "integer",
             # Aggregate score
             "score.arithmetic_mean": "float",
         },
@@ -178,6 +244,17 @@ class QdrantConfig(BaseModel):
             raise ValueError(f"Quantization type must be one of: {valid_types}")
         return v.lower()
 
+    @field_validator("sparse_vector_modifier")
+    @classmethod
+    def validate_sparse_vector_modifier(cls, v: str) -> str:
+        """Validate sparse vector modifier."""
+        valid_modifiers = ["none", "idf"]
+        if v.lower() not in valid_modifiers:
+            raise ValueError(
+                f"Sparse vector modifier must be one of: {valid_modifiers}"
+            )
+        return v.lower()
+
     @field_validator("multivector_vectors")
     @classmethod
     def validate_multivector_vectors(
@@ -192,3 +269,24 @@ class QdrantConfig(BaseModel):
                 f"Valid vectors: {list(vector_names.keys())}"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_primary_vector_names(self) -> "QdrantConfig":
+        """Validate explicit primary vector names against vector_names."""
+        if self.primary_text_vector_name not in self.vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_text_vector_name must be a key in vector_names"
+            )
+        if self.primary_image_vector_name not in self.vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_image_vector_name must be a key in vector_names"
+            )
+        if not self.sparse_vector_names:
+            raise ValueError(  # noqa: TRY003
+                "sparse_vector_names must contain at least one entry"
+            )
+        if self.primary_sparse_vector_name not in self.sparse_vector_names:
+            raise ValueError(  # noqa: TRY003
+                "primary_sparse_vector_name must be a key in sparse_vector_names"
+            )
+        return self

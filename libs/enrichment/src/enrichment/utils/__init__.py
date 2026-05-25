@@ -12,7 +12,7 @@ from enrichment.utils.deduplication import (
     deduplicate_synonyms_language_aware,
     normalize_string_for_comparison,
 )
-from enrichment.utils.text_utils import normalize_japanese_text
+from enrichment.utils.text_utils import normalize_japanese_text, normalize_score
 
 __all__ = [
     "SEMANTIC_SIMILARITY_THRESHOLD",
@@ -20,5 +20,6 @@ __all__ = [
     "deduplicate_simple_array_field",
     "deduplicate_synonyms_language_aware",
     "normalize_japanese_text",
+    "normalize_score",
     "normalize_string_for_comparison",
 ]

@@ -26,6 +26,7 @@ async def health(
         Health response with service details.
     """
     del request, context
+    # The AioServerInterceptor handles tracing, duration, and metrics.
     return enrichment_service_pb2.HealthResponse(
         healthy=True,
         service="enrichment_service",
