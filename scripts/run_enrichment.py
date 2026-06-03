@@ -95,6 +95,11 @@ Examples:
   python run_enrichment.py --title "Dandadan" --skip mal anidb          # Skip slow services
   python run_enrichment.py --title "Dandadan" --only anime_planet         # Only fetch anime_planet
 
+  # Entity filtering (faster dev iteration)
+  python run_enrichment.py --title "Dandadan" --no-episodes             # Skip episode fetching
+  python run_enrichment.py --title "Dandadan" --no-characters           # Skip character fetching
+  python run_enrichment.py --title "Dandadan" --no-episodes --no-characters  # Anime data only
+
   # Agent directory control
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1"   # Use existing agent directory
   python run_enrichment.py --title "Dandadan" --agent "Dandadan_agent1" --only anime_planet  # Combine with filtering
@@ -130,6 +135,16 @@ Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animesc
         nargs="+",
         metavar="SERVICE",
         help="Only fetch specific services (e.g., --only anime_planet anisearch)",
+    )
+    parser.add_argument(
+        "--no-characters",
+        action="store_true",
+        help="Skip character fetching across all sources",
+    )
+    parser.add_argument(
+        "--no-episodes",
+        action="store_true",
+        help="Skip episode fetching across all sources",
     )
 
     args = parser.parse_args()
@@ -181,6 +196,8 @@ Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animesc
             agent_dir=args.agent,
             skip_services=args.skip,
             only_services=args.only,
+            fetch_characters=not args.no_characters,
+            fetch_episodes=not args.no_episodes,
         )
 
         # Show results
