@@ -58,6 +58,9 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """
         Fetch Anime-Planet anime and character data for the given URL.
@@ -71,10 +74,13 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'anime_planet_url'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: Unused — Anime-Planet has no episode endpoint.
 
         Returns:
             Dict with keys ``anime`` and ``characters``, or None when the anime fetch fails.
         """
+        del fetch_episodes  # Anime-Planet does not provide episode data
         url = ids.get("anime_planet_url")
         if not url:
             return None
@@ -103,16 +109,17 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
             )
 
             characters: list[dict[str, Any]] = []
-            try:
-                anime_url = (anime_data.get("sources") or [""])[0] or canonical_url
-                characters = await self.fetch_characters(
-                    anime_url, output_path=characters_output_path
-                )
-                logger.info(
-                    f"Anime-Planet characters fetched: {len(characters)} characters"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to fetch characters for '{canonical_url}': {e}")
+            if fetch_characters:
+                try:
+                    anime_url = (anime_data.get("sources") or [""])[0] or canonical_url
+                    characters = await self.fetch_characters(
+                        anime_url, output_path=characters_output_path
+                    )
+                    logger.info(
+                        f"Anime-Planet characters fetched: {len(characters)} characters"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch characters for '{canonical_url}': {e}")
 
         except Exception:
             logger.exception(f"Error in fetch_all for URL '{url}'")

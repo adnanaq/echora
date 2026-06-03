@@ -173,6 +173,9 @@ class AniDBHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch comprehensive AniDB data for an anime by ID.
 
@@ -180,6 +183,9 @@ class AniDBHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'anidb_id'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: Accepted for interface compliance; AniDB entity-level
+                filtering is deferred until the mapper convention is standardised.
+            fetch_episodes: Accepted for interface compliance; same as above.
 
         Returns:
             Comprehensive AniDB data including metadata, characters, episodes,

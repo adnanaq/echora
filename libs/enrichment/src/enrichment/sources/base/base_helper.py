@@ -73,6 +73,9 @@ class BaseEnrichmentHelper(ABC):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """
         Fetch all available data for a specific anime from the service.

@@ -33,6 +33,9 @@ class AniSearchHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch all AniSearch data for this anime.
 
@@ -40,6 +43,8 @@ class AniSearchHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'anisearch_id'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
             Anime data dict enriched with "episodes" and "characters" keys,
@@ -67,28 +72,30 @@ class AniSearchHelper(BaseEnrichmentHelper):
         canonical_url = (anime_data.get("sources") or [url])[0]
 
         episode_data = []
-        try:
-            episode_data = await self.fetch_episodes(
-                canonical_url, output_path=ep_output
-            )
-            if episode_data:
-                logger.info(f"Integrated {len(episode_data)} episodes")
-        except Exception:
-            logger.warning(
-                f"Failed to fetch episodes for {canonical_url}", exc_info=True
-            )
+        if fetch_episodes:
+            try:
+                episode_data = await self.fetch_episodes(
+                    canonical_url, output_path=ep_output
+                )
+                if episode_data:
+                    logger.info(f"Integrated {len(episode_data)} episodes")
+            except Exception:
+                logger.warning(
+                    f"Failed to fetch episodes for {canonical_url}", exc_info=True
+                )
 
         characters = []
-        try:
-            characters = await self.fetch_characters(
-                canonical_url, output_path=char_output
-            )
-            if characters:
-                logger.info(f"Integrated {len(characters)} characters")
-        except Exception:
-            logger.warning(
-                f"Failed to fetch characters for {canonical_url}", exc_info=True
-            )
+        if fetch_characters:
+            try:
+                characters = await self.fetch_characters(
+                    canonical_url, output_path=char_output
+                )
+                if characters:
+                    logger.info(f"Integrated {len(characters)} characters")
+            except Exception:
+                logger.warning(
+                    f"Failed to fetch characters for {canonical_url}", exc_info=True
+                )
 
         return normalize_enrichment_payload(
             {

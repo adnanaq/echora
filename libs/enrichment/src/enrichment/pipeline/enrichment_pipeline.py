@@ -62,6 +62,9 @@ class EnrichmentPipeline:
         agent_dir: str | None = None,
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any]:
         """
         Enrich a single anime record with data fetched from configured APIs.
@@ -71,6 +74,8 @@ class EnrichmentPipeline:
             agent_dir (Optional[str]): Optional agent directory name to use for temporary processing (e.g., "Dandadan_agent1"). If omitted, a new directory is created with gap-filled agent ID.
             skip_services (Optional[List[str]]): Optional list of service names to skip when fetching API data.
             only_services (Optional[List[str]]): Optional list of service names to fetch exclusively; if provided, other services are ignored.
+            fetch_characters (bool): When False, skip character fetching across all sources. Defaults to True.
+            fetch_episodes (bool): When False, skip episode fetching across all sources. Defaults to True.
 
         Returns:
             Dict[str, Any]: A dictionary with the following keys:
@@ -128,7 +133,13 @@ class EnrichmentPipeline:
             step2_start = time.time()
             with _tracer.start_as_current_span("enrichment.api_fetch") as _api_span:
                 api_data = await self.api_fetcher.fetch_all_data(
-                    valid_ids, offline_data, temp_dir, skip_services, only_services
+                    valid_ids,
+                    offline_data,
+                    temp_dir,
+                    skip_services,
+                    only_services,
+                    fetch_characters=fetch_characters,
+                    fetch_episodes=fetch_episodes,
                 )
                 successful_apis = sum(1 for v in api_data.values() if v)
                 _api_span.add_event(
@@ -168,7 +179,13 @@ class EnrichmentPipeline:
                 }
             raise
 
-    async def enrich_batch(self, anime_list: list[dict]) -> list[dict]:
+    async def enrich_batch(
+        self,
+        anime_list: list[dict],
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
+    ) -> list[dict]:
         """
         Enrich multiple anime in parallel.
 
@@ -191,7 +208,11 @@ class EnrichmentPipeline:
 
         async def enrich_with_limit(anime: dict) -> dict[str, Any]:
             async with semaphore:
-                return await self.enrich_anime(anime)
+                return await self.enrich_anime(
+                    anime,
+                    fetch_characters=fetch_characters,
+                    fetch_episodes=fetch_episodes,
+                )
 
         # Process all anime concurrently (limited by semaphore)
         tasks = [enrich_with_limit(anime) for anime in anime_list]

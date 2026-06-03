@@ -39,6 +39,10 @@ message RunPipelineRequest {
   repeated string skip_services = 5;
   // If provided, run only these service names.
   repeated string only_services = 6;
+  // When true, skip character fetching across all sources.
+  bool skip_characters = 7;
+  // When true, skip episode fetching across all sources.
+  bool skip_episodes = 8;
 }
 
 message RunPipelineResponse {

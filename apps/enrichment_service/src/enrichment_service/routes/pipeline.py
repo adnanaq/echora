@@ -84,6 +84,8 @@ async def run_pipeline(
                 agent_dir=agent_dir,
                 skip_services=list(request.skip_services),
                 only_services=list(request.only_services),
+                fetch_characters=not request.skip_characters,
+                fetch_episodes=not request.skip_episodes,
                 output_dir=runtime.output_dir,
             )
             _elapsed = time.perf_counter() - _pipeline_start
