@@ -167,7 +167,7 @@ message CharacterUpdatedEvent {
   string event_id = 1;                           // UUID
   google.protobuf.Timestamp timestamp = 2;
   string character_id = 3;                       // UUID
-  repeated string changed_fields = 4;            // authoritative list of changed fields — e.g. ["description", "images", "character_traits"]
+  repeated string changed_fields = 4;            // authoritative list of changed fields — e.g. ["description", "images", "traits"]
   CharacterData character = 5;                   // sparse — only fields listed in changed_fields are populated
 }
 ```
@@ -186,14 +186,14 @@ message CharacterSyncedEvent {
   string event_id = 1;                           // UUID
   google.protobuf.Timestamp timestamp = 2;
   string character_id = 3;                       // UUID
-  repeated string changed_fields = 4;            // e.g. ["description", "character_traits"]
+  repeated string changed_fields = 4;            // e.g. ["description", "traits"]
   map<string, google.protobuf.Value> metadata_updates = 5; // new values for non-embedding fields — omitted when any embedding field changed
 }
 ```
 
 **Subject**: `character.synced` | **Publisher**: PostgreSQL Service (outbox worker) | **Consumer**: Qdrant Service
 
-Same update path logic as `AnimeSyncedEvent` — Qdrant inspects `changed_fields` using `CHARACTER_EMBEDDING_FIELDS = {"name", "description", "character_traits"}`.
+Same update path logic as `AnimeSyncedEvent` — Qdrant inspects `changed_fields` using `CHARACTER_EMBEDDING_FIELDS = {"name", "description", "traits"}`.
 
 ## Notification Events
 
@@ -285,7 +285,7 @@ import "shared_proto/v1/anime.proto";     // provides Anime, Character, Episode,
 `AnimeRecord` (Anime + repeated Character + repeated Episode) is the ingest shape — used by `AnimeEnrichedEvent` (ingestion → PG) and `GetAnimeRecord` (initial Qdrant index). It is never used for update reads — updates use the targeted `GetAnime`, `GetCharacter`, `GetEpisode` RPCs to avoid pulling characters and episodes unnecessarily.
 
 > [!note] Role normalisation
-> `Character.role` (field 11) is typed as `CharacterRole` in both the proto and the Pydantic model. A `field_validator(mode="before")` on `Character` normalises all upstream strings at ingest time. The full verified vocabulary across all sources is documented in [[anime_relationship_and_format_type_mappings#Character Role Mappings]]. The `ProcessedCharacter` internal dataclass (enrichment only) keeps `role: str` intentionally — it is normalised on the way out when building the final `AnimeRecord`.
+> `Character.roles` (field 7, `repeated CharacterRole`) is typed as a list of `CharacterRole` in both the proto and the Pydantic model. The `_missing_` classmethod on `CharacterRole` normalises all upstream strings at ingest time. The full verified vocabulary across all sources is documented in [[anime_relationship_and_format_type_mappings#Character Role Mappings]]. The `ProcessedCharacter` internal dataclass (enrichment only) keeps `role: str` intentionally — it is normalised on the way out when building the final `AnimeRecord`.
 
 ## gRPC Services
 

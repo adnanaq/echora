@@ -1,6 +1,6 @@
 ---
 title: Database Schema
-date: 2026-02-18
+date: 2026-05-25
 tags:
   - database
   - schema
@@ -11,7 +11,7 @@ related:
   - "[[postgres_integration_architecture_decision]]"
   - "[[event_driven_architecture]]"
 ---
-
+																																									
 # Database Schema
 
 Complete PostgreSQL schema design for Echora anime database.
@@ -63,6 +63,7 @@ erDiagram
   anime }o--o| anime_season : "season"
   anime }o--o| source_material_type : "source_material"
   source_material }o--o| source_material_type : "type"
+  source_material }o--o| anime_status : "status"
   anime_character }o--o| character_role : "role"
   anime_relation }o--|| anime_relation_type : "relation_type"
   anime_source_material_relation }o--|| source_material_relation_type : "relation_type"
@@ -91,12 +92,12 @@ erDiagram
     numeric score_agm
     numeric score_mean
     numeric score_median
+    text country_of_origin
   }
   character {
     uuid id PK
     text name
-    text eye_color
-    text hair_color
+    text name_native
   }
   character_relation {
     bigint id PK
@@ -128,6 +129,9 @@ erDiagram
     uuid id PK
     text title
     text type FK
+    text status FK
+    int chapters
+    int volumes
   }
   anime_source_material_relation {
     bigint id PK
@@ -219,6 +223,7 @@ erDiagram
     timestamptz premiere_jp
     timestamptz premiere_sub
     timestamptz premiere_dub
+    timestamptz next_episode_at
   }
   anime_hiatus {
     uuid id PK
@@ -357,12 +362,13 @@ WHERE to_ref_source = 'anilist' AND to_ref_external_id = '141902';
 -- 1. Anime type domain
 CREATE TABLE anime_type (value text PRIMARY KEY);
 INSERT INTO anime_type VALUES
-  ('TV'), ('ONA'), ('OVA'), ('SPECIAL'), ('MOVIE'), ('UNKNOWN'), ('MUSIC'), ('PV');
+  ('TV'), ('ONA'), ('OVA'), ('SPECIAL'), ('MOVIE'), ('UNKNOWN'), ('MUSIC'), ('PV'),
+  ('TV SPECIAL'), ('TV SHORT'), ('CM');
 
 -- 2. Anime status domain
 CREATE TABLE anime_status (value text PRIMARY KEY);
 INSERT INTO anime_status VALUES
-  ('FINISHED'), ('UPCOMING'), ('ONGOING'), ('UNKNOWN');
+  ('FINISHED'), ('UPCOMING'), ('ONGOING'), ('UNKNOWN'), ('CANCELLED');
 
 -- 3. Anime rating domain (full label strings from AnimeRating enum)
 CREATE TABLE anime_rating (value text PRIMARY KEY);
@@ -372,7 +378,8 @@ INSERT INTO anime_rating VALUES
   ('PG-13 - Teens 13 or older'),
   ('R - 17+ (violence & profanity)'),
   ('R+ - Mild Nudity'),
-  ('Rx - Hentai');
+  ('Rx - Hentai'),
+  ('UNKNOWN');
 
 -- 4. Anime season domain
 CREATE TABLE anime_season (value text PRIMARY KEY);
@@ -382,22 +389,28 @@ INSERT INTO anime_season VALUES
 -- 5. Source material type domain (shared by anime.source_material and source_material.type)
 CREATE TABLE source_material_type (value text PRIMARY KEY);
 INSERT INTO source_material_type VALUES
-  ('MANGA'), ('LIGHT_NOVEL'), ('NOVEL'), ('VISUAL_NOVEL'),
-  ('GAME'), ('WEB_MANGA'), ('WEB_NOVEL'), ('OTHER'),
-  ('ORIGINAL'), ('MIXED_MEDIA'), ('UNKNOWN');
+  ('MANGA'), ('LIGHT NOVEL'), ('NOVEL'), ('VISUAL NOVEL'),
+  ('GAME'), ('WEB MANGA'), ('WEB NOVEL'), ('OTHER'),
+  ('ORIGINAL'), ('MIXED MEDIA'), ('UNKNOWN'),
+  ('BOOK'), ('CARD GAME'), ('DOUJINSHI'), ('4-KOMA'),
+  ('MANHUA'), ('MANHWA'), ('COMIC'), ('LIVE ACTION'),
+  ('ILLUSTRATION'), ('WESTERN MEDIA'), ('ONE SHOT'),
+  ('RADIO'), ('PICTURE BOOK'), ('MUSIC');
 
 -- 6. Character role domain
 CREATE TABLE character_role (value text PRIMARY KEY);
 INSERT INTO character_role VALUES
-  ('MAIN'), ('SUPPORTING'), ('BACKGROUND');
+  ('MAIN'), ('SUPPORTING'), ('BACKGROUND'), ('UNKNOWN');
 
 -- 7. Anime-to-anime relation type domain
---    NOTE: docs/anime_relationship_and_format_type_mappings.md proposes a richer
---    22-type enum with title case values — that will be adopted here once finalized in anime.py
+--    13 types aligned to AnimeRelationType StrEnum in anime.py.
+--    Note: ALTERNATIVE VERSION and ALTERNATIVE SETTING use spaces (not underscores) —
+--    these are the StrEnum string values, not Python attribute names.
 CREATE TABLE anime_relation_type (value text PRIMARY KEY);
 INSERT INTO anime_relation_type VALUES
-  ('SEQUEL'), ('PREQUEL'), ('SIDE_STORY'), ('ALTERNATIVE'), ('SUMMARY'),
-  ('FULL_STORY'), ('CHARACTER'), ('SPIN_OFF'), ('ADAPTATION'), ('OTHER');
+  ('SEQUEL'), ('PREQUEL'), ('SIDE_STORY'), ('SUMMARY'),
+  ('FULL_STORY'), ('CHARACTER'), ('SPIN_OFF'), ('ADAPTATION'), ('OTHER'),
+  ('ALTERNATIVE_VERSION'), ('ALTERNATIVE_SETTING'), ('CROSSOVER'), ('PARENT_STORY');
 
 -- 8. Anime-to-original-work relation type domain
 CREATE TABLE source_material_relation_type (value text PRIMARY KEY);
@@ -438,7 +451,7 @@ INSERT INTO episode_version VALUES
 -- 15. Company role domain
 CREATE TABLE company_role (value text PRIMARY KEY);
 INSERT INTO company_role VALUES
-  ('studio'), ('producer');
+  ('studio'), ('producer'), ('licensor');
 
 -- 16. Character relation type domain
 CREATE TABLE character_relation_type (value text PRIMARY KEY);
@@ -478,6 +491,7 @@ CREATE TABLE anime (
   episode_count int NOT NULL DEFAULT 0,        -- denormalized cache; kept in sync by PostgreSQL Service
   duration_seconds int,
   nsfw boolean,
+  country_of_origin text,                       -- ISO 3166-1 alpha-2 country code (e.g. 'JP', 'CN', 'KR') — from AniList
   synopsis text,
   background text,
   score_agm numeric,                           -- ScoreCalculations.arithmetic_geometric_mean
@@ -501,6 +515,9 @@ CREATE TABLE source_material (
   title_english text,
   title_japanese text,
   type text REFERENCES source_material_type(value),
+  status text REFERENCES anime_status(value),   -- publication status (ONGOING, FINISHED, etc.) — reuses anime_status domain
+  chapters int,                                  -- total chapters (manga / one-shot / manhwa / manhua)
+  volumes int,                                   -- total volumes (manga / light novel)
   meta jsonb NOT NULL DEFAULT '{}'::jsonb,
   raw_by_source jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -547,10 +564,6 @@ CREATE TABLE character (
   name text NOT NULL,
   name_native text,
   description text,
-  gender text,
-  age text,
-  eye_color text,
-  hair_color text,
   favorites int,
   meta jsonb NOT NULL DEFAULT '{}'::jsonb,
   raw_by_source jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -656,7 +669,10 @@ CREATE TABLE anime_broadcast (
   -- Per-version premiere dates
   premiere_jp       timestamptz,      -- first JP episode ever
   premiere_sub      timestamptz,      -- first sub episode ever
-  premiere_dub      timestamptz       -- first dub episode ever
+  premiere_dub      timestamptz,      -- first dub episode ever
+
+  -- Next scheduled episode (from AniList — updated each week)
+  next_episode_at   timestamptz       -- UTC datetime of next episode air (NULL when not airing)
 );
 
 -- ============================================================================
@@ -1112,7 +1128,10 @@ The `edge_types` field in `GraphIntent` accepts only values from this allowlist.
 | `SEQUEL` | Direct | `anime_relation` |
 | `PREQUEL` | Direct | `anime_relation` |
 | `SIDE_STORY` | Direct | `anime_relation` |
-| `ALTERNATIVE` | Direct | `anime_relation` |
+| `PARENT_STORY` | Direct | `anime_relation` |
+| `ALTERNATIVE_VERSION` | Direct | `anime_relation` |
+| `ALTERNATIVE_SETTING` | Direct | `anime_relation` |
+| `CROSSOVER` | Direct | `anime_relation` |
 | `SUMMARY` | Direct | `anime_relation` |
 | `FULL_STORY` | Direct | `anime_relation` |
 | `CHARACTER` | Direct | `anime_relation` |
@@ -1310,24 +1329,27 @@ The `path` and `k_hop` primitives can traverse `character_relation` edges for di
 ### Fields by Entity
 
 **`anime.meta`** stores all non-scalar Pydantic `Anime` fields:
-- Arrays: `genres`, `tags`, `synonyms`, `themes`, `opening_themes`, `ending_themes`, `trailers`, `streaming_info`, `streaming_licenses`, `content_warnings`, `demographics`
-- Objects/dicts: `external_links`, `popularity_trends`, `staff_data`, `statistics`, `enrichment_metadata`
-  - Note: `staff_data` JSONB contains only `production_staff`, `licensors`, `voice_actors` — `studios` and `producers` are extracted to dedicated tables
+- Arrays: `genres`, `tags`, `synonyms`, `themes`, `opening_themes`, `ending_themes`, `trailers`, `streaming_sources`, `content_warnings`, `demographics`
+- Objects/dicts: `external_sources`, `staff_data`, `statistics`
+  - Note: `staff_data` JSONB contains only `production_staff` — `studios`, `producers`, and `licensors` are extracted to dedicated company tables
 - Images → dedicated `anime_image` table
-- Not in meta: `sources` → `anime_xref`; `relations`/`related_anime` → `anime_relation`
+- Not in meta: `sources` → `anime_xref`; `related_anime` / `related_source_material` → `anime_relation` / `anime_source_material_relation`
+- Not in meta: `country_of_origin` → `anime.country_of_origin` (relational column)
 - Not in meta: `aired_dates` → `anime.aired_from`/`anime.aired_to`
-- Not in meta: `broadcast` weekly slot + premiere dates → `anime_broadcast`; hiatus events → `anime_hiatus`
-- Not in meta: `studios`/`producers` → `company` + `company_xref` + `anime_company` (role='studio'/'producer')
+- Not in meta: `broadcast` weekly slot + premiere dates + `next_episode_at` → `anime_broadcast`; hiatus events → `anime_hiatus`
+- Not in meta: `studios`/`producers`/`licensors` → `company` + `company_xref` + `anime_company` (role='studio'/'producer'/'licensor')
 
 **`character.meta`** stores all non-scalar Pydantic `Character` fields:
-- Arrays: `character_traits`, `name_variations`, `nicknames`, `voice_actors`
+- Arrays: `traits`, `name_variations`, `nicknames`, `voice_actors`, `animeography`, `mangaography`
+- Dicts: `attributes`, `spoilers`
 - Images → dedicated `character_image` table
 - Not in meta: `anime_ids` → `anime_character`
 - Not in meta: `sources` → `character_xref` (profile URLs are cross-reference data, not character attributes)
-- Not in meta: `role` → `anime_character.role` (junction table; role is context of anime appearance, not a character attribute)
+- Not in meta: `roles` → `anime_character.role` (junction table; role is context of anime appearance, not a character attribute)
 
 **`episode.meta`** stores all non-scalar Pydantic `Episode` fields:
-- Objects/dicts: `streaming`
+- Arrays: `characters`, `staff`
+- Dicts: `streaming`, `titles`
 - Images → dedicated `episode_image` table
 - Not in meta: `sources` → `episode_xref` (same cross-reference pattern as `character_xref`)
 
@@ -1352,8 +1374,11 @@ CREATE INDEX anime_meta_fulltext_idx ON anime USING GIN (to_tsvector('english', 
 
 > [!warning] JSONB Performance
 > Only add indexes beyond the base GIN indexes after identifying actual query patterns.
-> `year`, `status`, `type`, `season`, `rating`, `score_agm`, `episode_count` — these are all
+> `year`, `status`, `type`, `season`, `rating`, `score_agm`, `episode_count`, `country_of_origin` — these are all
 > relational columns with standard B-tree indexes. Never index these via `meta->>'field'`.
+> For `character`: all biographical attributes (`gender`, `age`, `eye_color`, `hair_color`, etc.) live
+> in `meta->attributes` — keys are source-dependent and unpredictable, which is why none are
+> promoted to relational columns. Query them via GIN containment: `meta @> '{"attributes": {"gender": "female"}}'`.
 
 ---
 
@@ -1404,14 +1429,13 @@ When the ingestion pipeline writes `A → SEQUEL → B`, it also writes `B → P
 | Category | Relation types | Behaviour |
 |---|---|---|
 | Strict inverses | `SEQUEL ↔ PREQUEL`, `SIDE_STORY ↔ PARENT_STORY`, `SUMMARY ↔ FULL_STORY` | Write both edges; each gets the other's type |
-| Symmetric | `CROSSOVER`, `SHARED_UNIVERSE`, `ALTERNATIVE_VERSION`, `ALTERNATIVE_SETTING`, `ALTERNATE_UNIVERSE`, `SAME_FRANCHISE`, `OTHER_FRANCHISE` | Write both edges; same type in both directions |
-| No inverse | `ADAPTATION`, `CHARACTER`, `CONDENSED_VERSION`, `RECAP`, `OTHER`, `UNKNOWN` | Write single directed edge only |
+| Symmetric | `CROSSOVER`, `ALTERNATIVE_VERSION`, `ALTERNATIVE_SETTING` | Write both edges; same type in both directions |
+| No inverse | `ADAPTATION`, `CHARACTER`, `OTHER` | Write single directed edge only |
 | TBD | `SPIN_OFF` | Inverse unclear — separate ticket to decide (`PARENT_STORY` or unidirectional) |
 
 > [!note] Future tickets
-> - Implement `inverse_relation()` in PostgreSQL service (Rust) once `AnimeRelationType` is expanded to all 22 types
+> - Implement `inverse_relation()` in PostgreSQL service (Rust)
 > - Finalize `SPIN_OFF` inverse decision before implementation
-> - Expand `AnimeRelationType` enum (Python + proto) from current 10 → 22 types
 
 ---
 
@@ -1770,4 +1794,4 @@ Source data for voice actors and staff (directors, writers, composers, animators
 
 ---
 
-**Status**: Active | **Last Updated**: 2026-02-18 | **Schema Version**: 2.0
+**Status**: Active | **Last Updated**: 2026-05-25 | **Schema Version**: 2.1
