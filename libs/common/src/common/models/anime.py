@@ -361,12 +361,8 @@ class AnimeRelationType(StrEnum):
     """
 
     ADAPTATION = "ADAPTATION"
-    ALTERNATIVE_VERSION = (
-        "ALTERNATIVE VERSION"  # Same story, different version (e.g. TV vs movie cut)
-    )
-    ALTERNATIVE_SETTING = (
-        "ALTERNATIVE SETTING"  # Same characters, different universe/AU
-    )
+    ALTERNATIVE_VERSION = "ALTERNATIVE_VERSION"  # Same story, different version (e.g. TV vs movie cut)
+    ALTERNATIVE_SETTING = "ALTERNATIVE_SETTING"  # Same characters, different universe/AU
     CHARACTER = "CHARACTER"
     CROSSOVER = "CROSSOVER"
     FULL_STORY = "FULL_STORY"
@@ -406,7 +402,7 @@ class AnimeRelationType(StrEnum):
             "side_story": cls.SIDE_STORY,
             "parent": cls.PARENT_STORY,
             "spin_off": cls.SPIN_OFF,
-            # Kitsu (snake_case)
+            # Kitsu / internal (snake_case or already normalized)
             "alternative_version": cls.ALTERNATIVE_VERSION,
             "alternative_setting": cls.ALTERNATIVE_SETTING,
             "full_story": cls.FULL_STORY,
