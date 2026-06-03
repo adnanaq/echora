@@ -83,6 +83,19 @@ async def test_fetch_anime_returns_none_when_crawler_returns_none():
     assert result is None
 
 
+async def test_fetch_anime_returns_none_on_crawler_exception():
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    helper = AnimePlanetHelper()
+    with patch(
+        "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
+        new=AsyncMock(side_effect=RuntimeError("network error")),
+    ):
+        result = await helper.fetch_anime(_AP_ANIME_URL)
+
+    assert result is None
+
+
 async def test_fetch_anime_returns_mapped_canonical_dict():
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
@@ -136,6 +149,18 @@ async def test_fetch_characters_returns_empty_list_when_no_refs():
     with patch(
         "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_character_refs",
         new=AsyncMock(return_value=[]),
+    ):
+        result = await AnimePlanetHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
+
+    assert result == []
+
+
+async def test_fetch_characters_returns_empty_on_crawler_exception():
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    with patch(
+        "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_character_refs",
+        new=AsyncMock(side_effect=RuntimeError("refs failed")),
     ):
         result = await AnimePlanetHelper().fetch_characters(f"{_AP_WWW}/anime/dandadan")
 
@@ -218,12 +243,33 @@ async def test_fetch_all_writes_anime_before_characters(tmp_path):
     assert call_order.index("anime_fetched") < call_order.index("char_fetch_started")
 
 
+async def test_fetch_all_returns_none_when_no_url():
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    result = await AnimePlanetHelper().fetch_all({}, {})
+    assert result is None
+
+
 async def test_fetch_all_returns_none_when_anime_missing():
     from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
 
     with patch(
         "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
         new=AsyncMock(return_value=None),
+    ):
+        result = await AnimePlanetHelper().fetch_all(
+            {"anime_planet_url": _AP_ANIME_URL}, {}
+        )
+
+    assert result is None
+
+
+async def test_fetch_all_returns_none_on_anime_crawler_exception():
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    with patch(
+        "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
+        new=AsyncMock(side_effect=RuntimeError("crawler crashed")),
     ):
         result = await AnimePlanetHelper().fetch_all(
             {"anime_planet_url": _AP_ANIME_URL}, {}
@@ -252,6 +298,48 @@ async def test_fetch_all_survives_character_fetch_failure():
     assert result is not None
     assert result["anime"] == _ANIME_CANONICAL
     assert result["characters"] == []
+
+
+async def test_fetch_all_skips_characters_when_fetch_characters_false():
+    """fetch_all does not call fetch_characters when fetch_characters=False."""
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    helper = AnimePlanetHelper()
+    with (
+        patch(
+            "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
+            new=AsyncMock(return_value=_ANIME_CANONICAL),
+        ),
+        patch.object(
+            helper, "fetch_characters", new=AsyncMock(return_value=[{"name": "Okarun"}])
+        ) as mock_chars,
+    ):
+        result = await helper.fetch_all(
+            {"anime_planet_url": _AP_ANIME_URL}, {}, fetch_characters=False
+        )
+
+    assert result is not None
+    assert result["characters"] == []
+    mock_chars.assert_not_awaited()
+
+
+async def test_fetch_all_fetch_episodes_false_accepted():
+    """fetch_all accepts fetch_episodes=False without error (Anime-Planet has no episode endpoint)."""
+    from enrichment.sources.anime_planet.anime_planet_helper import AnimePlanetHelper
+
+    helper = AnimePlanetHelper()
+    with (
+        patch(
+            "enrichment.sources.anime_planet.anime_planet_helper.fetch_animeplanet_anime",
+            new=AsyncMock(return_value=_ANIME_CANONICAL),
+        ),
+        patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])),
+    ):
+        result = await helper.fetch_all(
+            {"anime_planet_url": _AP_ANIME_URL}, {}, fetch_episodes=False
+        )
+
+    assert result is not None
 
 
 # ---------------------------------------------------------------------------

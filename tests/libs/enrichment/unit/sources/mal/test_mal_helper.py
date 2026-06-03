@@ -421,6 +421,62 @@ async def test_fetch_all_returns_none_on_invalid_url():
 
 
 @pytest.mark.asyncio
+async def test_fetch_all_skips_episodes_when_fetch_episodes_false():
+    """fetch_all does not call _fetch_episodes when fetch_episodes=False."""
+    ids = {"mal_url": _ANIME_URL}
+    helper = MalHelper()
+    helper._fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 12, "title": "Test"}
+    )
+    helper._fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
+    helper._fetch_characters = AsyncMock(return_value=[])
+
+    result = await helper.fetch_all(ids, {}, fetch_episodes=False)
+
+    assert result is not None
+    assert result["episodes"] == []
+    helper._fetch_episodes.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_skips_characters_when_fetch_characters_false():
+    """fetch_all does not call _fetch_characters when fetch_characters=False."""
+    ids = {"mal_url": _ANIME_URL}
+    helper = MalHelper()
+    helper._fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 0, "title": "Test"}
+    )
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(return_value=[{"name": "Luffy"}])
+
+    result = await helper.fetch_all(ids, {}, fetch_characters=False)
+
+    assert result is not None
+    assert result["characters"] == []
+    helper._fetch_characters.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_skips_both_when_both_false():
+    """fetch_all fetches only anime when both fetch_episodes and fetch_characters are False."""
+    ids = {"mal_url": _ANIME_URL}
+    helper = MalHelper()
+    helper._fetch_anime = AsyncMock(
+        return_value={"mal_id": 1, "episode_count": 24, "title": "Test"}
+    )
+    helper._fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
+    helper._fetch_characters = AsyncMock(return_value=[{"name": "Luffy"}])
+
+    result = await helper.fetch_all(ids, {}, fetch_episodes=False, fetch_characters=False)
+
+    assert result is not None
+    assert result["episodes"] == []
+    assert result["characters"] == []
+    helper._fetch_episodes.assert_not_awaited()
+    helper._fetch_characters.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_fetch_all_returns_none_on_slugless_url():
     """fetch_all returns None when mal_url has no slug (numeric-only URL)."""
     result = await MalHelper().fetch_all(

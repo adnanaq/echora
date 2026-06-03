@@ -283,6 +283,40 @@ class TestEnrichAnime:
         assert call_kwargs[0][3] == ["anidb"]  # skip_services
         assert call_kwargs[0][4] is None  # only_services
 
+    @pytest.mark.asyncio
+    async def test_fetch_characters_false_forwarded_to_fetcher(
+        self, pipeline, sample_anime, tmp_path
+    ):
+        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
+        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
+        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
+        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
+
+        await pipeline.enrich_anime(
+            sample_anime, agent_dir="One_agent1", fetch_characters=False
+        )
+
+        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
+        assert call_kwargs.kwargs["fetch_characters"] is False
+        assert call_kwargs.kwargs["fetch_episodes"] is True
+
+    @pytest.mark.asyncio
+    async def test_fetch_episodes_false_forwarded_to_fetcher(
+        self, pipeline, sample_anime, tmp_path
+    ):
+        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
+        pipeline.id_extractor.extract_all_ids = MagicMock(return_value={})
+        pipeline.id_extractor.validate_ids = MagicMock(return_value={})
+        pipeline.api_fetcher.fetch_all_data = AsyncMock(return_value={})
+
+        await pipeline.enrich_anime(
+            sample_anime, agent_dir="One_agent1", fetch_episodes=False
+        )
+
+        call_kwargs = pipeline.api_fetcher.fetch_all_data.call_args
+        assert call_kwargs.kwargs["fetch_characters"] is True
+        assert call_kwargs.kwargs["fetch_episodes"] is False
+
 
 # ---------------------------------------------------------------------------
 # enrich_batch
@@ -322,6 +356,24 @@ class TestEnrichBatch:
 
         assert len(results) == 1
         assert results[0]["offline_data"]["title"] == "Good"
+
+    @pytest.mark.asyncio
+    async def test_enrich_batch_forwards_entity_flags(self, pipeline, tmp_path):
+        pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
+        anime_list = [{"title": "A"}]
+        captured: list[dict] = []
+
+        async def fake_enrich(anime, **kwargs):
+            captured.append(kwargs)
+            return {"offline_data": anime}
+
+        with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):
+            await pipeline.enrich_batch(
+                anime_list, fetch_characters=False, fetch_episodes=False
+            )
+
+        assert captured[0]["fetch_characters"] is False
+        assert captured[0]["fetch_episodes"] is False
 
     @pytest.mark.asyncio
     async def test_respects_batch_size_semaphore(self, pipeline, tmp_path):

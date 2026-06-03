@@ -356,21 +356,6 @@ async def test_fetch_all_episode_failure_graceful(
 
 @pytest.mark.asyncio
 @patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
-async def test_fetch_all_episode_method_raises_warning(
-    mock_anime, helper, sample_anime_data
-):
-    mock_anime.return_value = sample_anime_data
-    with patch.object(
-        helper, "fetch_episodes", side_effect=RuntimeError("method error")
-    ):
-        with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
-            result = await helper.fetch_all({"anisearch_url": _URL_WITH_SLUG}, {})
-    assert result is not None
-    assert result["episodes"] == []
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
 @patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_character_refs")
 async def test_fetch_all_character_failure_graceful(
     mock_refs, mock_anime, helper, sample_anime_data
@@ -379,21 +364,6 @@ async def test_fetch_all_character_failure_graceful(
     mock_refs.side_effect = Exception("Character fetch failed")
     with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
         result = await helper.fetch_all({"anisearch_url": _URL_WITH_SLUG}, {})
-    assert result is not None
-    assert result["characters"] == []
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
-async def test_fetch_all_character_method_raises_warning(
-    mock_anime, helper, sample_anime_data
-):
-    mock_anime.return_value = sample_anime_data
-    with patch.object(
-        helper, "fetch_characters", side_effect=RuntimeError("method error")
-    ):
-        with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
-            result = await helper.fetch_all({"anisearch_url": _URL_WITH_SLUG}, {})
     assert result is not None
     assert result["characters"] == []
 
@@ -455,3 +425,41 @@ async def test_fetch_all_uses_canonical_url_after_anime_fetch(
     mock_fetch_anime.assert_called_once_with(_URL_NO_SLUG, output_path=None)
     mock_fetch_episodes.assert_called_once_with(canonical_url, output_path=None)
     mock_fetch_characters.assert_called_once_with(canonical_url, output_path=None)
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
+async def test_fetch_all_skips_episodes_when_fetch_episodes_false(
+    mock_anime, helper, sample_anime_data
+):
+    """fetch_all does not call fetch_episodes when fetch_episodes=False."""
+    mock_anime.return_value = sample_anime_data
+    with patch.object(
+        helper, "fetch_episodes", new=AsyncMock(return_value=[{"ep": 1}])
+    ) as mock_eps:
+        with patch.object(helper, "fetch_characters", new=AsyncMock(return_value=[])):
+            result = await helper.fetch_all(
+                {"anisearch_url": _URL_WITH_SLUG}, {}, fetch_episodes=False
+            )
+    assert result is not None
+    assert result["episodes"] == []
+    mock_eps.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anisearch.anisearch_helper.fetch_anisearch_anime")
+async def test_fetch_all_skips_characters_when_fetch_characters_false(
+    mock_anime, helper, sample_anime_data
+):
+    """fetch_all does not call fetch_characters when fetch_characters=False."""
+    mock_anime.return_value = sample_anime_data
+    with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
+        with patch.object(
+            helper, "fetch_characters", new=AsyncMock(return_value=[{"name": "A"}])
+        ) as mock_chars:
+            result = await helper.fetch_all(
+                {"anisearch_url": _URL_WITH_SLUG}, {}, fetch_characters=False
+            )
+    assert result is not None
+    assert result["characters"] == []
+    mock_chars.assert_not_awaited()
