@@ -88,6 +88,8 @@ class BaseEnrichmentHelper(ABC):
             ids: Dictionary of validated platform IDs/URLs.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
             Normalized payload with ``anime``, ``episodes``, ``characters``,

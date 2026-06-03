@@ -73,29 +73,19 @@ class AniSearchHelper(BaseEnrichmentHelper):
 
         episode_data = []
         if fetch_episodes:
-            try:
-                episode_data = await self.fetch_episodes(
-                    canonical_url, output_path=ep_output
-                )
-                if episode_data:
-                    logger.info(f"Integrated {len(episode_data)} episodes")
-            except Exception:
-                logger.warning(
-                    f"Failed to fetch episodes for {canonical_url}", exc_info=True
-                )
+            episode_data = await self.fetch_episodes(
+                canonical_url, output_path=ep_output
+            )
+            if episode_data:
+                logger.info(f"Integrated {len(episode_data)} episodes")
 
         characters = []
         if fetch_characters:
-            try:
-                characters = await self.fetch_characters(
-                    canonical_url, output_path=char_output
-                )
-                if characters:
-                    logger.info(f"Integrated {len(characters)} characters")
-            except Exception:
-                logger.warning(
-                    f"Failed to fetch characters for {canonical_url}", exc_info=True
-                )
+            characters = await self.fetch_characters(
+                canonical_url, output_path=char_output
+            )
+            if characters:
+                logger.info(f"Integrated {len(characters)} characters")
 
         return normalize_enrichment_payload(
             {

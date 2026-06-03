@@ -258,7 +258,7 @@ async def main() -> int:
         )
         return 0 if result is not None else 1
 
-    return 1
+    return 1  # pragma: no cover
 
 
 if __name__ == "__main__":  # pragma: no cover
