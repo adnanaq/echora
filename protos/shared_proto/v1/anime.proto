@@ -99,6 +99,7 @@ enum CharacterRole {
 }
 
 // Relation type between two anime entries (13 types).
+// Values are SCREAMING_SNAKE_CASE — used as JSON dict keys in related_anime output.
 // ALTERNATIVE_VERSION = same story retold (e.g. TV vs. movie cut).
 // ALTERNATIVE_SETTING = same characters, different universe / AU.
 enum AnimeRelationType {

@@ -51,7 +51,7 @@ def load_kitsu_episode_data(temp_dir: str):
         kitsu_episodes = kitsu_data.get("episodes", [])
 
         # Create mappings by episode number
-        kitsu_thumbnails = {}
+        kitsu_images = {}
         kitsu_descriptions = {}
         kitsu_synopses = {}
         kitsu_season_numbers = {}
@@ -62,10 +62,10 @@ def load_kitsu_episode_data(temp_dir: str):
             ep_number = attrs.get("number")
 
             if ep_number:
-                # Extract thumbnail URL
+                # Extract image URL
                 thumbnail = attrs.get("thumbnail", {})
                 if thumbnail and thumbnail.get("original"):
-                    kitsu_thumbnails[ep_number] = thumbnail["original"]
+                    kitsu_images[ep_number] = thumbnail["original"]
 
                 # Extract description
                 description = attrs.get("description")
@@ -115,10 +115,10 @@ def load_kitsu_episode_data(temp_dir: str):
                     kitsu_titles_romaji[ep_number] = titles["en_jp"]
 
         print(
-            f"Loaded Kitsu data: {len(kitsu_thumbnails)} thumbnails, {len(kitsu_descriptions)} descriptions, {len(kitsu_synopses)} synopses, {len(kitsu_titles)} titles, {len(kitsu_titles_japanese)} ja_jp titles, {len(kitsu_titles_romaji)} en_jp titles, {len(kitsu_season_numbers)} season numbers, {len(kitsu_episode_urls)} episode URLs"
+            f"Loaded Kitsu data: {len(kitsu_images)} images, {len(kitsu_descriptions)} descriptions, {len(kitsu_synopses)} synopses, {len(kitsu_titles)} titles, {len(kitsu_titles_japanese)} ja_jp titles, {len(kitsu_titles_romaji)} en_jp titles, {len(kitsu_season_numbers)} season numbers, {len(kitsu_episode_urls)} episode URLs"
         )
         return (
-            kitsu_thumbnails,
+            kitsu_images,
             kitsu_descriptions,
             kitsu_synopses,
             kitsu_titles,
@@ -180,7 +180,7 @@ def process_all_episodes(temp_dir: str):
 
     # Load Kitsu episode data for enhancement
     (
-        kitsu_thumbnails,
+        kitsu_images,
         kitsu_descriptions,
         kitsu_synopses,
         kitsu_titles,
@@ -202,7 +202,7 @@ def process_all_episodes(temp_dir: str):
         ep_number = episode.get("episode_number")
 
         # Get Kitsu enhancements for this episode (match by episode number)
-        kitsu_thumbnail = kitsu_thumbnails.get(ep_number)
+        kitsu_image = kitsu_images.get(ep_number)
         kitsu_description = kitsu_descriptions.get(ep_number)
         kitsu_synopsis = kitsu_synopses.get(ep_number)
         kitsu_title = kitsu_titles.get(ep_number)
@@ -214,17 +214,17 @@ def process_all_episodes(temp_dir: str):
         # Get AniSearch enhancements for this episode (match by episode number)
         anisearch_title = anisearch_titles.get(ep_number)
 
-        # Build thumbnails array
-        thumbnails = []
-        if kitsu_thumbnail:
-            thumbnails.append(kitsu_thumbnail)
+        # Build images array
+        images = []
+        if kitsu_image:
+            images.append(kitsu_image)
 
-        # Build episode_pages object
-        episode_pages = {}
+        # Build sources list
+        sources = []
         if episode.get("url"):
-            episode_pages["mal"] = episode.get("url")
+            sources.append(episode.get("url"))
         if kitsu_episode_url:
-            episode_pages["kitsu"] = kitsu_episode_url
+            sources.append(kitsu_episode_url)
 
         # Convert according to Stage 2 prompt template schema with timezone conversion
         processed_episode = {
@@ -247,9 +247,9 @@ def process_all_episodes(temp_dir: str):
             "title_romaji": episode.get("title_romaji")
             or kitsu_title_romaji,  # MAL primary, Kitsu fallback
             # ARRAY FIELDS (alphabetical)
-            "thumbnails": thumbnails,
+            "images": images,
+            "sources": sources,
             # OBJECT/DICT FIELDS (alphabetical)
-            "episode_pages": episode_pages,
             "streaming": {},  # No streaming data from MAL
         }
 

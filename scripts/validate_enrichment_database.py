@@ -107,13 +107,15 @@ class EnrichmentValidator:
         "themes",
         "genres",
         "demographics",
+        "producers",
         "streaming_info",
         "opening_themes",
         "ending_themes",
-        "relations",
+        "related_source_material",
         "related_anime",
         "content_warnings",
         "licensors",
+        "studios",
         "synonyms",
         "tags",
         "trailers",
@@ -126,11 +128,9 @@ class EnrichmentValidator:
         "staff_data",
         "aired_dates",
         "broadcast",
-        "broadcast_schedule",
         "duration",
-        "premiere_dates",
+        "hiatus",
         "score",
-        "delay_information",
         "episode_overrides",
         "character_pages",
     }
@@ -310,8 +310,9 @@ class EnrichmentValidator:
             "nicknames",
             "images",
             "traits",
+            "sources",
         }
-        char_empty_objects = {"character_ids", "character_pages"}
+        char_empty_objects = {"character_ids"}
         char_empty_scalars = {
             "name_native",
             "description",
@@ -766,7 +767,7 @@ class EnrichmentValidator:
                         )
 
                 # Remove empty objects
-                for field in ["character_ids", "character_pages"]:
+                for field in ["character_ids"]:
                     if (
                         field in char
                         and isinstance(char[field], dict)

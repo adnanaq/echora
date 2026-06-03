@@ -492,8 +492,8 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print("Processing relationships from 6 sources...")
 
     # Step 1: Process MAL relations (primary source)
-    mal_anime, mal_manga = process_mal_relations(mal_data)
-    print(f"MAL: {len(mal_anime)} anime relations, {len(mal_manga)} manga relations")
+    mal_anime, mal_source_material = process_mal_relations(mal_data)
+    print(f"MAL: {len(mal_anime)} anime relations, {len(mal_source_material)} source material relations")
 
     # Step 2: Process AnimePlanet relations (co-primary source)
     animeplanet_anime = process_animeplanet_relations(animeplanet_data)
@@ -504,9 +504,9 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
     print(f"AnimSchedule: {len(animeschedule_anime)} anime relations")
 
     # Step 4: Process AniList relations
-    anilist_anime, anilist_manga = process_anilist_relations(anilist_data)
+    anilist_anime, anilist_source_material = process_anilist_relations(anilist_data)
     print(
-        f"AniList: {len(anilist_anime)} anime relations, {len(anilist_manga)} manga relations"
+        f"AniList: {len(anilist_anime)} anime relations, {len(anilist_source_material)} source material relations"
     )
 
     # Step 5: Process AniDB relations
@@ -609,12 +609,12 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
         f"Final total: {len(all_anime_relations)} anime relations (no further deduplication needed)"
     )
 
-    # Combine manga relations from sources that have them
-    all_manga_relations = mal_manga + anilist_manga
-    print(f"Total manga relations: {len(all_manga_relations)}")
+    # Combine source material relations from sources that have them
+    all_source_material_relations = mal_source_material + anilist_source_material
+    print(f"Total source material relations: {len(all_source_material_relations)}")
 
     # Create final output
-    output = {"related_anime": all_anime_relations, "relations": all_manga_relations}
+    output = {"related_anime": all_anime_relations, "related_source_material": all_source_material_relations}
 
     # Write output
     output_file = f"{temp_dir}/stage3_relationships.json"
@@ -623,7 +623,7 @@ def process_all_relationships(current_anime_file: str, temp_dir: str):
 
     print("Stage 3 processing complete:")
     print(f"  - Related anime: {len(all_anime_relations)} entries")
-    print(f"  - Relations (manga): {len(all_manga_relations)} entries")
+    print(f"  - Related source material: {len(all_source_material_relations)} entries")
     print(
         "  - Sources processed: MAL, AnimePlanet, AnimSchedule, AniList, AniDB, Offline URLs"
     )

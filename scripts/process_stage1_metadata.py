@@ -912,27 +912,16 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     else:
         output["broadcast"] = None
 
-    # Broadcast schedule from AnimSchedule
-    if any(animeschedule_data.get(k) for k in ["jpnTime", "subTime", "dubTime"]):
-        output["broadcast_schedule"] = {
-            "jpn_time": animeschedule_data.get("jpnTime"),
-            "sub_time": animeschedule_data.get("subTime"),
-            "dub_time": animeschedule_data.get("dubTime"),
-        }
-    else:
-        output["broadcast_schedule"] = None
-
-    # Delay information from AnimSchedule
+    # Hiatus snapshot (AnimSchedule) — separate from broadcast schedule
     delay_fields = ["delayedTimetable", "delayedFrom", "delayedUntil", "delayedDesc"]
     if any(animeschedule_data.get(k) for k in delay_fields):
-        output["delay_information"] = {
-            "delayed_timetable": animeschedule_data.get("delayedTimetable", False),
-            "delayed_from": animeschedule_data.get("delayedFrom"),
-            "delayed_until": animeschedule_data.get("delayedUntil"),
-            "delay_reason": animeschedule_data.get("delayedDesc"),
+        output["hiatus"] = {
+            "reason": animeschedule_data.get("delayedDesc"),
+            "hiatus_from": animeschedule_data.get("delayedFrom"),
+            "hiatus_until": animeschedule_data.get("delayedUntil"),
         }
     else:
-        output["delay_information"] = None
+        output["hiatus"] = None
 
     # Duration (cross-validated)
     output["duration"] = cross_validate_with_offline(offline_data, sources, "duration")
@@ -942,17 +931,6 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
 
     # Images organized by type
     output["images"] = organize_images_by_type(sources)
-
-    # Premiere dates from AnimSchedule
-    premiere_fields = ["premier", "subPremier", "dubPremier"]
-    if any(animeschedule_data.get(k) for k in premiere_fields):
-        output["premiere_dates"] = {
-            "original": animeschedule_data.get("premier"),
-            "sub": animeschedule_data.get("subPremier"),
-            "dub": animeschedule_data.get("dubPremier"),
-        }
-    else:
-        output["premiere_dates"] = None
 
     # Score calculations from offline database (convert camelCase to snake_case)
     offline_score = offline_data.get("score")
