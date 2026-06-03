@@ -563,6 +563,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "grpcio-tools" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -572,7 +573,6 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "grpc-stubs" },
-    { name = "grpcio-tools" },
     { name = "ruff" },
     { name = "scikit-learn-stubs" },
     { name = "scipy-stubs" },
@@ -592,6 +592,7 @@ requires-dist = [
     { name = "flagembedding", specifier = ">=1.4.0" },
     { name = "grpcio", specifier = "==1.78.0" },
     { name = "grpcio-health-checking", specifier = "==1.78.0" },
+    { name = "grpcio-tools", marker = "extra == 'dev'", specifier = "==1.78.0" },
     { name = "hishel", specifier = ">=1.0.0,<2.0.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
@@ -633,7 +634,6 @@ provides-extras = ["dev"]
 [package.metadata.requires-dev]
 dev = [
     { name = "grpc-stubs", specifier = ">=1.53.0.6" },
-    { name = "grpcio-tools", specifier = ">=1.78.0" },
     { name = "ruff", specifier = "==0.14.10" },
     { name = "scikit-learn-stubs", specifier = ">=0.0.3" },
     { name = "scipy-stubs", specifier = ">=1.16.2.0" },
