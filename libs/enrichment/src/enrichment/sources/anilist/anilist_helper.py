@@ -65,6 +65,9 @@ class AniListHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch canonical anime data and all characters for an AniList URL.
 
@@ -72,10 +75,13 @@ class AniListHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'anilist_url'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: Unused — AniList has no episode endpoint.
 
         Returns:
             Dict with keys ``anime`` and ``characters``, or ``None`` on failure.
         """
+        del fetch_episodes  # AniList does not provide episode data
         url = ids.get("anilist_url")
         if not url:
             return None
@@ -84,7 +90,11 @@ class AniListHelper(BaseEnrichmentHelper):
         anime = await self.fetch_anime_canonical(url, temp_dir)
         if anime:
             logger.info(f"AniList anime fetched: {anime.get('title', url)}")
-        characters = await self.fetch_characters_canonical(url, temp_dir)
+        characters = (
+            await self.fetch_characters_canonical(url, temp_dir)
+            if fetch_characters
+            else []
+        )
         logger.info(f"AniList characters fetched: {len(characters)} characters")
 
         if not anime and not characters:

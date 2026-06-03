@@ -24,20 +24,24 @@ class HealthResponse(_message.Message):
     def __init__(self, healthy: bool = ..., service: _Optional[str] = ..., details_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
 
 class RunPipelineRequest(_message.Message):
-    __slots__ = ("file_path", "index", "title", "agent_dir", "skip_services", "only_services")
+    __slots__ = ("file_path", "index", "title", "agent_dir", "skip_services", "only_services", "skip_characters", "skip_episodes")
     FILE_PATH_FIELD_NUMBER: _ClassVar[int]
     INDEX_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     AGENT_DIR_FIELD_NUMBER: _ClassVar[int]
     SKIP_SERVICES_FIELD_NUMBER: _ClassVar[int]
     ONLY_SERVICES_FIELD_NUMBER: _ClassVar[int]
+    SKIP_CHARACTERS_FIELD_NUMBER: _ClassVar[int]
+    SKIP_EPISODES_FIELD_NUMBER: _ClassVar[int]
     file_path: str
     index: int
     title: str
     agent_dir: str
     skip_services: _containers.RepeatedScalarFieldContainer[str]
     only_services: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, file_path: _Optional[str] = ..., index: _Optional[int] = ..., title: _Optional[str] = ..., agent_dir: _Optional[str] = ..., skip_services: _Optional[_Iterable[str]] = ..., only_services: _Optional[_Iterable[str]] = ...) -> None: ...
+    skip_characters: bool
+    skip_episodes: bool
+    def __init__(self, file_path: _Optional[str] = ..., index: _Optional[int] = ..., title: _Optional[str] = ..., agent_dir: _Optional[str] = ..., skip_services: _Optional[_Iterable[str]] = ..., only_services: _Optional[_Iterable[str]] = ..., skip_characters: bool = ..., skip_episodes: bool = ...) -> None: ...
 
 class RunPipelineResponse(_message.Message):
     __slots__ = ("success", "output_path", "result_json", "error")

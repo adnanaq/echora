@@ -1893,3 +1893,35 @@ class TestAniListHelperCanonicalMethods:
 
         out_file = tmp_path / "anilist_characters.jsonl"
         assert not out_file.exists()
+
+
+class TestAniListFetchAllEntityFlags:
+    """Tests for fetch_characters/fetch_episodes flags in fetch_all."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_false_skips_character_fetch(self):
+        """fetch_all does not call fetch_characters_canonical when fetch_characters=False."""
+        helper = AniListHelper()
+        helper.fetch_anime_canonical = AsyncMock(return_value={"title": "One Piece"})
+        helper.fetch_characters_canonical = AsyncMock(return_value=[{"name": "Luffy"}])
+
+        result = await helper.fetch_all(
+            {"anilist_url": "https://anilist.co/anime/21"}, {}, fetch_characters=False
+        )
+
+        assert result is not None
+        assert result["characters"] == []
+        helper.fetch_characters_canonical.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fetch_episodes_false_accepted_without_error(self):
+        """fetch_all accepts fetch_episodes=False without error (AniList has no episode endpoint)."""
+        helper = AniListHelper()
+        helper.fetch_anime_canonical = AsyncMock(return_value={"title": "One Piece"})
+        helper.fetch_characters_canonical = AsyncMock(return_value=[])
+
+        result = await helper.fetch_all(
+            {"anilist_url": "https://anilist.co/anime/21"}, {}, fetch_episodes=False
+        )
+
+        assert result is not None

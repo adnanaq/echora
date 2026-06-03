@@ -73,6 +73,9 @@ class BaseEnrichmentHelper(ABC):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """
         Fetch all available data for a specific anime from the service.
@@ -85,6 +88,8 @@ class BaseEnrichmentHelper(ABC):
             ids: Dictionary of validated platform IDs/URLs.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
             Normalized payload with ``anime``, ``episodes``, ``characters``,

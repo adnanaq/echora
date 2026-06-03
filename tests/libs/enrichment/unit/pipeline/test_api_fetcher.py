@@ -82,7 +82,9 @@ class TestFetchMALViaService:
 
         assert result == expected
         assert "mal" in fetcher.api_timings
-        mock_helper.fetch_all.assert_awaited_once_with(ids, offline, temp_dir)
+        mock_helper.fetch_all.assert_awaited_once_with(
+            ids, offline, temp_dir, fetch_characters=True, fetch_episodes=True
+        )
 
     @pytest.mark.asyncio
     async def test_mal_service_returns_none_on_failure(self):
@@ -336,7 +338,37 @@ class TestFetchAllData:
                 with patch.object(fetcher, "_log_performance_metrics"):
                     await fetcher.fetch_all_data(ids, offline, temp_dir=temp_dir)
 
-        mock_helper.fetch_all.assert_awaited_once_with(ids, offline, temp_dir)
+        mock_helper.fetch_all.assert_awaited_once_with(
+            ids, offline, temp_dir, fetch_characters=True, fetch_episodes=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_characters_false_forwarded_to_helpers(self):
+        fetcher = ApiFetcher()
+        mock_helper = AsyncMock()
+        mock_helper.fetch_all = AsyncMock(return_value={"title": "X"})
+
+        with patch.object(fetcher, "_build_helpers", return_value={"mal": mock_helper}):
+            with patch.object(fetcher, "_log_performance_metrics"):
+                await fetcher.fetch_all_data({}, {}, fetch_characters=False)
+
+        mock_helper.fetch_all.assert_awaited_once_with(
+            {}, {}, None, fetch_characters=False, fetch_episodes=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_episodes_false_forwarded_to_helpers(self):
+        fetcher = ApiFetcher()
+        mock_helper = AsyncMock()
+        mock_helper.fetch_all = AsyncMock(return_value={"title": "X"})
+
+        with patch.object(fetcher, "_build_helpers", return_value={"mal": mock_helper}):
+            with patch.object(fetcher, "_log_performance_metrics"):
+                await fetcher.fetch_all_data({}, {}, fetch_episodes=False)
+
+        mock_helper.fetch_all.assert_awaited_once_with(
+            {}, {}, None, fetch_characters=True, fetch_episodes=False
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_all_data_fresh_helpers_each_run(self):
@@ -374,7 +406,9 @@ class TestFetchService:
 
         assert result == {"title": "One Piece"}
         assert "kitsu" in fetcher.api_timings
-        mock_helper.fetch_all.assert_awaited_once_with(ids, {}, None)
+        mock_helper.fetch_all.assert_awaited_once_with(
+            ids, {}, None, fetch_characters=True, fetch_episodes=True
+        )
 
     @pytest.mark.asyncio
     async def test_exception_records_error_and_returns_none(self):
@@ -399,7 +433,9 @@ class TestFetchService:
 
         with tempfile.TemporaryDirectory() as tmp:
             await fetcher._fetch_service("anidb", mock_helper, ids, {}, tmp)
-            mock_helper.fetch_all.assert_awaited_once_with(ids, {}, tmp)
+            mock_helper.fetch_all.assert_awaited_once_with(
+                ids, {}, tmp, fetch_characters=True, fetch_episodes=True
+            )
 
     @pytest.mark.asyncio
     async def test_anilist_uses_same_path_as_other_services(self):
@@ -413,7 +449,38 @@ class TestFetchService:
 
         assert result == {"title": "One Piece"}
         assert "anilist" in fetcher.api_timings
-        mock_helper.fetch_all.assert_awaited_once_with(ids, {}, None)
+        mock_helper.fetch_all.assert_awaited_once_with(
+            ids, {}, None, fetch_characters=True, fetch_episodes=True
+        )
+
+
+    @pytest.mark.asyncio
+    async def test_passes_fetch_characters_false_to_helper(self):
+        fetcher = ApiFetcher()
+        mock_helper = AsyncMock()
+        mock_helper.fetch_all = AsyncMock(return_value={"title": "X"})
+
+        await fetcher._fetch_service(
+            "mal", mock_helper, {}, {}, None, fetch_characters=False
+        )
+
+        mock_helper.fetch_all.assert_awaited_once_with(
+            {}, {}, None, fetch_characters=False, fetch_episodes=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_passes_fetch_episodes_false_to_helper(self):
+        fetcher = ApiFetcher()
+        mock_helper = AsyncMock()
+        mock_helper.fetch_all = AsyncMock(return_value={"title": "X"})
+
+        await fetcher._fetch_service(
+            "kitsu", mock_helper, {}, {}, None, fetch_episodes=False
+        )
+
+        mock_helper.fetch_all.assert_awaited_once_with(
+            {}, {}, None, fetch_characters=True, fetch_episodes=False
+        )
 
 
 class TestGather:

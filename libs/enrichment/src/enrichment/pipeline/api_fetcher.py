@@ -101,6 +101,9 @@ class ApiFetcher:
         temp_dir: str | None = None,
         skip_services: list[str] | None = None,
         only_services: list[str] | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any]:
         """Fetch data from multiple anime APIs concurrently with optional service filtering.
 
@@ -110,6 +113,8 @@ class ApiFetcher:
             temp_dir: Directory where per-service JSONL files are written when provided.
             skip_services: Services to omit. Ignored when ``only_services`` is set.
             only_services: Exclusive allowlist; takes precedence over ``skip_services``.
+            fetch_characters: When False, skip character fetching across all sources.
+            fetch_episodes: When False, skip episode fetching across all sources.
 
         Returns:
             Mapping of service name → fetched result dict, or ``None`` for failed/timed-out services.
@@ -128,7 +133,18 @@ class ApiFetcher:
 
         start_time = time.time()
         tasks: list[tuple[str, Any]] = [
-            (name, self._fetch_service(name, helper, ids, offline_data, temp_dir))
+            (
+                name,
+                self._fetch_service(
+                    name,
+                    helper,
+                    ids,
+                    offline_data,
+                    temp_dir,
+                    fetch_characters=fetch_characters,
+                    fetch_episodes=fetch_episodes,
+                ),
+            )
             for name, helper in helpers.items()
         ]
 
@@ -192,12 +208,22 @@ class ApiFetcher:
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Generic fetcher for any registered service."""
         try:
             start = time.time()
             result = await self._fetch_with_telemetry(
-                name, helper.fetch_all(ids, offline_data, temp_dir)
+                name,
+                helper.fetch_all(
+                    ids,
+                    offline_data,
+                    temp_dir,
+                    fetch_characters=fetch_characters,
+                    fetch_episodes=fetch_episodes,
+                ),
             )
             self.api_timings[name] = time.time() - start
         except Exception as e:

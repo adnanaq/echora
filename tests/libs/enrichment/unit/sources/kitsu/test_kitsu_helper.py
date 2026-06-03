@@ -1035,3 +1035,65 @@ async def test_fetch_all_outer_exception_returns_none():
         result = await helper.fetch_all({"kitsu_url": "https://kitsu.app/anime/1"}, {})
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_skips_episodes_when_fetch_episodes_false():
+    """fetch_all does not call fetch_episodes when fetch_episodes=False."""
+    from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
+
+    helper = KitsuHelper()
+    with patch(
+        "enrichment.sources.kitsu.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(AsyncMock()),
+    ):
+        with patch.object(
+            helper,
+            "fetch_anime",
+            new=AsyncMock(return_value={"title": "X", "sources": []}),
+        ):
+            with patch.object(
+                helper, "fetch_episodes", new=AsyncMock(return_value=[{"ep": 1}])
+            ) as mock_eps:
+                with patch.object(
+                    helper, "fetch_characters", new=AsyncMock(return_value=[])
+                ):
+                    result = await helper.fetch_all(
+                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}, fetch_episodes=False
+                    )
+
+    assert result is not None
+    assert result["episodes"] == []
+    mock_eps.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_skips_characters_when_fetch_characters_false():
+    """fetch_all does not call fetch_characters when fetch_characters=False."""
+    from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
+
+    helper = KitsuHelper()
+    with patch(
+        "enrichment.sources.kitsu.kitsu_helper._cache_manager.get_aiohttp_session",
+        return_value=_cm(AsyncMock()),
+    ):
+        with patch.object(
+            helper,
+            "fetch_anime",
+            new=AsyncMock(return_value={"title": "X", "sources": []}),
+        ):
+            with patch.object(
+                helper, "fetch_episodes", new=AsyncMock(return_value=[])
+            ):
+                with patch.object(
+                    helper,
+                    "fetch_characters",
+                    new=AsyncMock(return_value=[{"name": "Luffy"}]),
+                ) as mock_chars:
+                    result = await helper.fetch_all(
+                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}, fetch_characters=False
+                    )
+
+    assert result is not None
+    assert result["characters"] == []
+    mock_chars.assert_not_awaited()

@@ -56,6 +56,9 @@ class KitsuHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch canonical anime, episodes, and characters from Kitsu.
 
@@ -63,6 +66,8 @@ class KitsuHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'kitsu_url'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
             ``{"anime": dict, "episodes": list, "characters": list}`` or ``None`` on failure.
@@ -117,16 +122,23 @@ class KitsuHelper(BaseEnrichmentHelper):
                 sources = canonical_anime.get("sources", [])
                 anime_slug = sources[0].rsplit("/", 1)[-1] if sources else None
 
+                async def _empty() -> list:
+                    return []
+
                 canonical_episodes, canonical_characters = await asyncio.gather(
                     self.fetch_episodes(
                         numeric_id,
                         anime_slug=anime_slug,
                         output_path=episodes_path,
                         session=session,
-                    ),
+                    )
+                    if fetch_episodes
+                    else _empty(),
                     self.fetch_characters(
                         numeric_id, output_path=characters_path, session=session
-                    ),
+                    )
+                    if fetch_characters
+                    else _empty(),
                     return_exceptions=True,
                 )
 

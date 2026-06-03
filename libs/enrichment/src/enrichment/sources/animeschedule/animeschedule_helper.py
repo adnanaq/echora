@@ -94,6 +94,9 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch and map AnimSchedule data for an anime.
 
@@ -103,11 +106,15 @@ class AnimescheduleHelper(BaseEnrichmentHelper):
         match. Falls back to the first result when no sources are provided.
 
         Note: ``ids`` is intentionally unused — AnimSchedule has no platform ID system.
+        Note: ``fetch_characters`` and ``fetch_episodes`` are unused — AnimSchedule is
+            an anime-only source (no characters or episodes endpoint).
 
         Args:
             ids: Unused. AnimSchedule is title-search-based with no platform ID.
             offline_data: The original offline anime metadata. Must contain ``"title"``.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: Accepted for interface compliance; AnimSchedule is anime-only.
+            fetch_episodes: Accepted for interface compliance; AnimSchedule is anime-only.
 
         Returns:
             Canonical anime dict, or None if no match is found or title is missing.

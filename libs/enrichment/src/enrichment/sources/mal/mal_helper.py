@@ -41,6 +41,9 @@ class MalHelper(BaseEnrichmentHelper):
         ids: dict[str, str],
         offline_data: dict[str, Any],
         temp_dir: str | None = None,
+        *,
+        fetch_characters: bool = True,
+        fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
         """Fetch all MAL data for this anime.
 
@@ -48,6 +51,8 @@ class MalHelper(BaseEnrichmentHelper):
             ids: Dictionary of validated platform IDs/URLs. Must contain 'mal_url'.
             offline_data: The original offline anime metadata.
             temp_dir: Optional directory for intermediate JSONL storage.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
             Dict with keys ``anime``, ``episodes``, ``characters``, or None when
@@ -87,7 +92,7 @@ class MalHelper(BaseEnrichmentHelper):
         episode_count = int(anime_info.get("episode_count") or 0)
 
         episodes_data: list[dict[str, Any]] = []
-        if episode_count > 0:
+        if fetch_episodes and episode_count > 0:
             try:
                 episodes_data = await self._fetch_episodes(
                     url, episode_count, output_path=episodes_output_path
@@ -98,14 +103,15 @@ class MalHelper(BaseEnrichmentHelper):
                 )
 
         characters_data: list[dict[str, Any]] = []
-        try:
-            characters_data = await self._fetch_characters(
-                url, output_path=characters_output_path
-            )
-        except Exception as e:
-            logger.warning(
-                f"Character detail fetch failed, continuing without characters: {e}"
-            )
+        if fetch_characters:
+            try:
+                characters_data = await self._fetch_characters(
+                    url, output_path=characters_output_path
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Character detail fetch failed, continuing without characters: {e}"
+                )
 
         logger.info(f"MAL episodes fetched: {len(episodes_data)} episodes")
         logger.info(f"MAL characters fetched: {len(characters_data)} characters")

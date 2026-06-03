@@ -144,6 +144,8 @@ async def run_pipeline_and_write_artifact(
     agent_dir: str | None,
     skip_services: list[str] | None,
     only_services: list[str] | None,
+    fetch_characters: bool = True,
+    fetch_episodes: bool = True,
     output_dir: str | Path = "assets/seed_data",
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Run enrichment for one anime entry and persist an artifact.
@@ -155,6 +157,8 @@ async def run_pipeline_and_write_artifact(
         agent_dir: Optional agent output directory passed to pipeline.
         skip_services: Optional service names to skip.
         only_services: Optional service names to run exclusively.
+        fetch_characters: When False, skip character fetching across all sources.
+        fetch_episodes: When False, skip episode fetching across all sources.
         output_dir: Directory where artifact files are written.
 
     Returns:
@@ -184,6 +188,8 @@ async def run_pipeline_and_write_artifact(
             agent_dir=agent_dir,
             skip_services=skip_services,
             only_services=only_services,
+            fetch_characters=fetch_characters,
+            fetch_episodes=fetch_episodes,
         )
 
     output_root = Path(output_dir)
@@ -198,6 +204,8 @@ async def run_pipeline_and_write_artifact(
             "agent_dir": agent_dir,
             "skip_services": skip_services or [],
             "only_services": only_services or [],
+            "fetch_characters": fetch_characters,
+            "fetch_episodes": fetch_episodes,
         },
         result=result,
     )
