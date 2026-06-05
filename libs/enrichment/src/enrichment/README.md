@@ -34,8 +34,6 @@ libs/enrichment/src/enrichment/
 ├── similarity/
 │   └── ccip.py            # CCIP character image similarity (OpenCLIP fallback)
 │
-├── crawlers/           # Legacy — only anidb_character_crawler.py remains
-│
 └── ai_character_matcher.py  # AI-powered fuzzy character name matching (BGE-M3)
 ```
 
@@ -84,7 +82,7 @@ Returns a dict used by every source helper's `fetch_all(ids, ...)`.
 from enrichment.pipeline.id_extractor import PlatformIDExtractor
 
 ids = PlatformIDExtractor().extract(offline_data)
-# {"mal_url": "https://myanimelist.net/anime/21", "kitsu_url": "...", ...}
+# {"mal_url": "https://myanimelist.net/anime/21", "anidb_url": "https://anidb.net/anime/69", ...}
 ```
 
 ### `EnrichmentConfig`
@@ -132,6 +130,12 @@ uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://
 
 # Anime-Planet
 uv run python -m enrichment.sources.anime_planet.anime_planet_helper anime https://www.anime-planet.com/anime/one-piece
+
+# AniDB
+uv run python -m enrichment.sources.anidb.anidb_helper anime https://anidb.net/anime/69 onepiece_anidb.json
+uv run python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.net/anime/69 onepiece_anidb_episodes.json
+uv run python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 onepiece_anidb_characters.json
+uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
 
 # AnimSchedule
 uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piece"
