@@ -21,6 +21,7 @@ import aiohttp
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.anidb.anidb_mapper import (
     anime_from_anidb,
+    character_from_anidb,
     episode_from_anidb,
 )
 from enrichment.sources.anidb.anidb_models import AniDBAnime
@@ -162,15 +163,13 @@ class AniDBHelper(BaseEnrichmentHelper):
                 logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
 
         characters_data: list[dict[str, Any]] = []
-        # TODO(ECHO-XX): re-enable once character_from_anidb is validated end-to-end
-        # and anidb_character_crawler page enrichment is wired in.
-        # if fetch_characters:
-        #     try:
-        #         characters_data = await self._fetch_characters(
-        #             anime_model, output_path=characters_output_path
-        #         )
-        #     except Exception as e:
-        #         logger.warning(f"Character fetch failed, continuing without characters: {e}")
+        if fetch_characters:
+            try:
+                characters_data = await self._fetch_characters(
+                    anime_model, output_path=characters_output_path
+                )
+            except Exception as e:
+                logger.warning(f"Character fetch failed, continuing without characters: {e}")
 
         logger.info(f"AniDB episodes fetched: {len(episodes_data)}")
         logger.info(f"AniDB characters fetched: {len(characters_data)}")
@@ -266,10 +265,16 @@ class AniDBHelper(BaseEnrichmentHelper):
         Returns:
             List of canonical character dicts.
         """
-        # TODO(ECHO-XX): implement batch character page fetch via anidb_character_crawler,
-        # merge with XML character data, map via character_from_anidb, then
-        # append each result to output_path via append_jsonl.
-        return []
+        # TODO(ECHO-XX): enrich with anidb_character_crawler page data before mapping.
+        characters: list[dict[str, Any]] = []
+        for char_model in anime_model.characters:
+            char_dict = character_from_anidb(char_model)
+            if char_dict is None:
+                continue
+            characters.append(char_dict)
+            if output_path:
+                append_jsonl(output_path, char_dict)
+        return characters
 
     async def _fetch_xml(self, anidb_id: int) -> str | None:
         """Fetch the raw XML response from AniDB HTTP API.
@@ -593,46 +598,80 @@ class AniDBHelper(BaseEnrichmentHelper):
 # =============================================================================
 
 
-async def main() -> int:
-    """CLI entrypoint for testing AniDB data fetching."""
+def _write_json(path: str, data: object) -> None:  # pragma: no cover
+    safe = sanitize_output_path(path)
+    with open(safe, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved to {safe}")
+
+
+async def main() -> int:  # pragma: no cover
+    """CLI entrypoint for inspecting AniDB data fetching."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Fetch AniDB anime data by ID")
-    parser.add_argument("--anidb-id", type=int, required=True, help="AniDB anime ID")
-    parser.add_argument("--output", type=str, default="test_anidb_output.json", help="Output JSON file")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Fetch data from AniDB HTTP API")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_anime = sub.add_parser("anime", help="Fetch anime metadata")
+    p_anime.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_anime.add_argument("output_file", help="Output JSON file")
+    p_anime.add_argument(
         "--save-xml",
         type=str,
         nargs="?",
         const="",
         default=None,
-        help="Save raw XML (default filename: anidb_{id}_raw.xml)",
+        help="Also save raw XML (default: anidb_{id}_raw.xml)",
     )
-    args = parser.parse_args()
 
+    p_eps = sub.add_parser("episodes", help="Fetch regular episodes")
+    p_eps.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_eps.add_argument("output_file", help="Output JSON file")
+
+    p_chars = sub.add_parser("characters", help="Fetch character data")
+    p_chars.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_chars.add_argument("output_file", help="Output JSON file")
+
+    p_all = sub.add_parser("all", help="Fetch anime, episodes, and characters")
+    p_all.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_all.add_argument("output_dir", help="Directory to write anidb_anime.json, anidb_episodes.json, anidb_characters.json")
+
+    args = parser.parse_args()
     helper = AniDBHelper()
+
     try:
-        xml_response = await helper._fetch_xml(args.anidb_id)
-        if not xml_response:
-            logger.error("No response from AniDB")
+        anime_dict, anime_model = await helper._fetch_anime(args.anidb_url)
+        if not anime_dict or not anime_model:
+            logger.error(f"No data returned for: {args.anidb_url}")
             return 1
 
-        if args.save_xml is not None:
-            xml_path = args.save_xml or f"anidb_{args.anidb_id}_raw.xml"
-            safe_xml_path = sanitize_output_path(xml_path)
-            with open(safe_xml_path, "w", encoding="utf-8") as f:
-                f.write(xml_response)
-            logger.info(f"Raw XML saved to {safe_xml_path}")
+        if args.cmd == "anime":
+            if args.save_xml is not None:
+                match = re.search(r"/anime/(\d+)", args.anidb_url)
+                if match:
+                    xml_response = await helper._fetch_xml(int(match.group(1)))
+                    if xml_response:
+                        xml_path = args.save_xml or f"anidb_{match.group(1)}_raw.xml"
+                        with open(sanitize_output_path(xml_path), "w", encoding="utf-8") as f:
+                            f.write(xml_response)
+                        logger.info(f"Raw XML saved to {xml_path}")
+            _write_json(args.output_file, anime_dict)
 
-        anime_model = parse_anime_xml(xml_response)
-        anidb_url = f"https://anidb.net/anime/{args.anidb_id}"
-        anime_dict = anime_from_anidb(anime_model, anidb_url=anidb_url)
-        episodes = [ep for e in anime_model.episodes if (ep := episode_from_anidb(e)) is not None]
+        elif args.cmd == "episodes":
+            episodes = await helper._fetch_episodes(anime_model)
+            _write_json(args.output_file, episodes)
 
-        output = {"anime": anime_dict, "episodes": episodes, "characters": []}
-        safe_path = sanitize_output_path(args.output)
-        with open(safe_path, "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=2, ensure_ascii=False)
-        logger.info(f"Output saved to {safe_path}")
+        elif args.cmd == "characters":
+            characters = await helper._fetch_characters(anime_model)
+            _write_json(args.output_file, characters)
+
+        elif args.cmd == "all":
+            os.makedirs(args.output_dir, exist_ok=True)
+            episodes = await helper._fetch_episodes(anime_model)
+            characters = await helper._fetch_characters(anime_model)
+            _write_json(os.path.join(args.output_dir, "anidb_anime.json"), anime_dict)
+            _write_json(os.path.join(args.output_dir, "anidb_episodes.json"), episodes)
+            _write_json(os.path.join(args.output_dir, "anidb_characters.json"), characters)
+
         return 0
 
     except KeyboardInterrupt:
@@ -641,5 +680,5 @@ async def main() -> int:
         await helper.close()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(asyncio.run(main()))

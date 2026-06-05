@@ -10,6 +10,7 @@ Extraction rules:
 """
 
 import logging
+from typing import TypedDict
 from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _LANG_NORMALIZE = {"x-jat": "romaji"}
+_CRUNCHYROLL_RESOURCE_TYPE = "28"
+
+
+class _TitlesDict(TypedDict):
+    title: str | None
+    title_english: str | None
+    title_japanese: str | None
+    synonyms: list[str]
+    title_others: dict[str, str]
 
 
 def parse_anime_xml(xml_content: str) -> AniDBAnime:
@@ -84,7 +94,7 @@ def parse_anime_xml(xml_content: str) -> AniDBAnime:
 # =============================================================================
 
 
-def _parse_titles(root: Element) -> dict:
+def _parse_titles(root: Element) -> _TitlesDict:
     """Extract all title variants from the ``<titles>`` element.
 
     Classifies each ``<title>`` by its ``type`` attribute:
@@ -109,34 +119,26 @@ def _parse_titles(root: Element) -> dict:
     title_others: dict[str, str] = {}
 
     titles_elem = root.find("titles")
-    if titles_elem is None:
-        return {
-            "title": title,
-            "title_english": title_english,
-            "title_japanese": title_japanese,
-            "synonyms": synonyms,
-            "title_others": title_others,
-        }
+    if titles_elem is not None:
+        for title_elem in titles_elem.findall("title"):
+            title_type = title_elem.get("type", "")
+            lang = title_elem.get(_XML_LANG, "")
+            text = title_elem.text
 
-    for title_elem in titles_elem.findall("title"):
-        title_type = title_elem.get("type", "")
-        lang = title_elem.get(_XML_LANG, "")
-        text = title_elem.text
+            if not text:
+                continue
 
-        if not text:
-            continue
-
-        if title_type == "main":
-            title = text
-        elif title_type == "official":
-            if lang == "en":
-                title_english = text
-            elif lang == "ja":
-                title_japanese = text
-            else:
-                title_others[lang] = text
-        elif title_type in ("synonym", "short"):
-            synonyms.append(text)
+            if title_type == "main":
+                title = text
+            elif title_type == "official":
+                if lang == "en":
+                    title_english = text
+                elif lang == "ja":
+                    title_japanese = text
+                else:
+                    title_others[lang] = text
+            elif title_type in ("synonym", "short"):
+                synonyms.append(text)
 
     return {
         "title": title,
@@ -202,48 +204,32 @@ def _parse_characters(root: Element) -> list[AniDBCharacter]:
 
     result = []
     for character in characters_elem.findall("character"):
-        character_id_raw = character.get("id")
         character_type_elem = character.find("charactertype")
-
-        seiyuu_list = []
-        for seiyuu_elem in character.findall("seiyuu"):
-            seiyuu_picture = seiyuu_elem.get("picture")
-            seiyuu_id_raw = seiyuu_elem.get("id")
-            seiyuu_list.append(
-                AniDBSeiyuu(
-                    id=int(seiyuu_id_raw) if seiyuu_id_raw and seiyuu_id_raw.isdigit() else None,
-                    name=seiyuu_elem.text,
-                    picture=seiyuu_picture,
-                )
+        seiyuu_list = [
+            AniDBSeiyuu(
+                id=_safe_int(seiyuu_elem.get("id")),
+                name=seiyuu_elem.text,
+                picture=seiyuu_elem.get("picture"),
             )
-
-        character_type_id: int | None = None
-        if character_type_elem is not None:
-            character_type_id_raw = character_type_elem.get("id")
-            if character_type_id_raw and character_type_id_raw.isdigit():
-                character_type_id = int(character_type_id_raw)
-
-        rating_elem = character.find("rating")
+            for seiyuu_elem in character.findall("seiyuu")
+        ]
+        rating, rating_votes = _rating_pair(character.find("rating"))
         result.append(
             AniDBCharacter(
-                id=int(character_id_raw) if character_id_raw and character_id_raw.isdigit() else None,
+                id=_safe_int(character.get("id")),
                 type=character.get("type"),
                 name=_text(character, "name"),
                 gender=_text(character, "gender"),
                 character_type=character_type_elem.text if character_type_elem is not None else None,
-                character_type_id=character_type_id,
-                description=_text(character, "description"),
-                picture=_text(character, "picture"),
-                rating=(
-                    float(rating_elem.text)
-                    if rating_elem is not None and rating_elem.text
+                character_type_id=(
+                    _safe_int(character_type_elem.get("id"))
+                    if character_type_elem is not None
                     else None
                 ),
-                rating_votes=(
-                    int(rating_elem.get("votes", 0))
-                    if rating_elem is not None
-                    else 0
-                ),
+                description=_text(character, "description"),
+                picture=_text(character, "picture"),
+                rating=rating,
+                rating_votes=rating_votes,
                 seiyuu=seiyuu_list,
             )
         )
@@ -266,17 +252,14 @@ def _parse_creators(root: Element) -> list[AniDBCreator]:
     if creators_elem is None:
         return []
 
-    result = []
-    for creator in creators_elem.findall("name"):
-        creator_id_raw = creator.get("id")
-        result.append(
-            AniDBCreator(
-                id=int(creator_id_raw) if creator_id_raw and creator_id_raw.isdigit() else None,
-                name=creator.text,
-                role=creator.get("type"),
-            )
+    return [
+        AniDBCreator(
+            id=_safe_int(creator.get("id")),
+            name=creator.text,
+            role=creator.get("type"),
         )
-    return result
+        for creator in creators_elem.findall("name")
+    ]
 
 
 def _parse_episodes(root: Element) -> list[AniDBEpisode]:
@@ -302,28 +285,21 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
 
     result = []
     for episode in episodes_elem.findall("episode"):
-        episode_id_raw = episode.get("id")
         epno_elem = episode.find("epno")
         length_elem = episode.find("length")
-        airdate_elem = episode.find("airdate")
-        rating_elem = episode.find("rating")
-        summary_elem = episode.find("summary")
 
         episode_type: int | None = None
-        if epno_elem is not None:
-            episode_type_raw = epno_elem.get("type")
-            if episode_type_raw and episode_type_raw.isdigit():
-                episode_type = int(episode_type_raw)
-
         episode_number: int | str | None = None
-        if epno_elem is not None and epno_elem.text:
-            if episode_type == 1:
-                try:
-                    episode_number = int(epno_elem.text)
-                except ValueError:
+        if epno_elem is not None:
+            episode_type = _safe_int(epno_elem.get("type"))
+            if epno_elem.text:
+                if episode_type == 1:
+                    try:
+                        episode_number = int(epno_elem.text)
+                    except ValueError:
+                        episode_number = epno_elem.text
+                else:
                     episode_number = epno_elem.text
-            else:
-                episode_number = epno_elem.text
 
         titles: dict[str, str] = {}
         for title_elem in episode.findall("title"):
@@ -335,7 +311,7 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
         episode_resources_elem = episode.find("resources")
         if episode_resources_elem is not None:
             for resource in episode_resources_elem.findall("resource"):
-                if resource.get("type") == "28":
+                if resource.get("type") == _CRUNCHYROLL_RESOURCE_TYPE:
                     external_entity = resource.find("externalentity")
                     if external_entity is not None:
                         identifier_elem = external_entity.find("identifier")
@@ -344,9 +320,10 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
                                 f"https://www.crunchyroll.com/watch/{identifier_elem.text}"
                             )
 
+        rating, rating_votes = _rating_pair(episode.find("rating"))
         result.append(
             AniDBEpisode(
-                id=int(episode_id_raw) if episode_id_raw and episode_id_raw.isdigit() else None,
+                id=_safe_int(episode.get("id")),
                 episode_number=episode_number,
                 episode_type=episode_type,
                 length=(
@@ -354,18 +331,10 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
                     if length_elem is not None and length_elem.text and length_elem.text.isdigit()
                     else None
                 ),
-                airdate=airdate_elem.text if airdate_elem is not None else None,
-                rating=(
-                    float(rating_elem.text)
-                    if rating_elem is not None and rating_elem.text
-                    else None
-                ),
-                rating_votes=(
-                    int(rating_elem.get("votes", 0))
-                    if rating_elem is not None
-                    else 0
-                ),
-                summary=summary_elem.text if summary_elem is not None else None,
+                airdate=_text(episode, "airdate"),
+                rating=rating,
+                rating_votes=rating_votes,
+                summary=_text(episode, "summary"),
                 titles=titles,
                 streaming=streaming,
             )
@@ -485,14 +454,6 @@ def _parse_ratings(root: Element) -> AniDBRatings | None:
         return None
 
     def _rating_value(tag: str) -> tuple[float | None, int]:
-        """Extract score value and vote count from a ratings sub-element.
-
-        Args:
-            tag: XML tag name to look up within ``<ratings>``.
-
-        Returns:
-            Tuple of (score, count). Score is None if element or text is absent.
-        """
         elem = ratings_elem.find(tag)
         if elem is None:
             return None, 0
@@ -548,3 +509,15 @@ def _int(elem: Element, tag: str, default: int = 0) -> int:
     if child is not None and child.text and child.text.isdigit():
         return int(child.text)
     return default
+
+
+def _safe_int(value: str | None) -> int | None:
+    """Parse a string attribute value to int, or None if absent or non-numeric."""
+    return int(value) if value and value.isdigit() else None
+
+
+def _rating_pair(elem: Element | None) -> tuple[float | None, int]:
+    """Extract score and vote count from a ``<rating votes="N">score</rating>`` element."""
+    if elem is None:
+        return None, 0
+    return (float(elem.text) if elem.text else None), int(elem.get("votes", 0))

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class PlatformIDExtractor:
     """
-    Extracts platform IDs from anime source URLs using regex patterns.
+    Extracts platform IDs from anime source URLs using substring matching and regex patterns.
     100% deterministic - same input always produces same output.
     """
 
