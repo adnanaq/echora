@@ -887,6 +887,10 @@ class Anime(BaseModel):
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
     )
+    titles: dict[str, str] = Field(
+        default_factory=dict,
+        description="Official titles in other languages keyed by BCP 47 language code (e.g. 'de', 'ko', 'zh-Hant')",
+    )
 
 
 # =============================================================================

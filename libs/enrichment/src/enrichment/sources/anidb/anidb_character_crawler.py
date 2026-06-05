@@ -8,13 +8,13 @@ Uses crawl4ai with realistic browser headers and stealth configuration to bypass
 AniDB's anti-leech protection. No UndetectedAdapter required.
 
 Usage:
-    ./pants run libs/enrichment/src/enrichment/crawlers/anidb_character_crawler.py -- <character_id> [--output PATH]
+    ./pants run libs/enrichment/src/enrichment/sources/anidb/anidb_character_crawler.py -- <character_id> [--output PATH]
 
     <character_id>  AniDB character ID (e.g., 491 for Brook)
     --output PATH   optional output file path (default: anidb_character.json)
 
 Example:
-    >>> from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+    >>> from enrichment.sources.anidb.anidb_character_crawler import fetch_anidb_character
     >>> data = await fetch_anidb_character(491)  # Brook from One Piece
     >>> data = await fetch_anidb_character(491, output_path="brook.json")
 """
