@@ -265,6 +265,37 @@ def test_anime_from_anidb_unknown_resource_type_skipped() -> None:
     assert "external_sources" not in result or len(result.get("external_sources", {})) == 0
 
 
+def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
+    result = anime_from_anidb(
+        _anime(resources=[AniDBExternalResource(type="28", identifiers=["GRMG8ZQZR"])]),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"]["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+
+
+def test_anime_from_anidb_tmdb_resource_mapped() -> None:
+    result = anime_from_anidb(
+        _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854", "tv"])]),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"]["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+
+
+def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
+    """TMDB requires both id and media type — single identifier must be skipped."""
+    result = anime_from_anidb(
+        _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854"])]),
+        anidb_url=_ANIDB_URL,
+    )
+    assert "themoviedb" not in result.get("external_sources", {})
+
+
+def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(onepiece_anime: AniDBAnime) -> None:
+    result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
+    assert result["external_sources"]["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    assert result["external_sources"]["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+
+
 # =============================================================================
 # anime_from_anidb — field validity
 # =============================================================================

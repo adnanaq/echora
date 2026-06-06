@@ -548,6 +548,17 @@ def test_parse_resources_absent() -> None:
     assert result.resources == []
 
 
+def test_parse_resources_tmdb_stores_both_identifiers(onepiece_anime: AniDBAnime) -> None:
+    """Type 44 (TMDB) has two identifiers per externalentity — both must be stored."""
+    tmdb = next(r for r in onepiece_anime.resources if r.type == "44")
+    assert tmdb.identifiers == ["37854", "tv"]
+
+
+def test_parse_resources_crunchyroll_identifier_stored(onepiece_anime: AniDBAnime) -> None:
+    cr = next(r for r in onepiece_anime.resources if r.type == "28")
+    assert cr.identifiers == ["GRMG8ZQZR"]
+
+
 # =============================================================================
 # parse_anime_xml — tags
 # =============================================================================

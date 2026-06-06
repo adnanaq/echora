@@ -56,8 +56,10 @@ _RESOURCE_MAP: dict[str, tuple[str, str]] = {
     "41": ("netflix", "https://www.netflix.com/title/{}"),
     "43": ("imdb", "https://www.imdb.com/title/{}"),
     "45": ("hulu", "https://www.hulu.com/series/{}"),
-    # type 44 (TMDB) skipped — requires separate type + id identifiers
-    # type 28 (Crunchyroll) is episode-level only, handled in episode_from_anidb
+    "28": ("crunchyroll", "https://www.crunchyroll.com/series/{}"),
+    "38": ("bangumi", "https://bgm.tv/subject/{}"),
+    "39": ("douban", "https://movie.douban.com/subject/{}"),
+    "47": ("bilibili", "https://www.bilibili.com/{}"),
 }
 
 
@@ -116,6 +118,18 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     if anime.url:
         external_sources["official_website"] = anime.url
     for resource in anime.resources:
+        if resource.type == "33":
+            # Baidu Baike identifier may have ?fromModule=... query string — strip it
+            if resource.identifiers:
+                slug = resource.identifiers[0].split("?")[0]
+                external_sources["baidu_baike"] = f"https://baike.baidu.com/item/{slug}"
+            continue
+        if resource.type == "44":
+            # TMDB has two identifiers: numeric id + media type ("tv" or "movie")
+            if len(resource.identifiers) >= 2:
+                tmdb_id, tmdb_type = resource.identifiers[0], resource.identifiers[1]
+                external_sources["themoviedb"] = f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}"
+            continue
         mapping = _RESOURCE_MAP.get(resource.type)
         if mapping is None:
             continue

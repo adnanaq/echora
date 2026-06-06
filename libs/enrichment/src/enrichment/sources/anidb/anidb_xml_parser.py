@@ -270,7 +270,7 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
         - All others        → raw string (e.g. "S1", "C3", "T1")
 
     Streaming links are extracted from per-episode ``<resources>`` (type 28 =
-    Crunchyroll only at episode level).
+    Crunchyroll, episode-level identifier used to build watch URLs).
 
     Args:
         root: Root ``<anime>`` XML element.
@@ -403,11 +403,11 @@ def _parse_resources(root: Element) -> list[AniDBExternalResource]:
         identifiers: list[str] = []
         for external_entity in resource.findall("externalentity"):
             url_elem = external_entity.find("url")
-            identifier_elem = external_entity.find("identifier")
             if url_elem is not None and url_elem.text:
                 urls.append(url_elem.text)
-            if identifier_elem is not None and identifier_elem.text:
-                identifiers.append(identifier_elem.text)
+            for identifier_elem in external_entity.findall("identifier"):
+                if identifier_elem.text:
+                    identifiers.append(identifier_elem.text)
 
         result.append(
             AniDBExternalResource(type=resource_type, urls=urls, identifiers=identifiers)
