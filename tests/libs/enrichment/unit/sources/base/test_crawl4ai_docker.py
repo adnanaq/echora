@@ -4,11 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+import enrichment.sources.base.crawl4ai_docker as _docker_mod
 from enrichment.sources.base.crawl4ai_docker import (
     _align_results,
+    _bypass_waf_with_zendriver,
     _extract_transient_failed_urls,
     _extract_waf_blocked_urls,
     _get_base_url,
+    _inject_cookies,
     _poll_job,
     _probe_waf_recovery,
     _retry_failed_urls,
@@ -21,6 +24,16 @@ from enrichment.sources.base.crawl4ai_docker import (
 _BC = {"type": "BrowserConfig", "params": {}}
 _CC = {"type": "CrawlerRunConfig", "params": {}}
 URL = "https://myanimelist.net/anime/21/One_Piece/episode/1"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def clear_cf_cookie_cache() -> None:
+    _docker_mod._CF_COOKIE_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +541,122 @@ async def test_wait_for_waf_unblock_second_probe_succeeds() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _inject_cookies
+# ---------------------------------------------------------------------------
+
+
+def test_inject_cookies_merges_into_empty_params() -> None:
+    bc = {"type": "BrowserConfig", "params": {}}
+    cookies = [{"name": "cf_clearance", "value": "abc", "domain": ".example.com", "path": "/"}]
+    result = _inject_cookies(bc, cookies)
+    assert result["params"]["cookies"] == cookies
+
+
+def test_inject_cookies_merges_with_existing_cookies() -> None:
+    existing = [{"name": "session", "value": "xyz"}]
+    bc = {"type": "BrowserConfig", "params": {"cookies": existing}}
+    new_cookies = [{"name": "cf_clearance", "value": "abc", "domain": ".example.com", "path": "/"}]
+    result = _inject_cookies(bc, new_cookies)
+    assert result["params"]["cookies"] == existing + new_cookies
+
+
+def test_inject_cookies_does_not_mutate_original() -> None:
+    bc = {"type": "BrowserConfig", "params": {"headless": True}}
+    _inject_cookies(bc, [{"name": "cf_clearance", "value": "x"}])
+    assert "cookies" not in bc["params"]
+
+
+# ---------------------------------------------------------------------------
+# _bypass_waf_with_zendriver
+# ---------------------------------------------------------------------------
+
+
+async def test_bypass_waf_with_zendriver_import_error_returns_none() -> None:
+    import sys
+    with patch.dict(sys.modules, {"zendriver": None}):
+        result = await _bypass_waf_with_zendriver(URL)
+    assert result is None
+
+
+async def test_bypass_waf_with_zendriver_exception_returns_none() -> None:
+    with patch("zendriver.start", side_effect=RuntimeError("browser crash")):
+        result = await _bypass_waf_with_zendriver(URL)
+    assert result is None
+
+
+async def test_bypass_waf_with_zendriver_no_cf_cookie_returns_none() -> None:
+    mock_page = AsyncMock()
+    mock_page.get_content.return_value = "<html>clean</html>"
+    mock_page.send = AsyncMock(return_value=[])
+
+    mock_browser = AsyncMock()
+    mock_browser.get.return_value = mock_page
+    mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
+    mock_browser.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
+        patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        result = await _bypass_waf_with_zendriver(URL)
+    assert result is None
+
+
+async def test_bypass_waf_with_zendriver_returns_cf_clearance_cookie() -> None:
+    mock_cookie = MagicMock()
+    mock_cookie.name = "cf_clearance"
+    mock_cookie.value = "token123"
+    mock_cookie.domain = ".myanimelist.net"
+    mock_cookie.path = "/"
+
+    other_cookie = MagicMock()
+    other_cookie.name = "session"
+    other_cookie.value = "sess456"
+
+    mock_page = AsyncMock()
+    mock_page.get_content.return_value = "<html>clean</html>"
+    mock_page.send = AsyncMock(return_value=[mock_cookie, other_cookie])
+
+    mock_browser = AsyncMock()
+    mock_browser.get.return_value = mock_page
+    mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
+    mock_browser.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
+        patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        result = await _bypass_waf_with_zendriver(URL)
+
+    assert result == [{"name": "cf_clearance", "value": "token123", "domain": ".myanimelist.net", "path": "/"}]
+
+
+async def test_bypass_waf_with_zendriver_still_blocked_returns_none() -> None:
+    mock_page = AsyncMock()
+    mock_page.get_content.return_value = "Just a moment..."
+
+    mock_browser = AsyncMock()
+    mock_browser.get.return_value = mock_page
+    mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
+    mock_browser.__aexit__ = AsyncMock(return_value=None)
+
+    # cf_is_interactive_challenge_present is imported inside the function body,
+    # so patch its attribute on the source module — not on crawl4ai_docker.
+    with (
+        patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
+        patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
+        patch(
+            "zendriver.core.cloudflare.cf_is_interactive_challenge_present",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch("enrichment.sources.base.crawl4ai_docker._ZENDRIVER_UNBLOCK_WAIT", -1.0),
+    ):
+        result = await _bypass_waf_with_zendriver(URL)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
 # crawl_single_url
 # ---------------------------------------------------------------------------
 
@@ -735,6 +864,11 @@ async def test_crawl_batch_urls_waf_blocked_recovered() -> None:
             ],
         ),
         patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
             new_callable=AsyncMock,
             return_value=True,
@@ -758,12 +892,208 @@ async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
             return_value={"result": {"results": [waf]}},
         ),
         patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
             new_callable=AsyncMock,
             return_value=False,
         ),
     ):
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
+
+
+async def test_crawl_batch_urls_waf_zendriver_succeeds_skips_passive() -> None:
+    """Active CF bypass succeeds → retry with injected cookie; passive probe never called."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    cf_cookies = [{"name": "cf_clearance", "value": "tok", "domain": ".myanimelist.net", "path": "/"}]
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},
+                {"result": {"results": [recovered]}},
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=cf_cookies,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+        ) as mock_passive,
+    ):
+        result = await crawl_batch_urls([URL], _BC, _CC)
+
+    assert result == [recovered]
+    mock_passive.assert_not_called()
+
+
+async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_recovered() -> None:
+    """zendriver returns None → falls back to passive probe → URL recovered."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},
+                {"result": {"results": [recovered]}},
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
+
+
+async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_not_recovered() -> None:
+    """zendriver returns None → passive probe also fails → None."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            return_value={"result": {"results": [waf]}},
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [None]
+
+
+async def test_crawl_batch_urls_waf_cookie_partial_recovery_then_passive_recovered() -> None:
+    """Cookie retries recover some URLs; remaining go to passive probe and are recovered."""
+    URL2 = "https://www.anime-planet.com/anime/one-piece/characters/2"
+    waf1 = {"url": URL, "success": True, "status_code": 403}
+    waf2 = {"url": URL2, "success": True, "status_code": 403}
+    ok1 = {"url": URL, "success": True, "status_code": 200}
+    ok2 = {"url": URL2, "success": True, "status_code": 200}
+    cf_cookies = [{"name": "cf_clearance", "value": "tok", "domain": ".ap.net", "path": "/"}]
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf1, waf2]}},  # initial batch: both blocked
+                {"result": {"results": [ok1, waf2]}},    # cookie retry 1: URL1 recovered
+                {"result": {"results": [waf2]}},          # cookie retry 2: URL2 still blocked
+                {"result": {"results": [waf2]}},          # cookie retry 3: URL2 still blocked
+                {"result": {"results": [ok2]}},           # passive retry: URL2 recovered
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=cf_cookies,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_passive,
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await crawl_batch_urls([URL, URL2], _BC, _CC)
+
+    assert result == [ok1, ok2]
+    mock_passive.assert_called_once()
+
+
+async def test_crawl_batch_urls_waf_cookie_zero_recovery_evicts_cache_then_passive() -> None:
+    """Cookie recovers 0 URLs across all retries → cache evicted → passive probe fallback."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    netloc = "myanimelist.net"
+    cf_cookies = [{"name": "cf_clearance", "value": "tok", "domain": f".{netloc}", "path": "/"}]
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},       # initial batch
+                {"result": {"results": [waf]}},       # cookie retry 1: 0 recovered
+                {"result": {"results": [waf]}},       # cookie retry 2: 0 recovered
+                {"result": {"results": [waf]}},       # cookie retry 3: 0 recovered
+                {"result": {"results": [recovered]}}, # passive retry: recovered
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=cf_cookies,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_passive,
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await crawl_batch_urls([URL], _BC, _CC)
+
+    assert result == [recovered]
+    assert netloc not in _docker_mod._CF_COOKIE_CACHE  # stale cookie was evicted
+    mock_passive.assert_called_once()
 
 
 async def test_crawl_batch_transient_retry_hits_waf_triggers_recovery() -> None:
@@ -789,6 +1119,11 @@ async def test_crawl_batch_transient_retry_hits_waf_triggers_recovery() -> None:
                 {"result": {"results": [transient]}},
                 {"result": {"results": [recovered]}},
             ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
         ),
         patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
@@ -825,6 +1160,11 @@ async def test_crawl_batch_transient_retry_hits_waf_recovery_fails() -> None:
                 {"result": {"results": [transient]}},
                 {"result": {"results": [waf]}},
             ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
         ),
         patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",

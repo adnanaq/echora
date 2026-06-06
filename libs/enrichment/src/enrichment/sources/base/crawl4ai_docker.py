@@ -52,6 +52,26 @@ _TRANSIENT_ERROR_FRAGMENTS = (
     "Timeout 90000ms exceeded",
 )
 
+# Zendriver active CF bypass timings
+_CF_MARKERS: tuple[str, ...] = ("Just a moment", "cf-browser-verification", "cf-challenge")
+_ZENDRIVER_INITIAL_WAIT: float = 2.0
+_ZENDRIVER_CHALLENGE_TIMEOUT: float = 5.0
+_ZENDRIVER_CLICK_DELAY: float = 2.0
+_ZENDRIVER_VERIFY_TIMEOUT: float = 20.0
+_ZENDRIVER_UNBLOCK_WAIT: float = 15.0
+
+
+# Cookie-injection retry loop: how many times to retry WAF-blocked URLs with the
+# cf_clearance cookie before falling back to the passive probe.  Each attempt
+# after the first waits _WAF_COOKIE_RETRY_DELAY seconds so CF's rate-limit
+# window has time to cool between waves.  The burst shrinks each retry (fewer
+# URLs remaining), which is why multiple short waits outperform one long wait.
+_WAF_COOKIE_MAX_RETRIES = 3
+_WAF_COOKIE_RETRY_DELAY: float = 30.0
+
+# cf_clearance cookies are valid for hours — cache per netloc to avoid re-running Chrome.
+_CF_COOKIE_CACHE: dict[str, list[dict[str, Any]]] = {}
+
 
 def _get_base_url() -> str:
     return os.environ.get("CRAWL4AI_DOCKER_URL", _DEFAULT_DOCKER_URL).rstrip("/")
@@ -275,6 +295,77 @@ async def _probe_waf_recovery(
     return results[0].get("status_code") not in _WAF_BLOCKED_CODES
 
 
+def _inject_cookies(
+    browser_config: dict[str, Any], cookies: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Return a copy of browser_config with cookies merged in."""
+    params = {**browser_config.get("params", {})}
+    existing = list(params.get("cookies") or [])
+    params["cookies"] = existing + cookies
+    return {**browser_config, "params": params}
+
+
+async def _bypass_waf_with_zendriver(blocked_url: str) -> list[dict[str, Any]] | None:
+    """Solve the Cloudflare challenge via zendriver and return cf_clearance cookie(s).
+
+    Launches a real Chrome instance, navigates to ``blocked_url``, solves any
+    interactive Turnstile checkbox, then extracts the ``cf_clearance`` cookie for
+    injection into subsequent Docker requests.
+
+    Returns a list of cookie dicts for ``BrowserConfig.cookies``, or ``None`` if
+    the bypass fails or zendriver is not installed.
+    """
+    try:
+        import zendriver as zd
+        from zendriver import cdp
+        from zendriver.core.cloudflare import cf_is_interactive_challenge_present, verify_cf
+    except ImportError:
+        logger.warning("zendriver not installed — skipping active CF bypass")
+        return None
+
+    browser = None
+    try:
+        browser = await zd.start(headless=False)
+        page = await browser.get(blocked_url)
+        await asyncio.sleep(_ZENDRIVER_INITIAL_WAIT)
+
+        html = await page.get_content()
+        if any(m in html for m in _CF_MARKERS):
+            if await cf_is_interactive_challenge_present(page, timeout=_ZENDRIVER_CHALLENGE_TIMEOUT):
+                await verify_cf(page, click_delay=_ZENDRIVER_CLICK_DELAY, timeout=_ZENDRIVER_VERIFY_TIMEOUT)
+
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + _ZENDRIVER_UNBLOCK_WAIT
+            while loop.time() < deadline:
+                html = await page.get_content()
+                if not any(m in html for m in _CF_MARKERS):
+                    break
+                await asyncio.sleep(1)
+            else:
+                logger.warning("zendriver: CF still blocking after %.0fs — giving up", _ZENDRIVER_UNBLOCK_WAIT)
+                return None
+
+        raw = await page.send(cdp.network.get_cookies(urls=[blocked_url]))
+        cf_cookies = [
+            {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+            for c in raw
+            if c.name == "cf_clearance"
+        ]
+        if not cf_cookies:
+            logger.warning("zendriver: passed CF but no cf_clearance cookie found")
+            return None
+
+        logger.info("zendriver: CF bypass successful, obtained cf_clearance")
+        return cf_cookies
+
+    except Exception:
+        logger.exception("zendriver: unhandled error during CF bypass")
+        return None
+    finally:
+        if browser is not None:
+            await browser.stop()
+
+
 async def _wait_for_waf_unblock(
     session: aiohttp.ClientSession,
     base_url: str,
@@ -442,22 +533,99 @@ async def crawl_batch_urls(
             )
             codes_str = "/".join(map(str, blocked_codes))
             logger.warning(
-                f"WAF blocked {len(waf_blocked)} URL(s) with {codes_str} — pausing until unblocked"
+                f"WAF blocked {len(waf_blocked)} URL(s) with {codes_str} — attempting active CF bypass"
             )
-            recovered = await _wait_for_waf_unblock(
-                session, base_url, waf_blocked[0], browser_config, crawler_config
-            )
-            if recovered:
-                aligned, _ = await _retry_failed_urls(
-                    session,
-                    base_url,
-                    waf_blocked,
-                    aligned,
-                    urls,
-                    browser_config,
-                    crawler_config,
-                    timeout,
-                    poll_interval,
+            from urllib.parse import urlparse
+            netloc = urlparse(waf_blocked[0]).netloc
+            if netloc in _CF_COOKIE_CACHE:
+                logger.info("zendriver: reusing cached cf_clearance for %s", netloc)
+                cf_cookies = _CF_COOKIE_CACHE[netloc]
+            else:
+                cf_cookies = await _bypass_waf_with_zendriver(waf_blocked[0])
+                if cf_cookies:
+                    _CF_COOKIE_CACHE[netloc] = cf_cookies
+            if cf_cookies:
+                patched_bc = _inject_cookies(browser_config, cf_cookies)
+                post_waf_blocked = list(waf_blocked)
+                total_recovered = 0
+                for attempt in range(1, _WAF_COOKIE_MAX_RETRIES + 1):
+                    if not post_waf_blocked:
+                        break
+                    if attempt > 1:
+                        logger.info(
+                            "zendriver: cookie retry %d/%d for %d URL(s) — waiting %.0fs",
+                            attempt,
+                            _WAF_COOKIE_MAX_RETRIES,
+                            len(post_waf_blocked),
+                            _WAF_COOKIE_RETRY_DELAY,
+                        )
+                        await asyncio.sleep(_WAF_COOKIE_RETRY_DELAY)
+                    prev_count = len(post_waf_blocked)
+                    aligned, post_waf_blocked = await _retry_failed_urls(
+                        session,
+                        base_url,
+                        post_waf_blocked,
+                        aligned,
+                        urls,
+                        patched_bc,
+                        crawler_config,
+                        timeout,
+                        poll_interval,
+                    )
+                    total_recovered += prev_count - len(post_waf_blocked)
+
+                if not total_recovered:
+                    logger.warning(
+                        "zendriver: cf_clearance cookie recovered 0/%d URLs for %s — evicting cache",
+                        len(waf_blocked),
+                        netloc,
+                    )
+                    _CF_COOKIE_CACHE.pop(netloc, None)
+                elif post_waf_blocked:
+                    logger.info(
+                        "zendriver: cf_clearance cookie recovered %d/%d URLs for %s",
+                        total_recovered,
+                        len(waf_blocked),
+                        netloc,
+                    )
+
+                if post_waf_blocked:
+                    logger.warning(
+                        "zendriver: %d URL(s) still blocked after %d retries — falling back to passive probe",
+                        len(post_waf_blocked),
+                        _WAF_COOKIE_MAX_RETRIES,
+                    )
+                    recovered = await _wait_for_waf_unblock(
+                        session, base_url, post_waf_blocked[0], browser_config, crawler_config
+                    )
+                    if recovered:
+                        aligned, _ = await _retry_failed_urls(
+                            session,
+                            base_url,
+                            post_waf_blocked,
+                            aligned,
+                            urls,
+                            patched_bc,
+                            crawler_config,
+                            timeout,
+                            poll_interval,
+                        )
+            else:
+                logger.warning("Active CF bypass failed — falling back to passive probe")
+                recovered = await _wait_for_waf_unblock(
+                    session, base_url, waf_blocked[0], browser_config, crawler_config
                 )
+                if recovered:
+                    aligned, _ = await _retry_failed_urls(
+                        session,
+                        base_url,
+                        waf_blocked,
+                        aligned,
+                        urls,
+                        browser_config,
+                        crawler_config,
+                        timeout,
+                        poll_interval,
+                    )
 
         return aligned
