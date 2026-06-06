@@ -116,7 +116,7 @@ class AniSearchHelper(BaseEnrichmentHelper):
                 return None
             logger.info(
                 f"Successfully fetched anime data for {url}: "
-                f"{anime_data.get('japanese_title', 'Unknown')}"
+                f"{anime_data.get('title', anime_data.get('title_japanese', 'Unknown'))}"
             )
             return anime_data
         except Exception:
