@@ -37,17 +37,23 @@ def _anime(**kwargs) -> AniDBAnime:
 
 
 def test_anime_from_anidb_title_from_main() -> None:
-    result = anime_from_anidb(_anime(title="One Piece", title_english="OP EN"), anidb_url=_ANIDB_URL)
+    result = anime_from_anidb(
+        _anime(title="One Piece", title_english="OP EN"), anidb_url=_ANIDB_URL
+    )
     assert result["title"] == "One Piece"
 
 
 def test_anime_from_anidb_title_fallback_to_english() -> None:
-    result = anime_from_anidb(_anime(title=None, title_english="One Piece EN"), anidb_url=_ANIDB_URL)
+    result = anime_from_anidb(
+        _anime(title=None, title_english="One Piece EN"), anidb_url=_ANIDB_URL
+    )
     assert result["title"] == "One Piece EN"
 
 
 def test_anime_from_anidb_title_empty_when_nothing_available() -> None:
-    result = anime_from_anidb(_anime(title=None, title_english=None), anidb_url=_ANIDB_URL)
+    result = anime_from_anidb(
+        _anime(title=None, title_english=None), anidb_url=_ANIDB_URL
+    )
     assert result["title"] == ""
 
 
@@ -188,7 +194,9 @@ def test_anime_from_anidb_aired_dates_built_from_dates() -> None:
 
 
 def test_anime_from_anidb_no_aired_dates_when_no_dates() -> None:
-    result = anime_from_anidb(_anime(start_date=None, end_date=None), anidb_url=_ANIDB_URL)
+    result = anime_from_anidb(
+        _anime(start_date=None, end_date=None), anidb_url=_ANIDB_URL
+    )
     assert "aired_dates" not in result
 
 
@@ -201,7 +209,9 @@ def test_anime_from_anidb_related_anime_grouped_by_type() -> None:
     result = anime_from_anidb(
         _anime(
             related_anime=[
-                AniDBRelatedAnime(id=522, title="One Piece Movie 1", relation_type="Side Story"),
+                AniDBRelatedAnime(
+                    id=522, title="One Piece Movie 1", relation_type="Side Story"
+                ),
                 AniDBRelatedAnime(id=9999, title="Season 2", relation_type="Sequel"),
             ]
         ),
@@ -227,8 +237,13 @@ def test_anime_from_anidb_related_anime_source_url_built_from_id() -> None:
 
 
 def test_anime_from_anidb_url_field_to_official_website() -> None:
-    result = anime_from_anidb(_anime(url="http://onepiece.toei-anim.co.jp"), anidb_url=_ANIDB_URL)
-    assert result["external_sources"]["official_website"] == "http://onepiece.toei-anim.co.jp"
+    result = anime_from_anidb(
+        _anime(url="http://onepiece.toei-anim.co.jp"), anidb_url=_ANIDB_URL
+    )
+    assert (
+        result["external_sources"]["official_website"]
+        == "http://onepiece.toei-anim.co.jp"
+    )
 
 
 def test_anime_from_anidb_mal_resource_mapped() -> None:
@@ -236,7 +251,9 @@ def test_anime_from_anidb_mal_resource_mapped() -> None:
         _anime(resources=[AniDBExternalResource(type="2", identifiers=["21"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["myanimelist"] == "https://myanimelist.net/anime/21"
+    assert (
+        result["external_sources"]["myanimelist"] == "https://myanimelist.net/anime/21"
+    )
 
 
 def test_anime_from_anidb_ann_resource_mapped() -> None:
@@ -251,7 +268,11 @@ def test_anime_from_anidb_ann_resource_mapped() -> None:
 def test_anime_from_anidb_type4_resource_uses_url_directly() -> None:
     """Type 4 (official website in resources) reads from urls list, not identifiers."""
     result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="4", urls=["http://resource-site.jp"])]),
+        _anime(
+            resources=[
+                AniDBExternalResource(type="4", urls=["http://resource-site.jp"])
+            ]
+        ),
         anidb_url=_ANIDB_URL,
     )
     assert result["external_sources"]["official_website"] == "http://resource-site.jp"
@@ -262,7 +283,9 @@ def test_anime_from_anidb_unknown_resource_type_skipped() -> None:
         _anime(resources=[AniDBExternalResource(type="999", identifiers=["abc"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert "external_sources" not in result or len(result.get("external_sources", {})) == 0
+    assert (
+        "external_sources" not in result or len(result.get("external_sources", {})) == 0
+    )
 
 
 def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
@@ -270,15 +293,23 @@ def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
         _anime(resources=[AniDBExternalResource(type="28", identifiers=["GRMG8ZQZR"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    assert (
+        result["external_sources"]["crunchyroll"]
+        == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    )
 
 
 def test_anime_from_anidb_tmdb_resource_mapped() -> None:
     result = anime_from_anidb(
-        _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854", "tv"])]),
+        _anime(
+            resources=[AniDBExternalResource(type="44", identifiers=["37854", "tv"])]
+        ),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+    assert (
+        result["external_sources"]["themoviedb"]
+        == "https://www.themoviedb.org/tv/37854"
+    )
 
 
 def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
@@ -290,10 +321,18 @@ def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
     assert "themoviedb" not in result.get("external_sources", {})
 
 
-def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(onepiece_anime: AniDBAnime) -> None:
+def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(
+    onepiece_anime: AniDBAnime,
+) -> None:
     result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
-    assert result["external_sources"]["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
-    assert result["external_sources"]["themoviedb"] == "https://www.themoviedb.org/tv/37854"
+    assert (
+        result["external_sources"]["crunchyroll"]
+        == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+    )
+    assert (
+        result["external_sources"]["themoviedb"]
+        == "https://www.themoviedb.org/tv/37854"
+    )
 
 
 # =============================================================================
@@ -305,7 +344,9 @@ def test_anime_from_anidb_field_names_valid() -> None:
     """All output keys must be valid Anime model field names."""
     from common.models.anime import Anime
 
-    result = anime_from_anidb(_anime(title="One Piece", type="TV Series"), anidb_url=_ANIDB_URL)
+    result = anime_from_anidb(
+        _anime(title="One Piece", type="TV Series"), anidb_url=_ANIDB_URL
+    )
     valid_fields = set(Anime.model_fields.keys())
     for key in result:
         assert key in valid_fields, f"Mapper output key '{key}' not in Anime model"
@@ -406,7 +447,9 @@ def test_episode_from_anidb_title_en_preferred() -> None:
 
 
 def test_episode_from_anidb_title_fallback_romaji() -> None:
-    ep = AniDBEpisode(episode_type=1, episode_number=1, titles={"romaji": "Romaji Title"})
+    ep = AniDBEpisode(
+        episode_type=1, episode_number=1, titles={"romaji": "Romaji Title"}
+    )
     assert episode_from_anidb(ep)["title"] == "Romaji Title"
 
 
@@ -480,7 +523,9 @@ def test_episode_from_anidb_streaming_passed_through() -> None:
         streaming={"crunchyroll": "https://crunchyroll.com/watch/G6NQ5DWZ6"},
     )
     result = episode_from_anidb(ep)
-    assert result["streaming"]["crunchyroll"] == "https://crunchyroll.com/watch/G6NQ5DWZ6"
+    assert (
+        result["streaming"]["crunchyroll"] == "https://crunchyroll.com/watch/G6NQ5DWZ6"
+    )
 
 
 # =============================================================================
@@ -491,7 +536,11 @@ def test_episode_from_anidb_streaming_passed_through() -> None:
 def test_episode_from_anidb_onepiece_first_episode(onepiece_anime) -> None:
     """Episode 1 of real One Piece fixture maps without errors."""
     ep1 = next(
-        (e for e in onepiece_anime.episodes if e.episode_type == 1 and e.episode_number == 1),
+        (
+            e
+            for e in onepiece_anime.episodes
+            if e.episode_type == 1 and e.episode_number == 1
+        ),
         None,
     )
     assert ep1 is not None
@@ -503,7 +552,9 @@ def test_episode_from_anidb_onepiece_first_episode(onepiece_anime) -> None:
 
 def test_episode_from_anidb_onepiece_regular_episode_count(onepiece_anime) -> None:
     """All regular (type 1, integer-numbered) One Piece episodes map successfully."""
-    regular = [ep for e in onepiece_anime.episodes if (ep := episode_from_anidb(e)) is not None]
+    regular = [
+        ep for e in onepiece_anime.episodes if (ep := episode_from_anidb(e)) is not None
+    ]
     assert len(regular) > 1000
     assert all(isinstance(ep["episode_number"], int) for ep in regular)
 
@@ -546,7 +597,9 @@ def test_character_from_anidb_images_empty_when_no_picture() -> None:
 
 
 def test_character_from_anidb_role_main_mapped() -> None:
-    result = character_from_anidb(AniDBCharacter(name="Luffy", type="main character in"))
+    result = character_from_anidb(
+        AniDBCharacter(name="Luffy", type="main character in")
+    )
     assert "MAIN" in result["roles"]
 
 
@@ -656,7 +709,11 @@ def test_character_from_anidb_page_data_none_no_enrichment() -> None:
 def test_character_from_anidb_onepiece_main_character(onepiece_anime) -> None:
     """First main character from real One Piece fixture maps with voice actors."""
     main_char = next(
-        (c for c in onepiece_anime.characters if c.type == "main character in" and c.seiyuu),
+        (
+            c
+            for c in onepiece_anime.characters
+            if c.type == "main character in" and c.seiyuu
+        ),
         None,
     )
     assert main_char is not None

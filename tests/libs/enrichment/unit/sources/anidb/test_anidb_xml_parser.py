@@ -1,10 +1,8 @@
 """Unit tests for anidb_xml_parser.py — parse_anime_xml and all private parsers."""
 
 import pytest
-
 from enrichment.sources.anidb.anidb_models import AniDBAnime
 from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
-
 
 # =============================================================================
 # Helpers
@@ -152,13 +150,16 @@ def test_parse_titles_empty_when_no_titles_element() -> None:
 
 
 def test_parse_official_title_other_langs() -> None:
-    xml = _anime("""
+    xml = _anime(
+        """
         <titles>
             <title xml:lang="x-jat" type="main">Dan Da Dan</title>
             <title xml:lang="de" type="official">Dandadan DE</title>
             <title xml:lang="ko" type="official">단다단</title>
         </titles>
-    """, aid="18290")
+    """,
+        aid="18290",
+    )
     result = parse_anime_xml(xml)
     assert result.title_others["de"] == "Dandadan DE"
     assert result.title_others["ko"] == "단다단"
@@ -434,7 +435,10 @@ def test_parse_episode_crunchyroll_streaming() -> None:
         </episodes>
     """)
     result = parse_anime_xml(xml)
-    assert result.episodes[0].streaming["crunchyroll"] == "https://www.crunchyroll.com/watch/G6NQ5DWZ6"
+    assert (
+        result.episodes[0].streaming["crunchyroll"]
+        == "https://www.crunchyroll.com/watch/G6NQ5DWZ6"
+    )
 
 
 def test_parse_episode_non_crunchyroll_resource_ignored() -> None:
@@ -548,13 +552,17 @@ def test_parse_resources_absent() -> None:
     assert result.resources == []
 
 
-def test_parse_resources_tmdb_stores_both_identifiers(onepiece_anime: AniDBAnime) -> None:
+def test_parse_resources_tmdb_stores_both_identifiers(
+    onepiece_anime: AniDBAnime,
+) -> None:
     """Type 44 (TMDB) has two identifiers per externalentity — both must be stored."""
     tmdb = next(r for r in onepiece_anime.resources if r.type == "44")
     assert tmdb.identifiers == ["37854", "tv"]
 
 
-def test_parse_resources_crunchyroll_identifier_stored(onepiece_anime: AniDBAnime) -> None:
+def test_parse_resources_crunchyroll_identifier_stored(
+    onepiece_anime: AniDBAnime,
+) -> None:
     cr = next(r for r in onepiece_anime.resources if r.type == "28")
     assert cr.identifiers == ["GRMG8ZQZR"]
 

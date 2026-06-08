@@ -1,14 +1,13 @@
 """Fixtures for AniDB source unit tests.
 
-Fixture is a real AniDB HTTP XML API response captured from:
+Fixtures are real captured data from AniDB:
 - onepiece_anidb_raw.xml: https://anidb.net/anime/69 (One Piece, aid=69, captured 2026-06-05)
-  Note: <enddate>2030-06-01</enddate> injected for testing — One Piece is ongoing.
+                          Note: <enddate>2030-06-01</enddate> injected — One Piece is ongoing.
 """
 
 from pathlib import Path
 
 import pytest
-
 from enrichment.sources.anidb.anidb_models import AniDBAnime
 from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
 

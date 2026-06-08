@@ -1,8 +1,6 @@
 """Unit tests for anidb_models.py — Pydantic source model validation."""
 
 import pytest
-from pydantic import ValidationError
-
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
     AniDBCategory,
@@ -15,7 +13,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBRelatedAnime,
     AniDBSeiyuu,
 )
-
+from pydantic import ValidationError
 
 # =============================================================================
 # AniDBSeiyuu
@@ -231,6 +229,8 @@ def test_character_page_minimal() -> None:
     assert p.abilities == []
 
 
-def test_character_page_extra_allowed() -> None:
-    p = AniDBCharacterPage(name_main="Luffy", unknown_field="extra")
-    assert p.name_main == "Luffy"
+def test_character_page_extra_forbidden() -> None:
+    import pytest
+
+    with pytest.raises(Exception):
+        AniDBCharacterPage(name_main="Luffy", unknown_field="extra")
