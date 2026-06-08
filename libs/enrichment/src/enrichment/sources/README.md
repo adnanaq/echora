@@ -221,7 +221,10 @@ XML API via aiohttp with strict rate limiting (2 req/s, 1 req burst).
 
 | Module | Purpose |
 |---|---|
-| `anidb_helper.py` | `AniDBHelper` — anime data via XML API |
+| `anidb_helper.py` | `AniDBHelper` — anime, episodes, and characters via XML API |
+| `anidb_character_crawler.py` | `fetch_anidb_characters(char_ids)` / `fetch_anidb_character(char_id)` — character web pages via zendriver + lxml XPath |
+| `anidb_mapper.py` | XML + page responses → canonical dicts |
+| `anidb_models.py` | Pydantic source models |
 
 **Expected `ids` key:** `anidb_id` — numeric AniDB ID
 
@@ -263,6 +266,4 @@ result = await helper.fetch_all(
 
 ## Legacy
 
-`libs/enrichment/src/enrichment/crawlers/` contains `anidb_character_crawler.py`
-— a standalone script that has not been migrated to the sources/ framework.
-All other crawlers that were in that directory have been migrated here.
+All crawlers have been migrated to the `sources/` framework. The `crawlers/` directory is no longer used.
