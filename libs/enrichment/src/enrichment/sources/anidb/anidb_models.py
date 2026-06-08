@@ -145,15 +145,17 @@ class AniDBAnime(BaseModel):
 class AniDBCharacterPage(BaseModel):
     """Enrichment data from AniDB character web page — supplements XML character data."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     name_main: str | None = None
     name_kanji: str | None = None
+    description: str | None = None
+    gender: str | None = None
     nicknames: list[str] = []
     official_names: list[str] = []
-    gender: str | None = None
     abilities: list[str] = []
     looks: list[str] = []
     personality: list[str] = []
     role: list[str] = []
     supernatural_abilities: list[str] = []
+    animeography: list[dict[str, str]] = []  # [{"title": ..., "role": ..., "url": ...}]

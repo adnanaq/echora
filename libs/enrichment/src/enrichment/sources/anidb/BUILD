@@ -8,5 +8,7 @@ python_sources(
         "//:reqs0#aiohttp",
         "//:reqs0#defusedxml",
         "//:reqs0#crawl4ai",
+        "//:reqs0#zendriver",
+        "//:reqs0#lxml",
     ],
 )

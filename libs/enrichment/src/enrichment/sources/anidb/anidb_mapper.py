@@ -22,6 +22,7 @@ from common.models.anime import (
     Character,
     CharacterRole,
     Episode,
+    Ography,
     RelatedAnime,
     Statistics,
     VoiceActor,
@@ -280,24 +281,57 @@ def character_from_anidb(
             for s in char.seiyuu
         ]
 
-    # Merge web page enrichment if available
     if page_data:
-        if page_data.name_kanji:
-            result["name_native"] = page_data.name_kanji
-        if page_data.nicknames:
-            result["nicknames"] = page_data.nicknames
-        if page_data.official_names:
-            result["name_variations"] = page_data.official_names
-
-        traits = (
-            page_data.abilities
-            + page_data.looks
-            + page_data.personality
-            + page_data.role
-            + page_data.supernatural_abilities
-        )
-        if traits:
-            result["traits"] = traits
+        _apply_page_data(result, page_data)
 
     character = Character.model_validate(result)
     return character.model_dump(mode="json", exclude_none=True)
+
+
+def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
+    """Merge AniDBCharacterPage fields into a canonical character result dict.
+
+    All fields here come exclusively from the web page — not from the XML API.
+    Called by character_from_anidb.
+    """
+    if page.name_kanji:
+        result["name_native"] = page.name_kanji
+    if page.description:
+        result.setdefault("description", page.description)
+    if page.nicknames:
+        result["nicknames"] = page.nicknames
+    if page.official_names:
+        result["name_variations"] = page.official_names
+
+    traits = (
+        page.abilities
+        + page.looks
+        + page.personality
+        + page.role
+        + page.supernatural_abilities
+    )
+    if traits:
+        result["traits"] = traits
+
+    if page.animeography:
+        ography_entries = [
+            Ography(
+                title=e["title"],
+                role=CharacterRole(e.get("role", "")),
+                sources=[e["url"]] if e.get("url") else [],
+            )
+            for e in page.animeography
+            if e.get("title")
+        ]
+        result["animeography"] = ography_entries
+
+        # Derive unique roles from all anime appearances and merge with any
+        # role already set from the XML API (e.g. role for the queried anime).
+        existing = list(result.get("roles", []))
+        from_ography = [e.role.value for e in ography_entries if e.role != CharacterRole.UNKNOWN]
+        merged = list(dict.fromkeys(existing + from_ography))
+        if merged:
+            result["roles"] = merged
+
+    if page.gender:
+        result["attributes"] = {"gender": page.gender}

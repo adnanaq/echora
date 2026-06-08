@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""AniDB enrichment helper — thin orchestrator."""
+"""AniDB enrichment helper — XML API for anime, episodes, and characters.
+
+Usage:
+    # Fetch anime metadata
+    python -m enrichment.sources.anidb.anidb_helper anime https://anidb.net/anime/69 anidb_anime.json
+
+    # Fetch episodes
+    python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.net/anime/69 anidb_episodes.json
+
+    # Fetch characters (live JSONL, cancel after N characters)
+    python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 anidb_characters.jsonl
+
+    # Fetch all (anime + episodes + characters)
+    python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
+"""
 
 from __future__ import annotations
 
@@ -19,6 +33,7 @@ import re
 
 import aiohttp
 from common.utils.jsonl_utils import append_jsonl
+from enrichment.sources.anidb.anidb_character_crawler import fetch_anidb_characters
 from enrichment.sources.anidb.anidb_mapper import (
     anime_from_anidb,
     character_from_anidb,
@@ -265,15 +280,25 @@ class AniDBHelper(BaseEnrichmentHelper):
         Returns:
             List of canonical character dicts.
         """
-        # TODO(ECHO-XX): enrich with anidb_character_crawler page data before mapping.
+        xml_by_id = {c.id: c for c in anime_model.characters if c.id is not None}
+        char_ids = list(xml_by_id.keys())
+
         characters: list[dict[str, Any]] = []
-        for char_model in anime_model.characters:
-            char_dict = character_from_anidb(char_model)
-            if char_dict is None:
-                continue
+
+        async for char_id, page in fetch_anidb_characters(char_ids):
+            xml_char = xml_by_id[char_id]
+            char_dict = character_from_anidb(xml_char, page_data=page)
             characters.append(char_dict)
             if output_path:
                 append_jsonl(output_path, char_dict)
+
+        for char_model in anime_model.characters:
+            if char_model.id is None:
+                char_dict = character_from_anidb(char_model, page_data=None)
+                characters.append(char_dict)
+                if output_path:
+                    append_jsonl(output_path, char_dict)
+
         return characters
 
     async def _fetch_xml(self, anidb_id: int) -> str | None:
@@ -629,7 +654,7 @@ async def main() -> int:  # pragma: no cover
 
     p_chars = sub.add_parser("characters", help="Fetch character data")
     p_chars.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
-    p_chars.add_argument("output_file", help="Output JSON file")
+    p_chars.add_argument("output_file", help="Output JSONL file (written live as each character is fetched)")
 
     p_all = sub.add_parser("all", help="Fetch anime, episodes, and characters")
     p_all.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
@@ -661,8 +686,7 @@ async def main() -> int:  # pragma: no cover
             _write_json(args.output_file, episodes)
 
         elif args.cmd == "characters":
-            characters = await helper._fetch_characters(anime_model)
-            _write_json(args.output_file, characters)
+            await helper._fetch_characters(anime_model, output_path=args.output_file)
 
         elif args.cmd == "all":
             os.makedirs(args.output_dir, exist_ok=True)

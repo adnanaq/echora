@@ -1,22 +1,21 @@
-"""AniDB Character Crawler for extracting character metadata.
+"""AniDB Character Crawler — zendriver + lxml XPath.
 
-This crawler fetches detailed character information from AniDB character pages.
-It extracts comprehensive character metadata including names, abilities,
-personality, appearance, roles, and ratings.
+Fetches AniDB character web pages using a persistent zendriver Chrome session.
+CF Turnstile is solved at most once per batch — the session remains trusted
+across subsequent requests with a 2.5 s inter-request delay.
 
-Uses crawl4ai with realistic browser headers and stealth configuration to bypass
-AniDB's anti-leech protection. No UndetectedAdapter required.
+Public functions:
+    fetch_anidb_characters(char_ids) — async generator yielding (char_id, page)
+    fetch_anidb_character(char_id)   -> AniDBCharacterPage | None
 
 Usage:
-    ./pants run libs/enrichment/src/enrichment/sources/anidb/anidb_character_crawler.py -- <character_id> [--output PATH]
-
-    <character_id>  AniDB character ID (e.g., 491 for Brook)
-    --output PATH   optional output file path (default: anidb_character.json)
-
-Example:
-    >>> from enrichment.sources.anidb.anidb_character_crawler import fetch_anidb_character
-    >>> data = await fetch_anidb_character(491)  # Brook from One Piece
-    >>> data = await fetch_anidb_character(491, output_path="brook.json")
+    from enrichment.sources.anidb.anidb_character_crawler import (
+        fetch_anidb_character,
+        fetch_anidb_characters,
+    )
+    page = await fetch_anidb_character(474)
+    async for char_id, page in fetch_anidb_characters([474, 475, 476]):
+        ...
 """
 
 import argparse
@@ -24,345 +23,332 @@ import asyncio
 import json
 import logging
 import sys
+import time
+from collections.abc import AsyncGenerator
 from typing import Any
 
-from crawl4ai import (
-    AsyncWebCrawler,
-    BrowserConfig,
-    CrawlerRunConfig,
-    CrawlResult,
-    JsonCssExtractionStrategy,
-)
-from crawl4ai.types import RunManyReturn
+from enrichment.sources.anidb.anidb_mapper import character_from_anidb
+from enrichment.sources.anidb.anidb_models import AniDBCharacterPage, AniDBCharacter
 from enrichment.sources.base.utils import sanitize_output_path
-from http_cache.config import get_cache_config
-from http_cache.result_cache import cached_result
 
 logger = logging.getLogger(__name__)
 
-# Get TTL from centralized config
-_CACHE_CONFIG = get_cache_config()
-TTL_ANIDB_CHARACTER = _CACHE_CONFIG.ttl_anidb
+_BASE_URL = "https://anidb.net/character"
+_CF_MARKERS = ("Just a moment", "cf-browser-verification", "cf-challenge", "Attention Required")
+_INTER_REQUEST_DELAY = 2.5  # seconds; keeps session trusted and avoids CF re-trigger
 
-BASE_URL = "https://anidb.net/character"
+# ---------------------------------------------------------------------------
+# XPath selectors — anchored on structural attributes (itemprop, id, class)
+# rather than CSS class names that change frequently.
+# ---------------------------------------------------------------------------
+_XPATHS: dict[str, str] = {
+    # Description block
+    "description": "//div[contains(@class,'desc')][@itemprop='description']",
+    # Tab 1: primary names and attributes
+    "name_main": "//tr[contains(@class,'mainname')]//span[@itemprop='name']/text()",
+    "name_kanji": (
+        "//*[@id='tab_1_pane']"
+        "//tr[contains(@class,'official') and contains(@class,'verified') and contains(@class,'yes')]"
+        "//label[@itemprop='alternateName']/text()"
+    ),
+    "gender": "//span[@itemprop='gender']/text()",
+    # Tag categories
+    "abilities": (
+        "//*[@id='tab_1_pane']"
+        "//tr[contains(@class,'abilities') and not(contains(@class,'supernatural'))]"
+        "//span[contains(@class,'tagname')]/text()"
+    ),
+    "supernatural_abilities": (
+        "//*[@id='tab_1_pane']//tr[contains(@class,'supernatural')]"
+        "//span[contains(@class,'tagname')]/text()"
+    ),
+    "looks": (
+        "//*[@id='tab_1_pane']//tr[contains(@class,'looks')]"
+        "//span[contains(@class,'tagname')]/text()"
+    ),
+    "personality": (
+        "//*[@id='tab_1_pane']//tr[contains(@class,'personality')]"
+        "//span[contains(@class,'tagname')]/text()"
+    ),
+    "role": (
+        "//*[@id='tab_1_pane']//tr[contains(@class,'role')]"
+        "//span[contains(@class,'tagname')]/text()"
+    ),
+    # Anime appearances table
+    "animeography_rows": "//table[.//th[contains(@class,'anime')]]//tr[td]",
+    # Tab 2: alternate names
+    "official_names": (
+        "//*[@id='tab_2_pane']//tr[contains(@class,'official')]"
+        "//label[@itemprop='alternateName']/text()"
+    ),
+    "nicknames": (
+        "//*[@id='tab_2_pane']//tr[contains(@class,'nick')]"
+        "//td[contains(@class,'value')]/text()"
+    ),
+}
 
 
-def _get_character_schema() -> dict[str, Any]:
-    """Get the CSS extraction schema for AniDB character pages.
+# ---------------------------------------------------------------------------
+# HTML extraction
+# ---------------------------------------------------------------------------
 
-    Returns:
-        Schema dictionary for JsonCssExtractionStrategy containing field
-            definitions for character data extraction.
+
+def _extract_from_html(html: str) -> AniDBCharacterPage | None:
+    """Extract character fields from AniDB character page HTML via XPath.
+
+    Returns None if the HTML cannot be parsed or contains no character data.
     """
-    return {
-        "description": "CSS extraction schema for AniDB character pages",
-        "baseSelector": "body",
-        "fields": [
-            {
-                "name": "name_main",
-                "selector": "#tab_1_pane tr.mainname td.value span[itemprop='name']",
-                "type": "text",
-            },
-            {
-                "name": "name_kanji",
-                "selector": "#tab_1_pane tr.official.verified.yes td.value label[itemprop='alternateName']",
-                "type": "text",
-            },
-            {
-                "name": "nicknames",
-                "selector": "#tab_2_pane tr.nick td.value",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "official_names",
-                "selector": "#tab_2_pane tr.official td.value label[itemprop='alternateName']",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "gender",
-                "selector": "#tab_1_pane tr.gender td.value span[itemprop='gender']",
-                "type": "text",
-            },
-            {
-                "name": "abilities",
-                "selector": "#tab_1_pane tr.abilities td.value span.tagname",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "looks",
-                "selector": "#tab_1_pane tr.looks td.value span.tagname",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "personality",
-                "selector": "#tab_1_pane tr.personality td.value span.tagname",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "role",
-                "selector": "#tab_1_pane tr.role td.value span.tagname",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-            {
-                "name": "supernatural_abilities",
-                "selector": "#tab_1_pane tr[class*='supernatural'] td.value span.tagname",
-                "type": "list",
-                "fields": [{"name": "text", "type": "text"}],
-            },
-        ],
-    }
+    from lxml import etree
 
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html.encode(), parser)
+    except Exception:
+        logger.debug("lxml: HTML parse failed")
+        return None
 
-def _flatten_character_data(data: dict[str, Any]) -> dict[str, Any]:
-    """Flatten nested list fields from crawl4ai output.
+    def _texts(key: str) -> list[str]:
+        return [t.strip() for t in tree.xpath(_XPATHS[key]) if t.strip()]
 
-    Converts [{"text": "value1"}, {"text": "value2"}] to ["value1", "value2"]
-    for all list fields in the character data.
+    def _first(key: str) -> str | None:
+        values = _texts(key)
+        return values[0] if values else None
 
-    Args:
-        data: Raw character data dictionary from crawler with nested list
-            structures.
+    def _animeography() -> list[dict[str, str]]:
+        entries = []
+        for row in tree.xpath(_XPATHS["animeography_rows"]):
+            title_els = row.xpath('.//td[contains(@class,"name") and contains(@class,"anime")]//a')
+            role_parts = row.xpath('.//td[contains(@class,"type")]//text()')
+            if not title_els:
+                continue
+            title = " ".join(title_els[0].itertext()).strip()
+            href = title_els[0].get("href", "")
+            role = role_parts[0].strip() if role_parts else ""
+            url = f"https://anidb.net{href}" if href.startswith("/") else href
+            if title:
+                entries.append({"title": title, "role": role, "url": url})
+        return entries
 
-    Returns:
-        New dictionary with flattened character data with simple string arrays
-            instead of nested dictionaries. Input dictionary is not modified.
-    """
-    # Create a shallow copy to avoid mutating the input
-    flattened = data.copy()
+    def _description() -> str | None:
+        nodes = tree.xpath(_XPATHS["description"])
+        if not nodes:
+            return None
+        raw = " ".join(nodes[0].itertext()).split()
+        return " ".join(raw) or None
 
-    list_fields = [
-        "nicknames",
-        "official_names",
-        "abilities",
-        "looks",
-        "personality",
-        "role",
-        "supernatural_abilities",
-    ]
-
-    for field in list_fields:
-        if field in flattened and isinstance(flattened[field], list):
-            flattened[field] = [
-                obj["text"] for obj in flattened[field] if "text" in obj
-            ]
-
-    return flattened
-
-
-@cached_result(ttl=TTL_ANIDB_CHARACTER, key_prefix="anidb_character")
-async def _fetch_anidb_character_data(
-    canonical_character_id: int,
-) -> dict[str, Any] | None:
-    """Perform actual AniDB character crawling with caching.
-
-    Pure function with no side effects - cached by character_id in Redis.
-    Schema hash auto-invalidates cache on code changes.
-
-    Args:
-        canonical_character_id: AniDB character ID (e.g., 491 for Brook).
-
-    Returns:
-        Character data dictionary containing name, gender, abilities, looks,
-            personality, and role information if successful, None otherwise.
-    """
-    url = f"{BASE_URL}/{canonical_character_id}"
-
-    # Configure browser with stealth + realistic headers to bypass bot detection
-    # Note: UndetectedAdapter is NOT required - headers alone are sufficient
-    # headless=True works with our header config (no browser popup)
-    browser_config = BrowserConfig(
-        enable_stealth=True,
-        headless=True,
-        verbose=True,
-        headers={
-            # Critical: Realistic browser headers bypass AniDB's 403 bot detection
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-        },
-        viewport_width=1920,
-        viewport_height=1080,
+    return AniDBCharacterPage(
+        name_main=_first("name_main"),
+        name_kanji=_first("name_kanji"),
+        description=_description(),
+        gender=_first("gender"),
+        abilities=_texts("abilities"),
+        supernatural_abilities=_texts("supernatural_abilities"),
+        looks=_texts("looks"),
+        personality=_texts("personality"),
+        role=_texts("role"),
+        official_names=_texts("official_names"),
+        nicknames=_texts("nicknames"),
+        animeography=_animeography(),
     )
 
-    # Configure extraction with anti-detection features
-    schema = _get_character_schema()
-    extraction_strategy = JsonCssExtractionStrategy(schema)
-    config = CrawlerRunConfig(
-        extraction_strategy=extraction_strategy,
-        delay_before_return_html=1.0,  # Wait 1 second before capturing
-        simulate_user=True,  # Simulate mouse movements
-        magic=True,  # Auto-handle popups and consent banners
-        override_navigator=True,  # Override navigator properties for stealth
-        mean_delay=2.0,  # Random delays
-        max_range=1.0,
-        wait_until="domcontentloaded",
-    )
 
-    async with AsyncWebCrawler(config=browser_config) as crawler:
-        results: RunManyReturn = await crawler.arun(url, config=config)
+# ---------------------------------------------------------------------------
+# CF bypass helpers
+# ---------------------------------------------------------------------------
 
-        if not results:
-            logger.error(f"No results returned for character {canonical_character_id}")
-            return None
 
-        for result in results:
-            if not isinstance(result, CrawlResult):
-                raise TypeError(
-                    f"Unexpected result type: {type(result)}, expected CrawlResult."
-                )
+def _is_cf_blocked(html: str) -> bool:
+    return any(m in html for m in _CF_MARKERS)
 
-            # Check both success flag AND status code (success can be True even with 403)
-            status_code = result.status_code if hasattr(result, "status_code") else None
 
-            # Validate we got a successful HTTP response
-            if not result.success:
-                error_msg = (
-                    result.error_message
-                    if hasattr(result, "error_message")
-                    else "Unknown error"
-                )
-                logger.error(
-                    f"Failed to fetch character {canonical_character_id}: {error_msg}"
-                )
-                return None
+def _has_character_data(html: str) -> bool:
+    return "tab_1_pane" in html or 'itemprop="name"' in html
 
-            if status_code and status_code != 200:
-                logger.error(
-                    f"HTTP error {status_code} for character {canonical_character_id}"
-                )
 
-                # Check for specific bot detection responses
-                if status_code == 403:
-                    if result.html and "AntiLeech" in result.html:
-                        logger.error(
-                            "Hit AniDB AntiLeech protection. You may be temporarily banned. "
-                            "Wait 15 minutes to 24 hours before retrying."
-                        )
-                    else:
-                        logger.error(
-                            "403 Forbidden - Bot detection triggered. "
-                            "Check browser headers and anti-detection settings."
-                        )
+async def _solve_cf(page: Any) -> bool:
+    """Solve CF Turnstile on current page.
 
-                return None
+    AniDB's block page embeds the CF Turnstile checkbox inside their own HTML
+    form with a 'Please Unban Me' submit button. Two steps:
+    1. verify_cf — clicks the Turnstile checkbox and waits for CF to validate
+    2. Click 'Please Unban Me' — submits the form with the CF token to AniDB
+    """
+    from zendriver.core.cloudflare import cf_is_interactive_challenge_present, verify_cf
 
-            if result.extracted_content:
-                # Parse JSON response
-                data_list = json.loads(result.extracted_content)
+    if await cf_is_interactive_challenge_present(page, timeout=10):
+        try:
+            await verify_cf(page, click_delay=1.0, timeout=20)
+        except Exception as exc:
+            logger.debug("verify_cf raised (may be auto-resolved): %s", exc)
 
-                if not data_list or len(data_list) == 0:
-                    logger.warning(
-                        f"No character data extracted for ID {canonical_character_id}"
-                    )
-                    return None
+        await asyncio.sleep(2)
 
-                # Get first item (should only be one)
-                character_data = data_list[0]
+        try:
+            btn = await page.find("Please Unban Me", best_match=True)
+            if btn:
+                await btn.click()
+                await asyncio.sleep(3)
+        except Exception:
+            pass
 
-                # Flatten nested list fields
-                character_data = _flatten_character_data(character_data)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        await asyncio.sleep(1)
+        try:
+            html = await page.get_content()
+        except Exception:
+            continue
+        if not _is_cf_blocked(html):
+            return True
+    return False
 
-                # Return pure data (no side effects)
-                return character_data
 
-            # If we reach here, success=True and status=200 but no extracted content
-            logger.warning(
-                f"No content extracted for character {canonical_character_id} "
-                "despite successful crawl. Check CSS selectors."
-            )
-            return None
+# ---------------------------------------------------------------------------
+# Browser fetch helpers
+# ---------------------------------------------------------------------------
 
+
+async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, bool]:
+    """Navigate to url, return (html, crashed).
+
+    crashed=True means the browser tab/process died and the caller should restart.
+    """
+    try:
+        page = await browser.get(url)
+        await asyncio.sleep(2)
+        return await page.get_content(), False
+    except (RuntimeError, StopIteration) as exc:
+        logger.warning("browser crash on %s: %s", url, exc)
+        return None, True
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+async def fetch_anidb_characters(
+    char_ids: list[int],
+) -> AsyncGenerator[tuple[int, AniDBCharacterPage | None], None]:
+    """Fetch AniDB character pages via zendriver, yielding results as each page arrives.
+
+    Uses a single Chrome session across all requests. CF Turnstile is solved at
+    most once per batch — subsequent requests stay trusted at a 2.5 s delay.
+    Yields (char_id, page) immediately after each page is fetched so callers
+    can map and write to JSONL without waiting for the full batch to complete.
+
+    Args:
+        char_ids: AniDB numeric character IDs to fetch.
+
+    Yields:
+        (char_id, AniDBCharacterPage) on success, (char_id, None) on failure.
+    """
+    if not char_ids:
+        return
+
+    import zendriver as zd
+
+    succeeded = 0
+    browser = await zd.start(headless=False)
+
+    try:
+        for idx, char_id in enumerate(char_ids):
+            url = f"{_BASE_URL}/{char_id}"
+            logger.debug("fetching anidb char %d (%d/%d)", char_id, idx + 1, len(char_ids))
+
+            html, crashed = await _fetch_page_html(browser, url)
+
+            if crashed:
+                logger.warning("browser crashed — restarting for char %d", char_id)
+                try:
+                    await browser.stop()
+                except Exception:
+                    pass
+                browser = await zd.start(headless=False)
+                await asyncio.sleep(2)
+                html, crashed = await _fetch_page_html(browser, url)
+                if crashed:
+                    logger.error("browser crashed again on char %d — skipping", char_id)
+                    yield char_id, None
+                    continue
+
+            assert html is not None
+
+            if _is_cf_blocked(html):
+                logger.info("CF block on char %d — solving", char_id)
+                try:
+                    current_page = await browser.get(url)
+                except Exception:
+                    yield char_id, None
+                    continue
+                if not await _solve_cf(current_page):
+                    logger.error("CF did not clear for char %d", char_id)
+                    yield char_id, None
+                    continue
+                try:
+                    html = await current_page.get_content()
+                except Exception:
+                    yield char_id, None
+                    continue
+
+            if not _has_character_data(html):
+                logger.warning("no character data for char %d (deleted/invalid)", char_id)
+                yield char_id, None
+            else:
+                page = _extract_from_html(html)
+                if page is not None:
+                    succeeded += 1
+                yield char_id, page
+
+            if idx < len(char_ids) - 1:
+                await asyncio.sleep(_INTER_REQUEST_DELAY)
+
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
+        logger.info("anidb character page fetch: %d/%d succeeded", succeeded, len(char_ids))
+
+
+async def fetch_anidb_character(char_id: int) -> AniDBCharacterPage | None:
+    """Fetch a single AniDB character page. Convenience wrapper."""
+    async for _, page in fetch_anidb_characters([char_id]):
+        return page
     return None
 
 
-async def fetch_anidb_character(
-    character_id: int,
-    output_path: str | None = None,
-) -> dict[str, Any] | None:
-    """Fetch AniDB character data by character ID.
-
-    Public API to fetch character information from AniDB character pages.
-    Optionally saves the result to a JSON file.
-
-    Args:
-        character_id: AniDB character ID (e.g., 491 for Brook).
-        output_path: Optional file path to save JSON output. If provided, the
-            character data will be written to this path.
-
-    Returns:
-        Character data dictionary if successful, None otherwise.
-
-    Example:
-        >>> data = await fetch_anidb_character(491)
-        >>> print(data['name_kanji'])
-        ブルック
-    """
-    # Call cached function
-    data = await _fetch_anidb_character_data(character_id)
-
-    if data is None:
-        return None
-
-    # Side effect: write to file
-    if output_path:
-        safe_path = sanitize_output_path(output_path)
-        with open(safe_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info(f"Data written to {safe_path}")
-
-    return data
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 async def main() -> int:
-    """Run CLI to crawl AniDB character page.
-
-    Parses command-line arguments for character ID and output path,
-    then fetches and saves character data.
-
-    Returns:
-        Exit code where 0 indicates success and 1 indicates failure.
-    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    parser = argparse.ArgumentParser(description="Crawl character data from AniDB")
-    parser.add_argument(
-        "character_id",
-        type=int,
-        help="AniDB character ID (e.g., 491 for Brook)",
-    )
+    parser = argparse.ArgumentParser(description="Fetch character page data from AniDB")
+    parser.add_argument("character_id", type=int, help="AniDB character ID (e.g. 491 for Brook)")
     parser.add_argument(
         "--output",
         type=str,
-        default="anidb_character.json",
-        help="Output file path (default: anidb_character.json)",
+        default="anidb_character_page.json",
+        help="Output file path (default: anidb_character_page.json)",
     )
     args = parser.parse_args()
 
-    try:
-        data = await fetch_anidb_character(
-            args.character_id,
-            output_path=args.output,
-        )
-        if data is None:
-            logger.error("No data was extracted; see logs above for details.")
-            return 1
-    except (ValueError, OSError):
-        logger.exception("Failed to fetch AniDB character data")
+    page = await fetch_anidb_character(args.character_id)
+    if page is None:
+        logger.error("No data for character %d", args.character_id)
         return 1
-    except Exception:
-        logger.exception("Unexpected error during character fetch")
-        return 1
+
+    char = AniDBCharacter(id=args.character_id, name=page.name_main)
+    canonical = character_from_anidb(char, page_data=page)
+    safe_path = sanitize_output_path(args.output)
+    with open(safe_path, "w", encoding="utf-8") as f:
+        json.dump(canonical, f, ensure_ascii=False, indent=2)
+    logger.info("Written to %s", safe_path)
     return 0
 
 
