@@ -14,7 +14,6 @@ from typing import TypedDict
 from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
-
 from enrichment.sources.anidb.anidb_models import (
     AniDBAnime,
     AniDBCategory,
@@ -65,7 +64,9 @@ def parse_anime_xml(xml_content: str) -> AniDBAnime:
 
     anime_id_raw = root.get("id")
     if not anime_id_raw or not anime_id_raw.isdigit():
-        raise ValueError(f"Missing or invalid 'id' attribute on <anime>: {anime_id_raw!r}")
+        raise ValueError(
+            f"Missing or invalid 'id' attribute on <anime>: {anime_id_raw!r}"
+        )
 
     return AniDBAnime(
         id=int(anime_id_raw),
@@ -220,7 +221,9 @@ def _parse_characters(root: Element) -> list[AniDBCharacter]:
                 type=character.get("type"),
                 name=_text(character, "name"),
                 gender=_text(character, "gender"),
-                character_type=character_type_elem.text if character_type_elem is not None else None,
+                character_type=character_type_elem.text
+                if character_type_elem is not None
+                else None,
                 character_type_id=(
                     _safe_int(character_type_elem.get("id"))
                     if character_type_elem is not None
@@ -328,7 +331,9 @@ def _parse_episodes(root: Element) -> list[AniDBEpisode]:
                 episode_type=episode_type,
                 length=(
                     int(length_elem.text)
-                    if length_elem is not None and length_elem.text and length_elem.text.isdigit()
+                    if length_elem is not None
+                    and length_elem.text
+                    and length_elem.text.isdigit()
                     else None
                 ),
                 airdate=_text(episode, "airdate"),
@@ -410,7 +415,9 @@ def _parse_resources(root: Element) -> list[AniDBExternalResource]:
                     identifiers.append(identifier_elem.text)
 
         result.append(
-            AniDBExternalResource(type=resource_type, urls=urls, identifiers=identifiers)
+            AniDBExternalResource(
+                type=resource_type, urls=urls, identifiers=identifiers
+            )
         )
     return result
 

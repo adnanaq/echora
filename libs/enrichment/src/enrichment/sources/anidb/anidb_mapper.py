@@ -46,12 +46,15 @@ _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 # {} is replaced with the first identifier or url value.
 # Types not listed are silently skipped.
 _RESOURCE_MAP: dict[str, tuple[str, str]] = {
-    "1":  ("anime_news_network", "https://www.animenewsnetwork.com/encyclopedia/anime.php?id={}"),
-    "2":  ("myanimelist", "https://myanimelist.net/anime/{}"),
-    "4":  ("official_website", "{}"),   # type 4 supplies a full url, not an identifier
-    "6":  ("wikipedia_en", "https://en.wikipedia.org/wiki/{}"),
-    "7":  ("wikipedia_jp", "https://ja.wikipedia.org/wiki/{}"),
-    "8":  ("syoboi", "http://cal.syoboi.jp/tid/{}"),
+    "1": (
+        "anime_news_network",
+        "https://www.animenewsnetwork.com/encyclopedia/anime.php?id={}",
+    ),
+    "2": ("myanimelist", "https://myanimelist.net/anime/{}"),
+    "4": ("official_website", "{}"),  # type 4 supplies a full url, not an identifier
+    "6": ("wikipedia_en", "https://en.wikipedia.org/wiki/{}"),
+    "7": ("wikipedia_jp", "https://ja.wikipedia.org/wiki/{}"),
+    "8": ("syoboi", "http://cal.syoboi.jp/tid/{}"),
     "26": ("youtube", "https://www.youtube.com/{}"),
     "32": ("amazon", "https://www.amazon.com/dp/{}"),
     "41": ("netflix", "https://www.netflix.com/title/{}"),
@@ -129,7 +132,9 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
             # TMDB has two identifiers: numeric id + media type ("tv" or "movie")
             if len(resource.identifiers) >= 2:
                 tmdb_id, tmdb_type = resource.identifiers[0], resource.identifiers[1]
-                external_sources["themoviedb"] = f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}"
+                external_sources["themoviedb"] = (
+                    f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}"
+                )
             continue
         mapping = _RESOURCE_MAP.get(resource.type)
         if mapping is None:
@@ -328,7 +333,9 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
         # Derive unique roles from all anime appearances and merge with any
         # role already set from the XML API (e.g. role for the queried anime).
         existing = list(result.get("roles", []))
-        from_ography = [e.role.value for e in ography_entries if e.role != CharacterRole.UNKNOWN]
+        from_ography = [
+            e.role.value for e in ography_entries if e.role != CharacterRole.UNKNOWN
+        ]
         merged = list(dict.fromkeys(existing + from_ography))
         if merged:
             result["roles"] = merged

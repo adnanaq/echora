@@ -23,13 +23,12 @@ import gzip
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
-import re
 
 import aiohttp
 from common.utils.jsonl_utils import append_jsonl
@@ -112,13 +111,21 @@ class AniDBHelper(BaseEnrichmentHelper):
         self._session_created_at: float = 0.0
         self._session_max_age = 300
 
-        self.min_request_interval = float(os.getenv("ANIDB_MIN_REQUEST_INTERVAL", "2.0"))
-        self.max_request_interval = float(os.getenv("ANIDB_MAX_REQUEST_INTERVAL", "10.0"))
+        self.min_request_interval = float(
+            os.getenv("ANIDB_MIN_REQUEST_INTERVAL", "2.0")
+        )
+        self.max_request_interval = float(
+            os.getenv("ANIDB_MAX_REQUEST_INTERVAL", "10.0")
+        )
         self.error_cooldown_base = float(os.getenv("ANIDB_ERROR_COOLDOWN_BASE", "5.0"))
         self.max_retries = int(os.getenv("ANIDB_MAX_RETRIES", "3"))
 
-        self.circuit_breaker_threshold = int(os.getenv("ANIDB_CIRCUIT_BREAKER_THRESHOLD", "5"))
-        self.circuit_breaker_timeout = float(os.getenv("ANIDB_CIRCUIT_BREAKER_TIMEOUT", "300"))
+        self.circuit_breaker_threshold = int(
+            os.getenv("ANIDB_CIRCUIT_BREAKER_THRESHOLD", "5")
+        )
+        self.circuit_breaker_timeout = float(
+            os.getenv("ANIDB_CIRCUIT_BREAKER_TIMEOUT", "300")
+        )
         self.circuit_breaker_state = CircuitBreakerState.CLOSED
         self.circuit_breaker_opened_at = 0.0
 
@@ -157,12 +164,20 @@ class AniDBHelper(BaseEnrichmentHelper):
         if not anidb_url:
             return None
 
-        anime_output_path = os.path.join(temp_dir, "anidb_anime.jsonl") if temp_dir else None
-        episodes_output_path = os.path.join(temp_dir, "anidb_episodes.jsonl") if temp_dir else None
-        characters_output_path = os.path.join(temp_dir, "anidb_characters.jsonl") if temp_dir else None
+        anime_output_path = (
+            os.path.join(temp_dir, "anidb_anime.jsonl") if temp_dir else None
+        )
+        episodes_output_path = (
+            os.path.join(temp_dir, "anidb_episodes.jsonl") if temp_dir else None
+        )
+        characters_output_path = (
+            os.path.join(temp_dir, "anidb_characters.jsonl") if temp_dir else None
+        )
 
         logger.info(f"Fetching AniDB data for: {anidb_url}")
-        anime_dict, anime_model = await self._fetch_anime(anidb_url, output_path=anime_output_path)
+        anime_dict, anime_model = await self._fetch_anime(
+            anidb_url, output_path=anime_output_path
+        )
         if not anime_dict or not anime_model:
             return None
 
@@ -175,7 +190,9 @@ class AniDBHelper(BaseEnrichmentHelper):
                     anime_model, output_path=episodes_output_path
                 )
             except Exception as e:
-                logger.warning(f"Episode fetch failed, continuing without episodes: {e}")
+                logger.warning(
+                    f"Episode fetch failed, continuing without episodes: {e}"
+                )
 
         characters_data: list[dict[str, Any]] = []
         if fetch_characters:
@@ -184,16 +201,20 @@ class AniDBHelper(BaseEnrichmentHelper):
                     anime_model, output_path=characters_output_path
                 )
             except Exception as e:
-                logger.warning(f"Character fetch failed, continuing without characters: {e}")
+                logger.warning(
+                    f"Character fetch failed, continuing without characters: {e}"
+                )
 
         logger.info(f"AniDB episodes fetched: {len(episodes_data)}")
         logger.info(f"AniDB characters fetched: {len(characters_data)}")
 
-        return normalize_enrichment_payload({
-            "anime": anime_dict,
-            "episodes": episodes_data,
-            "characters": characters_data,
-        })
+        return normalize_enrichment_payload(
+            {
+                "anime": anime_dict,
+                "episodes": episodes_data,
+                "characters": characters_data,
+            }
+        )
 
     # =========================================================================
     # PROTECTED FETCH METHODS
@@ -332,14 +353,19 @@ class AniDBHelper(BaseEnrichmentHelper):
         """
         current_time = time.time()
         if self.circuit_breaker_state == CircuitBreakerState.OPEN:
-            if current_time - self.circuit_breaker_opened_at > self.circuit_breaker_timeout:
+            if (
+                current_time - self.circuit_breaker_opened_at
+                > self.circuit_breaker_timeout
+            ):
                 self.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
                 logger.info("Circuit breaker moved to HALF_OPEN state")
                 return True
             remaining = self.circuit_breaker_timeout - (
                 current_time - self.circuit_breaker_opened_at
             )
-            logger.warning(f"Circuit breaker OPEN — blocking request. {remaining:.1f}s remaining")
+            logger.warning(
+                f"Circuit breaker OPEN — blocking request. {remaining:.1f}s remaining"
+            )
             return False
         return True
 
@@ -385,7 +411,9 @@ class AniDBHelper(BaseEnrichmentHelper):
             self.circuit_breaker_state = CircuitBreakerState.CLOSED
             self.circuit_breaker_opened_at = 0.0
             self.metrics.consecutive_failures = 0
-            logger.info(f"Circuit breaker manually reset from {old_state.value} to CLOSED")
+            logger.info(
+                f"Circuit breaker manually reset from {old_state.value} to CLOSED"
+            )
             return True
         return False
 
@@ -504,7 +532,9 @@ class AniDBHelper(BaseEnrichmentHelper):
                     self._update_circuit_breaker(success=False)
                     if attempt < self.max_retries:
                         wait = (2**attempt) + (time.time() % 1)
-                        logger.warning(f"Request failed, retrying in {wait:.2f}s (attempt {attempt + 1})")
+                        logger.warning(
+                            f"Request failed, retrying in {wait:.2f}s (attempt {attempt + 1})"
+                        )
                         await asyncio.sleep(wait)
 
             except Exception as e:
@@ -516,7 +546,9 @@ class AniDBHelper(BaseEnrichmentHelper):
                     logger.warning(f"Request exception, retrying in {wait:.2f}s: {e}")
                     await asyncio.sleep(wait)
                 else:
-                    logger.exception(f"Request failed after {self.max_retries + 1} attempts: {e}")
+                    logger.exception(
+                        f"Request failed after {self.max_retries + 1} attempts"
+                    )
             finally:
                 self.metrics.total_requests += 1
 
@@ -599,8 +631,8 @@ class AniDBHelper(BaseEnrichmentHelper):
                 return content.decode(encoding)
             except UnicodeDecodeError:
                 continue
-        logger.error("Failed to decode AniDB response content")
-        return None
+        logger.error("Failed to decode AniDB response content")  # pragma: no cover
+        return None  # pragma: no cover
 
     # =========================================================================
     # CONTEXT MANAGER
@@ -632,12 +664,16 @@ def _write_json(path: str, data: object) -> None:  # pragma: no cover
 
 async def main() -> int:  # pragma: no cover
     """CLI entrypoint for inspecting AniDB data fetching."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     parser = argparse.ArgumentParser(description="Fetch data from AniDB HTTP API")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_anime = sub.add_parser("anime", help="Fetch anime metadata")
-    p_anime.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_anime.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
     p_anime.add_argument("output_file", help="Output JSON file")
     p_anime.add_argument(
         "--save-xml",
@@ -649,16 +685,28 @@ async def main() -> int:  # pragma: no cover
     )
 
     p_eps = sub.add_parser("episodes", help="Fetch regular episodes")
-    p_eps.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
+    p_eps.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
     p_eps.add_argument("output_file", help="Output JSON file")
 
     p_chars = sub.add_parser("characters", help="Fetch character data")
-    p_chars.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
-    p_chars.add_argument("output_file", help="Output JSONL file (written live as each character is fetched)")
+    p_chars.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_chars.add_argument(
+        "output_file",
+        help="Output JSONL file (written live as each character is fetched)",
+    )
 
     p_all = sub.add_parser("all", help="Fetch anime, episodes, and characters")
-    p_all.add_argument("anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)")
-    p_all.add_argument("output_dir", help="Directory to write anidb_anime.json, anidb_episodes.json, anidb_characters.json")
+    p_all.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_all.add_argument(
+        "output_dir",
+        help="Directory to write anidb_anime.json, anidb_episodes.json, anidb_characters.json",
+    )
 
     args = parser.parse_args()
     helper = AniDBHelper()
@@ -676,7 +724,9 @@ async def main() -> int:  # pragma: no cover
                     xml_response = await helper._fetch_xml(int(match.group(1)))
                     if xml_response:
                         xml_path = args.save_xml or f"anidb_{match.group(1)}_raw.xml"
-                        with open(sanitize_output_path(xml_path), "w", encoding="utf-8") as f:
+                        with open(
+                            sanitize_output_path(xml_path), "w", encoding="utf-8"
+                        ) as f:
                             f.write(xml_response)
                         logger.info(f"Raw XML saved to {xml_path}")
             _write_json(args.output_file, anime_dict)
@@ -694,12 +744,14 @@ async def main() -> int:  # pragma: no cover
             characters = await helper._fetch_characters(anime_model)
             _write_json(os.path.join(args.output_dir, "anidb_anime.json"), anime_dict)
             _write_json(os.path.join(args.output_dir, "anidb_episodes.json"), episodes)
-            _write_json(os.path.join(args.output_dir, "anidb_characters.json"), characters)
-
-        return 0
+            _write_json(
+                os.path.join(args.output_dir, "anidb_characters.json"), characters
+            )
 
     except KeyboardInterrupt:
         return 1
+    else:
+        return 0
     finally:
         await helper.close()
 
