@@ -32,8 +32,9 @@ URL = "https://myanimelist.net/anime/21/One_Piece/episode/1"
 
 
 @pytest.fixture(autouse=True)
-def clear_cf_cookie_cache() -> None:
+def clear_cf_state() -> None:
     _docker_mod._CF_COOKIE_CACHE.clear()
+    _docker_mod._CF_PASSIVE_DOMAINS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -104,17 +105,13 @@ def test_get_base_url_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_submit_job_200_returns_task_id() -> None:
-    session = _post_session(200, {"task_id": "abc123"})
-    assert await _submit_job(session, "http://x", [URL], _BC, _CC) == "abc123"
+@pytest.mark.parametrize("status,task_id", [(200, "abc123"), (202, "abc202")])
+async def test_submit_job_success(status: int, task_id: str) -> None:
+    session = _post_session(status, {"task_id": task_id})
+    assert await _submit_job(session, "http://x", [URL], _BC, _CC) == task_id
 
 
-async def test_submit_job_202_returns_task_id() -> None:
-    session = _post_session(202, {"task_id": "abc202"})
-    assert await _submit_job(session, "http://x", [URL], _BC, _CC) == "abc202"
-
-
-async def test_submit_job_4xx_returns_none() -> None:
+async def test_submit_job_4xx() -> None:
     session = _post_session(400, text_data="bad request")
     assert await _submit_job(session, "http://x", [URL], _BC, _CC) is None
 
@@ -125,12 +122,12 @@ async def test_submit_job_5xx_raises() -> None:
         await _submit_job(session, "http://x", [URL], _BC, _CC)
 
 
-async def test_submit_job_missing_task_id_returns_none() -> None:
+async def test_submit_job_no_task_id() -> None:
     session = _post_session(200, {"task_id": None})
     assert await _submit_job(session, "http://x", [URL], _BC, _CC) is None
 
 
-async def test_submit_job_client_error_returns_none() -> None:
+async def test_submit_job_client_error() -> None:
     session = AsyncMock()
     session.post = MagicMock(side_effect=aiohttp.ClientError("unreachable"))
     assert await _submit_job(session, "http://x", [URL], _BC, _CC) is None
@@ -141,7 +138,7 @@ async def test_submit_job_client_error_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_poll_job_completed_returns_data() -> None:
+async def test_poll_job_completed() -> None:
     data = {"status": "completed", "result": {}}
     session = _get_session((200, data))
     assert (
@@ -150,7 +147,7 @@ async def test_poll_job_completed_returns_data() -> None:
     )
 
 
-async def test_poll_job_failed_returns_none() -> None:
+async def test_poll_job_failed() -> None:
     session = _get_session((200, {"status": "failed", "error": "oops"}))
     assert (
         await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
@@ -158,7 +155,7 @@ async def test_poll_job_failed_returns_none() -> None:
     )
 
 
-async def test_poll_job_non_200_returns_none() -> None:
+async def test_poll_job_non_200() -> None:
     session = _get_session((404, {}))
     assert (
         await _poll_job(session, "http://x", "t1", timeout=10.0, poll_interval=0)
@@ -166,7 +163,7 @@ async def test_poll_job_non_200_returns_none() -> None:
     )
 
 
-async def test_poll_job_client_error_returns_none() -> None:
+async def test_poll_job_client_error() -> None:
     session = AsyncMock()
     session.get = MagicMock(side_effect=aiohttp.ClientError("fail"))
     assert (
@@ -175,7 +172,7 @@ async def test_poll_job_client_error_returns_none() -> None:
     )
 
 
-async def test_poll_job_timeout_returns_none() -> None:
+async def test_poll_job_timeout() -> None:
     assert (
         await _poll_job(AsyncMock(), "http://x", "t1", timeout=0, poll_interval=0)
         is None
@@ -204,32 +201,21 @@ def test_align_results_success() -> None:
     assert _align_results([URL], [entry]) == [entry]
 
 
-def test_align_results_missing_url_returns_none() -> None:
+def test_align_results_missing_url() -> None:
     assert _align_results([URL], []) == [None]
 
 
-def test_align_results_failure_error_message_returns_none() -> None:
-    assert _align_results(
-        [URL], [{"url": URL, "success": False, "error_message": "boom"}]
-    ) == [None]
+@pytest.mark.parametrize("entry", [
+    {"url": URL, "success": False, "error_message": "boom"},
+    {"url": URL, "success": False, "error": "boom"},
+])
+def test_align_results_failure(entry: dict) -> None:
+    assert _align_results([URL], [entry]) == [None]
 
 
-def test_align_results_failure_error_field_returns_none() -> None:
-    assert _align_results([URL], [{"url": URL, "success": False, "error": "boom"}]) == [
-        None
-    ]
-
-
-def test_align_results_404_returns_none() -> None:
-    assert _align_results(
-        [URL], [{"url": URL, "success": True, "status_code": 404}]
-    ) == [None]
-
-
-def test_align_results_405_returns_none() -> None:
-    assert _align_results(
-        [URL], [{"url": URL, "success": True, "status_code": 405}]
-    ) == [None]
+@pytest.mark.parametrize("code", [404, 405])
+def test_align_results_waf_code(code: int) -> None:
+    assert _align_results([URL], [{"url": URL, "success": True, "status_code": code}]) == [None]
 
 
 def test_align_results_reordered() -> None:
@@ -243,7 +229,7 @@ def test_align_results_reordered() -> None:
     assert aligned[1]["url"] == url_b
 
 
-def test_align_results_unicode_matches_percent_encoded_result() -> None:
+def test_align_unicode_percent() -> None:
     """Playwright percent-encodes URLs; submitted Unicode must still match."""
     unicode_url = "https://myanimelist.net/character/270864/Broyé_Charlotte"
     encoded_url = "https://myanimelist.net/character/270864/Broy%C3%A9_Charlotte"
@@ -252,7 +238,7 @@ def test_align_results_unicode_matches_percent_encoded_result() -> None:
     assert result == [entry]
 
 
-def test_align_results_percent_encoded_matches_unicode_result() -> None:
+def test_align_percent_unicode() -> None:
     """Symmetric: percent-encoded submitted URL matches Unicode result URL."""
     unicode_url = "https://myanimelist.net/character/152902/Brûlée_Charlotte"
     encoded_url = "https://myanimelist.net/character/152902/Br%C3%BBl%C3%A9e_Charlotte"
@@ -280,57 +266,24 @@ def test_extract_waf_blocked_urls() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_extract_transient_dns_error() -> None:
-    raw = [
-        {
-            "url": URL,
-            "success": False,
-            "error_message": "ERR_NAME_NOT_RESOLVED at https://...",
-        }
-    ]
+@pytest.mark.parametrize("error_msg,field", [
+    ("ERR_NAME_NOT_RESOLVED at https://...", "error_message"),
+    ("Target page, context or browser has been closed", "error_message"),
+    ("Failed on navigating ACS-GOTO:\nPage.goto: Timeout 90000ms exceeded.", "error_message"),
+    ("ERR_NAME_NOT_RESOLVED", "error"),
+])
+def test_extract_transient_recognized(error_msg: str, field: str) -> None:
+    raw = [{"url": URL, "success": False, field: error_msg}]
     assert _extract_transient_failed_urls(raw) == [URL]
 
 
-def test_extract_transient_browser_closed() -> None:
-    raw = [
-        {
-            "url": URL,
-            "success": False,
-            "error_message": "Target page, context or browser has been closed",
-        }
-    ]
-    assert _extract_transient_failed_urls(raw) == [URL]
-
-
-def test_extract_transient_error_field_fallback() -> None:
-    raw = [{"url": URL, "success": False, "error": "ERR_NAME_NOT_RESOLVED"}]
-    assert _extract_transient_failed_urls(raw) == [URL]
-
-
-def test_extract_transient_ignores_success() -> None:
-    raw = [{"url": URL, "success": True, "error_message": "ERR_NAME_NOT_RESOLVED"}]
-    assert _extract_transient_failed_urls(raw) == []
-
-
-def test_extract_transient_ignores_missing_url() -> None:
-    raw = [{"success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}]
-    assert _extract_transient_failed_urls(raw) == []
-
-
-def test_extract_transient_page_timeout() -> None:
-    raw = [
-        {
-            "url": URL,
-            "success": False,
-            "error_message": "Failed on navigating ACS-GOTO:\nPage.goto: Timeout 90000ms exceeded.",
-        }
-    ]
-    assert _extract_transient_failed_urls(raw) == [URL]
-
-
-def test_extract_transient_ignores_unknown_error() -> None:
-    raw = [{"url": URL, "success": False, "error_message": "some unknown error"}]
-    assert _extract_transient_failed_urls(raw) == []
+@pytest.mark.parametrize("entry", [
+    {"url": URL, "success": True, "error_message": "ERR_NAME_NOT_RESOLVED"},
+    {"success": False, "error_message": "ERR_NAME_NOT_RESOLVED"},
+    {"url": URL, "success": False, "error_message": "some unknown error"},
+])
+def test_extract_transient_ignored(entry: dict) -> None:
+    assert _extract_transient_failed_urls([entry]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +291,7 @@ def test_extract_transient_ignores_unknown_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_retry_failed_urls_submit_fails_returns_aligned() -> None:
+async def test_retry_submit_fails() -> None:
     with patch(
         "enrichment.sources.base.crawl4ai_docker._submit_job",
         new_callable=AsyncMock,
@@ -351,7 +304,7 @@ async def test_retry_failed_urls_submit_fails_returns_aligned() -> None:
     assert waf_blocked == []
 
 
-async def test_retry_failed_urls_poll_fails_returns_aligned() -> None:
+async def test_retry_poll_fails() -> None:
     with (
         patch(
             "enrichment.sources.base.crawl4ai_docker._submit_job",
@@ -371,7 +324,7 @@ async def test_retry_failed_urls_poll_fails_returns_aligned() -> None:
     assert waf_blocked == []
 
 
-async def test_retry_failed_urls_patches_aligned() -> None:
+async def test_retry_patches_aligned() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
     with (
         patch(
@@ -392,7 +345,7 @@ async def test_retry_failed_urls_patches_aligned() -> None:
     assert waf_blocked == []
 
 
-async def test_retry_failed_urls_returns_waf_blocked_from_retry() -> None:
+async def test_retry_returns_waf_blocked() -> None:
     """When a retry gets a 405, it must be returned in waf_blocked — not silently dropped."""
     waf_entry = {"url": URL, "success": True, "status_code": 405}
     with (
@@ -419,54 +372,20 @@ async def test_retry_failed_urls_returns_waf_blocked_from_retry() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_probe_waf_recovery_no_task_id() -> None:
-    with patch(
-        "enrichment.sources.base.crawl4ai_docker._submit_job",
-        new_callable=AsyncMock,
-        return_value=None,
-    ):
-        assert (
-            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
-        )
-
-
-async def test_probe_waf_recovery_no_response() -> None:
+@pytest.mark.parametrize("submit_rv,poll_rv", [
+    (None, None),
+    ("tid", None),
+    ("tid", {"result": {"results": []}}),
+])
+async def test_probe_waf_recovery_false(submit_rv: str | None, poll_rv: dict | None) -> None:
     with (
-        patch(
-            "enrichment.sources.base.crawl4ai_docker._submit_job",
-            new_callable=AsyncMock,
-            return_value="tid",
-        ),
-        patch(
-            "enrichment.sources.base.crawl4ai_docker._poll_job",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
+        patch("enrichment.sources.base.crawl4ai_docker._submit_job", new_callable=AsyncMock, return_value=submit_rv),
+        patch("enrichment.sources.base.crawl4ai_docker._poll_job", new_callable=AsyncMock, return_value=poll_rv),
     ):
-        assert (
-            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
-        )
+        assert await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
 
 
-async def test_probe_waf_recovery_empty_results() -> None:
-    with (
-        patch(
-            "enrichment.sources.base.crawl4ai_docker._submit_job",
-            new_callable=AsyncMock,
-            return_value="tid",
-        ),
-        patch(
-            "enrichment.sources.base.crawl4ai_docker._poll_job",
-            new_callable=AsyncMock,
-            return_value={"result": {"results": []}},
-        ),
-    ):
-        assert (
-            await _probe_waf_recovery(AsyncMock(), "http://x", URL, _BC, _CC) is False
-        )
-
-
-async def test_probe_waf_recovery_405_returns_false() -> None:
+async def test_probe_waf_recovery_405() -> None:
     with (
         patch(
             "enrichment.sources.base.crawl4ai_docker._submit_job",
@@ -484,7 +403,7 @@ async def test_probe_waf_recovery_405_returns_false() -> None:
         )
 
 
-async def test_probe_waf_recovery_200_returns_true() -> None:
+async def test_probe_waf_recovery_200() -> None:
     with (
         patch(
             "enrichment.sources.base.crawl4ai_docker._submit_job",
@@ -505,14 +424,14 @@ async def test_probe_waf_recovery_200_returns_true() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_wait_for_waf_unblock_timeout_returns_false() -> None:
+async def test_waf_unblock_timeout() -> None:
     with patch("enrichment.sources.base.crawl4ai_docker._WAF_MAX_WAIT", -1.0):
         assert (
             await _wait_for_waf_unblock(AsyncMock(), "http://x", URL, _BC, _CC) is False
         )
 
 
-async def test_wait_for_waf_unblock_first_probe_succeeds() -> None:
+async def test_waf_unblock_first_probe() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0),
         patch(
@@ -526,7 +445,7 @@ async def test_wait_for_waf_unblock_first_probe_succeeds() -> None:
         )
 
 
-async def test_wait_for_waf_unblock_second_probe_succeeds() -> None:
+async def test_waf_unblock_second_probe() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker._WAF_PROBE_INTERVAL", 0.0),
         patch(
@@ -545,14 +464,14 @@ async def test_wait_for_waf_unblock_second_probe_succeeds() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_inject_cookies_merges_into_empty_params() -> None:
+def test_inject_cookies_empty_params() -> None:
     bc = {"type": "BrowserConfig", "params": {}}
     cookies = [{"name": "cf_clearance", "value": "abc", "domain": ".example.com", "path": "/"}]
     result = _inject_cookies(bc, cookies)
     assert result["params"]["cookies"] == cookies
 
 
-def test_inject_cookies_merges_with_existing_cookies() -> None:
+def test_inject_cookies_existing() -> None:
     existing = [{"name": "session", "value": "xyz"}]
     bc = {"type": "BrowserConfig", "params": {"cookies": existing}}
     new_cookies = [{"name": "cf_clearance", "value": "abc", "domain": ".example.com", "path": "/"}]
@@ -560,7 +479,7 @@ def test_inject_cookies_merges_with_existing_cookies() -> None:
     assert result["params"]["cookies"] == existing + new_cookies
 
 
-def test_inject_cookies_does_not_mutate_original() -> None:
+def test_inject_cookies_no_mutate() -> None:
     bc = {"type": "BrowserConfig", "params": {"headless": True}}
     _inject_cookies(bc, [{"name": "cf_clearance", "value": "x"}])
     assert "cookies" not in bc["params"]
@@ -571,38 +490,43 @@ def test_inject_cookies_does_not_mutate_original() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_bypass_waf_with_zendriver_import_error_returns_none() -> None:
+async def test_zendriver_import_error() -> None:
     import sys
     with patch.dict(sys.modules, {"zendriver": None}):
         result = await _bypass_waf_with_zendriver(URL)
     assert result is None
 
 
-async def test_bypass_waf_with_zendriver_exception_returns_none() -> None:
+async def test_zendriver_exception() -> None:
     with patch("zendriver.start", side_effect=RuntimeError("browser crash")):
         result = await _bypass_waf_with_zendriver(URL)
     assert result is None
 
 
-async def test_bypass_waf_with_zendriver_no_cf_cookie_returns_none() -> None:
+async def test_zendriver_no_cf_cookie() -> None:
     mock_page = AsyncMock()
-    mock_page.get_content.return_value = "<html>clean</html>"
-    mock_page.send = AsyncMock(return_value=[])
+    # CF marker on first call → enters challenge path; clean on second → exits loop
+    mock_page.get_content.side_effect = ["Just a moment...", "<html>clean</html>"]
+    mock_page.send = AsyncMock(return_value=[])  # no cf_clearance in cookies
 
     mock_browser = AsyncMock()
     mock_browser.get.return_value = mock_page
-    mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
-    mock_browser.__aexit__ = AsyncMock(return_value=None)
+    mock_browser.stop = AsyncMock(side_effect=RuntimeError("stop failed"))  # covers finally except
 
     with (
         patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
         patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
+        patch(
+            "zendriver.core.cloudflare.cf_is_interactive_challenge_present",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         result = await _bypass_waf_with_zendriver(URL)
     assert result is None
 
 
-async def test_bypass_waf_with_zendriver_returns_cf_clearance_cookie() -> None:
+async def test_zendriver_returns_cf_clearance() -> None:
     mock_cookie = MagicMock()
     mock_cookie.name = "cf_clearance"
     mock_cookie.value = "token123"
@@ -614,13 +538,41 @@ async def test_bypass_waf_with_zendriver_returns_cf_clearance_cookie() -> None:
     other_cookie.value = "sess456"
 
     mock_page = AsyncMock()
-    mock_page.get_content.return_value = "<html>clean</html>"
+    # CF marker → interactive challenge present → verify_cf called (line 345)
+    # wait loop: exception (lines 352-354), still blocked/sleep (line 357), then clean → break
+    mock_page.get_content.side_effect = [
+        "Just a moment...",          # initial check: CF present
+        Exception("get_content err"),# loop iter 1: exception path
+        "Just a moment...",          # loop iter 2: still blocked → sleep (line 357)
+        "<html>clean</html>",        # loop iter 3: clean → break
+    ]
     mock_page.send = AsyncMock(return_value=[mock_cookie, other_cookie])
 
     mock_browser = AsyncMock()
     mock_browser.get.return_value = mock_page
-    mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
-    mock_browser.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
+        patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
+        patch(
+            "zendriver.core.cloudflare.cf_is_interactive_challenge_present",
+            new_callable=AsyncMock,
+            return_value=True,  # interactive challenge → verify_cf called (line 345)
+        ),
+        patch("zendriver.core.cloudflare.verify_cf", new_callable=AsyncMock),
+    ):
+        result = await _bypass_waf_with_zendriver(URL)
+
+    assert result == [{"name": "cf_clearance", "value": "token123", "domain": ".myanimelist.net", "path": "/"}]
+
+
+async def test_zendriver_no_challenge_passive() -> None:
+    """No CF markers on page → marked as passive domain, returns None."""
+    mock_page = AsyncMock()
+    mock_page.get_content.return_value = "<html>clean</html>"
+
+    mock_browser = AsyncMock()
+    mock_browser.get.return_value = mock_page
 
     with (
         patch("zendriver.start", new_callable=AsyncMock, return_value=mock_browser),
@@ -628,10 +580,11 @@ async def test_bypass_waf_with_zendriver_returns_cf_clearance_cookie() -> None:
     ):
         result = await _bypass_waf_with_zendriver(URL)
 
-    assert result == [{"name": "cf_clearance", "value": "token123", "domain": ".myanimelist.net", "path": "/"}]
+    assert result is None
+    assert "myanimelist.net" in _docker_mod._CF_PASSIVE_DOMAINS
 
 
-async def test_bypass_waf_with_zendriver_still_blocked_returns_none() -> None:
+async def test_zendriver_still_blocked() -> None:
     mock_page = AsyncMock()
     mock_page.get_content.return_value = "Just a moment..."
 
@@ -661,7 +614,7 @@ async def test_bypass_waf_with_zendriver_still_blocked_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_crawl_single_url_submit_fails_returns_none() -> None:
+async def test_single_submit_fails() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
         patch(
@@ -673,7 +626,7 @@ async def test_crawl_single_url_submit_fails_returns_none() -> None:
         assert await crawl_single_url(URL, _BC, _CC) is None
 
 
-async def test_crawl_single_url_poll_fails_returns_none() -> None:
+async def test_single_poll_fails() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
         patch(
@@ -690,7 +643,7 @@ async def test_crawl_single_url_poll_fails_returns_none() -> None:
         assert await crawl_single_url(URL, _BC, _CC) is None
 
 
-async def test_crawl_single_url_success() -> None:
+async def test_single_success() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
@@ -713,11 +666,11 @@ async def test_crawl_single_url_success() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_crawl_batch_urls_empty_returns_empty() -> None:
+async def test_batch_empty() -> None:
     assert await crawl_batch_urls([], _BC, _CC) == []
 
 
-async def test_crawl_batch_urls_submit_fails_returns_nones() -> None:
+async def test_batch_submit_fails() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
         patch(
@@ -729,7 +682,7 @@ async def test_crawl_batch_urls_submit_fails_returns_nones() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_poll_fails_returns_nones() -> None:
+async def test_batch_poll_fails() -> None:
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
         patch(
@@ -746,7 +699,7 @@ async def test_crawl_batch_urls_poll_fails_returns_nones() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_clean_success() -> None:
+async def test_batch_success() -> None:
     entry = {"url": URL, "success": True, "status_code": 200}
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
@@ -764,7 +717,7 @@ async def test_crawl_batch_urls_clean_success() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [entry]
 
 
-async def test_crawl_batch_urls_transient_retry_succeeds() -> None:
+async def test_batch_transient_retry() -> None:
     transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
     recovered = {"url": URL, "success": True, "status_code": 200}
     with (
@@ -790,7 +743,7 @@ async def test_crawl_batch_urls_transient_retry_succeeds() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_transient_retry_succeeds_on_third_attempt() -> None:
+async def test_batch_transient_third_attempt() -> None:
     transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
     recovered = {"url": URL, "success": True, "status_code": 200}
     with (
@@ -818,7 +771,7 @@ async def test_crawl_batch_transient_retry_succeeds_on_third_attempt() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_urls_transient_all_retries_exhausted() -> None:
+async def test_batch_transient_exhausted() -> None:
     transient = {"url": URL, "success": False, "error_message": "ERR_NAME_NOT_RESOLVED"}
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
@@ -845,7 +798,7 @@ async def test_crawl_batch_urls_transient_all_retries_exhausted() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_waf_blocked_recovered() -> None:
+async def test_batch_waf_recovered() -> None:
     waf = {"url": URL, "success": True, "status_code": 405}
     recovered = {"url": URL, "success": True, "status_code": 200}
     with (
@@ -877,7 +830,9 @@ async def test_crawl_batch_urls_waf_blocked_recovered() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
+async def test_batch_waf_not_recovered() -> None:
+    # Pre-populate passive domain → skips zendriver entirely (covers line 561-562)
+    _docker_mod._CF_PASSIVE_DOMAINS.add("myanimelist.net")
     waf = {"url": URL, "success": True, "status_code": 405}
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
@@ -892,11 +847,6 @@ async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
             return_value={"result": {"results": [waf]}},
         ),
         patch(
-            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
             new_callable=AsyncMock,
             return_value=False,
@@ -905,11 +855,13 @@ async def test_crawl_batch_urls_waf_blocked_not_recovered() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_waf_zendriver_succeeds_skips_passive() -> None:
-    """Active CF bypass succeeds → retry with injected cookie; passive probe never called."""
+async def test_batch_zendriver_skips_passive() -> None:
+    """Cached cf_clearance reused (covers _CF_COOKIE_CACHE hit); passive probe never called."""
     waf = {"url": URL, "success": True, "status_code": 403}
     recovered = {"url": URL, "success": True, "status_code": 200}
     cf_cookies = [{"name": "cf_clearance", "value": "tok", "domain": ".myanimelist.net", "path": "/"}]
+    # Pre-populate cache → hits line 564-565 instead of calling _bypass_waf_with_zendriver
+    _docker_mod._CF_COOKIE_CACHE["myanimelist.net"] = cf_cookies
     with (
         patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
         patch(
@@ -926,14 +878,10 @@ async def test_crawl_batch_urls_waf_zendriver_succeeds_skips_passive() -> None:
             ],
         ),
         patch(
-            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
-            new_callable=AsyncMock,
-            return_value=cf_cookies,
-        ),
-        patch(
             "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
             new_callable=AsyncMock,
         ) as mock_passive,
+        patch("enrichment.sources.base.crawl4ai_docker.asyncio.sleep", new_callable=AsyncMock),
     ):
         result = await crawl_batch_urls([URL], _BC, _CC)
 
@@ -941,7 +889,7 @@ async def test_crawl_batch_urls_waf_zendriver_succeeds_skips_passive() -> None:
     mock_passive.assert_not_called()
 
 
-async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_recovered() -> None:
+async def test_batch_zendriver_fallback_recovered() -> None:
     """zendriver returns None → falls back to passive probe → URL recovered."""
     waf = {"url": URL, "success": True, "status_code": 403}
     recovered = {"url": URL, "success": True, "status_code": 200}
@@ -974,7 +922,7 @@ async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_recovered() -> No
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_not_recovered() -> None:
+async def test_batch_zendriver_fallback_failed() -> None:
     """zendriver returns None → passive probe also fails → None."""
     waf = {"url": URL, "success": True, "status_code": 403}
     with (
@@ -1003,7 +951,7 @@ async def test_crawl_batch_urls_waf_zendriver_fails_falls_back_not_recovered() -
         assert await crawl_batch_urls([URL], _BC, _CC) == [None]
 
 
-async def test_crawl_batch_urls_waf_cookie_partial_recovery_then_passive_recovered() -> None:
+async def test_batch_cookie_partial_passive() -> None:
     """Cookie retries recover some URLs; remaining go to passive probe and are recovered."""
     URL2 = "https://www.anime-planet.com/anime/one-piece/characters/2"
     waf1 = {"url": URL, "success": True, "status_code": 403}
@@ -1023,10 +971,9 @@ async def test_crawl_batch_urls_waf_cookie_partial_recovery_then_passive_recover
             new_callable=AsyncMock,
             side_effect=[
                 {"result": {"results": [waf1, waf2]}},  # initial batch: both blocked
-                {"result": {"results": [ok1, waf2]}},    # cookie retry 1: URL1 recovered
-                {"result": {"results": [waf2]}},          # cookie retry 2: URL2 still blocked
-                {"result": {"results": [waf2]}},          # cookie retry 3: URL2 still blocked
-                {"result": {"results": [ok2]}},           # passive retry: URL2 recovered
+                {"result": {"results": [ok1]}},          # cookie retry URL1: recovered
+                {"result": {"results": [waf2]}},          # cookie retry URL2: still blocked
+                {"result": {"results": [ok2]}},           # passive probe fallback: URL2 recovered
             ],
         ),
         patch(
@@ -1050,7 +997,7 @@ async def test_crawl_batch_urls_waf_cookie_partial_recovery_then_passive_recover
     mock_passive.assert_called_once()
 
 
-async def test_crawl_batch_urls_waf_cookie_zero_recovery_evicts_cache_then_passive() -> None:
+async def test_batch_cookie_zero_evicts() -> None:
     """Cookie recovers 0 URLs across all retries → cache evicted → passive probe fallback."""
     waf = {"url": URL, "success": True, "status_code": 403}
     recovered = {"url": URL, "success": True, "status_code": 200}
@@ -1068,10 +1015,8 @@ async def test_crawl_batch_urls_waf_cookie_zero_recovery_evicts_cache_then_passi
             new_callable=AsyncMock,
             side_effect=[
                 {"result": {"results": [waf]}},       # initial batch
-                {"result": {"results": [waf]}},       # cookie retry 1: 0 recovered
-                {"result": {"results": [waf]}},       # cookie retry 2: 0 recovered
-                {"result": {"results": [waf]}},       # cookie retry 3: 0 recovered
-                {"result": {"results": [recovered]}}, # passive retry: recovered
+                {"result": {"results": [waf]}},       # cookie retry: 0 recovered, cache evicted
+                {"result": {"results": [recovered]}}, # passive probe fallback: recovered
             ],
         ),
         patch(
@@ -1096,7 +1041,7 @@ async def test_crawl_batch_urls_waf_cookie_zero_recovery_evicts_cache_then_passi
     mock_passive.assert_called_once()
 
 
-async def test_crawl_batch_transient_retry_hits_waf_triggers_recovery() -> None:
+async def test_batch_transient_hits_waf() -> None:
     """Gap scenario: transient failure → retry returns 405 → WAF recovery → URL recovered."""
     transient = {
         "url": URL,
@@ -1138,7 +1083,83 @@ async def test_crawl_batch_transient_retry_hits_waf_triggers_recovery() -> None:
         assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
 
 
-async def test_crawl_batch_transient_retry_hits_waf_recovery_fails() -> None:
+async def test_batch_waf_second_pass() -> None:
+    """URL re-blocked during first sequential retry → second probe succeeds → recovered."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    reblocked = {"url": URL, "success": True, "status_code": 307}
+    recovered = {"url": URL, "success": True, "status_code": 200}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},        # initial batch: WAF blocked
+                {"result": {"results": [reblocked]}},  # first sequential retry: re-blocked
+                {"result": {"results": [recovered]}},  # second-pass retry: recovered
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [recovered]
+
+
+async def test_batch_second_pass_fails() -> None:
+    """URL re-blocked during first sequential retry → second probe fails → URL dropped."""
+    waf = {"url": URL, "success": True, "status_code": 403}
+    reblocked = {"url": URL, "success": True, "status_code": 307}
+    with (
+        patch("enrichment.sources.base.crawl4ai_docker.aiohttp.ClientSession"),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._submit_job",
+            new_callable=AsyncMock,
+            return_value="tid",
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._poll_job",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"result": {"results": [waf]}},        # initial batch: WAF blocked
+                {"result": {"results": [reblocked]}},  # first sequential retry: re-blocked
+            ],
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._bypass_waf_with_zendriver",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker._wait_for_waf_unblock",
+            new_callable=AsyncMock,
+            side_effect=[True, False],  # first probe clears, second probe fails
+        ),
+        patch(
+            "enrichment.sources.base.crawl4ai_docker.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+    ):
+        assert await crawl_batch_urls([URL], _BC, _CC) == [None]
+
+
+async def test_batch_transient_waf_fails() -> None:
     """Gap scenario: transient failure → retry returns 405 → WAF recovery times out → None."""
     transient = {
         "url": URL,
