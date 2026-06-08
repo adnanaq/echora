@@ -113,6 +113,7 @@ exclude_lines = [
 [dependency-groups]
 dev = [
     "grpc-stubs>=1.53.0.6",
+    "lxml-stubs>=0.5.1",
     "ruff==0.14.10",
     "scikit-learn-stubs>=0.0.3",
     "scipy-stubs>=1.16.2.0",
