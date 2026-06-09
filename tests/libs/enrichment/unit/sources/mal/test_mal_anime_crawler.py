@@ -474,7 +474,7 @@ def _make_browser_mock(mocker, html: str | None, pics_html: str | None = ""):
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_failure_cases(mocker) -> None:
+async def test_failure_cases(mocker) -> None:
     mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
 
     # Navigation failure
@@ -494,7 +494,7 @@ async def test_fetch_mal_anime_data_failure_cases(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_theme_songs_wait_timeout_still_succeeds(mocker, mal_anime_html) -> None:
+async def test_theme_songs_wait_timeout_still_succeeds(mocker, mal_anime_html) -> None:
     mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
 
     page_main = mocker.AsyncMock()
@@ -517,7 +517,7 @@ async def test_fetch_mal_anime_data_theme_songs_wait_timeout_still_succeeds(mock
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_success(mocker, mal_anime_html, mal_anime_pics_html) -> None:
+async def test_success(mocker, mal_anime_html, mal_anime_pics_html) -> None:
     mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
     mocker.patch("zendriver.start", new_callable=AsyncMock,
                  return_value=_make_browser_mock(mocker, html=mal_anime_html, pics_html=mal_anime_pics_html))
@@ -530,7 +530,7 @@ async def test_fetch_mal_anime_data_success(mocker, mal_anime_html, mal_anime_pi
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_data_pics_failure_still_returns_data(mocker, mal_anime_html) -> None:
+async def test_pics_failure_still_returns_data(mocker, mal_anime_html) -> None:
     mocker.patch("http_cache.result_cache.get_cache_config", return_value=mocker.MagicMock(cache_enabled=False))
 
     page_main = mocker.AsyncMock()
@@ -600,7 +600,7 @@ def test_crawler_build_source_model_and_map(mal_anime_extracted) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_anime_none_and_success(mocker, mal_anime_extracted) -> None:
+async def test_none_and_success(mocker, mal_anime_extracted) -> None:
     mocker.patch("enrichment.sources.mal.mal_anime_crawler._fetch_mal_anime_data",
                  new_callable=AsyncMock, return_value=None)
     assert await fetch_mal_anime("https://myanimelist.net/anime/21") is None

@@ -4,7 +4,8 @@ Fixtures are real captured HTML from live MAL pages:
 - mal_anime_html:               https://myanimelist.net/anime/21 (2026-06-09)
 - mal_anime_pics_html:          https://myanimelist.net/anime/21/One_Piece/pics (2026-06-09)
 - mal_anime_extracted:          XPath-extracted dict from mal_anime_html (with _url/_picture_urls)
-- mal_character_raw:            https://myanimelist.net/character/40/Luffy_Monkey_D (2026-04-17)
+- mal_character_html:           https://myanimelist.net/character/40 (2026-06-09, with scroll)
+- mal_character_extracted:      XPath-extracted dict from mal_character_html
 - mal_episode_raw:              https://myanimelist.net/anime/21/One_Piece/episode/1 (2026-04-17)
 - mal_episode_filler_raw:       https://myanimelist.net/anime/21/One_Piece/episode/50 (2026-04-17)
 - mal_episode_recap_raw:        https://myanimelist.net/anime/21/One_Piece/episode/279 (2026-04-17)
@@ -44,8 +45,17 @@ def mal_anime_extracted(mal_anime_html, mal_anime_pics_html) -> dict:
 
 
 @pytest.fixture(scope="session")
-def mal_character_raw() -> dict:
-    return json.loads((_FIXTURES / "mal_character_raw.json").read_text())
+def mal_character_html() -> str:
+    return (_FIXTURES / "mal_character_40.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def mal_character_extracted(mal_character_html) -> dict:
+    from enrichment.sources.mal.mal_character_crawler import _extract_character_from_html
+
+    raw = _extract_character_from_html(mal_character_html)
+    assert raw is not None, "HTML fixture produced no extraction — fixture may be stale"
+    return raw
 
 
 @pytest.fixture(scope="session")
