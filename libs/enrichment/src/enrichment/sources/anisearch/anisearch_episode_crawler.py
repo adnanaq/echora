@@ -1,9 +1,8 @@
-"""AniSearch episode crawler using the crawl4ai Docker REST transport.
+"""AniSearch episode crawler using zendriver + lxml XPath.
 
 Fetches the /episodes sub-page of an AniSearch anime URL and extracts per-episode
 metadata (number, filler/recap flags, duration, air date, and titles in up to 5
-languages: EN, JA, DE, FR, IT) using an XPath schema consistent with the rest of
-the AniSearch crawler suite.
+languages: EN, JA, DE, FR, IT).
 
 Usage:
     ./pants run libs/enrichment/src/enrichment/sources/anisearch/anisearch_episode_crawler.py -- <url> [--output PATH]
@@ -14,11 +13,10 @@ Usage:
 
 import argparse
 import asyncio
-import json
 import logging
 import re
 import sys
-from typing import Any
+from typing import Any, cast
 
 from common.utils.jsonl_utils import append_jsonl
 from enrichment.sources.anisearch.anisearch_anime_models import (
@@ -26,11 +24,6 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisodesPage,
 )
 from enrichment.sources.anisearch.anisearch_mapper import episode_from_anisearch
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
     DockerTransport,
@@ -47,84 +40,70 @@ TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/anime/"
 
+# ---------------------------------------------------------------------------
+# XPath selectors
+# ---------------------------------------------------------------------------
+
+_XPATHS: dict[str, str] = {
+    "episode_rows":       "//table[contains(@class,'episodes')]//tr[@data-episode='true']",
+    "episode_number_raw": ".//th[@itemprop='episodeNumber']",
+    "runtime":            ".//td[@data-title='Runtime']/div[@lang='ja']",
+    "release_date":       ".//td[@data-title='Date of Original Release']/div[@lang='ja']",
+    "title_en":           ".//td[@data-title='Title']/div[@lang='en']//span[@itemprop='name']",
+    "title_ja":           ".//td[@data-title='Title']/div[@lang='ja']//span[@itemprop='name']",
+    "title_de":           ".//td[@data-title='Title']/div[@lang='de']//span[@itemprop='name']",
+    "title_fr":           ".//td[@data-title='Title']/div[@lang='fr']//span[@itemprop='name']",
+    "title_it":           ".//td[@data-title='Title']/div[@lang='it']//span[@itemprop='name']",
+}
 
 # ---------------------------------------------------------------------------
-# XPath extraction schema
+# HTML extraction
 # ---------------------------------------------------------------------------
 
-_EPISODE_ROW_FIELDS: list[dict[str, Any]] = [
-    {
-        "name": "episode_number_raw",
-        "selector": ".//th[@itemprop='episodeNumber']",
-        "type": "text",
-    },
-    {
-        "name": "runtime",
-        "selector": ".//td[@data-title='Runtime']/div[@lang='ja']",
-        "type": "text",
-    },
-    {
-        "name": "release_date",
-        "selector": ".//td[@data-title='Date of Original Release']/div[@lang='ja']",
-        "type": "text",
-    },
-    {
-        "name": "title_en",
-        "selector": ".//td[@data-title='Title']/div[@lang='en']//span[@itemprop='name']",
-        "type": "text",
-    },
-    {
-        "name": "title_ja",
-        "selector": ".//td[@data-title='Title']/div[@lang='ja']//span[@itemprop='name']",
-        "type": "text",
-    },
-    {
-        "name": "title_de",
-        "selector": ".//td[@data-title='Title']/div[@lang='de']//span[@itemprop='name']",
-        "type": "text",
-    },
-    {
-        "name": "title_fr",
-        "selector": ".//td[@data-title='Title']/div[@lang='fr']//span[@itemprop='name']",
-        "type": "text",
-    },
-    {
-        "name": "title_it",
-        "selector": ".//td[@data-title='Title']/div[@lang='it']//span[@itemprop='name']",
-        "type": "text",
-    },
-]
 
+def _extract_episodes_from_html(html_text: str) -> dict[str, Any] | None:
+    """Parse an AniSearch /episodes page into a raw episodes dict.
 
-def _get_episode_schema() -> dict[str, Any]:
-    """XPath extraction schema for an AniSearch /episodes page.
+    Each row dict uses the same field names as the old crawl4ai schema so that
+    _parse_episode_row (and all its unit tests) stay unchanged.
 
-    Structure verified against https://www.anisearch.com/anime/2227,one-piece/episodes
-    (April 2026):
-    - Table: <table class="responsive-table episodes">
-    - Row:   <tr data-episode="true" itemprop="episode">
-    - Episode number: <th itemprop="episodeNumber"><b>N[<br><span>Filler|Recap</span>]</b></th>
-    - Runtime: <td data-title="Runtime"><div lang="ja">24 min</div>...
-    - Date:    <td data-title="Date of Original Release"><div lang="ja">DD. Mon YYYY</div>...
-    - Title EN: <td data-title="Title"><div lang="en"><span itemprop="name">...</span></div>
-    - Title JA: <td data-title="Title"><div lang="ja"><span itemprop="name">Romaji (Kanji)</span></div>
-    - Title DE: <td data-title="Title"><div lang="de"><span itemprop="name">...</span></div>
-    - Title FR: <td data-title="Title"><div lang="fr"><span itemprop="name">...</span></div>
-    - Title IT: <td data-title="Title"><div lang="it"><span itemprop="name">...</span></div>
-    - Future episodes: runtime/date cells are plain "?" text with no div children → None
+    episode_number_raw is extracted via itertext() over the full <th> — this
+    captures the episode number AND any nested <span>Filler</span>/<span>Recap</span>
+    labels in one string (e.g. "279FillerRecap"), which the regex detection
+    in _parse_episode_row relies on.
     """
-    return {
-        "name": "AniSearchEpisodes",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "episodes",
-                "selector": "//table[contains(@class,'episodes')]//tr[@data-episode='true']",
-                "type": "nested_list",
-                "fields": _EPISODE_ROW_FIELDS,
-            }
-        ],
-    }
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html_text.encode(), parser)
+        if tree is None:  # pragma: no cover
+            return None  # pragma: no cover
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+    rows = cast(list[Any], tree.xpath(_XPATHS["episode_rows"]))
+
+    episodes = []
+    for row in rows:
+        def _text(xpath: str) -> str | None:
+            els = cast(list[Any], row.xpath(xpath))
+            if not els:
+                return None
+            return "".join(els[0].itertext()).strip() or None
+
+        episodes.append({
+            "episode_number_raw": _text(_XPATHS["episode_number_raw"]),
+            "runtime":            _text(_XPATHS["runtime"]),
+            "release_date":       _text(_XPATHS["release_date"]),
+            "title_en":           _text(_XPATHS["title_en"]),
+            "title_ja":           _text(_XPATHS["title_ja"]),
+            "title_de":           _text(_XPATHS["title_de"]),
+            "title_fr":           _text(_XPATHS["title_fr"]),
+            "title_it":           _text(_XPATHS["title_it"]),
+        })
+
+    return {"episodes": episodes}
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +113,7 @@ def _get_episode_schema() -> dict[str, Any]:
 
 def _clean(val: str | None) -> str | None:
     v = (val or "").strip()
-    return None if not v or v in ("?", " ") else v
+    return None if not v or v in ("?", " ") else v
 
 
 def _parse_runtime_seconds(raw: str | None) -> int | None:
@@ -165,6 +144,10 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
         Cleaned episode dict with keys: episode_number, is_filler, is_recap,
         duration, aired, title, title_romaji, title_japanese, titles.
         None if no episode number can be parsed (malformed row).
+
+    Notes:
+        is_filler and is_recap are independently detected — an episode can be
+        neither, either, or both (e.g. a clip show recap that is also filler).
     """
     ep_raw = (raw.get("episode_number_raw") or "").strip()
     m = re.search(r"\d+", ep_raw)
@@ -210,33 +193,34 @@ def _parse_episode_row(raw: dict[str, Any]) -> dict[str, Any] | None:
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_episodes",
-    dependencies=[
-        _get_episode_schema,
-        get_docker_browser_config,
-        get_docker_crawler_config,
-    ],
+    dependencies=[_extract_episodes_from_html],
 )
 async def _fetch_anisearch_episode_data(url: str) -> dict[str, Any] | None:
     """Fetch the /episodes page and return the raw body dict. Cached by URL."""
-    result = await crawl_single_url(
-        url=url,
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_episode_schema()),
-    )
-    if not result:
-        logger.warning(f"No crawl result for {url}")
+    import zendriver as zd
+
+    browser = await zd.start(headless=False)
+    try:
+        try:
+            page = await browser.get(url)
+            await page.wait_for(selector="table.episodes", timeout=15)
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(2)
+            html_text = await page.get_content()
+        except Exception as exc:
+            logger.warning(f"navigation failed for {url}: {exc}")
+            return None
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
+
+    if not html_text:
+        logger.warning(f"No HTML from episodes page: {url}")
         return None
 
-    status = result.get("status_code")
-    if status == 404:
-        logger.warning(f"Episodes page not found: {url}")
-        return None
-    if status and status != 200:
-        logger.error(f"HTTP {status} fetching {url}")
-        return None
-
-    raw_list = json.loads(result.get("extracted_content") or "[]")
-    return raw_list[0] if raw_list else None
+    return _extract_episodes_from_html(html_text)
 
 
 # ---------------------------------------------------------------------------
@@ -248,12 +232,12 @@ class AniSearchEpisodeCrawler(BaseCrawler[AniSearchEpisodesPage, list[dict[str, 
     """Crawler for an AniSearch /episodes page.
 
     Returns a list of canonical episode dicts rather than a single dict —
-    ``T_Canonical = list[dict]`` because one page contains all episodes.
+    T_Canonical = list[dict] because one page contains all episodes.
     Repository persistence is not used here; callers handle file output.
     """
 
     def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_episode_schema()
+        return {"xpaths": _XPATHS}
 
     def normalize_identifier(self, identifier: str) -> str:
         normalized = identifier.replace(
@@ -261,6 +245,9 @@ class AniSearchEpisodeCrawler(BaseCrawler[AniSearchEpisodesPage, list[dict[str, 
         )
         if not normalized.startswith(_ANISEARCH_BASE_URL):
             raise ValueError(f"Not an AniSearch anime URL: {identifier!r}")
+        normalized = normalized.rstrip("/")
+        if not normalized.endswith("/episodes"):
+            normalized = f"{normalized}/episodes"
         return normalized
 
     async def fetch_raw_data(self, url: str) -> dict[str, Any] | None:
@@ -300,9 +287,7 @@ async def fetch_anisearch_episodes(
     Returns:
         List of canonical episode dicts or None if the page could not be fetched.
     """
-    result = await AniSearchEpisodeCrawler(DockerTransport(), NullRepository()).crawl(
-        url
-    )
+    result = await AniSearchEpisodeCrawler(DockerTransport(), NullRepository()).crawl(url)
     if not result:
         return None
 
@@ -321,7 +306,6 @@ async def fetch_anisearch_episodes(
 
 
 async def main() -> int:  # pragma: no cover
-    """CLI entry point for fetching episode data from AniSearch."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )

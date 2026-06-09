@@ -1,16 +1,15 @@
-"""Crawls anime information from anisearch.com via the crawl4ai Docker REST API.
+"""Crawls anime information from anisearch.com via zendriver + lxml XPath.
 
-Extracts metadata and relations using XPath extraction.
+Extracts metadata and relations using lxml XPath on raw page HTML.
 Results are cached in Redis. Two sequential page fetches per anime
-(main + /relations?show=overall) — sequential rather than concurrent
-to avoid triggering Cloudflare bot detection.
+(main + /relations?show=overall) — sequential to avoid Cloudflare bot detection.
 """
 
+import asyncio
 import html
-import json
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchAnime,
@@ -18,11 +17,6 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchStatistics,
 )
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
     DockerTransport,
@@ -39,6 +33,8 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 BASE_ANIME_URL = "https://www.anisearch.com/anime/"
+_ANISEARCH_BASE_URL = "https://www.anisearch.com"
+_INTER_REQUEST_DELAY = 3.0
 
 _LABEL_RE = re.compile(r"^\s*[^:]+:\s*")
 _DATE_RANGE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s*[-–‑]\s*(\d{2}\.\d{2}\.\d{4})")
@@ -46,6 +42,170 @@ _SINGLE_DATE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 _SCORE_RE = re.compile(r"(\d+\.\d+)")
 _RANK_RE = re.compile(r"#(\d+)")
 _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
+
+# ---------------------------------------------------------------------------
+# XPath selectors
+# ---------------------------------------------------------------------------
+
+_XPATHS: dict[str, str] = {
+    # Main page
+    "cover_image":     "//section[@id='information']//img[@id='details-cover']/@src",
+    "title_alt":       "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//div[contains(@class,'grey')]",
+    "title_ja":        "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//strong[contains(@class,'f16')]",
+    "type":            "//section[@id='information']//div[contains(@class,'type')]",
+    "status":          "//section[@id='information']//div[contains(@class,'status')]",
+    "published":       "//section[@id='information']//div[contains(@class,'released')]",
+    "studio":          "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
+    "studio_url":      "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]/@href",
+    "broadcast_raw":   "//section[@id='information']//div[contains(@class,'broadcast')]",
+    "source_material": "//section[@id='information']//div[contains(@class,'adapted')]",
+    "synonyms":        "//section[@id='information']//div[contains(@class,'synonyms')]",
+    "description":     "//section[@id='description']//div[contains(@class,'textblock') and contains(@class,'details-text')]",
+    "genres":          "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/main/') or contains(@href,'/genre/subsidiary/')]",
+    "tags":            "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/tag/')]",
+    "rating_score":    "//*[@id='ratingstats']//tr[2]//td[1]//b",
+    "rank_toplist":    "//*[@id='ratingstats']//tr[2]//td[2]//b",
+    "rank_trending":   "//*[@id='ratingstats']//tr[3]//td[2]//b",
+    "websites":        "//section[@id='information']//div[contains(@class,'websites')]//a",
+    # Relations sub-page
+    "anime_relation_rows": "//section[@id='relations_anime']//tbody//tr",
+    "manga_relation_rows": "//section[@id='relations_manga']//tbody//tr",
+}
+
+# ---------------------------------------------------------------------------
+# lxml extraction helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
+    """Parse an AniSearch anime main page into the raw field dict.
+
+    Returns a dict with the same keys that _post_process_main expects.
+    Returns None if the HTML cannot be parsed.
+    """
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html_text.encode(), parser)
+        if tree is None:  # pragma: no cover
+            return None  # pragma: no cover
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+    def _text(key: str) -> str | None:
+        els = cast(list[Any], tree.xpath(_XPATHS[key]))
+        if not els:
+            return None
+        raw = "".join(els[0].itertext())
+        return re.sub(r" {2,}", " ", raw).strip() or None
+
+    def _attr(key: str) -> str | None:
+        vals = cast(list[str], tree.xpath(_XPATHS[key]))
+        return vals[0].strip() if vals else None
+
+    genre_els = cast(list[Any], tree.xpath(_XPATHS["genres"]))
+    genres = [
+        {"name": "".join(el.itertext()).strip()}
+        for el in genre_els
+        if "".join(el.itertext()).strip()
+    ]
+
+    tag_els = cast(list[Any], tree.xpath(_XPATHS["tags"]))
+    tags = [
+        {"name": "".join(el.itertext()).strip()}
+        for el in tag_els
+        if "".join(el.itertext()).strip()
+    ]
+
+    website_els = cast(list[Any], tree.xpath(_XPATHS["websites"]))
+    websites = [
+        {
+            "name": "".join(el.itertext()).strip(),
+            "url": el.get("href") or "",
+        }
+        for el in website_els
+        if el.get("href")
+    ]
+
+    return {
+        "cover_image":     _attr("cover_image"),
+        "title_alt":       _text("title_alt"),
+        "title_ja":        _text("title_ja"),
+        "type":            _text("type"),
+        "status":          _text("status"),
+        "published":       _text("published"),
+        "studio":          _text("studio"),
+        "studio_url":      _attr("studio_url"),
+        "broadcast_raw":   _text("broadcast_raw"),
+        "source_material": _text("source_material"),
+        "synonyms":        _text("synonyms"),
+        "description":     _text("description"),
+        "genres":          genres,
+        "tags":            tags,
+        "rating_score":    _text("rating_score"),
+        "rank_toplist":    _text("rank_toplist"),
+        "rank_trending":   _text("rank_trending"),
+        "websites":        websites,
+    }
+
+
+def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
+    """Parse an AniSearch /relations?show=overall page into anime/manga relation lists.
+
+    Returns a dict with keys 'anime_relations' and 'manga_relations', each a list
+    of {relation_type, title, url, details, rating, image} dicts.
+    Returns None if the HTML cannot be parsed.
+    """
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html_text.encode(), parser)
+        if tree is None:  # pragma: no cover
+            return None  # pragma: no cover
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+    def _parse_rows(xpath_key: str) -> list[dict[str, Any]]:
+        rows = cast(list[Any], tree.xpath(_XPATHS[xpath_key]))
+        result = []
+        for row in rows:
+            span = row.xpath(".//th//span")
+            relation_type = "".join(span[0].itertext()).strip() if span else None
+
+            a = row.xpath(".//th//a")
+            title = "".join(a[0].itertext()).strip() if a else None
+            url = a[0].get("href") or None if a else None
+
+            details_els = row.xpath(".//td[@data-title='Type / Episodes / Year']")
+            details = "".join(details_els[0].itertext()).strip() if details_els else None
+
+            rating_els = row.xpath(".//td[contains(@class,'rating')]//div[contains(@class,'star0')]")
+            rating = rating_els[0].get("title") if rating_els else None
+
+            image_attr = row.xpath(".//th[@scope='row']/@data-tooltip")
+            image = image_attr[0] if image_attr else None
+
+            result.append({
+                "relation_type": relation_type,
+                "title": title,
+                "url": url,
+                "details": details,
+                "rating": rating,
+                "image": image,
+            })
+        return result
+
+    return {
+        "anime_relations": _parse_rows("anime_relation_rows"),
+        "manga_relations": _parse_rows("manga_relation_rows"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# URL and tooltip helpers
+# ---------------------------------------------------------------------------
 
 
 def _extract_path_from_url(url: str) -> str:
@@ -56,7 +216,7 @@ def _extract_path_from_url(url: str) -> str:
     """
     if not url.startswith(BASE_ANIME_URL):
         raise ValueError(f"URL must start with {BASE_ANIME_URL!r}: {url!r}")
-    path = url[len(BASE_ANIME_URL) :].strip("/")
+    path = url[len(BASE_ANIME_URL):].strip("/")
     if not path:
         raise ValueError(f"URL does not contain anime path: {url!r}")
     return path
@@ -72,181 +232,27 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
                 rel["image"] = m.group(1)
 
 
-def _get_anime_schema() -> dict[str, Any]:
-    """XPath extraction schema for the main AniSearch anime page."""
-    return {
-        "name": "AniSearchAnime",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "cover_image",
-                "selector": "//section[@id='information']//img[@id='details-cover']",
-                "type": "attribute",
-                "attribute": "src",
-            },
-            {
-                "name": "title_alt",
-                "selector": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//div[contains(@class,'grey')]",
-                "type": "text",
-            },
-            {
-                "name": "title_ja",
-                "selector": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//strong[contains(@class,'f16')]",
-                "type": "text",
-            },
-            {
-                "name": "type",
-                "selector": "//section[@id='information']//div[contains(@class,'type')]",
-                "type": "text",
-            },
-            {
-                "name": "status",
-                "selector": "//section[@id='information']//div[contains(@class,'status')]",
-                "type": "text",
-            },
-            {
-                "name": "published",
-                "selector": "//section[@id='information']//div[contains(@class,'released')]",
-                "type": "text",
-            },
-            {
-                "name": "studio",
-                "selector": "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
-                "type": "text",
-            },
-            {
-                "name": "studio_url",
-                "selector": "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
-                "type": "attribute",
-                "attribute": "href",
-            },
-            {
-                "name": "broadcast_raw",
-                "selector": "//section[@id='information']//div[contains(@class,'broadcast')]",
-                "type": "text",
-            },
-            {
-                "name": "source_material",
-                "selector": "//section[@id='information']//div[contains(@class,'adapted')]",
-                "type": "text",
-            },
-            {
-                "name": "synonyms",
-                "selector": "//section[@id='information']//div[contains(@class,'synonyms')]",
-                "type": "text",
-            },
-            {
-                "name": "description",
-                "selector": "//section[@id='description']//div[contains(@class,'textblock') and contains(@class,'details-text')]",
-                "type": "text",
-            },
-            {
-                "name": "genres",
-                "selector": "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/main/') or contains(@href,'/genre/subsidiary/')]",
-                "type": "list",
-                "fields": [{"name": "name", "selector": ".", "type": "text"}],
-            },
-            {
-                "name": "tags",
-                "selector": "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/tag/')]",
-                "type": "list",
-                "fields": [{"name": "name", "selector": ".", "type": "text"}],
-            },
-            {
-                "name": "rating_score",
-                "selector": "//*[@id='ratingstats']//tr[2]//td[1]//b",
-                "type": "text",
-            },
-            {
-                "name": "rank_toplist",
-                "selector": "//*[@id='ratingstats']//tr[2]//td[2]//b",
-                "type": "text",
-            },
-            {
-                "name": "rank_trending",
-                "selector": "//*[@id='ratingstats']//tr[3]//td[2]//b",
-                "type": "text",
-            },
-            {
-                "name": "websites",
-                "selector": "//section[@id='information']//div[contains(@class,'websites')]//a",
-                "type": "nested_list",
-                "fields": [
-                    {"name": "name", "selector": ".", "type": "text"},
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                ],
-            },
-        ],
-    }
+# ---------------------------------------------------------------------------
+# Browser navigation helper
+# ---------------------------------------------------------------------------
 
 
-_RELATION_FIELDS: list[dict[str, Any]] = [
-    {"name": "relation_type", "selector": ".//th//span", "type": "text"},
-    {"name": "title", "selector": ".//th//a", "type": "text"},
-    {"name": "url", "selector": ".//th//a", "type": "attribute", "attribute": "href"},
-    {
-        "name": "details",
-        "selector": ".//td[@data-title='Type / Episodes / Year']",
-        "type": "text",
-    },
-    {
-        "name": "rating",
-        "selector": ".//td[contains(@class,'rating')]//div[contains(@class,'star0')]",
-        "type": "attribute",
-        "attribute": "title",
-    },
-    {
-        "name": "image",
-        "selector": ".//th[@scope='row']",
-        "type": "attribute",
-        "attribute": "data-tooltip",
-    },
-]
-
-
-def _get_relations_schema() -> dict[str, Any]:
-    """XPath extraction schema for the /relations?show=overall sub-page."""
-    return {
-        "name": "AniSearchRelations",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "anime_relations",
-                "selector": "//section[@id='relations_anime']//tbody//tr",
-                "type": "nested_list",
-                "fields": _RELATION_FIELDS,
-            },
-            {
-                "name": "manga_relations",
-                "selector": "//section[@id='relations_manga']//tbody//tr",
-                "type": "nested_list",
-                "fields": _RELATION_FIELDS,
-            },
-        ],
-    }
-
-
-def _unwrap_result(result: dict[str, Any] | None, url: str) -> dict[str, Any] | None:
-    """Extract the first XPath result dict from a crawl_single_url response."""
-    if result is None:
+async def _fetch_page_html(browser: Any, url: str, wait_selector: str | None = None) -> str | None:
+    try:
+        page = await browser.get(url)
+        if wait_selector:
+            await page.wait_for(selector=wait_selector, timeout=10)
+        else:
+            await asyncio.sleep(2)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
         return None
-    status = result.get("status_code")
-    if status == 404:
-        logger.warning(f"404 for {url}")
-        return None
-    if status and status not in (200, 302):
-        logger.error(f"HTTP {status} for {url}")
-        return None
-    if not result.get("success"):
-        logger.warning(f"Crawl failed for {url}: {result.get('error_message')}")
-        return None
-    raw_list = json.loads(result.get("extracted_content") or "[]")
-    return raw_list[0] if raw_list else None
+
+
+# ---------------------------------------------------------------------------
+# Post-processing helpers (unchanged — pure dict transforms)
+# ---------------------------------------------------------------------------
 
 
 def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
@@ -257,16 +263,11 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
     data["title_alt"] = (raw.get("title_alt") or "").strip() or None
     data["title_ja"] = (raw.get("title_ja") or "").strip() or None
 
-    # Type: strip label prefix, take text before first comma
-    # Raw: "Type: TV-Series, 1200 (~24 min, Total: ~480 h)"
     type_raw = _LABEL_RE.sub("", raw.get("type") or "").strip()
     data["type"] = type_raw.split(",")[0].strip() or None
 
-    # Status: strip label prefix
     data["status"] = _LABEL_RE.sub("", raw.get("status") or "").strip() or None
 
-    # Published: parse start_date / end_date from DD.MM.YYYY format.
-    # Falls back to year-only (e.g. "2026 ‑ ?") via parse_iso_date for upcoming anime.
     published = _LABEL_RE.sub("", raw.get("published") or "").strip()
     m_range = _DATE_RANGE_RE.search(published)
     if m_range:
@@ -277,7 +278,6 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
         if m_single:
             data["start_date"] = m_single.group(1)
         else:
-            # e.g. "2026 ‑ ?" — extract bare year and normalise to ISO
             year_match = re.search(r"\b(\d{4})\b", published)
             data["start_date"] = (
                 parse_iso_date(year_match.group(1)) if year_match else None
@@ -300,18 +300,15 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
         else None
     )
 
-    # Source material: strip label prefix
     data["source_material"] = (
         _LABEL_RE.sub("", raw.get("source_material") or "").strip() or None
     )
 
-    # Synonyms: strip label prefix, split on comma
     syn_clean = _LABEL_RE.sub("", raw.get("synonyms") or "").strip()
     data["synonyms"] = [s.strip() for s in syn_clean.split(",") if s.strip()]
 
     data["description"] = (raw.get("description") or "").strip() or None
 
-    # Genres / tags: flatten list[{name: str}] → list[str]
     data["genres"] = [
         item["name"] for item in raw.get("genres", []) if item.get("name")
     ]
@@ -323,7 +320,6 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
         if w.get("url")
     ]
 
-    # Statistics
     score: float | None = None
     m_score = _SCORE_RE.search(raw.get("rating_score") or "")
     if m_score:
@@ -361,56 +357,72 @@ def _parse_relations(
     return anime, manga
 
 
+# ---------------------------------------------------------------------------
+# Cached fetch
+# ---------------------------------------------------------------------------
+
+
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_anime",
-    dependencies=[_get_anime_schema, _get_relations_schema, _post_process_main],
+    dependencies=[_extract_anime_from_html, _extract_relations_from_html],
 )
 async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | None:
     """Fetch and extract raw anime data for a given AniSearch anime path.
 
-    Two sequential page fetches (main, relations) to avoid
-    triggering Cloudflare bot detection. Cached by canonical path; cache is
-    automatically invalidated when any extraction schema changes.
+    Two sequential page fetches (main, relations) with a single persistent
+    browser session to avoid Cloudflare bot detection. Cached by canonical path;
+    cache is automatically invalidated when any extraction function changes.
 
     Returns a JSON-serializable dict of primitives ready for _build_anime_from_raw.
-    Model construction is left to _build_anime_from_raw so Pydantic models are
-    never stored in the cache.
     """
+    import zendriver as zd
+
     base_url = f"{BASE_ANIME_URL}{canonical_path}"
-    browser = get_docker_browser_config()
+    browser = await zd.start(headless=False)
+    try:
+        try:
+            main_page = await browser.get(base_url)
+            await main_page.wait_for(selector="#htitle", timeout=10)
+            await asyncio.sleep(2)  # genres/stats sections render after htitle
+            final_url = main_page.url  # capture post-redirect slug URL
+            main_html = await main_page.get_content()
+        except Exception as exc:
+            logger.warning(f"navigation failed for {base_url}: {exc}")
+            return None
 
-    logger.info(f"Fetching AniSearch main page: {base_url}")
-    main_result = await crawl_single_url(
-        base_url,
-        browser_config=browser,
-        crawler_config=get_docker_crawler_config(_get_anime_schema()),
-    )
-    main_raw = _unwrap_result(main_result, base_url)
-    if main_raw is None:
-        logger.warning(f"No data extracted from AniSearch main page: {base_url}")
-        return None
+        if not main_html:
+            logger.warning(f"No HTML from AniSearch main page: {base_url}")
+            return None
 
-    # When the server redirected (slug-less URL), switch base_url to the canonical
-    # slug form so the relations fetch and all downstream callers use it.
-    redirected = (main_result or {}).get("redirected_url")
-    if redirected:
-        base_url = redirected
+        main_raw = _extract_anime_from_html(main_html)
+        if main_raw is None:
+            logger.warning(f"Failed to extract data from AniSearch main page: {base_url}")
+            return None
 
-    rels_raw = _unwrap_result(
-        await crawl_single_url(
-            f"{base_url}/relations?show=overall",
-            browser_config=browser,
-            crawler_config=get_docker_crawler_config(_get_relations_schema()),
-        ),
-        f"{base_url}/relations?show=overall",
-    )
+        await asyncio.sleep(_INTER_REQUEST_DELAY)
+
+        canonical_base = final_url.rstrip("/") if final_url else base_url
+        rels_url = f"{canonical_base}/relations?show=overall"
+        rels_html = await _fetch_page_html(browser, rels_url, wait_selector="#relations_anime")
+        rels_raw = _extract_relations_from_html(rels_html) if rels_html else None
+
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
     data = _post_process_main(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
-    if redirected:
-        data["_canonical_url"] = redirected
+    if final_url and final_url != base_url:
+        data["_canonical_url"] = final_url
     return data
+
+
+# ---------------------------------------------------------------------------
+# Model builder
+# ---------------------------------------------------------------------------
 
 
 def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
@@ -466,11 +478,16 @@ def _build_anime_from_raw(raw: dict[str, Any], url: str) -> AniSearchAnime:
     )
 
 
+# ---------------------------------------------------------------------------
+# Crawler class
+# ---------------------------------------------------------------------------
+
+
 class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
-    """Crawler for AniSearch anime detail pages via the crawl4ai Docker REST API."""
+    """Crawler for AniSearch anime detail pages via zendriver + lxml XPath."""
 
     def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_anime_schema()
+        return {"xpaths": _XPATHS}
 
     def normalize_identifier(self, identifier: str) -> str:
         normalized = identifier.replace(
@@ -492,6 +509,11 @@ class AniSearchAnimeCrawler(BaseCrawler[AniSearchAnime, dict[str, Any]]):
 
     def map_to_canonical(self, source_model: AniSearchAnime) -> dict[str, Any]:
         return anime_from_anisearch(source_model)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 async def fetch_anisearch_anime(

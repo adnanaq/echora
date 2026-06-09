@@ -7,15 +7,9 @@ Each dict contains {"url": str, "role": str}. All other character data
 (name, description, favorites, VAs, ography) is extracted by the detail crawler.
 """
 
-import json
 import logging
-from typing import Any
+from typing import cast
 
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
 
@@ -38,34 +32,27 @@ _SECTION_ROLE_MAP: dict[str, str] = {
     "chara50": "Unknown",
 }
 
+_XPATHS: dict[str, str] = {
+    section_id: f"//section[@id='{section_id}']//a[contains(@href,'character/')]/@href"
+    for section_id in _SECTION_ROLE_MAP
+}
 
-def _get_character_refs_schema() -> dict[str, Any]:
-    """XPath schema — extract character hrefs from each role section separately.
 
-    Per-section extraction ensures role attribution is structural (section ID),
-    not inferred from adjacent h2 text which could vary by locale.
-    The page is statically rendered, so domcontentloaded (docker default) suffices.
-    """
-    fields = [
-        {
-            "name": section_id,
-            "selector": f"//section[@id='{section_id}']//a[contains(@href,'character/')]",
-            "type": "list",
-            "fields": [
-                {
-                    "name": "url",
-                    "selector": ".",
-                    "type": "attribute",
-                    "attribute": "href",
-                }
-            ],
-        }
-        for section_id in _SECTION_ROLE_MAP
-    ]
+def _extract_refs_from_html(html_text: str) -> dict[str, list[str]] | None:
+    """Parse a /characters page into a {section_id: [href, ...]} dict."""
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html_text.encode(), parser)
+        if tree is None:  # pragma: no cover
+            return None  # pragma: no cover
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
     return {
-        "name": "AniSearchCharacterRefs",
-        "baseSelector": "//body",
-        "fields": fields,
+        section_id: cast(list[str], tree.xpath(_XPATHS[section_id]))
+        for section_id in _SECTION_ROLE_MAP
     }
 
 
@@ -75,13 +62,13 @@ def _absolutize(href: str) -> str:
     return f"{_ANISEARCH_BASE_URL}/{href.lstrip('/')}"
 
 
-def _post_process_refs(raw: dict[str, Any]) -> list[dict[str, str]]:
-    """Flatten per-section results into a deduplicated list of {url, role} dicts."""
+def _post_process_refs(raw: dict[str, list[str]]) -> list[dict[str, str]]:
+    """Flatten per-section hrefs into a deduplicated list of {url, role} dicts."""
     seen: set[str] = set()
     refs: list[dict[str, str]] = []
     for section_id, role_label in _SECTION_ROLE_MAP.items():
-        for item in raw.get(section_id) or []:
-            href = (item.get("url") or "").strip()
+        for href in raw.get(section_id) or []:
+            href = href.strip()
             if not href:
                 continue
             url = _absolutize(href)
@@ -107,34 +94,39 @@ def _normalize_characters_page_url(anime_identifier: str) -> str:
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_character_refs",
-    dependencies=[_get_character_refs_schema],
+    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_anisearch_character_refs_data(
     characters_url: str,
 ) -> list[dict[str, str]] | None:
     """Fetch /anime/{id},{slug}/characters and extract character refs. Cached by URL."""
-    result = await crawl_single_url(
-        url=characters_url,
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_character_refs_schema()),
-    )
-    if not result:
-        logger.error(f"No result for characters page {characters_url}")
+    import zendriver as zd
+
+    browser = await zd.start(headless=False)
+    try:
+        try:
+            page = await browser.get(characters_url)
+            await page.wait_for(selector="#content", timeout=10)
+            html_text = await page.get_content()
+        except Exception as exc:
+            logger.error(f"navigation failed for {characters_url}: {exc}")
+            return None
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
+
+    if not html_text:
+        logger.error(f"No HTML from characters page {characters_url}")
         return None
 
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for characters page {characters_url}")
-        return None
-    if status and 300 <= status < 400:
-        logger.debug(f"HTTP {status} (redirect) for characters page {characters_url}")
-
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        logger.warning(f"Empty extracted content from {characters_url}")
+    raw = _extract_refs_from_html(html_text)
+    if raw is None:
+        logger.error(f"Failed to parse characters page {characters_url}")
         return None
 
-    refs = _post_process_refs(items[0])
+    refs = _post_process_refs(raw)
     return refs or None
 
 
@@ -151,9 +143,9 @@ async def fetch_anisearch_character_refs(
         List of {"url": str, "role": str} dicts. Empty list on failure.
     """
     characters_url = _normalize_characters_page_url(anime_identifier)
-    logger.info(f"Fetching AniSearch character list from {characters_url}...")
+    logger.info("Fetching AniSearch character list from %s...", characters_url)
     refs = await _fetch_anisearch_character_refs_data(characters_url)
     if not refs:
-        logger.warning(f"No character refs extracted from {characters_url}")
+        logger.warning("No character refs extracted from %s", characters_url)
         return []
     return refs
