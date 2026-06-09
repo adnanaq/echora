@@ -98,12 +98,14 @@ Key behaviours:
 
 ### MAL (`sources/mal/`)
 
-Browser scraping via crawl4ai Docker REST API.
+Browser scraping via zendriver (CDP) + lxml XPath. `mal_anime_crawler.py` was
+migrated from crawl4ai to zendriver to handle Vue-rendered sections (theme songs,
+related entries) and intersection-observer lazy-loaded gallery images.
 
 | Module | Purpose |
 |---|---|
 | `mal_helper.py` | `MalHelper` — entry point; orchestrates anime, episodes, characters |
-| `mal_anime_crawler.py` | `fetch_mal_anime(url)` |
+| `mal_anime_crawler.py` | `fetch_mal_anime(url)` — zendriver + lxml XPath |
 | `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` |
 | `mal_episode_count_crawler.py` | `fetch_mal_episode_count(url)` — resolves "Unknown" counts |
 | `mal_character_refs_crawler.py` | `fetch_mal_character_refs(url)` — list page → URL list |
@@ -114,7 +116,16 @@ Browser scraping via crawl4ai Docker REST API.
 
 **Expected `ids` key:** `mal_url` — full slug URL (e.g. `https://myanimelist.net/anime/21/One_Piece`)
 
-**CLI:**
+**CLI — anime crawler (direct):**
+```bash
+uv run python -m enrichment.sources.mal.mal_anime_crawler \
+    https://myanimelist.net/anime/21/One_Piece
+
+uv run python -m enrichment.sources.mal.mal_anime_crawler \
+    https://myanimelist.net/anime/21/One_Piece --output one_piece.json
+```
+
+**CLI — helper (all data types):**
 ```bash
 uv run python -m enrichment.sources.mal.mal_helper anime https://myanimelist.net/anime/21/One_Piece
 uv run python -m enrichment.sources.mal.mal_helper episodes https://myanimelist.net/anime/21/One_Piece <count>
