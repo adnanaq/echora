@@ -6,6 +6,7 @@ Fixtures are real captured HTML from live MAL pages:
 - mal_anime_extracted:          XPath-extracted dict from mal_anime_html (with _url/_picture_urls)
 - mal_character_html:           https://myanimelist.net/character/40 (2026-06-09, with scroll)
 - mal_character_extracted:      XPath-extracted dict from mal_character_html
+- mal_char_refs_html:           https://myanimelist.net/anime/21/.../characters (2026-06-09, 5-row subset)
 - mal_episode_raw:              https://myanimelist.net/anime/21/One_Piece/episode/1 (2026-04-17)
 - mal_episode_filler_raw:       https://myanimelist.net/anime/21/One_Piece/episode/50 (2026-04-17)
 - mal_episode_recap_raw:        https://myanimelist.net/anime/21/One_Piece/episode/279 (2026-04-17)
@@ -47,6 +48,11 @@ def mal_anime_extracted(mal_anime_html, mal_anime_pics_html) -> dict:
 @pytest.fixture(scope="session")
 def mal_character_html() -> str:
     return (_FIXTURES / "mal_character_40.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def mal_char_refs_html() -> str:
+    return (_FIXTURES / "mal_char_refs_21.html").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="session")
