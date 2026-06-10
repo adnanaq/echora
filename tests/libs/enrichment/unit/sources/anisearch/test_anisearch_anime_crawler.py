@@ -26,7 +26,7 @@ from enrichment.sources.anisearch.anisearch_anime_crawler import (
     _process_relation_tooltips,
     fetch_anisearch_anime,
 )
-from enrichment.sources.base.framework import DockerTransport, NullRepository
+from enrichment.sources.base.framework import NullRepository
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
@@ -529,18 +529,18 @@ def test_build_anime_empty_relations(one_piece_processed) -> None:
 
 
 def test_normalize_identifier_valid_url_passthrough() -> None:
-    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchAnimeCrawler(NullRepository())
     assert crawler.normalize_identifier(_URL) == _URL
 
 
 def test_normalize_identifier_wrong_base_raises() -> None:
-    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchAnimeCrawler(NullRepository())
     with pytest.raises(ValueError, match="Not an AniSearch anime URL"):
         crawler.normalize_identifier("https://myanimelist.net/anime/21")
 
 
 def test_build_source_model_uses_canonical_url_from_raw(one_piece_processed) -> None:
-    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchAnimeCrawler(NullRepository())
     canonical = "https://www.anisearch.com/anime/2227,one-piece"
     raw = {**one_piece_processed, "_canonical_url": canonical}
     model = crawler.build_source_model(raw, "https://www.anisearch.com/anime/2227")
@@ -548,7 +548,7 @@ def test_build_source_model_uses_canonical_url_from_raw(one_piece_processed) -> 
 
 
 def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None:
-    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchAnimeCrawler(NullRepository())
     model = crawler.build_source_model(one_piece_processed, _URL)
     assert model.url == _URL
 
@@ -765,6 +765,6 @@ async def test_fetch_anime_data_slug_redirect_sets_canonical_url(mocker, one_pie
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:
-    crawler = AniSearchAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchAnimeCrawler(NullRepository())
     schema = crawler.get_extraction_schema()
     assert schema == {"xpaths": _XPATHS}

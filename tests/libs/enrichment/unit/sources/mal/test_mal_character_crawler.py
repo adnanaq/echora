@@ -453,15 +453,15 @@ def test_build_character_from_raw_url_from_explicit_arg(mal_character_extracted)
 
 
 def test_mal_character_crawler_get_extraction_schema() -> None:
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
-    crawler = MalCharacterCrawler(DockerTransport(), NullRepository())
+    from enrichment.sources.base.framework import NullRepository
+    crawler = MalCharacterCrawler(NullRepository())
     schema = crawler.get_extraction_schema()
     assert schema == {"xpaths": _XPATHS}
 
 
 def test_mal_character_crawler_normalize_identifier() -> None:
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
-    crawler = MalCharacterCrawler(DockerTransport(), NullRepository())
+    from enrichment.sources.base.framework import NullRepository
+    crawler = MalCharacterCrawler(NullRepository())
     assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
 
 

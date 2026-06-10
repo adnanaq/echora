@@ -446,8 +446,8 @@ def test_build_related_manga_vol_ch_parsing(
 
 def test_crawler_get_extraction_schema() -> None:
     from enrichment.sources.anime_planet.anime_planet_anime_crawler import AnimePlanetAnimeCrawler
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
-    crawler = AnimePlanetAnimeCrawler(DockerTransport(), NullRepository())
+    from enrichment.sources.base.framework import NullRepository
+    crawler = AnimePlanetAnimeCrawler(NullRepository())
     assert crawler.get_extraction_schema() is _XPATHS
 
 

@@ -31,7 +31,7 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     fetch_anisearch_characters,
 )
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
-from enrichment.sources.base.framework import DockerTransport, NullRepository
+from enrichment.sources.base.framework import NullRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -557,7 +557,7 @@ async def test_crawler_post_process_fetches_both_ography_pages(mocker) -> None:
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
         mock_ography,
     )
-    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchCharacterCrawler(NullRepository())
     result = await crawler.post_process_raw_data({"_html": ""}, _LUFFY_URL)
     assert "_anime_ography" in result
     assert "_manga_ography" in result
@@ -572,7 +572,7 @@ async def test_crawler_post_process_ography_none_on_failure(mocker) -> None:
         new_callable=AsyncMock,
         return_value=None,
     )
-    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchCharacterCrawler(NullRepository())
     result = await crawler.post_process_raw_data(
         {"_html": "", "name": "Luffy"}, _LUFFY_URL
     )
@@ -861,7 +861,7 @@ async def test_fetch_ography_cached_returns_directly(mocker) -> None:
 
 
 def test_crawler_normalize_identifier_passthrough() -> None:
-    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchCharacterCrawler(NullRepository())
     assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
     assert crawler.get_extraction_schema() == {"xpaths": _XPATHS}
 
@@ -872,22 +872,20 @@ async def test_crawler_fetch_raw_data_delegates(mocker, luffy_char_processed) ->
         new_callable=AsyncMock,
         return_value=luffy_char_processed,
     )
-    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchCharacterCrawler(NullRepository())
     result = await crawler.fetch_raw_data(_LUFFY_URL)
     assert result is luffy_char_processed
 
 
 def test_crawler_build_source_model_with_role(luffy_char_processed) -> None:
-    crawler = AniSearchCharacterCrawler(
-        DockerTransport(), NullRepository(), role="Main Character"
-    )
+    crawler = AniSearchCharacterCrawler(NullRepository(), role="Main Character")
     char = crawler.build_source_model(luffy_char_processed, _LUFFY_URL)
     assert char.name == "Monkey D. Luffy"
     assert char.role == "Main Character"
 
 
 def test_crawler_map_to_canonical(luffy_char_processed) -> None:
-    crawler = AniSearchCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchCharacterCrawler(NullRepository())
     char = _build_character_from_raw(
         luffy_char_processed, luffy_char_processed.get("_html", ""), _LUFFY_URL
     )

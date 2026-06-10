@@ -30,7 +30,7 @@ from enrichment.sources.anime_planet.anime_planet_character_crawler import (
 from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetVoiceActor,
 )
-from enrichment.sources.base.framework import DockerTransport, NullRepository
+from enrichment.sources.base.framework import NullRepository
 
 pytestmark = pytest.mark.asyncio
 
@@ -460,7 +460,7 @@ def test_crawler_get_extraction_schema() -> None:
         AnimePlanetCharacterCrawler,
     )
 
-    crawler = AnimePlanetCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
     assert crawler.get_extraction_schema() is _XPATHS
 
 
@@ -469,7 +469,7 @@ def test_crawler_normalize_identifier() -> None:
         AnimePlanetCharacterCrawler,
     )
 
-    crawler = AnimePlanetCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
     assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
 
 
@@ -480,7 +480,7 @@ def test_crawler_build_source_model(
         AnimePlanetCharacterCrawler,
     )
 
-    crawler = AnimePlanetCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
     raw = {**ap_character_extracted, "_html": ap_character_html}
     char = crawler.build_source_model(raw, _LUFFY_URL)
     assert char.name == "Monkey D. Luffy"
@@ -494,7 +494,7 @@ def test_crawler_map_to_canonical(
         AnimePlanetCharacterCrawler,
     )
 
-    crawler = AnimePlanetCharacterCrawler(DockerTransport(), NullRepository())
+    crawler = AnimePlanetCharacterCrawler(NullRepository())
     char = _build_character_from_raw(ap_character_extracted, ap_character_html, _LUFFY_URL)
     canonical = crawler.map_to_canonical(char)
     assert canonical["name"] == "Monkey D. Luffy"

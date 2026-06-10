@@ -103,7 +103,7 @@ def test_extract_anime_from_fixture(mal_anime_html) -> None:
     assert "One Piece" in [e["title"] for e in raw["related_tile_entries"]]
     assert len(raw["related_table_entries"]) >= 1
 
-    # Theme song counts match crawl4ai benchmark
+    # Theme song counts match benchmark
     valid_opens = [r for r in raw["opening_themes_raw"] if '"' in (r.get("title_text") or "")]
     valid_ends = [r for r in raw["ending_themes_raw"] if '"' in (r.get("title_text") or "")]
     assert len(valid_opens) == 30
@@ -557,10 +557,10 @@ async def test_pics_failure_still_returns_data(mocker, mal_anime_html) -> None:
 
 
 def test_crawler_schema_and_normalize() -> None:
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
+    from enrichment.sources.base.framework import NullRepository
     from enrichment.sources.mal.mal_anime_crawler import MalAnimeCrawler
 
-    crawler = MalAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = MalAnimeCrawler(NullRepository())
     assert crawler.get_extraction_schema() == {"xpaths": _XPATHS}
     assert crawler.normalize_identifier("/anime/21").startswith("https://myanimelist.net")
     full = "https://myanimelist.net/anime/21"
@@ -569,22 +569,22 @@ def test_crawler_schema_and_normalize() -> None:
 
 @pytest.mark.asyncio
 async def test_crawler_fetch_raw_data_delegates(mocker) -> None:
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
+    from enrichment.sources.base.framework import NullRepository
     from enrichment.sources.mal.mal_anime_crawler import MalAnimeCrawler
 
     mock_result = {"title": "Test"}
     mocker.patch("enrichment.sources.mal.mal_anime_crawler._fetch_mal_anime_data",
                  new_callable=AsyncMock, return_value=mock_result)
 
-    crawler = MalAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = MalAnimeCrawler(NullRepository())
     assert await crawler.fetch_raw_data("https://myanimelist.net/anime/21") == mock_result
 
 
 def test_crawler_build_source_model_and_map(mal_anime_extracted) -> None:
-    from enrichment.sources.base.framework import DockerTransport, NullRepository
+    from enrichment.sources.base.framework import NullRepository
     from enrichment.sources.mal.mal_anime_crawler import MalAnimeCrawler
 
-    crawler = MalAnimeCrawler(DockerTransport(), NullRepository())
+    crawler = MalAnimeCrawler(NullRepository())
     raw = dict(mal_anime_extracted)
     anime = crawler.build_source_model(raw, "https://myanimelist.net/anime/21")
     assert anime.title == "One Piece"

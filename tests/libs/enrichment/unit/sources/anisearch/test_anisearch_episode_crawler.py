@@ -13,7 +13,7 @@ from enrichment.sources.anisearch.anisearch_episode_crawler import (
     _parse_episode_row,
     fetch_anisearch_episodes,
 )
-from enrichment.sources.base.framework import DockerTransport, NullRepository
+from enrichment.sources.base.framework import NullRepository
 
 _URL = "https://www.anisearch.com/anime/2227,one-piece"
 
@@ -81,13 +81,13 @@ def test_extract_episodes_field_structure(one_piece_episodes_html) -> None:
 
 
 def test_normalize_passes_through_valid_url() -> None:
-    crawler = AniSearchEpisodeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchEpisodeCrawler(NullRepository())
     url = "https://www.anisearch.com/anime/18878,dan-da-dan/episodes"
     assert crawler.normalize_identifier(url) == url
 
 
 def test_normalize_rejects_non_anisearch_url() -> None:
-    crawler = AniSearchEpisodeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchEpisodeCrawler(NullRepository())
     with pytest.raises(ValueError, match="Not an AniSearch"):
         crawler.normalize_identifier("https://myanimelist.net/anime/123")
 
@@ -300,7 +300,7 @@ async def test_fetch_episode_data_empty_content_returns_none(mocker) -> None:
 
 
 def test_get_extraction_schema_returns_xpaths() -> None:
-    crawler = AniSearchEpisodeCrawler(DockerTransport(), NullRepository())
+    crawler = AniSearchEpisodeCrawler(NullRepository())
     schema = crawler.get_extraction_schema()
     assert schema == {"xpaths": _XPATHS}
 
