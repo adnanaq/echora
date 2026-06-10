@@ -193,8 +193,6 @@ class AniListHelper(BaseEnrichmentHelper):
 
                     return result
 
-            except (ServiceRateLimitedError, ServiceBlockedError, AniListGraphQLError):
-                raise
             except aiohttp.ClientResponseError as exc:
                 # Non-429/403 4xx are not retryable
                 if exc.status < 500:

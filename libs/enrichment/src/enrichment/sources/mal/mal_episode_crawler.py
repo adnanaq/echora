@@ -19,7 +19,6 @@ from typing import Any, cast
 
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -55,8 +54,7 @@ _XPATHS: dict[str, str] = {
         "[preceding::h2[1][contains(normalize-space(),'Characters')]]"
     ),
     "staff_tables": (
-        "//table[contains(@class,'fl-l')]"
-        "[preceding::h2[1][normalize-space()='Staff']]"
+        "//table[contains(@class,'fl-l')][preceding::h2[1][normalize-space()='Staff']]"
     ),
 }
 
@@ -105,30 +103,42 @@ def _extract_episode_from_html(html: str) -> dict[str, Any] | None:
     char_tables = cast(list[Any], tree.xpath(_XPATHS["char_tables"]))
     characters: list[dict[str, Any]] = []
     for t in char_tables:
-        name_els = cast(list[Any], t.xpath(".//a[contains(@class,'fw-b')][contains(@href,'/character/')]"))
+        name_els = cast(
+            list[Any],
+            t.xpath(".//a[contains(@class,'fw-b')][contains(@href,'/character/')]"),
+        )
         if not name_els:
             continue
         role_m = re.search(r"\b(Main|Supporting)\b", _tc(t))
         va_els = cast(list[Any], t.xpath(".//p[contains(@class,'pb8')]"))
-        characters.append({
-            "char_name": _tc(name_els[0]),
-            "char_url": name_els[0].get("href", ""),
-            "role": role_m.group(1) if role_m else None,
-            "voice_actors_html": etree.tostring(va_els[0], encoding="unicode") if va_els else "",
-        })
+        characters.append(
+            {
+                "char_name": _tc(name_els[0]),
+                "char_url": name_els[0].get("href", ""),
+                "role": role_m.group(1) if role_m else None,
+                "voice_actors_html": etree.tostring(va_els[0], encoding="unicode")
+                if va_els
+                else "",
+            }
+        )
 
     staff_tables = cast(list[Any], tree.xpath(_XPATHS["staff_tables"]))
     staff: list[dict[str, Any]] = []
     for t in staff_tables:
-        name_els = cast(list[Any], t.xpath(".//a[contains(@class,'fw-b')][contains(@href,'/people/')]"))
+        name_els = cast(
+            list[Any],
+            t.xpath(".//a[contains(@class,'fw-b')][contains(@href,'/people/')]"),
+        )
         if not name_els:
             continue
         role_els = cast(list[Any], t.xpath(".//p[contains(@class,'pr12')]"))
-        staff.append({
-            "name": _tc(name_els[0]),
-            "person_url": name_els[0].get("href", ""),
-            "role": _tc(role_els[0]) if role_els else None,
-        })
+        staff.append(
+            {
+                "name": _tc(name_els[0]),
+                "person_url": name_els[0].get("href", ""),
+                "role": _tc(role_els[0]) if role_els else None,
+            }
+        )
 
     raw: dict[str, Any] = {
         "title_header": title_header,
@@ -326,8 +336,8 @@ async def _fetch_mal_episode_data(url: str) -> dict[str, Any] | None:
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     if result is None:
         return None
@@ -417,7 +427,7 @@ async def fetch_mal_episode(
         Canonical episode dict if successful, None otherwise.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await MalEpisodeCrawler(DockerTransport(), repo).crawl(url)
+    return await MalEpisodeCrawler(repo).crawl(url)
 
 
 async def fetch_mal_episodes(
@@ -516,8 +526,8 @@ async def fetch_mal_episodes(
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     return episodes
 

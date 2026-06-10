@@ -19,7 +19,6 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 from enrichment.sources.anisearch.anisearch_mapper import anime_from_anisearch
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -49,24 +48,24 @@ _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
 
 _XPATHS: dict[str, str] = {
     # Main page
-    "cover_image":     "//section[@id='information']//img[@id='details-cover']/@src",
-    "title_alt":       "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//div[contains(@class,'grey')]",
-    "title_ja":        "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//strong[contains(@class,'f16')]",
-    "type":            "//section[@id='information']//div[contains(@class,'type')]",
-    "status":          "//section[@id='information']//div[contains(@class,'status')]",
-    "published":       "//section[@id='information']//div[contains(@class,'released')]",
-    "studio":          "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
-    "studio_url":      "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]/@href",
-    "broadcast_raw":   "//section[@id='information']//div[contains(@class,'broadcast')]",
+    "cover_image": "//section[@id='information']//img[@id='details-cover']/@src",
+    "title_alt": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//div[contains(@class,'grey')]",
+    "title_ja": "//section[@id='information']//div[contains(@class,'title') and @lang='ja']//strong[contains(@class,'f16')]",
+    "type": "//section[@id='information']//div[contains(@class,'type')]",
+    "status": "//section[@id='information']//div[contains(@class,'status')]",
+    "published": "//section[@id='information']//div[contains(@class,'released')]",
+    "studio": "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]",
+    "studio_url": "//section[@id='information']//div[contains(@class,'company')]//a[contains(@href,'company')]/@href",
+    "broadcast_raw": "//section[@id='information']//div[contains(@class,'broadcast')]",
     "source_material": "//section[@id='information']//div[contains(@class,'adapted')]",
-    "synonyms":        "//section[@id='information']//div[contains(@class,'synonyms')]",
-    "description":     "//section[@id='description']//div[contains(@class,'textblock') and contains(@class,'details-text')]",
-    "genres":          "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/main/') or contains(@href,'/genre/subsidiary/')]",
-    "tags":            "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/tag/')]",
-    "rating_score":    "//*[@id='ratingstats']//tr[2]//td[1]//b",
-    "rank_toplist":    "//*[@id='ratingstats']//tr[2]//td[2]//b",
-    "rank_trending":   "//*[@id='ratingstats']//tr[3]//td[2]//b",
-    "websites":        "//section[@id='information']//div[contains(@class,'websites')]//a",
+    "synonyms": "//section[@id='information']//div[contains(@class,'synonyms')]",
+    "description": "//section[@id='description']//div[contains(@class,'textblock') and contains(@class,'details-text')]",
+    "genres": "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/main/') or contains(@href,'/genre/subsidiary/')]",
+    "tags": "//section[@id='genres-tags']//ul[contains(@class,'cloud')]//a[contains(@href,'/genre/tag/')]",
+    "rating_score": "//*[@id='ratingstats']//tr[2]//td[1]//b",
+    "rank_toplist": "//*[@id='ratingstats']//tr[2]//td[2]//b",
+    "rank_trending": "//*[@id='ratingstats']//tr[3]//td[2]//b",
+    "websites": "//section[@id='information']//div[contains(@class,'websites')]//a",
     # Relations sub-page
     "anime_relation_rows": "//section[@id='relations_anime']//tbody//tr",
     "manga_relation_rows": "//section[@id='relations_manga']//tbody//tr",
@@ -129,24 +128,24 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     ]
 
     return {
-        "cover_image":     _attr("cover_image"),
-        "title_alt":       _text("title_alt"),
-        "title_ja":        _text("title_ja"),
-        "type":            _text("type"),
-        "status":          _text("status"),
-        "published":       _text("published"),
-        "studio":          _text("studio"),
-        "studio_url":      _attr("studio_url"),
-        "broadcast_raw":   _text("broadcast_raw"),
+        "cover_image": _attr("cover_image"),
+        "title_alt": _text("title_alt"),
+        "title_ja": _text("title_ja"),
+        "type": _text("type"),
+        "status": _text("status"),
+        "published": _text("published"),
+        "studio": _text("studio"),
+        "studio_url": _attr("studio_url"),
+        "broadcast_raw": _text("broadcast_raw"),
         "source_material": _text("source_material"),
-        "synonyms":        _text("synonyms"),
-        "description":     _text("description"),
-        "genres":          genres,
-        "tags":            tags,
-        "rating_score":    _text("rating_score"),
-        "rank_toplist":    _text("rank_toplist"),
-        "rank_trending":   _text("rank_trending"),
-        "websites":        websites,
+        "synonyms": _text("synonyms"),
+        "description": _text("description"),
+        "genres": genres,
+        "tags": tags,
+        "rating_score": _text("rating_score"),
+        "rank_toplist": _text("rank_toplist"),
+        "rank_trending": _text("rank_trending"),
+        "websites": websites,
     }
 
 
@@ -179,22 +178,28 @@ def _extract_relations_from_html(html_text: str) -> dict[str, Any] | None:
             url = a[0].get("href") or None if a else None
 
             details_els = row.xpath(".//td[@data-title='Type / Episodes / Year']")
-            details = "".join(details_els[0].itertext()).strip() if details_els else None
+            details = (
+                "".join(details_els[0].itertext()).strip() if details_els else None
+            )
 
-            rating_els = row.xpath(".//td[contains(@class,'rating')]//div[contains(@class,'star0')]")
+            rating_els = row.xpath(
+                ".//td[contains(@class,'rating')]//div[contains(@class,'star0')]"
+            )
             rating = rating_els[0].get("title") if rating_els else None
 
             image_attr = row.xpath(".//th[@scope='row']/@data-tooltip")
             image = image_attr[0] if image_attr else None
 
-            result.append({
-                "relation_type": relation_type,
-                "title": title,
-                "url": url,
-                "details": details,
-                "rating": rating,
-                "image": image,
-            })
+            result.append(
+                {
+                    "relation_type": relation_type,
+                    "title": title,
+                    "url": url,
+                    "details": details,
+                    "rating": rating,
+                    "image": image,
+                }
+            )
         return result
 
     return {
@@ -216,7 +221,7 @@ def _extract_path_from_url(url: str) -> str:
     """
     if not url.startswith(BASE_ANIME_URL):
         raise ValueError(f"URL must start with {BASE_ANIME_URL!r}: {url!r}")
-    path = url[len(BASE_ANIME_URL):].strip("/")
+    path = url[len(BASE_ANIME_URL) :].strip("/")
     if not path:
         raise ValueError(f"URL does not contain anime path: {url!r}")
     return path
@@ -237,7 +242,9 @@ def _process_relation_tooltips(relations: list[dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str, wait_selector: str | None = None) -> str | None:
+async def _fetch_page_html(
+    browser: Any, url: str, wait_selector: str | None = None
+) -> str | None:
     try:
         page = await browser.get(url)
         if wait_selector:
@@ -397,21 +404,25 @@ async def _fetch_anisearch_anime_data(canonical_path: str) -> dict[str, Any] | N
 
         main_raw = _extract_anime_from_html(main_html)
         if main_raw is None:
-            logger.warning(f"Failed to extract data from AniSearch main page: {base_url}")
+            logger.warning(
+                f"Failed to extract data from AniSearch main page: {base_url}"
+            )
             return None
 
         await asyncio.sleep(_INTER_REQUEST_DELAY)
 
         canonical_base = final_url.rstrip("/") if final_url else base_url
         rels_url = f"{canonical_base}/relations?show=overall"
-        rels_html = await _fetch_page_html(browser, rels_url, wait_selector="#relations_anime")
+        rels_html = await _fetch_page_html(
+            browser, rels_url, wait_selector="#relations_anime"
+        )
         rels_raw = _extract_relations_from_html(rels_html) if rels_html else None
 
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     data = _post_process_main(main_raw)
     data["anime_relations"], data["manga_relations"] = _parse_relations(rels_raw)
@@ -529,4 +540,4 @@ async def fetch_anisearch_anime(
         Canonical anime dict, or None if fetch or mapping fails.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AniSearchAnimeCrawler(DockerTransport(), repo).crawl(url)
+    return await AniSearchAnimeCrawler(repo).crawl(url)

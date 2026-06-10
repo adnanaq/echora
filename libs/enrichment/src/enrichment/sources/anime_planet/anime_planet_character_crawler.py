@@ -25,7 +25,6 @@ from enrichment.sources.anime_planet.animeplanet_mapper import (
 )
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -45,16 +44,16 @@ _INTER_REQUEST_DELAY = 1.5
 
 # XPaths for the five fields extracted via lxml (all others via regex on raw HTML)
 _XPATHS: dict[str, str] = {
-    "name":        "//h1[@itemprop='name']",
-    "image":       "//img[@itemprop='image']/@src",
+    "name": "//h1[@itemprop='name']",
+    "image": "//img[@itemprop='image']/@src",
     # entryBar scope avoids matching the nav-menu anchors
-    "loved_rank":  "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-loved')]",
-    "hated_rank":  "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-hated')]",
+    "loved_rank": "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-loved')]",
+    "hated_rank": "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-hated')]",
     "loved_count": "//section[contains(@class,'sidebarStats')]//h3[contains(@class,'smSidebar')][.//span[@class='heartOn']]",
 }
 
 # ---------------------------------------------------------------------------
-# Pre-compiled regex patterns (unchanged from crawl4ai version)
+# Pre-compiled regex patterns
 # ---------------------------------------------------------------------------
 
 _ENTRY_BAR_RE = re.compile(
@@ -106,7 +105,12 @@ _VA_FLAG_RE = re.compile(
 )
 
 _FLAG_LANG_MAP: dict[str, str] = {
-    "JP": "jp", "US": "us", "ES": "es", "FR": "fr", "DE": "de", "KO": "ko",
+    "JP": "jp",
+    "US": "us",
+    "ES": "es",
+    "FR": "fr",
+    "DE": "de",
+    "KO": "ko",
 }
 
 
@@ -396,8 +400,8 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +442,7 @@ async def fetch_animeplanet_character(url: str) -> dict[str, Any] | None:
     Returns:
         Canonical character dict on success, None on failure.
     """
-    return await AnimePlanetCharacterCrawler(DockerTransport(), NullRepository()).crawl(
-        url
-    )
+    return await AnimePlanetCharacterCrawler(NullRepository()).crawl(url)
 
 
 async def fetch_animeplanet_characters(
@@ -518,8 +520,8 @@ async def fetch_animeplanet_characters(
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
         missing_urls,

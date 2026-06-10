@@ -550,13 +550,15 @@ class EnrichmentAssembler:
 
                 # Re-validate after fixes
                 final_validation = validator.validate_entry(entry, 0)
-                return final_validation.is_valid
-
-            return validation_result.is_valid
+                result = final_validation.is_valid
+            else:
+                result = validation_result.is_valid
 
         except Exception as e:
             self.errors.append(f"Final validation exception: {str(e)}")
             return False
+        else:
+            return result
 
     def _is_empty_object(self, obj: dict[str, Any]) -> bool:
         """Check if object is effectively empty"""
@@ -632,12 +634,14 @@ def validate_and_fix_entry(
 
             # Re-validate after fixes
             final_validation = validator.validate_entry(fixed_entry, 0)
-            return fixed_entry, final_validation.is_valid, messages
-
-        return anime_entry, True, messages
+            result = (fixed_entry, final_validation.is_valid, messages)
+        else:
+            result = (anime_entry, True, messages)
 
     except Exception as e:
         return anime_entry, False, [f"Validation exception: {str(e)}"]
+    else:
+        return result
 
 
 def assemble_anime_entry(

@@ -26,10 +26,8 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     IRepository,
-    ITransport,
     NullRepository,
 )
 from http_cache.config import get_cache_config
@@ -58,16 +56,14 @@ _XPATHS: dict[str, str] = {
     "favorites": "//a[contains(@href,'/favorites')]//b",
     "tags": "//ul[contains(@class,'cloud')]//a[contains(@class,'gt')]",
     "description": (
-        "//section[@id='description']"
-        "//div[@lang='en'][contains(@class,'textblock')]"
+        "//section[@id='description']//div[@lang='en'][contains(@class,'textblock')]"
     ),
     "screenshot_images": "//section[@id='images']//a[@class='loupe']/@href",
     "picture_images": "//section[@id='pictures']//img/@src",
     "anime_roles": "//section[@id='anime']//li//a[contains(@href,'anime/')]",
     # Ography sub-pages (/anime and /manga)
     "ography_entries": (
-        "//ul[@class='covers']"
-        "//a[contains(@href,'anime/') or contains(@href,'manga/')]"
+        "//ul[@class='covers']//a[contains(@href,'anime/') or contains(@href,'manga/')]"
     ),
 }
 
@@ -112,8 +108,7 @@ _STRIP_TAGS_RE = re.compile(r"<[^>]+>")
 def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     """Parse an AniSearch character page HTML into the raw field dict.
 
-    Returns a dict with the same structure that crawl4ai schema extraction
-    used to produce — same field names and value types — so all downstream
+    Returns a dict with the same field names and value types so all downstream
     helpers (_post_process_character, _build_character_from_raw, etc.) are
     unchanged. Returns None if the HTML cannot be parsed.
     """
@@ -205,10 +200,12 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
         title_nodes = cast(list[Any], el.xpath(".//span[@class='title']"))
         title = " ".join(title_nodes[0].itertext()).strip() if title_nodes else ""
         if href and title:
-            entries.append({
-                "url": _absolutize_anime_url(href),
-                "title": title,
-            })
+            entries.append(
+                {
+                    "url": _absolutize_anime_url(href),
+                    "title": title,
+                }
+            )
     return entries
 
 
@@ -475,7 +472,10 @@ async def _fetch_ography(
     Returns cached value if available. On a miss, navigates with browser if
     provided, otherwise opens a temporary session via _fetch_character_ography_data.
     """
-    cached_values, missing_indices = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+    (
+        cached_values,
+        missing_indices,
+    ) = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
         [url]
     )
     if not missing_indices:
@@ -501,12 +501,11 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
 
     def __init__(
         self,
-        transport: ITransport,
         repository: IRepository | None = None,
         *,
         role: str | None = None,
     ) -> None:
-        super().__init__(transport, repository)
+        super().__init__(repository)
         self._role = role
 
     def get_extraction_schema(self) -> dict[str, Any]:
@@ -564,7 +563,7 @@ async def fetch_anisearch_character(
         Canonical character dict on success, None on failure.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AniSearchCharacterCrawler(DockerTransport(), repo, role=role).crawl(url)
+    return await AniSearchCharacterCrawler(repo, role=role).crawl(url)
 
 
 async def fetch_anisearch_characters(
@@ -595,7 +594,10 @@ async def fetch_anisearch_characters(
     characters: list[dict[str, Any] | None] = [None] * len(urls)
 
     # ── Batch cache lookup ────────────────────────────────────────────────
-    cached_values, missing_indices = await _fetch_anisearch_character_data.cache_batch_get(  # type: ignore[attr-defined]
+    (
+        cached_values,
+        missing_indices,
+    ) = await _fetch_anisearch_character_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
     )
     missing_set = set(missing_indices)

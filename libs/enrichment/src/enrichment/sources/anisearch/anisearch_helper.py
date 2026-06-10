@@ -118,10 +118,11 @@ class AniSearchHelper(BaseEnrichmentHelper):
                 f"Successfully fetched anime data for {url}: "
                 f"{anime_data.get('title', anime_data.get('title_japanese', 'Unknown'))}"
             )
-            return anime_data
         except Exception:
             logger.exception(f"Error fetching anime data for {url}")
             return None
+        else:
+            return anime_data
 
     async def fetch_episodes(
         self, url: str, *, output_path: str | None = None
@@ -142,10 +143,11 @@ class AniSearchHelper(BaseEnrichmentHelper):
                 logger.debug(f"No episode data found for {url}")
                 return None
             logger.info(f"Successfully fetched {len(episode_data)} episodes for {url}")
-            return episode_data
         except Exception:
             logger.exception(f"Error fetching episode data for {url}")
             return None
+        else:
+            return episode_data
 
     async def fetch_character_refs(self, url: str) -> list[dict[str, str]]:
         """Fetch character refs (URL + role) from the anime characters list page.
@@ -187,7 +189,8 @@ class AniSearchHelper(BaseEnrichmentHelper):
                 return None
 
             logger.info(f"Successfully fetched {len(non_null)} characters for {url}")
-            return non_null
         except Exception:
             logger.exception(f"Error fetching character data for {url}")
             return None
+        else:
+            return non_null

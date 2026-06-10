@@ -1,6 +1,6 @@
 """MAL direct scraping crawler package.
 
-Replaces Jikan (third-party MAL API) with direct crawl4ai-based scrapers.
+Direct scrapers for the MyAnimeList website using zendriver + lxml.
 
 Public API:
     fetch_mal_anime(mal_id)               → MalAnime | None

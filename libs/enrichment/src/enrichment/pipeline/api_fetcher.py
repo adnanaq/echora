@@ -193,12 +193,13 @@ class ApiFetcher:
                     )
                 return result
             finally:
-                _api_duration.record(
-                    time.perf_counter() - _start, {"service": service}
-                )
+                _api_duration.record(time.perf_counter() - _start, {"service": service})
                 _api_requests.add(
                     1,
-                    {"service": service, "status": "success" if result is not None else "error"},
+                    {
+                        "service": service,
+                        "status": "success" if result is not None else "error",
+                    },
                 )
 
     async def _fetch_service(

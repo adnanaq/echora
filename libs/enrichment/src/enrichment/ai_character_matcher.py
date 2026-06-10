@@ -490,11 +490,11 @@ class EnsembleFuzzyMatcher:
             # Ensure result is in [0.0, 1.0] range
             similarity = max(0.0, min(1.0, similarity))
 
-            return similarity
-
         except Exception as e:
             logger.debug(f"Visual similarity calculation failed: {e}")
             return 0.0
+        else:
+            return similarity
 
     async def calculate_similarity(
         self,

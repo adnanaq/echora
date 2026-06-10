@@ -19,7 +19,6 @@ from typing import Any, cast
 
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -58,42 +57,42 @@ _INTER_REQUEST_DELAY = 3.0
 
 _XPATHS: dict[str, str] = {
     # Sidebar text divs (dark_text label span + value)
-    "type":            "//div[span[contains(@class,'dark_text')][contains(.,'Type:')]]",
-    "episodes":        "//div[span[contains(@class,'dark_text')][contains(.,'Episodes:')]]",
-    "status":          "//div[span[contains(@class,'dark_text')][contains(.,'Status:')]]",
-    "duration_raw":    "//div[span[contains(@class,'dark_text')][contains(.,'Duration:')]]",
+    "type": "//div[span[contains(@class,'dark_text')][contains(.,'Type:')]]",
+    "episodes": "//div[span[contains(@class,'dark_text')][contains(.,'Episodes:')]]",
+    "status": "//div[span[contains(@class,'dark_text')][contains(.,'Status:')]]",
+    "duration_raw": "//div[span[contains(@class,'dark_text')][contains(.,'Duration:')]]",
     "source_material": "//div[span[contains(@class,'dark_text')][contains(.,'Source:')]]",
-    "rating":          "//div[span[contains(@class,'dark_text')][contains(.,'Rating:')]]",
-    "aired_raw":       "//div[span[contains(@class,'dark_text')][contains(.,'Aired:')]]",
-    "premiered_raw":   "//div[span[contains(@class,'dark_text')][contains(.,'Premiered:')]]",
-    "broadcast_raw":   "//div[span[contains(@class,'dark_text')][contains(.,'Broadcast:')]]",
-    "title_english":   "//div[span[contains(@class,'dark_text')][contains(.,'English:')]]",
-    "title_japanese":  "//div[span[contains(@class,'dark_text')][contains(.,'Japanese:')]]",
-    "synonyms_raw":    "//div[span[contains(@class,'dark_text')][contains(.,'Synonyms:')]]",
-    "rank_div":        "//div[span[contains(@class,'dark_text')][contains(.,'Ranked:')]]",
-    "popularity":      "//div[span[contains(@class,'dark_text')][contains(.,'Popularity:')]]",
-    "members":         "//div[span[contains(@class,'dark_text')][contains(.,'Members:')]]",
-    "favorites":       "//div[span[contains(@class,'dark_text')][contains(.,'Favorites:')]]",
+    "rating": "//div[span[contains(@class,'dark_text')][contains(.,'Rating:')]]",
+    "aired_raw": "//div[span[contains(@class,'dark_text')][contains(.,'Aired:')]]",
+    "premiered_raw": "//div[span[contains(@class,'dark_text')][contains(.,'Premiered:')]]",
+    "broadcast_raw": "//div[span[contains(@class,'dark_text')][contains(.,'Broadcast:')]]",
+    "title_english": "//div[span[contains(@class,'dark_text')][contains(.,'English:')]]",
+    "title_japanese": "//div[span[contains(@class,'dark_text')][contains(.,'Japanese:')]]",
+    "synonyms_raw": "//div[span[contains(@class,'dark_text')][contains(.,'Synonyms:')]]",
+    "rank_div": "//div[span[contains(@class,'dark_text')][contains(.,'Ranked:')]]",
+    "popularity": "//div[span[contains(@class,'dark_text')][contains(.,'Popularity:')]]",
+    "members": "//div[span[contains(@class,'dark_text')][contains(.,'Members:')]]",
+    "favorites": "//div[span[contains(@class,'dark_text')][contains(.,'Favorites:')]]",
     # Array anchors
-    "genres":          "//div[span[contains(@class,'dark_text')][contains(.,'Genre')]]/a",
-    "themes":          "//div[span[contains(@class,'dark_text')][contains(.,'Theme')]]/a",
-    "demographics":    "//div[span[contains(@class,'dark_text')][contains(.,'Demographic')]]/a",
-    "producers":       "//div[span[contains(@class,'dark_text')][contains(.,'Producers')]]/a",
-    "licensors":       "//div[span[contains(@class,'dark_text')][contains(.,'Licensors')]]/a",
-    "studios":         "//div[span[contains(@class,'dark_text')][contains(.,'Studios')]]/a",
+    "genres": "//div[span[contains(@class,'dark_text')][contains(.,'Genre')]]/a",
+    "themes": "//div[span[contains(@class,'dark_text')][contains(.,'Theme')]]/a",
+    "demographics": "//div[span[contains(@class,'dark_text')][contains(.,'Demographic')]]/a",
+    "producers": "//div[span[contains(@class,'dark_text')][contains(.,'Producers')]]/a",
+    "licensors": "//div[span[contains(@class,'dark_text')][contains(.,'Licensors')]]/a",
+    "studios": "//div[span[contains(@class,'dark_text')][contains(.,'Studios')]]/a",
     # Title / meta
-    "title":           "//h1[contains(@class,'title-name')]/strong",
-    "title_og":        "//meta[@property='og:title']/@content",
+    "title": "//h1[contains(@class,'title-name')]/strong",
+    "title_og": "//meta[@property='og:title']/@content",
     # Schema.org stats
-    "score":           "//span[@itemprop='ratingValue']",
-    "scored_by":       "//span[@itemprop='ratingCount']",
-    "synopsis":        "//p[@itemprop='description']",
+    "score": "//span[@itemprop='ratingValue']",
+    "scored_by": "//span[@itemprop='ratingCount']",
+    "synopsis": "//p[@itemprop='description']",
     "cover_image_src": "//img[@itemprop='image']/@data-src",
     # Background (outer HTML of the containing <td>; regex in _build extracts text)
-    "background_raw":  "//h2[@id='background']/parent::div/parent::td",
+    "background_raw": "//h2[@id='background']/parent::div/parent::td",
     # Related entries
     "related_tile_entries": "//div[contains(@class,'entries-tile')]/div[contains(@class,'entry')]",
-    "related_table_rows":   "//table[contains(@class,'entries-table')]//tr[td[2]]",
+    "related_table_rows": "//table[contains(@class,'entries-table')]//tr[td[2]]",
     # External / streaming links
     "external_source_anchors": (
         "//h2[normalize-space()='Available At' or normalize-space()='Resources']"
@@ -107,12 +106,12 @@ _XPATHS: dict[str, str] = {
     ),
     # Theme songs (note: MAL typo "opnening" is intentional)
     "opening_theme_rows": "//div[contains(@class,'theme-songs') and contains(@class,'opnening')]//tr[td[2]]",
-    "ending_theme_rows":  "//div[contains(@class,'theme-songs') and contains(@class,'ending')]//tr[td[2]]",
+    "ending_theme_rows": "//div[contains(@class,'theme-songs') and contains(@class,'ending')]//tr[td[2]]",
     # Trailer
     "trailer_anchor": "//div[contains(@class,'video-promotion')]//a",
-    "trailer_title":  "//div[contains(@class,'video-promotion')]//span[contains(@class,'title')]",
+    "trailer_title": "//div[contains(@class,'video-promotion')]//span[contains(@class,'title')]",
     # Gallery (pics page only)
-    "pic_surrounds":  "//div[contains(@class,'picSurround')]/a[@href]",
+    "pic_surrounds": "//div[contains(@class,'picSurround')]/a[@href]",
 }
 
 # ---------------------------------------------------------------------------
@@ -183,11 +182,17 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         for tr in cast(list[Any], tree.xpath(_XPATHS[key])):
             td2 = cast(list[Any], tr.xpath(".//td[2]"))
             title_text = "".join(td2[0].itertext()).strip() if td2 else ""
-            artist_els = cast(list[Any], tr.xpath(".//span[contains(@class,'theme-song-artist')]"))
+            artist_els = cast(
+                list[Any], tr.xpath(".//span[contains(@class,'theme-song-artist')]")
+            )
             artist = "".join(artist_els[0].itertext()).strip() if artist_els else None
-            ep_els = cast(list[Any], tr.xpath(".//span[contains(@class,'theme-song-episode')]"))
+            ep_els = cast(
+                list[Any], tr.xpath(".//span[contains(@class,'theme-song-episode')]")
+            )
             episodes = "".join(ep_els[0].itertext()).strip() if ep_els else None
-            rows.append({"title_text": title_text, "artist": artist, "episodes": episodes})
+            rows.append(
+                {"title_text": title_text, "artist": artist, "episodes": episodes}
+            )
         return rows
 
     # Related tile entries
@@ -196,8 +201,12 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         rel_els = cast(list[Any], entry.xpath(".//div[contains(@class,'relation')]"))
         relation_raw = "".join(rel_els[0].itertext()).strip() if rel_els else ""
 
-        title_anchors = cast(list[Any], entry.xpath(".//div[contains(@class,'title')]/a"))
-        title_text = "".join(title_anchors[0].itertext()).strip() if title_anchors else ""
+        title_anchors = cast(
+            list[Any], entry.xpath(".//div[contains(@class,'title')]/a")
+        )
+        title_text = (
+            "".join(title_anchors[0].itertext()).strip() if title_anchors else ""
+        )
         m = re.search(r"^(.*?)(?:\s*\([^)]+\))?\s*$", title_text)
         entry_title = m.group(1).strip() if m else title_text
 
@@ -206,12 +215,14 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         type_m = re.search(r"\(([^)]+)\)\s*$", div_text)
         entry_type = type_m.group(1) if type_m else None
 
-        tile_entries.append({
-            "relation_raw": relation_raw,
-            "title": entry_title,
-            "entry_type": entry_type,
-            "source": title_anchors[0].get("href") if title_anchors else None,
-        })
+        tile_entries.append(
+            {
+                "relation_raw": relation_raw,
+                "title": entry_title,
+                "entry_type": entry_type,
+                "source": title_anchors[0].get("href") if title_anchors else None,
+            }
+        )
 
     # Related table entries
     table_entries = []
@@ -219,7 +230,9 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         td1 = cast(list[Any], row.xpath("./td[1]"))
         relation = "".join(td1[0].itertext()).strip() if td1 else ""
         td2 = cast(list[Any], row.xpath("./td[2]"))
-        links_html = etree.tostring(td2[0], encoding="unicode", method="html") if td2 else ""
+        links_html = (
+            etree.tostring(td2[0], encoding="unicode", method="html") if td2 else ""
+        )
         table_entries.append({"relation": relation, "links_html": links_html})
 
     # External sources
@@ -240,44 +253,44 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     trailer_embed_url = trailer_anchors[0].get("href") if trailer_anchors else None
 
     return {
-        "type":               _sidebar("type", r"Type:\s*(.*)"),
-        "episodes":           _sidebar("episodes", r"Episodes:\s*(.*)"),
-        "status":             _sidebar("status", r"Status:\s*(.*)"),
-        "duration_raw":       _sidebar("duration_raw", r"Duration:\s*(.*)"),
-        "source_material":    _sidebar("source_material", r"Source:\s*(.*)"),
-        "rating":             _sidebar("rating", r"Rating:\s*(.*)"),
-        "aired_raw":          _sidebar("aired_raw", r"Aired:\s*(.*)"),
-        "premiered_raw":      _sidebar("premiered_raw", r"Premiered:\s*(.*)"),
-        "broadcast_raw":      _sidebar("broadcast_raw", r"Broadcast:\s*(.*)"),
-        "title_english":      _sidebar("title_english", r"English:\s*(.*)"),
-        "title_japanese":     _sidebar("title_japanese", r"Japanese:\s*(.*)"),
-        "synonyms_raw":       _sidebar("synonyms_raw", r"Synonyms:\s*(.*)"),
-        "rank_html":          _html("rank_div"),
-        "popularity":         _sidebar("popularity", r"Popularity:\s*#?(\d+)"),
-        "members":            _sidebar("members", r"Members:\s*([\d,]+)"),
-        "favorites":          _sidebar("favorites", r"Favorites:\s*([\d,]+)"),
-        "genres":             _name_list("genres"),
-        "themes":             _name_list("themes"),
-        "demographics":       _name_list("demographics"),
-        "producers":          _company_list("producers"),
-        "licensors":          _company_list("licensors"),
-        "studios":            _company_list("studios"),
-        "background_raw":     _html("background_raw"),
-        "related_tile_entries":  tile_entries,
+        "type": _sidebar("type", r"Type:\s*(.*)"),
+        "episodes": _sidebar("episodes", r"Episodes:\s*(.*)"),
+        "status": _sidebar("status", r"Status:\s*(.*)"),
+        "duration_raw": _sidebar("duration_raw", r"Duration:\s*(.*)"),
+        "source_material": _sidebar("source_material", r"Source:\s*(.*)"),
+        "rating": _sidebar("rating", r"Rating:\s*(.*)"),
+        "aired_raw": _sidebar("aired_raw", r"Aired:\s*(.*)"),
+        "premiered_raw": _sidebar("premiered_raw", r"Premiered:\s*(.*)"),
+        "broadcast_raw": _sidebar("broadcast_raw", r"Broadcast:\s*(.*)"),
+        "title_english": _sidebar("title_english", r"English:\s*(.*)"),
+        "title_japanese": _sidebar("title_japanese", r"Japanese:\s*(.*)"),
+        "synonyms_raw": _sidebar("synonyms_raw", r"Synonyms:\s*(.*)"),
+        "rank_html": _html("rank_div"),
+        "popularity": _sidebar("popularity", r"Popularity:\s*#?(\d+)"),
+        "members": _sidebar("members", r"Members:\s*([\d,]+)"),
+        "favorites": _sidebar("favorites", r"Favorites:\s*([\d,]+)"),
+        "genres": _name_list("genres"),
+        "themes": _name_list("themes"),
+        "demographics": _name_list("demographics"),
+        "producers": _company_list("producers"),
+        "licensors": _company_list("licensors"),
+        "studios": _company_list("studios"),
+        "background_raw": _html("background_raw"),
+        "related_tile_entries": tile_entries,
         "related_table_entries": table_entries,
-        "external_sources_raw":  external_sources_raw,
-        "streaming_links_raw":   streaming_links_raw,
-        "title":              _text("title"),
-        "title_og":           _attr("title_og"),
-        "score":              _text("score"),
-        "scored_by":          _text("scored_by"),
-        "synopsis":           _text("synopsis"),
-        "cover_image_src":    _attr("cover_image_src"),
+        "external_sources_raw": external_sources_raw,
+        "streaming_links_raw": streaming_links_raw,
+        "title": _text("title"),
+        "title_og": _attr("title_og"),
+        "score": _text("score"),
+        "scored_by": _text("scored_by"),
+        "synopsis": _text("synopsis"),
+        "cover_image_src": _attr("cover_image_src"),
         "opening_themes_raw": _theme_rows("opening_theme_rows"),
-        "ending_themes_raw":  _theme_rows("ending_theme_rows"),
-        "trailer_embed_url":  trailer_embed_url,
-        "trailer_title":      _text("trailer_title"),
-        "picture_urls_raw":   [],
+        "ending_themes_raw": _theme_rows("ending_theme_rows"),
+        "trailer_embed_url": trailer_embed_url,
+        "trailer_title": _text("trailer_title"),
+        "picture_urls_raw": [],
     }
 
 
@@ -304,7 +317,9 @@ def _extract_pics_from_html(html_text: str) -> list[str]:
     return [
         a.get("href")
         for a in cast(list[Any], tree.xpath(_XPATHS["pic_surrounds"]))
-        if a.get("href") and "myanimelist" in a.get("href", "") and "images/anime" in a.get("href", "")
+        if a.get("href")
+        and "myanimelist" in a.get("href", "")
+        and "images/anime" in a.get("href", "")
     ]
 
 
@@ -313,7 +328,9 @@ def _extract_pics_from_html(html_text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str, wait_selector: str | None = None) -> str | None:
+async def _fetch_page_html(
+    browser: Any, url: str, wait_selector: str | None = None
+) -> str | None:
     """Navigate to a URL with zendriver and return the rendered HTML.
 
     Args:
@@ -364,7 +381,7 @@ async def _fetch_pics_html(browser: Any, url: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Post-processing helpers (pure transforms — unchanged from crawl4ai version)
+# Post-processing helpers (pure transforms)
 # ---------------------------------------------------------------------------
 
 
@@ -464,12 +481,14 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
             if type_match:
                 entry_type = type_match.group(1)
 
-        unified_items.append({
-            "relation": relation,
-            "title": entry.get("title"),
-            "entry_type": entry_type,
-            "source": entry.get("source"),
-        })
+        unified_items.append(
+            {
+                "relation": relation,
+                "title": entry.get("title"),
+                "entry_type": entry_type,
+                "source": entry.get("source"),
+            }
+        )
 
     for row in raw.get("related_table_entries", []):
         raw_rel = (row.get("relation") or "").strip()
@@ -495,12 +514,14 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
                 if type_match:
                     entry_type = type_match.group(1)
 
-            unified_items.append({
-                "relation": relation,
-                "title": title,
-                "entry_type": entry_type,
-                "source": source_url,
-            })
+            unified_items.append(
+                {
+                    "relation": relation,
+                    "title": title,
+                    "entry_type": entry_type,
+                    "source": source_url,
+                }
+            )
 
     related_entries = []
     for item in unified_items:
@@ -569,7 +590,9 @@ def _build_anime_from_raw(
     season, year = parse_premiered(premiered_raw)
 
     broadcast_raw = raw.get("broadcast_raw")
-    broadcast_day, broadcast_time, broadcast_timezone = parse_broadcast_string(broadcast_raw)
+    broadcast_day, broadcast_time, broadcast_timezone = parse_broadcast_string(
+        broadcast_raw
+    )
 
     score_val = raw.get("score")
     score = float(score_val.strip()) if score_val and score_val.strip() else None
@@ -733,8 +756,8 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
             # Theme songs and related entries are Vue-rendered; wait for them
             try:
                 await main_page.wait_for(selector="div.theme-songs", timeout=15)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"theme-songs wait timed out: {exc}")
             await asyncio.sleep(2)
             final_url = main_page.url
             main_html = await main_page.get_content()
@@ -761,8 +784,8 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     raw["_picture_urls"] = picture_urls
     raw["_url"] = canonical_url
@@ -818,7 +841,7 @@ async def fetch_mal_anime(
         Canonical anime dict from ``anime_from_mal``, or None if fetching fails.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await MalAnimeCrawler(DockerTransport(), repo).crawl(url)
+    return await MalAnimeCrawler(repo).crawl(url)
 
 
 async def main() -> int:
@@ -833,14 +856,18 @@ async def main() -> int:
     )
     parser = argparse.ArgumentParser(description="Fetch anime data from MAL")
     parser.add_argument("url", type=str, help="MAL anime URL")
-    parser.add_argument("--output", type=str, default="mal_anime.json", help="Output file path")
+    parser.add_argument(
+        "--output", type=str, default="mal_anime.json", help="Output file path"
+    )
     args = parser.parse_args()
 
     anime_dict = await fetch_mal_anime(args.url, output_path=args.output)
     if anime_dict is None:
         logger.error(f"No data extracted for anime URL {args.url}")
         return 1
-    logger.info(f"Done: {anime_dict.get('title')} ({anime_dict.get('episode_count')} episodes)")
+    logger.info(
+        f"Done: {anime_dict.get('title')} ({anime_dict.get('episode_count')} episodes)"
+    )
     return 0
 
 

@@ -28,7 +28,6 @@ from enrichment.sources.anime_planet.anime_planet_models import (
 from enrichment.sources.anime_planet.animeplanet_mapper import anime_from_animeplanet
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -49,24 +48,24 @@ _AKA_PREFIX = "alt title:"
 
 # XPaths for entryBar metadata and relations
 _XPATHS: dict[str, str] = {
-    "type_raw":           "//section[contains(@class,'entryBar')]//span[@class='type']",
-    "season_url":         "//section[contains(@class,'entryBar')]//a[contains(@href,'/anime/seasons/')]/@href",
-    "rank_text":          "//section[contains(@class,'entryBar')]//div[contains(.,'Rank #')]",
-    "studios":            "//section[contains(@class,'entryBar')]//a[contains(@href,'/studios/')]",
-    "aka":                "//h2[contains(@class,'aka')]",
-    "tags":               "//div[contains(@class,'tags')]//a[contains(@href,'/anime/tags/')]",
-    "cover":              "//img[@itemprop='image']/@src",
-    "related_anime":      "//div[@id='tabs--relations--anime--same_franchise']//a[contains(@class,'RelatedEntry')]",
-    "related_anime_other":"//div[@id='tabs--relations--anime--other_franchise']//a[contains(@class,'RelatedEntry')]",
-    "related_manga":      "//div[contains(@id,'tabs--relations--manga')]//a[contains(@class,'RelatedEntry')]",
+    "type_raw": "//section[contains(@class,'entryBar')]//span[@class='type']",
+    "season_url": "//section[contains(@class,'entryBar')]//a[contains(@href,'/anime/seasons/')]/@href",
+    "rank_text": "//section[contains(@class,'entryBar')]//div[contains(.,'Rank #')]",
+    "studios": "//section[contains(@class,'entryBar')]//a[contains(@href,'/studios/')]",
+    "aka": "//h2[contains(@class,'aka')]",
+    "tags": "//div[contains(@class,'tags')]//a[contains(@href,'/anime/tags/')]",
+    "cover": "//img[@itemprop='image']/@src",
+    "related_anime": "//div[@id='tabs--relations--anime--same_franchise']//a[contains(@class,'RelatedEntry')]",
+    "related_anime_other": "//div[@id='tabs--relations--anime--other_franchise']//a[contains(@class,'RelatedEntry')]",
+    "related_manga": "//div[contains(@id,'tabs--relations--manga')]//a[contains(@class,'RelatedEntry')]",
 }
 
 # Sub-element XPaths applied to each RelatedEntry anchor element
-_REL_TITLE_XPATH   = ".//p[contains(@class,'RelatedEntry__name')]"
+_REL_TITLE_XPATH = ".//p[contains(@class,'RelatedEntry__name')]"
 _REL_SUBTYPE_XPATH = ".//span[contains(@class,'RelatedEntry__subtitle')]"
-_REL_TYPE_XPATH    = ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
-_REL_IMAGE_XPATH   = ".//img[contains(@class,'RelatedEntry__image')]/@src"
-_REL_VOLCH_XPATH   = ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
+_REL_TYPE_XPATH = ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
+_REL_IMAGE_XPATH = ".//img[contains(@class,'RelatedEntry__image')]/@src"
+_REL_VOLCH_XPATH = ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
 
 
 def _tc(el: Any) -> str:
@@ -198,6 +197,7 @@ def _parse_related_entry_element(el: Any, *, is_manga: bool) -> dict[str, Any]:
         Dict with ``url``, ``title``, ``relation_subtype``, ``type``, ``image``,
         and (when ``is_manga``) ``vol_ch``.
     """
+
     def _et(xpath: str) -> str | None:
         els = cast(list[Any], el.xpath(xpath))
         return _tc(els[0]) if els else None
@@ -482,8 +482,8 @@ async def _fetch_anime_html(url: str) -> str | None:
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
 
 @cached_result(
@@ -562,7 +562,7 @@ async def fetch_animeplanet_anime(
         Canonical anime dict, or None if the fetch or validation fails.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AnimePlanetAnimeCrawler(DockerTransport(), repo).crawl(url)
+    return await AnimePlanetAnimeCrawler(repo).crawl(url)
 
 
 if __name__ == "__main__":

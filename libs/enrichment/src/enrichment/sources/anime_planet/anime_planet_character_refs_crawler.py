@@ -74,8 +74,8 @@ async def _fetch_refs_html(url: str) -> str | None:
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
 
 @cached_result(

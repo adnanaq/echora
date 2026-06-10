@@ -81,7 +81,7 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     # ── Arrays ───────────────────────────────────────────────────────────
     demographics = anime.demographics
     genres = anime.genres
-    licensors = [CompanyEntry(name=l.name, sources=[l.source]) for l in anime.licensors]
+    licensors = [CompanyEntry(name=lic.name, sources=[lic.source]) for lic in anime.licensors]
     producers = [CompanyEntry(name=p.name, sources=[p.source]) for p in anime.producers]
     sources = [anime.source] if anime.source else []
     studios = [CompanyEntry(name=s.name, sources=[s.source]) for s in anime.studios]

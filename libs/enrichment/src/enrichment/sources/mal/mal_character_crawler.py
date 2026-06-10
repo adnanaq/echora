@@ -19,7 +19,6 @@ from typing import Any, cast
 
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -446,8 +445,8 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     if result is None:
         return None
@@ -549,7 +548,7 @@ async def fetch_mal_character(
         Canonical character dict, or None on failure.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await MalCharacterCrawler(DockerTransport(), repo).crawl(url)
+    return await MalCharacterCrawler(repo).crawl(url)
 
 
 async def fetch_mal_characters(
@@ -587,7 +586,7 @@ async def fetch_mal_characters(
     def _parse_cached(value: Any) -> dict[str, Any] | None:
         if not value:
             return None
-        if isinstance(value, (list, tuple)) and len(value) == 2:
+        if isinstance(value, list | tuple) and len(value) == 2:
             raw, canonical_url = value
         else:
             return None
@@ -632,7 +631,9 @@ async def fetch_mal_characters(
                 [url], [(raw, canonical_url)]
             )
 
-            canonical = character_from_mal(_build_character_from_raw(raw, canonical_url))
+            canonical = character_from_mal(
+                _build_character_from_raw(raw, canonical_url)
+            )
             characters[idx] = canonical
             repo.save(canonical)
 
@@ -641,8 +642,8 @@ async def fetch_mal_characters(
     finally:
         try:
             await browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     return characters
 
