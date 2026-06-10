@@ -1,18 +1,18 @@
-"""Anime-Planet Character Detail Crawler.
+"""Anime-Planet Character Detail Crawler — zendriver + lxml XPath.
 
 Two public functions:
     fetch_animeplanet_character(url)   — single character detail page
     fetch_animeplanet_characters(urls) — batch character detail pages
 
 All data (name, description, tags, alt names, voice actors, ography) is
-extracted from the character detail page via XPath schema + Python regex helpers.
+extracted from the character detail page via lxml XPath + Python regex helpers.
 """
 
-import json
+import asyncio
 import logging
 import re
 from html import unescape
-from typing import Any
+from typing import Any, cast
 
 from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetCharacter,
@@ -23,12 +23,6 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
 from enrichment.sources.anime_planet.animeplanet_mapper import (
     character_from_animeplanet,
 )
-from enrichment.sources.base.crawl4ai_docker import crawl_batch_urls
-from enrichment.sources.base.crawler_config import (
-    get_ap_rate_limiter,
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
     DockerTransport,
@@ -37,6 +31,7 @@ from enrichment.sources.base.framework import (
 )
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +41,20 @@ TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 BASE_URL = "https://www.anime-planet.com"
 
 _CHARACTER_BATCH_SIZE = 20
+_INTER_REQUEST_DELAY = 1.5
+
+# XPaths for the five fields extracted via lxml (all others via regex on raw HTML)
+_XPATHS: dict[str, str] = {
+    "name":        "//h1[@itemprop='name']",
+    "image":       "//img[@itemprop='image']/@src",
+    # entryBar scope avoids matching the nav-menu anchors
+    "loved_rank":  "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-loved')]",
+    "hated_rank":  "//section[contains(@class,'entryBar')]//a[contains(@href,'/characters/top-hated')]",
+    "loved_count": "//section[contains(@class,'sidebarStats')]//h3[contains(@class,'smSidebar')][.//span[@class='heartOn']]",
+}
 
 # ---------------------------------------------------------------------------
-# Pre-compiled regex patterns
+# Pre-compiled regex patterns (unchanged from crawl4ai version)
 # ---------------------------------------------------------------------------
 
 _ENTRY_BAR_RE = re.compile(
@@ -93,7 +99,6 @@ _TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.DOTALL | re.IGNORECASE)
 _OGRAPHY_HREF_RE = re.compile(r'href="(/(?:anime|manga)/[^"?#]+)"', re.IGNORECASE)
 _LAST_ANCHOR_TEXT_RE = re.compile(r">([^<>]+)</a>(?!.*</a>)", re.DOTALL | re.IGNORECASE)
 
-# Voice actor flags: flagJP / flagUS / flagES / flagFR / flagDE / flagKO
 _VA_FLAG_RE = re.compile(
     r'<div[^>]+class="flag\s+flag(JP|US|ES|FR|DE|KO)"[^>]*>.*?'
     r'<a[^>]+href="(/people/[^"?#]+)"[^>]*>([^<]+)</a>',
@@ -101,58 +106,12 @@ _VA_FLAG_RE = re.compile(
 )
 
 _FLAG_LANG_MAP: dict[str, str] = {
-    "JP": "jp",
-    "US": "us",
-    "ES": "es",
-    "FR": "fr",
-    "DE": "de",
-    "KO": "ko",
+    "JP": "jp", "US": "us", "ES": "es", "FR": "fr", "DE": "de", "KO": "ko",
 }
 
 
 # ---------------------------------------------------------------------------
-# XPath schema
-# ---------------------------------------------------------------------------
-
-
-def _get_character_schema() -> dict[str, Any]:
-    """XPath schema — stable itemprop/href anchors + full body HTML for regex."""
-    return {
-        "name": "AnimePlanetCharacter",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "name",
-                "selector": "//h1[@itemprop='name']",
-                "type": "text",
-            },
-            {
-                "name": "image",
-                "selector": "//img[@itemprop='image']",
-                "type": "attribute",
-                "attribute": "src",
-            },
-            {
-                "name": "loved_rank",
-                "selector": "//a[contains(@href,'/characters/top-loved')]",
-                "type": "text",
-            },
-            {
-                "name": "hated_rank",
-                "selector": "//a[contains(@href,'/characters/top-hated')]",
-                "type": "text",
-            },
-            {
-                "name": "loved_count",
-                "selector": "//section[contains(@class,'sidebarStats')]//h3[contains(@class,'smSidebar')][.//span[@class='heartOn']]",
-                "type": "text",
-            },
-        ],
-    }
-
-
-# ---------------------------------------------------------------------------
-# Regex helper functions
+# Regex helper functions (unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -295,6 +254,52 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 
 
 # ---------------------------------------------------------------------------
+# lxml extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_character_from_html(html: str) -> dict[str, Any] | None:
+    """Extract raw character fields from a rendered Anime-Planet character page.
+
+    Combines lxml XPath extraction (5 structured fields) with the full HTML
+    stored under ``_html`` for use by all regex helpers.  The slug and URL are
+    injected by the caller.
+
+    Args:
+        html: Full rendered HTML of an Anime-Planet character page.
+
+    Returns:
+        Raw dict with XPath fields and ``_html`` key, or None if the page has
+        no character name.
+    """
+    if not html:
+        return None
+
+    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+
+    def _t(key: str) -> str | None:
+        els = cast(list[Any], tree.xpath(_XPATHS[key]))
+        return "".join(els[0].itertext()).strip() if els else None
+
+    def _a(key: str) -> str | None:
+        vals = cast(list[Any], tree.xpath(_XPATHS[key]))
+        return vals[0] if vals else None
+
+    name = _t("name")
+    if not name:
+        return None
+
+    return {
+        "name": name,
+        "image": _a("image"),
+        "loved_rank": _t("loved_rank"),
+        "hated_rank": _t("hated_rank"),
+        "loved_count": _t("loved_count"),
+        "_html": html,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Model builder
 # ---------------------------------------------------------------------------
 
@@ -302,7 +307,16 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 def _build_character_from_raw(
     raw: dict[str, Any], html: str, url: str
 ) -> AnimePlanetCharacter:
-    """Build AnimePlanetCharacter from XPath-extracted raw fields and full page HTML."""
+    """Build AnimePlanetCharacter from extracted raw fields and full page HTML.
+
+    Args:
+        raw: Dict with XPath-extracted fields (name, image, loved_rank, etc.).
+        html: Full page HTML for regex-based extraction.
+        url: Canonical character URL (used to derive the slug).
+
+    Returns:
+        Validated AnimePlanetCharacter source model.
+    """
     slug = url.rstrip("/").rsplit("/", 1)[-1]
     bar = _extract_entry_bar(html)
     return AnimePlanetCharacter(
@@ -325,6 +339,30 @@ def _build_character_from_raw(
 
 
 # ---------------------------------------------------------------------------
+# HTML fetch helpers
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_page_html(browser: Any, url: str) -> str | None:
+    """Fetch a single character page using an existing zendriver browser session.
+
+    Args:
+        browser: Active zendriver browser instance.
+        url: Full Anime-Planet character URL.
+
+    Returns:
+        Rendered page HTML, or None on navigation failure.
+    """
+    try:
+        page = await browser.get(url)
+        await page.wait_for(selector="h1[itemprop='name']", timeout=20)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Cached single fetch
 # ---------------------------------------------------------------------------
 
@@ -332,36 +370,34 @@ def _build_character_from_raw(
 @cached_result(
     ttl=TTL_ANIME_PLANET,
     key_prefix="animeplanet_character_detail",
-    dependencies=[_get_character_schema],
+    dependencies=[_extract_character_from_html],
 )
 async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by url.
 
-    Returns dict with XPath-extracted fields plus ``_html`` key containing
-    the full page HTML (used by all regex helpers). Cached by url.
+    Returns dict with lxml-extracted fields plus ``_html`` key containing
+    the full page HTML (used by all regex helpers).
+
+    Args:
+        url: Full Anime-Planet character URL.
+
+    Returns:
+        Raw extraction dict, or None on failure.
     """
-    results = await crawl_batch_urls(
-        [url],
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_character_schema()),
-    )
-    result = results[0] if results else None
-    if not result:
-        return None
+    import zendriver as zd
 
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for character {url}")
-        return None
-    if status and 300 <= status < 400:
-        logger.debug(f"HTTP {status} (redirect followed) for character {url}")
-
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        return None
-    raw = items[0]
-    raw["_html"] = result.get("html") or ""
-    return raw
+    browser = await zd.start(headless=True)
+    try:
+        html = await _fetch_page_html(browser, url)
+        if not html:
+            logger.error(f"No HTML for character {url}")
+            return None
+        return _extract_character_from_html(html)
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -372,8 +408,8 @@ async def _fetch_character_data(url: str) -> dict[str, Any] | None:
 class AnimePlanetCharacterCrawler(BaseCrawler[AnimePlanetCharacter, dict[str, Any]]):
     """Crawler for Anime-Planet character detail pages."""
 
-    def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_character_schema()
+    def get_extraction_schema(self) -> dict[str, str]:
+        return _XPATHS
 
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
@@ -396,7 +432,8 @@ async def fetch_animeplanet_character(url: str) -> dict[str, Any] | None:
     """Fetch a single Anime-Planet character detail page and return canonical dict.
 
     Args:
-        url: Full character URL (e.g. https://www.anime-planet.com/characters/monkey-d-luffy).
+        url: Full character URL
+            (e.g. ``https://www.anime-planet.com/characters/monkey-d-luffy``).
 
     Returns:
         Canonical character dict on success, None on failure.
@@ -411,37 +448,37 @@ async def fetch_animeplanet_characters(
     *,
     output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
-    """Fetch multiple character detail pages in a single batch Docker job.
+    """Fetch multiple character detail pages using a shared zendriver browser session.
 
-    All URLs are submitted to Docker at once; processed at MAX_CONCURRENT_TASKS
-    concurrency. Much faster than sequential single fetches for large casts.
+    Cache hits are served immediately.  Cache misses are fetched sequentially
+    via a single shared browser with a brief inter-request delay to avoid
+    rate-limiting.
 
     Args:
-        urls: List of full character URLs (e.g. https://www.anime-planet.com/characters/luffy).
+        urls: List of full character URLs.
         output_path: If provided, each canonical character dict is appended as a
             JSONL line to this file as it completes.
 
     Returns:
-        List aligned to urls — None for any failed fetch.
+        List aligned to ``urls`` — None for any failed fetch.
     """
     if not urls:
         return []
 
-    full_urls = urls
     repo = FileRepository(output_path) if output_path else NullRepository()
-    logger.info(f"Batch fetching {len(full_urls)} AP character details...")
+    logger.info(f"Batch fetching {len(urls)} AP character details...")
 
     cached_values, missing_indices = await _fetch_character_data.cache_batch_get(  # type: ignore[attr-defined]
-        full_urls
+        urls
     )
 
-    characters: list[dict[str, Any] | None] = [None] * len(full_urls)
+    characters: list[dict[str, Any] | None] = [None] * len(urls)
 
     for idx, cached in enumerate(cached_values):
         if cached is not None:
             html = cached.get("_html") or ""
             canonical = character_from_animeplanet(
-                _build_character_from_raw(cached, html, full_urls[idx])
+                _build_character_from_raw(cached, html, urls[idx])
             )
             characters[idx] = canonical
             repo.save(canonical)
@@ -453,52 +490,40 @@ async def fetch_animeplanet_characters(
         return characters
 
     missing_indices = sorted(set(missing_indices))
-    missing_urls = [full_urls[i] for i in missing_indices]
+    missing_urls = [urls[i] for i in missing_indices]
+    cache_values: list[dict[str, Any] | None] = [None] * len(missing_urls)
 
-    for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
-        chunk_urls = missing_urls[offset : offset + _CHARACTER_BATCH_SIZE]
-        chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
-        cache_values: list[dict[str, Any] | None] = [None] * len(chunk_urls)
+    import zendriver as zd
 
-        await get_ap_rate_limiter().acquire()
-        results = await crawl_batch_urls(
-            chunk_urls,
-            browser_config=get_docker_browser_config(),
-            crawler_config=get_docker_crawler_config(_get_character_schema()),
-        )
-
-        for idx_in_chunk, result in enumerate(results):
-            out_index = chunk_indices[idx_in_chunk]
-            if not result:
+    browser = await zd.start(headless=True)
+    try:
+        for i, url in enumerate(missing_urls):
+            if i > 0:
+                await asyncio.sleep(_INTER_REQUEST_DELAY)
+            out_index = missing_indices[i]
+            html = await _fetch_page_html(browser, url)
+            if not html:
                 characters[out_index] = None
                 continue
-            url = result.get("metadata", {}).get("og:url") or result["url"]
-            status = result.get("status_code")
-            if status and status >= 400:
-                logger.error(f"HTTP {status} for character {url}")
+            raw = _extract_character_from_html(html)
+            if not raw:
                 characters[out_index] = None
                 continue
-            if status and 300 <= status < 400:
-                logger.debug(f"HTTP {status} (redirect followed) for character {url}")
-            items: list[dict[str, Any]] = json.loads(
-                result.get("extracted_content") or "[]"
-            )
-            if not items:
-                characters[out_index] = None
-                continue
-            raw = items[0]
-            page_html = result.get("html") or ""
-            raw["_html"] = page_html  # store with raw for cache
             canonical = character_from_animeplanet(
-                _build_character_from_raw(raw, page_html, url)
+                _build_character_from_raw(raw, html, url)
             )
             characters[out_index] = canonical
-            cache_values[idx_in_chunk] = raw
+            cache_values[i] = raw
             repo.save(canonical)
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
-        await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-            chunk_urls,
-            cache_values,
-        )
+    await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
+        missing_urls,
+        cache_values,
+    )
 
     return characters
