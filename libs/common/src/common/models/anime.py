@@ -619,7 +619,7 @@ class EpisodeStaff(BaseModel):
 
     # ── Scalar fields (alphabetical) ──────────────────────────────────────
     name: str = Field(..., description="Staff member name")
-    role: str = Field(..., description="Role (Script, Animation Director, etc.)")
+    role: str | None = Field(None, description="Role (Script, Animation Director, etc.)")
 
     # ── Array fields (alphabetical) ───────────────────────────────────────
     sources: list[str] = Field(
