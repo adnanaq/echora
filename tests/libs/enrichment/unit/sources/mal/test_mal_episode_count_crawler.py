@@ -45,12 +45,15 @@ def test_xpath_targets_episodes_heading() -> None:
 # =============================================================================
 
 
-def test_extract_ongoing(mal_episode_html=_HTML_ONGOING) -> None:
-    assert _extract_episode_count(_HTML_ONGOING) == "(1,155/Unknown)"
-
-
-def test_extract_finished() -> None:
-    assert _extract_episode_count(_HTML_FINISHED) == "(26/26)"
+@pytest.mark.parametrize(
+    "html, expected",
+    [
+        (_HTML_ONGOING, "(1,155/Unknown)"),
+        (_HTML_FINISHED, "(26/26)"),
+    ],
+)
+def test_extract_parses_counter(html: str, expected: str) -> None:
+    assert _extract_episode_count(html) == expected
 
 
 def test_extract_empty_html_returns_none() -> None:
@@ -132,26 +135,21 @@ async def test_fetch_data_success(mocker) -> None:
     assert result == "(1,155/Unknown)"
 
 
-async def test_fetch_data_no_html_returns_none(mocker) -> None:
+@pytest.mark.parametrize(
+    "html",
+    [
+        None,
+        "<html><body><p>no heading</p></body></html>",
+    ],
+)
+async def test_fetch_data_returns_none_on_failure(html: str | None, mocker) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
     mocker.patch(
         "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
-        new=AsyncMock(return_value=None),
-    )
-    assert await _fetch_episode_count_data(EPISODE_LIST_URL) is None
-
-
-async def test_fetch_data_no_span_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.mal.mal_episode_count_crawler._fetch_episode_count_html",
-        new=AsyncMock(return_value="<html><body><p>no heading</p></body></html>"),
+        new=AsyncMock(return_value=html),
     )
     assert await _fetch_episode_count_data(EPISODE_LIST_URL) is None
 
@@ -161,23 +159,21 @@ async def test_fetch_data_no_span_returns_none(mocker) -> None:
 # =============================================================================
 
 
-async def test_finished_anime() -> None:
-    with patch(_PATCH, new=AsyncMock(return_value="(12/12)")):
-        assert await fetch_mal_episode_count(ANIME_URL) == 12
+@pytest.mark.parametrize(
+    "counter, expected",
+    [
+        ("(12/12)", 12),
+        ("(1,155/Unknown)", 1155),
+    ],
+)
+async def test_parse_count_from_counter(counter: str, expected: int) -> None:
+    with patch(_PATCH, new=AsyncMock(return_value=counter)):
+        assert await fetch_mal_episode_count(ANIME_URL) == expected
 
 
-async def test_ongoing_anime_with_comma() -> None:
-    with patch(_PATCH, new=AsyncMock(return_value="(1,155/Unknown)")):
-        assert await fetch_mal_episode_count(ANIME_URL) == 1155
-
-
-async def test_returns_zero_on_none() -> None:
-    with patch(_PATCH, new=AsyncMock(return_value=None)):
-        assert await fetch_mal_episode_count(ANIME_URL) == 0
-
-
-async def test_returns_zero_on_empty_string() -> None:
-    with patch(_PATCH, new=AsyncMock(return_value="")):
+@pytest.mark.parametrize("counter", [None, ""])
+async def test_returns_zero_on_no_counter(counter: str | None) -> None:
+    with patch(_PATCH, new=AsyncMock(return_value=counter)):
         assert await fetch_mal_episode_count(ANIME_URL) == 0
 
 
