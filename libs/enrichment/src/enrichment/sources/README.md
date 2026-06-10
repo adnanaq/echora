@@ -106,7 +106,7 @@ related entries) and intersection-observer lazy-loaded gallery images.
 |---|---|
 | `mal_helper.py` | `MalHelper` — entry point; orchestrates anime, episodes, characters |
 | `mal_anime_crawler.py` | `fetch_mal_anime(url)` — zendriver + lxml XPath |
-| `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` |
+| `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` — zendriver + lxml XPath |
 | `mal_episode_count_crawler.py` | `fetch_mal_episode_count(url)` — resolves "Unknown" counts |
 | `mal_character_refs_crawler.py` | `fetch_mal_character_refs(url)` — list page → URL list |
 | `mal_character_crawler.py` | `fetch_mal_character(url)`, `fetch_mal_characters(urls, output_path)` |
@@ -123,6 +123,15 @@ uv run python -m enrichment.sources.mal.mal_anime_crawler \
 
 uv run python -m enrichment.sources.mal.mal_anime_crawler \
     https://myanimelist.net/anime/21/One_Piece --output one_piece.json
+```
+
+**CLI — episode crawler (direct):**
+```bash
+uv run python -m enrichment.sources.mal.mal_episode_crawler \
+    https://myanimelist.net/anime/21/One_Piece/episode/1
+
+uv run python -m enrichment.sources.mal.mal_episode_crawler \
+    https://myanimelist.net/anime/21/One_Piece/episode/1 --output ep1.json
 ```
 
 **CLI — helper (all data types):**
