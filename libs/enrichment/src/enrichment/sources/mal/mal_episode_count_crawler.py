@@ -1,105 +1,117 @@
-"""MAL Episode Count Crawler.
+"""MAL episode count crawler — zendriver + lxml XPath.
 
 Fetches the aired episode count for any anime:
     fetch_mal_episode_count(anime_url)  — reads episode list page → int
 
-MAL renders a span "(12/12)" or "(1,155/Unknown)" next to the Episodes heading.
-The first number (before the slash) is always the current aired count.
-This works for all anime regardless of episode count or airing status.
+MAL renders a span "(12/12)" or "(1,155/Unknown)" next to the Episodes
+heading. The first number (before the slash) is always the current aired
+count. This works for all anime regardless of status.
 """
 
-import json
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
-from enrichment.sources.mal.mal_base import (
-    get_mal_scraping_limiter,
-)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = get_mal_scraping_limiter()
+_EPISODE_COUNT_XPATH = (
+    "//h2[@class='h2_overwrite'][text()='Episodes']/following-sibling::span[1]"
+)
 
 
-def _get_episode_count_schema() -> dict[str, Any]:
-    """XPath schema to extract the episode count span from the episode list page.
+def _extract_episode_count(html: str) -> str | None:
+    """Extract the episode counter span text from the episode list page.
 
-    MAL renders a span immediately after the Episodes heading:
-      <h2 class="h2_overwrite">Episodes</h2>
-      <span class="di-ib pl4 fw-n fs10">(12/12)</span>       ← finished anime
-      <span class="di-ib pl4 fw-n fs10">(1,155/Unknown)</span> ← ongoing anime
+    Args:
+        html: Full HTML of the MAL episode list page.
 
-    The first number (before the slash) is the current aired episode count.
+    Returns:
+        Raw counter string e.g. ``"(1,155/Unknown)"`` or ``"(12/12)"``,
+        or None if the span is not found.
     """
-    return {
-        "name": "EpisodeCountPage",
-        "baseSelector": "//h2[@class='h2_overwrite'][text()='Episodes']",
-        "fields": [
-            {
-                "name": "episode_counter",
-                "selector": "./following-sibling::span[1]",
-                "type": "text",
-            }
-        ],
-    }
+    if not html:
+        return None
+    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    els = cast(list[Any], tree.xpath(_EPISODE_COUNT_XPATH))
+    if not els:
+        return None
+    return "".join(els[0].itertext()).strip()
+
+
+async def _fetch_episode_count_html(url: str) -> str | None:
+    """Navigate to a MAL episode list page and return its HTML.
+
+    Args:
+        url: Full MAL episode list URL
+            (e.g. ``https://myanimelist.net/anime/21/One_Piece/episode``).
+
+    Returns:
+        Rendered page HTML, or None on failure.
+    """
+    import zendriver as zd
+
+    browser = await zd.start(headless=True)
+    try:
+        page = await browser.get(url)
+        await page.wait_for(selector="h2.h2_overwrite", timeout=15)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
+        return None
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
 
 @cached_result(
     ttl=TTL_MAL,
     key_prefix="mal_episode_count",
-    dependencies=[_get_episode_count_schema],
+    dependencies=[_extract_episode_count],
 )
 async def _fetch_episode_count_data(url: str) -> str | None:
     """Fetch the episode list page and return the episode counter span text.
 
-    Returns the raw counter string (e.g. "(12/12)" or "(1,155/Unknown)") or None on failure.
+    Args:
+        url: Full MAL episode list URL.
+
+    Returns:
+        Raw counter string e.g. ``"(1,155/Unknown)"``, or None on failure.
     """
-    await _limiter.acquire()
-    result = await crawl_single_url(
-        url=url,
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(
-            _get_episode_count_schema(),
-            wait_until="networkidle",
-            delay=1.0,
-        ),
-    )
-    if not result:
+    html = await _fetch_episode_count_html(url)
+    if not html:
         logger.error(f"No result for episode list page {url}")
         return None
-
-    status = result.get("status_code")
-    if status and status != 200:
-        logger.error(f"HTTP {status} for episode list page {url}")
+    counter = _extract_episode_count(html)
+    if not counter:
+        logger.error(f"Episode count span not found on {url}")
         return None
-
-    data = json.loads(result.get("extracted_content") or "[]")
-    return data[0].get("episode_counter") if data else None
+    return counter
 
 
 async def fetch_mal_episode_count(anime_url: str) -> int:
     """Return the current aired episode count for an anime.
 
     Reads the episode counter span on the episode list page, e.g.:
-      "(12/12)"        → 12   (finished anime)
-      "(1,155/Unknown" → 1155 (ongoing anime)
+      ``"(12/12)"``        → 12   (finished anime)
+      ``"(1,155/Unknown)"`` → 1155 (ongoing anime)
 
     Returns 0 on failure or when no episodes are listed.
 
     Args:
         anime_url: Full MAL anime slug URL
-            (e.g. https://myanimelist.net/anime/21/One_Piece).
+            (e.g. ``https://myanimelist.net/anime/21/One_Piece``).
+
+    Returns:
+        Current aired episode count, or 0 on failure.
     """
     counter = await _fetch_episode_count_data(f"{anime_url}/episode")
     if not counter:
