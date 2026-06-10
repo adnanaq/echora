@@ -143,44 +143,26 @@ uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piec
 
 ---
 
-## Transport Layer
+## Browser Automation
 
-### `crawl4ai_docker.py` (`sources/base/`)
-
-All browser-based sources (MAL, AniSearch, Anime-Planet) use the shared crawl4ai
-Docker REST transport instead of spawning `AsyncWebCrawler` in-process.
+All browser-based sources (MAL, AniSearch, Anime-Planet, AniDB) use `zendriver`
+(CDP-based Chrome automation) directly inside each crawler's `fetch_raw_data` method.
+No external Docker sidecar is required.
 
 ```python
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url, crawl_batch_urls
+import zendriver as zd
 
-result  = await crawl_single_url(url, browser_config, crawler_config)
-results = await crawl_batch_urls(urls, browser_config, crawler_config)
-# Returns None (single) or list aligned to input (batch) on failure
+browser = await zd.start()
+page = await browser.get(url)
+await page.wait_for("css-selector")
+html = await page.get_content()
+await browser.stop()
 ```
 
 Key behaviours:
-- **WAF recovery**: on 403 (Cloudflare) or 405 (AWS WAF), pauses 60 s between probes,
-  retries for up to 10 minutes before giving up
-- **Transient retry**: up to 3 attempts for DNS failures, connection refused, page timeouts
-- **Result alignment**: batch result list is always the same length as input; `None` for failures
-
-Requires the crawl4ai Docker container to be running:
-
-```bash
-docker compose -f docker/docker-compose.dev.yml up -d crawl4ai
-```
-
-### `crawler_config.py` (`sources/base/`)
-
-Shared browser/crawler config factories used by all Docker-based crawlers:
-
-```python
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-    get_ap_rate_limiter,
-)
-```
+- **WAF/Cloudflare bypass**: CDP-controlled Chrome passes browser-integrity checks natively
+- **lxml XPath extraction**: raw HTML parsed with lxml for fast, typed field extraction
+- **Rate limiting**: per-source sequential delays to avoid IP bans
 
 ---
 

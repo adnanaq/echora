@@ -183,7 +183,7 @@ echora/
 - **Enrichment Pipeline** (`libs/enrichment/`)
 
 - **API Helpers**: Integration with 6+ external anime APIs (AniList, Kitsu, AniDB, etc.)
-- **Crawlers**: Heavy-duty browser automation using crawl4ai for robust data extraction
+- **Crawlers**: Heavy-duty browser automation using zendriver (CDP) for robust data extraction
 - **Scrapers**: Web scraping with Cloudflare bypass capabilities
 - **Multi-stage AI Pipeline**: Modular prompt system for data enhancement
 - **Auto-Agent Assignment**: Automatic agent ID assignment for concurrent processing with gap-filling logic
