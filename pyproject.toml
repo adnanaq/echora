@@ -35,9 +35,8 @@ dependencies = [
     "pykakasi>=2.3.0",
     "scikit-learn>=1.7.2",
     "langdetect>=1.0.9",
-    "crawl4ai>=0.8.6",
     "lxml>=5.0.0",
-    # "dghs-imgutils>=0.19.0",  # Temporarily commented - conflicts with crawl4ai chardet dependency
+    # "dghs-imgutils>=0.19.0",
     "defusedxml>=0.7.1",
     "grpcio==1.78.0",
     "grpcio-health-checking==1.78.0",
@@ -85,11 +84,6 @@ filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
-    # crawl4ai pulls chardet 7.x which requests 2.32.x doesn't officially support
-    # (requests supports chardet <6). The packages work fine together; this is noise.
-    # Cannot use the full class path (importing requests itself triggers the warning),
-    # so match by message text instead.
-    "ignore:.*doesn't match a supported version.*",
 ]
 
 [tool.coverage.run]
@@ -140,7 +134,7 @@ extra-paths = [
     "libs/vector_processing/src",
     "apps/enrichment_service/src",
     "apps/vector_service/src",
-    "stubs",  # Custom third-party type stubs (crawl4ai, fastembed, etc.)
+    "stubs",  # Custom third-party type stubs
 ]
 
 [tool.ty.src]
