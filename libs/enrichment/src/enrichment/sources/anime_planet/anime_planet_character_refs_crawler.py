@@ -1,24 +1,19 @@
-"""Anime-Planet Character Refs Crawler.
+"""Anime-Planet Character Refs Crawler — zendriver + lxml XPath.
 
 Fetches the characters list page for an anime:
     fetch_animeplanet_character_refs(url)  — /anime/{slug}/characters → list[dict]
 
 Each dict contains {"url": "/characters/slug", "role": ""}.
-Full character detail (bio, VAs, ography including per-title role) requires
-separate calls via anime_planet_character_crawler.
+Full character detail (bio, VAs, ography) requires separate calls via
+anime_planet_character_crawler.
 """
 
-import json
 import logging
-from typing import Any
+from typing import Any, cast
 
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -27,66 +22,74 @@ TTL_ANIME_PLANET = _CACHE_CONFIG.ttl_anime_planet
 
 BASE_URL = "https://www.anime-planet.com"
 
+_XPATHS: dict[str, str] = {
+    "characters": "//a[contains(@class,'name') and contains(@href,'/characters/')]",
+}
 
-def _get_character_refs_schema() -> dict[str, Any]:
-    """XPath schema — extract character hrefs directly.
 
-    Character links are server-rendered; domcontentloaded (the docker default)
-    is sufficient. networkidle + delay caused 90s timeouts on large casts
-    (e.g. One Piece: 1088 characters, ~1000 thumbnail image requests pending).
+def _extract_refs_from_html(html: str) -> list[dict[str, str]] | None:
+    """Extract character hrefs from a rendered AP characters list page.
+
+    Args:
+        html: Full rendered HTML of an Anime-Planet /anime/{slug}/characters page.
+
+    Returns:
+        List of ``{"url": "/characters/slug", "role": ""}`` dicts, or None if no
+        character links were found.
     """
-    return {
-        "name": "AnimePlanetCharactersList",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "characters",
-                "selector": "//a[contains(@class,'name') and contains(@href,'/characters/')]",
-                "type": "list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    }
-                ],
-            }
-        ],
-    }
+    if not html:
+        return None
+    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    anchors = cast(list[Any], tree.xpath(_XPATHS["characters"]))
+    hrefs = [el.get("href") for el in anchors if el.get("href")]
+    if not hrefs:
+        return None
+    return [{"url": href, "role": ""} for href in hrefs]
+
+
+async def _fetch_refs_html(url: str) -> str | None:
+    """Fetch the characters list page HTML using zendriver.
+
+    The page is server-rendered; domcontentloaded is sufficient. Using a
+    presence-based wait instead of networkidle avoids 90-second timeouts on
+    large casts (e.g. One Piece: 1088+ characters, ~1000 pending image
+    requests).
+
+    Args:
+        url: Full Anime-Planet characters page URL.
+
+    Returns:
+        Rendered page HTML, or None on navigation failure.
+    """
+    import zendriver as zd
+
+    browser = await zd.start(headless=True)
+    try:
+        page = await browser.get(url)
+        await page.wait_for(selector="a.name[href*='/characters/']", timeout=20)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
+        return None
+    finally:
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
 
 @cached_result(
     ttl=TTL_ANIME_PLANET,
     key_prefix="animeplanet_character_refs",
-    dependencies=[_get_character_refs_schema],
+    dependencies=[_extract_refs_from_html],
 )
 async def _fetch_refs_data(url: str) -> list[dict[str, str]] | None:
     """Fetch /anime/{slug}/characters and extract character hrefs. Cached by url."""
-    result = await crawl_single_url(
-        url=url,
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_character_refs_schema()),
-    )
-    if not result:
-        logger.error(f"No result for characters page {url}")
+    html = await _fetch_refs_html(url)
+    if not html:
+        logger.error(f"No HTML for characters page {url}")
         return None
-
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for characters page {url}")
-        return None
-    if status and 300 <= status < 400:
-        logger.debug(f"HTTP {status} (redirect followed) for characters page {url}")
-
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        logger.warning(f"Empty extracted content from {url}")
-        return None
-
-    characters: list[dict[str, str]] = items[0].get("characters") or []
-    refs = [{"url": c["url"], "role": ""} for c in characters if c.get("url")]
-    return refs or None
+    return _extract_refs_from_html(html)
 
 
 async def fetch_animeplanet_character_refs(url: str) -> list[dict[str, str]]:
@@ -94,10 +97,10 @@ async def fetch_animeplanet_character_refs(url: str) -> list[dict[str, str]]:
 
     Args:
         url: Full characters page URL, e.g.
-            https://www.anime-planet.com/anime/dandadan/characters
+            ``https://www.anime-planet.com/anime/dandadan/characters``.
 
     Returns:
-        List of {"url": "/characters/slug", "role": "Main|Secondary|Minor"} dicts.
+        List of ``{"url": "/characters/slug", "role": ""}`` dicts.
         Empty list on failure.
     """
     logger.info(f"Fetching AP character list from {url}...")
