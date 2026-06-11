@@ -43,6 +43,7 @@ _CF_MARKERS = (
     "cf-browser-verification",
     "cf-challenge",
     "Attention Required",
+    "Please Unban Me",  # AniDB antileech page
 )
 _INTER_REQUEST_DELAY = 2.5  # seconds; keeps session trusted and avoids CF re-trigger
 
@@ -121,8 +122,7 @@ def _extract_from_html(html: str) -> AniDBCharacterPage | None:
         ]
 
     def _first(key: str) -> str | None:
-        values = _texts(key)
-        return values[0] if values else None
+        return next(iter(_texts(key)), None)
 
     def _animeography() -> list[dict[str, str]]:
         entries = []
@@ -190,25 +190,24 @@ async def _solve_cf(page: Any) -> bool:
     1. verify_cf — clicks the Turnstile checkbox and waits for CF to validate
     2. Click 'Please Unban Me' — submits the form with the CF token to AniDB
     """
-    from zendriver.core.cloudflare import cf_is_interactive_challenge_present, verify_cf
+    from zendriver.core.cloudflare import verify_cf
 
-    if await cf_is_interactive_challenge_present(page, timeout=10):
-        try:
-            await verify_cf(page, click_delay=1.0, timeout=20)
-        except Exception:  # noqa: S110
-            pass
+    cf_solved = False
+    try:
+        await verify_cf(page, click_delay=3.0, timeout=15)
+        cf_solved = True
+    except Exception:  # noqa: S110
+        pass
 
-        await asyncio.sleep(2)
-
+    if cf_solved:
         try:
             btn = await page.find("Please Unban Me", best_match=True)
             if btn:
                 await btn.click()
-                await asyncio.sleep(3)
         except Exception:  # noqa: S110
             pass
 
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         await asyncio.sleep(1)
         try:
@@ -225,20 +224,15 @@ async def _solve_cf(page: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, bool, Any]:
-    """Navigate to url, return (html, crashed, page).
-
-    crashed=True means the browser tab/process died and the caller should restart.
-    page is returned so the caller can reuse it (e.g. for CF solving) without
-    navigating a second time.
-    """
+async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, Any]:
+    """Navigate to url, return (html, page). Both None on browser crash."""
     try:
         page = await browser.get(url)
         await asyncio.sleep(2)
-        return await page.get_content(), False, page
+        return await page.get_content(), page
     except (RuntimeError, StopIteration) as exc:
-        logger.warning("browser crash on %s: %s", url, exc)
-        return None, True, None
+        logger.warning(f"browser crash on {url}: {exc}")
+        return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -271,8 +265,8 @@ async def fetch_anidb_characters(
 
     Cache is checked upfront for all IDs in one Redis round-trip. Hits are
     yielded immediately. Misses are fetched in a single shared Chrome session —
-    CF Turnstile is solved at most once. Results are cached in one batch write
-    after all misses are fetched.
+    CF Turnstile is solved at most once. Each result is cached immediately after
+    fetch so cancellation doesn't lose progress.
 
     Args:
         char_ids: AniDB numeric character IDs to fetch.
@@ -305,32 +299,29 @@ async def fetch_anidb_characters(
                 browser = await zd.start(headless=False)
 
             url = f"{_BASE_URL}/{char_id}"
-            html, crashed, current_page = await _fetch_page_html(browser, url)
+            html, current_page = await _fetch_page_html(browser, url)
 
-            if crashed:
-                logger.warning("browser crashed — restarting for char %d", char_id)
+            if html is None:
+                logger.warning(f"browser crashed — restarting for char {char_id}")
                 try:
                     await browser.stop()
                 except Exception:  # noqa: S110
                     pass
                 browser = await zd.start(headless=False)
                 await asyncio.sleep(2)
-                html, crashed, current_page = await _fetch_page_html(browser, url)
-                if crashed:
-                    logger.error("browser crashed again on char %d — skipping", char_id)
+                html, current_page = await _fetch_page_html(browser, url)
+                if html is None:
+                    logger.error(f"browser crashed again on char {char_id} — skipping")
                     yield char_id, None
                     continue
-
-            if html is None or current_page is None:
-                yield char_id, None
-                continue
 
             if _is_cf_blocked(html):
-                logger.info("CF block on char %d — solving", char_id)
+                logger.info(f"CF block on char {char_id} — solving")
                 if not await _solve_cf(current_page):
-                    logger.error("CF did not clear for char %d", char_id)
+                    logger.error(f"CF did not clear for char {char_id}")
                     yield char_id, None
                     continue
+                await current_page
                 try:
                     html = await current_page.get_content()
                 except Exception:
@@ -338,9 +329,7 @@ async def fetch_anidb_characters(
                     continue
 
             if not _has_character_data(html):
-                logger.warning(
-                    "no character data for char %d (deleted/invalid)", char_id
-                )
+                logger.warning(f"no character data for char {char_id} (deleted/invalid)")
                 yield char_id, None
             else:
                 page = _extract_from_html(html)
@@ -352,10 +341,7 @@ async def fetch_anidb_characters(
                 yield char_id, page
 
             # Delay only between browser requests
-            remaining_misses = [
-                c for j, c in enumerate(char_ids[i + 1 :], i + 1) if j in missing_set
-            ]
-            if remaining_misses:
+            if any(j in missing_set for j in range(i + 1, len(char_ids))):
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
 
     finally:
@@ -365,12 +351,7 @@ async def fetch_anidb_characters(
             except Exception:  # noqa: S110
                 pass
         cache_hits = len(char_ids) - len(missing_set)
-        logger.info(
-            "anidb character fetch: %d/%d succeeded, %d cache hits",
-            succeeded,
-            len(missing_set),
-            cache_hits,
-        )
+        logger.info(f"anidb character fetch: {succeeded}/{len(missing_set)} succeeded, {cache_hits} cache hits")
 
 
 async def fetch_anidb_character(char_id: int) -> AniDBCharacterPage | None:
@@ -404,7 +385,7 @@ async def main() -> int:
 
     page = await fetch_anidb_character(args.character_id)
     if page is None:
-        logger.error("No data for character %d", args.character_id)
+        logger.error(f"No data for character {args.character_id}")
         return 1
 
     char = AniDBCharacter(id=args.character_id, name=page.name_main)
@@ -412,7 +393,7 @@ async def main() -> int:
     safe_path = sanitize_output_path(args.output)
     with open(safe_path, "w", encoding="utf-8") as f:
         json.dump(canonical, f, ensure_ascii=False, indent=2)
-    logger.info("Written to %s", safe_path)
+    logger.info(f"Written to {safe_path}")
     return 0
 
 

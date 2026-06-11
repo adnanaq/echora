@@ -107,6 +107,7 @@ async def _fetch_anisearch_character_refs_data(
         try:
             page = await browser.get(characters_url)
             await page.wait_for(selector="#content", timeout=10)
+            await page.scroll_down(amount=1000, speed=3000)
             html_text = await page.get_content()
         except Exception as exc:
             logger.exception(f"navigation failed for {characters_url}")
