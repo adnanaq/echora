@@ -185,6 +185,7 @@ def test_post_process_refs_missing_url_skipped() -> None:
 def _make_browser_mock(mocker, html: str | None):
     page_mock = mocker.AsyncMock()
     page_mock.wait_for = AsyncMock()
+    page_mock.scroll_down = AsyncMock()
     if html is None:
         page_mock.wait_for.side_effect = Exception("timeout")
     else:
