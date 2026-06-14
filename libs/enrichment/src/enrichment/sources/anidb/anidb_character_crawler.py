@@ -192,20 +192,18 @@ async def _solve_cf(page: Any) -> bool:
     """
     from zendriver.core.cloudflare import verify_cf
 
-    cf_solved = False
     try:
         await verify_cf(page, click_delay=3.0, timeout=15)
-        cf_solved = True
     except Exception:  # noqa: S110
         pass
 
-    if cf_solved:
-        try:
-            btn = await page.find("Please Unban Me", best_match=True)
-            if btn:
-                await btn.click()
-        except Exception:  # noqa: S110
-            pass
+    try:
+        btn = await page.find("Please Unban Me", best_match=True)
+        if btn:
+            await verify_cf(page, click_delay=3.0, timeout=15)
+            await btn.click()
+    except Exception:  # noqa: S110
+        pass
 
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
