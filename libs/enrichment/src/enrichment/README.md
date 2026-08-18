@@ -14,17 +14,16 @@ libs/enrichment/src/enrichment/
 │   ├── enrichment_pipeline.py   # EnrichmentPipeline — main entry point
 │   ├── api_fetcher.py           # ApiFetcher — parallel fan-out across all sources
 │   ├── id_extractor.py          # PlatformIDExtractor — URL → ids dict
-│   ├── assembly.py              # Merge programmatic + AI outputs → AnimeRecord
 │   └── config.py                # EnrichmentConfig (Pydantic BaseSettings)
 │
 ├── sources/            # Per-source fetch packages (see sources/README.md)
 │   ├── base/           # Shared transport, framework, configs
-│   ├── mal/            # MyAnimeList — browser scraping via crawl4ai Docker
+│   ├── mal/            # MyAnimeList — browser scraping via zendriver
 │   ├── kitsu/          # Kitsu — REST API
 │   ├── anilist/        # AniList — GraphQL API
-│   ├── anisearch/      # AniSearch — browser scraping via crawl4ai Docker
-│   ├── anime_planet/   # Anime-Planet — browser scraping via crawl4ai Docker
-│   ├── anidb/          # AniDB — XML API
+│   ├── anisearch/      # AniSearch — browser scraping via zendriver
+│   ├── anime_planet/   # Anime-Planet — browser scraping via zendriver
+│   ├── anidb/          # AniDB — XML API (characters via zendriver)
 │   └── animeschedule/  # AnimSchedule — REST API
 │
 ├── utils/
@@ -179,7 +178,7 @@ from `http_cache.result_cache` with per-source TTLs.
 | AniList | 24 h |
 | AniSearch | 24 h |
 | Anime-Planet | 24 h |
-| AniDB | 7 days |
+| AniDB | 24 h |
 | AnimSchedule | 24 h |
 
 ---

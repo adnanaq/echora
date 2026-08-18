@@ -126,15 +126,20 @@ uv run ty check libs/http_cache/
 
 ### Service Health Checks
 
+Both services are gRPC only — they expose no HTTP endpoints, so `curl` will not
+reach them.
+
 ```bash
-# Check service health
-curl http://localhost:8001/health
+# Service health (grpc_health_probe ships in both images)
+docker exec echora-vector-service     grpc_health_probe -addr=localhost:8001
+docker exec echora-enrichment-service grpc_health_probe -addr=localhost:8002
 
-# Check Qdrant health
-curl http://localhost:6333/health
+# Qdrant health (plain HTTP)
+curl http://localhost:6333/healthz
 
-# Get database statistics
-curl http://localhost:8001/api/v1/admin/stats
+# Database statistics: VectorAdminService/GetStats
+# Server reflection is not enabled, so a gRPC client must be given the protos
+# from protos/vector_service/v1/vector_admin.proto
 ```
 
 ## Architecture Overview
@@ -192,7 +197,7 @@ echora/
 
 **Script**: `run_enrichment.py` - Main entry point for programmatic enrichment
 
-**Database**: Reads from `data/qdrant_storage/anime-offline-database.json` (39,244+ anime entries)
+**Database**: Reads from `assets/seed_data/anime-offline-database.json` (39,244+ anime entries)
 
 **Arguments**:
 
