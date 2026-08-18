@@ -17,11 +17,11 @@ Usage:
     async for char_id, page in fetch_anidb_characters([474, 475, 476]):
         ...
 """
-
 import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from collections.abc import AsyncGenerator
@@ -43,9 +43,28 @@ _CF_MARKERS = (
     "cf-browser-verification",
     "cf-challenge",
     "Attention Required",
-    "Please Unban Me",  # AniDB antileech page
 )
+# AniDB's antileech block page is identified by its <title>, which is present
+# from the initial HTML — unlike the embedded CF Turnstile and the "Please Unban
+# Me" button, which are injected asynchronously and are absent from an early
+# get_content() snapshot. Matching the title (not bare "AntiLeech", which also
+# appears as a footer link on normal pages) avoids both false negatives and
+# false positives.
+_ANTILEECH_TITLE = "<title>AniDB AntiLeech"
+_UNBAN_BUTTON_TEXT = "Please Unban Me"
 _INTER_REQUEST_DELAY = 2.5  # seconds; keeps session trusted and avoids CF re-trigger
+
+# Stealth persona: a coherent Windows desktop fingerprint applied to the Chrome
+# session so CF/AniDB see a real browser. The seed is fixed so the identity is
+# STABLE across runs and browser restarts (a returning visitor), which reduces
+# repeated CF challenges; change it to rotate the identity. Timezone is set to
+# "auto" so it follows the exit IP (proxy/VPN aware) instead of leaking the host's.
+_PERSONA_SEED = 20240611
+
+# Persistent Chrome profile: CF clearance cookies (and the pinned persona seed)
+# survive across runs, so Turnstile is solved far less often. Absolute path so it
+# persists even when launched from an ephemeral Pants sandbox.
+_USER_DATA_DIR = os.path.expanduser("~/.cache/echora/anidb_chrome")
 
 # ---------------------------------------------------------------------------
 # XPath selectors — anchored on structural attributes (itemprop, id, class)
@@ -178,43 +197,55 @@ def _is_cf_blocked(html: str) -> bool:
     return any(m in html for m in _CF_MARKERS)
 
 
+def _is_antileech(html: str) -> bool:
+    return _ANTILEECH_TITLE in html
+
+
+def _is_blocked(html: str) -> bool:
+    """True if the page is any kind of block: CF interstitial or AniDB antileech."""
+    return _is_cf_blocked(html) or _is_antileech(html)
+
+
 def _has_character_data(html: str) -> bool:
-    return "tab_1_pane" in html or 'itemprop="name"' in html
+    # Real character pages render their content under #tab_1_pane. The antileech
+    # page also carries itemprop="name" in its header, so that marker must NOT be
+    # used here — it caused antileech pages to be mistaken for character pages.
+    return "tab_1_pane" in html
 
 
 async def _solve_cf(page: Any) -> bool:
-    """Solve CF Turnstile on current page.
+    """Clear a CF interstitial or AniDB antileech block on the current page.
 
-    AniDB's block page embeds the CF Turnstile checkbox inside their own HTML
-    form with a 'Please Unban Me' submit button. Two steps:
-    1. verify_cf — clicks the Turnstile checkbox and waits for CF to validate
-    2. Click 'Please Unban Me' — submits the form with the CF token to AniDB
+    verify_cf solves the Turnstile checkbox and only returns once its token is
+    set; it raises when there is no clickable checkbox — which is the antileech
+    case, where the Turnstile auto-passes. Either way we then sleep briefly to
+    let the token settle, click the 'Please Unban Me' button if present, and wait
+    for the page to reload. Returns True once the page is no longer blocked.
     """
     from zendriver.core.cloudflare import verify_cf
 
     try:
         await verify_cf(page, click_delay=3.0, timeout=15)
+    except Exception:  # noqa: S110  (antileech Turnstile auto-passes, no checkbox)
+        pass
+
+    # Let the Turnstile finish and populate its token before submitting the form.
+    await asyncio.sleep(5)
+
+    try:
+        btn = await page.find(_UNBAN_BUTTON_TEXT, best_match=True)
+        if btn:
+            logger.info("antileech — clicking 'Please Unban Me'")
+            await btn.click()
+            await asyncio.sleep(5)  # wait for the unban submit + reload
     except Exception:  # noqa: S110
         pass
 
     try:
-        btn = await page.find("Please Unban Me", best_match=True)
-        if btn:
-            await verify_cf(page, click_delay=3.0, timeout=15)
-            await btn.click()
-    except Exception:  # noqa: S110
-        pass
-
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        await asyncio.sleep(1)
-        try:
-            html = await page.get_content()
-        except Exception:  # noqa: S112
-            continue
-        if not _is_cf_blocked(html):
-            return True
-    return False
+        html = await page.get_content()
+    except Exception:
+        return False
+    return not _is_blocked(html)
 
 
 # ---------------------------------------------------------------------------
@@ -223,14 +254,31 @@ async def _solve_cf(page: Any) -> bool:
 
 
 async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, Any]:
-    """Navigate to url, return (html, page). Both None on browser crash."""
+    """Navigate to url and return (html, page) once the page settles.
+
+    Polls until the page resolves into a recognizable state — real character
+    content (tab_1_pane) or a block page (CF interstitial / antileech) — rather
+    than using a fixed wait. This avoids capturing a half-rendered shell, which
+    previously caused the antileech page to be misread as a deleted character.
+    Returns the last snapshot on timeout; both None on browser crash.
+    """
     try:
         page = await browser.get(url)
-        await asyncio.sleep(2)
-        return await page.get_content(), page
+        html = ""
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            await asyncio.sleep(1)
+            try:
+                html = await page.get_content()
+            except Exception:  # noqa: S112
+                continue
+            if _has_character_data(html) or _is_blocked(html):
+                break
     except (RuntimeError, StopIteration) as exc:
         logger.warning(f"browser crash on {url}: {exc}")
         return None, None
+    else:
+        return html, page
 
 
 # ---------------------------------------------------------------------------
@@ -313,10 +361,10 @@ async def fetch_anidb_characters(
                     yield char_id, None
                     continue
 
-            if _is_cf_blocked(html):
-                logger.info(f"CF block on char {char_id} — solving")
+            if _is_blocked(html):
+                logger.info(f"block on char {char_id} — solving")
                 if not await _solve_cf(current_page):
-                    logger.error(f"CF did not clear for char {char_id}")
+                    logger.error(f"block did not clear for char {char_id}")
                     yield char_id, None
                     continue
                 await current_page
