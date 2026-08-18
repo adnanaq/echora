@@ -203,7 +203,7 @@ def extract_anilist_statistics(anilist_data: dict[str, Any]) -> dict[str, Any]:
                 contextual_ranks.append(
                     {
                         "rank": rank_obj.get("rank"),
-                        "type": rank_obj.get("type"),
+                        "context": rank_obj.get("context"),
                         "format": rank_obj.get("format"),
                         "year": rank_obj.get("year"),
                         "season": rank_obj.get("season"),
