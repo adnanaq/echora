@@ -2,7 +2,7 @@
 name = "echora"
 version = "0.1.0"
 description = "Microservice for anime vector database operations with semantic search capabilities"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     # Core FastAPI dependencies
     "fastapi==0.115.13",
@@ -15,7 +15,11 @@ dependencies = [
     # "qdrant-client[fastembed]==1.16.2",  # Uncomment to enable FastEmbed dense provider
     # Embedding models
     "sentence-transformers==5.0.0",
-    "transformers==4.55.0",
+    # >=4.56 required: FlagEmbedding 1.4.x calls AutoModel.from_pretrained(dtype=...),
+    # which transformers only accepts from 4.56 (torch_dtype -> dtype rename).
+    # On 4.55 the flagembedding provider raises TypeError at model init.
+    # Upper bound comes from sentence-transformers 5.0.0 (<5.0.0).
+    "transformers==4.57.6",
     "torch>=2.0.0",
     "open-clip-torch>=2.29.0", # OpenCLIP for vision embeddings
     # Image processing
@@ -119,7 +123,8 @@ dev = [
 ]
 
 [tool.ty.environment]
-# Python version must match project requirement (>=3.13)
+# Must stay in sync with requires-python, [tool.ruff] target-version,
+# pants.toml interpreter_constraints, and .python-version.
 python-version = "3.13"
 
 # Additional search paths for module resolution
