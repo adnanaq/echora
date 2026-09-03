@@ -10,6 +10,8 @@ python_sources(
     overrides={
         "generate-proto.py": {"run_goal_use_sandbox": False},
         "reindex_anime_database.py": {"run_goal_use_sandbox": False},
+        # Reads and writes temp/<agent_id>/, which does not exist in the sandbox.
+        "process_stage3_relationships.py": {"run_goal_use_sandbox": False},
     },
 )
 
