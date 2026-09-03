@@ -57,7 +57,7 @@ class EnrichmentConfig(BaseSettings):
 
     # Data Paths
     offline_database_path: str = Field(
-        default="data/anime-offline-database.json",
+        default="assets/seed_data/anime-offline-database.json",
         description="Path to offline anime database",
     )
     enriched_database_path: str = Field(

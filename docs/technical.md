@@ -34,7 +34,7 @@
 - **Qdrant Client**: `qdrant-client[fastembed]` for vector operations
 - **HTTP**: `aiohttp` for async requests, `hishel` for HTTP caching
 - **Caching**: `redis` for cache backends
-- **Crawling**: `crawl4ai` for web extraction pipelines
+- **Crawling**: `zendriver` (CDP) for web extraction pipelines
 
 ### Development Setup
 

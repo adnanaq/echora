@@ -38,6 +38,12 @@ def test_anime_planet_url_extracted(extractor: PlatformIDExtractor) -> None:
     )
 
 
+def test_anidb_url_extracted(extractor: PlatformIDExtractor) -> None:
+    """AniDB is a URL key, not a numeric ID — AniDBHelper reads ids['anidb_url']."""
+    data = {"sources": ["https://anidb.net/anime/69"]}
+    assert extractor.extract_all_ids(data)["anidb_url"] == "https://anidb.net/anime/69"
+
+
 # ---------------------------------------------------------------------------
 # anisearch_url — full URL, not a numeric ID
 # ---------------------------------------------------------------------------
@@ -82,11 +88,6 @@ def test_kitsu_url_extracted(extractor: PlatformIDExtractor) -> None:
         extractor.extract_all_ids(data)["kitsu_url"]
         == "https://kitsu.app/anime/one-piece"
     )
-
-
-def test_anidb_id_extracted(extractor: PlatformIDExtractor) -> None:
-    data = {"sources": ["https://anidb.net/anime/69"]}
-    assert extractor.extract_all_ids(data)["anidb_id"] == "69"
 
 
 def test_livechart_id_extracted(extractor: PlatformIDExtractor) -> None:
@@ -140,7 +141,7 @@ def test_full_mixed_sources(extractor: PlatformIDExtractor) -> None:
     assert result["anilist_url"] == "https://anilist.co/anime/21"
     assert result["anime_planet_url"] == "https://www.anime-planet.com/anime/one-piece"
     assert result["anisearch_url"] == "https://www.anisearch.com/anime/458,one-piece"
-    assert result["anidb_id"] == "69"
+    assert result["anidb_url"] == "https://anidb.net/anime/69"
     assert result["kitsu_url"] == "https://kitsu.app/anime/one-piece"
     assert result["notify_id"] == "0-A-5Fimg"
     assert result["livechart_id"] == "10959"
@@ -151,12 +152,17 @@ def test_full_mixed_sources(extractor: PlatformIDExtractor) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_validate_ids_keeps_numeric_anidb(extractor: PlatformIDExtractor) -> None:
-    assert extractor.validate_ids({"anidb_id": "69"}) == {"anidb_id": "69"}
+def test_validate_ids_keeps_numeric_livechart(extractor: PlatformIDExtractor) -> None:
+    assert extractor.validate_ids({"livechart_id": "10959"}) == {
+        "livechart_id": "10959"
+    }
 
 
-def test_validate_ids_rejects_non_numeric_anidb(extractor: PlatformIDExtractor) -> None:
-    assert extractor.validate_ids({"anidb_id": "not-a-number"}) == {}
+def test_validate_ids_rejects_non_numeric_livechart(
+    extractor: PlatformIDExtractor,
+) -> None:
+    """livechart_id is the only key subject to numeric validation."""
+    assert extractor.validate_ids({"livechart_id": "not-a-number"}) == {}
 
 
 def test_validate_ids_drops_none_values(extractor: PlatformIDExtractor) -> None:

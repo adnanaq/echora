@@ -166,8 +166,6 @@ class EnrichmentPipeline:
 
             logger.info(f"✓ Enrichment complete for {anime_title} in {total_time:.2f}s")
 
-            return result
-
         except Exception as e:
             logger.exception(f"Enrichment failed for {anime_title}")
             if self.config.skip_failed_apis:
@@ -178,6 +176,8 @@ class EnrichmentPipeline:
                     "partial_data": True,
                 }
             raise
+        else:
+            return result
 
     async def enrich_batch(
         self,

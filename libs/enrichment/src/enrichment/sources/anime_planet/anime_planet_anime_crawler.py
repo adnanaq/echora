@@ -1,14 +1,23 @@
-"""
-Crawls anime information from anime-planet.com via the crawl4ai Docker REST API.
+"""Anime-Planet anime crawler — zendriver + lxml XPath.
 
 Extracts comprehensive anime data including related anime, rankings, studios,
 and all metadata from JSON-LD.  Results are cached in Redis for 24 hours.
+
+    fetch_animeplanet_anime(url)  — fetch a single anime → canonical dict
+
+CLI usage::
+
+    uv run python -m enrichment.sources.anime_planet.anime_planet_anime_crawler \\
+        https://www.anime-planet.com/anime/dandadan
+
+    uv run python -m enrichment.sources.anime_planet.anime_planet_anime_crawler \\
+        https://www.anime-planet.com/anime/dandadan --output dandadan.json
 """
 
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from enrichment.sources.anime_planet.anime_planet_models import (
     AnimePlanetAggregateRating,
@@ -17,19 +26,14 @@ from enrichment.sources.anime_planet.anime_planet_models import (
     AnimePlanetRelatedEntry,
 )
 from enrichment.sources.anime_planet.animeplanet_mapper import anime_from_animeplanet
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,32 @@ BASE_ANIME_URL = "https://www.anime-planet.com/anime/"
 _SEASON_SLUG_RE = re.compile(r"/seasons/([^/?#]+)")
 _RANK_RE = re.compile(r"#(\d+)")
 _AKA_PREFIX = "alt title:"
+
+# XPaths for entryBar metadata and relations
+_XPATHS: dict[str, str] = {
+    "type_raw": "//section[contains(@class,'entryBar')]//span[@class='type']",
+    "season_url": "//section[contains(@class,'entryBar')]//a[contains(@href,'/anime/seasons/')]/@href",
+    "rank_text": "//section[contains(@class,'entryBar')]//div[contains(.,'Rank #')]",
+    "studios": "//section[contains(@class,'entryBar')]//a[contains(@href,'/studios/')]",
+    "aka": "//h2[contains(@class,'aka')]",
+    "tags": "//div[contains(@class,'tags')]//a[contains(@href,'/anime/tags/')]",
+    "cover": "//img[@itemprop='image']/@src",
+    "related_anime": "//div[@id='tabs--relations--anime--same_franchise']//a[contains(@class,'RelatedEntry')]",
+    "related_anime_other": "//div[@id='tabs--relations--anime--other_franchise']//a[contains(@class,'RelatedEntry')]",
+    "related_manga": "//div[contains(@id,'tabs--relations--manga')]//a[contains(@class,'RelatedEntry')]",
+}
+
+# Sub-element XPaths applied to each RelatedEntry anchor element
+_REL_TITLE_XPATH = ".//p[contains(@class,'RelatedEntry__name')]"
+_REL_SUBTYPE_XPATH = ".//span[contains(@class,'RelatedEntry__subtitle')]"
+_REL_TYPE_XPATH = ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
+_REL_IMAGE_XPATH = ".//img[contains(@class,'RelatedEntry__image')]/@src"
+_REL_VOLCH_XPATH = ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]"
+
+
+def _tc(el: Any) -> str:
+    """Return all text content of an lxml element, stripped."""
+    return "".join(el.itertext()).strip()
 
 
 def _parse_season(season_url: str | None) -> str | None:
@@ -89,7 +119,6 @@ def _normalize_anime_url(anime_identifier: str) -> str:
             clean_id = clean_id[6:]
         url = f"{BASE_ANIME_URL}{clean_id}"
     else:
-        # Normalize non-www to www (offline DB stores URLs without www)
         url = anime_identifier.replace(
             "https://anime-planet.com/", "https://www.anime-planet.com/"
         )
@@ -115,12 +144,17 @@ def _extract_json_ld(html: str) -> dict[str, Any] | None:
     """Extract JSON-LD structured data from an HTML document.
 
     Parses the first <script type="application/ld+json"> block and returns
-    its content as a dict.  HTML entities in `description` are unescaped and
+    its content as a dict.  HTML entities in ``description`` are unescaped and
     known malformed image URLs are corrected.
+
+    Args:
+        html: Full HTML of an Anime-Planet anime page.
+
+    Returns:
+        Parsed JSON-LD dict, or None if not found or malformed.
     """
     try:
         import html as html_lib
-        from typing import cast
 
         match = re.search(
             r'<script type="application/ld\+json">\s*(\{.*?\})\s*</script>',
@@ -149,172 +183,55 @@ def _extract_json_ld(html: str) -> dict[str, Any] | None:
     return None
 
 
-def _get_anime_schema() -> dict[str, Any]:
-    """Return the XPath extraction schema for an anime-planet anime page."""
-    return {
-        "name": "AnimePlanetAnime",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "type_raw",
-                "selector": "//section[contains(@class,'entryBar')]//span[@class='type']",
-                "type": "text",
-            },
-            {
-                "name": "season_url",
-                "selector": "//section[contains(@class,'entryBar')]//a[contains(@href,'/anime/seasons/')]",
-                "type": "attribute",
-                "attribute": "href",
-            },
-            {
-                "name": "rank_text",
-                "selector": "//section[contains(@class,'entryBar')]//div[contains(.,'Rank #')]",
-                "type": "text",
-            },
-            {
-                "name": "avg_rating_title",
-                "selector": "//div[contains(@class,'avgRating')]",
-                "type": "attribute",
-                "attribute": "title",
-            },
-            {
-                "name": "studios",
-                "selector": "//section[contains(@class,'entryBar')]//a[contains(@href,'/studios/')]",
-                "type": "list",
-                "fields": [{"name": "name", "selector": ".", "type": "text"}],
-            },
-            {
-                "name": "aka",
-                "selector": "//h2[contains(@class,'aka')]",
-                "type": "text",
-            },
-            {
-                "name": "tags",
-                "selector": "//div[contains(@class,'tags')]//a[contains(@href,'/anime/tags/')]",
-                "type": "list",
-                "fields": [{"name": "name", "selector": ".", "type": "text"}],
-            },
-            {
-                "name": "cover",
-                "selector": "//img[@itemprop='image']",
-                "type": "attribute",
-                "attribute": "src",
-            },
-            {
-                "name": "related_anime_raw",
-                "selector": "//div[@id='tabs--relations--anime--same_franchise']//a[contains(@class,'RelatedEntry')]",
-                "type": "nested_list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                    {
-                        "name": "title",
-                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "relation_subtype",
-                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
-                        "type": "text",
-                    },
-                    # fa-tv li only — avoids picking up date spans from the calendar li
-                    {
-                        "name": "type",
-                        "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "image",
-                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
-                        "type": "attribute",
-                        "attribute": "src",
-                    },
-                ],
-            },
-            {
-                "name": "related_anime_other_raw",
-                "selector": "//div[@id='tabs--relations--anime--other_franchise']//a[contains(@class,'RelatedEntry')]",
-                "type": "nested_list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                    {
-                        "name": "title",
-                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "relation_subtype",
-                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "type",
-                        "selector": ".//li[.//i[contains(@class,'fa-tv')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "image",
-                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
-                        "type": "attribute",
-                        "attribute": "src",
-                    },
-                ],
-            },
-            {
-                "name": "related_manga_raw",
-                "selector": "//div[contains(@id,'tabs--relations--manga')]//a[contains(@class,'RelatedEntry')]",
-                "type": "nested_list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                    {
-                        "name": "title",
-                        "selector": ".//p[contains(@class,'RelatedEntry__name')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "relation_subtype",
-                        "selector": ".//span[contains(@class,'RelatedEntry__subtitle')]",
-                        "type": "text",
-                    },
-                    # fa-book-open li — "One Shot" or "Vol: X - Ch: Y" counts
-                    {
-                        "name": "vol_ch",
-                        "selector": ".//li[.//i[contains(@class,'fa-book-open')]]//span[contains(@class,'RelatedEntry__metadata_item')]",
-                        "type": "text",
-                    },
-                    {
-                        "name": "image",
-                        "selector": ".//img[contains(@class,'RelatedEntry__image')]",
-                        "type": "attribute",
-                        "attribute": "src",
-                    },
-                ],
-            },
-        ],
+def _parse_related_entry_element(el: Any, *, is_manga: bool) -> dict[str, Any]:
+    """Convert a single RelatedEntry anchor lxml element into a raw dict.
+
+    Produces the same dict shape expected by ``_build_related_anime_entries``
+    and ``_build_related_manga_entries``.
+
+    Args:
+        el: lxml element for an ``<a class="RelatedEntry ...">`` anchor.
+        is_manga: True when parsing manga entries (extracts vol_ch instead of type).
+
+    Returns:
+        Dict with ``url``, ``title``, ``relation_subtype``, ``type``, ``image``,
+        and (when ``is_manga``) ``vol_ch``.
+    """
+
+    def _et(xpath: str) -> str | None:
+        els = cast(list[Any], el.xpath(xpath))
+        return _tc(els[0]) if els else None
+
+    def _attr(xpath: str) -> str | None:
+        vals = cast(list[Any], el.xpath(xpath))
+        return vals[0] if vals else None
+
+    entry: dict[str, Any] = {
+        "url": el.get("href", ""),
+        "title": _et(_REL_TITLE_XPATH) or "",
+        "relation_subtype": _et(_REL_SUBTYPE_XPATH),
+        "image": _attr(_REL_IMAGE_XPATH),
     }
+    if is_manga:
+        entry["vol_ch"] = _et(_REL_VOLCH_XPATH)
+    else:
+        entry["type"] = _et(_REL_TYPE_XPATH)
+    return entry
 
 
 def _build_related_anime_entries(
     raw: list[dict[str, Any]],
 ) -> list[AnimePlanetRelatedEntry]:
-    """Build AnimePlanetRelatedEntry models from raw XPath nested_list output.
+    """Build AnimePlanetRelatedEntry models from raw relation dicts.
 
     Parses the fa-tv metadata span (e.g. "OVA: 1 ep", "Movie", "TV Special: 9 ep")
     into separate type and episode_count fields.
+
+    Args:
+        raw: List of dicts produced by ``_parse_related_entry_element``.
+
+    Returns:
+        List of validated ``AnimePlanetRelatedEntry`` models.
     """
     entries = []
     for item in raw:
@@ -353,7 +270,7 @@ def _build_related_anime_entries(
 def _build_related_manga_entries(
     raw: list[dict[str, Any]],
 ) -> list[AnimePlanetMangaEntry]:
-    """Build AnimePlanetMangaEntry models from raw XPath nested_list output.
+    """Build AnimePlanetMangaEntry models from raw relation dicts.
 
     Parses the fa-book-open metadata span into type, volumes, and chapters:
       - "One Shot"           → type="One Shot", chapters=1
@@ -361,6 +278,12 @@ def _build_related_manga_entries(
       - "Vol: 1"             → volumes=1
       - "Ch: 19"             → chapters=19
       - ""  / "- ?"          → all None (date bleed-through guard)
+
+    Args:
+        raw: List of dicts produced by ``_parse_related_entry_element``.
+
+    Returns:
+        List of validated ``AnimePlanetMangaEntry`` models.
     """
     entries = []
     for item in raw:
@@ -404,7 +327,14 @@ def _build_related_manga_entries(
 def _parse_aggregate_rating(
     ar: dict[str, Any] | None,
 ) -> AnimePlanetAggregateRating | None:
-    """Parse a JSON-LD aggregateRating dict into an AnimePlanetAggregateRating model."""
+    """Parse a JSON-LD aggregateRating dict into an AnimePlanetAggregateRating model.
+
+    Args:
+        ar: Raw ``aggregateRating`` dict from JSON-LD, or None.
+
+    Returns:
+        Parsed model, or None if both rating fields are absent or invalid.
+    """
     if not ar:
         return None
     rating_value: float | None = None
@@ -426,16 +356,79 @@ def _parse_aggregate_rating(
     )
 
 
+def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
+    """Extract raw anime data from a rendered Anime-Planet anime page.
+
+    Combines JSON-LD structured data (title, dates, episodes, ratings, genres)
+    with lxml XPath extraction (type, season, rank, alt title, cover, studios,
+    tags, related entries).  The slug field is injected by the caller.
+
+    Args:
+        html: Full rendered HTML of an Anime-Planet anime page.
+
+    Returns:
+        JSON-serialisable raw dict, or None if JSON-LD is absent or has no name.
+    """
+    if not html:
+        return None
+
+    json_ld = _extract_json_ld(html)
+    if not json_ld or not json_ld.get("name"):
+        logger.warning("No JSON-LD name found in page HTML")
+        return None
+
+    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+
+    def _t(key: str) -> str | None:
+        els = cast(list[Any], tree.xpath(_XPATHS[key]))
+        return _tc(els[0]) if els else None
+
+    def _a(key: str) -> str | None:
+        vals = cast(list[Any], tree.xpath(_XPATHS[key]))
+        return vals[0] if vals else None
+
+    def _texts(key: str) -> list[str]:
+        return [_tc(el) for el in cast(list[Any], tree.xpath(_XPATHS[key])) if _tc(el)]
+
+    def _related(key: str, *, is_manga: bool = False) -> list[dict[str, Any]]:
+        return [
+            _parse_related_entry_element(el, is_manga=is_manga)
+            for el in cast(list[Any], tree.xpath(_XPATHS[key]))
+        ]
+
+    return {
+        "name": json_ld["name"],
+        "schema_type": json_ld.get("@type"),
+        "description": json_ld.get("description"),
+        "url": json_ld.get("url"),
+        "start_date": json_ld.get("startDate"),
+        "end_date": json_ld.get("endDate"),
+        "number_of_episodes": json_ld.get("numberOfEpisodes"),
+        "genres": json_ld.get("genre") or [],
+        "aggregate_rating": json_ld.get("aggregateRating"),
+        "type_raw": _t("type_raw"),
+        "season_url": _a("season_url"),
+        "rank_text": _t("rank_text"),
+        "aka": _t("aka"),
+        "cover": _a("cover"),
+        "studios": _texts("studios"),
+        "tags": _texts("tags"),
+        "related_anime_raw": _related("related_anime"),
+        "related_anime_other_raw": _related("related_anime_other"),
+        "related_manga_raw": _related("related_manga", is_manga=True),
+    }
+
+
 def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
     """Construct an AnimePlanetAnime model from a cached raw data dict.
 
-    This is the post-processing step that converts the JSON-serializable cached
-    dict into typed Pydantic models, mirroring the ``_build_anime_from_raw``
-    pattern used in the MAL crawler.
+    Post-processing step that converts the JSON-serialisable cached dict into
+    typed Pydantic models.  Model construction is intentionally kept separate
+    from caching so Pydantic objects are never stored in Redis.
 
     Args:
-        raw: Dict returned by ``_fetch_animeplanet_anime_data`` — contains
-             merged JSON-LD scalars, XPath primitives, and raw relation lists.
+        raw: Dict returned by ``_fetch_animeplanet_anime_data`` — contains merged
+             JSON-LD scalars, XPath primitives, and raw relation lists.
 
     Returns:
         Validated AnimePlanetAnime source model.
@@ -466,108 +459,78 @@ def _build_anime_from_raw(raw: dict[str, Any]) -> AnimePlanetAnime:
     )
 
 
+async def _fetch_anime_html(url: str) -> str | None:
+    """Navigate to an Anime-Planet anime page and return its rendered HTML.
+
+    Args:
+        url: Full Anime-Planet anime URL
+            (e.g. ``https://www.anime-planet.com/anime/dandadan``).
+
+    Returns:
+        Rendered page HTML, or None on navigation failure.
+    """
+    import zendriver as zd
+
+    browser = await zd.start(headless=True)
+    try:
+        page = await browser.get(url)
+        await page.wait_for(selector="section.entryBar", timeout=20)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
+        return None
+    finally:
+        try:
+            await browser.stop()
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
+
+
 @cached_result(
     ttl=TTL_ANIME_PLANET,
     key_prefix="animeplanet_anime",
-    dependencies=[_get_anime_schema],
+    dependencies=[_extract_anime_from_html],
 )
 async def _fetch_animeplanet_anime_data(
     canonical_slug: str,
 ) -> dict[str, Any] | None:
-    """Fetch and extract raw anime data for a given anime-planet slug.
+    """Fetch and extract raw anime data for a given Anime-Planet slug.
 
-    Uses the crawl4ai Docker REST API with XPath extraction. Cached by
-    canonical slug; cache is automatically invalidated when the extraction
-    schema changes.
+    Uses zendriver (CDP) + lxml XPath.  Cached by canonical slug; the cache
+    is automatically invalidated when the extraction logic changes.
 
-    Returns a JSON-serializable dict of primitives ready for
-    ``_build_anime_from_raw``.  Model construction is deliberately left to
-    ``_build_anime_from_raw`` so that Pydantic models are never stored in the
-    cache (they are not JSON-serializable by default).
+    Returns a JSON-serialisable dict of primitives ready for
+    ``_build_anime_from_raw``.  Model construction is left to that function so
+    Pydantic models are never stored in the cache.
 
     Args:
-        canonical_slug: Canonical anime slug (e.g. "one-piece").
+        canonical_slug: Canonical anime slug (e.g. ``"one-piece"``).
 
     Returns:
         Raw data dict, or None on failure.
     """
     url = f"{BASE_ANIME_URL}{canonical_slug}"
-
     logger.info(f"Fetching anime data: {url}")
-    result = await crawl_single_url(
-        url,
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(
-            _get_anime_schema(), wait_until="load"
-        ),
-    )
 
-    if result is None:
-        logger.warning(f"Crawl returned no result for {url}")
+    html = await _fetch_anime_html(url)
+    if not html:
+        logger.warning(f"Navigation returned no HTML for {url}")
         return None
 
-    status = result.get("status_code")
-    if status == 404:
-        logger.warning(f"Anime not found (404): {url}")
-        return None
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for anime {url}")
-        return None
-    if status and 300 <= status < 400:
-        logger.debug(f"HTTP {status} (redirect followed) for anime {url}")
-
-    if not result.get("success"):
-        logger.warning(f"Crawl failed for {url}: {result.get('error_message')}")
-        return None
-
-    raw_list = json.loads(result.get("extracted_content") or "[]")
-    if not raw_list:
+    raw = _extract_anime_from_html(html)
+    if not raw:
         logger.warning(f"No data extracted from {url}")
         return None
 
-    xpath = raw_list[0]
-    html = result.get("html") or ""
-
-    # JSON-LD is the primary source for title, dates, episodes, and ratings.
-    json_ld = _extract_json_ld(html) if html else None
-    if not json_ld or not json_ld.get("name"):
-        logger.warning(f"No JSON-LD found for {url}")
-        return None
-
-    return {
-        # JSON-LD scalars (primitive values only — no model construction)
-        "name": json_ld["name"],
-        "schema_type": json_ld.get("@type"),
-        "description": json_ld.get("description"),
-        "url": json_ld.get("url"),
-        "start_date": json_ld.get("startDate"),
-        "end_date": json_ld.get("endDate"),
-        "number_of_episodes": json_ld.get("numberOfEpisodes"),
-        "genres": json_ld.get("genre") or [],
-        "aggregate_rating": json_ld.get(
-            "aggregateRating"
-        ),  # raw dict, parsed in _build_anime_from_raw
-        # XPath scalars
-        "type_raw": xpath.get("type_raw") or None,
-        "season_url": xpath.get("season_url") or None,
-        "rank_text": xpath.get("rank_text") or None,
-        "aka": xpath.get("aka") or None,
-        "cover": xpath.get("cover") or None,
-        "studios": [s["name"] for s in xpath.get("studios", []) if s.get("name")],
-        "tags": [t["name"] for t in xpath.get("tags", []) if t.get("name")],
-        "slug": canonical_slug,
-        # Raw relation lists — model construction happens in _build_anime_from_raw
-        "related_anime_raw": xpath.get("related_anime_raw", []),
-        "related_anime_other_raw": xpath.get("related_anime_other_raw", []),
-        "related_manga_raw": xpath.get("related_manga_raw", []),
-    }
+    raw["slug"] = canonical_slug
+    return raw
 
 
 class AnimePlanetAnimeCrawler(BaseCrawler[AnimePlanetAnime, dict[str, Any]]):
     """Crawler for Anime-Planet anime detail pages."""
 
-    def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_anime_schema()
+    def get_extraction_schema(self) -> dict[str, str]:
+        return _XPATHS
 
     def normalize_identifier(self, identifier: str) -> str:
         return _normalize_anime_url(identifier)
@@ -592,11 +555,27 @@ async def fetch_animeplanet_anime(
 
     Args:
         url: Full Anime-Planet anime URL, slug, or path
-            (e.g. "https://www.anime-planet.com/anime/dandadan" or "dandadan").
+            (e.g. ``"https://www.anime-planet.com/anime/dandadan"`` or ``"dandadan"``).
         output_path: If provided, write the canonical dict to this JSON file.
 
     Returns:
         Canonical anime dict, or None if the fetch or validation fails.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AnimePlanetAnimeCrawler(DockerTransport(), repo).crawl(url)
+    return await AnimePlanetAnimeCrawler(repo).crawl(url)
+
+
+if __name__ == "__main__":
+    import argparse
+    import asyncio
+
+    parser = argparse.ArgumentParser(description="Fetch Anime-Planet anime data")
+    parser.add_argument("url", help="Anime-Planet anime URL or slug")
+    parser.add_argument("--output", help="Write canonical JSON to this file")
+    args = parser.parse_args()
+
+    result = asyncio.run(fetch_animeplanet_anime(args.url, args.output))
+    if result:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print("Failed to fetch anime data")

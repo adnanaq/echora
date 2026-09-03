@@ -88,8 +88,11 @@ async def main() -> None:
             field_mapper=field_mapper,
         )
 
-        # Initialize Qdrant client
-        client = await QdrantClient.create(
+        # Plain constructor, not QdrantClient.create(): create() validates the
+        # existing collection's schema, which fails whenever the vector config
+        # has changed — exactly the case a reindex exists to resolve. The
+        # collection is dropped and recreated below.
+        client = QdrantClient(
             config=settings.qdrant,
             async_qdrant_client=async_qdrant_client,
             url=settings.qdrant.qdrant_url,

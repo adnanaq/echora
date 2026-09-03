@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
-"""AniDB Helper for AI Enrichment Integration.
+"""AniDB enrichment helper — XML API for anime, episodes, and characters.
 
-Provides helper functions to fetch AniDB data using XML API for AI
-enrichment pipeline with production-level rate limiting and error handling.
+Usage:
+    # Fetch anime metadata
+    python -m enrichment.sources.anidb.anidb_helper anime https://anidb.net/anime/69 anidb_anime.json
+
+    # Fetch episodes
+    python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.net/anime/69 anidb_episodes.json
+
+    # Fetch characters (live JSONL, cancel after N characters)
+    python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 anidb_characters.jsonl
+
+    # Fetch all (anime + episodes + characters)
+    python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
 """
+
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -11,19 +23,23 @@ import gzip
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
 from enum import Enum
-from types import TracebackType
-from typing import Any, ClassVar
-from xml.etree.ElementTree import Element  # For type annotations only
+from typing import Any
 
 import aiohttp
-import defusedxml.ElementTree as ET
-from common.utils.datetime_utils import determine_anime_status
 from common.utils.jsonl_utils import append_jsonl
-from enrichment.crawlers.anidb_character_crawler import fetch_anidb_character
+from enrichment.sources.anidb.anidb_character_crawler import fetch_anidb_characters
+from enrichment.sources.anidb.anidb_mapper import (
+    anime_from_anidb,
+    character_from_anidb,
+    episode_from_anidb,
+)
+from enrichment.sources.anidb.anidb_models import AniDBAnime
+from enrichment.sources.anidb.anidb_xml_parser import parse_anime_xml
 from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
     normalize_enrichment_payload,
@@ -34,31 +50,18 @@ from http_cache.instance import http_cache_manager as _cache_manager
 
 logger = logging.getLogger(__name__)
 
-# AniDB CDN base URL for images
-ANIDB_CDN_BASE = "https://cdn-eu.anidb.net/images/main"
-
 
 class CircuitBreakerState(Enum):
     """Circuit breaker states for AniDB API protection."""
 
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"  # Service unavailable, blocking requests
-    HALF_OPEN = "half_open"  # Testing if service recovered
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 
 @dataclass
 class AniDBRequestMetrics:
-    """Metrics for tracking AniDB API health and compliance.
-
-    Attributes:
-        total_requests: Total number of requests made.
-        successful_requests: Number of successful requests.
-        failed_requests: Number of failed requests.
-        consecutive_failures: Current streak of consecutive failures.
-        last_request_time: Unix timestamp of last request.
-        last_error_time: Unix timestamp of last error.
-        current_interval: Current adaptive request interval in seconds.
-    """
+    """Metrics for tracking AniDB API health and rate-limit compliance."""
 
     total_requests: int = 0
     successful_requests: int = 0
@@ -70,74 +73,44 @@ class AniDBRequestMetrics:
 
     @property
     def success_rate(self) -> float:
-        """Calculate success rate as percentage.
-
-        Returns:
-            Success rate from 0.0 to 100.0.
-        """
+        """Return successful requests as a percentage of total requests."""
         if self.total_requests == 0:
             return 100.0
         return (self.successful_requests / self.total_requests) * 100.0
 
     @property
     def error_rate(self) -> float:
-        """Calculate error rate as percentage.
-
-        Returns:
-            Error rate from 0.0 to 100.0.
-        """
+        """Return failed requests as a percentage of total requests."""
         return 100.0 - self.success_rate
 
 
 class AniDBHelper(BaseEnrichmentHelper):
-    """Enhanced AniDB XML API helper with production-level features.
+    """AniDB XML API enrichment helper.
 
-    Provides rate limiting, session management, circuit breaker pattern,
-    and comprehensive request metrics for robust AniDB API integration.
-
-    Attributes:
-        base_url: AniDB HTTP API endpoint URL.
-        client_name: Client identifier sent to AniDB.
-        client_version: Client version sent to AniDB.
-        session: Active aiohttp session for requests.
-        metrics: Request metrics for health monitoring.
-        circuit_breaker_state: Current circuit breaker state.
+    Handles HTTP transport, adaptive rate limiting, and circuit breaking.
+    Delegates XML parsing to ``anidb_xml_parser`` and field mapping to
+    ``anidb_mapper``.
     """
-
-    # XML namespace constants
-    XML_LANG_NAMESPACE = "{http://www.w3.org/XML/1998/namespace}lang"
-
-    # Language code normalization mapping
-    LANG_NORMALIZATION: ClassVar[dict[str, str]] = {"x-jat": "romaji"}
 
     def __init__(
         self, client_name: str | None = None, client_version: str | None = None
-    ):
-        """Initialize the AniDB enrichment helper.
-
-        Configures client metadata, session policy, rate limiting, retry
-        behavior, circuit breaker, and request metrics.
+    ) -> None:
+        """Initialise the AniDB helper with client metadata and resilience config.
 
         Args:
-            client_name: Client identifier sent to AniDB. If None, uses
-                the ANIDB_CLIENT environment variable or defaults to
-                "animeenrichment".
-            client_version: Client version sent to AniDB. If None, uses
-                the ANIDB_CLIENTVER environment variable or defaults to
-                "1.0".
+            client_name: Client identifier sent to AniDB. Defaults to the
+                ``ANIDB_CLIENT`` environment variable or ``"animeenrichment"``.
+            client_version: Client version sent to AniDB. Defaults to the
+                ``ANIDB_CLIENTVER`` environment variable or ``"1.0"``.
         """
         self.base_url = "http://api.anidb.net:9001/httpapi"
-
-        # Client configuration
         self.client_name = client_name or os.getenv("ANIDB_CLIENT", "animeenrichment")
         self.client_version = client_version or os.getenv("ANIDB_CLIENTVER", "1.0")
 
-        # Session management
         self.session = None
         self._session_created_at: float = 0.0
-        self._session_max_age = 300  # Recreate session every 5 minutes
+        self._session_max_age = 300
 
-        # Enhanced rate limiting configuration
         self.min_request_interval = float(
             os.getenv("ANIDB_MIN_REQUEST_INTERVAL", "2.0")
         )
@@ -147,7 +120,6 @@ class AniDBHelper(BaseEnrichmentHelper):
         self.error_cooldown_base = float(os.getenv("ANIDB_ERROR_COOLDOWN_BASE", "5.0"))
         self.max_retries = int(os.getenv("ANIDB_MAX_RETRIES", "3"))
 
-        # Circuit breaker configuration
         self.circuit_breaker_threshold = int(
             os.getenv("ANIDB_CIRCUIT_BREAKER_THRESHOLD", "5")
         )
@@ -157,16 +129,12 @@ class AniDBHelper(BaseEnrichmentHelper):
         self.circuit_breaker_state = CircuitBreakerState.CLOSED
         self.circuit_breaker_opened_at = 0.0
 
-        # Request tracking and metrics
         self.metrics = AniDBRequestMetrics()
-        self._request_lock = asyncio.Lock()  # Ensure request serialization
+        self._request_lock = asyncio.Lock()
 
-        logger.info("AniDB helper initialized with enhanced features:")
-        logger.info(
-            f"  - Rate limiting: {self.min_request_interval}s-{self.max_request_interval}s"
-        )
-        logger.info(f"  - Circuit breaker: {self.circuit_breaker_threshold} failures")
-        logger.info(f"  - Max retries: {self.max_retries}")
+    # =========================================================================
+    # PUBLIC INTERFACE (BaseEnrichmentHelper contract)
+    # =========================================================================
 
     async def fetch_all(
         self,
@@ -177,45 +145,214 @@ class AniDBHelper(BaseEnrichmentHelper):
         fetch_characters: bool = True,
         fetch_episodes: bool = True,
     ) -> dict[str, Any] | None:
-        """Fetch comprehensive AniDB data for an anime by ID.
+        """Fetch all AniDB data for a single anime.
 
         Args:
-            ids: Dictionary of validated platform IDs/URLs. Must contain 'anidb_id'.
-            offline_data: The original offline anime metadata.
-            temp_dir: Optional directory for intermediate JSONL storage.
-            fetch_characters: Accepted for interface compliance; AniDB entity-level
-                filtering is deferred until the mapper convention is standardised.
-            fetch_episodes: Accepted for interface compliance; same as above.
+            ids: Platform ID map. Must contain ``anidb_url``
+            (e.g. ``"https://anidb.net/anime/69"``).
+            offline_data: Original offline anime metadata from the seed database.
+            temp_dir: Optional directory for intermediate JSONL output files.
+            fetch_characters: When False, skip character fetching.
+            fetch_episodes: When False, skip episode fetching.
 
         Returns:
-            Comprehensive AniDB data including metadata, characters, episodes,
-                and related anime. None if not found.
+            Dict with keys ``anime``, ``episodes``, and ``characters`` passed
+            through ``normalize_enrichment_payload``, or None when the anime
+            fetch fails.
         """
-        anidb_id = ids.get("anidb_id")
-        if not anidb_id:
+        anidb_url = ids.get("anidb_url")
+        if not anidb_url:
             return None
 
-        output_path = os.path.join(temp_dir, "anidb.jsonl") if temp_dir else None
+        anime_output_path = (
+            os.path.join(temp_dir, "anidb_anime.jsonl") if temp_dir else None
+        )
+        episodes_output_path = (
+            os.path.join(temp_dir, "anidb_episodes.jsonl") if temp_dir else None
+        )
+        characters_output_path = (
+            os.path.join(temp_dir, "anidb_characters.jsonl") if temp_dir else None
+        )
 
-        anime_data = await self.get_anime_by_id(int(anidb_id))
-        if not anime_data:
+        logger.info(f"Fetching AniDB data for: {anidb_url}")
+        anime_dict, anime_model = await self._fetch_anime(
+            anidb_url, output_path=anime_output_path
+        )
+        if not anime_dict or not anime_model:
             return None
+
+        logger.info(f"AniDB anime fetched: {anime_dict.get('title', anidb_url)}")
+
+        episodes_data: list[dict[str, Any]] = []
+        if fetch_episodes:
+            try:
+                episodes_data = await self._fetch_episodes(
+                    anime_model, output_path=episodes_output_path
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Episode fetch failed, continuing without episodes: {e}"
+                )
+
+        characters_data: list[dict[str, Any]] = []
+        if fetch_characters:
+            try:
+                characters_data = await self._fetch_characters(
+                    anime_model, output_path=characters_output_path
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Character fetch failed, continuing without characters: {e}"
+                )
+
+        logger.info(f"AniDB episodes fetched: {len(episodes_data)}")
+        logger.info(f"AniDB characters fetched: {len(characters_data)}")
+
+        return normalize_enrichment_payload(
+            {
+                "anime": anime_dict,
+                "episodes": episodes_data,
+                "characters": characters_data,
+            }
+        )
+
+    # =========================================================================
+    # PROTECTED FETCH METHODS
+    # =========================================================================
+
+    async def _fetch_anime(
+        self,
+        anidb_url: str,
+        *,
+        output_path: str | None = None,
+    ) -> tuple[dict[str, Any] | None, AniDBAnime | None]:
+        """Fetch XML, parse to AniDBAnime model, and map to canonical dict.
+
+        Args:
+            anidb_url: Original AniDB URL (e.g. ``"https://anidb.net/anime/69"``).
+                The numeric ID is extracted from it for the API call, and the
+                URL itself is passed to the mapper as the canonical source URL.
+            output_path: If provided, write the canonical anime dict as a
+                JSONL line to this file.
+
+        Returns:
+            Tuple of (canonical anime dict, AniDBAnime model). Both elements
+            are None on fetch or parse failure.
+        """
+        match = re.search(r"/anime/(\d+)", anidb_url)
+        if not match:
+            logger.warning(f"Could not extract AniDB ID from URL: {anidb_url}")
+            return None, None
+        anidb_id = int(match.group(1))
+
+        xml_content = await self._fetch_xml(anidb_id)
+        if not xml_content:
+            return None, None
+        try:
+            anime_model = parse_anime_xml(xml_content)
+        except ValueError:
+            logger.exception(f"XML parse failed for AniDB ID {anidb_id}")
+            return None, None
+        anime_dict = anime_from_anidb(anime_model, anidb_url=anidb_url)
         if output_path:
-            append_jsonl(output_path, anime_data)
-        return normalize_enrichment_payload(anime_data)
+            append_jsonl(output_path, anime_dict)
+        return anime_dict, anime_model
+
+    async def _fetch_episodes(
+        self,
+        anime_model: AniDBAnime,
+        *,
+        output_path: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Map regular episodes from the parsed anime model (no network calls).
+
+        Args:
+            anime_model: Parsed AniDBAnime containing all episode elements.
+            output_path: If provided, each mapped episode is appended as a
+                JSONL line to this file.
+
+        Returns:
+            List of canonical episode dicts (regular episodes only;
+            specials, credits, trailers, and parodies are excluded).
+        """
+        episodes = [
+            ep
+            for e in anime_model.episodes
+            if (ep := episode_from_anidb(e)) is not None
+        ]
+        if output_path:
+            for episode in episodes:
+                append_jsonl(output_path, episode)
+        return episodes
+
+    async def _fetch_characters(
+        self,
+        anime_model: AniDBAnime,
+        *,
+        output_path: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch and map character data for the given anime.
+
+        Args:
+            anime_model: Parsed AniDBAnime containing character elements.
+            output_path: If provided, each mapped character is appended as a
+                JSONL line to this file.
+
+        Returns:
+            List of canonical character dicts.
+        """
+        xml_by_id = {c.id: c for c in anime_model.characters if c.id is not None}
+        char_ids = list(xml_by_id.keys())
+
+        characters: list[dict[str, Any]] = []
+
+        async for char_id, page in fetch_anidb_characters(char_ids):
+            xml_char = xml_by_id[char_id]
+            char_dict = character_from_anidb(xml_char, page_data=page)
+            characters.append(char_dict)
+            if output_path:
+                append_jsonl(output_path, char_dict)
+
+        for char_model in anime_model.characters:
+            if char_model.id is None:
+                char_dict = character_from_anidb(char_model, page_data=None)
+                characters.append(char_dict)
+                if output_path:
+                    append_jsonl(output_path, char_dict)
+
+        return characters
+
+    async def _fetch_xml(self, anidb_id: int) -> str | None:
+        """Fetch the raw XML response from AniDB HTTP API.
+
+        Args:
+            anidb_id: AniDB numeric anime ID.
+
+        Returns:
+            Raw XML string, or None on network failure.
+        """
+        try:
+            params = {"request": "anime", "aid": anidb_id}
+            return await self._make_request(params)
+        except Exception:
+            logger.exception(f"Failed to fetch XML for AniDB ID {anidb_id}")
+            return None
+
+    # =========================================================================
+    # CIRCUIT BREAKER
+    # =========================================================================
 
     async def _check_circuit_breaker(self) -> bool:
-        """Check if circuit breaker allows requests.
+        """Check whether the circuit breaker allows a request.
 
-        Transitions from OPEN to HALF_OPEN state after timeout expires.
+        Transitions from OPEN to HALF_OPEN once the timeout has elapsed.
 
         Returns:
-            True if requests are allowed, False if blocked.
+            True if requests are allowed (CLOSED or HALF_OPEN), False if
+            the circuit is OPEN and the timeout has not expired.
         """
         current_time = time.time()
-
         if self.circuit_breaker_state == CircuitBreakerState.OPEN:
-            # Check if timeout has passed
             if (
                 current_time - self.circuit_breaker_opened_at
                 > self.circuit_breaker_timeout
@@ -223,40 +360,36 @@ class AniDBHelper(BaseEnrichmentHelper):
                 self.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
                 logger.info("Circuit breaker moved to HALF_OPEN state")
                 return True
-            else:
-                remaining = self.circuit_breaker_timeout - (
-                    current_time - self.circuit_breaker_opened_at
-                )
-                logger.warning(
-                    f"Circuit breaker OPEN - blocking request. {remaining:.1f}s remaining"
-                )
-                return False
-
-        return True  # CLOSED or HALF_OPEN allows requests
+            remaining = self.circuit_breaker_timeout - (
+                current_time - self.circuit_breaker_opened_at
+            )
+            logger.warning(
+                f"Circuit breaker OPEN — blocking request. {remaining:.1f}s remaining"
+            )
+            return False
+        return True
 
     def _update_circuit_breaker(self, success: bool) -> None:
-        """Update circuit breaker state based on request result.
+        """Update circuit breaker state based on the outcome of a request.
 
-        On success, transitions HALF_OPEN to CLOSED and resets failure count.
-        On failure, increments failure count and may open the circuit.
+        On success, resets the consecutive failure count and transitions
+        HALF_OPEN → CLOSED. On failure, increments the failure count and
+        may open the circuit.
 
         Args:
-            success: Whether the request succeeded.
+            success: True if the request succeeded, False otherwise.
         """
         if success:
             if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
                 self.circuit_breaker_state = CircuitBreakerState.CLOSED
-                logger.info("Circuit breaker moved to CLOSED state - service recovered")
+                logger.info("Circuit breaker CLOSED — service recovered")
             self.metrics.consecutive_failures = 0
         else:
             self.metrics.consecutive_failures += 1
-
             if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
                 self.circuit_breaker_opened_at = time.time()
-                logger.warning(
-                    "Circuit breaker moved back to OPEN state from HALF_OPEN"
-                )
+                logger.warning("Circuit breaker OPEN from HALF_OPEN")
             elif (
                 self.circuit_breaker_state == CircuitBreakerState.CLOSED
                 and self.metrics.consecutive_failures >= self.circuit_breaker_threshold
@@ -264,897 +397,14 @@ class AniDBHelper(BaseEnrichmentHelper):
                 self.circuit_breaker_state = CircuitBreakerState.OPEN
                 self.circuit_breaker_opened_at = time.time()
                 logger.error(
-                    f"Circuit breaker OPENED after {self.metrics.consecutive_failures} consecutive failures"
+                    f"Circuit breaker OPENED after {self.metrics.consecutive_failures} failures"
                 )
-
-    async def _adaptive_rate_limit(self, is_retry: bool = False) -> None:
-        """Apply adaptive rate limiting with error-aware delays.
-
-        Calculates delay based on consecutive failures using exponential
-        backoff. Adds extra delay for retry attempts.
-
-        Args:
-            is_retry: Whether this is a retry attempt. Defaults to False.
-        """
-        current_time = time.time()
-        time_since_last = current_time - self.metrics.last_request_time
-
-        # Calculate adaptive interval based on recent errors
-        if self.metrics.consecutive_failures > 0:
-            # Exponential backoff for errors
-            error_multiplier = min(2**self.metrics.consecutive_failures, 8)
-            adaptive_interval = min(
-                self.error_cooldown_base * error_multiplier, self.max_request_interval
-            )
-        else:
-            adaptive_interval = self.min_request_interval
-
-        # Add extra delay for retries
-        if is_retry:
-            adaptive_interval *= 1.5
-
-        if time_since_last < adaptive_interval:
-            wait_time = adaptive_interval - time_since_last
-            logger.info(
-                f"Adaptive rate limiting: waiting {wait_time:.2f}s (interval: {adaptive_interval:.2f}s)"
-            )
-            await asyncio.sleep(wait_time)
-
-        self.metrics.last_request_time = time.time()
-        self.metrics.current_interval = adaptive_interval
-
-    async def _ensure_session_health(self) -> None:
-        """Ensure an active HTTP session exists and recreate if expired.
-
-        Creates a new aiohttp session via the cache manager if the current
-        session is absent or older than the configured maximum age.
-        """
-        current_time = time.time()
-
-        # Check if session needs recreation
-        if (
-            self.session is None
-            or current_time - self._session_created_at > self._session_max_age
-        ):
-            if self.session:
-                logger.debug("Recreating AniDB session (max age reached)")
-                await self.session.close()
-
-            # Create new session with optimized settings
-            headers = {
-                "Accept-Encoding": "gzip, deflate",
-                "User-Agent": f"{self.client_name}/{self.client_version}",
-                "Accept": "application/xml, text/xml",
-                "Connection": "keep-alive",  # Better connection reuse
-                "Cache-Control": "no-cache",  # Prevent caching issues
-            }
-
-            connector = aiohttp.TCPConnector(
-                limit=2,  # Small connection pool
-                limit_per_host=1,  # Single connection to AniDB
-                ttl_dns_cache=300,  # DNS cache for 5 minutes
-                use_dns_cache=True,
-                keepalive_timeout=60,  # Keep connections alive
-                enable_cleanup_closed=True,
-            )
-
-            self.session = _cache_manager.get_aiohttp_session(
-                "anidb",
-                timeout=aiohttp.ClientTimeout(total=60, connect=30),
-                headers=headers,
-                connector=connector,
-            )
-
-            self._session_created_at = current_time
-            logger.debug("Created new AniDB session with enhanced settings")
-
-    async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
-        """Make request with enhanced retry logic and error handling.
-
-        Implements exponential backoff with jitter and circuit breaker checks.
-
-        Args:
-            params: Request parameters dictionary.
-
-        Returns:
-            Response content if successful, None otherwise.
-        """
-        # Try request with retries
-        last_exception = None
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                is_retry = attempt > 0
-
-                # Check circuit breaker
-                if not await self._check_circuit_breaker():
-                    return None
-
-                # Apply adaptive rate limiting
-                await self._adaptive_rate_limit(is_retry=is_retry)
-
-                # Ensure session health
-                await self._ensure_session_health()
-
-                # Make the actual request
-                result = await self._make_single_request(params, attempt)
-
-                if result is not None:
-                    # Success - update metrics and circuit breaker
-                    self.metrics.successful_requests += 1
-                    self._update_circuit_breaker(success=True)
-
-                    if is_retry:
-                        logger.info(f"Request succeeded on attempt {attempt + 1}")
-
-                    return result
-                else:
-                    # Request failed but no exception
-                    self.metrics.failed_requests += 1
-                    self._update_circuit_breaker(success=False)
-
-                    if attempt < self.max_retries:
-                        wait_time = (2**attempt) + (
-                            time.time() % 1
-                        )  # Exponential backoff with jitter
-                        logger.warning(
-                            f"Request failed, retrying in {wait_time:.2f}s (attempt {attempt + 1}/{self.max_retries})"
-                        )
-                        await asyncio.sleep(wait_time)
-
-            except Exception as e:
-                last_exception = e
-                self.metrics.failed_requests += 1
-                self._update_circuit_breaker(success=False)
-
-                if attempt < self.max_retries:
-                    wait_time = (2**attempt) + (
-                        time.time() % 1
-                    )  # Exponential backoff with jitter
-                    logger.warning(
-                        f"Request exception, retrying in {wait_time:.2f}s: {e} (attempt {attempt + 1}/{self.max_retries})"
-                    )
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.exception(
-                        f"Request failed after {self.max_retries + 1} attempts: {e}"
-                    )
-
-            finally:
-                self.metrics.total_requests += 1
-
-        # All retries exhausted
-        if last_exception:
-            logger.error(
-                f"Request failed permanently after {self.max_retries + 1} attempts: {last_exception}"
-            )
-            raise ServiceNetworkError(service="anidb", cause=last_exception)
-
-        return None
-
-    async def _make_single_request(
-        self, params: dict[str, Any], attempt: int
-    ) -> str | None:
-        """Make a single request attempt to the AniDB API.
-
-        Handles gzip decompression and various HTTP error codes including
-        503 (service unavailable) and 555 (banned).
-
-        Args:
-            params: Request parameters dictionary.
-            attempt: Current attempt number (0-indexed).
-
-        Returns:
-            Decoded response content if successful, None otherwise.
-
-        Raises:
-            RuntimeError: If session is not initialized.
-        """
-        # Add required client parameters
-        request_params = params.copy()
-        request_params.update(
-            {
-                "client": self.client_name,
-                "clientver": self.client_version,
-                "protover": os.getenv("ANIDB_PROTOVER", "1"),
-            }
-        )
-
-        logger.debug(
-            f"AniDB request attempt {attempt + 1}: {self.base_url} with params: {request_params}"
-        )
-
-        if self.session is None:
-            raise RuntimeError("Session not initialized")
-        async with self.session.get(self.base_url, params=request_params) as response:
-            logger.debug(f"AniDB response status: {response.status}")
-
-            if response.status == 200:
-                # Handle successful response
-                content = await response.read()
-                logger.debug(f"Response content length: {len(content)} bytes")
-
-                # Handle gzip compression
-                if content.startswith(b"\x1f\x8b"):
-                    logger.debug("Decompressing gzipped content")
-                    try:
-                        content = gzip.decompress(content)
-                        logger.debug(
-                            f"Decompressed content length: {len(content)} bytes"
-                        )
-                    except Exception:
-                        logger.exception("Failed to decompress gzipped content: ")
-                        raise
-
-                # Decode content with multiple encoding fallbacks
-                text_content = self._decode_content(content)
-                if text_content and not text_content.strip().startswith("<error"):
-                    logger.debug(
-                        f"Successfully decoded response: {text_content[:100]}..."
-                    )
-                    return text_content
-                elif text_content and "<error" in text_content:
-                    logger.warning(
-                        f"AniDB returned error response: {text_content[:200]}"
-                    )
-                    return None
-                else:
-                    logger.error("Failed to decode response content")
-                    return None
-
-            elif response.status == 503:
-                logger.warning("AniDB service unavailable (503) - will retry")
-                self.metrics.last_error_time = time.time()
-                return None
-
-            elif response.status == 555:
-                self.metrics.last_error_time = time.time()
-                # Force circuit breaker open for ban scenarios
-                self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = time.time()
-                # TODO: publish a deferred retry event via NATS JetStream / Temporal
-                #   so this enrichment job is retried once AniDB recovers.
-                #   ServiceBlockedError signals "try again later" — not a permanent failure.
-                raise ServiceBlockedError(
-                    "banned/blocked (555) — serious rate limit violation",
-                    service="anidb",
-                )
-
-            else:
-                logger.warning(f"AniDB API error: HTTP {response.status}")
-                error_content = await response.text()
-                logger.debug(f"Error response: {error_content[:200]}")
-                self.metrics.last_error_time = time.time()
-                return None
-
-    def _decode_content(self, content: bytes) -> str | None:
-        """Decode response content with multiple encoding fallbacks.
-
-        Tries utf-8, latin-1, cp1252, and iso-8859-1 encodings in order.
-
-        Args:
-            content: Raw bytes to decode.
-
-        Returns:
-            Decoded string if successful, None if all encodings fail.
-        """
-        encodings = ["utf-8", "latin-1"]
-
-        for encoding in encodings:
-            try:
-                return content.decode(encoding)
-            except UnicodeDecodeError:
-                continue
-
-        logger.error(f"Failed to decode content with any encoding: {encodings}")
-        return None
-
-    async def _make_request(self, params: dict[str, Any]) -> str | None:
-        """Make a thread-safe request with serialization lock.
-
-        Args:
-            params: Request parameters dictionary.
-
-        Returns:
-            Response content if successful, None otherwise.
-        """
-        async with self._request_lock:
-            return await self._make_request_with_retry(params)
-
-    def _validate_anime_xml(self, root: Element) -> bool:
-        """Validate anime XML structure for critical fields.
-
-        Checks for required root element, id attribute, and critical
-        elements (type, episodecount, titles). Logs warnings for
-        missing optional elements.
-
-        Args:
-            root: Root XML element to validate.
-
-        Returns:
-            True if structure is valid, False if root element or id attribute
-                is invalid.
-        """
-        # Check root element
-        if root.tag != "anime":
-            logger.error(f"Invalid root element: expected 'anime', got '{root.tag}'")
-            return False
-
-        # Check required attribute
-        if root.get("id") is None:
-            logger.error("Missing required 'id' attribute on <anime> element")
-            return False
-
-        # Check critical elements exist
-        critical_elements = ["type", "episodecount", "titles"]
-        for elem_name in critical_elements:
-            if root.find(elem_name) is None:
-                logger.warning(f"Missing critical element: <{elem_name}>")
-
-        # Validate titles structure
-        titles_elem = root.find("titles")
-        if titles_elem is not None:
-            title_elements = titles_elem.findall("title")
-            if not title_elements:
-                logger.warning("No <title> elements found in <titles>")
-
-            # Check for at least one main title
-            main_titles = [t for t in title_elements if t.get("type") == "main"]
-            if not main_titles:
-                logger.warning("No main title found in <titles>")
-
-        # Validate episodes structure if present
-        episodes_elem = root.find("episodes")
-        if episodes_elem is not None:
-            for episode in episodes_elem.findall("episode"):
-                if episode.get("id") is None:
-                    logger.warning("Episode missing 'id' attribute")
-                if episode.find("epno") is None:
-                    logger.warning(
-                        f"Episode {episode.get('id', 'unknown')} missing <epno>"
-                    )
-
-        return True
-
-    async def _parse_anime_xml(
-        self, xml_content: str, enrich_characters: bool = True
-    ) -> dict[str, Any]:
-        """Parse anime XML response into structured data.
-
-        Extracts all anime metadata including titles, tags, ratings,
-        categories, creators, characters, episodes, and related anime.
-
-        Args:
-            xml_content: Raw XML string from AniDB API.
-            enrich_characters: If True, fetch detailed character data from web
-                in parallel batches. If False, return only XML character data.
-                Defaults to True.
-
-        Returns:
-            Structured anime data dictionary. Returns empty dict if parsing
-                fails.
-        """
-        try:
-            root = ET.fromstring(xml_content)
-        except ET.ParseError:
-            logger.exception("XML parsing error")
-            return {}
-
-        # Validate XML structure
-        if not self._validate_anime_xml(root):
-            logger.error("XML validation failed - structure may have changed")
-            # Continue parsing but log the issue
-
-        # =====================================================================
-        # SCALAR FIELDS (alphabetical)
-        # =====================================================================
-
-        # Convert anime ID to int
-        anime_id_str = root.get("id")
-        anime_id = int(anime_id_str) if anime_id_str else None
-
-        # Extract basic elements
-        picture_elem = root.find("picture")
-        cover = (
-            f"{ANIDB_CDN_BASE}/{picture_elem.text}"
-            if picture_elem is not None and picture_elem.text
-            else None
-        )
-
-        startdate_elem = root.find("startdate")
-        enddate_elem = root.find("enddate")
-        end_date = enddate_elem.text if enddate_elem is not None else None
-
-        episodecount_elem = root.find("episodecount")
-        episodes_count = (
-            int(episodecount_elem.text)
-            if episodecount_elem is not None
-            and episodecount_elem.text
-            and episodecount_elem.text.isdigit()
-            else 0
-        )
-
-        start_date = startdate_elem.text if startdate_elem is not None else None
-
-        status = determine_anime_status(start_date, end_date)
-
-        description_elem = root.find("description")
-        synopsis = description_elem.text if description_elem is not None else None
-
-        # Extract titles
-        title = None
-        title_english = None
-        title_japanese = None
-        title_others: dict[str, str] = {}
-        synonyms: list[str] = []
-        titles_element = root.find("titles")
-        if titles_element is not None:
-            for title_elem in titles_element.findall("title"):
-                title_type = title_elem.get("type", "unknown")
-                lang = title_elem.get(self.XML_LANG_NAMESPACE, "unknown")
-
-                if title_type == "main":
-                    title = title_elem.text
-                elif title_type == "official":
-                    if lang == "en":
-                        title_english = title_elem.text
-                    elif lang == "ja":
-                        title_japanese = title_elem.text
-                    elif title_elem.text:
-                        title_others[lang] = title_elem.text
-                elif title_type in ("synonym", "short") and title_elem.text:
-                    synonyms.append(title_elem.text)
-
-        type_elem = root.find("type")
-        anime_type = type_elem.text if type_elem is not None else None
-
-        url_elem = root.find("url")
-        url = url_elem.text if url_elem is not None else None
-
-        # =====================================================================
-        # ARRAY FIELDS (alphabetical)
-        # =====================================================================
-
-        # Extract categories/genres
-        categories_element = root.find("categories")
-        categories = [
-            {
-                "id": cat.get("id"),
-                "name": name.text,
-                "weight": int(cat.get("weight", 0)),
-                "hentai": cat.get("hentai") == "true",
-            }
-            for cat in (
-                categories_element.findall("category")
-                if categories_element is not None
-                else []
-            )
-            if (name := cat.find("name")) is not None
-        ]
-
-        # Extract characters - basic parsing first (no network calls)
-        characters_element = root.find("characters")
-        character_details = []
-        character_ids_to_enrich = []
-        if characters_element is not None:
-            for character in characters_element.findall("character"):
-                # Parse basic character data from XML (synchronous, fast)
-                char_data = self._parse_character_xml_basic(character)
-                character_details.append(char_data)
-                # Collect IDs for batch enrichment
-                if enrich_characters and char_data.get("id"):
-                    character_ids_to_enrich.append(char_data["id"])
-
-        # Batch fetch character details in parallel if enrichment enabled
-        if enrich_characters and character_ids_to_enrich:
-            logger.info(
-                f"Batch enriching {len(character_ids_to_enrich)} characters in parallel"
-            )
-            enriched_char_data = await self._batch_fetch_character_details(
-                character_ids_to_enrich
-            )
-            # Merge enriched data back into character_details
-            for char_data in character_details:
-                char_id = char_data.get("id")
-                if char_id and char_id in enriched_char_data:
-                    enriched_char_data[char_id].update(char_data)
-                    char_data.clear()
-                    char_data.update(enriched_char_data[char_id])
-
-        # Extract creator information
-        creators_element = root.find("creators")
-        creators = [
-            {
-                "id": int(id_str)
-                if (id_str := creator.get("id")) and id_str.isdigit()
-                else None,
-                "name": creator.text,
-                "role": creator.get("type"),
-            }
-            for creator in (
-                creators_element.findall("name") if creators_element is not None else []
-            )
-        ]
-
-        # Extract episodes
-        episodes_element = root.find("episodes")
-        episode_details: list[dict[str, Any]] = []
-        if episodes_element is not None:
-            for episode_elem in episodes_element.findall("episode"):
-                episode_details.append(self._parse_episode_xml(episode_elem))
-
-        # Extract related anime
-        related_anime_element = root.find("relatedanime")
-        related_anime = (
-            [
-                {
-                    "url": f"https://anidb.net/anime/{elem.get('id')}",
-                    "relation": elem.get("type"),
-                    "title": elem.text.strip() if elem.text else None,
-                }
-                for elem in related_anime_element.findall("anime")
-            ]
-            if related_anime_element is not None
-            else []
-        )
-
-        # Extract tags (simple list of names)
-        tags_element = root.find("tags")
-        tags = [
-            name.text
-            for tag in (tags_element.findall("tag") if tags_element is not None else [])
-            if (name := tag.find("name")) is not None and name.text
-        ]
-
-        # =====================================================================
-        # OBJECT/DICT FIELDS (alphabetical)
-        # =====================================================================
-
-        # Extract external links from resources
-        external_links: dict[str, str | None] = {
-            "official_website": None,
-            "wikipedia_en": None,
-            "wikipedia_jp": None,
-        }
-        resources_element = root.find("resources")
-        if resources_element is not None:
-            # Use dict for O(1) type lookup instead of if-elif chain
-            resource_handlers: dict[str, tuple[str, str, str | None]] = {
-                "4": ("official_website", "url", None),
-                "6": ("wikipedia_en", "identifier", "https://en.wikipedia.org/wiki/"),
-                "7": ("wikipedia_jp", "identifier", "https://ja.wikipedia.org/wiki/"),
-            }
-            for resource in resources_element.findall("resource"):
-                resource_type = resource.get("type")
-                if resource_type not in resource_handlers:
-                    continue
-                key, tag, url_prefix = resource_handlers[resource_type]
-                # Get first externalentity's value
-                entity = resource.find("externalentity")
-                if entity is not None:
-                    value_elem = entity.find(tag)
-                    if value_elem is not None and value_elem.text:
-                        external_links[key] = (
-                            f"{url_prefix}{value_elem.text}"
-                            if url_prefix
-                            else value_elem.text
-                        )
-
-        # Extract ratings (map permanent to statistics)
-        ratings_element = root.find("ratings")
-        statistics = {}
-        if ratings_element is not None:
-            permanent = ratings_element.find("permanent")
-            if permanent is not None:
-                statistics["score"] = float(permanent.text) if permanent.text else None
-                statistics["scored_by"] = int(permanent.get("count", 0))
-
-        # Construct final anime_data dict with organized structure
-        anime_data: dict[str, Any] = {
-            # SCALAR FIELDS (alphabetical)
-            "cover": cover,
-            "end_date": end_date,
-            "episodes": episodes_count,
-            "id": anime_id,
-            "start_date": start_date,
-            "status": status,
-            "synopsis": synopsis,
-            "title": title,
-            "title_english": title_english,
-            "title_japanese": title_japanese,
-            "type": anime_type,
-            "url": url,
-            # ARRAY FIELDS (alphabetical)
-            "categories": categories,
-            "character_details": character_details,
-            "creators": creators,
-            "episode_details": episode_details,
-            "related_anime": related_anime,
-            "synonyms": synonyms,
-            "tags": tags,
-            # OBJECT/DICT FIELDS (alphabetical)
-            "external_sources": external_links,
-            "statistics": statistics,
-            "title_others": title_others,
-        }
-
-        return anime_data
-
-    def _parse_episode_xml(self, episode_element: Element) -> dict[str, Any]:
-        """Parse episode XML element into structured data.
-
-        Extracts episode metadata from embedded anime response including
-        episode number, type, length, air date, rating, titles, and
-        streaming links.
-
-        Args:
-            episode_element: Episode XML element from anime response.
-
-        Returns:
-            Structured episode data with id, episode_number, episode_type,
-                length, air_date, rating, titles, and streaming.
-        """
-        epno_elem = episode_element.find("epno")
-        length_elem = episode_element.find("length")
-        airdate_elem = episode_element.find("airdate")
-        rating_elem = episode_element.find("rating")
-        summary_elem = episode_element.find("summary")
-
-        # Parse episode type first to determine episode_number parsing
-        episode_type: int | None = None
-        if epno_elem is not None:
-            type_str = epno_elem.get("type")
-            if type_str and type_str.isdigit():
-                episode_type = int(type_str)
-
-        # Parse episode_number: convert to int if episode_type is 1 (regular episodes)
-        episode_number: int | str | None = None
-        if epno_elem is not None and epno_elem.text:
-            if episode_type == 1:
-                # Regular episode - parse as int
-                try:
-                    episode_number = int(epno_elem.text)
-                except ValueError:
-                    episode_number = (
-                        epno_elem.text
-                    )  # Keep as string if conversion fails
-            else:
-                # Special, OP, ED, etc. - keep as string
-                episode_number = epno_elem.text
-
-        # Parse episode ID safely
-        ep_id_str = episode_element.get("id")
-        ep_id: int | None = (
-            int(ep_id_str) if ep_id_str and ep_id_str.isdigit() else None
-        )
-
-        # Parse episode length safely
-        length: int | None = (
-            int(length_elem.text)
-            if length_elem is not None
-            and length_elem.text
-            and length_elem.text.isdigit()
-            else None
-        )
-
-        # Parse rating votes safely
-        rating_votes = (
-            int(rating_elem.get("votes", "0"))
-            if rating_elem is not None and (rating_elem.get("votes") or "").isdigit()
-            else 0
-        )
-
-        episode_data: dict[str, Any] = {
-            "id": ep_id,
-            "update": episode_element.get("update"),
-            "episode_number": episode_number,
-            "episode_type": episode_type,
-            "length": length,
-            "air_date": airdate_elem.text if airdate_elem is not None else None,
-            "rating": (
-                float(rating_elem.text)
-                if rating_elem is not None and rating_elem.text
-                else None
-            ),
-            "rating_votes": rating_votes,
-            "summary": summary_elem.text if summary_elem is not None else None,
-        }
-
-        # Extract episode titles
-        ep_titles: dict[str, str | None] = {}
-        for ep_title in episode_element.findall("title"):
-            ep_lang = ep_title.get(self.XML_LANG_NAMESPACE, "unknown")
-            if ep_title.text:
-                # Normalize language codes (e.g., x-jat → romaji)
-                normalized_lang = self.LANG_NORMALIZATION.get(ep_lang, ep_lang)
-                ep_titles[normalized_lang] = ep_title.text
-        episode_data["titles"] = ep_titles
-
-        # Extract episode streaming links from resources
-        streaming: dict[str, str] = {}
-        ep_resources_element = episode_element.find("resources")
-        if ep_resources_element is not None:
-            for ep_resource_elem in ep_resources_element.findall("resource"):
-                resource_type = ep_resource_elem.get("type")
-
-                # Type 28 = Crunchyroll
-                if resource_type == "28":
-                    external_entity_elem = ep_resource_elem.find("externalentity")
-                    if external_entity_elem is not None:
-                        identifier_elem = external_entity_elem.find("identifier")
-                        if identifier_elem is not None and identifier_elem.text:
-                            streaming["crunchyroll"] = (
-                                f"https://www.crunchyroll.com/watch/{identifier_elem.text}"
-                            )
-
-        episode_data["streaming"] = streaming
-
-        return episode_data
-
-    def _parse_character_xml_basic(self, character: Element) -> dict[str, Any]:
-        """Parse character XML element into basic structured data.
-
-        Extracts character metadata from XML without network enrichment.
-        For performance, character detail enrichment is done separately in batch.
-
-        Args:
-            character: Character XML element to parse.
-
-        Returns:
-            Basic character data including id, type, name, gender,
-                description, rating, picture, and voice_actor from XML only.
-        """
-        # Normalize character type: "main character in" -> "Main", "secondary character in" -> "Secondary", "appears in" -> "Minor"
-        raw_type = character.get("type")
-        char_type = None
-        if raw_type:
-            if "main character" in raw_type.lower():
-                char_type = "Main"
-            elif "secondary character" in raw_type.lower():
-                char_type = "Secondary"
-            elif "appears in" in raw_type.lower():
-                char_type = "Minor"
-            else:
-                char_type = raw_type  # Keep original if unknown pattern
-
-        # Convert character ID to int
-        character_id_str = character.get("id")
-        character_id_int = int(character_id_str) if character_id_str else None
-
-        char_data: dict[str, Any] = {
-            "id": character_id_int,
-            "type": char_type,
-            "update": character.get("update"),
-        }
-
-        # Get character details from XML
-        name_element = character.find("name")
-        if name_element is not None:
-            char_data["name_main"] = name_element.text
-
-        gender_element = character.find("gender")
-        if gender_element is not None:
-            char_data["gender"] = gender_element.text
-
-        char_type_element = character.find("charactertype")
-        if char_type_element is not None:
-            char_data["character_type"] = char_type_element.text
-            char_type_id = char_type_element.get("id")
-            char_data["character_type_id"] = int(char_type_id) if char_type_id else None
-
-        description_element = character.find("description")
-        if description_element is not None:
-            char_data["description"] = description_element.text
-
-        # Character rating
-        rating_element = character.find("rating")
-        if rating_element is not None:
-            char_data["rating"] = (
-                float(rating_element.text) if rating_element.text else None
-            )
-            char_data["rating_votes"] = int(rating_element.get("votes", 0))
-
-        # Character picture - convert to full CDN URL
-        picture_element = character.find("picture")
-        if picture_element is not None and picture_element.text:
-            char_data["picture"] = f"{ANIDB_CDN_BASE}/{picture_element.text}"
-
-        # Voice actor
-        seiyuu_element = character.find("seiyuu")
-        if seiyuu_element is not None:
-            seiyuu_id = seiyuu_element.get("id")
-            seiyuu_picture = seiyuu_element.get("picture")
-            char_data["voice_actor"] = {
-                "name": seiyuu_element.text,
-                "id": int(seiyuu_id) if seiyuu_id else None,
-                "picture": (
-                    f"{ANIDB_CDN_BASE}/{seiyuu_picture}" if seiyuu_picture else None
-                ),
-            }
-
-        return char_data
-
-    async def _batch_fetch_character_details(
-        self, character_ids: list[int], max_concurrent: int = 3
-    ) -> dict[int, dict[str, Any]]:
-        """Fetch detailed character data in parallel batches.
-
-        Fetches character details from AniDB character pages with controlled
-        concurrency to respect rate limits. Uses semaphore to limit parallel
-        requests.
-
-        Args:
-            character_ids: List of character IDs to fetch details for.
-            max_concurrent: Maximum number of concurrent requests (default: 3).
-
-        Returns:
-            Dictionary mapping character ID to enriched character data.
-        """
-        if not character_ids:
-            return {}
-
-        enriched_data: dict[int, dict[str, Any]] = {}
-        semaphore = asyncio.Semaphore(max_concurrent)
-
-        async def fetch_with_semaphore(
-            char_id: int,
-        ) -> tuple[int, dict[str, Any] | None]:
-            """Fetch character data with semaphore control."""
-            async with semaphore:
-                try:
-                    detailed_data = await fetch_anidb_character(char_id)
-                    if detailed_data:
-                        logger.info(f"Enriched character {char_id} with detailed data")
-                        return (char_id, detailed_data)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to fetch detailed data for character {char_id}: {e}"
-                    )
-                return (char_id, None)
-
-        tasks = [fetch_with_semaphore(char_id) for char_id in character_ids]
-        results = await asyncio.gather(*tasks)
-
-        for char_id, char_data in results:
-            if char_data:
-                enriched_data[char_id] = char_data
-
-        logger.info(
-            f"Batch character enrichment: {len(enriched_data)}/{len(character_ids)} succeeded"
-        )
-        return enriched_data
-
-    async def get_anime_by_id(self, anidb_id: int) -> dict[str, Any] | None:
-        """Get anime information by AniDB ID.
-
-        Args:
-            anidb_id: AniDB anime ID.
-
-        Returns:
-            Parsed anime data if successful, None if not found or on error.
-        """
-        try:
-            params = {"request": "anime", "aid": anidb_id}
-            xml_response = await self._make_request(params)
-
-            if not xml_response:
-                logger.warning(f"No response for AniDB ID: {anidb_id}")
-                return None
-
-            logger.info(f"AniDB response preview: {xml_response[:200]}")
-
-            return await self._parse_anime_xml(xml_response)
-        except Exception:
-            logger.exception(f"Failed to fetch anime by AniDB ID {anidb_id}")
-            return None
 
     async def reset_circuit_breaker(self) -> bool:
-        """Manually reset circuit breaker to CLOSED state.
-
-        Admin function to force recovery after issues are resolved.
+        """Manually reset the circuit breaker to CLOSED state.
 
         Returns:
-            True if state was changed, False if already CLOSED.
+            True if the state was changed, False if it was already CLOSED.
         """
         if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
             old_state = self.circuit_breaker_state
@@ -1167,118 +417,341 @@ class AniDBHelper(BaseEnrichmentHelper):
             return True
         return False
 
-    async def close(self) -> None:
-        """Close and clean up the helper's internal HTTP session.
+    # =========================================================================
+    # RATE LIMITING
+    # =========================================================================
 
-        Closes the active session if it exists, clears the session
-        reference, and resets the session creation timestamp.
+    async def _adaptive_rate_limit(self, is_retry: bool = False) -> None:
+        """Apply adaptive rate limiting with exponential back-off on errors.
+
+        Args:
+            is_retry: When True, multiplies the calculated interval by 1.5
+                to add extra delay for retry attempts.
         """
+        current_time = time.time()
+        time_since_last = current_time - self.metrics.last_request_time
+
+        if self.metrics.consecutive_failures > 0:
+            error_multiplier = min(2**self.metrics.consecutive_failures, 8)
+            adaptive_interval = min(
+                self.error_cooldown_base * error_multiplier, self.max_request_interval
+            )
+        else:
+            adaptive_interval = self.min_request_interval
+
+        if is_retry:
+            adaptive_interval *= 1.5
+
+        if time_since_last < adaptive_interval:
+            wait_time = adaptive_interval - time_since_last
+            logger.info(f"Rate limiting: waiting {wait_time:.2f}s")
+            await asyncio.sleep(wait_time)
+
+        self.metrics.last_request_time = time.time()
+        self.metrics.current_interval = adaptive_interval
+
+    # =========================================================================
+    # HTTP SESSION
+    # =========================================================================
+
+    async def _ensure_session_health(self) -> None:
+        """Ensure an active HTTP session exists, recreating it if expired."""
+        current_time = time.time()
+        if (
+            self.session is None
+            or current_time - self._session_created_at > self._session_max_age
+        ):
+            if self.session:
+                await self.session.close()
+
+            headers = {
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": f"{self.client_name}/{self.client_version}",
+                "Accept": "application/xml, text/xml",
+                "Connection": "keep-alive",
+                "Cache-Control": "no-cache",
+            }
+            connector = aiohttp.TCPConnector(
+                limit=2,
+                limit_per_host=1,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                keepalive_timeout=60,
+                enable_cleanup_closed=True,
+            )
+            self.session = _cache_manager.get_aiohttp_session(
+                "anidb",
+                timeout=aiohttp.ClientTimeout(total=60, connect=30),
+                headers=headers,
+                connector=connector,
+            )
+            self._session_created_at = current_time
+
+    async def _make_request(self, params: dict[str, Any]) -> str | None:
+        """Serialise requests through a lock and delegate to retry logic.
+
+        Args:
+            params: AniDB API query parameters.
+
+        Returns:
+            Decoded response content, or None on failure.
+        """
+        async with self._request_lock:
+            return await self._make_request_with_retry(params)
+
+    async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
+        """Make a request with exponential back-off retry and circuit breaker checks.
+
+        Args:
+            params: AniDB API query parameters.
+
+        Returns:
+            Decoded response content, or None if all attempts fail.
+
+        Raises:
+            ServiceNetworkError: After all retry attempts are exhausted.
+        """
+        last_exception = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                is_retry = attempt > 0
+                if not await self._check_circuit_breaker():
+                    return None
+
+                await self._adaptive_rate_limit(is_retry=is_retry)
+                await self._ensure_session_health()
+
+                result = await self._make_single_request(params, attempt)
+                if result is not None:
+                    self.metrics.successful_requests += 1
+                    self._update_circuit_breaker(success=True)
+                    return result
+                else:
+                    self.metrics.failed_requests += 1
+                    self._update_circuit_breaker(success=False)
+                    if attempt < self.max_retries:
+                        wait = (2**attempt) + (time.time() % 1)
+                        logger.warning(
+                            f"Request failed, retrying in {wait:.2f}s (attempt {attempt + 1})"
+                        )
+                        await asyncio.sleep(wait)
+
+            except Exception as e:
+                last_exception = e
+                self.metrics.failed_requests += 1
+                self._update_circuit_breaker(success=False)
+                if attempt < self.max_retries:
+                    wait = (2**attempt) + (time.time() % 1)
+                    logger.warning(f"Request exception, retrying in {wait:.2f}s: {e}")
+                    await asyncio.sleep(wait)
+                else:
+                    logger.exception(
+                        f"Request failed after {self.max_retries + 1} attempts"
+                    )
+            finally:
+                self.metrics.total_requests += 1
+
+        if last_exception:
+            raise ServiceNetworkError(service="anidb", cause=last_exception)
+        return None
+
+    async def _make_single_request(
+        self, params: dict[str, Any], attempt: int
+    ) -> str | None:
+        """Make a single HTTP request to the AniDB API.
+
+        Handles gzip decompression and AniDB-specific error status codes
+        (503 service unavailable, 555 banned).
+
+        Args:
+            params: AniDB API query parameters.
+            attempt: Zero-based attempt number (used for debug logging).
+
+        Returns:
+            Decoded XML string on success, or None on error responses.
+
+        Raises:
+            RuntimeError: If the session has not been initialised.
+            ServiceBlockedError: On HTTP 555 (banned/rate-limit violation).
+        """
+        request_params = {
+            **params,
+            "client": self.client_name,
+            "clientver": self.client_version,
+            "protover": os.getenv("ANIDB_PROTOVER", "1"),
+        }
+
+        if self.session is None:
+            raise RuntimeError("Session not initialized")
+
+        async with self.session.get(self.base_url, params=request_params) as response:
+            if response.status == 200:
+                content = await response.read()
+                if content.startswith(b"\x1f\x8b"):
+                    content = gzip.decompress(content)
+
+                text = self._decode_content(content)
+                if text and not text.strip().startswith("<error"):
+                    return text
+                if text and "<error" in text:
+                    logger.warning(f"AniDB error response: {text[:200]}")
+                return None
+
+            elif response.status == 503:
+                logger.warning("AniDB service unavailable (503)")
+                self.metrics.last_error_time = time.time()
+                return None
+
+            elif response.status == 555:
+                self.metrics.last_error_time = time.time()
+                self.circuit_breaker_state = CircuitBreakerState.OPEN
+                self.circuit_breaker_opened_at = time.time()
+                raise ServiceBlockedError(
+                    "banned/blocked (555) — serious rate limit violation",
+                    service="anidb",
+                )
+
+            else:
+                logger.warning(f"AniDB HTTP {response.status}")
+                self.metrics.last_error_time = time.time()
+                return None
+
+    def _decode_content(self, content: bytes) -> str | None:
+        """Decode raw response bytes using UTF-8 with latin-1 fallback.
+
+        Args:
+            content: Raw bytes from the HTTP response body.
+
+        Returns:
+            Decoded string, or None if all encodings fail.
+        """
+        for encoding in ("utf-8", "latin-1"):
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        logger.error("Failed to decode AniDB response content")  # pragma: no cover
+        return None  # pragma: no cover
+
+    # =========================================================================
+    # CONTEXT MANAGER
+    # =========================================================================
+
+    async def close(self) -> None:
+        """Close and release the internal HTTP session."""
         if self.session:
             try:
                 await self.session.close()
-                logger.debug("AniDB session closed successfully")
             except Exception as e:
                 logger.warning(f"Error closing AniDB session: {e}")
             finally:
                 self.session = None
                 self._session_created_at = 0
 
-    async def __aenter__(self) -> "AniDBHelper":
-        """Enter asynchronous context and return the helper instance.
 
-        Returns:
-            The helper instance for use within an async with block.
-        """
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> bool:
-        """Close the HTTP session when exiting async context.
-
-        Awaits close() to release network resources.
-
-        Args:
-            exc_type: Exception type if an exception was raised.
-            exc_val: Exception value if an exception was raised.
-            exc_tb: Exception traceback if an exception was raised.
-
-        Returns:
-            False to not suppress exceptions raised within the context.
-        """
-        await self.close()
-        return False
+# =============================================================================
+# CLI TEST DRIVER
+# =============================================================================
 
 
-async def main() -> int:
-    """Command-line test driver for AniDB data fetching.
+def _write_json(path: str, data: object) -> None:  # pragma: no cover
+    safe = sanitize_output_path(path)
+    with open(safe, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    logger.info(f"Saved to {safe}")
 
-    Parses command-line options (--anidb-id, --output), fetches anime data
-    by ID using AniDBHelper, and saves the result to the specified
-    output path.
 
-    Returns:
-        Exit code where 0 indicates success and 1 indicates failure, no data
-            found, or interruption.
-    """
-    parser = argparse.ArgumentParser(description="Test AniDB data fetching")
-    parser.add_argument("--anidb-id", type=int, required=True, help="AniDB ID to fetch")
-    parser.add_argument(
-        "--output", type=str, default="test_anidb_output.json", help="Output file path"
+async def main() -> int:  # pragma: no cover
+    """CLI entrypoint for inspecting AniDB data fetching."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Fetch data from AniDB HTTP API")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_anime = sub.add_parser("anime", help="Fetch anime metadata")
+    p_anime.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_anime.add_argument("output_file", help="Output JSON file")
+    p_anime.add_argument(
         "--save-xml",
         type=str,
         nargs="?",
-        const="",  # Use empty string to trigger default naming
-        default=None,  # None when flag not provided
-        help="Save raw XML response (default: anidb_{id}_raw.xml in repo root, or specify custom path)",
+        const="",
+        default=None,
+        help="Also save raw XML (default: anidb_{id}_raw.xml)",
+    )
+
+    p_eps = sub.add_parser("episodes", help="Fetch regular episodes")
+    p_eps.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_eps.add_argument("output_file", help="Output JSON file")
+
+    p_chars = sub.add_parser("characters", help="Fetch character data")
+    p_chars.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_chars.add_argument(
+        "output_file",
+        help="Output JSONL file (written live as each character is fetched)",
+    )
+
+    p_all = sub.add_parser("all", help="Fetch anime, episodes, and characters")
+    p_all.add_argument(
+        "anidb_url", help="AniDB anime URL (e.g. https://anidb.net/anime/69)"
+    )
+    p_all.add_argument(
+        "output_dir",
+        help="Directory to write anidb_anime.json, anidb_episodes.json, anidb_characters.json",
     )
 
     args = parser.parse_args()
-
-    # Setup logging
-    logging.basicConfig(level=logging.INFO)
-
     helper = AniDBHelper()
 
     try:
-        params = {"request": "anime", "aid": args.anidb_id}
-        xml_response = await helper._make_request(params)
-
-        if not xml_response:
-            logger.error("No response from AniDB")
+        anime_dict, anime_model = await helper._fetch_anime(args.anidb_url)
+        if not anime_dict or not anime_model:
+            logger.error(f"No data returned for: {args.anidb_url}")
             return 1
 
-        if args.save_xml is not None:
-            xml_path = (
-                args.save_xml if args.save_xml else f"anidb_{args.anidb_id}_raw.xml"
+        if args.cmd == "anime":
+            if args.save_xml is not None:
+                match = re.search(r"/anime/(\d+)", args.anidb_url)
+                if match:
+                    xml_response = await helper._fetch_xml(int(match.group(1)))
+                    if xml_response:
+                        xml_path = args.save_xml or f"anidb_{match.group(1)}_raw.xml"
+                        with open(
+                            sanitize_output_path(xml_path), "w", encoding="utf-8"
+                        ) as f:
+                            f.write(xml_response)
+                        logger.info(f"Raw XML saved to {xml_path}")
+            _write_json(args.output_file, anime_dict)
+
+        elif args.cmd == "episodes":
+            episodes = await helper._fetch_episodes(anime_model)
+            _write_json(args.output_file, episodes)
+
+        elif args.cmd == "characters":
+            await helper._fetch_characters(anime_model, output_path=args.output_file)
+
+        elif args.cmd == "all":
+            os.makedirs(args.output_dir, exist_ok=True)
+            episodes = await helper._fetch_episodes(anime_model)
+            characters = await helper._fetch_characters(anime_model)
+            _write_json(os.path.join(args.output_dir, "anidb_anime.json"), anime_dict)
+            _write_json(os.path.join(args.output_dir, "anidb_episodes.json"), episodes)
+            _write_json(
+                os.path.join(args.output_dir, "anidb_characters.json"), characters
             )
-            safe_xml_path = sanitize_output_path(xml_path)
-            with open(safe_xml_path, "w", encoding="utf-8") as f:
-                f.write(xml_response)
-            logger.info(f"Raw XML saved to {safe_xml_path}")
-
-        anime_data = await helper._parse_anime_xml(xml_response)
-
-        if anime_data:
-            safe_path = sanitize_output_path(args.output)
-            with open(safe_path, "w", encoding="utf-8") as f:
-                json.dump(anime_data, f, indent=2, ensure_ascii=False)
-            return 0
-        else:
-            logger.error("No data found")
-            return 1
 
     except KeyboardInterrupt:
-        logger.info("Operation cancelled by user")
         return 1
-    except Exception:
-        logger.exception("Main execution failed")
-        return 1
+    else:
+        return 0
     finally:
         await helper.close()
 

@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from enrichment.sources.base.framework.interfaces import IRepository, ITransport
+from enrichment.sources.base.framework.interfaces import IRepository
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -49,15 +49,13 @@ class BaseCrawler(Generic[T_Source, T_Canonical], ABC):  # noqa: UP046
             ``None``, the save step is skipped.
     """
 
-    def __init__(self, transport: ITransport, repository: IRepository | None = None):
-        """Initialise with a transport and an optional repository.
+    def __init__(self, repository: IRepository | None = None):
+        """Initialise with an optional repository.
 
         Args:
-            transport: Network transport (e.g. ``DockerTransport``).
             repository: Where to persist results after mapping.  Pass
                 ``NullRepository()`` (or ``None``) to skip persistence.
         """
-        self.transport = transport
         self.repository = repository
 
     async def crawl(self, identifier: str) -> T_Canonical | None:

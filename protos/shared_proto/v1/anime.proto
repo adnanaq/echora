@@ -433,6 +433,7 @@ message Anime {
   repeated CompanyEntry producers = 40;
   repeated CompanyEntry studios = 41;
   optional AnimeHiatus hiatus = 42;
+  map<string, string> titles = 43;
 }
 
 message AnimeRecord {

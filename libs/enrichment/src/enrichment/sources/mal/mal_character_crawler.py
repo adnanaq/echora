@@ -1,35 +1,24 @@
-"""MAL Character Detail Crawler.
+"""MAL character detail crawler — zendriver + lxml XPath.
 
-Two public functions:
-    fetch_mal_character(url)   — /character/{id}       → dict[str, Any] | None
-    fetch_mal_characters(urls) — batch /character/{id} → list[dict[str, Any] | None]
+CLI usage::
 
-Usage:
-    from enrichment.sources.mal.mal_character_crawler import (
-        fetch_mal_character,
-        fetch_mal_characters,
-    )
-    char = await fetch_mal_character("https://myanimelist.net/character/40/Luffy")
-    chars = await fetch_mal_characters([url1, url2, url3])
+    uv run python -m enrichment.sources.mal.mal_character_crawler <url> [--output path]
+
+Example::
+
+    uv run python -m enrichment.sources.mal.mal_character_crawler \\
+        https://myanimelist.net/character/40/Luffy_Monkey_D --output luffy.json
 """
 
 import argparse
 import asyncio
-import json
 import logging
 import re
 import sys
-from typing import Any
+from typing import Any, cast
 
-from enrichment.sources.base.crawl4ai_docker import crawl_batch_urls
-from enrichment.sources.base.crawler_config import (
-    CrawlerRateLimiter,
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     NullRepository,
 )
@@ -51,54 +40,88 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_limiter = CrawlerRateLimiter(min_interval_seconds=10.0, max_per_minute=25)
+_INTER_REQUEST_DELAY = 3.0
 
-_CHARACTER_BATCH_SIZE = 30
+# ---------------------------------------------------------------------------
+# XPath selectors — anchored on structural attributes rather than CSS class
+# names, which change frequently on MAL.
+# ---------------------------------------------------------------------------
+
+_XPATHS: dict[str, str] = {
+    # Character name — h2.normal_header: "Name (NativeName)" on all MAL
+    # character pages; only element providing both names in one extraction.
+    "name_header": "//h2[contains(@class,'normal_header')]",
+    # Character portrait image in the fixed-width left sidebar
+    "image_src": (
+        "//td[@width='225' and contains(@class,'borderClass')]"
+        "//img[contains(@class,'portrait')]/@data-src"
+    ),
+    # Favorites count td in the left column
+    "favorites_td": "//td[contains(normalize-space(),'Member Favorites:')]",
+    # Full content block — parsed by regex helpers for bio, ography, VA sections
+    "content": "//div[@id='content']",
+}
 
 
-def _get_character_schema() -> dict[str, Any]:
-    """XPath extraction schema for MAL character detail pages.
+# ---------------------------------------------------------------------------
+# HTML extraction
+# ---------------------------------------------------------------------------
 
-    Anchors on structural attributes (id, width) and text content rather than
-    CSS class names, which change frequently. The bulk of parsing (bio, ography,
-    voice actors) is done by Python helpers operating on the raw content_html block.
+
+def _extract_character_from_html(html: str) -> dict[str, Any] | None:
+    """Parse a MAL character detail page into the raw field dict.
+
+    Args:
+        html: Full HTML of a MAL character detail page.
+
+    Returns:
+        Dict with ``name_header``, ``image_src``, ``favorites``, and
+        ``content_html`` keys, or None if the page cannot be parsed.
     """
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser(encoding="utf-8")
+        tree = etree.fromstring(html.encode(), parser)
+        if tree is None:  # pragma: no cover
+            return None  # pragma: no cover
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+    name_els = cast(list[Any], tree.xpath(_XPATHS["name_header"]))
+    name_header = "".join(name_els[0].itertext()).strip() if name_els else None
+
+    img_vals = cast(list[str], tree.xpath(_XPATHS["image_src"]))
+    image_src = img_vals[0].strip() if img_vals else None
+
+    fav_tds = cast(list[Any], tree.xpath(_XPATHS["favorites_td"]))
+    favorites: str | None = None
+    if fav_tds:
+        fav_text = "".join(fav_tds[0].itertext())
+        m = re.search(r"Member Favorites:\s*([\d,]+)", fav_text)
+        favorites = m.group(1) if m else None
+
+    content_els = cast(list[Any], tree.xpath(_XPATHS["content"]))
+    content_html = (
+        etree.tostring(content_els[0], encoding="unicode", method="html")
+        if content_els
+        else None
+    )
+
+    if not name_header and not content_html:
+        return None
+
     return {
-        "name": "MalCharacterDetail",
-        "baseSelector": "//body",
-        "fields": [
-            # Character name — h2.normal_header contains "Name (NativeName)" on all
-            # MAL character pages. It is the only element that provides both the
-            # canonical name and the native (kanji) name in a single extraction.
-            # <title> and og:title live in <head>, unreachable from baseSelector //body.
-            {
-                "name": "name_header",
-                "selector": "//h2[contains(@class,'normal_header')]",
-                "type": "text",
-            },
-            # Character image — portrait class in the fixed-width left sidebar td
-            # (no itemprop on character pages unlike anime pages)
-            {
-                "name": "image_src",
-                "selector": "//td[@width='225' and contains(@class,'borderClass')]//img[contains(@class,'portrait')]",
-                "type": "attribute",
-                "attribute": "data-src",
-            },
-            # Favorites count — plain text node in the left column td
-            {
-                "name": "favorites",
-                "selector": "//td[contains(normalize-space(),'Member Favorites:')]",
-                "type": "regex",
-                "pattern": r"Member Favorites:\s*([\d,]+)",
-            },
-            # Full content block — parsed by Python helpers for bio, ography, VA sections
-            {
-                "name": "content_html",
-                "selector": "//div[@id='content']",
-                "type": "html",
-            },
-        ],
+        "name_header": name_header,
+        "image_src": image_src,
+        "favorites": favorites,
+        "content_html": content_html or "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Post-processing helpers (pure transforms — operate on raw content_html)
+# ---------------------------------------------------------------------------
 
 
 def _extract_name_and_native(
@@ -366,44 +389,75 @@ def _extract_ography(content_html: str, section: str) -> list[MalOgraphyEntry]:
     return results
 
 
+# ---------------------------------------------------------------------------
+# Browser navigation helper
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_character_html(browser: Any, url: str) -> tuple[str, str] | None:
+    """Navigate to a MAL character URL and return (html, canonical_url).
+
+    The Voice Actors section uses intersection-observer lazy loading — it only
+    renders when scrolled into view. scroll_down triggers it before capture.
+
+    Args:
+        browser: Active zendriver browser instance.
+        url: MAL character URL.
+
+    Returns:
+        Tuple of (rendered HTML, canonical URL after redirect), or None on failure.
+    """
+    try:
+        page = await browser.get(url)
+        await page.wait_for(selector="h2.normal_header", timeout=10)
+        await page.scroll_down(amount=1000, speed=3000)
+        await asyncio.sleep(2)
+        return await page.get_content(), page.url or url
+    except Exception as exc:
+        logger.warning(f"navigation failed for {url}: {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Fetch + cache
+# ---------------------------------------------------------------------------
+
+
 @cached_result(
     ttl=TTL_MAL,
     key_prefix="mal_character_detail",
-    dependencies=[
-        _get_character_schema,
-        _extract_name_and_native,
-        _extract_bio_data,
-        _extract_description,
-        _extract_voice_actors,
-        _extract_ography,
-    ],
+    dependencies=[_extract_character_from_html],
 )
 async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | None:
-    """Fetch /character/{id} and extract character detail. Cached by url.
+    """Fetch a MAL character detail page via zendriver. Cached by URL.
+
+    Args:
+        url: Full MAL character URL.
 
     Returns:
-        (raw, canonical_url) on success, None on failure.
+        Tuple of (raw extraction dict, canonical URL), or None on failure.
     """
-    await _limiter.acquire()
-    results = await crawl_batch_urls(
-        [url],
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_character_schema()),
-    )
-    result = results[0] if results else None
-    if not result:
+    import zendriver as zd
+
+    browser = await zd.start(headless=False)
+    try:
+        result = await _fetch_character_html(browser, url)
+    finally:
+        try:
+            await browser.stop()
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
+
+    if result is None:
         return None
 
-    status = result.get("status_code")
-    if status and status != 200:
-        logger.error(f"HTTP {status} for character {url}")
+    html, canonical_url = result
+    raw = _extract_character_from_html(html)
+    if raw is None:
+        logger.warning(f"extraction failed for character {url}")
         return None
 
-    raw_list = json.loads(result.get("extracted_content") or "[]")
-    if not raw_list:
-        return None
-    canonical_url = result.get("metadata", {}).get("og:url") or url
-    return raw_list[0], canonical_url
+    return raw, canonical_url
 
 
 def _build_character_from_raw(raw: dict[str, Any], url: str) -> MalCharacter:
@@ -441,11 +495,19 @@ def _build_character_from_raw(raw: dict[str, Any], url: str) -> MalCharacter:
     )
 
 
+# ---------------------------------------------------------------------------
+# Crawler class
+# ---------------------------------------------------------------------------
+
+
 class MalCharacterCrawler(BaseCrawler[MalCharacter, dict[str, Any]]):
-    """Crawler for MyAnimeList character detail pages."""
+    """Crawler for MyAnimeList character detail pages.
+
+    Uses zendriver for browser automation and lxml XPath for extraction.
+    """
 
     def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_character_schema()
+        return {"xpaths": _XPATHS}
 
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
@@ -468,6 +530,11 @@ class MalCharacterCrawler(BaseCrawler[MalCharacter, dict[str, Any]]):
         return character_from_mal(source_model)
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 async def fetch_mal_character(
     url: str, output_path: str | None = None
 ) -> dict[str, Any] | None:
@@ -481,7 +548,7 @@ async def fetch_mal_character(
         Canonical character dict, or None on failure.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await MalCharacterCrawler(DockerTransport(), repo).crawl(url)
+    return await MalCharacterCrawler(repo).crawl(url)
 
 
 async def fetch_mal_characters(
@@ -489,10 +556,12 @@ async def fetch_mal_characters(
     *,
     output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
-    """Fetch multiple character detail pages in a single batch Docker job.
+    """Fetch multiple character detail pages in a single shared browser session.
 
-    All URLs are submitted at once; Docker processes them at MAX_CONCURRENT_TASKS
-    concurrency. Much faster than sequential single fetches for large casts.
+    Cache is checked upfront for all URLs in one round-trip. Hits are returned
+    immediately. Misses are fetched sequentially in one persistent zendriver
+    session with inter-request delays. Each result is cached immediately so
+    progress is not lost on cancellation.
 
     Args:
         urls: List of full MAL character URLs.
@@ -517,7 +586,7 @@ async def fetch_mal_characters(
     def _parse_cached(value: Any) -> dict[str, Any] | None:
         if not value:
             return None
-        if isinstance(value, (list, tuple)) and len(value) == 2:
+        if isinstance(value, list | tuple) and len(value) == 2:
             raw, canonical_url = value
         else:
             return None
@@ -538,53 +607,53 @@ async def fetch_mal_characters(
         return characters
 
     missing_indices = sorted(set(missing_indices))
-    missing_urls = [urls[i] for i in missing_indices]
 
-    for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
-        chunk_urls = missing_urls[offset : offset + _CHARACTER_BATCH_SIZE]
-        chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
-        cache_values: list[tuple[dict[str, Any], str] | None] = [None] * len(chunk_urls)
+    import zendriver as zd
 
-        await _limiter.acquire()
-        results = await crawl_batch_urls(
-            chunk_urls,
-            browser_config=get_docker_browser_config(),
-            crawler_config=get_docker_crawler_config(_get_character_schema()),
-        )
+    browser = await zd.start(headless=False)
+    try:
+        for i, idx in enumerate(missing_indices):
+            url = urls[idx]
+            result = await _fetch_character_html(browser, url)
+            if result is None:
+                characters[idx] = None
+                continue
 
-        for idx_in_chunk, result in enumerate(results):
-            out_index = chunk_indices[idx_in_chunk]
-            if not result:
-                characters[out_index] = None
+            html, canonical_url = result
+            raw = _extract_character_from_html(html)
+            if raw is None:
+                logger.warning(f"extraction failed for character {url}")
+                characters[idx] = None
                 continue
-            url = result.get("metadata", {}).get("og:url") or result["url"]
-            status = result.get("status_code")
-            if status and status != 200:
-                logger.error(f"HTTP {status} for character {url}")
-                characters[out_index] = None
-                continue
-            raw_list = json.loads(result.get("extracted_content") or "[]")
-            if not raw_list:
-                characters[out_index] = None
-                continue
-            raw_for_cache = raw_list[0]
-            canonical = character_from_mal(
-                _build_character_from_raw(raw_for_cache, url)
+
+            # Cache immediately so cancellation doesn't lose progress
+            await _fetch_mal_character_data.cache_batch_set(  # type: ignore[attr-defined]
+                [url], [(raw, canonical_url)]
             )
-            characters[out_index] = canonical
-            cache_values[idx_in_chunk] = (raw_for_cache, url)
+
+            canonical = character_from_mal(
+                _build_character_from_raw(raw, canonical_url)
+            )
+            characters[idx] = canonical
             repo.save(canonical)
 
-        await _fetch_mal_character_data.cache_batch_set(  # type: ignore[attr-defined]
-            chunk_urls,
-            cache_values,
-        )
+            if i < len(missing_indices) - 1:
+                await asyncio.sleep(_INTER_REQUEST_DELAY)
+    finally:
+        try:
+            await browser.stop()
+        except Exception as exc:
+            logger.debug(f"browser stop failed: {exc}")
 
     return characters
 
 
 async def main() -> int:
-    """Fetch a single MAL character and write the mapped result to JSON."""
+    """CLI entry point for fetching a MAL character page.
+
+    Returns:
+        0 on success, 1 if extraction fails.
+    """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )

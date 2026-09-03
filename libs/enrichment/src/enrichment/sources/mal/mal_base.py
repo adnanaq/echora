@@ -13,10 +13,8 @@ All crawlers import from this module — no duplicated boilerplate.
 import logging
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import Any
 
-from enrichment.sources.base.crawler_config import CrawlerRateLimiter
 from enrichment.sources.base.utils import (
     parse_broadcast_string as parse_broadcast_string,
 )  # noqa: F401
@@ -27,26 +25,6 @@ logger = logging.getLogger(__name__)
 
 # MAL base URL
 MAL_BASE_URL = "https://myanimelist.net"
-
-
-# =============================================================================
-# RATE LIMITER
-# =============================================================================
-
-
-def get_mal_scraping_limiter() -> CrawlerRateLimiter:
-    """Create a MAL scraping rate limiter with conservative timing.
-
-    Uses 2s intervals and 25 requests/minute (vs 0.5s/60rpm for Jikan).
-    Scraping is heavier than API calls — be respectful to MAL servers.
-    """
-    return CrawlerRateLimiter(min_interval_seconds=2.0, max_per_minute=25)
-
-
-@lru_cache(maxsize=1)
-def get_shared_mal_rate_limiter() -> CrawlerRateLimiter:
-    """Return a process-wide shared limiter instance for all MAL requests."""
-    return CrawlerRateLimiter(min_interval_seconds=0.5, max_per_minute=60)
 
 
 # =============================================================================

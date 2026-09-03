@@ -1,19 +1,22 @@
-"""AniSearch Character Detail Crawler.
+"""AniSearch Character Detail Crawler — zendriver + lxml XPath.
 
 Two public functions:
     fetch_anisearch_character(url)   — single character detail page
     fetch_anisearch_characters(refs) — batch character detail pages
 
 Character name, native name, image, description, and anime appearances are
-extracted via XPath. Voice actors (multi-language, per-li language block)
-are extracted via regex on the full page HTML, stored alongside XPath fields.
+extracted via lxml XPath on the raw page HTML. Voice actors (multi-language,
+per-li language block) are extracted via regex on the full page HTML alongside
+XPath fields.
+
+A single persistent Chrome session is reused across all navigations in a batch
+to avoid repeated browser startup overhead and to maintain session state.
 """
 
 import asyncio
-import json
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchCharacter,
@@ -21,17 +24,10 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchVoiceActorRef,
 )
 from enrichment.sources.anisearch.anisearch_mapper import character_from_anisearch
-from enrichment.sources.base.crawl4ai_docker import crawl_batch_urls
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.base.framework import (
     BaseCrawler,
-    DockerTransport,
     FileRepository,
     IRepository,
-    ITransport,
     NullRepository,
 )
 from http_cache.config import get_cache_config
@@ -43,13 +39,38 @@ _CACHE_CONFIG = get_cache_config()
 TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
+_INTER_REQUEST_DELAY = 3.0  # seconds between browser navigations
 _CHARACTER_BATCH_SIZE = 20
+
+# ---------------------------------------------------------------------------
+# XPath selectors — direct lxml XPath, anchored on structural attributes
+# ---------------------------------------------------------------------------
+
+_XPATHS: dict[str, str] = {
+    "name": "//h1[@id='htitle']",
+    "name_native": (
+        "//ul[contains(@class,'infoblock')]"
+        "//div[@class='title'][@lang='ja']/span[@class='grey']"
+    ),
+    "image": "//img[@id='details-cover']/@src",
+    "favorites": "//a[contains(@href,'/favorites')]//b",
+    "tags": "//ul[contains(@class,'cloud')]//a[contains(@class,'gt')]",
+    "description": (
+        "//section[@id='description']//div[@lang='en'][contains(@class,'textblock')]"
+    ),
+    "screenshot_images": "//section[@id='images']//a[@class='loupe']/@href",
+    "picture_images": "//section[@id='pictures']//img/@src",
+    "anime_roles": "//section[@id='anime']//li//a[contains(@href,'anime/')]",
+    # Ography sub-pages (/anime and /manga)
+    "ography_entries": (
+        "//ul[@class='covers']//a[contains(@href,'anime/') or contains(@href,'manga/')]"
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Pre-compiled regex patterns
 # ---------------------------------------------------------------------------
 
-# Isolate the infoblock ul so we only iterate its li elements
 _INFOBLOCK_RE = re.compile(
     r'<ul[^>]+class="[^"]*\binfoblock\b[^"]*"[^>]*>(.*?)</ul>',
     re.DOTALL | re.IGNORECASE,
@@ -61,7 +82,6 @@ _SEIYUU_LINK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Maps ISO country code (from img alt / lang attr) to human-readable language name
 _LANG_CODE_MAP: dict[str, str] = {
     "ja": "Japanese",
     "en": "English",
@@ -75,228 +95,152 @@ _LANG_CODE_MAP: dict[str, str] = {
     "zh": "Chinese",
 }
 
-# Placeholder text AniSearch shows when no description is entered
 _DESCRIPTION_PLACEHOLDER_RE = re.compile(
     r"would help many anime and manga fans", re.IGNORECASE
 )
 _STRIP_TAGS_RE = re.compile(r"<[^>]+>")
 
-
 # ---------------------------------------------------------------------------
-# XPath schema
+# lxml extraction helpers
 # ---------------------------------------------------------------------------
 
 
-def _get_character_schema() -> dict[str, Any]:
-    """XPath schema for AniSearch character detail page.
+def _extract_character_from_html(html: str) -> dict[str, Any] | None:
+    """Parse an AniSearch character page HTML into the raw field dict.
 
-    Simple fields extracted via XPath; full HTML stored as _html for
-    regex-based voice actor extraction across language blocks.
+    Returns a dict with the same field names and value types so all downstream
+    helpers (_post_process_character, _build_character_from_raw, etc.) are
+    unchanged. Returns None if the HTML cannot be parsed.
     """
+    from lxml import etree
+
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html.encode(), parser)
+        if tree is None:
+            return None
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
+
+    def _text(key: str) -> str | None:
+        els = cast(list[Any], tree.xpath(_XPATHS[key]))
+        if not els:
+            return None
+        el = els[0]
+        return " ".join(el.itertext()).strip() or None
+
+    def _attr(key: str) -> str | None:
+        vals = cast(list[str], tree.xpath(_XPATHS[key]))
+        return vals[0].strip() if vals else None
+
+    name = _text("name")
+    name_native = _text("name_native")
+    image = _attr("image")
+
+    fav_els = cast(list[Any], tree.xpath(_XPATHS["favorites"]))
+    favorites = " ".join(fav_els[0].itertext()).strip() if fav_els else None
+
+    tag_els = cast(list[Any], tree.xpath(_XPATHS["tags"]))
+    tags = [
+        {"name": " ".join(el.itertext()).strip()}
+        for el in tag_els
+        if " ".join(el.itertext()).strip()
+    ]
+
+    desc_els = cast(list[Any], tree.xpath(_XPATHS["description"]))
+    description = " ".join(desc_els[0].itertext()).strip() if desc_els else None
+
+    screenshot_hrefs = cast(list[str], tree.xpath(_XPATHS["screenshot_images"]))
+    screenshot_images = [{"url": h} for h in screenshot_hrefs if h]
+
+    picture_srcs = cast(list[str], tree.xpath(_XPATHS["picture_images"]))
+    picture_images = [{"url": s} for s in picture_srcs if s]
+
+    role_els = cast(list[Any], tree.xpath(_XPATHS["anime_roles"]))
+    anime_roles = []
+    for el in role_els:
+        href = el.get("href") or ""
+        title_nodes = cast(list[Any], el.xpath(".//span[@class='title']"))
+        title = " ".join(title_nodes[0].itertext()).strip() if title_nodes else ""
+        if href or title:
+            anime_roles.append({"url": href, "title": title})
+
     return {
-        "name": "AniSearchCharacterDetail",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "name",
-                "selector": "//h1[@id='htitle']",
-                "type": "text",
-            },
-            {
-                # Direct child span.grey of div.title[lang=ja] — the native name.
-                # Sibling span.grey elements exist inside spoiler spans (deeper in the tree).
-                "name": "name_native",
-                "selector": "//ul[contains(@class,'infoblock')]//div[@class='title'][@lang='ja']/span[@class='grey']",
-                "type": "text",
-            },
-            {
-                "name": "image",
-                "selector": "//img[@id='details-cover']",
-                "type": "attribute",
-                "attribute": "src",
-            },
-            {
-                # Favourites count: <span class="afake">Favourites</span><b>677</b>
-                "name": "favorites",
-                "selector": "//a[contains(@href,'/favorites')]//b",
-                "type": "text",
-            },
-            {
-                "name": "tags",
-                "selector": "//ul[contains(@class,'cloud')]//a[contains(@class,'gt')]",
-                "type": "list",
-                "fields": [{"name": "name", "selector": ".", "type": "text"}],
-            },
-            {
-                "name": "description",
-                "selector": "//section[@id='description']//div[@lang='en'][contains(@class,'textblock')]",
-                "type": "text",
-            },
-            {
-                # Screenshots — full-size URLs from the loupe anchor hrefs.
-                "name": "screenshot_images",
-                "selector": "//section[@id='images']//a[@class='loupe']",
-                "type": "list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    }
-                ],
-            },
-            {
-                # More presentations (manga covers, game art) — direct img src.
-                "name": "picture_images",
-                "selector": "//section[@id='pictures']//img",
-                "type": "list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "src",
-                    }
-                ],
-            },
-            {
-                # Anime appearances from the swiper section — title and relative URL.
-                "name": "anime_roles",
-                "selector": "//section[@id='anime']//li//a[contains(@href,'anime/')]",
-                "type": "list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                    {
-                        "name": "title",
-                        "selector": ".//span[@class='title']",
-                        "type": "text",
-                    },
-                ],
-            },
-        ],
+        "name": name,
+        "name_native": name_native,
+        "image": image,
+        "favorites": favorites,
+        "tags": tags,
+        "description": description,
+        "screenshot_images": screenshot_images,
+        "picture_images": picture_images,
+        "anime_roles": anime_roles,
+        "_html": html,
     }
 
 
-# ---------------------------------------------------------------------------
-# Ography sub-page schema
-# ---------------------------------------------------------------------------
+def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
+    """Parse an AniSearch /anime or /manga ography sub-page HTML.
 
-
-def _get_ography_schema() -> dict[str, Any]:
-    """XPath schema for /anime and /manga character sub-pages.
-
-    Both pages share ul.covers with per-item anchor + span.title.
+    Returns a list of {url, title} dicts with absolute URLs, or None if the
+    HTML cannot be parsed or contains no entries.
     """
-    return {
-        "name": "AniSearchCharacterOgraphy",
-        "baseSelector": "//body",
-        "fields": [
-            {
-                "name": "entries",
-                "selector": "//ul[@class='covers']//a[contains(@href,'anime/') or contains(@href,'manga/')]",
-                "type": "list",
-                "fields": [
-                    {
-                        "name": "url",
-                        "selector": ".",
-                        "type": "attribute",
-                        "attribute": "href",
-                    },
-                    {
-                        "name": "title",
-                        "selector": ".//span[@class='title']",
-                        "type": "text",
-                    },
-                ],
-            }
-        ],
-    }
+    from lxml import etree
 
+    try:
+        parser = etree.HTMLParser()
+        tree = etree.fromstring(html.encode(), parser)
+    except Exception:  # pragma: no cover
+        return None  # pragma: no cover
 
-@cached_result(
-    ttl=TTL_ANISEARCH,
-    key_prefix="anisearch_character_ography",
-    dependencies=[_get_ography_schema],
-)
-async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None:
-    """Fetch a single /anime or /manga ography sub-page. Cached by URL."""
-    results = await crawl_batch_urls(
-        [url],
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_ography_schema()),
-    )
-    result = results[0] if results else None
-    if not result:
-        return None
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for ography {url}")
-        return None
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        return None
-    return [
-        {
-            "url": _absolutize_anime_url(e["url"]),
-            "title": (e.get("title") or "").strip(),
-        }
-        for e in (items[0].get("entries") or [])
-        if e.get("url") and (e.get("title") or "").strip()
-    ]
-
-
-def _parse_ography_result(
-    result: dict[str, Any] | None, sub_url: str
-) -> list[dict[str, Any]] | None:
-    """Parse a raw crawl result for an ography sub-page."""
-    if not result:
-        return None
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for ography {sub_url}")
-        return None
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        return None
-    return [
-        {
-            "url": _absolutize_anime_url(e["url"]),
-            "title": (e.get("title") or "").strip(),
-        }
-        for e in (items[0].get("entries") or [])
-        if e.get("url") and (e.get("title") or "").strip()
-    ]
-
-
-def _ography_to_roles(
-    entries: list[dict[str, Any]] | None,
-) -> list[AniSearchCharacterAnimeRole]:
-    if not entries:
-        return []
-    return [
-        AniSearchCharacterAnimeRole(title=e["title"], url=e["url"])
-        for e in entries
-        if e.get("title")
-    ]
+    entry_els = cast(list[Any], tree.xpath(_XPATHS["ography_entries"]))
+    entries = []
+    for el in entry_els:
+        href = el.get("href") or ""
+        title_nodes = cast(list[Any], el.xpath(".//span[@class='title']"))
+        title = " ".join(title_nodes[0].itertext()).strip() if title_nodes else ""
+        if href and title:
+            entries.append(
+                {
+                    "url": _absolutize_anime_url(href),
+                    "title": title,
+                }
+            )
+    return entries
 
 
 # ---------------------------------------------------------------------------
-# Regex helper — voice actors
+# Browser navigation helper
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_page_html(
+    browser: Any, url: str, wait_selector: str | None = None
+) -> str | None:
+    """Navigate to url with an existing browser session and return page HTML.
+
+    If wait_selector is given, waits for that CSS selector to appear in the DOM
+    (up to 10s) instead of sleeping a fixed 2s. Falls back to a 2s sleep if no
+    selector is provided.
+    """
+    try:
+        page = await browser.get(url)
+        if wait_selector:
+            await page.wait_for(selector=wait_selector, timeout=10)
+        else:
+            await asyncio.sleep(2)
+        return await page.get_content()
+    except Exception as exc:
+        logger.warning("navigation failed for %s: %s", url, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Regex helpers — voice actors and attributes
 # ---------------------------------------------------------------------------
 
 
 def _extract_voice_actors(html: str) -> list[AniSearchVoiceActorRef]:
-    """Parse voice actor entries from the infoblock HTML.
-
-    Each li in the infoblock represents one language. Language is read from the
-    div.title[lang] attribute; VA links come from the adjacent div.seiyuu.
-    """
     infoblock_match = _INFOBLOCK_RE.search(html)
     if not infoblock_match:
         return []
@@ -325,23 +269,17 @@ _ATTR_EXCLUDED_CLASSES = frozenset({"title", "seiyuu", "anime", "manga"})
 
 
 def _extract_attributes(html: str) -> dict[str, str]:
-    """Extract character attribute divs from all infoblock li blocks.
-
-    English li values take priority; missing keys are filled from other lis.
-    Key = div class (spaces → '_'). Value = inner text with tags stripped, label removed.
-    """
     infoblock_match = _INFOBLOCK_RE.search(html)
     if not infoblock_match:
         return {}
 
-    li_blocks: list[tuple[str, str]] = []  # (lang_code, li_html)
+    li_blocks: list[tuple[str, str]] = []
     for li_match in _INFOBLOCK_LI_RE.finditer(infoblock_match.group(1)):
         li_html = li_match.group(1)
         lang_match = _TITLE_LANG_RE.search(li_html)
         lang = lang_match.group(1).lower() if lang_match else ""
         li_blocks.append((lang, li_html))
 
-    # English li first, then the rest
     li_blocks.sort(key=lambda t: (0 if t[0] == "en" else 1))
 
     def _attrs_from_li(li_html: str) -> dict[str, str]:
@@ -388,13 +326,24 @@ def _absolutize_anime_url(href: str) -> str:
 
 
 def _post_process_character(raw: dict[str, Any]) -> dict[str, Any]:
-    """Parse favorites, absolutize URLs. Mutates a copy of raw."""
     data = dict(raw)
     data["favorites"] = _parse_favorites(raw.get("favorites"))
     for role in data.get("anime_roles") or []:
         if role.get("url"):
             role["url"] = _absolutize_anime_url(role["url"])
     return data
+
+
+def _ography_to_roles(
+    entries: list[dict[str, Any]] | None,
+) -> list[AniSearchCharacterAnimeRole]:
+    if not entries:
+        return []
+    return [
+        AniSearchCharacterAnimeRole(title=e["title"], url=e["url"])
+        for e in entries
+        if e.get("title")
+    ]
 
 
 def _build_character_from_raw(
@@ -405,7 +354,6 @@ def _build_character_from_raw(
     anime_ography: list[dict[str, Any]] | None = None,
     manga_ography: list[dict[str, Any]] | None = None,
 ) -> AniSearchCharacter:
-    """Construct AniSearchCharacter from XPath-extracted fields and full page HTML."""
     description = (raw.get("description") or "").strip() or None
     if description and _DESCRIPTION_PLACEHOLDER_RE.search(description):
         description = None
@@ -451,44 +399,96 @@ def _build_character_from_raw(
 
 
 # ---------------------------------------------------------------------------
-# Cached single fetch
+# Cached single-fetch functions (used by single-char path and cache layer)
 # ---------------------------------------------------------------------------
 
 
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_character_detail",
-    dependencies=[_get_character_schema],
+    dependencies=[_extract_character_from_html],
 )
 async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by URL.
 
-    Returns a dict of XPath-extracted fields plus ``_html`` (full page HTML
-    for regex-based voice actor extraction).
+    Opens a temporary browser session — for high-volume use prefer the batch
+    path in fetch_anisearch_characters which reuses a single session.
     """
-    results = await crawl_batch_urls(
-        [url],
-        browser_config=get_docker_browser_config(),
-        crawler_config=get_docker_crawler_config(_get_character_schema()),
+    import zendriver as zd
+
+    browser = await zd.start(headless=False)
+    try:
+        html = await _fetch_page_html(browser, url, wait_selector="#htitle")
+        if not html:
+            return None
+        raw = _extract_character_from_html(html)
+        if raw is None:
+            return None
+        return _post_process_character(raw)
+    finally:
+        try:
+            await browser.stop()
+        except Exception:  # noqa: S110
+            pass
+
+
+@cached_result(
+    ttl=TTL_ANISEARCH,
+    key_prefix="anisearch_character_ography",
+    dependencies=[_extract_ography_from_html],
+)
+async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None:
+    """Fetch a single /anime or /manga ography sub-page. Cached by URL.
+
+    Opens a temporary browser session — for high-volume use prefer the batch
+    path which reuses a single session.
+    """
+    import zendriver as zd
+
+    browser = await zd.start(headless=False)
+    try:
+        html = await _fetch_page_html(browser, url, wait_selector="#content")
+        if not html:
+            return None
+        return _extract_ography_from_html(html)
+    finally:
+        try:
+            await browser.stop()
+        except Exception:  # noqa: S110
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Ography batch helper
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_ography(
+    url: str,
+    browser: Any = None,
+) -> list[dict[str, Any]] | None:
+    """Fetch a single ography sub-page with cache check.
+
+    Returns cached value if available. On a miss, navigates with browser if
+    provided, otherwise opens a temporary session via _fetch_character_ography_data.
+    """
+    (
+        cached_values,
+        missing_indices,
+    ) = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+        [url]
     )
-    result = results[0] if results else None
-    if not result:
-        return None
+    if not missing_indices:
+        return cached_values[0]
 
-    status = result.get("status_code")
-    if status and status >= 400:
-        logger.error(f"HTTP {status} for character {url}")
-        return None
-    if status and 300 <= status < 400:
-        logger.debug(f"HTTP {status} (redirect) for character {url}")
+    if browser is None:
+        return await _fetch_character_ography_data(url)
 
-    items: list[dict[str, Any]] = json.loads(result.get("extracted_content") or "[]")
-    if not items:
-        return None
-
-    raw = _post_process_character(items[0])
-    raw["_html"] = result.get("html") or ""
-    return raw
+    html = await _fetch_page_html(browser, url, wait_selector="#content")
+    await asyncio.sleep(_INTER_REQUEST_DELAY)
+    result = _extract_ography_from_html(html) if html else None
+    await _fetch_character_ography_data.cache_batch_set([url], [result])  # type: ignore[attr-defined]
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -499,18 +499,17 @@ async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
 class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]]):
     """Crawler for AniSearch character detail pages."""
 
-    def get_extraction_schema(self) -> dict[str, Any]:
-        return _get_character_schema()
-
     def __init__(
         self,
-        transport: ITransport,
         repository: IRepository | None = None,
         *,
         role: str | None = None,
     ) -> None:
-        super().__init__(transport, repository)
+        super().__init__(repository)
         self._role = role
+
+    def get_extraction_schema(self) -> dict[str, Any]:
+        return {"xpaths": _XPATHS}
 
     def normalize_identifier(self, identifier: str) -> str:
         return identifier
@@ -564,44 +563,7 @@ async def fetch_anisearch_character(
         Canonical character dict on success, None on failure.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AniSearchCharacterCrawler(DockerTransport(), repo, role=role).crawl(
-        url
-    )
-
-
-async def _batch_fetch_ography(
-    sub_urls: list[str],
-) -> list[list[dict[str, Any]] | None]:
-    """Batch-fetch ography sub-pages with cache_batch_get/set.
-
-    sub_urls: list of absolute /anime or /manga URLs.
-    Returns list aligned to sub_urls.
-    """
-    (
-        cached_values,
-        missing_indices,
-    ) = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
-        sub_urls
-    )
-    results: list[list[dict[str, Any]] | None] = list(cached_values)
-
-    if missing_indices:
-        missing_urls = [sub_urls[i] for i in missing_indices]
-        raw_results = await crawl_batch_urls(
-            missing_urls,
-            browser_config=get_docker_browser_config(),
-            crawler_config=get_docker_crawler_config(_get_ography_schema()),
-        )
-        cache_values: list[list[dict[str, Any]] | None] = []
-        for i, result in enumerate(raw_results):
-            parsed = _parse_ography_result(result, missing_urls[i])
-            results[missing_indices[i]] = parsed
-            cache_values.append(parsed)
-        await _fetch_character_ography_data.cache_batch_set(  # type: ignore[attr-defined]
-            missing_urls, cache_values
-        )
-
-    return results
+    return await AniSearchCharacterCrawler(repo, role=role).crawl(url)
 
 
 async def fetch_anisearch_characters(
@@ -610,6 +572,10 @@ async def fetch_anisearch_characters(
     output_path: str | None = None,
 ) -> list[dict[str, Any] | None]:
     """Batch-fetch character detail pages (+ ography sub-pages) for all refs.
+
+    Uses a single persistent Chrome session for all browser navigations.
+    Cache hits skip browser navigation entirely. Each character is written
+    to output_path as soon as it is resolved.
 
     Args:
         refs: List of {"url": str, "role": str} dicts from fetch_anisearch_character_refs().
@@ -625,82 +591,91 @@ async def fetch_anisearch_characters(
     urls = [r["url"] for r in refs]
     logger.info(f"Batch fetching {len(urls)} AniSearch character details...")
     repo = FileRepository(output_path) if output_path else NullRepository()
+    characters: list[dict[str, Any] | None] = [None] * len(urls)
 
-    # ── Step 1: detail pages ──────────────────────────────────────────────
+    # ── Batch cache lookup ────────────────────────────────────────────────
     (
         cached_values,
         missing_indices,
     ) = await _fetch_anisearch_character_data.cache_batch_get(  # type: ignore[attr-defined]
         urls
     )
+    missing_set = set(missing_indices)
 
-    raw_data: list[dict[str, Any] | None] = list(cached_values)
+    import zendriver as zd
 
-    missing_indices = sorted(set(missing_indices))
-    missing_urls = [urls[i] for i in missing_indices]
+    browser: Any = None
+    succeeded = 0
 
-    for offset in range(0, len(missing_urls), _CHARACTER_BATCH_SIZE):
-        chunk_urls = missing_urls[offset : offset + _CHARACTER_BATCH_SIZE]
-        chunk_indices = missing_indices[offset : offset + _CHARACTER_BATCH_SIZE]
-        cache_values_detail: list[dict[str, Any] | None] = [None] * len(chunk_urls)
+    try:
+        for i, url in enumerate(urls):
+            role = refs[i].get("role")
 
-        results = await crawl_batch_urls(
-            chunk_urls,
-            browser_config=get_docker_browser_config(),
-            crawler_config=get_docker_crawler_config(_get_character_schema()),
-        )
+            # ── Detail page ───────────────────────────────────────────────
+            if i not in missing_set:
+                raw = cached_values[i]
+            else:
+                if browser is None:
+                    browser = await zd.start(headless=False)
+                html = await _fetch_page_html(browser, url, wait_selector="#htitle")
+                if html is None:
+                    await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
+                        [url], [None]
+                    )
+                    await asyncio.sleep(_INTER_REQUEST_DELAY)
+                    continue
+                extracted = _extract_character_from_html(html)
+                raw = _post_process_character(extracted) if extracted else None
+                await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
+                    [url], [raw]
+                )
+                await asyncio.sleep(_INTER_REQUEST_DELAY)
 
-        for idx_in_chunk, result in enumerate(results):
-            out_index = chunk_indices[idx_in_chunk]
-            if not result:
+            if raw is None:
                 continue
-            url = result.get("url") or chunk_urls[idx_in_chunk]
-            status = result.get("status_code")
-            if status and status >= 400:
-                logger.error(f"HTTP {status} for character {url}")
-                continue
-            if status and 300 <= status < 400:
-                logger.debug(f"HTTP {status} (redirect) for character {url}")
-            items: list[dict[str, Any]] = json.loads(
-                result.get("extracted_content") or "[]"
+
+            # ── Ography sub-pages (sequential — shared browser, one tab) ────
+            # If the detail page was a cache hit (browser=None), check ography cache
+            # upfront so we can init one shared browser rather than letting
+            # _batch_fetch_ography open a short-lived session per miss.
+            if browser is None:
+                _, anime_missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+                    [f"{url}/anime"]
+                )
+                _, manga_missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+                    [f"{url}/manga"]
+                )
+                if anime_missing or manga_missing:
+                    browser = await zd.start(headless=False)
+            anime_ography = await _fetch_ography(f"{url}/anime", browser)
+            manga_ography = await _fetch_ography(f"{url}/manga", browser)
+
+            # ── Build and save ────────────────────────────────────────────
+            canonical = character_from_anisearch(
+                _build_character_from_raw(
+                    raw,
+                    raw.get("_html") or "",
+                    url,
+                    role=role,
+                    anime_ography=anime_ography,
+                    manga_ography=manga_ography,
+                )
             )
-            if not items:
-                continue
-            raw = _post_process_character(items[0])
-            raw["_html"] = result.get("html") or ""
-            raw_data[out_index] = raw
-            cache_values_detail[idx_in_chunk] = raw
+            characters[i] = canonical
+            repo.save(canonical)
+            succeeded += 1
 
-        await _fetch_anisearch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-            chunk_urls, cache_values_detail
-        )
+    finally:
+        if browser is not None:
+            try:
+                await browser.stop()
+            except Exception:  # noqa: S110
+                pass
 
-    # ── Step 2: ography sub-pages (all characters in one batch) ──────────
-    anime_sub_urls = [f"{url}/anime" for url in urls]
-    manga_sub_urls = [f"{url}/manga" for url in urls]
-    anime_ography_list, manga_ography_list = (
-        await _batch_fetch_ography(anime_sub_urls),
-        await _batch_fetch_ography(manga_sub_urls),
+    logger.info(
+        "anisearch character fetch: %d/%d succeeded, %d cache hits",
+        succeeded,
+        len(urls),
+        len(urls) - len(missing_set),
     )
-
-    # ── Step 3: build canonical characters ───────────────────────────────
-    characters: list[dict[str, Any] | None] = [None] * len(urls)
-    for idx, raw in enumerate(raw_data):
-        if raw is None:
-            continue
-        url = urls[idx]
-        role = refs[idx].get("role")
-        canonical = character_from_anisearch(
-            _build_character_from_raw(
-                raw,
-                raw.get("_html") or "",
-                url,
-                role=role,
-                anime_ography=anime_ography_list[idx],
-                manga_ography=manga_ography_list[idx],
-            )
-        )
-        characters[idx] = canonical
-        repo.save(canonical)
-
     return characters
