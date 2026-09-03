@@ -135,8 +135,13 @@ fails.
 ### Path A — Docker (recommended)
 
 ```bash
-docker compose -f docker/docker-compose.dev.yml up -d
+docker compose -f docker/docker-compose.dev.yml up -d --build
 ```
+
+> Keep the `--build`. Plain `up -d` reuses whatever image is already on the
+> machine and never rebuilds, so after pulling a branch that changed `libs/` or
+> `apps/` it will silently run the old code — typically surfacing as a config
+> `ValidationError` for a setting the stale image has never heard of.
 
 | Service | Address |
 | --- | --- |
@@ -182,12 +187,33 @@ uv python install 3.13   # creates ~/.local/bin/python3.13
 Both services are **gRPC only** — there are no HTTP endpoints, so `curl` will
 not work. Use the standard gRPC health protocol:
 
+**Path A (Docker)** — `grpc_health_probe` ships in both images:
+
 ```bash
-# From inside the containers (grpc_health_probe is installed in the image)
 docker exec echora-vector-service     grpc_health_probe -addr=localhost:8001
 docker exec echora-enrichment-service grpc_health_probe -addr=localhost:8002
+```
 
-# Qdrant is plain HTTP
+**Path B (local)** — there is no container to `exec` into, and
+`grpc_health_probe` is not a Python package, so query the health service with
+the venv instead:
+
+```bash
+.venv/bin/python - 8001 <<'PY'
+import sys, grpc
+from grpc_health.v1 import health_pb2, health_pb2_grpc
+channel = grpc.insecure_channel(f"localhost:{sys.argv[1]}")
+response = health_pb2_grpc.HealthStub(channel).Check(health_pb2.HealthCheckRequest())
+print(health_pb2.HealthCheckResponse.ServingStatus.Name(response.status))
+PY
+```
+
+Prints `SERVING`. Pass `8002` for enrichment_service. This works against Path A
+too, since both ports are published to the host.
+
+Qdrant is plain HTTP either way:
+
+```bash
 curl http://localhost:6333/healthz
 ```
 
