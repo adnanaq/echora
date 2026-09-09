@@ -29,13 +29,15 @@ class TestCacheConfigModel:
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
 
-        # Service-specific TTLs (all should be 24 hours = 86400 seconds)
-        assert config.ttl_jikan == 86400
-        assert config.ttl_anilist == 86400
-        assert config.ttl_anidb == 86400
-        assert config.ttl_kitsu == 86400
-        assert config.ttl_anime_planet == 86400
-        assert config.ttl_anisearch == 86400
+        # Character-bearing sources are held for 7 days so a franchise's shared
+        # characters are not re-crawled for each title; animeschedule carries
+        # broadcast timings only and stays at 24 hours.
+        assert config.ttl_jikan == 604800
+        assert config.ttl_anilist == 604800
+        assert config.ttl_anidb == 604800
+        assert config.ttl_kitsu == 604800
+        assert config.ttl_anime_planet == 604800
+        assert config.ttl_anisearch == 604800
         assert config.ttl_animeschedule == 86400
 
     def test_custom_values_redis(self) -> None:
@@ -279,8 +281,8 @@ class TestGetCacheConfig:
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
         # Service TTLs should be defaults
-        assert config.ttl_jikan == 86400
-        assert config.ttl_anilist == 86400
+        assert config.ttl_jikan == 604800
+        assert config.ttl_anilist == 604800
 
     def test_get_cache_config_singleton(self) -> None:
         """Test that get_cache_config() returns cached singleton instance."""
