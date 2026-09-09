@@ -52,10 +52,24 @@ def one_piece_processed(one_piece_main_raw, one_piece_relations_raw):
 
 def test_xpaths_has_required_main_keys() -> None:
     assert {
-        "cover_image", "title_alt", "title_ja", "type", "status",
-        "published", "studio", "studio_url", "broadcast_raw",
-        "source_material", "synonyms", "description",
-        "genres", "tags", "rating_score", "rank_toplist", "rank_trending", "websites",
+        "cover_image",
+        "title_alt",
+        "title_ja",
+        "type",
+        "status",
+        "published",
+        "studio",
+        "studio_url",
+        "broadcast_raw",
+        "source_material",
+        "synonyms",
+        "description",
+        "genres",
+        "tags",
+        "rating_score",
+        "rank_toplist",
+        "rank_trending",
+        "websites",
     } <= set(_XPATHS)
 
 
@@ -79,7 +93,9 @@ def test_xpaths_title_ja_targets_f16_strong() -> None:
 
 
 def test_xpaths_genres_anchor_on_genre_href() -> None:
-    assert "/genre/main/" in _XPATHS["genres"] or "/genre/subsidiary/" in _XPATHS["genres"]
+    assert (
+        "/genre/main/" in _XPATHS["genres"] or "/genre/subsidiary/" in _XPATHS["genres"]
+    )
 
 
 def test_xpaths_tags_anchor_on_tag_href() -> None:
@@ -156,7 +172,9 @@ def test_extract_anime_from_html_empty_returns_none() -> None:
 
 
 def test_extract_anime_from_html_unparseable_returns_none() -> None:
-    assert _extract_anime_from_html("<not valid xml at all >>>") is not None  # lxml is lenient
+    assert (
+        _extract_anime_from_html("<not valid xml at all >>>") is not None
+    )  # lxml is lenient
     assert _extract_anime_from_html("") is None
 
 
@@ -187,14 +205,18 @@ def test_extract_relations_from_html_entry_fields(one_piece_relations_html) -> N
     assert entry["details"] is not None
 
 
-def test_extract_relations_from_html_manga_original_work(one_piece_relations_html) -> None:
+def test_extract_relations_from_html_manga_original_work(
+    one_piece_relations_html,
+) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
     assert raw is not None
     titles = [r["title"] for r in raw["manga_relations"]]
     assert "One Piece" in titles
 
 
-def test_extract_relations_from_html_image_has_tooltip(one_piece_relations_html) -> None:
+def test_extract_relations_from_html_image_has_tooltip(
+    one_piece_relations_html,
+) -> None:
     raw = _extract_relations_from_html(one_piece_relations_html)
     assert raw is not None
     images = [r["image"] for r in raw["anime_relations"] if r.get("image")]
@@ -235,7 +257,9 @@ def test_extract_path_empty_path_raises() -> None:
 
 
 def test_process_relation_tooltips_extracts_img_src() -> None:
-    rel = {"image": '<img src="https://cdn.anisearch.com/images/anime/cover/2/2227.webp" />'}
+    rel = {
+        "image": '<img src="https://cdn.anisearch.com/images/anime/cover/2/2227.webp" />'
+    }
     _process_relation_tooltips([rel])
     assert rel["image"] == "https://cdn.anisearch.com/images/anime/cover/2/2227.webp"
 
@@ -329,13 +353,19 @@ def test_post_process_broadcast_missing(one_piece_main_raw) -> None:
 
 def test_post_process_studio_url_without_leading_slash(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
-    assert data["studio_url"] == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    assert (
+        data["studio_url"]
+        == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    )
 
 
 def test_post_process_studio_url_with_leading_slash(one_piece_main_raw) -> None:
     raw = {**one_piece_main_raw, "studio_url": "/company/412,toei-animation-co-ltd"}
     data = _post_process_main(raw)
-    assert data["studio_url"] == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    assert (
+        data["studio_url"]
+        == "https://www.anisearch.com/company/412,toei-animation-co-ltd"
+    )
 
 
 def test_post_process_studio_url_empty(one_piece_main_raw) -> None:
@@ -407,7 +437,12 @@ def test_post_process_trending_extracted(one_piece_main_raw) -> None:
 
 
 def test_post_process_stats_all_missing_returns_none(one_piece_main_raw) -> None:
-    raw = {**one_piece_main_raw, "rating_score": None, "rank_toplist": None, "rank_trending": None}
+    raw = {
+        **one_piece_main_raw,
+        "rating_score": None,
+        "rank_toplist": None,
+        "rank_trending": None,
+    }
     assert _post_process_main(raw)["statistics"] is None
 
 
@@ -493,7 +528,9 @@ def test_build_anime_no_statistics(one_piece_processed) -> None:
     assert _build_anime_from_raw(raw, _URL).statistics is None
 
 
-def test_build_anime_relations_count(one_piece_processed, one_piece_relations_raw) -> None:
+def test_build_anime_relations_count(
+    one_piece_processed, one_piece_relations_raw
+) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert len(anime.anime_relations) == len(one_piece_relations_raw["anime_relations"])
     assert len(anime.manga_relations) == len(one_piece_relations_raw["manga_relations"])
@@ -558,7 +595,11 @@ def test_build_source_model_falls_back_to_input_url(one_piece_processed) -> None
 # =============================================================================
 
 
-def _make_browser_mock(mocker, main_html: str | None, final_url: str = "https://www.anisearch.com/anime/2227,one-piece"):
+def _make_browser_mock(
+    mocker,
+    main_html: str | None,
+    final_url: str = "https://www.anisearch.com/anime/2227,one-piece",
+):
     """Build a mock zendriver browser whose main page returns `main_html`."""
     page_mock = mocker.AsyncMock()
     page_mock.wait_for = AsyncMock()
@@ -586,7 +627,9 @@ async def test_fetch_anime_data_main_html_none_returns_none(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_anime_data_real_fixture(mocker, one_piece_main_html, one_piece_relations_html) -> None:
+async def test_fetch_anime_data_real_fixture(
+    mocker, one_piece_main_html, one_piece_relations_html
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -645,7 +688,9 @@ async def test_fetch_anisearch_anime_returns_none_when_no_data(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_anisearch_anime_returns_canonical_dict(mocker, one_piece_processed) -> None:
+async def test_fetch_anisearch_anime_returns_canonical_dict(
+    mocker, one_piece_processed
+) -> None:
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_anime_crawler._fetch_anisearch_anime_data",
         new_callable=AsyncMock,
@@ -684,7 +729,9 @@ async def test_fetch_page_html_with_wait_selector(mocker) -> None:
     browser_mock = mocker.AsyncMock()
     browser_mock.get = AsyncMock(return_value=page_mock)
 
-    result = await _fetch_page_html(browser_mock, "https://example.com", wait_selector="#content")
+    result = await _fetch_page_html(
+        browser_mock, "https://example.com", wait_selector="#content"
+    )
     assert result == "<html></html>"
     page_mock.wait_for.assert_awaited_once_with(selector="#content", timeout=10)
 
@@ -695,7 +742,10 @@ async def test_fetch_page_html_without_wait_selector(mocker) -> None:
     page_mock.get_content = AsyncMock(return_value="<html></html>")
     browser_mock = mocker.AsyncMock()
     browser_mock.get = AsyncMock(return_value=page_mock)
-    mocker.patch("enrichment.sources.anisearch.anisearch_anime_crawler.asyncio.sleep", new_callable=AsyncMock)
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_anime_crawler.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
 
     result = await _fetch_page_html(browser_mock, "https://example.com")
     assert result == "<html></html>"
@@ -728,7 +778,9 @@ async def test_fetch_anime_data_empty_content_returns_none(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_anime_data_extraction_fails_returns_none(mocker, one_piece_main_html) -> None:
+async def test_fetch_anime_data_extraction_fails_returns_none(
+    mocker, one_piece_main_html
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -744,7 +796,9 @@ async def test_fetch_anime_data_extraction_fails_returns_none(mocker, one_piece_
 
 
 @pytest.mark.asyncio
-async def test_fetch_anime_data_slug_redirect_sets_canonical_url(mocker, one_piece_main_html, one_piece_relations_html) -> None:
+async def test_fetch_anime_data_slug_redirect_sets_canonical_url(
+    mocker, one_piece_main_html, one_piece_relations_html
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),

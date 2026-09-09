@@ -31,8 +31,14 @@ def test_xpaths_has_episode_rows_key() -> None:
 
 def test_xpaths_has_all_field_keys() -> None:
     assert {
-        "episode_number_raw", "runtime", "release_date",
-        "title_en", "title_ja", "title_de", "title_fr", "title_it",
+        "episode_number_raw",
+        "runtime",
+        "release_date",
+        "title_en",
+        "title_ja",
+        "title_de",
+        "title_fr",
+        "title_it",
     } <= set(_XPATHS)
 
 
@@ -64,14 +70,19 @@ def test_extract_episodes_real_fixture(one_piece_episodes_html) -> None:
     assert "1" in first["episode_number_raw"]
 
 
-
 def test_extract_episodes_field_structure(one_piece_episodes_html) -> None:
     raw = _extract_episodes_from_html(one_piece_episodes_html)
     assert raw is not None
     for row in raw["episodes"]:
         assert set(row) >= {
-            "episode_number_raw", "runtime", "release_date",
-            "title_en", "title_ja", "title_de", "title_fr", "title_it",
+            "episode_number_raw",
+            "runtime",
+            "release_date",
+            "title_en",
+            "title_ja",
+            "title_de",
+            "title_fr",
+            "title_it",
         }
 
 
@@ -118,7 +129,13 @@ def test_parse_episode_row_normal_episode() -> None:
 
 
 def test_parse_episode_row_filler_only() -> None:
-    raw = {"episode_number_raw": "50Filler", "runtime": "24 min", "release_date": None, "title_en": None, "title_ja": None}
+    raw = {
+        "episode_number_raw": "50Filler",
+        "runtime": "24 min",
+        "release_date": None,
+        "title_en": None,
+        "title_ja": None,
+    }
     result = _parse_episode_row(raw)
     assert result is not None
     assert result["episode_number"] == 50
@@ -127,7 +144,13 @@ def test_parse_episode_row_filler_only() -> None:
 
 
 def test_parse_episode_row_recap_only() -> None:
-    raw = {"episode_number_raw": "457Recap", "runtime": None, "release_date": None, "title_en": None, "title_ja": None}
+    raw = {
+        "episode_number_raw": "457Recap",
+        "runtime": None,
+        "release_date": None,
+        "title_en": None,
+        "title_ja": None,
+    }
     result = _parse_episode_row(raw)
     assert result is not None
     assert result["episode_number"] == 457
@@ -136,7 +159,13 @@ def test_parse_episode_row_recap_only() -> None:
 
 
 def test_parse_episode_row_filler_and_recap() -> None:
-    raw = {"episode_number_raw": "279FillerRecap", "runtime": "24 min", "release_date": None, "title_en": None, "title_ja": None}
+    raw = {
+        "episode_number_raw": "279FillerRecap",
+        "runtime": "24 min",
+        "release_date": None,
+        "title_en": None,
+        "title_ja": None,
+    }
     result = _parse_episode_row(raw)
     assert result is not None
     assert result["episode_number"] == 279
@@ -176,7 +205,13 @@ def test_parse_episode_row_future_episode_nulls() -> None:
 
 
 def test_parse_episode_row_question_mark_values_become_none() -> None:
-    raw = {"episode_number_raw": "1157", "runtime": "?", "release_date": "?", "title_en": "", "title_ja": ""}
+    raw = {
+        "episode_number_raw": "1157",
+        "runtime": "?",
+        "release_date": "?",
+        "title_en": "",
+        "title_ja": "",
+    }
     result = _parse_episode_row(raw)
     assert result is not None
     assert result["duration"] is None
@@ -189,7 +224,13 @@ def test_parse_episode_row_returns_none_without_episode_number() -> None:
 
 
 def test_parse_episode_row_title_ja_without_kanji() -> None:
-    raw = {"episode_number_raw": "1", "runtime": None, "release_date": None, "title_en": None, "title_ja": "Ore wa Luffy"}
+    raw = {
+        "episode_number_raw": "1",
+        "runtime": None,
+        "release_date": None,
+        "title_en": None,
+        "title_ja": "Ore wa Luffy",
+    }
     result = _parse_episode_row(raw)
     assert result is not None
     assert result["title_romaji"] == "Ore wa Luffy"
@@ -215,7 +256,9 @@ def _make_browser_mock(mocker, html: str | None):
 
 
 @pytest.mark.asyncio
-async def test_fetch_episodes_returns_parsed_list(mocker, one_piece_episodes_raw) -> None:
+async def test_fetch_episodes_returns_parsed_list(
+    mocker, one_piece_episodes_raw
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -224,14 +267,19 @@ async def test_fetch_episodes_returns_parsed_list(mocker, one_piece_episodes_raw
         "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
         return_value=one_piece_episodes_raw,
     )
-    mocker.patch("zendriver.start", new_callable=AsyncMock,
-                 return_value=_make_browser_mock(mocker, "<html></html>"))
+    mocker.patch(
+        "zendriver.start",
+        new_callable=AsyncMock,
+        return_value=_make_browser_mock(mocker, "<html></html>"),
+    )
 
     result = await fetch_anisearch_episodes(_URL)
     assert result is not None
     assert len(result) == 7
     assert result[0]["episode_number"] == 1
-    assert result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King Of The Pirates!"
+    assert (
+        result[0]["title"] == "I'm Luffy! The Man Who's Gonna Be King Of The Pirates!"
+    )
     # ep 279: both filler and recap
     assert result[2]["filler"] is True
     assert result[2]["recap"] is True
@@ -265,9 +313,17 @@ async def test_fetch_episodes_navigation_failure_returns_none(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_episodes_filters_out_unparseable_rows(mocker, one_piece_episodes_raw) -> None:
+async def test_fetch_episodes_filters_out_unparseable_rows(
+    mocker, one_piece_episodes_raw
+) -> None:
     bad_row = {"episode_number_raw": ""}
-    fixture_with_bad = {"episodes": [one_piece_episodes_raw["episodes"][0], bad_row, one_piece_episodes_raw["episodes"][1]]}
+    fixture_with_bad = {
+        "episodes": [
+            one_piece_episodes_raw["episodes"][0],
+            bad_row,
+            one_piece_episodes_raw["episodes"][1],
+        ]
+    }
 
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
@@ -277,8 +333,11 @@ async def test_fetch_episodes_filters_out_unparseable_rows(mocker, one_piece_epi
         "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
         return_value=fixture_with_bad,
     )
-    mocker.patch("zendriver.start", new_callable=AsyncMock,
-                 return_value=_make_browser_mock(mocker, "<html></html>"))
+    mocker.patch(
+        "zendriver.start",
+        new_callable=AsyncMock,
+        return_value=_make_browser_mock(mocker, "<html></html>"),
+    )
 
     result = await fetch_anisearch_episodes(_URL)
     assert result is not None
@@ -306,7 +365,9 @@ def test_get_extraction_schema_returns_xpaths() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_anisearch_episodes_writes_output_path(mocker, tmp_path, one_piece_episodes_raw) -> None:
+async def test_fetch_anisearch_episodes_writes_output_path(
+    mocker, tmp_path, one_piece_episodes_raw
+) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
@@ -315,13 +376,17 @@ async def test_fetch_anisearch_episodes_writes_output_path(mocker, tmp_path, one
         "enrichment.sources.anisearch.anisearch_episode_crawler._extract_episodes_from_html",
         return_value=one_piece_episodes_raw,
     )
-    mocker.patch("zendriver.start", new_callable=AsyncMock,
-                 return_value=_make_browser_mock(mocker, "<html></html>"))
+    mocker.patch(
+        "zendriver.start",
+        new_callable=AsyncMock,
+        return_value=_make_browser_mock(mocker, "<html></html>"),
+    )
 
     output = str(tmp_path / "episodes.jsonl")
     result = await fetch_anisearch_episodes(_URL, output_path=output)
     assert result is not None
     assert len(result) == 7
     import json
+
     lines = [json.loads(l) for l in open(output)]
     assert len(lines) == 7

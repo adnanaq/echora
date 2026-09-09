@@ -72,7 +72,9 @@ def test_extract_deduplicates_urls() -> None:
 
 
 def test_extract_preserves_order() -> None:
-    urls = _extract_character_urls(_build_html(["character/1/A", "character/2/B", "character/3/C"]))
+    urls = _extract_character_urls(
+        _build_html(["character/1/A", "character/2/B", "character/3/C"])
+    )
     assert urls == [
         "https://myanimelist.net/character/1/A",
         "https://myanimelist.net/character/2/B",
@@ -111,6 +113,7 @@ async def test_fetch_page_html_success(mal_char_refs_html) -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_characters_page_html(_ONE_PIECE_CHARS_URL)
 
@@ -127,6 +130,7 @@ async def test_fetch_page_html_navigation_failure() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_characters_page_html(_ONE_PIECE_CHARS_URL)
 
@@ -143,6 +147,7 @@ async def test_fetch_page_html_browser_stop_exception(mal_char_refs_html) -> Non
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_characters_page_html(_ONE_PIECE_CHARS_URL)
 
@@ -236,7 +241,7 @@ def _build_html(hrefs: list[str]) -> str:
     tables = "\n".join(
         f'<table class="js-anime-character-table"><tr>'
         f'<td><a href="https://myanimelist.net/{href}">Name</a></td>'
-        f'</tr></table>'
+        f"</tr></table>"
         for href in hrefs
     )
     return f"<html><body>{tables}</body></html>"

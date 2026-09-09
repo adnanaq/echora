@@ -61,7 +61,12 @@ def test_extract_empty_html_returns_none() -> None:
 
 
 def test_extract_missing_span_returns_none() -> None:
-    assert _extract_episode_count("<html><body><h2 class='h2_overwrite'>Episodes</h2></body></html>") is None
+    assert (
+        _extract_episode_count(
+            "<html><body><h2 class='h2_overwrite'>Episodes</h2></body></html>"
+        )
+        is None
+    )
 
 
 # =============================================================================
@@ -79,6 +84,7 @@ async def test_fetch_html_success() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_episode_count_html(EPISODE_LIST_URL)
 
@@ -95,6 +101,7 @@ async def test_fetch_html_navigation_failure_returns_none() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_episode_count_html(EPISODE_LIST_URL)
 
@@ -111,6 +118,7 @@ async def test_fetch_html_browser_stop_exception_swallowed() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser_mock))
         result = await _fetch_episode_count_html(EPISODE_LIST_URL)
 

@@ -355,5 +355,3 @@ def test_get_entity_id_returns_zero_for_bare_model() -> None:
         pass
 
     assert _get_entity_id(_Bare()) == 0
-
-

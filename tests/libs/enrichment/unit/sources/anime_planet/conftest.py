@@ -45,7 +45,9 @@ def ap_character_extracted(ap_character_html: str) -> dict:
     )
 
     raw = _extract_character_from_html(ap_character_html)
-    assert raw is not None, "character HTML fixture failed to extract — fixture may be stale"
+    assert raw is not None, (
+        "character HTML fixture failed to extract — fixture may be stale"
+    )
     return raw
 
 

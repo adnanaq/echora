@@ -85,6 +85,7 @@ async def test_fetch_refs_html_success(ap_char_refs_html: str) -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser))
         result = await _fetch_refs_html(_DANDADAN_URL)
 
@@ -101,6 +102,7 @@ async def test_fetch_refs_html_navigation_failure() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser))
         result = await _fetch_refs_html(_DANDADAN_URL)
 
@@ -117,6 +119,7 @@ async def test_fetch_refs_html_browser_stop_swallowed(ap_char_refs_html: str) ->
 
     with pytest.MonkeyPatch.context() as mp:
         import zendriver as zd
+
         mp.setattr(zd, "start", AsyncMock(return_value=browser))
         result = await _fetch_refs_html(_DANDADAN_URL)
 
@@ -135,9 +138,7 @@ def _disable_cache(mocker):
     )
 
 
-_PATCH_FETCH_HTML = (
-    "enrichment.sources.anime_planet.anime_planet_character_refs_crawler._fetch_refs_html"
-)
+_PATCH_FETCH_HTML = "enrichment.sources.anime_planet.anime_planet_character_refs_crawler._fetch_refs_html"
 
 
 async def test_fetch_refs_data_success(mocker, ap_char_refs_html: str) -> None:
@@ -173,9 +174,7 @@ async def test_fetch_refs_data_empty_page_returns_none(mocker) -> None:
 # =============================================================================
 
 
-_PATCH_FETCH_DATA = (
-    "enrichment.sources.anime_planet.anime_planet_character_refs_crawler._fetch_refs_data"
-)
+_PATCH_FETCH_DATA = "enrichment.sources.anime_planet.anime_planet_character_refs_crawler._fetch_refs_data"
 
 
 async def test_fetch_character_refs_returns_empty_on_none(mocker) -> None:
