@@ -35,9 +35,7 @@ from enrichment.sources.base.framework import NullRepository
 pytestmark = pytest.mark.asyncio
 
 _LUFFY_URL = "https://www.anime-planet.com/characters/monkey-d-luffy"
-_PATCH_FETCH_DATA = (
-    "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_character_data"
-)
+_PATCH_FETCH_DATA = "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_character_data"
 _PATCH_FETCH_PAGE = (
     "enrichment.sources.anime_planet.anime_planet_character_crawler._fetch_page_html"
 )
@@ -55,7 +53,6 @@ _MINIMAL_RAW: dict[str, Any] = {
     "loved_rank": "#12",
     "hated_rank": "#106",
     "loved_count": "37,007 users",
-    "_html": _MINIMAL_HTML,
 }
 
 
@@ -336,7 +333,11 @@ def test_extract_from_html_fixture(ap_character_html: str) -> None:
     assert raw["loved_rank"] == "#12"
     assert raw["hated_rank"] == "#106"
     assert raw["loved_count"] == "37,007 users"
-    assert raw["_html"] is ap_character_html
+    # Regex-derived fields are parsed up front, so the page is not retained.
+    assert "_html" not in raw
+    assert raw["gender"] == "Male"
+    assert len(raw["anime_roles"]) == 25
+    assert len(raw["manga_roles"]) == 16
 
 
 # =============================================================================
@@ -347,7 +348,7 @@ def test_extract_from_html_fixture(ap_character_html: str) -> None:
 def test_build_character_from_raw_fixture(
     ap_character_html: str, ap_character_extracted: dict
 ) -> None:
-    char = _build_character_from_raw(ap_character_extracted, ap_character_html, _LUFFY_URL)
+    char = _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
     assert char.name == "Monkey D. Luffy"
     assert char.slug == "monkey-d-luffy"
     assert char.url == _LUFFY_URL
@@ -366,7 +367,7 @@ def test_build_character_no_image(
     ap_character_html: str, ap_character_extracted: dict
 ) -> None:
     raw = {**ap_character_extracted, "image": None}
-    char = _build_character_from_raw(raw, ap_character_html, _LUFFY_URL)
+    char = _build_character_from_raw(raw, _LUFFY_URL)
     assert char.image is None
 
 
@@ -481,8 +482,7 @@ def test_crawler_build_source_model(
     )
 
     crawler = AnimePlanetCharacterCrawler(NullRepository())
-    raw = {**ap_character_extracted, "_html": ap_character_html}
-    char = crawler.build_source_model(raw, _LUFFY_URL)
+    char = crawler.build_source_model(ap_character_extracted, _LUFFY_URL)
     assert char.name == "Monkey D. Luffy"
     assert char.slug == "monkey-d-luffy"
 
@@ -495,7 +495,7 @@ def test_crawler_map_to_canonical(
     )
 
     crawler = AnimePlanetCharacterCrawler(NullRepository())
-    char = _build_character_from_raw(ap_character_extracted, ap_character_html, _LUFFY_URL)
+    char = _build_character_from_raw(ap_character_extracted, _LUFFY_URL)
     canonical = crawler.map_to_canonical(char)
     assert canonical["name"] == "Monkey D. Luffy"
     assert any("monkey-d-luffy" in str(s) for s in canonical.get("sources", []))

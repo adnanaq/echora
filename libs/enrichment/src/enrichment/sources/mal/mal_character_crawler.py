@@ -75,8 +75,9 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         html: Full HTML of a MAL character detail page.
 
     Returns:
-        Dict with ``name_header``, ``image_src``, ``favorites``, and
-        ``content_html`` keys, or None if the page cannot be parsed.
+        Dict of every extracted field, or None if the page cannot be parsed.
+        The content block is parsed here rather than retained, so the dict does
+        not carry page markup.
     """
     from lxml import etree
 
@@ -111,11 +112,30 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     if not name_header and not content_html:
         return None
 
+    content_html = content_html or ""
+    nicknames_raw = parse_sidebar_field(content_html, "Nicknames")
+    attrs, spoilers = _extract_bio_data(content_html)
+    description, description_spoiler = _extract_description(content_html)
+    if description_spoiler:
+        spoilers["description"] = description_spoiler
+
     return {
         "name_header": name_header,
         "image_src": image_src,
         "favorites": favorites,
-        "content_html": content_html or "",
+        "nicknames": [n.strip() for n in nicknames_raw.split(",")]
+        if nicknames_raw
+        else [],
+        "character_info": attrs,
+        "spoilers": spoilers,
+        "description": description,
+        "animeography": [
+            o.model_dump() for o in _extract_ography(content_html, "Animeography")
+        ],
+        "mangaography": [
+            o.model_dump() for o in _extract_ography(content_html, "Mangaography")
+        ],
+        "voice_actors": [v.model_dump() for v in _extract_voice_actors(content_html)],
     }
 
 
@@ -467,31 +487,21 @@ def _build_character_from_raw(raw: dict[str, Any], url: str) -> MalCharacter:
     image_url = raw.get("image_src") or ""
     images = [image_url] if image_url else []
 
-    content_html = raw.get("content_html") or ""
-
     favorites = parse_number(raw.get("favorites") or "") or 0
-
-    nicknames_raw = parse_sidebar_field(content_html, "Nicknames")
-    nicknames = [n.strip() for n in nicknames_raw.split(",")] if nicknames_raw else []
-
-    attrs, spoilers = _extract_bio_data(content_html)
-    description, description_spoiler = _extract_description(content_html)
-    if description_spoiler:
-        spoilers["description"] = description_spoiler
 
     return MalCharacter(
         source=url,
         name=name,
         name_native=name_native,
-        description=description,
-        nicknames=nicknames,
+        description=raw.get("description"),
+        nicknames=raw.get("nicknames") or [],
         favorites=favorites or 0,
         images=images,
-        character_info=attrs,
-        spoilers=spoilers,
-        animeography=_extract_ography(content_html, "Animeography"),
-        mangaography=_extract_ography(content_html, "Mangaography"),
-        voice_actors=_extract_voice_actors(content_html),
+        character_info=raw.get("character_info") or {},
+        spoilers=raw.get("spoilers") or {},
+        animeography=[MalOgraphyEntry(**o) for o in raw.get("animeography") or []],
+        mangaography=[MalOgraphyEntry(**o) for o in raw.get("mangaography") or []],
+        voice_actors=[MalVoiceActorRef(**v) for v in raw.get("voice_actors") or []],
     )
 
 

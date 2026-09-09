@@ -60,11 +60,32 @@ def mal_char_refs_html() -> str:
 
 @pytest.fixture(scope="session")
 def mal_character_extracted(mal_character_html) -> dict:
-    from enrichment.sources.mal.mal_character_crawler import _extract_character_from_html
+    from enrichment.sources.mal.mal_character_crawler import (
+        _extract_character_from_html,
+    )
 
     raw = _extract_character_from_html(mal_character_html)
     assert raw is not None, "HTML fixture produced no extraction — fixture may be stale"
     return raw
+
+
+@pytest.fixture(scope="session")
+def mal_character_content_html(mal_character_html) -> str:
+    """The page's content block, which the regex helpers parse.
+
+    The crawler consumes this during extraction and does not keep it, so tests
+    that exercise those helpers directly re-derive it here.
+    """
+    from lxml import etree
+
+    from enrichment.sources.mal.mal_character_crawler import _XPATHS
+
+    tree = etree.fromstring(
+        mal_character_html.encode(), etree.HTMLParser(encoding="utf-8")
+    )
+    els = tree.xpath(_XPATHS["content"])
+    assert els, "content block not found — fixture may be stale"
+    return etree.tostring(els[0], encoding="unicode", method="html")
 
 
 @pytest.fixture(scope="session")

@@ -49,11 +49,16 @@ def test_extract_character_from_html_from_fixture(mal_character_html) -> None:
     raw = _extract_character_from_html(mal_character_html)
     assert raw is not None
     assert raw["name_header"] == "Luffy Monkey D. (モンキー・D・ルフィ)"
-    assert raw["image_src"] == "https://cdn.myanimelist.net/images/characters/9/310307.jpg"
+    assert (
+        raw["image_src"] == "https://cdn.myanimelist.net/images/characters/9/310307.jpg"
+    )
     assert raw["favorites"] == "148,888"
-    assert len(raw["content_html"]) > 10_000
-    assert "Animeography" in raw["content_html"]
-    assert "Voice Actors" in raw["content_html"]
+    # The content block is parsed during extraction rather than kept, so the
+    # dict holds the parsed results instead of markup.
+    assert "content_html" not in raw
+    assert len(raw["animeography"]) > 0
+    assert len(raw["voice_actors"]) > 0
+    assert raw["character_info"].get("height") == "172 cm"
 
 
 def test_extract_character_from_html_empty_returns_none() -> None:
@@ -61,7 +66,9 @@ def test_extract_character_from_html_empty_returns_none() -> None:
 
 
 def test_extract_character_from_html_no_character_data_returns_none() -> None:
-    assert _extract_character_from_html("<html><body><p>nothing</p></body></html>") is None
+    assert (
+        _extract_character_from_html("<html><body><p>nothing</p></body></html>") is None
+    )
 
 
 def test_extract_character_from_html_missing_image_and_favorites() -> None:
@@ -109,8 +116,8 @@ def test_extract_name_and_native_empty() -> None:
 # =============================================================================
 
 
-def test_extract_bio_data_from_fixture(mal_character_extracted) -> None:
-    attrs, spoilers = _extract_bio_data(mal_character_extracted["content_html"])
+def test_extract_bio_data_from_fixture(mal_character_content_html) -> None:
+    attrs, spoilers = _extract_bio_data(mal_character_content_html)
     assert attrs.get("age") == "17; 19"
     assert attrs.get("height") == "172 cm"
     assert attrs.get("blood_type") == "F"
@@ -202,8 +209,8 @@ Key:
 # =============================================================================
 
 
-def test_extract_description_from_fixture(mal_character_extracted) -> None:
-    desc, _ = _extract_description(mal_character_extracted["content_html"])
+def test_extract_description_from_fixture(mal_character_content_html) -> None:
+    desc, _ = _extract_description(mal_character_content_html)
     assert desc is not None
     assert "Straw Hat" in desc
     assert "Blood type" not in desc
@@ -265,8 +272,8 @@ He is the captain of the Straw Hat Pirates.<br>
 # =============================================================================
 
 
-def test_extract_voice_actors_from_fixture(mal_character_extracted) -> None:
-    vas = _extract_voice_actors(mal_character_extracted["content_html"])
+def test_extract_voice_actors_from_fixture(mal_character_content_html) -> None:
+    vas = _extract_voice_actors(mal_character_content_html)
     assert len(vas) == 28
     assert vas[0].name == "Tanaka, Mayumi"
     assert vas[0].language == "Japanese"
@@ -338,14 +345,14 @@ def test_extract_voice_actors_row_without_person_link_skipped() -> None:
 # =============================================================================
 
 
-def test_extract_ography_from_fixture(mal_character_extracted) -> None:
-    anime = _extract_ography(mal_character_extracted["content_html"], "Animeography")
+def test_extract_ography_from_fixture(mal_character_content_html) -> None:
+    anime = _extract_ography(mal_character_content_html, "Animeography")
     assert len(anime) == 60
     assert anime[0].title == "One Piece"
     assert anime[0].role == "Main"
     assert "myanimelist.net/anime/21" in anime[0].sources[0]
 
-    manga = _extract_ography(mal_character_extracted["content_html"], "Mangaography")
+    manga = _extract_ography(mal_character_content_html, "Mangaography")
     assert len(manga) == 16
     assert manga[0].title == "One Piece"
     assert manga[0].role == "Main"
@@ -426,22 +433,32 @@ def test_build_character_from_raw_from_fixture(mal_character_extracted) -> None:
 
 
 def test_build_character_from_raw_favorites_no_comma(mal_character_extracted) -> None:
-    char = _build_character_from_raw({**mal_character_extracted, "favorites": "12345"}, _LUFFY_URL)
+    char = _build_character_from_raw(
+        {**mal_character_extracted, "favorites": "12345"}, _LUFFY_URL
+    )
     assert char.favorites == 12345
 
 
-def test_build_character_from_raw_missing_favorites_defaults_to_zero(mal_character_extracted) -> None:
+def test_build_character_from_raw_missing_favorites_defaults_to_zero(
+    mal_character_extracted,
+) -> None:
     raw = {k: v for k, v in mal_character_extracted.items() if k != "favorites"}
     char = _build_character_from_raw(raw, _LUFFY_URL)
     assert char.favorites == 0
 
 
-def test_build_character_from_raw_missing_image_empty_list(mal_character_extracted) -> None:
-    char = _build_character_from_raw({**mal_character_extracted, "image_src": None}, _LUFFY_URL)
+def test_build_character_from_raw_missing_image_empty_list(
+    mal_character_extracted,
+) -> None:
+    char = _build_character_from_raw(
+        {**mal_character_extracted, "image_src": None}, _LUFFY_URL
+    )
     assert char.images == []
 
 
-def test_build_character_from_raw_url_from_explicit_arg(mal_character_extracted) -> None:
+def test_build_character_from_raw_url_from_explicit_arg(
+    mal_character_extracted,
+) -> None:
     custom_url = "https://myanimelist.net/character/40/SomeSlug"
     char = _build_character_from_raw(mal_character_extracted, custom_url)
     assert char.source == custom_url
@@ -454,6 +471,7 @@ def test_build_character_from_raw_url_from_explicit_arg(mal_character_extracted)
 
 def test_mal_character_crawler_get_extraction_schema() -> None:
     from enrichment.sources.base.framework import NullRepository
+
     crawler = MalCharacterCrawler(NullRepository())
     schema = crawler.get_extraction_schema()
     assert schema == {"xpaths": _XPATHS}
@@ -461,6 +479,7 @@ def test_mal_character_crawler_get_extraction_schema() -> None:
 
 def test_mal_character_crawler_normalize_identifier() -> None:
     from enrichment.sources.base.framework import NullRepository
+
     crawler = MalCharacterCrawler(NullRepository())
     assert crawler.normalize_identifier(_LUFFY_URL) == _LUFFY_URL
 
@@ -571,7 +590,9 @@ async def test_fetch_mal_character_returns_none_when_no_data(mocker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_character_returns_parsed_character(mocker, mal_character_extracted) -> None:
+async def test_fetch_mal_character_returns_parsed_character(
+    mocker, mal_character_extracted
+) -> None:
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler._fetch_mal_character_data",
         new_callable=AsyncMock,
@@ -684,13 +705,21 @@ async def test_success(mocker, mal_character_html) -> None:
 
 
 @pytest.mark.asyncio
-async def test_merges_cached_and_fetched(mocker, mal_character_extracted, mal_character_html) -> None:
+async def test_merges_cached_and_fetched(
+    mocker, mal_character_extracted, mal_character_html
+) -> None:
     url2 = "https://myanimelist.net/character/41/Roronoa_Zoro"
-    zoro_raw = {**mal_character_extracted, "name_header": "Zoro Roronoa", "favorites": "10,000"}
+    zoro_raw = {
+        **mal_character_extracted,
+        "name_header": "Zoro Roronoa",
+        "favorites": "10,000",
+    }
     mocker.patch.object(
         _fetch_mal_character_data,
         "cache_batch_get",
-        new=AsyncMock(return_value=([[mal_character_extracted, _LUFFY_URL], None], [1])),
+        new=AsyncMock(
+            return_value=([[mal_character_extracted, _LUFFY_URL], None], [1])
+        ),
     )
     cache_set = AsyncMock()
     mocker.patch.object(_fetch_mal_character_data, "cache_batch_set", new=cache_set)
@@ -740,23 +769,29 @@ async def test_inter_request_delay(mocker, mal_character_html) -> None:
 
 @pytest.mark.asyncio
 async def test_main_returns_1_when_no_character(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")]
+    )
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.fetch_mal_character",
         return_value=None,
     )
     from enrichment.sources.mal.mal_character_crawler import main
+
     assert await main() == 1
 
 
 @pytest.mark.asyncio
 async def test_main_returns_0_on_success(mocker, tmp_path) -> None:
-    mocker.patch("sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")])
+    mocker.patch(
+        "sys.argv", ["prog", _LUFFY_URL, "--output", str(tmp_path / "out.json")]
+    )
     mocker.patch(
         "enrichment.sources.mal.mal_character_crawler.fetch_mal_character",
         return_value={"name": "Luffy Monkey D."},
     )
     from enrichment.sources.mal.mal_character_crawler import main
+
     assert await main() == 0
 
 
@@ -778,7 +813,9 @@ Age: 17<br>
 
 
 @pytest.mark.asyncio
-async def test_fetch_mal_character_data_browser_stop_exception(mocker, mal_character_html) -> None:
+async def test_fetch_mal_character_data_browser_stop_exception(
+    mocker, mal_character_html
+) -> None:
     _disable_cache(mocker)
     browser_mock = AsyncMock()
     browser_mock.stop = AsyncMock(side_effect=Exception("stop failed"))

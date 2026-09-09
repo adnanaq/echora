@@ -265,16 +265,15 @@ def _extract_manga_roles(body_html: str) -> list[AnimePlanetCharacterMangaRole]:
 def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     """Extract raw character fields from a rendered Anime-Planet character page.
 
-    Combines lxml XPath extraction (5 structured fields) with the full HTML
-    stored under ``_html`` for use by all regex helpers.  The slug and URL are
+    Combines lxml XPath extraction with the regex helpers, so the returned dict
+    is complete and the page itself need not be retained.  The slug and URL are
     injected by the caller.
 
     Args:
         html: Full rendered HTML of an Anime-Planet character page.
 
     Returns:
-        Raw dict with XPath fields and ``_html`` key, or None if the page has
-        no character name.
+        Raw dict of extracted fields, or None if the page has no character name.
     """
     if not html:
         return None
@@ -293,13 +292,21 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     if not name:
         return None
 
+    bar = _extract_entry_bar(html)
     return {
         "name": name,
         "image": _a("image"),
         "loved_rank": _t("loved_rank"),
         "hated_rank": _t("hated_rank"),
         "loved_count": _t("loved_count"),
-        "_html": html,
+        "gender": bar.get("gender"),
+        "hair_color": bar.get("hair_color"),
+        "description": _extract_description(html),
+        "tags": _extract_tags(html),
+        "alt_names": _extract_alt_names(html),
+        "attributes": _extract_metadata(html),
+        "anime_roles": [r.model_dump() for r in _extract_anime_roles(html)],
+        "manga_roles": [r.model_dump() for r in _extract_manga_roles(html)],
     }
 
 
@@ -308,21 +315,17 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_character_from_raw(
-    raw: dict[str, Any], html: str, url: str
-) -> AnimePlanetCharacter:
-    """Build AnimePlanetCharacter from extracted raw fields and full page HTML.
+def _build_character_from_raw(raw: dict[str, Any], url: str) -> AnimePlanetCharacter:
+    """Build AnimePlanetCharacter from extracted raw fields.
 
     Args:
-        raw: Dict with XPath-extracted fields (name, image, loved_rank, etc.).
-        html: Full page HTML for regex-based extraction.
+        raw: Dict of fields from :func:`_extract_character_from_html`.
         url: Canonical character URL (used to derive the slug).
 
     Returns:
         Validated AnimePlanetCharacter source model.
     """
     slug = url.rstrip("/").rsplit("/", 1)[-1]
-    bar = _extract_entry_bar(html)
     return AnimePlanetCharacter(
         name=(raw.get("name") or "").strip(),
         slug=slug,
@@ -331,14 +334,18 @@ def _build_character_from_raw(
         loved_rank=_parse_rank(raw.get("loved_rank")),
         hated_rank=_parse_rank(raw.get("hated_rank")),
         loved_count=_parse_loved_count(raw.get("loved_count")),
-        gender=bar.get("gender"),
-        hair_color=bar.get("hair_color"),
-        description=_extract_description(html),
-        tags=_extract_tags(html),
-        alt_names=_extract_alt_names(html),
-        attributes=_extract_metadata(html),
-        anime_roles=_extract_anime_roles(html),
-        manga_roles=_extract_manga_roles(html),
+        gender=raw.get("gender"),
+        hair_color=raw.get("hair_color"),
+        description=raw.get("description"),
+        tags=raw.get("tags") or [],
+        alt_names=raw.get("alt_names") or [],
+        attributes=raw.get("attributes") or {},
+        anime_roles=[
+            AnimePlanetCharacterAnimeRole(**r) for r in raw.get("anime_roles") or []
+        ],
+        manga_roles=[
+            AnimePlanetCharacterMangaRole(**r) for r in raw.get("manga_roles") or []
+        ],
     )
 
 
@@ -379,8 +386,7 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
 async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by url.
 
-    Returns dict with lxml-extracted fields plus ``_html`` key containing
-    the full page HTML (used by all regex helpers).
+    Returns dict with every extracted field; the page itself is not retained.
 
     Args:
         url: Full Anime-Planet character URL.
@@ -424,9 +430,7 @@ class AnimePlanetCharacterCrawler(BaseCrawler[AnimePlanetCharacter, dict[str, An
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
     ) -> AnimePlanetCharacter:
-        return _build_character_from_raw(
-            processed_raw, processed_raw.get("_html") or "", url
-        )
+        return _build_character_from_raw(processed_raw, url)
 
     def map_to_canonical(self, source_model: AnimePlanetCharacter) -> dict[str, Any]:
         return character_from_animeplanet(source_model)
@@ -478,9 +482,8 @@ async def fetch_animeplanet_characters(
 
     for idx, cached in enumerate(cached_values):
         if cached is not None:
-            html = cached.get("_html") or ""
             canonical = character_from_animeplanet(
-                _build_character_from_raw(cached, html, urls[idx])
+                _build_character_from_raw(cached, urls[idx])
             )
             characters[idx] = canonical
             repo.save(canonical)
@@ -511,9 +514,7 @@ async def fetch_animeplanet_characters(
             if not raw:
                 characters[out_index] = None
                 continue
-            canonical = character_from_animeplanet(
-                _build_character_from_raw(raw, html, url)
-            )
+            canonical = character_from_animeplanet(_build_character_from_raw(raw, url))
             characters[out_index] = canonical
             cache_values[i] = raw
             repo.save(canonical)
