@@ -115,6 +115,8 @@ class AniSearchVoiceActorRef(BaseModel):
 class AniSearchCharacterAnimeRole(BaseModel):
     title: str
     url: str | None = None
+    # AniSearch does not publish a role on a character's own filmography page,
+    # so this stays None there; it is set only for the anime being enriched.
     role: str | None = None
 
 
@@ -130,6 +132,9 @@ class AniSearchCharacter(BaseModel):
     image: str | None = None
     favorites: int | None = None
     role: str | None = None
+    # Anime whose characters page supplied `role`, so the mapper can attach it
+    # to the matching animeography entry.
+    anime_url: str | None = None
     tags: list[str] = []
     screenshot_images: list[str] = []
     picture_images: list[str] = []

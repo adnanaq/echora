@@ -165,6 +165,9 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         if href or title:
             anime_roles.append({"url": href, "title": title})
 
+    voice_actors = [va.model_dump() for va in _extract_voice_actors(html)]
+    attributes = _extract_attributes(html)
+
     return {
         "name": name,
         "name_native": name_native,
@@ -175,7 +178,8 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
         "screenshot_images": screenshot_images,
         "picture_images": picture_images,
         "anime_roles": anime_roles,
-        "_html": html,
+        "voice_actors": voice_actors,
+        "attributes": attributes,
     }
 
 
@@ -348,9 +352,9 @@ def _ography_to_roles(
 
 def _build_character_from_raw(
     raw: dict[str, Any],
-    html: str,
     url: str,
     role: str | None = None,
+    anime_url: str | None = None,
     anime_ography: list[dict[str, Any]] | None = None,
     manga_ography: list[dict[str, Any]] | None = None,
 ) -> AniSearchCharacter:
@@ -387,14 +391,17 @@ def _build_character_from_raw(
         favorites=raw.get("favorites"),
         description=description,
         role=role,
+        anime_url=anime_url,
         tags=tags,
         screenshot_images=screenshot_images,
         picture_images=picture_images,
-        voice_actors=_extract_voice_actors(html),
+        voice_actors=[
+            AniSearchVoiceActorRef(**va) for va in raw.get("voice_actors") or []
+        ],
         anime_roles=anime_roles,
         anime_ography=_ography_to_roles(anime_ography),
         manga_ography=_ography_to_roles(manga_ography),
-        attributes=_extract_attributes(html),
+        attributes=raw.get("attributes") or {},
     )
 
 
@@ -504,9 +511,11 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
         repository: IRepository | None = None,
         *,
         role: str | None = None,
+        anime_url: str | None = None,
     ) -> None:
         super().__init__(repository)
         self._role = role
+        self._anime_url = anime_url
 
     def get_extraction_schema(self) -> dict[str, Any]:
         return {"xpaths": _XPATHS}
@@ -535,9 +544,9 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
     ) -> AniSearchCharacter:
         return _build_character_from_raw(
             processed_raw,
-            processed_raw.get("_html") or "",
             url,
             role=self._role,
+            anime_url=self._anime_url,
             anime_ography=processed_raw.get("_anime_ography"),
             manga_ography=processed_raw.get("_manga_ography"),
         )
@@ -550,6 +559,7 @@ async def fetch_anisearch_character(
     url: str,
     *,
     role: str | None = None,
+    anime_url: str | None = None,
     output_path: str | None = None,
 ) -> dict[str, Any] | None:
     """Fetch a single AniSearch character detail page and return canonical dict.
@@ -557,13 +567,17 @@ async def fetch_anisearch_character(
     Args:
         url: Full character URL (e.g. https://www.anisearch.com/character/4852,monkey-d-luffy).
         role: Role string from the refs list ("Main Character", "Secondary Character", etc.)
+        anime_url: URL of the anime that ``role`` describes, so the mapper can
+            attach it to the matching animeography entry.
         output_path: If provided, append the canonical dict as a JSONL line to this path.
 
     Returns:
         Canonical character dict on success, None on failure.
     """
     repo = FileRepository(output_path) if output_path else NullRepository()
-    return await AniSearchCharacterCrawler(repo, role=role).crawl(url)
+    return await AniSearchCharacterCrawler(repo, role=role, anime_url=anime_url).crawl(
+        url
+    )
 
 
 async def fetch_anisearch_characters(
@@ -610,6 +624,8 @@ async def fetch_anisearch_characters(
     try:
         for i, url in enumerate(urls):
             role = refs[i].get("role")
+            # Absent from refs cached before anime_url was carried through.
+            anime_url = refs[i].get("anime_url")
 
             # ── Detail page ───────────────────────────────────────────────
             if i not in missing_set:
@@ -654,9 +670,9 @@ async def fetch_anisearch_characters(
             canonical = character_from_anisearch(
                 _build_character_from_raw(
                     raw,
-                    raw.get("_html") or "",
                     url,
                     role=role,
+                    anime_url=anime_url,
                     anime_ography=anime_ography,
                     manga_ography=manga_ography,
                 )

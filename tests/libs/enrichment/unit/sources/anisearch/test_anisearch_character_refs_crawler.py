@@ -129,15 +129,17 @@ def test_absolutize_already_absolute_passthrough() -> None:
 
 
 def test_post_process_refs_returns_url_role_dicts(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     assert refs
     for ref in refs:
         assert "url" in ref and "role" in ref
         assert ref["url"].startswith("https://"), f"Relative URL: {ref['url']}"
+        # Carried so the mapper can attach `role` to the right ography entry.
+        assert ref["anime_url"] == _ONE_PIECE_CHARS_URL
 
 
 def test_post_process_refs_role_mapping(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     luffy = next(r for r in refs if "monkey-d-luffy" in r["url"])
     assert luffy["role"] == "Main Character"
     chara2_count = sum(1 for r in refs if r["role"] == "Secondary Character")
@@ -145,7 +147,7 @@ def test_post_process_refs_role_mapping(one_piece_refs_raw) -> None:
 
 
 def test_post_process_refs_count_invariants(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     urls = [r["url"] for r in refs]
     assert len(urls) == len(set(urls))
     assert len(refs) <= sum(len(v) for v in one_piece_refs_raw.values())
@@ -160,7 +162,7 @@ def test_post_process_refs_empty_sections_skipped() -> None:
         "chara5": [],
         "chara50": [],
     }
-    refs = _post_process_refs(raw)
+    refs = _post_process_refs(raw, _ONE_PIECE_CHARS_URL)
     assert len(refs) == 1
 
 
@@ -173,7 +175,7 @@ def test_post_process_refs_missing_url_skipped() -> None:
         "chara5": [],
         "chara50": [],
     }
-    refs = _post_process_refs(raw)
+    refs = _post_process_refs(raw, _ONE_PIECE_CHARS_URL)
     assert len(refs) == 1
 
 
@@ -217,7 +219,8 @@ async def test_fetch_refs_real_fixture_returns_refs(mocker, one_piece_refs_raw) 
         return_value=one_piece_refs_raw,
     )
     mocker.patch(
-        "zendriver.start", new_callable=AsyncMock,
+        "zendriver.start",
+        new_callable=AsyncMock,
         return_value=_make_browser_mock(mocker, html="<html></html>"),
     )
     refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
@@ -236,7 +239,8 @@ async def test_fetch_refs_extraction_failure_returns_none(mocker) -> None:
         return_value=None,
     )
     mocker.patch(
-        "zendriver.start", new_callable=AsyncMock,
+        "zendriver.start",
+        new_callable=AsyncMock,
         return_value=_make_browser_mock(mocker, html="<html></html>"),
     )
     assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
@@ -248,7 +252,8 @@ async def test_fetch_refs_empty_content_returns_none(mocker) -> None:
         return_value=mocker.MagicMock(cache_enabled=False),
     )
     mocker.patch(
-        "zendriver.start", new_callable=AsyncMock,
+        "zendriver.start",
+        new_callable=AsyncMock,
         return_value=_make_browser_mock(mocker, html=""),
     )
     assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
@@ -271,7 +276,7 @@ async def test_fetch_character_refs_returns_empty_on_failure(mocker) -> None:
 async def test_fetch_character_refs_returns_list_on_success(
     mocker, one_piece_refs_raw
 ) -> None:
-    expected = _post_process_refs(one_piece_refs_raw)
+    expected = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler._fetch_anisearch_character_refs_data",
         new_callable=AsyncMock,

@@ -62,8 +62,21 @@ def _absolutize(href: str) -> str:
     return f"{_ANISEARCH_BASE_URL}/{href.lstrip('/')}"
 
 
-def _post_process_refs(raw: dict[str, list[str]]) -> list[dict[str, str]]:
-    """Flatten per-section hrefs into a deduplicated list of {url, role} dicts."""
+def _post_process_refs(
+    raw: dict[str, list[str]], anime_url: str
+) -> list[dict[str, str]]:
+    """Flatten per-section hrefs into a deduplicated list of character refs.
+
+    Args:
+        raw: Section id to character hrefs, as scraped from the page.
+        anime_url: URL of the anime whose characters page this is. Carried on
+            each ref so the mapper can tell which animeography entry the role
+            applies to - the section heading is the only per-title role
+            AniSearch publishes, and it describes this anime alone.
+
+    Returns:
+        Deduplicated ``{url, role, anime_url}`` dicts.
+    """
     seen: set[str] = set()
     refs: list[dict[str, str]] = []
     for section_id, role_label in _SECTION_ROLE_MAP.items():
@@ -74,7 +87,7 @@ def _post_process_refs(raw: dict[str, list[str]]) -> list[dict[str, str]]:
             url = _absolutize(href)
             if url not in seen:
                 seen.add(url)
-                refs.append({"url": url, "role": role_label})
+                refs.append({"url": url, "role": role_label, "anime_url": anime_url})
     return refs
 
 
@@ -127,7 +140,7 @@ async def _fetch_anisearch_character_refs_data(
         logger.error(f"Failed to parse characters page {characters_url}")
         return None
 
-    refs = _post_process_refs(raw)
+    refs = _post_process_refs(raw, characters_url)
     return refs or None
 
 

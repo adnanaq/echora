@@ -52,6 +52,9 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
 _DETAILS_TYPE_RE = re.compile(r"^([^,]+)")
+_ANISEARCH_ANIME_ID_RE = re.compile(
+    r"^https?://(?:www\.)?anisearch\.com/anime/(\d+)", re.IGNORECASE
+)
 
 
 def _type_from_details(details: str | None) -> str:
@@ -72,6 +75,44 @@ def _full_url(path: str | None) -> str | None:
     if path.startswith("http"):
         return path
     return _ANISEARCH_BASE_URL + path.lstrip("/")
+
+
+def _anisearch_anime_key(url: str | None) -> str | None:
+    """Reduce an AniSearch anime URL to its numeric id.
+
+    The same anime is written several ways - ``/anime/2227``,
+    ``/anime/2227,one-piece`` and ``/anime/2227,one-piece/characters`` - so the
+    id is the only part safe to compare. Matching on the id alone also avoids
+    the prefix trap, where ``/anime/466`` would otherwise match ``/anime/4661``.
+
+    Args:
+        url: An AniSearch anime URL, or None.
+
+    Returns:
+        The id as a string, or None if absent or unrecognised.
+    """
+    if not url:
+        return None
+    m = _ANISEARCH_ANIME_ID_RE.match(url)
+    return m.group(1) if m else None
+
+
+def _role_for_entry(
+    entry_url: str | None, current_anime: str | None, role: str | None
+) -> str:
+    """Return ``role`` when this ography entry is the anime it describes.
+
+    Args:
+        entry_url: URL of the animeography entry under construction.
+        current_anime: Id of the anime whose characters page supplied ``role``.
+        role: Role label from that page's section heading.
+
+    Returns:
+        The role label, or "" to leave the entry UNKNOWN.
+    """
+    if not (role and current_anime):
+        return ""
+    return role if _anisearch_anime_key(entry_url) == current_anime else ""
 
 
 def _build_related_anime(
@@ -250,19 +291,24 @@ def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
     all_roles: set[CharacterRole] = set()
     if char.role:
         all_roles.add(CharacterRole(char.role))
-    for entry in char.anime_roles:
-        if entry.role:
-            all_roles.add(CharacterRole(entry.role))
     if all_roles:
         result["roles"] = [r.value for r in all_roles]
 
     # ── Animeography (full list from /anime sub-page; fallback to detail page) ──
+    # The sub-page lists titles without roles, so every entry would otherwise be
+    # UNKNOWN. `char.role` - the section heading from the anime's own characters
+    # page - is the one per-title role AniSearch publishes, and it belongs to
+    # `char.anime_url`; attach it to that entry. Remaining entries stay UNKNOWN
+    # until another source or a later run of that anime fills them in.
+    current_anime = _anisearch_anime_key(char.anime_url)
     ography_source = char.anime_ography or char.anime_roles
     if ography_source:
         result["animeography"] = [
             Ography(
                 title=entry.title,
-                role=CharacterRole(entry.role or ""),
+                role=CharacterRole(
+                    entry.role or _role_for_entry(entry.url, current_anime, char.role)
+                ),
                 sources=[entry.url] if entry.url else [],
             )
             for entry in ography_source
