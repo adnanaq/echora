@@ -370,8 +370,12 @@ class AnimeRelationType(StrEnum):
     """
 
     ADAPTATION = "ADAPTATION"
-    ALTERNATIVE_VERSION = "ALTERNATIVE_VERSION"  # Same story, different version (e.g. TV vs movie cut)
-    ALTERNATIVE_SETTING = "ALTERNATIVE_SETTING"  # Same characters, different universe/AU
+    ALTERNATIVE_VERSION = (
+        "ALTERNATIVE_VERSION"  # Same story, different version (e.g. TV vs movie cut)
+    )
+    ALTERNATIVE_SETTING = (
+        "ALTERNATIVE_SETTING"  # Same characters, different universe/AU
+    )
     CHARACTER = "CHARACTER"
     CROSSOVER = "CROSSOVER"
     FULL_STORY = "FULL_STORY"
@@ -628,7 +632,9 @@ class EpisodeStaff(BaseModel):
 
     # ── Scalar fields (alphabetical) ──────────────────────────────────────
     name: str = Field(..., description="Staff member name")
-    role: str | None = Field(None, description="Role (Script, Animation Director, etc.)")
+    role: str | None = Field(
+        None, description="Role (Script, Animation Director, etc.)"
+    )
 
     # ── Array fields (alphabetical) ───────────────────────────────────────
     sources: list[str] = Field(
