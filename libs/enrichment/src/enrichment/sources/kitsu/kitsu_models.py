@@ -42,7 +42,8 @@ class KitsuAnimeAttributes(BaseModel):
     endDate: str | None = None
     popularityRank: int | None = None
     ratingRank: int | None = None
-    ageRating: str | None = None  # "G", "PG", "R", "R17+", "R18+"
+    ageRating: str | None = None  # "G", "PG", "R"
+    ageRatingGuide: str | None = None  # "Children", "Teens 13 or older"
     subtype: str | None = None  # "TV", "movie", "OVA", "ONA", "special", "music"
     status: str | None = None  # "current", "finished", "tba", "unreleased", "upcoming"
     posterImage: KitsuImage | None = None

@@ -145,15 +145,24 @@ class AnimeRating(StrEnum):
         if not isinstance(value, str):
             return cls.UNKNOWN
         _map = {
+            # Codes
             "g": cls.G,
             "pg": cls.PG,
             "pg_13": cls.PG13,
+            "r": cls.R,
             "r17+": cls.R,
             "r+": cls.RPLUS,
             "rx": cls.RX,
-            # Kitsu
             "r18+": cls.RX,
             "r18": cls.RX,
+            # Guide phrases (Kitsu ageRatingGuide)
+            "all ages": cls.G,
+            "children": cls.PG,
+            "teens 13 or older": cls.PG13,
+            "17+ (violence & profanity)": cls.R,
+            "violence, profanity": cls.R,
+            "mild nudity": cls.RPLUS,
+            "hentai": cls.RX,
         }
         return _map.get(value.lower(), cls.UNKNOWN)
 
