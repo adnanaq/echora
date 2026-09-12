@@ -290,6 +290,9 @@ def character_from_anidb(
         role = CharacterRole(char.type)
         result["roles"] = [role.value]
 
+    if char.gender:
+        result["attributes"] = {"gender": char.gender}
+
     if char.seiyuu:
         result["voice_actors"] = [
             VoiceActor(
@@ -310,8 +313,9 @@ def character_from_anidb(
 def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
     """Merge AniDBCharacterPage fields into a canonical character result dict.
 
-    All fields here come exclusively from the web page — not from the XML API.
-    Called by character_from_anidb.
+    Fields here come from the web page. Gender is the exception: the XML also
+    carries it, so this merges into any existing attributes rather than
+    replacing them. Called by character_from_anidb.
     """
     if page.name_kanji:
         result["name_native"] = page.name_kanji
@@ -355,4 +359,4 @@ def _apply_page_data(result: dict[str, Any], page: AniDBCharacterPage) -> None:
             result["roles"] = merged
 
     if page.gender:
-        result["attributes"] = {"gender": page.gender}
+        result.setdefault("attributes", {})["gender"] = page.gender
