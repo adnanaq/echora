@@ -105,6 +105,50 @@ async def test_fetch_page_html_runtime_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_page_html_unreadable_page_returns_none() -> None:
+    """Every get_content raising is a transport failure, not an empty page.
+
+    Returning "" here made the caller fall through to "deleted/invalid",
+    reporting a live character as missing.
+    """
+    page_mock = AsyncMock()
+    page_mock.get_content = AsyncMock(side_effect=Exception("transport dead"))
+    browser = AsyncMock()
+    browser.get = AsyncMock(return_value=page_mock)
+
+    with (
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch("time.monotonic", side_effect=[0.0, 1.0, 20.0]),
+    ):
+        html, crashed, _ = await _fetch_page_html(
+            browser, "https://anidb.net/character/474"
+        )
+
+    assert html is None
+    assert crashed is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_html_empty_page_is_not_none() -> None:
+    """A page that reads fine but holds no character data stays distinguishable."""
+    page_mock = AsyncMock()
+    page_mock.get_content = AsyncMock(return_value=_EMPTY_HTML)
+    browser = AsyncMock()
+    browser.get = AsyncMock(return_value=page_mock)
+
+    with (
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch("time.monotonic", side_effect=[0.0, 1.0, 20.0]),
+    ):
+        html, crashed, _ = await _fetch_page_html(
+            browser, "https://anidb.net/character/474"
+        )
+
+    assert html == _EMPTY_HTML
+    assert crashed is False
+
+
+@pytest.mark.asyncio
 async def test_fetch_page_html_stop_iteration() -> None:
     browser = AsyncMock()
     browser.get = AsyncMock(side_effect=StopIteration)

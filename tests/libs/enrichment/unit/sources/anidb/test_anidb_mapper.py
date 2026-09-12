@@ -265,6 +265,38 @@ def test_anime_from_anidb_ann_resource_mapped() -> None:
     assert "149" in result["external_sources"]["anime_news_network"]
 
 
+def test_anime_from_anidb_ambiguous_resource_is_skipped() -> None:
+    """AniDB lists every platform entry for a work; none is marked as the right one.
+
+    Taking the first linked One Piece to MAL 62593, a 2025 special. Lowest-id was
+    right in only 7 of 8 sampled ambiguous cases, so no link is emitted at all.
+    """
+    result = anime_from_anidb(
+        _anime(
+            resources=[
+                AniDBExternalResource(type="2", identifiers=["62593", "60022", "21"])
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert "myanimelist" not in result["external_sources"]
+
+
+def test_anime_from_anidb_single_candidate_resource_is_kept() -> None:
+    """Single-candidate resources were correct in 174 of 174 sampled, so they stay."""
+    result = anime_from_anidb(
+        _anime(
+            resources=[
+                AniDBExternalResource(type="43", identifiers=["tt0388629"]),
+                AniDBExternalResource(type="1", identifiers=["836", "3709"]),
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"]["imdb"] == "https://www.imdb.com/title/tt0388629"
+    assert "anime_news_network" not in result["external_sources"]
+
+
 def test_anime_from_anidb_type4_resource_uses_url_directly() -> None:
     """Type 4 (official website in resources) reads from urls list, not identifiers."""
     result = anime_from_anidb(

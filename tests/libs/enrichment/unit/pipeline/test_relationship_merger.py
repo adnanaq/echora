@@ -7,6 +7,7 @@ the near misses where a high similarity score and a distinct work coincide.
 
 import pytest
 from enrichment.pipeline.relationship_merger import (
+    load_agent_providers,
     merge_relation_field,
     titles_match,
     validate,
@@ -185,3 +186,33 @@ def test_missing_type_falls_back_to_the_unknown_sentinel() -> None:
     merged = merge_relation_field(per_provider, is_source_material=False)
     assert next(iter(merged.values()))[0]["type"] == "UNKNOWN"
     assert validate({"related_anime": merged, "related_source_material": {}}) == []
+
+
+def test_load_agent_providers_reads_the_latest_record(tmp_path) -> None:
+    """Helpers append on re-run, so the first line is the stale earlier fetch."""
+    (tmp_path / "mal_anime.jsonl").write_text(
+        '{"title": "stale", "entity_type": "anime"}\n'
+        '{"title": "fresh", "entity_type": "anime"}\n'
+    )
+    assert load_agent_providers(tmp_path)["mal"]["title"] == "fresh"
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ('{"title": "a"}\n\n\n', "a"),
+        ('{"title": "a"}\n\n{"title": "b"}\n', "b"),
+        ('{"title": "a"}\n{"title": "b"}', "b"),
+    ],
+)
+def test_load_agent_providers_ignores_blank_lines(
+    tmp_path, content: str, expected: str
+) -> None:
+    (tmp_path / "mal_anime.jsonl").write_text(content)
+    assert load_agent_providers(tmp_path)["mal"]["title"] == expected
+
+
+@pytest.mark.parametrize("content", ["", "   \n\n"])
+def test_load_agent_providers_skips_empty_file(tmp_path, content: str) -> None:
+    (tmp_path / "mal_anime.jsonl").write_text(content)
+    assert load_agent_providers(tmp_path) == {}
