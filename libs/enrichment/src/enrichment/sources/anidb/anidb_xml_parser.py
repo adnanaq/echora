@@ -180,7 +180,7 @@ def _parse_categories(root: Element) -> list[AniDBCategory]:
             AniDBCategory(
                 id=category.get("id"),
                 name=name_elem.text,
-                weight=int(category.get("weight", 0)),
+                weight=_safe_count(category.get("weight")),
                 hentai=category.get("hentai", "false").lower() == "true",
             )
         )
@@ -464,9 +464,7 @@ def _parse_ratings(root: Element) -> AniDBRatings | None:
         elem = ratings_elem.find(tag)
         if elem is None:
             return None, 0
-        score = float(elem.text) if elem.text else None
-        count = int(elem.get("count", 0))
-        return score, count
+        return _safe_float(elem.text), _safe_count(elem.get("count"))
 
     permanent, permanent_count = _rating_value("permanent")
     temporary, temporary_count = _rating_value("temporary")
@@ -523,8 +521,42 @@ def _safe_int(value: str | None) -> int | None:
     return int(value) if value and value.isdigit() else None
 
 
+def _safe_count(value: str | None, default: int = 0) -> int:
+    """Parse a count attribute, falling back rather than raising.
+
+    Args:
+        value: Raw attribute text.
+        default: Value to use when the attribute is absent or non-numeric.
+
+    Returns:
+        The parsed count, or ``default``.
+    """
+    parsed = _safe_int(value)
+    return default if parsed is None else parsed
+
+
+def _safe_float(value: str | None) -> float | None:
+    """Parse element text to float, or None if absent or non-numeric.
+
+    AniDB documents are thousands of lines; one malformed rating must not abort
+    the whole parse and discard the anime, its episodes and its characters.
+
+    Args:
+        value: Raw element text.
+
+    Returns:
+        The parsed value, or ``None``.
+    """
+    if not value or not value.strip():
+        return None
+    try:
+        return float(value.strip())
+    except ValueError:
+        return None
+
+
 def _rating_pair(elem: Element | None) -> tuple[float | None, int]:
     """Extract score and vote count from a ``<rating votes="N">score</rating>`` element."""
     if elem is None:
         return None, 0
-    return (float(elem.text) if elem.text else None), int(elem.get("votes", 0))
+    return _safe_float(elem.text), _safe_count(elem.get("votes"))
