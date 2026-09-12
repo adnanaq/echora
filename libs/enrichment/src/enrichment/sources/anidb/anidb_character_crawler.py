@@ -22,7 +22,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 import time
 from collections.abc import AsyncGenerator
@@ -54,18 +53,6 @@ _CF_MARKERS = (
 _ANTILEECH_TITLE = "<title>AniDB AntiLeech"
 _UNBAN_BUTTON_TEXT = "Please Unban Me"
 _INTER_REQUEST_DELAY = 2.5  # seconds; keeps session trusted and avoids CF re-trigger
-
-# Stealth persona: a coherent Windows desktop fingerprint applied to the Chrome
-# session so CF/AniDB see a real browser. The seed is fixed so the identity is
-# STABLE across runs and browser restarts (a returning visitor), which reduces
-# repeated CF challenges; change it to rotate the identity. Timezone is set to
-# "auto" so it follows the exit IP (proxy/VPN aware) instead of leaking the host's.
-_PERSONA_SEED = 20240611
-
-# Persistent Chrome profile: CF clearance cookies (and the pinned persona seed)
-# survive across runs, so Turnstile is solved far less often. Absolute path so it
-# persists even when launched from an ephemeral Pants sandbox.
-_USER_DATA_DIR = os.path.expanduser("~/.cache/echora/anidb_chrome")
 
 # ---------------------------------------------------------------------------
 # XPath selectors — anchored on structural attributes (itemprop, id, class)
@@ -270,15 +257,19 @@ async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, bool, An
     content (tab_1_pane) or a block page (CF interstitial / antileech) — rather
     than using a fixed wait. This avoids capturing a half-rendered shell, which
     previously caused the antileech page to be misread as a deleted character.
-    Returns the last snapshot on timeout.
+    Returns the last snapshot on timeout, or ``None`` for html when no snapshot
+    was ever read — every ``get_content`` raised, which is a transport failure,
+    not a page that happens to be empty. Returning ``""`` there made the caller
+    fall through to "deleted/invalid", the exact misdiagnosis this polling loop
+    exists to prevent.
 
     ``crashed`` is reported separately rather than inferred from a null html:
-    a crash needs a browser restart, an empty page does not, and the caller
-    cannot tell those apart from the html alone.
+    a crash needs a browser restart, an unreadable page does not, and the
+    caller cannot tell those apart from the html alone.
     """
     try:
         page = await browser.get(url)
-        html = ""
+        html: str | None = None
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             await asyncio.sleep(1)
@@ -376,7 +367,10 @@ async def fetch_anidb_characters(
                     continue
 
             if html is None:
-                logger.warning(f"no page content for char {char_id} — skipping")
+                logger.warning(
+                    f"could not read page for char {char_id} — skipping "
+                    f"(transport failure, not a missing character)"
+                )
                 yield char_id, None
                 continue
 
