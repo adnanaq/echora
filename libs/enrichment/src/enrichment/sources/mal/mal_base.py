@@ -121,6 +121,32 @@ def parse_number(s: str | None) -> int | None:
         return None
 
 
+def parse_score(s: str | None) -> float | None:
+    """Parse a MAL score string to float.
+
+    An anime with too few votes renders the same ``ratingValue`` span with the
+    literal text ``N/A``, so the score must be parsed defensively: an unguarded
+    ``float()`` raises out of the crawler and discards the entire record.
+
+    Handles:
+        "8.73" → 8.73
+        "N/A"  → None
+        None   → None
+
+    Args:
+        s: String representation of a score.
+
+    Returns:
+        Float value, or None if parsing fails.
+    """
+    if not s or not s.strip():
+        return None
+    try:
+        return float(s.strip())
+    except ValueError:
+        return None
+
+
 def parse_duration_seconds(raw: str | None) -> int | None:
     """Parse a MAL duration string to seconds.
 

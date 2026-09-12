@@ -30,6 +30,7 @@ from enrichment.sources.mal.mal_base import (
     parse_episode_ranges,
     parse_number,
     parse_premiered,
+    parse_score,
 )
 from enrichment.sources.mal.mal_mapper import anime_from_mal
 from enrichment.sources.mal.mal_models import (
@@ -594,8 +595,7 @@ def _build_anime_from_raw(
         broadcast_raw
     )
 
-    score_val = raw.get("score")
-    score = float(score_val.strip()) if score_val and score_val.strip() else None
+    score = parse_score(raw.get("score"))
 
     scored_by = parse_number(raw.get("scored_by"))
 
@@ -748,7 +748,7 @@ async def _fetch_mal_anime_data(url: str) -> dict[str, Any] | None:
     """
     import zendriver as zd
 
-    browser = await zd.start(headless=False)
+    browser = await zd.start(headless=True)
     try:
         try:
             main_page = await browser.get(url)

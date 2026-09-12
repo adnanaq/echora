@@ -459,7 +459,7 @@ async def _fetch_mal_character_data(url: str) -> tuple[dict[str, Any], str] | No
     """
     import zendriver as zd
 
-    browser = await zd.start(headless=False)
+    browser = await zd.start(headless=True)
     try:
         result = await _fetch_character_html(browser, url)
     finally:
@@ -620,7 +620,7 @@ async def fetch_mal_characters(
 
     import zendriver as zd
 
-    browser = await zd.start(headless=False)
+    browser = await zd.start(headless=True)
     try:
         for i, idx in enumerate(missing_indices):
             url = urls[idx]
