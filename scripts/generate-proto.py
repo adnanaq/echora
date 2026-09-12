@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Generate checked-in Python gRPC stubs for vector and enrichment services.
+
+Run via Pants, which supplies grpcio-tools and the repo root as cwd::
+
+    ./pants run scripts/generate-proto.py
 """
 
 from __future__ import annotations
@@ -8,6 +12,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path.cwd()
@@ -204,54 +209,65 @@ def main() -> int:
             proto_rel = [p.relative_to(proto_include) for p in protos]
             v1_dir = out_root / "v1"
 
-            print(f"Generating {name} ({len(protos)} proto(s))...")
-
-            if v1_dir.exists():
-                shutil.rmtree(v1_dir)
-            if entry.get("relocate_shared_proto_v1_to_v1", False):
-                shared_dir = out_root / "shared_proto"
-                if shared_dir.exists():
-                    shutil.rmtree(shared_dir)
-            out_root.mkdir(parents=True, exist_ok=True)
+            relocate = entry.get("relocate_shared_proto_v1_to_v1", False)
             rewrites = entry.get("rewrites", ())
             _validate_rewrite_rules(rewrites)
-            cmd = [
-                sys.executable,
-                "-m",
-                "grpc_tools.protoc",
-                "-I",
-                str(proto_include),
-                *(
-                    include_arg
-                    for include in proto_extra_includes
-                    for include_arg in ("-I", str(include))
-                ),
-                f"--python_out={out_root}",
-                f"--pyi_out={out_root}",
-                f"--grpc_python_out={out_root}",
-                *(str(p) for p in proto_rel),
-            ]
-            _run(cmd)
-            print("  ✓ Compiled")
-            if entry.get("relocate_shared_proto_v1_to_v1", False):
-                generated_shared_v1 = out_root / "shared_proto" / "v1"
-                if generated_shared_v1.exists():
-                    shutil.move(str(generated_shared_v1), str(v1_dir))
-                    shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
-                    print("  ✓ Relocated shared_proto/v1 → v1/")
-            if rewrites:
-                _rewrite_generated_imports(out_root, rewrites)
-                print("  ✓ Rewrote imports")
+
+            print(f"Generating {name} ({len(protos)} proto(s))...")
+            out_root.mkdir(parents=True, exist_ok=True)
+
+            # Build into a staging directory and swap it in only once protoc and
+            # the rewrites have both succeeded, so a failure leaves the existing
+            # stubs untouched rather than already deleted.
+            with tempfile.TemporaryDirectory(dir=out_root.parent) as staging:
+                staged_root = Path(staging)
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "grpc_tools.protoc",
+                    "-I",
+                    str(proto_include),
+                    *(
+                        include_arg
+                        for include in proto_extra_includes
+                        for include_arg in ("-I", str(include))
+                    ),
+                    f"--python_out={staged_root}",
+                    f"--pyi_out={staged_root}",
+                    f"--grpc_python_out={staged_root}",
+                    *(str(p) for p in proto_rel),
+                ]
+                _run(cmd)
+                print("  ✓ Compiled")
+
+                staged_v1 = staged_root / "v1"
+                if relocate:
+                    generated_shared_v1 = staged_root / "shared_proto" / "v1"
+                    if generated_shared_v1.exists():
+                        shutil.move(str(generated_shared_v1), str(staged_v1))
+                        shutil.rmtree(staged_root / "shared_proto", ignore_errors=True)
+                        print("  ✓ Relocated shared_proto/v1 → v1/")
+                if rewrites:
+                    _rewrite_generated_imports(staged_root, rewrites)
+                    print("  ✓ Rewrote imports")
+
+                staged_v1.mkdir(parents=True, exist_ok=True)
+                init_v1 = staged_v1 / "__init__.py"
+                if not init_v1.exists():
+                    init_v1.write_text(
+                        '"""Generated proto v1 package."""\n', encoding="utf-8"
+                    )
+
+                if v1_dir.exists():
+                    shutil.rmtree(v1_dir)
+                shutil.move(str(staged_v1), str(v1_dir))
+
+            if relocate:
+                shutil.rmtree(out_root / "shared_proto", ignore_errors=True)
             init_root = out_root / "__init__.py"
-            v1_dir.mkdir(parents=True, exist_ok=True)
-            init_v1 = v1_dir / "__init__.py"
             if not init_root.exists():
                 init_root.write_text(
                     '"""Generated proto package."""\n', encoding="utf-8"
-                )
-            if not init_v1.exists():
-                init_v1.write_text(
-                    '"""Generated proto v1 package."""\n', encoding="utf-8"
                 )
     except _CommandFailedError as exc:
         return exc.returncode
