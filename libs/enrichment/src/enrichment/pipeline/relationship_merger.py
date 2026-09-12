@@ -634,6 +634,11 @@ def load_agent_providers(agent_dir: Path) -> dict[str, dict[str, Any]]:
     Missing provider files are skipped rather than raising, so a partial
     enrichment run still consolidates whatever was fetched.
 
+    The last record wins. Helpers persist with ``append_jsonl``, so re-running
+    enrichment into an existing agent directory adds a line rather than
+    replacing one; reading the first would merge the stale earlier fetch and
+    silently discard everything the re-run just collected.
+
     Args:
         agent_dir: Directory holding the per-source ``*.jsonl`` files.
 
@@ -646,9 +651,11 @@ def load_agent_providers(agent_dir: Path) -> dict[str, dict[str, Any]]:
         if not path.exists():
             continue
         with path.open(encoding="utf-8") as handle:
-            line = handle.readline()
-        if line.strip():
-            records[provider] = json.loads(line)
+            latest = next(
+                (line for line in reversed(handle.readlines()) if line.strip()), None
+            )
+        if latest:
+            records[provider] = json.loads(latest)
     return records
 
 
