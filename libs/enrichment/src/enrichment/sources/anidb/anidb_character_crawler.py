@@ -17,6 +17,7 @@ Usage:
     async for char_id, page in fetch_anidb_characters([474, 475, 476]):
         ...
 """
+
 import argparse
 import asyncio
 import json
@@ -241,11 +242,20 @@ async def _solve_cf(page: Any) -> bool:
     except Exception:  # noqa: S110
         pass
 
-    try:
-        html = await page.get_content()
-    except Exception:
-        return False
-    return not _is_blocked(html)
+    # The unban submit reloads the page, so get_content can raise while the
+    # navigation is in flight. One failed read is not a failed solve — poll
+    # until the block clears or the deadline passes.
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        try:
+            html = await page.get_content()
+        except Exception:
+            await asyncio.sleep(1)
+            continue
+        if not _is_blocked(html):
+            return True
+        await asyncio.sleep(1)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -253,14 +263,18 @@ async def _solve_cf(page: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, Any]:
-    """Navigate to url and return (html, page) once the page settles.
+async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, bool, Any]:
+    """Navigate to url and return (html, crashed, page) once the page settles.
 
     Polls until the page resolves into a recognizable state — real character
     content (tab_1_pane) or a block page (CF interstitial / antileech) — rather
     than using a fixed wait. This avoids capturing a half-rendered shell, which
     previously caused the antileech page to be misread as a deleted character.
-    Returns the last snapshot on timeout; both None on browser crash.
+    Returns the last snapshot on timeout.
+
+    ``crashed`` is reported separately rather than inferred from a null html:
+    a crash needs a browser restart, an empty page does not, and the caller
+    cannot tell those apart from the html alone.
     """
     try:
         page = await browser.get(url)
@@ -276,9 +290,9 @@ async def _fetch_page_html(browser: Any, url: str) -> tuple[str | None, Any]:
                 break
     except (RuntimeError, StopIteration) as exc:
         logger.warning(f"browser crash on {url}: {exc}")
-        return None, None
+        return None, True, None
     else:
-        return html, page
+        return html, False, page
 
 
 # ---------------------------------------------------------------------------
@@ -345,9 +359,9 @@ async def fetch_anidb_characters(
                 browser = await zd.start(headless=False)
 
             url = f"{_BASE_URL}/{char_id}"
-            html, current_page = await _fetch_page_html(browser, url)
+            html, crashed, current_page = await _fetch_page_html(browser, url)
 
-            if html is None:
+            if crashed:
                 logger.warning(f"browser crashed — restarting for char {char_id}")
                 try:
                     await browser.stop()
@@ -355,11 +369,16 @@ async def fetch_anidb_characters(
                     pass
                 browser = await zd.start(headless=False)
                 await asyncio.sleep(2)
-                html, current_page = await _fetch_page_html(browser, url)
-                if html is None:
+                html, crashed, current_page = await _fetch_page_html(browser, url)
+                if crashed:
                     logger.error(f"browser crashed again on char {char_id} — skipping")
                     yield char_id, None
                     continue
+
+            if html is None:
+                logger.warning(f"no page content for char {char_id} — skipping")
+                yield char_id, None
+                continue
 
             if _is_blocked(html):
                 logger.info(f"block on char {char_id} — solving")
@@ -375,7 +394,9 @@ async def fetch_anidb_characters(
                     continue
 
             if not _has_character_data(html):
-                logger.warning(f"no character data for char {char_id} (deleted/invalid)")
+                logger.warning(
+                    f"no character data for char {char_id} (deleted/invalid)"
+                )
                 yield char_id, None
             else:
                 page = _extract_from_html(html)
@@ -397,7 +418,9 @@ async def fetch_anidb_characters(
             except Exception:  # noqa: S110
                 pass
         cache_hits = len(char_ids) - len(missing_set)
-        logger.info(f"anidb character fetch: {succeeded}/{len(missing_set)} succeeded, {cache_hits} cache hits")
+        logger.info(
+            f"anidb character fetch: {succeeded}/{len(missing_set)} succeeded, {cache_hits} cache hits"
+        )
 
 
 async def fetch_anidb_character(char_id: int) -> AniDBCharacterPage | None:
