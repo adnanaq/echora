@@ -131,7 +131,9 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
         span.set_attribute("rpc.error_code", error_code)
         _log.error("rpc.failure", error_code=error_code)
 
-    def _detect_error_code(self, context: grpc.aio.ServicerContext, response: Any = None) -> str | None:
+    def _detect_error_code(
+        self, context: grpc.aio.ServicerContext, response: Any = None
+    ) -> str | None:
         """Detect if RPC failed and return the machine-readable error code, else None."""
         # 1. Check gRPC status code (transport failure)
         code = context.code()
@@ -141,7 +143,11 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
         if response is not None:
             # 2. Check for explicit success boolean (Enrichment Service)
             if hasattr(response, "success") and not response.success:
-                return getattr(response.error, "code", "FAILURE") if hasattr(response, "error") else "FAILURE"
+                return (
+                    getattr(response.error, "code", "FAILURE")
+                    if hasattr(response, "error")
+                    else "FAILURE"
+                )
 
             # 3. Check for explicit health boolean (Health RPCs)
             if hasattr(response, "healthy") and not response.healthy:
@@ -155,6 +161,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
     def _wrap_unary(self, behavior: Callable, method_name: str) -> Callable:
         """Wrap a unary-unary RPC handler with telemetry instrumentation."""
+
         async def new_behavior(request: Any, context: grpc.aio.ServicerContext) -> Any:
             attrs = {"rpc_method": method_name}
             registry.RPC_REQUESTS.add(1, attrs)
@@ -197,7 +204,10 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
     def _wrap_unary_stream(self, behavior: Callable, method_name: str) -> Callable:
         """Wrap a unary-stream RPC handler with telemetry instrumentation."""
-        async def new_behavior(request: Any, context: grpc.aio.ServicerContext) -> AsyncIterator:
+
+        async def new_behavior(
+            request: Any, context: grpc.aio.ServicerContext
+        ) -> AsyncIterator:
             attrs = {"rpc_method": method_name}
             registry.RPC_REQUESTS.add(1, attrs)
             registry.INFLIGHT_RPCS.add(1, attrs)
@@ -241,7 +251,10 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
     def _wrap_stream_unary(self, behavior: Callable, method_name: str) -> Callable:
         """Wrap a stream-unary RPC handler with telemetry instrumentation."""
-        async def new_behavior(request_iterator: AsyncIterator, context: grpc.aio.ServicerContext) -> Any:
+
+        async def new_behavior(
+            request_iterator: AsyncIterator, context: grpc.aio.ServicerContext
+        ) -> Any:
             attrs = {"rpc_method": method_name}
             registry.RPC_REQUESTS.add(1, attrs)
             registry.INFLIGHT_RPCS.add(1, attrs)
@@ -283,7 +296,10 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
     def _wrap_stream_stream(self, behavior: Callable, method_name: str) -> Callable:
         """Wrap a stream-stream RPC handler with telemetry instrumentation."""
-        async def new_behavior(request_iterator: AsyncIterator, context: grpc.aio.ServicerContext) -> AsyncIterator:
+
+        async def new_behavior(
+            request_iterator: AsyncIterator, context: grpc.aio.ServicerContext
+        ) -> AsyncIterator:
             attrs = {"rpc_method": method_name}
             registry.RPC_REQUESTS.add(1, attrs)
             registry.INFLIGHT_RPCS.add(1, attrs)

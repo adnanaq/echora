@@ -96,13 +96,9 @@ class TextProcessor:
         if self._cache is not None:
             cached = await self._cache.get(self.model.model_name, text_hash)
             if cached is not None:
-                _embedding_cache_lookups.add(
-                    1, {"result": "hit", "modality": "text"}
-                )
+                _embedding_cache_lookups.add(1, {"result": "hit", "modality": "text"})
                 return cached
-            _embedding_cache_lookups.add(
-                1, {"result": "miss", "modality": "text"}
-            )
+            _embedding_cache_lookups.add(1, {"result": "miss", "modality": "text"})
 
         with _tracer.start_as_current_span(
             "vector_processing.text.encode",

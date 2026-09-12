@@ -17,7 +17,9 @@ def _make_settings(text_dim: int = 1024, image_dim: int = 768) -> SimpleNamespac
     )
 
 
-def _make_processors(text_dim: int, image_dim: int) -> tuple[SimpleNamespace, SimpleNamespace]:
+def _make_processors(
+    text_dim: int, image_dim: int
+) -> tuple[SimpleNamespace, SimpleNamespace]:
     return (
         SimpleNamespace(model=SimpleNamespace(embedding_size=text_dim)),
         SimpleNamespace(model=SimpleNamespace(embedding_size=image_dim)),

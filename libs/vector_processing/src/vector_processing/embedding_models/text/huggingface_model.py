@@ -79,7 +79,9 @@ class HuggingFaceModel(TextEmbeddingModel):
                 # contribute to the mean.
                 token_embeddings = outputs.last_hidden_state
                 attention_mask = inputs["attention_mask"]
-                mask = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                mask = (
+                    attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                )
                 summed = (token_embeddings * mask).sum(dim=1)
                 counts = mask.sum(dim=1).clamp(min=1e-9)
                 embeddings = summed / counts

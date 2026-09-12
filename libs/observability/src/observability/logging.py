@@ -27,6 +27,7 @@ _PII_PATTERNS = [
     (re.compile(r"(?i)email\s*[:=]\s*[\w\.-]+@[\w\.-]+\.\w+"), "email: [REDACTED]"),
 ]
 
+
 class _NonBlockingQueueHandler(QueueHandler):
     """QueueHandler that drops records instead of blocking when the queue is full."""
 
@@ -139,9 +140,7 @@ def setup_logging(
     if _LOG_LISTENER is not None:
         _LOG_LISTENER.stop()
 
-    _LOG_LISTENER = QueueListener(
-        log_queue, stdout_handler, respect_handler_level=True
-    )
+    _LOG_LISTENER = QueueListener(log_queue, stdout_handler, respect_handler_level=True)
     _LOG_LISTENER.start()
 
     # Ensure stdlib loggers produce structured output through structlog processors.

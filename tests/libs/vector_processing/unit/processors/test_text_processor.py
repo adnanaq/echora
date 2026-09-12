@@ -242,9 +242,7 @@ class TestEncodeTextsBatch:
         )
 
     @pytest.mark.asyncio
-    async def test_zero_vectors_independent(
-        self, mock_text_model, mock_settings
-    ):
+    async def test_zero_vectors_independent(self, mock_text_model, mock_settings):
         """Test that zero vectors are independent copies, not the same object.
 
         Regression test for issue where all empty inputs shared the same

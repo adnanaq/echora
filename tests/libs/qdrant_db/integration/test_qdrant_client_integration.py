@@ -613,7 +613,9 @@ async def test_sparse_vector_empty_results(client: QdrantClient):
 async def test_collection_compatibility_with_sparse_vectors(client: QdrantClient):
     """Collection exposes configured sparse vectors."""
     collection_info = await client.get_stats()
-    sparse_vectors = collection_info.get("config", {}).get("params", {}).get("sparse_vectors")
+    sparse_vectors = (
+        collection_info.get("config", {}).get("params", {}).get("sparse_vectors")
+    )
     assert sparse_vectors is not None
     assert isinstance(sparse_vectors, dict)
     assert "text_sparse_vector" in sparse_vectors

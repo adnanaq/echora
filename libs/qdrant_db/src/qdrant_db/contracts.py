@@ -84,7 +84,9 @@ class SearchFilterCondition(BaseModel):
 
         if self.operator in ("in", "not_in"):
             if not isinstance(self.value, list) or len(self.value) == 0:
-                raise ValueError(f"{self.operator} filter value must be a non-empty list")
+                raise ValueError(
+                    f"{self.operator} filter value must be a non-empty list"
+                )
             if not all(_is_scalar_filter_value(item) for item in self.value):
                 raise ValueError(f"{self.operator} filter values must be scalar")
             return self
@@ -355,4 +357,3 @@ class BatchOperationResult(BaseModel):
     failed: int
     duplicates_removed: int = 0
     errors: list[OperationErrorDetail] = Field(default_factory=list)
-

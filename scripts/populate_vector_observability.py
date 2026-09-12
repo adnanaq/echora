@@ -60,7 +60,12 @@ def _make_png() -> bytes:
     # IHDR: width=1, height=1, bit_depth=8, color_type=2 (RGB)
     ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
     idat = zlib.compress(b"\x00\xff\xff\xff")  # filter=None, RGB white pixel
-    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", idat) + _chunk(b"IEND", b"")
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", ihdr)
+        + _chunk(b"IDAT", idat)
+        + _chunk(b"IEND", b"")
+    )
 
 
 _MINIMAL_PNG = _make_png()
@@ -109,24 +114,52 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Populate and report observability signals for the vector service."
     )
-    p.add_argument("--service", default="localhost:8001",
-                   help="gRPC service address (default: localhost:8001)")
-    p.add_argument("--prometheus", default="http://localhost:9090",
-                   help="Prometheus base URL (default: http://localhost:9090)")
-    p.add_argument("--report", default="",
-                   help="Write markdown evidence report to this path (optional)")
-    p.add_argument("--burst", type=int, default=10,
-                   help="Extra search queries for histogram distribution (default: 10)")
-    p.add_argument("--wait", type=int, default=20,
-                   help="Seconds to wait for OTel SDK metric export (default: 20)")
-    p.add_argument("--stress", action="store_true",
-                   help="Run sustained stress phase to trigger alert rule windows")
-    p.add_argument("--stress-duration", type=int, default=360,
-                   help="Stress phase duration in seconds (default: 360 = 6 min)")
-    p.add_argument("--chaos", action="store_true",
-                   help="Run DB chaos phase via docker stop/start")
-    p.add_argument("--qdrant-container", default="echora-qdrant",
-                   help="Qdrant Docker container name for chaos (default: echora-qdrant)")
+    p.add_argument(
+        "--service",
+        default="localhost:8001",
+        help="gRPC service address (default: localhost:8001)",
+    )
+    p.add_argument(
+        "--prometheus",
+        default="http://localhost:9090",
+        help="Prometheus base URL (default: http://localhost:9090)",
+    )
+    p.add_argument(
+        "--report",
+        default="",
+        help="Write markdown evidence report to this path (optional)",
+    )
+    p.add_argument(
+        "--burst",
+        type=int,
+        default=10,
+        help="Extra search queries for histogram distribution (default: 10)",
+    )
+    p.add_argument(
+        "--wait",
+        type=int,
+        default=20,
+        help="Seconds to wait for OTel SDK metric export (default: 20)",
+    )
+    p.add_argument(
+        "--stress",
+        action="store_true",
+        help="Run sustained stress phase to trigger alert rule windows",
+    )
+    p.add_argument(
+        "--stress-duration",
+        type=int,
+        default=360,
+        help="Stress phase duration in seconds (default: 360 = 6 min)",
+    )
+    p.add_argument(
+        "--chaos", action="store_true", help="Run DB chaos phase via docker stop/start"
+    )
+    p.add_argument(
+        "--qdrant-container",
+        default="echora-qdrant",
+        help="Qdrant Docker container name for chaos (default: echora-qdrant)",
+    )
     return p.parse_args()
 
 
@@ -162,7 +195,9 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
             try:
                 r = await svc.Search(SR(**kw))
                 ok = not r.HasField("error")
-                report.record(label, ok, f"{len(r.data)} results" if ok else r.error.code)
+                report.record(
+                    label, ok, f"{len(r.data)} results" if ok else r.error.code
+                )
             except Exception as exc:
                 report.record(label, False, str(exc))
 
@@ -192,12 +227,28 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
         # ── Text search success paths ──────────────────────────────────────
         print("\n  [Search — text success paths]")
         await _ok("text (no filter)", query_text="one piece pirate adventure")
-        await _ok("text + entity_type=anime", query_text="romance drama", entity_type="anime", limit=5)
+        await _ok(
+            "text + entity_type=anime",
+            query_text="romance drama",
+            entity_type="anime",
+            limit=5,
+        )
         # entity_type outside known set → normalised to "unknown" metric label
-        await _ok("text + entity_type=movie (→unknown label)", query_text="mystery", entity_type="movie", limit=5)
-        await _ok("text + limit=999 (clamped to 100)", query_text="ninja samurai", limit=999)
+        await _ok(
+            "text + entity_type=movie (→unknown label)",
+            query_text="mystery",
+            entity_type="movie",
+            limit=5,
+        )
+        await _ok(
+            "text + limit=999 (clamped to 100)", query_text="ninja samurai", limit=999
+        )
         # Obscure query → likely zero results → SEARCH_EMPTY_RESULTS counter
-        await _ok("text + obscure query (→empty results)", query_text="xyzzy_nonexistent_title_zzz_000", limit=1)
+        await _ok(
+            "text + obscure query (→empty results)",
+            query_text="xyzzy_nonexistent_title_zzz_000",
+            limit=1,
+        )
 
         filt = struct_pb2.Struct()
         filt.update({"type": "TV"})
@@ -208,19 +259,33 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
         # Valid PNG → exercises image embedding path + IMAGE_EMBEDDING_DURATION metric
         await _ok("image only (valid 1×1 PNG)", image=_MINIMAL_PNG)
         # Multimodal: text + image → dual-embedding code path
-        await _ok("multimodal text+image", query_text="action adventure", image=_MINIMAL_PNG)
+        await _ok(
+            "multimodal text+image", query_text="action adventure", image=_MINIMAL_PNG
+        )
         # Corrupt bytes → encode_image catches exception → returns None → IMAGE_EMBEDDING_FAILED
-        await _err("corrupt image (→IMAGE_EMBEDDING_FAILED)", "IMAGE_EMBEDDING_FAILED",
-                   image=b"\x00\x01\x02\x03" * 100)
+        await _err(
+            "corrupt image (→IMAGE_EMBEDDING_FAILED)",
+            "IMAGE_EMBEDDING_FAILED",
+            image=b"\x00\x01\x02\x03" * 100,
+        )
 
         # ── Error paths ────────────────────────────────────────────────────
         print("\n  [Search — error paths → RPC_ERRORS + Loki error log]")
         await _err("empty request (→MISSING_QUERY_INPUT)", "MISSING_QUERY_INPUT")
-        await _err("whitespace query (→MISSING_QUERY_INPUT)", "MISSING_QUERY_INPUT", query_text="   ")
+        await _err(
+            "whitespace query (→MISSING_QUERY_INPUT)",
+            "MISSING_QUERY_INPUT",
+            query_text="   ",
+        )
 
         bad = struct_pb2.Struct()
         bad.update({"genre": {"nested": {"deeply": "invalid"}}})
-        await _err("bad filters (→INVALID_FILTERS)", "INVALID_FILTERS", query_text="test", filters=bad)
+        await _err(
+            "bad filters (→INVALID_FILTERS)",
+            "INVALID_FILTERS",
+            query_text="test",
+            filters=bad,
+        )
 
         # Repeat error calls so rpc_errors_total has multiple observations
         for _ in range(4):
@@ -239,7 +304,11 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
                 burst_ok += 1
             except Exception:
                 pass
-        report.record(f"Burst searches ({burst_ok}/{burst})", burst_ok > 0, "histogram buckets populated")
+        report.record(
+            f"Burst searches ({burst_ok}/{burst})",
+            burst_ok > 0,
+            "histogram buckets populated",
+        )
 
         for _ in range(3):
             try:
@@ -264,8 +333,12 @@ async def _run_stress_phase(host: str, duration_secs: int) -> None:
     Each cycle: 1 error + 3 empty + 6 valid queries. Every 5th cycle adds a
     20-concurrent burst to spike P99 above the 500 ms threshold.
     """
-    print(f"\n[Phase Stress] Sustaining traffic for {duration_secs}s (~{duration_secs // 60}m)")
-    print("  Targets: EchoraRPCHighErrorRate >5% (5m), EchoraHighEmptyResultRate >10% (10m)")
+    print(
+        f"\n[Phase Stress] Sustaining traffic for {duration_secs}s (~{duration_secs // 60}m)"
+    )
+    print(
+        "  Targets: EchoraRPCHighErrorRate >5% (5m), EchoraHighEmptyResultRate >10% (10m)"
+    )
     end = time.time() + duration_secs
     cycle = 0
 
@@ -288,7 +361,10 @@ async def _run_stress_phase(host: str, duration_secs: int) -> None:
 
             if cycle % 5 == 0:  # P99 spike via concurrent burst
                 await asyncio.gather(
-                    *[svc.Search(SR(query_text="concurrent stress load", limit=50)) for _ in range(20)],
+                    *[
+                        svc.Search(SR(query_text="concurrent stress load", limit=50))
+                        for _ in range(20)
+                    ],
                     return_exceptions=True,
                 )
 
@@ -309,7 +385,9 @@ def _run_chaos_phase(host: str, container: str) -> None:
     Requires the docker CLI to be available and the container name to be correct.
     """
     print(f"\n[Phase Chaos] Stopping Qdrant container '{container}'...")
-    result = subprocess.run(["docker", "stop", container], capture_output=True, text=True)  # noqa: S603, S607
+    result = subprocess.run(
+        ["docker", "stop", container], capture_output=True, text=True
+    )  # noqa: S603, S607
     if result.returncode != 0:
         print(f"  ✗ docker stop failed: {result.stderr.strip()}")
         return
@@ -321,7 +399,9 @@ def _run_chaos_phase(host: str, container: str) -> None:
             svc = vector_search_pb2_grpc.VectorSearchServiceStub(ch)
             for i in range(3):
                 try:
-                    r = await svc.Search(vector_search_pb2.SearchRequest(query_text="chaos test"))
+                    r = await svc.Search(
+                        vector_search_pb2.SearchRequest(query_text="chaos test")
+                    )
                     got = r.error.code if r.HasField("error") else "no error"
                     icon = "✓" if got == "SEARCH_FAILED" else "✗"
                     print(f"    {icon} request {i + 1}: {got}")
@@ -331,7 +411,9 @@ def _run_chaos_phase(host: str, container: str) -> None:
     asyncio.run(_chaos_requests())
 
     print(f"  Restarting '{container}'...")
-    result = subprocess.run(["docker", "start", container], capture_output=True, text=True)  # noqa: S603, S607
+    result = subprocess.run(
+        ["docker", "start", container], capture_output=True, text=True
+    )  # noqa: S603, S607
     if result.returncode != 0:
         print(f"  ✗ docker start failed: {result.stderr.strip()}")
         return
@@ -373,62 +455,117 @@ def _prom_query(base_url: str, query: str) -> tuple[str, str | None]:
 # Metric queries grouped by layer — mirrors the README signal map.
 _METRIC_QUERIES: list[tuple[str, str, str]] = [
     # Layer 1 — Interceptor
-    ("Layer 1 — Interceptor", "rpc_requests_total [Search]",
-     'sum(echora_rpc_requests_total{rpc_method="Search"})'),
-    ("", "rpc_requests_total [Health]",
-     'sum(echora_rpc_requests_total{rpc_method="Health"})'),
-    ("", "rpc_requests_total [GetStats]",
-     'sum(echora_rpc_requests_total{rpc_method="GetStats"})'),
-    ("", "rpc_errors_total [MISSING_QUERY_INPUT]",
-     'sum(echora_rpc_errors_total{error_code="MISSING_QUERY_INPUT"})'),
-    ("", "rpc_errors_total [INVALID_FILTERS]",
-     'sum(echora_rpc_errors_total{error_code="INVALID_FILTERS"})'),
-    ("", "rpc_errors_total [IMAGE_EMBEDDING_FAILED]",
-     'sum(echora_rpc_errors_total{error_code="IMAGE_EMBEDDING_FAILED"})'),
-    ("", "rpc_errors_total [SEARCH_FAILED]",
-     'sum(echora_rpc_errors_total{error_code="SEARCH_FAILED"})'),
-    ("", "error_rate % [Search]",
-     'sum(rate(echora_rpc_errors_total{rpc_method="Search"}[5m])) / '
-     'sum(rate(echora_rpc_requests_total{rpc_method="Search"}[5m])) * 100'),
-    ("", "rpc_duration_seconds p50 [Search]",
-     'histogram_quantile(0.5, sum(rate(echora_rpc_duration_seconds_bucket{rpc_method="Search"}[5m])) by (le))'),
-    ("", "rpc_duration_seconds p99 [Search]",
-     'histogram_quantile(0.99, sum(rate(echora_rpc_duration_seconds_bucket{rpc_method="Search"}[5m])) by (le))'),
-    ("", "inflight_rpcs",
-     "echora_inflight_rpcs"),
+    (
+        "Layer 1 — Interceptor",
+        "rpc_requests_total [Search]",
+        'sum(echora_rpc_requests_total{rpc_method="Search"})',
+    ),
+    (
+        "",
+        "rpc_requests_total [Health]",
+        'sum(echora_rpc_requests_total{rpc_method="Health"})',
+    ),
+    (
+        "",
+        "rpc_requests_total [GetStats]",
+        'sum(echora_rpc_requests_total{rpc_method="GetStats"})',
+    ),
+    (
+        "",
+        "rpc_errors_total [MISSING_QUERY_INPUT]",
+        'sum(echora_rpc_errors_total{error_code="MISSING_QUERY_INPUT"})',
+    ),
+    (
+        "",
+        "rpc_errors_total [INVALID_FILTERS]",
+        'sum(echora_rpc_errors_total{error_code="INVALID_FILTERS"})',
+    ),
+    (
+        "",
+        "rpc_errors_total [IMAGE_EMBEDDING_FAILED]",
+        'sum(echora_rpc_errors_total{error_code="IMAGE_EMBEDDING_FAILED"})',
+    ),
+    (
+        "",
+        "rpc_errors_total [SEARCH_FAILED]",
+        'sum(echora_rpc_errors_total{error_code="SEARCH_FAILED"})',
+    ),
+    (
+        "",
+        "error_rate % [Search]",
+        'sum(rate(echora_rpc_errors_total{rpc_method="Search"}[5m])) / '
+        'sum(rate(echora_rpc_requests_total{rpc_method="Search"}[5m])) * 100',
+    ),
+    (
+        "",
+        "rpc_duration_seconds p50 [Search]",
+        'histogram_quantile(0.5, sum(rate(echora_rpc_duration_seconds_bucket{rpc_method="Search"}[5m])) by (le))',
+    ),
+    (
+        "",
+        "rpc_duration_seconds p99 [Search]",
+        'histogram_quantile(0.99, sum(rate(echora_rpc_duration_seconds_bucket{rpc_method="Search"}[5m])) by (le))',
+    ),
+    ("", "inflight_rpcs", "echora_inflight_rpcs"),
     # Layer 2 — Handler
-    ("Layer 2 — Handler", "search_results_count p50",
-     "histogram_quantile(0.5, sum(rate(echora_search_results_count_bucket[5m])) by (le))"),
-    ("", "search_empty_results_total",
-     "sum(echora_search_empty_results_total)"),
-    ("", "empty_result_rate %",
-     "sum(rate(echora_search_empty_results_total[5m])) / "
-     'sum(rate(echora_rpc_requests_total{rpc_method="Search"}[5m])) * 100'),
+    (
+        "Layer 2 — Handler",
+        "search_results_count p50",
+        "histogram_quantile(0.5, sum(rate(echora_search_results_count_bucket[5m])) by (le))",
+    ),
+    ("", "search_empty_results_total", "sum(echora_search_empty_results_total)"),
+    (
+        "",
+        "empty_result_rate %",
+        "sum(rate(echora_search_empty_results_total[5m])) / "
+        'sum(rate(echora_rpc_requests_total{rpc_method="Search"}[5m])) * 100',
+    ),
     # Layer 3 — Libraries
-    ("Layer 3 — Libraries", "embedding_duration_seconds p50 [text]",
-     'histogram_quantile(0.5, sum(rate(echora_embedding_duration_seconds_bucket{modality="text"}[5m])) by (le))'),
-    ("", "embedding_duration_seconds p99 [text]",
-     'histogram_quantile(0.99, sum(rate(echora_embedding_duration_seconds_bucket{modality="text"}[5m])) by (le))'),
-    ("", "embedding_duration_seconds p50 [image]",
-     'histogram_quantile(0.5, sum(rate(echora_embedding_duration_seconds_bucket{modality="image"}[5m])) by (le))'),
-    ("", "db_query_duration_seconds p50",
-     "histogram_quantile(0.5, sum(rate(echora_db_query_duration_seconds_bucket[5m])) by (le))"),
-    ("", "db_errors_total",
-     "sum(echora_db_errors_total)"),
-    ("", "image_download_duration_seconds p50",
-     "histogram_quantile(0.5, sum(rate(echora_image_download_duration_seconds_bucket[5m])) by (le))"),
-    ("", "image_download_failures_total",
-     "sum(echora_image_download_failures_total)"),
+    (
+        "Layer 3 — Libraries",
+        "embedding_duration_seconds p50 [text]",
+        'histogram_quantile(0.5, sum(rate(echora_embedding_duration_seconds_bucket{modality="text"}[5m])) by (le))',
+    ),
+    (
+        "",
+        "embedding_duration_seconds p99 [text]",
+        'histogram_quantile(0.99, sum(rate(echora_embedding_duration_seconds_bucket{modality="text"}[5m])) by (le))',
+    ),
+    (
+        "",
+        "embedding_duration_seconds p50 [image]",
+        'histogram_quantile(0.5, sum(rate(echora_embedding_duration_seconds_bucket{modality="image"}[5m])) by (le))',
+    ),
+    (
+        "",
+        "db_query_duration_seconds p50",
+        "histogram_quantile(0.5, sum(rate(echora_db_query_duration_seconds_bucket[5m])) by (le))",
+    ),
+    ("", "db_errors_total", "sum(echora_db_errors_total)"),
+    (
+        "",
+        "image_download_duration_seconds p50",
+        "histogram_quantile(0.5, sum(rate(echora_image_download_duration_seconds_bucket[5m])) by (le))",
+    ),
+    ("", "image_download_failures_total", "sum(echora_image_download_failures_total)"),
     # OTel Collector health
-    ("OTel Collector", "accepted_spans/s",
-     "sum(rate(otelcol_receiver_accepted_spans_total[5m]))"),
-    ("", "refused_spans/s",
-     "sum(rate(otelcol_receiver_refused_spans_total[5m]))"),
-    ("", "failed_export_spans/s (0 = healthy)",
-     "sum(rate(otelcol_exporter_enqueue_failed_spans_total[5m]))"),
-    ("", "batch_avg_size",
-     "sum(rate(otelcol_processor_batch_batch_send_size_sum[5m])) / "
-     "sum(rate(otelcol_processor_batch_batch_send_size_count[5m]))"),
+    (
+        "OTel Collector",
+        "accepted_spans/s",
+        "sum(rate(otelcol_receiver_accepted_spans_total[5m]))",
+    ),
+    ("", "refused_spans/s", "sum(rate(otelcol_receiver_refused_spans_total[5m]))"),
+    (
+        "",
+        "failed_export_spans/s (0 = healthy)",
+        "sum(rate(otelcol_exporter_enqueue_failed_spans_total[5m]))",
+    ),
+    (
+        "",
+        "batch_avg_size",
+        "sum(rate(otelcol_processor_batch_batch_send_size_sum[5m])) / "
+        "sum(rate(otelcol_processor_batch_batch_send_size_count[5m]))",
+    ),
 ]
 
 
@@ -483,7 +620,13 @@ def _render_report(
     for r in traffic.results:
         lines.append(f"| `{r.label}` | {'✓' if r.ok else '✗'} | {r.detail} |")
 
-    lines += ["", "## Metric Snapshot", "", "| Layer | Metric | Value |", "| --- | --- | --- |"]
+    lines += [
+        "",
+        "## Metric Snapshot",
+        "",
+        "| Layer | Metric | Value |",
+        "| --- | --- | --- |",
+    ]
     current_section = ""
     for section, name, value, error in metric_rows:
         display_section = section if section != current_section else ""
