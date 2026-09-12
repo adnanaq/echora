@@ -16,6 +16,7 @@ to avoid repeated browser startup overhead and to maintain session state.
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from typing import Any, cast
 
 from enrichment.sources.anisearch.anisearch_anime_models import (
@@ -40,6 +41,10 @@ TTL_ANISEARCH = _CACHE_CONFIG.ttl_anisearch
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com"
 _INTER_REQUEST_DELAY = 3.0  # seconds between browser navigations
+
+# Rows can stream in after the container renders; poll at 1s until the count
+# repeats, capped so a permanently empty list cannot hang the fetch.
+_ROW_SETTLE_POLLS = 15
 _CHARACTER_BATCH_SIZE = 20
 
 # ---------------------------------------------------------------------------
@@ -219,13 +224,26 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
 
 
 async def _fetch_page_html(
-    browser: Any, url: str, wait_selector: str | None = None
+    browser: Any,
+    url: str,
+    wait_selector: str | None = None,
+    row_extractor: Callable[[str], list[Any] | None] | None = None,
 ) -> str | None:
     """Navigate to url with an existing browser session and return page HTML.
 
-    If wait_selector is given, waits for that CSS selector to appear in the DOM
-    (up to 10s) instead of sleeping a fixed 2s. Falls back to a 2s sleep if no
-    selector is provided.
+    Args:
+        browser: An already-started browser session.
+        url: Page to navigate to.
+        wait_selector: CSS selector to wait for (up to 10s). Without one the
+            call falls back to a fixed 2s sleep.
+        row_extractor: Parses the page's list rows. When given, the page is
+            re-read until the number of rows it finds stops growing. A selector
+            only proves the container exists; a list whose rows stream in
+            afterwards is read half-built without this — the ography pages
+            returned 35 of 51 entries, losing the character's own parent anime.
+
+    Returns:
+        Page HTML, or ``None`` on navigation failure.
     """
     try:
         page = await browser.get(url)
@@ -233,10 +251,23 @@ async def _fetch_page_html(
             await page.wait_for(selector=wait_selector, timeout=10)
         else:
             await asyncio.sleep(2)
-        return await page.get_content()
+        if row_extractor is None:
+            return await page.get_content()
+
+        html: str | None = None
+        previous = -1
+        for _ in range(_ROW_SETTLE_POLLS):
+            await asyncio.sleep(1)
+            html = await page.get_content()
+            current = len(row_extractor(html) or [])
+            if current and current == previous:
+                break
+            previous = current
     except Exception as exc:
-        logger.warning("navigation failed for %s: %s", url, exc)
+        logger.warning(f"navigation failed for {url}: {exc}")
         return None
+    else:
+        return html
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +485,12 @@ async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None
 
     browser = await zd.start(headless=False)
     try:
-        html = await _fetch_page_html(browser, url, wait_selector="#content")
+        html = await _fetch_page_html(
+            browser,
+            url,
+            wait_selector="#content",
+            row_extractor=_extract_ography_from_html,
+        )
         if not html:
             return None
         return _extract_ography_from_html(html)
@@ -468,6 +504,27 @@ async def _fetch_character_ography_data(url: str) -> list[dict[str, Any]] | None
 # ---------------------------------------------------------------------------
 # Ography batch helper
 # ---------------------------------------------------------------------------
+
+
+async def _any_ography_missing(*urls: str) -> bool:
+    """Report whether any ography sub-page still needs fetching.
+
+    Kept separate so callers can decide up front whether a browser is worth
+    starting at all: on a full cache hit none is needed.
+
+    Args:
+        urls: Ography sub-page URLs to check.
+
+    Returns:
+        ``True`` when at least one URL is absent from the cache.
+    """
+    for url in urls:
+        _, missing = await _fetch_character_ography_data.cache_batch_get(  # type: ignore[attr-defined]
+            [url]
+        )
+        if missing:
+            return True
+    return False
 
 
 async def _fetch_ography(
@@ -491,7 +548,9 @@ async def _fetch_ography(
     if browser is None:
         return await _fetch_character_ography_data(url)
 
-    html = await _fetch_page_html(browser, url, wait_selector="#content")
+    html = await _fetch_page_html(
+        browser, url, wait_selector="#content", row_extractor=_extract_ography_from_html
+    )
     await asyncio.sleep(_INTER_REQUEST_DELAY)
     result = _extract_ography_from_html(html) if html else None
     await _fetch_character_ography_data.cache_batch_set([url], [result])  # type: ignore[attr-defined]
@@ -529,15 +588,51 @@ class AniSearchCharacterCrawler(BaseCrawler[AniSearchCharacter, dict[str, Any]])
     async def post_process_raw_data(
         self, raw_data: dict[str, Any], url: str
     ) -> dict[str, Any]:
-        anime_ography, manga_ography = await asyncio.gather(
-            _fetch_character_ography_data(f"{url}/anime"),
-            _fetch_character_ography_data(f"{url}/manga"),
-        )
+        # One session for both sub-pages, mirroring the batch path. Fetching
+        # them concurrently opened a headful Chrome each, on top of the session
+        # fetch_raw_data had already used and closed.
+        anime_ography, manga_ography = await self._fetch_ographies(url)
         return {
             **raw_data,
             "_anime_ography": anime_ography,
             "_manga_ography": manga_ography,
         }
+
+    @staticmethod
+    async def _fetch_ographies(
+        url: str,
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+        """Fetch both ography sub-pages over a single browser session.
+
+        Completeness comes from waiting for the rows to settle (see
+        ``_fetch_page_html``'s settle argument), not from the session: a cold one returns
+        the full list once the wait is correct. One session still covers both
+        pages, since fetching them concurrently opened a headful Chrome each.
+
+        Args:
+            url: Character detail page URL.
+
+        Returns:
+            Tuple of the anime and manga ography lists, either of which may be
+            ``None`` when that sub-page could not be fetched.
+        """
+        import zendriver as zd
+
+        anime_url, manga_url = f"{url}/anime", f"{url}/manga"
+        if not await _any_ography_missing(anime_url, manga_url):
+            return await _fetch_ography(anime_url), await _fetch_ography(manga_url)
+
+        browser = await zd.start(headless=False)
+        try:
+            return (
+                await _fetch_ography(anime_url, browser),
+                await _fetch_ography(manga_url, browser),
+            )
+        finally:
+            try:
+                await browser.stop()
+            except Exception as exc:
+                logger.debug(f"browser stop failed: {exc}")
 
     def build_source_model(
         self, processed_raw: dict[str, Any], url: str
