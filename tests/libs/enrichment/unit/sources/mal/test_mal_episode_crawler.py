@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 from enrichment.sources.mal.mal_episode_crawler import (
     _XPATHS,
+    MalEpisodeCrawler,
     _build_episode_from_raw,
     _extract_episode_from_html,
     _fetch_episode_html,
@@ -24,7 +25,6 @@ from enrichment.sources.mal.mal_episode_crawler import (
     fetch_mal_episode,
     fetch_mal_episodes,
     main,
-    MalEpisodeCrawler,
 )
 
 pytestmark = pytest.mark.asyncio

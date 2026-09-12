@@ -76,9 +76,8 @@ def mal_character_content_html(mal_character_html) -> str:
     The crawler consumes this during extraction and does not keep it, so tests
     that exercise those helpers directly re-derive it here.
     """
-    from lxml import etree
-
     from enrichment.sources.mal.mal_character_crawler import _XPATHS
+    from lxml import etree
 
     tree = etree.fromstring(
         mal_character_html.encode(), etree.HTMLParser(encoding="utf-8")

@@ -7,11 +7,12 @@ via the mal_character_extracted session fixture.
 Edge-case tests use synthetic HTML to isolate specific parsing branches.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from enrichment.sources.mal.mal_character_crawler import (
     _XPATHS,
+    MalCharacterCrawler,
     _build_character_from_raw,
     _extract_bio_data,
     _extract_character_from_html,
@@ -21,7 +22,6 @@ from enrichment.sources.mal.mal_character_crawler import (
     _extract_voice_actors,
     _fetch_character_html,
     _fetch_mal_character_data,
-    MalCharacterCrawler,
     fetch_mal_character,
     fetch_mal_characters,
 )
