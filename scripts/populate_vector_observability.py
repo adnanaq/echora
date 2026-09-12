@@ -385,9 +385,11 @@ def _run_chaos_phase(host: str, container: str) -> None:
     Requires the docker CLI to be available and the container name to be correct.
     """
     print(f"\n[Phase Chaos] Stopping Qdrant container '{container}'...")
-    result = subprocess.run(
-        ["docker", "stop", container], capture_output=True, text=True
-    )  # noqa: S603, S607
+    result = subprocess.run(  # noqa: S603
+        ["docker", "stop", container],  # noqa: S607
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"  ✗ docker stop failed: {result.stderr.strip()}")
         return
@@ -411,9 +413,11 @@ def _run_chaos_phase(host: str, container: str) -> None:
     asyncio.run(_chaos_requests())
 
     print(f"  Restarting '{container}'...")
-    result = subprocess.run(
-        ["docker", "start", container], capture_output=True, text=True
-    )  # noqa: S603, S607
+    result = subprocess.run(  # noqa: S603
+        ["docker", "start", container],  # noqa: S607
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"  ✗ docker start failed: {result.stderr.strip()}")
         return
