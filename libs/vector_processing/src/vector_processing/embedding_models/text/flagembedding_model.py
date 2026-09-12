@@ -61,10 +61,7 @@ class FlagEmbeddingModel(TextEmbeddingModel):
         )
 
         logger.info(
-            "Initialized FlagEmbeddingModel: %s (fp16=%s, max_length=%d)",
-            model_name,
-            use_fp16,
-            max_length,
+            f"Initialized FlagEmbeddingModel: {model_name} (fp16={use_fp16}, max_length={max_length})"
         )
 
     def encode(self, texts: list[str]) -> list[list[float]]:

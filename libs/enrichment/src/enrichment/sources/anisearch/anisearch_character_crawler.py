@@ -784,9 +784,6 @@ async def fetch_anisearch_characters(
                 pass
 
     logger.info(
-        "anisearch character fetch: %d/%d succeeded, %d cache hits",
-        succeeded,
-        len(urls),
-        len(urls) - len(missing_set),
+        f"anisearch character fetch: {succeeded}/{len(urls)} succeeded, {len(urls) - len(missing_set)} cache hits"
     )
     return characters

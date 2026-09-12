@@ -79,7 +79,7 @@ class CCIP:
                 # Handle local file path
                 return Image.open(url_or_path)
         except Exception:
-            logger.exception("Failed to load image from %s", url_or_path)
+            logger.exception(f"Failed to load image from {url_or_path}")
             return None
 
     def _calculate_openclip_similarity(

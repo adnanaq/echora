@@ -32,7 +32,7 @@ class SentenceTransformerReranker(RerankerModel):
             cache_dir: Optional cache directory for model files.
             max_length: Maximum sequence length (default: 512).
         """
-        logger.info("Loading reranker model: %s", model_name)
+        logger.info(f"Loading reranker model: {model_name}")
         self.model = CrossEncoder(
             model_name,
             max_length=max_length,

@@ -32,9 +32,7 @@ class RerankerProcessor:
         self.config = config
         self._semaphore = asyncio.Semaphore(config.embed_max_concurrency)
         logger.info(
-            "Initialized reranker processor: %s (max_concurrency=%d)",
-            model.model_name,
-            config.embed_max_concurrency,
+            f"Initialized reranker processor: {model.model_name} (max_concurrency={config.embed_max_concurrency})"
         )
 
     async def rerank(
@@ -80,9 +78,7 @@ class RerankerProcessor:
             ranked = ranked[:top_k]
 
         logger.debug(
-            "Reranked %d documents, returning top %d",
-            len(documents),
-            len(ranked),
+            f"Reranked {len(documents)} documents, returning top {len(ranked)}"
         )
 
         return ranked

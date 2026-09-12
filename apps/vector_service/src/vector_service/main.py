@@ -125,7 +125,7 @@ async def serve() -> None:
         f"{settings.service.vector_service_host}:{settings.service.vector_service_port}"
     )
     server.add_insecure_port(bind)
-    logger.info("Starting vector_service gRPC server on %s", bind)
+    logger.info(f"Starting vector_service gRPC server on {bind}")
 
     try:
         await server.start()

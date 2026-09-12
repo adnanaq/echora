@@ -16,7 +16,13 @@ import grpc
 from common.grpc.error_details import build_error_details as error
 from observability import registry
 from opentelemetry import trace
-from qdrant_db.contracts import FilterClause, FilterOperator, SearchFilterCondition, SearchRequest, SparseVectorData
+from qdrant_db.contracts import (
+    FilterClause,
+    FilterOperator,
+    SearchFilterCondition,
+    SearchRequest,
+    SparseVectorData,
+)
 from vector_proto.v1 import vector_search_pb2
 
 from ..runtime import VectorRuntime
@@ -87,7 +93,9 @@ def _proto_value_to_python(v: Any) -> Any:
     if kind == "list_value":
         return [_proto_value_to_python(item) for item in v.list_value.values]
     if kind == "struct_value":
-        return {k: _proto_value_to_python(val) for k, val in v.struct_value.fields.items()}
+        return {
+            k: _proto_value_to_python(val) for k, val in v.struct_value.fields.items()
+        }
     return None
 
 
@@ -228,7 +236,7 @@ async def search(
             except InvalidFiltersPayloadError:
                 raise
             except Exception as exc:
-                logger.debug("Filter mapping failed: %s", exc)
+                logger.debug(f"Filter mapping failed: {exc}")
                 _raise_invalid_filters()
 
         entity_type = (

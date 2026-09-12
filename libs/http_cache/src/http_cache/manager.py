@@ -268,13 +268,13 @@ class HTTPCacheManager:
                         cleanup_task = current_loop.create_task(old_client.aclose())
                         cleanup_task.add_done_callback(
                             lambda t: logger.debug(
-                                "Old Redis client cleanup completed: %s",
-                                t.exception() if t.exception() else "success",
+                                "Old Redis client cleanup completed: "
+                                f"{t.exception() if t.exception() else 'success'}"
                             )
                         )
                 except Exception as close_error:
                     logger.debug(
-                        "Failed to close previous Redis client: %s", close_error
+                        f"Failed to close previous Redis client: {close_error}"
                     )
 
             # Create new client for current event loop

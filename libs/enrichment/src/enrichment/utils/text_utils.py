@@ -68,7 +68,7 @@ def normalize_japanese_text(text: str) -> str:
             romaji = romaji.replace("　", " ")  # Full-width space to regular space
             return romaji.lower().strip()
         except Exception:  # normalization must be best-effort, never fail caller
-            logger.exception("Japanese normalization failed for %r", text[:50])
+            logger.exception(f"Japanese normalization failed for {text[:50]!r}")
             return text.lower().strip()
 
     return text.lower().strip()
