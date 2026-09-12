@@ -377,7 +377,11 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
         logger.warning("No JSON-LD name found in page HTML")
         return None
 
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    try:
+        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse anime page HTML")
+        return None
 
     def _t(key: str) -> str | None:
         els = cast(list[Any], tree.xpath(_XPATHS[key]))

@@ -30,7 +30,11 @@ _CHAR_URL_XPATH = (
 def _extract_character_urls(html: str) -> list[str]:
     if not html:
         return []
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    try:
+        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse character refs HTML")
+        return []
     urls = cast(list[str], tree.xpath(_CHAR_URL_XPATH))
     return list(dict.fromkeys(urls))
 

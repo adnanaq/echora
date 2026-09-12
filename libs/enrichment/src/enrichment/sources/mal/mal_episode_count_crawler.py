@@ -38,7 +38,11 @@ def _extract_episode_count(html: str) -> str | None:
     """
     if not html:
         return None
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    try:
+        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse episode count HTML")
+        return None
     els = cast(list[Any], tree.xpath(_EPISODE_COUNT_XPATH))
     if not els:
         return None

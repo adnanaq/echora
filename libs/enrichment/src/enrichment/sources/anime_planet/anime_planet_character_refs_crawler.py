@@ -39,7 +39,11 @@ def _extract_refs_from_html(html: str) -> list[dict[str, str]] | None:
     """
     if not html:
         return None
-    tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
+    try:
+        tree = etree.fromstring(html.encode(), etree.HTMLParser(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to parse character refs HTML")
+        return None
     anchors = cast(list[Any], tree.xpath(_XPATHS["characters"]))
     hrefs = [el.get("href") for el in anchors if el.get("href")]
     if not hrefs:
