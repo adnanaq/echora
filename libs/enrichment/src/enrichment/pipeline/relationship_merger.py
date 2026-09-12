@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -523,19 +524,25 @@ def _pick(members: list[tuple[int, str, dict[str, Any]]], field: str) -> Any:
     return None
 
 
-def _pick_relation(members: list[tuple[int, str, dict[str, Any]]]) -> str:
+def _pick_relation(
+    members: list[tuple[int, str, dict[str, Any]]], relation_enum: type[StrEnum]
+) -> str:
     """Choose the relation group a merged work belongs to.
+
+    The winning key is normalised through the enum so a provider's casing never
+    reaches the output; ``validate`` requires canonical keys.
 
     Args:
         members: Group members, pre-sorted by source priority.
+        relation_enum: Relation type enum for this field.
 
     Returns:
         The winning relation key; a concrete relation always beats ``OTHER``.
     """
     for _, relation, _ in members:
         if is_signal(relation):
-            return relation
-    return members[0][1]
+            return relation_enum(relation).value
+    return relation_enum(members[0][1]).value
 
 
 def _union(members: list[tuple[int, str, dict[str, Any]]], field: str) -> list[str]:
@@ -595,6 +602,9 @@ def merge_relation_field(
         if is_source_material
         else AnimeType.UNKNOWN.value
     )
+    relation_enum: type[StrEnum] = (
+        SourceMaterialRelationType if is_source_material else AnimeRelationType
+    )
 
     out: dict[str, list[dict[str, Any]]] = {}
     for members in _fuzzy_union(groups.groups(), resolver):
@@ -621,7 +631,7 @@ def merge_relation_field(
             value = _pick(members, field)
             if value is not None:
                 merged[field] = value
-        out.setdefault(_pick_relation(members), []).append(merged)
+        out.setdefault(_pick_relation(members, relation_enum), []).append(merged)
 
     for entries in out.values():
         entries.sort(key=lambda e: (e.get("title") or "").lower())
@@ -711,6 +721,22 @@ def merge_provider_records(
     }
 
 
+def _is_canonical(enum: type[StrEnum], value: str) -> bool:
+    """Report whether ``value`` is a real member of ``enum``.
+
+    These enums define ``_missing_`` to fold anything unrecognised into OTHER,
+    so constructing one never raises and cannot be used to detect a bad key.
+
+    Args:
+        enum: Relation type enum to check against.
+        value: Relation key from the merged output.
+
+    Returns:
+        ``True`` when the enum round-trips the value unchanged.
+    """
+    return enum(value).value == value
+
+
 def validate(merged: dict[str, Any]) -> list[str]:
     """Validate merged output against the canonical models.
 
@@ -723,9 +749,7 @@ def validate(merged: dict[str, Any]) -> list[str]:
     """
     errors: list[str] = []
     for relation, entries in merged["related_anime"].items():
-        try:
-            AnimeRelationType(relation)
-        except ValueError:
+        if not _is_canonical(AnimeRelationType, relation):
             errors.append(f"bad AnimeRelationType: {relation!r}")
         for entry in entries:
             try:
@@ -733,9 +757,7 @@ def validate(merged: dict[str, Any]) -> list[str]:
             except Exception as exc:
                 errors.append(f"{relation}/{entry.get('title')!r}: {exc}")
     for relation, entries in merged["related_source_material"].items():
-        try:
-            SourceMaterialRelationType(relation)
-        except ValueError:
+        if not _is_canonical(SourceMaterialRelationType, relation):
             errors.append(f"bad SourceMaterialRelationType: {relation!r}")
         for entry in entries:
             try:
