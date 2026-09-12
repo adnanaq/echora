@@ -188,6 +188,29 @@ def test_missing_type_falls_back_to_the_unknown_sentinel() -> None:
     assert validate({"related_anime": merged, "related_source_material": {}}) == []
 
 
+def test_validate_rejects_a_non_canonical_relation_key() -> None:
+    """The relation enums fold anything unknown into OTHER via _missing_.
+
+    Constructing one therefore never raises, so the check must compare values.
+    """
+    merged = {
+        "related_anime": {
+            "TOTALLY_BOGUS": [
+                {"title": "X", "type": "TV", "sources": ["u"], "images": []}
+            ]
+        },
+        "related_source_material": {
+            "ALSO_BOGUS": [
+                {"title": "Y", "type": "MANGA", "sources": ["v"], "images": []}
+            ]
+        },
+    }
+    errors = validate(merged)
+    assert len(errors) == 2
+    assert any("bad AnimeRelationType" in e for e in errors)
+    assert any("bad SourceMaterialRelationType" in e for e in errors)
+
+
 def test_load_agent_providers_reads_the_latest_record(tmp_path) -> None:
     """Helpers append on re-run, so the first line is the stale earlier fetch."""
     (tmp_path / "mal_anime.jsonl").write_text(

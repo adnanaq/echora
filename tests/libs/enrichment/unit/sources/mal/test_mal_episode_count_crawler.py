@@ -190,3 +190,11 @@ async def test_fetches_episode_list_url() -> None:
     with patch(_PATCH, new=mock_fetch):
         await fetch_mal_episode_count(ANIME_URL)
         mock_fetch.assert_awaited_once_with(EPISODE_LIST_URL)
+
+
+def test_extract_episode_count_with_encoding_declaration_degrades() -> None:
+    """lxml rejects a str carrying an encoding declaration; do not let it escape."""
+    doc = '<?xml version="1.0" encoding="utf-8"?>'
+    doc += "<html><body><p>x</p></body></html>"
+    result = _extract_episode_count(doc)
+    assert result is None

@@ -753,3 +753,15 @@ def test_character_from_anidb_onepiece_main_character(onepiece_anime) -> None:
     assert result["name"] is not None
     assert "MAIN" in result["roles"]
     assert len(result["voice_actors"]) > 0
+
+
+def test_character_from_anidb_keeps_xml_gender_without_page() -> None:
+    """A CF or antileech block leaves page_data None; the XML gender must survive."""
+    char = AniDBCharacter(id=474, name="Luffy", gender="male", type="main character in")
+    assert character_from_anidb(char)["attributes"] == {"gender": "male"}
+
+
+def test_character_from_anidb_page_gender_overrides_xml() -> None:
+    char = AniDBCharacter(id=474, name="Luffy", gender="male", type="main character in")
+    page = AniDBCharacterPage(name_main="Luffy", gender="female")
+    assert character_from_anidb(char, page)["attributes"] == {"gender": "female"}

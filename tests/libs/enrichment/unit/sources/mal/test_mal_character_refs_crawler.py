@@ -245,3 +245,11 @@ def _build_html(hrefs: list[str]) -> str:
         for href in hrefs
     )
     return f"<html><body>{tables}</body></html>"
+
+
+def test_extract_character_urls_with_encoding_declaration_degrades() -> None:
+    """lxml rejects a str carrying an encoding declaration; do not let it escape."""
+    doc = '<?xml version="1.0" encoding="utf-8"?>'
+    doc += "<html><body><p>x</p></body></html>"
+    result = _extract_character_urls(doc)
+    assert result == []

@@ -186,3 +186,11 @@ async def test_fetch_character_refs_returns_list_on_success(mocker) -> None:
     expected = [{"url": "/characters/ken-takakura", "role": ""}]
     mocker.patch(_PATCH_FETCH_DATA, new=AsyncMock(return_value=expected))
     assert await fetch_animeplanet_character_refs(_DANDADAN_URL) == expected
+
+
+def test_extract_refs_from_html_with_encoding_declaration_degrades() -> None:
+    """lxml rejects a str carrying an encoding declaration; do not let it escape."""
+    doc = '<?xml version="1.0" encoding="utf-8"?>'
+    doc += "<html><body><p>x</p></body></html>"
+    result = _extract_refs_from_html(doc)
+    assert result is None
