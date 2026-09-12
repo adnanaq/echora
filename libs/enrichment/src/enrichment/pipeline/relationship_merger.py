@@ -49,6 +49,7 @@ on the ``anime`` record.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,8 @@ from rapidfuzz import fuzz
 
 from enrichment.pipeline.identity import NullIdentityResolver, WorkIdentityResolver
 from enrichment.utils.text_utils import normalize_japanese_text
+
+logger = logging.getLogger(__name__)
 
 # Highest trust first, per docs/anime_relationship_and_format_type_mappings.md.
 # All seven sources participate; only AniDB's character/episode files are out of
@@ -206,12 +209,72 @@ def _phonetic(text: str) -> str:
     return " ".join(jellyfish.metaphone(token) for token in text.split() if token)
 
 
+def _token_pair_matches(token: str, other: str, threshold: float) -> bool:
+    """Decide whether two differing tokens are spellings of the same word.
+
+    Args:
+        token: Token from one title.
+        other: Token from the other title.
+        threshold: Minimum similarity in ``[0, 1]``.
+
+    Returns:
+        ``True`` on a similarity hit or when one token prefixes the other,
+        which is how slugs glue a dropped word on (``711`` / ``711ver``).
+    """
+    return (
+        token.startswith(other)
+        or other.startswith(token)
+        or fuzz.ratio(token, other) / 100.0 >= threshold
+    )
+
+
+def _discriminators_match(
+    only_left: set[str], only_right: set[str], threshold: float
+) -> bool:
+    """Decide whether one-sided tokens still describe the same work.
+
+    Tokens of one or two characters are dropped first: they are artefacts of
+    splitting on punctuation (``CHOPPER's`` yields ``chopper`` and ``s``) rather
+    than words that distinguish one work from another.
+
+    Args:
+        only_left: Significant tokens present in the left title alone.
+        only_right: Significant tokens present in the right title alone.
+        threshold: Minimum similarity in ``[0, 1]`` for a token pairing.
+
+    Returns:
+        ``True`` when every token on each side has a similar counterpart on the
+        other, which is the transliteration case rather than a real difference.
+    """
+    only_left = {token for token in only_left if len(token) > 2}
+    only_right = {token for token in only_right if len(token) > 2}
+    if not only_left or not only_right:
+        # A word on one side only ("... Prologue") marks a distinct work, but a
+        # bare number does not: AnimeSchedule slugs drop the "Movie 03" label
+        # the other sources keep. A differing sequence number is already vetoed
+        # by trailing_index, so an interior digit is labelling, not identity.
+        return all(token.isdigit() for token in only_left | only_right)
+    return all(
+        any(_token_pair_matches(token, other, threshold) for other in only_right)
+        for token in only_left
+    ) and all(
+        any(_token_pair_matches(token, other, threshold) for other in only_left)
+        for token in only_right
+    )
+
+
 def titles_match(left: str, right: str, threshold: float = MATCH_THRESHOLD) -> bool:
     """Ensemble title match mirroring EnsembleFuzzyMatcher's cheap signals.
 
     Uses edit-distance, token-sort and phonetic agreement over canonicalised
     titles. A differing trailing sequence number vetoes the match outright,
     regardless of score.
+
+    Within a franchise every title shares a long common prefix, so a high
+    similarity score says almost nothing: ``Episode of Sabo`` and ``Episode of
+    Skypiea`` score 0.91, and ``Ace's Story`` and ``Law's Story`` score 0.94.
+    The one token that differs is the whole meaning, so a token present on one
+    side only vetoes the match unless it has a similar counterpart on the other.
 
     Args:
         left: First title.
@@ -227,6 +290,12 @@ def titles_match(left: str, right: str, threshold: float = MATCH_THRESHOLD) -> b
     if left_key == right_key:
         return True
     if trailing_index(left) != trailing_index(right):
+        return False
+
+    left_tokens, right_tokens = significant_tokens(left), significant_tokens(right)
+    if left_tokens != right_tokens and not _discriminators_match(
+        left_tokens - right_tokens, right_tokens - left_tokens, threshold
+    ):
         return False
 
     # Deliberately no subset rule: in a franchise every title shares a common
@@ -407,7 +476,7 @@ def _identity_keys(entry: dict[str, Any], resolver: WorkIdentityResolver) -> lis
 
     Returns:
         Namespaced keys: ``url:<url>`` per source URL, ``work:<id>`` when the
-        resolver knows the work, and ``title:<normalized title>``.
+        resolver knows the work, and ``title:<normalized title>`` otherwise.
     """
     keys = [f"url:{normalize_url(url)}" for url in entry.get("sources") or []]
     # Tier 1: a resolved work id is authoritative and links entries that share
@@ -421,7 +490,11 @@ def _identity_keys(entry: dict[str, Any], resolver: WorkIdentityResolver) -> lis
         None,
     )
     if work_id is not None:
-        keys.append(f"work:{work_id}")
+        # The title key is deliberately withheld here. It unions on exact match
+        # with no resolver check, so a remake sharing its original's title would
+        # fuse with it despite the resolver knowing they are different works.
+        # An unresolved entry can still reach this one through _fuzzy_union.
+        return [*keys, f"work:{work_id}"]
     title = entry.get("title") or ""
     if title:
         keys.append(f"title:{normalize_title(title)}")
@@ -517,12 +590,30 @@ def merge_relation_field(
         ("chapters", "volumes") if is_source_material else ("year", "episode_count")
     )
 
+    unknown_type = (
+        SourceMaterialType.UNKNOWN.value
+        if is_source_material
+        else AnimeType.UNKNOWN.value
+    )
+
     out: dict[str, list[dict[str, Any]]] = {}
     for members in _fuzzy_union(groups.groups(), resolver):
         members.sort(key=lambda m: m[0])
+        title = _pick(members, "title")
+        if not title:
+            # RelatedAnime.title is required, so a group no source titled cannot
+            # be represented. Emitting it anyway ships a document the next
+            # consumer rejects; dropping it keeps the output loadable.
+            logger.warning(
+                f"Dropping untitled relation entry with sources: "
+                f"{_union(members, 'sources')}"
+            )
+            continue
         merged: dict[str, Any] = {
-            "title": _pick(members, "title"),
-            "type": _pick(members, "type"),
+            "title": title,
+            # Type is required too, but it has a sentinel that means "unknown",
+            # which is truthful here and keeps the entry.
+            "type": _pick(members, "type") or unknown_type,
             "sources": _union(members, "sources"),
             "images": _union(members, "images"),
         }
