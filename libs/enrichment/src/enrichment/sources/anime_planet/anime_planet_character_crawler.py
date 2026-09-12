@@ -496,7 +496,6 @@ async def fetch_animeplanet_characters(
 
     missing_indices = sorted(set(missing_indices))
     missing_urls = [urls[i] for i in missing_indices]
-    cache_values: list[dict[str, Any] | None] = [None] * len(missing_urls)
 
     import zendriver as zd
 
@@ -507,26 +506,26 @@ async def fetch_animeplanet_characters(
                 await asyncio.sleep(_INTER_REQUEST_DELAY)
             out_index = missing_indices[i]
             html = await _fetch_page_html(browser, url)
-            if not html:
+            raw = _extract_character_from_html(html) if html else None
+            if raw:
+                canonical = character_from_animeplanet(
+                    _build_character_from_raw(raw, url)
+                )
+                characters[out_index] = canonical
+                repo.save(canonical)
+            else:
                 characters[out_index] = None
-                continue
-            raw = _extract_character_from_html(html)
-            if not raw:
-                characters[out_index] = None
-                continue
-            canonical = character_from_animeplanet(_build_character_from_raw(raw, url))
-            characters[out_index] = canonical
-            cache_values[i] = raw
-            repo.save(canonical)
+            # Cache each page as it resolves, matching the sibling crawlers. A
+            # browser crash or cancellation mid-batch used to propagate past a
+            # single trailing cache write, discarding every page fetched in the
+            # run — worst case for a cast of a thousand characters.
+            await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
+                [url], [raw]
+            )
     finally:
         try:
             await browser.stop()
         except Exception as exc:
             logger.debug(f"browser stop failed: {exc}")
-
-    await _fetch_character_data.cache_batch_set(  # type: ignore[attr-defined]
-        missing_urls,
-        cache_values,
-    )
 
     return characters
