@@ -122,7 +122,7 @@ async def _fetch_anisearch_character_refs_data(
             await page.wait_for(selector="#content", timeout=10)
             await page.scroll_down(amount=1000, speed=3000)
             html_text = await page.get_content()
-        except Exception as exc:
+        except Exception:
             logger.exception(f"navigation failed for {characters_url}")
             return None
     finally:
@@ -157,9 +157,9 @@ async def fetch_anisearch_character_refs(
         List of {"url": str, "role": str} dicts. Empty list on failure.
     """
     characters_url = _normalize_characters_page_url(anime_identifier)
-    logger.info("Fetching AniSearch character list from %s...", characters_url)
+    logger.info(f"Fetching AniSearch character list from {characters_url}...")
     refs = await _fetch_anisearch_character_refs_data(characters_url)
     if not refs:
-        logger.warning("No character refs extracted from %s", characters_url)
+        logger.warning(f"No character refs extracted from {characters_url}")
         return []
     return refs
