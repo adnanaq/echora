@@ -11,6 +11,7 @@ from enrichment.sources.mal.mal_base import (
     parse_episode_ranges,
     parse_number,
     parse_premiered,
+    parse_score,
     parse_sidebar_field,
 )
 from enrichment.sources.mal.mal_models import (
@@ -40,6 +41,29 @@ from pydantic import BaseModel
 )
 def test_parse_number(raw: str | None, expected: int | None) -> None:
     assert parse_number(raw) == expected
+
+
+# =============================================================================
+# parse_score
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("8.73", 8.73),
+        ("10", 10.0),
+        (" 6.06 ", 6.06),
+        # MAL renders the same ratingValue span as "N/A" below the vote
+        # threshold; an unguarded float() there discards the whole record.
+        ("N/A", None),
+        (None, None),
+        ("", None),
+        ("   ", None),
+    ],
+)
+def test_parse_score(raw: str | None, expected: float | None) -> None:
+    assert parse_score(raw) == expected
 
 
 # =============================================================================

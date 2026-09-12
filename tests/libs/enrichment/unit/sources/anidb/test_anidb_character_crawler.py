@@ -23,6 +23,20 @@ _CF_HTML = "<html><body>Just a moment...</body></html>"
 _EMPTY_HTML = "<html><body><p>Not found</p></body></html>"
 
 
+class _TabMock(AsyncMock):
+    """A zendriver Tab is awaitable — awaiting it waits for the page to settle.
+
+    Plain AsyncMock is not, so the block-clearing path that does ``await page``
+    raises TypeError against it.
+    """
+
+    def __await__(self):
+        async def _settled() -> "_TabMock":
+            return self
+
+        return _settled().__await__()
+
+
 async def _collect(gen):
     return [(cid, page) async for cid, page in gen]
 
@@ -308,7 +322,7 @@ async def test_fetch_characters_no_character_data(fetch_mocks, mocker) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_characters_cf_blocked_solved(fetch_mocks, mocker) -> None:
-    page_obj = AsyncMock()
+    page_obj = _TabMock()
     page_obj.get_content = AsyncMock(return_value=_CHAR_HTML)
     mocker.patch(
         "enrichment.sources.anidb.anidb_character_crawler._fetch_page_html",
@@ -349,7 +363,7 @@ async def test_fetch_characters_cf_solve_fails(fetch_mocks, mocker) -> None:
 async def test_fetch_characters_cf_solved_get_content_raises(
     fetch_mocks, mocker
 ) -> None:
-    page_obj = AsyncMock()
+    page_obj = _TabMock()
     page_obj.get_content = AsyncMock(side_effect=Exception("gone"))
     mocker.patch(
         "enrichment.sources.anidb.anidb_character_crawler._fetch_page_html",

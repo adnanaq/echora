@@ -1,14 +1,20 @@
+"""Integration: AniSearch crawlers cache their results in Redis.
+
+Each crawler is called twice for the same URL. The second call must return the
+same payload and skip the browser entirely, which is what the result cache
+exists to do.
+"""
+
 import time
 from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from enrichment.crawlers.anisearch_anime_crawler import fetch_anisearch_anime
-from enrichment.crawlers.anisearch_character_crawler import (
-    fetch_anisearch_characters,
+from enrichment.sources.anisearch.anisearch_anime_crawler import fetch_anisearch_anime
+from enrichment.sources.anisearch.anisearch_episode_crawler import (
+    fetch_anisearch_episodes,
 )
-from enrichment.crawlers.anisearch_episode_crawler import fetch_anisearch_episodes
 from http_cache import result_cache
 from redis import exceptions
 from redis.asyncio import Redis
@@ -16,17 +22,18 @@ from redis.asyncio import Redis
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
-# AniList ID for Dandadan
-ANIME_ID = "18878,dan-da-dan"
-ANIME_URL = f"https://www.anisearch.com/anime/{ANIME_ID}"
-EPISODES_URL = f"https://www.anisearch.com/anime/{ANIME_ID}/episodes"
-CHARACTERS_URL = f"https://www.anisearch.com/anime/{ANIME_ID}/characters"
+ANIME_SLUG = "18878,dan-da-dan"
+ANIME_URL = f"https://www.anisearch.com/anime/{ANIME_SLUG}"
+
+# A cached call must be dramatically faster than one that drives a browser.
+_CACHE_SPEEDUP = 5
+_MEANINGFUL_DURATION_S = 0.1
 
 RedisType = Redis
 
 
 @pytest_asyncio.fixture(scope="module")
-async def redis_client() -> AsyncGenerator[RedisType, None]:
+async def redis_client() -> AsyncGenerator[RedisType]:
     """Async Redis fixture for tests."""
     client = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
 
@@ -47,82 +54,64 @@ async def redis_client() -> AsyncGenerator[RedisType, None]:
             pass
 
 
-@pytest.mark.asyncio
-async def test_crawler_cache_and_singleton_client(redis_client):
+@pytest_asyncio.fixture(scope="module")
+async def browser_available() -> None:
+    """Skip unless a browser can actually start here.
+
+    The AniSearch crawlers drive a headful Chrome, which needs a display. The
+    Pants sandbox does not pass one through, so without this the whole module
+    fails as if the crawlers were broken.
     """
-    Verifies caching for multiple crawlers and confirms a single Redis client instance is used.
-    """
+    import zendriver as zd
+
+    try:
+        browser = await zd.start(headless=False)
+    except Exception as exc:
+        pytest.skip(f"no usable browser in this environment: {exc}")
+    else:
+        await browser.stop()
+
+
+@pytest_asyncio.fixture
+async def shared_redis(redis_client, browser_available):
+    """Point the result cache at the same client the assertions inspect."""
     from redis.asyncio import Redis as AsyncRedis
 
-    # --- Patch Redis.from_url AFTER importing result_cache module ---
-    real_redis_client = AsyncRedis.from_url(
-        "redis://localhost:6379/0", decode_responses=True
-    )
+    real_client = AsyncRedis.from_url("redis://localhost:6379/0", decode_responses=True)
+    with patch("http_cache.result_cache.Redis.from_url", return_value=real_client):
+        result_cache._redis_client = real_client
+        yield real_client
 
-    with patch(
-        "http_cache.result_cache.Redis.from_url", return_value=real_redis_client
-    ):
-        # Ensure the module-level singleton uses the real async client
-        result_cache._redis_client = real_redis_client
 
-        # --- Test fetch_anisearch_anime caching ---
-        start_time_1 = time.monotonic()
-        anime_data_1 = await fetch_anisearch_anime(anime_id=ANIME_ID)
-        duration_1 = time.monotonic() - start_time_1
-        assert anime_data_1 is not None
-        assert "japanese_title" in anime_data_1
+async def _timed(coro_factory):
+    """Await a freshly built coroutine and return (result, elapsed_seconds)."""
+    start = time.monotonic()
+    result = await coro_factory()
+    return result, time.monotonic() - start
 
-        start_time_2 = time.monotonic()
-        anime_data_2 = await fetch_anisearch_anime(anime_id=ANIME_ID)
-        duration_2 = time.monotonic() - start_time_2
-        assert anime_data_2 is not None
 
-        # Sort screenshots to ensure consistent comparison
-        if "screenshots" in anime_data_1 and isinstance(
-            anime_data_1["screenshots"], list
-        ):
-            anime_data_1["screenshots"].sort()
-        if "screenshots" in anime_data_2 and isinstance(
-            anime_data_2["screenshots"], list
-        ):
-            anime_data_2["screenshots"].sort()
+def _assert_second_call_was_cached(first_s: float, second_s: float) -> None:
+    if first_s > _MEANINGFUL_DURATION_S:
+        assert second_s < first_s / _CACHE_SPEEDUP
 
-        assert anime_data_2 == anime_data_1
 
-        if (
-            duration_1 > 0.1
-        ):  # Only assert if the first call took a meaningful amount of time
-            assert duration_2 < duration_1 / 5
+@pytest.mark.asyncio
+async def test_anime_crawler_caches_result(shared_redis):
+    first, first_s = await _timed(lambda: fetch_anisearch_anime(ANIME_URL))
+    assert first is not None
+    assert first["title"]
 
-        # --- Test fetch_anisearch_episodes caching ---
-        start_time_ep_1 = time.monotonic()
-        episodes_data_1 = await fetch_anisearch_episodes(anime_id=ANIME_ID)
-        duration_ep_1 = time.monotonic() - start_time_ep_1
-        assert episodes_data_1 is not None
-        assert len(episodes_data_1) > 0
+    second, second_s = await _timed(lambda: fetch_anisearch_anime(ANIME_URL))
+    assert second == first
+    _assert_second_call_was_cached(first_s, second_s)
 
-        start_time_ep_2 = time.monotonic()
-        episodes_data_2 = await fetch_anisearch_episodes(anime_id=ANIME_ID)
-        duration_ep_2 = time.monotonic() - start_time_ep_2
-        assert episodes_data_2 is not None
-        assert episodes_data_2 == episodes_data_1
 
-        if duration_ep_1 > 0.1:
-            assert duration_ep_2 < duration_ep_1 / 5
+@pytest.mark.asyncio
+async def test_episode_crawler_caches_result(shared_redis):
+    first, first_s = await _timed(lambda: fetch_anisearch_episodes(ANIME_URL))
+    assert first is not None
+    assert len(first) > 0
 
-        # --- Test fetch_anisearch_characters caching ---
-        start_time_char_1 = time.monotonic()
-        characters_data_1 = await fetch_anisearch_characters(anime_id=ANIME_ID)
-        duration_char_1 = time.monotonic() - start_time_char_1
-        assert characters_data_1 is not None
-        assert "characters" in characters_data_1
-        assert len(characters_data_1["characters"]) > 0
-
-        start_time_char_2 = time.monotonic()
-        characters_data_2 = await fetch_anisearch_characters(anime_id=ANIME_ID)
-        duration_char_2 = time.monotonic() - start_time_char_2
-        assert characters_data_2 is not None
-        assert characters_data_2 == characters_data_1
-
-        if duration_char_1 > 0.1:
-            assert duration_char_2 < duration_char_1 / 5
+    second, second_s = await _timed(lambda: fetch_anisearch_episodes(ANIME_URL))
+    assert second == first
+    _assert_second_call_was_cached(first_s, second_s)

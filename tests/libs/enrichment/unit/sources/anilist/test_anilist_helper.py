@@ -439,15 +439,19 @@ class TestAniListHelperMakeRequest:
 
     @pytest.mark.asyncio
     async def test_make_request_4xx_client_error_not_retried(self):
-        """4xx client errors raise immediately without retry."""
+        """4xx client errors raise immediately without retry.
+
+        404 is excluded: AniList uses it for "no such id", which is handled
+        separately by test_make_request_404_returns_no_media.
+        """
         helper = AniListHelper()
 
         error = aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=404
+            request_info=MagicMock(), history=(), status=400
         )
 
         mock_response = AsyncMock()
-        mock_response.status = 404
+        mock_response.status = 400
         mock_response.from_cache = False
         mock_response.headers = {}
         mock_response.raise_for_status = MagicMock(side_effect=error)
@@ -467,6 +471,33 @@ class TestAniListHelperMakeRequest:
 
         # Should only attempt once (no retry for 4xx)
         assert mock_session.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_make_request_404_returns_no_media(self):
+        """A 404 means the id does not exist, so fetch_anime yields None."""
+        helper = AniListHelper()
+
+        mock_response = AsyncMock()
+        mock_response.status = 404
+        mock_response.from_cache = False
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock(
+            side_effect=AssertionError("404 must be handled before raise_for_status")
+        )
+
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_cm)
+
+        helper.session = mock_session
+        helper._session_event_loop = asyncio.get_running_loop()
+
+        result = await helper._make_request("query { test }")
+        assert result.get("Media") is None
+        assert await helper.fetch_anime(999999999) is None
 
     @pytest.mark.asyncio
     async def test_make_request_http_error(self):

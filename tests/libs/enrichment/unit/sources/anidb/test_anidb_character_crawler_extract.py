@@ -189,8 +189,13 @@ def test_has_character_data_tab_pane() -> None:
     assert _has_character_data('<div id="tab_1_pane">content</div>') is True
 
 
-def test_has_character_data_itemprop_name() -> None:
-    assert _has_character_data('<span itemprop="name">Luffy</span>') is True
+def test_has_character_data_itemprop_name_alone_is_not_enough() -> None:
+    """The antileech page carries itemprop="name" in its header too.
+
+    Treating that marker as character data made antileech blocks look like real
+    pages, so only #tab_1_pane counts.
+    """
+    assert _has_character_data('<span itemprop="name">Luffy</span>') is False
 
 
 def test_has_character_data_neither() -> None:

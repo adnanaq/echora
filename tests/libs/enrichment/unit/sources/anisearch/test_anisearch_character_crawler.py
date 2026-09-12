@@ -547,8 +547,14 @@ async def test_crawler_post_process_fetches_both_ography_pages(mocker) -> None:
         {"url": "https://www.anisearch.com/anime/2227,one-piece", "title": "One Piece"}
     ]
     mock_ography = AsyncMock(return_value=ography_entry)
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
     mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         mock_ography,
     )
     crawler = AniSearchCharacterCrawler(NullRepository())
@@ -561,8 +567,14 @@ async def test_crawler_post_process_fetches_both_ography_pages(mocker) -> None:
 
 
 async def test_crawler_post_process_ography_none_on_failure(mocker) -> None:
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
     mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -602,8 +614,14 @@ async def test_fetch_anisearch_character_returns_canonical_dict(
         new_callable=AsyncMock,
         return_value=luffy_char_processed,
     )
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
     mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data",
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         new_callable=AsyncMock,
         return_value=None,
     )
@@ -636,6 +654,12 @@ async def test_fetch_anisearch_characters_all_cached_no_crawl(
         new_callable=AsyncMock,
         return_value=([None], []),  # all cached, no misses → no browser init
     )
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         new_callable=AsyncMock,
@@ -663,6 +687,12 @@ async def test_fetch_characters_cached_detail_ography_miss_starts_browser(
     )
     browser_mock = mocker.AsyncMock()
     mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         new_callable=AsyncMock,
@@ -689,6 +719,12 @@ async def test_fetch_anisearch_characters_writes_output_path(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_character_ography_data.cache_batch_get",
         new_callable=AsyncMock,
         return_value=([None], []),  # all cached, no misses → no browser init
+    )
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
@@ -723,6 +759,12 @@ async def test_fetch_anisearch_characters_uncached_crawl_succeeds(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_page_html",
         new_callable=AsyncMock,
         return_value=html,
+    )
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
@@ -783,6 +825,12 @@ async def test_uncached_crawl_unparseable_html_stays_none(mocker) -> None:
         new_callable=AsyncMock,
         return_value="",
     )
+    # Both sub-pages cached, so _fetch_ographies must not start a browser.
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler._any_ography_missing",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_ography",
         new_callable=AsyncMock,
@@ -815,7 +863,7 @@ async def test_fetch_ography_no_browser_delegates_to_cached_fn(mocker) -> None:
     assert result[0]["title"] == "One Piece"
 
 
-async def test_fetch_ography_with_browser_uses_fetch_page_html(
+async def test_fetch_ography_with_browser_uses_settling_fetch(
     mocker, luffy_anime_ography_html
 ) -> None:
     # When browser is provided, misses are navigated via _fetch_page_html
