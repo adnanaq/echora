@@ -10,6 +10,7 @@ functions only:
   4. Convert units (episode length: minutes → seconds)
 """
 
+import logging
 from typing import Any
 
 from common.models.anime import (
@@ -42,8 +43,10 @@ from enrichment.sources.anidb.anidb_models import (
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 
+logger = logging.getLogger(__name__)
+
 # External resource type → (canonical key, url template).
-# {} is replaced with the first identifier or url value.
+# {} is replaced with the resource's single identifier, or its first url.
 # Types not listed are silently skipped.
 _RESOURCE_MAP: dict[str, tuple[str, str]] = {
     "1": (
@@ -140,10 +143,21 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
         if mapping is None:
             continue
         key, template = mapping
-        # type 4 uses urls list; all others use identifiers list
-        value = (resource.urls or resource.identifiers or [None])[0]
-        if value:
-            external_sources[key] = template.format(value)
+        if resource.urls:
+            # Several urls are all this work's own official pages, so the
+            # first is incomplete rather than wrong.
+            external_sources[key] = template.format(resource.urls[0])
+        elif len(resource.identifiers) == 1:
+            external_sources[key] = template.format(resource.identifiers[0])
+        elif resource.identifiers:
+            # Each identifier is a separate entry on that platform, and nothing
+            # marks which one is this work: taking the first linked One Piece to
+            # MAL 62593, a 2025 special. Lowest-id was right in only 7 of 8
+            # ambiguous cases, so skip rather than guess.
+            logger.debug(
+                f"Skipping ambiguous {key} resource for AniDB {anidb_url}: "
+                f"{len(resource.identifiers)} candidates"
+            )
 
     # Statistics from <ratings>
     statistics: dict[str, Statistics] = {}
