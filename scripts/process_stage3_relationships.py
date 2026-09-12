@@ -26,6 +26,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from enrichment.pipeline.identity import (
+    OfflineDatabaseResolver,
+    WorkIdentityResolver,
+)
 from enrichment.pipeline.relationship_merger import (
     PROVIDER_FILES,
     PROVIDER_PRIORITY,
@@ -39,12 +43,56 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 OUTPUT_FILENAME = "stage3_relationships.json"
 
+OFFLINE_DATABASE = PROJECT_ROOT / "assets" / "seed_data" / "anime-offline-database.json"
 
-def process_all_relationships(temp_dir: str) -> dict[str, Any]:
+
+class MergedOutputInvalidError(ValueError):
+    """Raised when merged entries do not satisfy the canonical models."""
+
+    def __init__(self, errors: list[str]) -> None:
+        """Build a message listing the first few validation failures.
+
+        Args:
+            errors: Human-readable errors returned by ``validate``.
+        """
+        detail = "\n".join(f"  {err}" for err in errors[:10])
+        super().__init__(
+            f"{len(errors)} merged entries failed model validation:\n{detail}"
+        )
+
+
+def build_resolver(path: Path) -> WorkIdentityResolver | None:
+    """Load the offline database as a work identity resolver.
+
+    Args:
+        path: Path to the anime-offline-database JSON document.
+
+    Returns:
+        A resolver indexed over that document, or ``None`` when the file is
+        absent or unreadable — the merge then falls back to fuzzy matching
+        alone, which groups less accurately but still produces output.
+    """
+    if not path.exists():
+        print(f"WARNING: {path} not found; merging without identity resolution.")
+        return None
+    try:
+        resolver = OfflineDatabaseResolver.from_file(path)
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"WARNING: could not load {path} ({exc}); merging without resolution.")
+        return None
+    print(f"Identity resolver: {len(resolver)} URLs indexed from {path.name}")
+    return resolver
+
+
+def process_all_relationships(
+    temp_dir: str, resolver: WorkIdentityResolver | None = None
+) -> dict[str, Any]:
     """Consolidate every source's relationship payload for one agent directory.
 
     Args:
         temp_dir: Agent directory holding the per-source ``*.jsonl`` files.
+        resolver: Work identity resolver used to keep distinct works apart.
+            When ``None`` the merge relies on fuzzy title matching alone.
 
     Returns:
         Mapping with ``related_anime`` and ``related_source_material``, each
@@ -52,6 +100,7 @@ def process_all_relationships(temp_dir: str) -> dict[str, Any]:
 
     Raises:
         FileNotFoundError: If the directory contains no recognised source files.
+        MergedOutputInvalidError: If any merged entry fails model validation.
     """
     agent_dir = Path(temp_dir)
     records = load_agent_providers(agent_dir)
@@ -76,7 +125,7 @@ def process_all_relationships(temp_dir: str) -> dict[str, Any]:
         print(f"  not present: {', '.join(missing)}")
     print(f"Raw relationship entries across sources: {raw_total}")
 
-    merged = merge_agent_relationships(agent_dir)
+    merged = merge_agent_relationships(agent_dir, resolver)
 
     anime_count = sum(len(v) for v in merged["related_anime"].values())
     manga_count = sum(len(v) for v in merged["related_source_material"].values())
@@ -89,11 +138,10 @@ def process_all_relationships(temp_dir: str) -> dict[str, Any]:
 
     errors = validate(merged)
     if errors:
-        print(f"WARNING: {len(errors)} entries failed model validation:")
-        for err in errors[:10]:
-            print(f"  {err}")
-    else:
-        print("Model validation: OK")
+        # Writing anyway produces a file whose next consumer raises on load, and
+        # a zero exit code says the stage succeeded. Fail here instead.
+        raise MergedOutputInvalidError(errors)
+    print("Model validation: OK")
 
     return merged
 
@@ -171,10 +219,16 @@ Examples:
         type=str,
         help="Override current anime JSON file path (legacy, derives temp dir)",
     )
+    parser.add_argument(
+        "--offline-db",
+        type=Path,
+        default=OFFLINE_DATABASE,
+        help=f"Offline database for identity resolution (default: {OFFLINE_DATABASE})",
+    )
     args = parser.parse_args()
 
     temp_dir = resolve_temp_dir(args)
-    merged = process_all_relationships(temp_dir)
+    merged = process_all_relationships(temp_dir, build_resolver(args.offline_db))
     output_file = write_output(merged, temp_dir)
     print(f"  - File saved: {output_file}")
     return 0
