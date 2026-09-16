@@ -1059,7 +1059,9 @@ async def test_fetch_all_skips_episodes_when_fetch_episodes_false():
                     helper, "fetch_characters", new=AsyncMock(return_value=[])
                 ):
                     result = await helper.fetch_all(
-                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}, fetch_episodes=False
+                        {"kitsu_url": "https://kitsu.app/anime/1"},
+                        {},
+                        fetch_episodes=False,
                     )
 
     assert result is not None
@@ -1082,16 +1084,16 @@ async def test_fetch_all_skips_characters_when_fetch_characters_false():
             "fetch_anime",
             new=AsyncMock(return_value={"title": "X", "sources": []}),
         ):
-            with patch.object(
-                helper, "fetch_episodes", new=AsyncMock(return_value=[])
-            ):
+            with patch.object(helper, "fetch_episodes", new=AsyncMock(return_value=[])):
                 with patch.object(
                     helper,
                     "fetch_characters",
                     new=AsyncMock(return_value=[{"name": "Luffy"}]),
                 ) as mock_chars:
                     result = await helper.fetch_all(
-                        {"kitsu_url": "https://kitsu.app/anime/1"}, {}, fetch_characters=False
+                        {"kitsu_url": "https://kitsu.app/anime/1"},
+                        {},
+                        fetch_characters=False,
                     )
 
     assert result is not None

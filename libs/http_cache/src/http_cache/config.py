@@ -36,19 +36,27 @@ class CacheConfig(BaseSettings):
         description="Redis connection URL",
     )
 
-    # Service-specific TTLs (in seconds) - all set to 24 hours for consistency
+    # Service-specific TTLs (in seconds).
+    #
+    # Sources that supply characters are held for 7 days. A franchise is
+    # enriched one title at a time, and roughly a third of its characters recur
+    # across those titles, so a 24-hour window expired between runs and every
+    # shared character was crawled again. Each source page is fetched at most
+    # once a week instead.
     ttl_jikan: int = Field(
-        default=86400, description="Jikan (MyAnimeList) cache TTL - 24 hours"
+        default=604800, description="Jikan (MyAnimeList) cache TTL - 7 days"
     )
-    ttl_anilist: int = Field(default=86400, description="AniList cache TTL - 24 hours")
-    ttl_anidb: int = Field(default=86400, description="AniDB cache TTL - 24 hours")
-    ttl_kitsu: int = Field(default=86400, description="Kitsu cache TTL - 24 hours")
+    ttl_anilist: int = Field(default=604800, description="AniList cache TTL - 7 days")
+    ttl_anidb: int = Field(default=604800, description="AniDB cache TTL - 7 days")
+    ttl_kitsu: int = Field(default=604800, description="Kitsu cache TTL - 7 days")
     ttl_anime_planet: int = Field(
-        default=86400, description="Anime-Planet cache TTL - 24 hours"
+        default=604800, description="Anime-Planet cache TTL - 7 days"
     )
     ttl_anisearch: int = Field(
-        default=86400, description="AniSearch cache TTL - 24 hours"
+        default=604800, description="AniSearch cache TTL - 7 days"
     )
+    # Broadcast timings shift week to week and this source carries no character
+    # data, so it gains nothing from a longer window.
     ttl_animeschedule: int = Field(
         default=86400, description="AnimSchedule cache TTL - 24 hours"
     )

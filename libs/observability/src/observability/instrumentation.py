@@ -97,6 +97,7 @@ def instrument_qdrant_client() -> None:
     QdrantInstrumentor().instrument()
     _QDRANT_CLIENT_INSTRUMENTED = True
 
+
 def instrument_redis() -> None:
     """Enable OpenTelemetry auto-instrumentation for Redis clients.
 

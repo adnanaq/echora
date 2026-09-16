@@ -102,7 +102,9 @@ def test_build_filter_not_in_operator() -> None:
 def test_build_filter_must_not_clause() -> None:
     result = build_filter(
         [
-            SearchFilterCondition(field="status", operator="eq", value="CANCELLED", clause="must_not"),
+            SearchFilterCondition(
+                field="status", operator="eq", value="CANCELLED", clause="must_not"
+            ),
         ]
     )
     assert isinstance(result, Filter)
@@ -117,8 +119,12 @@ def test_build_filter_must_not_clause() -> None:
 def test_build_filter_should_clause() -> None:
     result = build_filter(
         [
-            SearchFilterCondition(field="type", operator="eq", value="TV", clause="should"),
-            SearchFilterCondition(field="type", operator="eq", value="MOVIE", clause="should"),
+            SearchFilterCondition(
+                field="type", operator="eq", value="TV", clause="should"
+            ),
+            SearchFilterCondition(
+                field="type", operator="eq", value="MOVIE", clause="should"
+            ),
         ]
     )
     assert isinstance(result, Filter)
@@ -131,9 +137,15 @@ def test_build_filter_mixed_clauses() -> None:
     result = build_filter(
         [
             SearchFilterCondition(field="year", operator="range", value={"gte": 2020}),
-            SearchFilterCondition(field="status", operator="ne", value="CANCELLED", clause="must_not"),
-            SearchFilterCondition(field="type", operator="eq", value="TV", clause="should"),
-            SearchFilterCondition(field="type", operator="eq", value="OVA", clause="should"),
+            SearchFilterCondition(
+                field="status", operator="ne", value="CANCELLED", clause="must_not"
+            ),
+            SearchFilterCondition(
+                field="type", operator="eq", value="TV", clause="should"
+            ),
+            SearchFilterCondition(
+                field="type", operator="eq", value="OVA", clause="should"
+            ),
         ]
     )
     assert isinstance(result, Filter)

@@ -1,0 +1,46 @@
+# Opt-in overlay: connect the dev services to the observability stack.
+#
+# docker-compose.dev.yml runs with OTEL_ENABLED=false because the collector is
+# not part of that stack — it lives in docker-compose.obs.yml on the external
+# network `echora_observability-network`. Without this overlay the hostname
+# `otel-collector` does not resolve from `echora-network`, and every OTLP
+# export fails with StatusCode.UNAVAILABLE (non-fatal, but telemetry is lost).
+#
+# This overlay turns telemetry on and joins both services to that network.
+#
+# Usage:
+#   1. Create the shared network (once per machine):
+#        docker network create echora_observability-network
+#
+#   2. Start the observability stack:
+#        docker compose -f docker/docker-compose.obs.yml up -d
+#
+#   3. Start the dev stack with this overlay applied:
+#        docker compose -f docker/docker-compose.dev.yml \
+#                       -f docker/docker-compose.obs-link.yml up -d
+#
+#   Grafana: http://localhost:3000
+#
+# Without step 3 the dev stack runs exactly as before, just without telemetry.
+
+name: echora
+
+services:
+  vector-service:
+    environment:
+      - OTEL_ENABLED=true
+    networks:
+      - echora-network
+      - observability-network
+
+  enrichment-service:
+    environment:
+      - OTEL_ENABLED=true
+    networks:
+      - echora-network
+      - observability-network
+
+networks:
+  observability-network:
+    name: echora_observability-network
+    external: true

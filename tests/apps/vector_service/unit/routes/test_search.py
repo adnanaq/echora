@@ -65,9 +65,7 @@ def _num_value(n: float) -> struct_pb2.Value:
 
 
 def _list_value(*items: str) -> struct_pb2.Value:
-    lv = struct_pb2.ListValue(
-        values=[struct_pb2.Value(string_value=i) for i in items]
-    )
+    lv = struct_pb2.ListValue(values=[struct_pb2.Value(string_value=i) for i in items])
     return struct_pb2.Value(list_value=lv)
 
 
@@ -115,20 +113,28 @@ def test_proto_value_struct_range() -> None:
 
 
 def test_validate_filter_fields_passes_known_field() -> None:
-    cond = _make_condition("status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED"))
+    cond = _make_condition(
+        "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+    )
     _validate_filter_fields([cond], _INDEXED_FIELDS)  # must not raise
 
 
 def test_validate_filter_fields_rejects_unknown_field() -> None:
-    cond = _make_condition("unknown_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x"))
+    cond = _make_condition(
+        "unknown_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x")
+    )
     with pytest.raises(InvalidFiltersPayloadError, match="not indexed"):
         _validate_filter_fields([cond], _INDEXED_FIELDS)
 
 
 def test_validate_filter_fields_rejects_on_first_unknown() -> None:
     conditions = [
-        _make_condition("status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")),
-        _make_condition("bad_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x")),
+        _make_condition(
+            "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+        ),
+        _make_condition(
+            "bad_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x")
+        ),
     ]
     with pytest.raises(InvalidFiltersPayloadError):
         _validate_filter_fields(conditions, _INDEXED_FIELDS)
@@ -140,7 +146,9 @@ def test_validate_filter_fields_rejects_on_first_unknown() -> None:
 
 
 def test_map_eq_condition() -> None:
-    cond = _make_condition("status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED"))
+    cond = _make_condition(
+        "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+    )
     result = _map_filter_conditions([cond])
     assert len(result) == 1
     assert result[0].field == "status"
@@ -150,28 +158,36 @@ def test_map_eq_condition() -> None:
 
 
 def test_map_ne_condition() -> None:
-    cond = _make_condition("status", vector_search_pb2.FILTER_OPERATOR_NE, _str_value("CANCELLED"))
+    cond = _make_condition(
+        "status", vector_search_pb2.FILTER_OPERATOR_NE, _str_value("CANCELLED")
+    )
     result = _map_filter_conditions([cond])
     assert result[0].operator == "ne"
     assert result[0].value == "CANCELLED"
 
 
 def test_map_in_condition() -> None:
-    cond = _make_condition("genres", vector_search_pb2.FILTER_OPERATOR_IN, _list_value("Action", "Drama"))
+    cond = _make_condition(
+        "genres", vector_search_pb2.FILTER_OPERATOR_IN, _list_value("Action", "Drama")
+    )
     result = _map_filter_conditions([cond])
     assert result[0].operator == "in"
     assert result[0].value == ["Action", "Drama"]
 
 
 def test_map_not_in_condition() -> None:
-    cond = _make_condition("type", vector_search_pb2.FILTER_OPERATOR_NOT_IN, _list_value("MUSIC", "CM"))
+    cond = _make_condition(
+        "type", vector_search_pb2.FILTER_OPERATOR_NOT_IN, _list_value("MUSIC", "CM")
+    )
     result = _map_filter_conditions([cond])
     assert result[0].operator == "not_in"
     assert result[0].value == ["MUSIC", "CM"]
 
 
 def test_map_range_condition() -> None:
-    cond = _make_condition("year", vector_search_pb2.FILTER_OPERATOR_RANGE, _range_value(gte=2020.0))
+    cond = _make_condition(
+        "year", vector_search_pb2.FILTER_OPERATOR_RANGE, _range_value(gte=2020.0)
+    )
     result = _map_filter_conditions([cond])
     assert result[0].operator == "range"
     # SearchFilterCondition validator converts the raw dict to SearchRange
@@ -202,13 +218,17 @@ def test_map_should_clause() -> None:
 
 
 def test_map_unspecified_clause_defaults_to_must() -> None:
-    cond = _make_condition("status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED"))
+    cond = _make_condition(
+        "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+    )
     result = _map_filter_conditions([cond])
     assert result[0].clause == "must"
 
 
 def test_map_unspecified_operator_raises() -> None:
-    cond = _make_condition("status", vector_search_pb2.FILTER_OPERATOR_UNSPECIFIED, _str_value("x"))
+    cond = _make_condition(
+        "status", vector_search_pb2.FILTER_OPERATOR_UNSPECIFIED, _str_value("x")
+    )
     with pytest.raises(InvalidFiltersPayloadError):
         _map_filter_conditions([cond])
 
@@ -224,7 +244,9 @@ async def test_search_with_unknown_filter_field_returns_invalid_filters() -> Non
     request = vector_search_pb2.SearchRequest(
         query_text="action anime",
         filters=[
-            _make_condition("bad_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x"))
+            _make_condition(
+                "bad_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x")
+            )
         ],
     )
     response = await search_route.search(runtime, request, context=None)
@@ -239,7 +261,9 @@ async def test_search_with_valid_filters_passes_through() -> None:
     request = vector_search_pb2.SearchRequest(
         query_text="space western",
         filters=[
-            _make_condition("status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED"))
+            _make_condition(
+                "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+            )
         ],
     )
     response = await search_route.search(runtime, request, context=None)
@@ -263,7 +287,9 @@ async def test_image_value_error_returns_invalid_image_input() -> None:
 @pytest.mark.asyncio
 async def test_qdrant_value_error_not_labeled_invalid_image_input() -> None:
     runtime = _runtime()
-    runtime.qdrant_client.search = AsyncMock(side_effect=ValueError("qdrant value error"))
+    runtime.qdrant_client.search = AsyncMock(
+        side_effect=ValueError("qdrant value error")
+    )
     request = vector_search_pb2.SearchRequest(query_text="action anime")
     response = await search_route.search(runtime, request, context=None)
     assert response.error.code == "SEARCH_FAILED"

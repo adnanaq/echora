@@ -145,15 +145,24 @@ class AnimeRating(StrEnum):
         if not isinstance(value, str):
             return cls.UNKNOWN
         _map = {
+            # Codes
             "g": cls.G,
             "pg": cls.PG,
             "pg_13": cls.PG13,
+            "r": cls.R,
             "r17+": cls.R,
             "r+": cls.RPLUS,
             "rx": cls.RX,
-            # Kitsu
             "r18+": cls.RX,
             "r18": cls.RX,
+            # Guide phrases (Kitsu ageRatingGuide)
+            "all ages": cls.G,
+            "children": cls.PG,
+            "teens 13 or older": cls.PG13,
+            "17+ (violence & profanity)": cls.R,
+            "violence, profanity": cls.R,
+            "mild nudity": cls.RPLUS,
+            "hentai": cls.RX,
         }
         return _map.get(value.lower(), cls.UNKNOWN)
 
@@ -362,10 +371,10 @@ class AnimeRelationType(StrEnum):
 
     ADAPTATION = "ADAPTATION"
     ALTERNATIVE_VERSION = (
-        "ALTERNATIVE VERSION"  # Same story, different version (e.g. TV vs movie cut)
+        "ALTERNATIVE_VERSION"  # Same story, different version (e.g. TV vs movie cut)
     )
     ALTERNATIVE_SETTING = (
-        "ALTERNATIVE SETTING"  # Same characters, different universe/AU
+        "ALTERNATIVE_SETTING"  # Same characters, different universe/AU
     )
     CHARACTER = "CHARACTER"
     CROSSOVER = "CROSSOVER"
@@ -623,7 +632,9 @@ class EpisodeStaff(BaseModel):
 
     # ── Scalar fields (alphabetical) ──────────────────────────────────────
     name: str = Field(..., description="Staff member name")
-    role: str = Field(..., description="Role (Script, Animation Director, etc.)")
+    role: str | None = Field(
+        None, description="Role (Script, Animation Director, etc.)"
+    )
 
     # ── Array fields (alphabetical) ───────────────────────────────────────
     sources: list[str] = Field(
@@ -886,6 +897,10 @@ class Anime(BaseModel):
     statistics: dict[str, Statistics] = Field(
         default_factory=dict,
         description="Standardized statistics from different platforms (mal, anilist, kitsu, animeschedule)",
+    )
+    titles: dict[str, str] = Field(
+        default_factory=dict,
+        description="Official titles in other languages keyed by BCP 47 language code (e.g. 'de', 'ko', 'zh-Hant')",
     )
 
 

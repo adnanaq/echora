@@ -127,7 +127,7 @@ async def serve() -> None:
     port = settings.service.enrichment_service_port
     bind = f"{host}:{port}"
     server.add_insecure_port(bind)
-    logger.info("Starting enrichment_service gRPC server on %s", bind)
+    logger.info(f"Starting enrichment_service gRPC server on {bind}")
 
     try:
         await server.start()

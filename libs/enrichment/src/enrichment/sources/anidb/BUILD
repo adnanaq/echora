@@ -7,5 +7,7 @@ python_sources(
         "//libs/enrichment/src/enrichment/sources/base",
         "//:reqs0#aiohttp",
         "//:reqs0#defusedxml",
+        "//:reqs0#zendriver",
+        "//:reqs0#lxml",
     ],
 )

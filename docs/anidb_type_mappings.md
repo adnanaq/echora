@@ -20,12 +20,17 @@ Found in the `<resources>` tag for an entire anime series. The `identifier` is t
 | 9       | allcinema.net         | `http://www.allcinema.net/prog/show_c.php?num_c={id}`       | ✅ |
 | 10      | Anison.info           | `http://anison.info/data/program/{id}.html`                 | ✅ |
 | 26      | YouTube               | `https://www.youtube.com/{identifier}`                      | ✅ |
-| 28      | Crunchyroll           | `https://www.crunchyroll.com/watch/{id}` (episode-level)    | ✅ |
+| 28      | Crunchyroll           | Anime-level: `https://www.crunchyroll.com/series/{id}` — Episode-level: `https://www.crunchyroll.com/watch/{id}` | ✅ |
 | 31      | Funimation            | (Platform merged with Crunchyroll)                          | ❌ DEPRECATED |
 | 32      | Amazon                | `https://www.amazon.com/dp/{asin}`                          | ✅ |
+| 33      | Baidu Baike           | `https://baike.baidu.com/item/{identifier}` — identifier may contain `?fromModule=...` query junk | ✅ |
+| 34      | Tencent Streaming     | Full `<url>` per entity (WeTV, QQ Video, etc.) — multiple URLs under one type, all Tencent platforms | ✅ |
+| 38      | Bangumi (bgm.tv)      | `https://bgm.tv/subject/{id}`                               | ✅ |
+| 39      | Douban Movie          | `https://movie.douban.com/subject/{id}`                     | ✅ |
+| 47      | Bilibili (Chinese)    | `https://www.bilibili.com/{identifier}` (e.g. `bangumi/media/md21082961`) | ✅ |
 | 41      | Netflix               | `https://www.netflix.com/title/{id}`                        | ✅ |
 | 43      | IMDb                  | `https://www.imdb.com/title/{id}`                           | ✅ |
-| 44      | TheMovieDB.org (TMDB) | `https://www.themoviedb.org/{type}/{id}`                    | ✅ |
+| 44      | TheMovieDB.org (TMDB) | `https://www.themoviedb.org/{type}/{id}` — two identifiers: numeric id + media type (`tv` or `movie`) | ✅ |
 | 45      | Hulu                  | `https://www.hulu.com/series/{slug}`                        | ✅ |
 
 ---

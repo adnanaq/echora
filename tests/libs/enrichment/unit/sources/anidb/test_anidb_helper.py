@@ -1,37 +1,60 @@
+"""Unit tests for anidb_helper.py — AniDBHelper orchestrator, HTTP transport, circuit breaker."""
+
 import gzip
+import json
 import time
+from collections.abc import AsyncGenerator
+from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from defusedxml import ElementTree
 from enrichment.sources.anidb.anidb_helper import (
     AniDBHelper,
     AniDBRequestMetrics,
     CircuitBreakerState,
 )
 
+_ANIDB_URL = "https://anidb.net/anime/69"
+
+
+async def _async_gen(items: list[Any]) -> AsyncGenerator[Any]:
+    for item in items:
+        yield item
+
+
+# Minimal valid XML for unit tests that go through parse_anime_xml
+_MINIMAL_XML = (
+    '<anime id="69">'
+    "<type>TV Series</type>"
+    "<episodecount>0</episodecount>"
+    "<titles>"
+    '<title type="main" xml:lang="x-jat">One Piece</title>'
+    "</titles>"
+    "</anime>"
+)
+
+
+# =============================================================================
+# FIXTURES
+# =============================================================================
+
 
 @pytest.fixture
 def helper():
-    """Fixture for AniDBHelper with deterministic config."""
-    # Mock os.getenv to return default values for deterministic behavior
+    """AniDBHelper with deterministic env config and rate-limiting disabled."""
     with patch("enrichment.sources.anidb.anidb_helper.os.getenv") as mock_getenv:
         mock_getenv.side_effect = lambda key, default=None: default
-
-        helper = AniDBHelper()
-        with patch.object(
-            helper,
-            "_adaptive_rate_limit",
-            new_callable=AsyncMock,
-        ):
-            yield helper
+        h = AniDBHelper()
+        with patch.object(h, "_adaptive_rate_limit", new_callable=AsyncMock):
+            yield h
 
 
 @pytest.fixture
 def mock_session():
-    """Fixture for mocking aiohttp.ClientSession with proper async context manager."""
+    """Mocked aiohttp session with a successful 200 XML response."""
     session = MagicMock()
-    session.close = AsyncMock()  # Explicitly mock close as awaitable
+    session.close = AsyncMock()
     cm = AsyncMock()
     response = AsyncMock()
     cm.__aenter__.return_value = response
@@ -39,29 +62,24 @@ def mock_session():
     session.get.return_value = cm
     response.status = 200
     response.read = AsyncMock(return_value=b"<anime id='1'></anime>")
-    response.text = AsyncMock(return_value="<anime id='1'></anime>")
     return session
 
 
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+
 @patch("enrichment.sources.anidb.anidb_helper.os.getenv")
-def test_helper_initialization(mock_getenv):
-    """Test that the helper initializes correctly."""
-
-    # Mock os.getenv to return the default value provided in the call
-    def getenv_side_effect(_key, default=None):
-        return default
-
-    mock_getenv.side_effect = getenv_side_effect
-
+def test_helper_initialization(mock_getenv) -> None:
+    mock_getenv.side_effect = lambda key, default=None: default
     h = AniDBHelper()
-
     assert h.client_name == "animeenrichment"
     assert h.client_version == "1.0"
     assert h.circuit_breaker_state == CircuitBreakerState.CLOSED
 
 
-def test_request_metrics():
-    """Test the properties of AniDBRequestMetrics."""
+def test_request_metrics() -> None:
     metrics = AniDBRequestMetrics()
     assert metrics.success_rate == 100.0
     assert metrics.error_rate == 0.0
@@ -72,32 +90,31 @@ def test_request_metrics():
     assert metrics.error_rate == 30.0
 
 
+# =============================================================================
+# CIRCUIT BREAKER
+# =============================================================================
+
+
 @pytest.mark.asyncio
-async def test_circuit_breaker_logic(helper):
-    """Test the circuit breaker state transitions."""
+async def test_circuit_breaker_logic(helper) -> None:
     with patch("enrichment.sources.anidb.anidb_helper.time.time") as mock_time:
         mock_time.return_value = 1000.0
 
-        # Test opening the circuit
         helper.metrics.consecutive_failures = helper.circuit_breaker_threshold - 1
         helper._update_circuit_breaker(success=False)
         assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
         assert helper.circuit_breaker_opened_at == 1000.0
 
-        # Test that requests are blocked when open
         assert not await helper._check_circuit_breaker()
 
-        # Test half-open state after timeout
         mock_time.return_value = 1000.0 + helper.circuit_breaker_timeout + 1
         assert await helper._check_circuit_breaker()
         assert helper.circuit_breaker_state == CircuitBreakerState.HALF_OPEN
 
-        # Test closing from half-open
         helper._update_circuit_breaker(success=True)
         assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
         assert helper.metrics.consecutive_failures == 0
 
-        # Test re-opening from half-open
         helper.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
         helper.metrics.consecutive_failures = helper.circuit_breaker_threshold
         helper._update_circuit_breaker(success=False)
@@ -105,619 +122,7 @@ async def test_circuit_breaker_logic(helper):
 
 
 @pytest.mark.asyncio
-async def test_make_single_request_success(helper, mock_session):
-    """Test a single successful request."""
-    helper.session = mock_session
-    params = {"request": "anime", "aid": 1}
-    result = await helper._make_single_request(params, attempt=0)
-    assert result == "<anime id='1'></anime>"
-    mock_session.get.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_make_single_request_gzip(helper, mock_session):
-    """Test handling of gzipped responses."""
-    gzipped_content = gzip.compress(b"<anime id='2'></anime>")
-    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
-        return_value=gzipped_content
-    )
-    helper.session = mock_session
-    params = {"request": "anime", "aid": 2}
-    result = await helper._make_single_request(params, attempt=0)
-    assert result == "<anime id='2'></anime>"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status_code", [503, 404])
-async def test_make_single_request_http_errors(helper, mock_session, status_code):
-    """Test handling of various HTTP error statuses."""
-    mock_session.get.return_value.__aenter__.return_value.status = status_code
-    helper.session = mock_session
-    params = {"request": "anime", "aid": 1}
-    result = await helper._make_single_request(params, attempt=0)
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_make_single_request_555_raises_blocked(helper, mock_session):
-    """Status 555 (serious rate limit violation) raises ServiceBlockedError."""
-    from enrichment.sources.base.exceptions import ServiceBlockedError
-
-    mock_session.get.return_value.__aenter__.return_value.status = 555
-    helper.session = mock_session
-    params = {"request": "anime", "aid": 1}
-    with pytest.raises(ServiceBlockedError):
-        await helper._make_single_request(params, attempt=0)
-    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
-
-
-@pytest.mark.asyncio
-async def test_make_single_request_api_error_xml(helper, mock_session):
-    """Test handling of AniDB's <error> response."""
-    error_xml = b"<error>Banned</error>"
-    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
-        return_value=error_xml
-    )
-    helper.session = mock_session
-    params = {"request": "anime", "aid": 1}
-    result = await helper._make_single_request(params, attempt=0)
-    assert result is None
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
-async def test_make_request_with_retry(mock_sleep, helper):
-    """Test the retry logic."""
-    helper.max_retries = 2
-    helper._ensure_session_health = AsyncMock()
-    helper.session = MagicMock()
-
-    # Fail twice, then succeed
-    side_effects = [None, None, "<anime id='1'></anime>"]
-    helper._make_single_request = AsyncMock(side_effect=side_effects)
-
-    result = await helper._make_request_with_retry({"request": "anime", "aid": 1})
-
-    assert result == "<anime id='1'></anime>"
-    assert helper._make_single_request.call_count == 3
-    assert mock_sleep.call_count == 2  # Sleeps between retries
-
-    # Verify metrics
-    assert helper.metrics.total_requests == 3
-    assert helper.metrics.successful_requests == 1
-    assert helper.metrics.failed_requests == 2
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
-async def test_make_request_with_retry_permanent_failure(mock_sleep, helper):
-    """Test when retry logic is exhausted."""
-    helper.max_retries = 1
-    helper._ensure_session_health = AsyncMock()
-    helper.session = MagicMock()
-
-    # Always fail
-    helper._make_single_request = AsyncMock(return_value=None)
-
-    result = await helper._make_request_with_retry({"request": "anime", "aid": 1})
-
-    assert result is None
-    assert helper._make_single_request.call_count == 2
-    assert mock_sleep.call_count == 1
-
-    # Verify metrics
-    assert helper.metrics.total_requests == 2
-    assert helper.metrics.successful_requests == 0
-    assert helper.metrics.failed_requests == 2
-
-
-@pytest.mark.parametrize(
-    "xml_str, expected",
-    [
-        ("<anime id='1'></anime>", True),
-        ("<foo id='1'></foo>", False),
-        ("<anime></anime>", False),
-        ("<anime id='1'><episodecount>1</episodecount></anime>", True),
-        (
-            "<anime id='1'><titles><title type='official'>Title</title></titles></anime>",
-            True,
-        ),
-        ("<anime id='1'><episodes><episode id='2'></episode></episodes></anime>", True),
-    ],
-)
-def test_validate_anime_xml_consolidated(helper, xml_str, expected):
-    """Consolidated test for XML validation logic with various edge cases."""
-    assert helper._validate_anime_xml(ElementTree.fromstring(xml_str)) == expected
-
-
-@pytest.fixture
-def maximal_anime_xml():
-    """Provides a comprehensive XML string with all possible fields for parsing tests."""
-    return """
-    <anime id="1" restricted="false">
-        <type>TV Series</type>
-        <episodecount>26</episodecount>
-        <startdate>2000-01-01</startdate>
-        <enddate>2000-06-30</enddate>
-        <titles>
-            <title type="main" xml:lang="x-jat">Cowboy Bebop</title>
-            <title type="official" xml:lang="en">Cowboy Bebop EN</title>
-            <title type="official" xml:lang="ja">カウボーイビバップ</title>
-            <title type="synonym" xml:lang="en">CB</title>
-            <title type="short" xml:lang="en">Bebop</title>
-        </titles>
-        <relatedanime>
-            <anime id="2" type="Sequel">Cowboy Bebop: The Movie</anime>
-        </relatedanime>
-        <creators>
-            <name id="10" type="Director">Watanabe Shinichirou</name>
-        </creators>
-        <description>Test description</description>
-        <ratings>
-            <permanent count="100">8.5</permanent>
-            <temporary count="10">7.5</temporary>
-            <review count="5">9.0</review>
-        </ratings>
-        <categories>
-            <category id="1" parentid="0" hentai="false" weight="100">
-                <name>Sci-Fi</name>
-                <description>Science Fiction</description>
-            </category>
-        </categories>
-        <characters>
-            <character id="101" type="secondary character in">
-                <rating votes="100">9.5</rating>
-                <name>Spike Spiegel</name>
-                <gender>Male</gender>
-                <charactertype id="1">Human</charactertype>
-                <description>A cool guy.</description>
-                <picture>spike.jpg</picture>
-                <seiyuu id="201" picture="seiyuu.jpg">Yamadera Kouichi</seiyuu>
-            </character>
-        </characters>
-        <episodes>
-            <episode id="201">
-                <epno type="1">1</epno>
-                <length>24</length>
-                <airdate>2000-01-01</airdate>
-                <rating votes="10">8.0</rating>
-                <summary>Episode summary</summary>
-                <title xml:lang="en">Asteroid Blues</title>
-                <title xml:lang="x-jat">Asteroid Blues Romaji</title>
-                <resources>
-                    <resource type="28">
-                        <externalentity>
-                            <identifier>G6NQ5DWZ6</identifier>
-                        </externalentity>
-                    </resource>
-                </resources>
-            </episode>
-            <episode id="202">
-                <epno type="1">S1</epno> <!-- Test non-int episode number -->
-            </episode>
-        </episodes>
-        <tags>
-            <tag id="30" count="50" weight="200">
-                <name>space</name>
-                <description>Outer space</description>
-            </tag>
-        </tags>
-        <url>http://anidb.net/a1</url>
-        <picture>anime.jpg</picture>
-    </anime>
-    """
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_comprehensive(
-    mock_fetch_char, helper, maximal_anime_xml
-):
-    """Test parsing of a comprehensive anime XML including all optional fields."""
-    mock_fetch_char.return_value = {"name": "Detailed Spike"}
-    data = await helper._parse_anime_xml(maximal_anime_xml)
-
-    assert data["id"] == 1
-    assert data["title"] == "Cowboy Bebop"
-    assert data["title_english"] == "Cowboy Bebop EN"
-    assert data["title_japanese"] == "カウボーイビバップ"
-    assert "CB" in data["synonyms"]
-    assert "Bebop" in data["synonyms"]
-    assert len(data["related_anime"]) == 1
-    assert data["related_anime"][0]["title"] == "Cowboy Bebop: The Movie"
-    assert len(data["creators"]) == 1
-    assert data["creators"][0]["name"] == "Watanabe Shinichirou"
-    assert data["statistics"]["score"] == 8.5
-    assert data["statistics"]["scored_by"] == 100
-    assert len(data["categories"]) == 1
-    assert data["categories"][0]["name"] == "Sci-Fi"
-    assert len(data["tags"]) == 1
-    assert data["tags"][0] == "space"
-    assert data["url"] == "http://anidb.net/a1"
-    assert data["cover"] == "https://cdn-eu.anidb.net/images/main/anime.jpg"
-    assert data["episode_details"][0]["episode_number"] == 1
-    assert data["episode_details"][0]["streaming"]["crunchyroll"] is not None
-    assert data["episode_details"][1]["episode_number"] == "S1"
-    assert len(data["character_details"]) == 1
-    assert data["character_details"][0]["name_main"] == "Spike Spiegel"
-    assert data["character_details"][0]["type"] == "Secondary"
-    assert data["character_details"][0]["rating"] == 9.5
-    assert data["character_details"][0]["voice_actor"]["id"] == 201
-    mock_fetch_char.assert_called_once_with(101)
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_multilang_official_titles(mock_fetch_char, helper):
-    """Test that non-en/ja official titles are preserved in title_others.
-
-    AniDB provides official titles in many languages (German, French, Italian,
-    Spanish, Korean, Portuguese, etc.), but we only have dedicated fields for
-    English and Japanese. Non-en/ja official titles should be preserved in
-    title_others to avoid losing them.
-    """
-    mock_fetch_char.return_value = None  # No character enrichment needed
-    xml_with_multilang_titles = """
-    <anime id="18290">
-        <titles>
-            <title xml:lang="x-jat" type="main">Dan Da Dan</title>
-            <title xml:lang="en" type="synonym">Dandadan</title>
-            <title xml:lang="ja" type="official">ダンダダン</title>
-            <title xml:lang="en" type="official">Dan Da Dan</title>
-            <title xml:lang="de" type="official">Dandadan</title>
-            <title xml:lang="fr" type="official">DAN DA DAN</title>
-            <title xml:lang="it" type="official">DAN DA DAN</title>
-            <title xml:lang="es" type="official">DAN DA DAN</title>
-            <title xml:lang="ko" type="official">단다단</title>
-            <title xml:lang="pl" type="official">DAN DA DAN</title>
-            <title xml:lang="ar" type="official">داندادان</title>
-            <title xml:lang="pt-BR" type="official">DAN DA DAN</title>
-            <title xml:lang="he" type="official">דן דה דן</title>
-            <title xml:lang="th" type="official">ดันดาดัน</title>
-            <title xml:lang="tr" type="official">Dandadan</title>
-            <title xml:lang="zh-Hant" type="official">膽大黨</title>
-            <title xml:lang="en" type="short">DDD</title>
-        </titles>
-    </anime>
-    """
-
-    data = await helper._parse_anime_xml(xml_with_multilang_titles)
-
-    # Check dedicated fields
-    assert data["title"] == "Dan Da Dan"
-    assert data["title_english"] == "Dan Da Dan"
-    assert data["title_japanese"] == "ダンダダン"
-
-    # Verify synonyms include synonym/short types
-    synonyms = data["synonyms"]
-    assert "Dandadan" in synonyms  # type="synonym"
-    assert "DDD" in synonyms  # type="short"
-
-    # Verify title_others is a dict mapping lang codes to titles
-    title_others = data["title_others"]
-    assert isinstance(title_others, dict)
-    assert title_others["de"] == "Dandadan"  # German
-    assert title_others["fr"] == "DAN DA DAN"  # French
-    assert title_others["it"] == "DAN DA DAN"  # Italian
-    assert title_others["es"] == "DAN DA DAN"  # Spanish
-    assert title_others["ko"] == "단다단"  # Korean
-    assert title_others["pl"] == "DAN DA DAN"  # Polish
-    assert title_others["ar"] == "داندادان"  # Arabic
-    assert title_others["pt-BR"] == "DAN DA DAN"  # Portuguese (Brazil)
-    assert title_others["he"] == "דן דה דן"  # Hebrew
-    assert title_others["th"] == "ดันดาดัน"  # Thai
-    assert title_others["tr"] == "Dandadan"  # Turkish
-    assert title_others["zh-Hant"] == "膽大黨"  # Chinese Traditional
-
-    # Ensure en/ja are NOT in title_others (they have dedicated fields)
-    assert "en" not in title_others
-    assert "ja" not in title_others
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_creator_missing_id(mock_fetch_char, helper):
-    """Test that creators with missing IDs don't crash the parser.
-
-    Edge case: Creator element without id attribute should be handled gracefully.
-    """
-    mock_fetch_char.return_value = None
-    xml_with_missing_creator_id = """
-    <anime id="12345">
-        <titles>
-            <title xml:lang="x-jat" type="main">Test Anime</title>
-        </titles>
-        <creators>
-            <name type="Director">John Doe</name>
-            <name id="123" type="Writer">Jane Smith</name>
-        </creators>
-    </anime>
-    """
-
-    data = await helper._parse_anime_xml(xml_with_missing_creator_id)
-
-    # Should not crash and should include creators with valid IDs
-    creators = data["creators"]
-    assert len(creators) == 2
-    # First creator has None id (missing attribute)
-    assert creators[0]["id"] is None
-    assert creators[0]["name"] == "John Doe"
-    assert creators[0]["role"] == "Director"
-    # Second creator has valid id
-    assert creators[1]["id"] == 123
-    assert creators[1]["name"] == "Jane Smith"
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_creator_non_numeric_id(mock_fetch_char, helper):
-    """Test that creators with non-numeric IDs are handled safely.
-
-    Edge case: Creator id="abc" should result in None, not ValueError.
-    """
-    mock_fetch_char.return_value = None
-    xml_with_invalid_creator_id = """
-    <anime id="12345">
-        <titles>
-            <title xml:lang="x-jat" type="main">Test Anime</title>
-        </titles>
-        <creators>
-            <name id="abc" type="Director">Invalid ID</name>
-            <name id="456" type="Writer">Valid ID</name>
-        </creators>
-    </anime>
-    """
-
-    data = await helper._parse_anime_xml(xml_with_invalid_creator_id)
-
-    creators = data["creators"]
-    assert len(creators) == 2
-    # First creator has None id (non-numeric)
-    assert creators[0]["id"] is None
-    assert creators[0]["name"] == "Invalid ID"
-    # Second creator has valid id
-    assert creators[1]["id"] == 456
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_related_anime_whitespace_handling(
-    mock_fetch_char, helper
-):
-    """Test that related anime titles have whitespace stripped.
-
-    XML text nodes can have leading/trailing whitespace.
-    """
-    mock_fetch_char.return_value = None
-    xml_with_whitespace = """
-    <anime id="18290">
-        <titles>
-            <title xml:lang="x-jat" type="main">Dan Da Dan</title>
-        </titles>
-        <relatedanime>
-            <anime id="19060" type="Sequel">  Dan Da Dan (2025)  </anime>
-            <anime id="12345" type="Prequel">
-                Dan Da Dan Origins
-            </anime>
-        </relatedanime>
-    </anime>
-    """
-
-    data = await helper._parse_anime_xml(xml_with_whitespace)
-
-    related = data["related_anime"]
-    assert len(related) == 2
-    # Titles should have whitespace stripped
-    assert related[0]["title"] == "Dan Da Dan (2025)"
-    assert related[1]["title"] == "Dan Da Dan Origins"
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_episode_defensive_int_conversions(
-    mock_fetch_char, helper
-):
-    """Test defensive error handling for episode int conversions.
-
-    Tests that malformed episode data (non-numeric type, id, length, votes)
-    doesn't crash the parser. Each episode tests a different edge case.
-    """
-    mock_fetch_char.return_value = None
-    xml_malformed_episodes = """
-    <anime id="12345">
-        <titles>
-            <title xml:lang="x-jat" type="main">Test Anime</title>
-        </titles>
-        <episodes>
-            <episode id="bad_id">
-                <epno type="1">1</epno>
-                <length>25</length>
-            </episode>
-            <episode id="100">
-                <epno type="xyz">2</epno>
-                <length>25</length>
-            </episode>
-            <episode id="101">
-                <epno type="1">3</epno>
-                <length>TBA</length>
-            </episode>
-            <episode id="102">
-                <epno type="1">4</epno>
-                <length>24</length>
-                <rating votes="N/A">8.5</rating>
-            </episode>
-            <episode id="103">
-                <epno type="1">5</epno>
-                <length>25</length>
-                <rating votes="42">9.0</rating>
-            </episode>
-        </episodes>
-    </anime>
-    """
-
-    data = await helper._parse_anime_xml(xml_malformed_episodes)
-
-    episodes = data["episode_details"]
-    assert len(episodes) == 5
-
-    # Episode 1: Malformed id="bad_id" → None
-    assert episodes[0]["id"] is None
-    assert episodes[0]["episode_number"] == 1
-
-    # Episode 2: Malformed type="xyz" → None, falls back to string episode_number
-    assert episodes[1]["episode_type"] is None
-    assert episodes[1]["episode_number"] == "2"
-
-    # Episode 3: Malformed length="TBA" → None
-    assert episodes[2]["length"] is None
-    assert episodes[2]["episode_number"] == 3
-
-    # Episode 4: Malformed votes="N/A" → 0
-    assert episodes[3]["rating_votes"] == 0
-    assert episodes[3]["rating"] == 8.5
-
-    # Episode 5: All valid data
-    assert episodes[4]["id"] == 103
-    assert episodes[4]["episode_type"] == 1
-    assert episodes[4]["episode_number"] == 5
-    assert episodes[4]["length"] == 25
-    assert episodes[4]["rating_votes"] == 42
-    assert episodes[4]["rating"] == 9.0
-
-
-@pytest.mark.asyncio
-async def test_get_anime_by_id_workflow(helper):
-    """Test the complete workflow of fetching anime by ID, including error paths."""
-    # Success case
-    xml_response = (
-        "<anime id='1'><titles><title type='main'>Test</title></titles></anime>"
-    )
-    helper._make_request = AsyncMock(return_value=xml_response)
-    helper._parse_anime_xml = AsyncMock(return_value={"id": 1, "title": "Test"})
-    result = await helper.get_anime_by_id(1)
-    assert result["title"] == "Test"
-
-    # Not found (empty response)
-    helper._make_request = AsyncMock(return_value=None)
-    assert await helper.get_anime_by_id(999) is None
-
-    # API Error case — reset parse mock so we test get_anime_by_id's own None propagation
-    helper._make_request = AsyncMock(return_value="<error>Anime not found</error>")
-    helper._parse_anime_xml = AsyncMock(return_value=None)
-    assert await helper.get_anime_by_id(999) is None
-
-    # Exception case
-    helper._make_request = AsyncMock(side_effect=Exception("Network timeout"))
-    assert await helper.get_anime_by_id(999) is None
-
-
-def test_decode_content(helper):
-    """Test content decoding with fallbacks."""
-    utf8_bytes = "你好".encode()
-    latin1_bytes = "é".encode("latin-1")
-    invalid_bytes = b"\xff\xfe"
-
-    assert helper._decode_content(utf8_bytes) == "你好"
-    assert helper._decode_content(latin1_bytes) == "é"
-    assert helper._decode_content(invalid_bytes) == "ÿþ"
-
-
-@pytest.mark.asyncio
-async def test_session_management(helper, mock_session):
-    """Test closing session and handling health checks."""
-    helper.session = mock_session
-    mock_session.close = AsyncMock()
-    await helper.close()
-    mock_session.close.assert_called_once()
-    assert helper.session is None
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
-@patch("enrichment.sources.anidb.anidb_helper.time.time")
-async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper):
-    """Test the logic of the adaptive rate limiter across different scenarios."""
-    helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
-
-    # Case 1: Normal operation (no wait)
-    mock_time.return_value = 1000.0
-    helper.metrics.last_request_time = 995.0  # 5 seconds ago
-    helper.metrics.current_interval = 2.0
-    await helper._adaptive_rate_limit()
-    mock_sleep.assert_not_called()
-
-    # Case 2: Needs to wait
-    mock_time.return_value = 1010.0
-    helper.metrics.last_request_time = 1010.0  # Just happened
-    await helper._adaptive_rate_limit()
-    mock_sleep.assert_called_once()
-    mock_sleep.reset_mock()
-
-    # Case 3: Exponential backoff on error
-    mock_time.return_value = 1020.0
-    helper.metrics.consecutive_failures = 3
-    helper.metrics.last_request_time = 1020.0  # Just happened
-    await helper._adaptive_rate_limit()
-    # Exponential backoff: min(error_cooldown_base * 2^failures, max_request_interval)
-    # With 3 failures: min(5.0 * 8, 10.0) = 10.0
-    expected_interval = min(
-        helper.error_cooldown_base * (2**helper.metrics.consecutive_failures),
-        helper.max_request_interval,
-    )
-    assert mock_sleep.call_args[0][0] == pytest.approx(expected_interval, abs=0.1)
-
-
-@pytest.mark.asyncio
-@patch("enrichment.sources.anidb.anidb_helper._cache_manager.get_aiohttp_session")
-@patch("enrichment.sources.anidb.anidb_helper.time.time")
-async def test_ensure_session_health(mock_time, mock_get_session, helper):
-    """Test session creation and expiration logic."""
-    helper._ensure_session_health = AniDBHelper._ensure_session_health.__get__(helper)
-
-    # Mock session returned by cache manager
-    mock_session = AsyncMock()
-    mock_get_session.return_value = mock_session
-
-    # 1. Create session
-    mock_time.return_value = 1000.0
-    helper.session = None
-    await helper._ensure_session_health()
-    assert helper.session is not None
-    assert helper.session is mock_session
-    mock_get_session.assert_called_once()
-
-    # 2. Recreate expired session
-    mock_get_session.reset_mock()
-    mock_time.return_value = 2000.0
-    helper._session_created_at = 1000.0  # Created 1000s ago
-    # Session is expired: 2000.0 - 1000.0 = 1000s > session_max_age (300s)
-    old_session_close = helper.session.close = AsyncMock()
-    await helper._ensure_session_health()
-    old_session_close.assert_called_once()
-    mock_get_session.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_circuit_breaker_blocking(helper):
-    """Test that requests are blocked when the circuit breaker is open."""
+async def test_circuit_breaker_blocking(helper) -> None:
     helper.circuit_breaker_state = CircuitBreakerState.OPEN
     helper.circuit_breaker_opened_at = time.time()
 
@@ -730,371 +135,705 @@ async def test_circuit_breaker_blocking(helper):
 
 
 @pytest.mark.asyncio
-async def test_reset_circuit_breaker_complete(helper):
-    """Test that reset_circuit_breaker fully resets all circuit breaker fields.
-
-    Verifies that manual reset clears:
-    - circuit_breaker_state → CLOSED
-    - circuit_breaker_opened_at → 0.0
-    - metrics.consecutive_failures → 0
-    """
-    # Simulate circuit breaker in OPEN state with all fields set
+async def test_reset_circuit_breaker_complete(helper) -> None:
     helper.circuit_breaker_state = CircuitBreakerState.OPEN
     helper.circuit_breaker_opened_at = time.time()
     helper.metrics.consecutive_failures = 5
 
-    # Reset the circuit breaker
-    result = await helper.reset_circuit_breaker()
-
-    # Verify all fields are reset
-    assert result is True  # State was changed
+    assert await helper.reset_circuit_breaker() is True
     assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-    assert helper.circuit_breaker_opened_at == 0.0  # Should be reset to 0.0
+    assert helper.circuit_breaker_opened_at == 0.0
     assert helper.metrics.consecutive_failures == 0
 
-    # Reset again when already CLOSED should return False
-    result2 = await helper.reset_circuit_breaker()
-    assert result2 is False
+    assert await helper.reset_circuit_breaker() is False
+
+
+# =============================================================================
+# HTTP SINGLE REQUEST
+# =============================================================================
 
 
 @pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_character_xml_error_handling(mock_fetch_char, helper):
-    """Test _parse_character_xml_basic and batch enrichment handle failures."""
-    # Case 1: Basic parsing (no network calls)
-    char_xml = ElementTree.fromstring(
-        "<character id='101'><name>Spike</name></character>"
+async def test_make_single_request_success(helper, mock_session) -> None:
+    helper.session = mock_session
+    result = await helper._make_single_request(
+        {"request": "anime", "aid": 1}, attempt=0
     )
-    char_data = helper._parse_character_xml_basic(char_xml)
-    assert char_data["name_main"] == "Spike"
-    assert char_data["id"] == 101
-
-    # Case 2: Batch enrichment with fetch failure
-    mock_fetch_char.side_effect = Exception("Network Error")
-    enriched_data = await helper._batch_fetch_character_details([101])
-    assert 101 not in enriched_data  # Should gracefully handle failure
-
-    # Case 3: Missing non-critical episode fields in parsing
-    xml_missing_ep = "<anime id='1'><episodes><episode id='201'><length>24</length></episode></episodes></anime>"
-    data = await helper._parse_anime_xml(xml_missing_ep, enrich_characters=False)
-    assert data["episode_details"][0]["id"] == 201
+    assert result == "<anime id='1'></anime>"
+    mock_session.get.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_internal_parsers_granular(helper):
-    """Granular tests for existing internal parsing methods and inlined logic."""
-    # Test _parse_episode_xml
-    ep_xml = ElementTree.fromstring(
-        "<episode id='10'><epno type='1'>5</epno><length>24</length></episode>"
+async def test_make_single_request_gzip(helper, mock_session) -> None:
+    gzipped = gzip.compress(b"<anime id='2'></anime>")
+    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
+        return_value=gzipped
     )
-    ep_data = helper._parse_episode_xml(ep_xml)
-    assert ep_data["episode_number"] == 5
-    assert ep_data["episode_type"] == 1
-
-    # Test inlined related anime parsing via main parser
-    rel_xml = "<anime id='1'><relatedanime><anime id='2' type='Sequel'>Movie</anime></relatedanime></anime>"
-    rel_data = await helper._parse_anime_xml(rel_xml)
-    assert rel_data["related_anime"][0]["url"] == "https://anidb.net/anime/2"
-    assert rel_data["related_anime"][0]["relation"] == "Sequel"
-
-    # Test inlined creator parsing via main parser
-    creator_xml = "<anime id='1'><creators><name id='1' type='Director'>Watanabe</name></creators></anime>"
-    creator_data = await helper._parse_anime_xml(creator_xml)
-    assert creator_data["creators"][0]["id"] == 1
-    assert creator_data["creators"][0]["name"] == "Watanabe"
-
-    # Test inlined category parsing via main parser
-    cat_xml = "<anime id='1'><categories><category id='1' weight='100'><name>Sci-Fi</name></category></categories></anime>"
-    cat_data = await helper._parse_anime_xml(cat_xml)
-    assert cat_data["categories"][0]["id"] == "1"
-    assert cat_data["categories"][0]["name"] == "Sci-Fi"
-
-    # Test inlined ratings parsing via main parser
-    rat_xml = (
-        "<anime id='1'><ratings><permanent count='10'>8.5</permanent></ratings></anime>"
+    helper.session = mock_session
+    result = await helper._make_single_request(
+        {"request": "anime", "aid": 2}, attempt=0
     )
-    rat_data = await helper._parse_anime_xml(rat_xml)
-    assert rat_data["statistics"]["score"] == 8.5
+    assert result == "<anime id='2'></anime>"
 
 
 @pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.AniDBHelper._parse_anime_xml",
-    new_callable=AsyncMock,
-)
-@patch(
-    "enrichment.sources.anidb.anidb_helper.AniDBHelper._make_request",
-    new_callable=AsyncMock,
-)
-@patch("argparse.ArgumentParser.parse_args")
-async def test_main_cli_scenarios(
-    mock_parse_args, mock_make_request, mock_parse_xml, tmp_path
-):
-    """Consolidated test for various CLI entry point scenarios."""
-    from enrichment.sources.anidb import anidb_helper
-
-    # Case 1: Fetch by ID (Success)
-    output_path_1 = tmp_path / "output1.json"
-    mock_parse_args.return_value = MagicMock(
-        anidb_id=1, search_name=None, output=str(output_path_1), save_xml=None
+@pytest.mark.parametrize("status_code", [503, 404])
+async def test_make_single_request_http_errors(
+    helper, mock_session, status_code
+) -> None:
+    mock_session.get.return_value.__aenter__.return_value.status = status_code
+    helper.session = mock_session
+    result = await helper._make_single_request(
+        {"request": "anime", "aid": 1}, attempt=0
     )
-    mock_make_request.return_value = "<anime id='1'></anime>"
-    mock_make_request.side_effect = None
-    mock_parse_xml.return_value = {"id": 1}
-    mock_parse_xml.side_effect = None
-    await anidb_helper.main()
-    assert output_path_1.exists()
+    assert result is None
 
-    # Case 2: KeyboardInterrupt
-    output_path_2 = tmp_path / "output2.json"
-    mock_parse_args.return_value = MagicMock(
-        anidb_id=2, search_name=None, output=str(output_path_2), save_xml=None
-    )
-    mock_make_request.side_effect = KeyboardInterrupt
-    assert await anidb_helper.main() == 1
 
-    # Case 3: Generic Exception
-    output_path_3 = tmp_path / "output3.json"
-    mock_parse_args.return_value = MagicMock(
-        anidb_id=3, search_name=None, output=str(output_path_3), save_xml=None
+@pytest.mark.asyncio
+async def test_make_single_request_555_raises_blocked(helper, mock_session) -> None:
+    from enrichment.sources.base.exceptions import ServiceBlockedError
+
+    mock_session.get.return_value.__aenter__.return_value.status = 555
+    helper.session = mock_session
+    with pytest.raises(ServiceBlockedError):
+        await helper._make_single_request({"request": "anime", "aid": 1}, attempt=0)
+    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_make_single_request_api_error_xml(helper, mock_session) -> None:
+    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
+        return_value=b"<error>Banned</error>"
     )
-    mock_make_request.side_effect = Exception("Generic error")
-    assert await anidb_helper.main() == 1
+    helper.session = mock_session
+    result = await helper._make_single_request(
+        {"request": "anime", "aid": 1}, attempt=0
+    )
+    assert result is None
+
+
+# =============================================================================
+# RETRY LOGIC
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
+async def test_make_request_with_retry(mock_sleep, helper) -> None:
+    helper.max_retries = 2
+    helper._ensure_session_health = AsyncMock()
+    helper.session = MagicMock()
+    helper._make_single_request = AsyncMock(
+        side_effect=[None, None, "<anime id='1'></anime>"]
+    )
+
+    result = await helper._make_request_with_retry({"request": "anime", "aid": 1})
+
+    assert result == "<anime id='1'></anime>"
+    assert helper._make_single_request.call_count == 3
+    assert mock_sleep.call_count == 2
+    assert helper.metrics.total_requests == 3
+    assert helper.metrics.successful_requests == 1
+    assert helper.metrics.failed_requests == 2
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
+async def test_make_request_with_retry_permanent_failure(mock_sleep, helper) -> None:
+    helper.max_retries = 1
+    helper._ensure_session_health = AsyncMock()
+    helper.session = MagicMock()
+    helper._make_single_request = AsyncMock(return_value=None)
+
+    result = await helper._make_request_with_retry({"request": "anime", "aid": 1})
+
+    assert result is None
+    assert helper._make_single_request.call_count == 2
+    assert mock_sleep.call_count == 1
+    assert helper.metrics.total_requests == 2
+    assert helper.metrics.successful_requests == 0
+    assert helper.metrics.failed_requests == 2
+
+
+# =============================================================================
+# DECODE CONTENT
+# =============================================================================
+
+
+def test_decode_content(helper) -> None:
+    assert helper._decode_content("你好".encode()) == "你好"
+    assert helper._decode_content("é".encode("latin-1")) == "é"
+    assert helper._decode_content(b"\xff\xfe") == "ÿþ"
+
+
+# =============================================================================
+# SESSION MANAGEMENT
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_session_management(helper, mock_session) -> None:
+    helper.session = mock_session
+    mock_session.close = AsyncMock()
+    await helper.close()
+    mock_session.close.assert_called_once()
+    assert helper.session is None
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper._cache_manager.get_aiohttp_session")
+@patch("enrichment.sources.anidb.anidb_helper.time.time")
+async def test_ensure_session_health(mock_time, mock_get_session, helper) -> None:
+    helper._ensure_session_health = AniDBHelper._ensure_session_health.__get__(helper)
+    mock_session = AsyncMock()
+    mock_get_session.return_value = mock_session
+
+    mock_time.return_value = 1000.0
+    helper.session = None
+    await helper._ensure_session_health()
+    assert helper.session is mock_session
+    mock_get_session.assert_called_once()
+
+    mock_get_session.reset_mock()
+    mock_time.return_value = 2000.0
+    helper._session_created_at = 1000.0
+    old_close = helper.session.close = AsyncMock()
+    await helper._ensure_session_health()
+    old_close.assert_called_once()
+    mock_get_session.assert_called_once()
+
+
+# =============================================================================
+# ADAPTIVE RATE LIMITING
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
+@patch("enrichment.sources.anidb.anidb_helper.time.time")
+async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper) -> None:
+    helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
+
+    mock_time.return_value = 1000.0
+    helper.metrics.last_request_time = 995.0
+    await helper._adaptive_rate_limit()
+    mock_sleep.assert_not_called()
+
+    mock_time.return_value = 1010.0
+    helper.metrics.last_request_time = 1010.0
+    await helper._adaptive_rate_limit()
+    mock_sleep.assert_called_once()
+    mock_sleep.reset_mock()
+
+    mock_time.return_value = 1020.0
+    helper.metrics.consecutive_failures = 3
+    helper.metrics.last_request_time = 1020.0
+    await helper._adaptive_rate_limit()
+    expected = min(
+        helper.error_cooldown_base * (2**helper.metrics.consecutive_failures),
+        helper.max_request_interval,
+    )
+    assert mock_sleep.call_args[0][0] == pytest.approx(expected, abs=0.1)
+
+
+# =============================================================================
+# CONTEXT MANAGER
+# =============================================================================
 
 
 @pytest.mark.asyncio
 @patch("enrichment.sources.anidb.anidb_helper.os.getenv")
-async def test_context_manager_protocol(mock_getenv):
-    """Test AniDBHelper implements async context manager protocol."""
-    from enrichment.sources.anidb.anidb_helper import AniDBHelper
-
-    # Mock os.getenv for deterministic behavior
+async def test_context_manager_protocol(mock_getenv) -> None:
     mock_getenv.side_effect = lambda key, default=None: default
-
     mock_session = AsyncMock()
-    mock_session.close = AsyncMock()  # Explicitly mock close as awaitable
-    # Instantiate directly to verify __aenter__ and __aexit__ protocol
+    mock_session.close = AsyncMock()
     async with AniDBHelper() as ctx_helper:
         ctx_helper.session = mock_session
         assert isinstance(ctx_helper, AniDBHelper)
-
     mock_session.close.assert_awaited_once()
 
 
+# =============================================================================
+# _fetch_anime
+# =============================================================================
+
+
 @pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_batch_fetch_character_details(mock_fetch_char, helper):
-    """Test batch character enrichment with controlled concurrency."""
+async def test_fetch_anime_returns_tuple_on_success(helper) -> None:
+    helper._fetch_xml = AsyncMock(return_value=_MINIMAL_XML)
+    anime_dict, anime_model = await helper._fetch_anime(_ANIDB_URL)
+    assert anime_dict is not None
+    assert anime_model is not None
+    assert anime_dict["title"] == "One Piece"
+    assert anime_model.id == 69
 
-    # Mock successful fetches for 3 characters
-    async def mock_fetch(char_id):
-        return {"id": char_id, "detailed_info": f"Details for {char_id}"}
 
-    mock_fetch_char.side_effect = mock_fetch
+@pytest.mark.asyncio
+async def test_fetch_anime_returns_none_on_invalid_url(helper) -> None:
+    anime_dict, anime_model = await helper._fetch_anime(
+        "https://anidb.net/character/40"
+    )
+    assert anime_dict is None
+    assert anime_model is None
 
-    # Test batch fetch
-    enriched = await helper._batch_fetch_character_details(
-        [101, 102, 103], max_concurrent=2
+
+@pytest.mark.asyncio
+async def test_fetch_anime_returns_none_when_xml_unavailable(helper) -> None:
+    helper._fetch_xml = AsyncMock(return_value=None)
+    anime_dict, anime_model = await helper._fetch_anime(_ANIDB_URL)
+    assert anime_dict is None
+    assert anime_model is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_anime_returns_none_when_xml_parse_fails(helper) -> None:
+    helper._fetch_xml = AsyncMock(return_value="<not-valid-anime-xml>")
+    anime_dict, anime_model = await helper._fetch_anime(_ANIDB_URL)
+    assert anime_dict is None
+    assert anime_model is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_anime_writes_jsonl_to_output_path(helper, tmp_path: Path) -> None:
+    helper._fetch_xml = AsyncMock(return_value=_MINIMAL_XML)
+    out = tmp_path / "anidb_anime.jsonl"
+    await helper._fetch_anime(_ANIDB_URL, output_path=str(out))
+    assert out.exists()
+    line = json.loads(out.read_text())
+    assert line["title"] == "One Piece"
+
+
+# =============================================================================
+# _fetch_episodes
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_returns_regular_only(helper) -> None:
+    from enrichment.sources.anidb.anidb_models import AniDBAnime, AniDBEpisode
+
+    model = AniDBAnime(
+        id=69,
+        episodes=[
+            AniDBEpisode(id=1, episode_type=1, episode_number=1),  # regular → included
+            AniDBEpisode(id=2, episode_type=2, episode_number=1),  # special → excluded
+            AniDBEpisode(
+                id=3, episode_type=1, episode_number="S1"
+            ),  # string ep → excluded
+        ],
+    )
+    episodes = await helper._fetch_episodes(model)
+    assert len(episodes) == 1
+    assert episodes[0]["episode_number"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_empty_for_empty_model(helper) -> None:
+    from enrichment.sources.anidb.anidb_models import AniDBAnime
+
+    model = AniDBAnime(id=69, episodes=[])
+    episodes = await helper._fetch_episodes(model)
+    assert episodes == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_writes_jsonl(helper, tmp_path: Path) -> None:
+    from enrichment.sources.anidb.anidb_models import AniDBAnime, AniDBEpisode
+
+    model = AniDBAnime(
+        id=69,
+        episodes=[
+            AniDBEpisode(id=1, episode_type=1, episode_number=1),
+            AniDBEpisode(id=2, episode_type=1, episode_number=2),
+        ],
+    )
+    out = tmp_path / "anidb_episodes.jsonl"
+    episodes = await helper._fetch_episodes(model, output_path=str(out))
+    assert len(episodes) == 2
+    lines = out.read_text().strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["episode_number"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_episodes_from_onepiece(helper, onepiece_anime) -> None:
+    """All regular One Piece episodes from real fixture are mapped without error."""
+    episodes = await helper._fetch_episodes(onepiece_anime)
+    assert len(episodes) > 1000
+    assert all(isinstance(ep["episode_number"], int) for ep in episodes)
+
+
+# =============================================================================
+# fetch_all
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_returns_none_when_no_anidb_url(helper) -> None:
+    result = await helper.fetch_all({}, {})
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_returns_none_when_anime_fetch_fails(helper) -> None:
+    helper._fetch_anime = AsyncMock(return_value=(None, None))
+    result = await helper.fetch_all({"anidb_url": _ANIDB_URL}, {})
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_orchestrates_anime_and_episodes(
+    helper, tmp_path: Path
+) -> None:
+    anime_dict = {"title": "One Piece", "sources": [_ANIDB_URL]}
+    anime_model = MagicMock()
+    anime_model.episodes = []
+
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
+    helper._fetch_characters = AsyncMock(return_value=[])
+
+    result = await helper.fetch_all(
+        {"anidb_url": _ANIDB_URL}, {}, temp_dir=str(tmp_path)
     )
 
-    assert len(enriched) == 3
-    assert 101 in enriched
-    assert enriched[101]["detailed_info"] == "Details for 101"
-    assert mock_fetch_char.call_count == 3
-
-
-@pytest.mark.asyncio
-@patch(
-    "enrichment.sources.anidb.anidb_helper.fetch_anidb_character",
-    new_callable=AsyncMock,
-)
-async def test_parse_anime_xml_with_enrich_characters_flag(mock_fetch_char, helper):
-    """Test that enrich_characters flag controls character enrichment."""
-    xml_with_chars = """
-    <anime id="1">
-        <characters>
-            <character id="101"><name>Spike</name></character>
-            <character id="102"><name>Jet</name></character>
-        </characters>
-    </anime>
-    """
-
-    # Mock character enrichment
-    async def mock_fetch(char_id):
-        return {"enriched": True, "character_id": char_id}
-
-    mock_fetch_char.side_effect = mock_fetch
-
-    # Test with enrichment enabled (default)
-    data_enriched = await helper._parse_anime_xml(
-        xml_with_chars, enrich_characters=True
+    assert result is not None
+    assert result["anime"]["title"] == "One Piece"
+    assert result["episodes"] == [{"episode_number": 1}]
+    assert result["characters"] == []
+    assert "extras" in result
+    helper._fetch_anime.assert_awaited_once_with(
+        _ANIDB_URL, output_path=str(tmp_path / "anidb_anime.jsonl")
     )
-    assert mock_fetch_char.call_count == 2
-    assert len(data_enriched["character_details"]) == 2
-
-    # Reset mock
-    mock_fetch_char.reset_mock()
-
-    # Test with enrichment disabled
-    data_basic = await helper._parse_anime_xml(xml_with_chars, enrich_characters=False)
-    assert mock_fetch_char.call_count == 0  # No enrichment calls
-    assert len(data_basic["character_details"]) == 2
-    assert data_basic["character_details"][0]["name_main"] == "Spike"
+    helper._fetch_episodes.assert_awaited_once_with(
+        anime_model, output_path=str(tmp_path / "anidb_episodes.jsonl")
+    )
+    helper._fetch_characters.assert_awaited_once_with(
+        anime_model, output_path=str(tmp_path / "anidb_characters.jsonl")
+    )
 
 
 @pytest.mark.asyncio
-async def test_tags_extraction_format():
-    """Test tags extraction produces correct format and filters empty values."""
-    from enrichment.sources.anidb.anidb_helper import AniDBHelper
+async def test_fetch_all_continues_when_episodes_fail(helper) -> None:
+    anime_dict = {"title": "One Piece"}
+    anime_model = MagicMock()
 
-    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <anime id="1">
-        <tags>
-            <tag id="1" count="10" weight="100">
-                <name>action</name>
-            </tag>
-            <tag id="2" count="5" weight="50">
-                <name>adventure</name>
-            </tag>
-            <tag id="3" count="0" weight="0">
-                <name></name>
-            </tag>
-        </tags>
-    </anime>
-    """
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(side_effect=Exception("network error"))
 
-    helper = AniDBHelper()
-    result = await helper._parse_anime_xml(xml_content)
+    result = await helper.fetch_all({"anidb_url": _ANIDB_URL}, {})
 
-    assert result["tags"] == ["action", "adventure"]
-    assert "" not in result["tags"], "Empty tags should be filtered"
-    assert None not in result["tags"], "None tags should be filtered"
+    assert result is not None
+    assert result["episodes"] == []
 
 
 @pytest.mark.asyncio
-async def test_categories_extraction_format():
-    """Test categories extraction produces correct format with all fields."""
-    from enrichment.sources.anidb.anidb_helper import AniDBHelper
+async def test_fetch_all_skips_episodes_when_false(helper) -> None:
+    anime_dict = {"title": "One Piece"}
+    anime_model = MagicMock()
 
-    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <anime id="1">
-        <categories>
-            <category id="1" parentid="0" weight="600" hentai="false">
-                <name>Action</name>
-                <description>Action category</description>
-            </category>
-            <category id="2" parentid="1" weight="400" hentai="true">
-                <name>Ecchi</name>
-                <description>Ecchi category</description>
-            </category>
-        </categories>
-    </anime>
-    """
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
 
-    helper = AniDBHelper()
-    result = await helper._parse_anime_xml(xml_content)
+    result = await helper.fetch_all({"anidb_url": _ANIDB_URL}, {}, fetch_episodes=False)
 
-    assert len(result["categories"]) == 2
-
-    # Verify first category structure
-    assert result["categories"][0] == {
-        "id": "1",
-        "name": "Action",
-        "weight": 600,
-        "hentai": False,
-    }
-
-    # Verify second category structure
-    assert result["categories"][1]["id"] == "2"
-    assert result["categories"][1]["hentai"] is True
-    assert result["categories"][1]["weight"] == 400
+    assert result is not None
+    assert result["episodes"] == []
+    helper._fetch_episodes.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_creators_extraction_format():
-    """Test creators extraction produces correct format with all fields."""
-    from enrichment.sources.anidb.anidb_helper import AniDBHelper
+async def test_fetch_all_includes_characters(helper) -> None:
+    anime_dict = {"title": "One Piece"}
+    anime_model = MagicMock()
 
-    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-    <anime id="1">
-        <creators>
-            <name id="123" type="Director">John Doe</name>
-            <name id="456" type="Music">Jane Smith</name>
-            <name id="789" type="Animation Work">Studio A</name>
-        </creators>
-    </anime>
-    """
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(return_value=[{"name": "Luffy"}])
 
-    helper = AniDBHelper()
-    result = await helper._parse_anime_xml(xml_content)
+    result = await helper.fetch_all(
+        {"anidb_url": _ANIDB_URL}, {}, fetch_characters=True
+    )
 
-    assert len(result["creators"]) == 3
-
-    # Verify structure of each creator
-    assert result["creators"][0] == {"id": 123, "name": "John Doe", "role": "Director"}
-    assert result["creators"][1] == {"id": 456, "name": "Jane Smith", "role": "Music"}
-    assert result["creators"][2] == {
-        "id": 789,
-        "name": "Studio A",
-        "role": "Animation Work",
-    }
+    assert result is not None
+    assert result["characters"] == [{"name": "Luffy"}]
+    helper._fetch_characters.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_returns_normalized_anime_only_payload(helper):
-    anime_data = {
-        "title": "Test Anime",
-        "episode_details": [{"episode_number": 1, "title": "Pilot"}],
-        "character_details": [{"name_main": "Hero"}],
-    }
+async def test_fetch_all_skips_characters_when_false(helper) -> None:
+    anime_dict = {"title": "One Piece"}
+    anime_model = MagicMock()
 
-    with patch.object(
-        helper, "get_anime_by_id", new=AsyncMock(return_value=anime_data)
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(return_value=[{"name": "Luffy"}])
+
+    result = await helper.fetch_all(
+        {"anidb_url": _ANIDB_URL}, {}, fetch_characters=False
+    )
+
+    assert result is not None
+    assert result["characters"] == []
+    helper._fetch_characters.assert_not_awaited()
+
+
+# =============================================================================
+# CLI — main()
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_main_cli_anime_subcommand(tmp_path: Path) -> None:
+    out = tmp_path / "output.json"
+    with (
+        patch("sys.argv", ["anidb_helper", "anime", _ANIDB_URL, str(out)]),
+        patch(
+            "enrichment.sources.anidb.anidb_helper.AniDBHelper._fetch_xml",
+            new=AsyncMock(return_value=_MINIMAL_XML),
+        ),
     ):
-        result = await helper.fetch_all({"anidb_id": "1"}, {})
+        from enrichment.sources.anidb.anidb_helper import main
 
-    assert result == {
-        "anime": anime_data,
-        "episodes": [],
-        "characters": [],
-        "extras": {},
-    }
+        rc = await main()
 
-
-@pytest.mark.asyncio
-async def test_parse_anime_xml_logging_exception(helper):
-    """Test that logging.exception is called when XML parsing fails."""
-    with patch("enrichment.sources.anidb.anidb_helper.logger") as mock_logger:
-        # We need to force ET.fromstring to raise ET.ParseError
-        # Since the module imports ET as `import defusedxml.ElementTree as ET`
-        # We need to patch that specific object in the module namespace
-        with patch(
-            "enrichment.sources.anidb.anidb_helper.ET.fromstring"
-        ) as mock_fromstring:
-            # We need to import the exact error class used in the except block
-            from defusedxml.ElementTree import ParseError
-
-            mock_fromstring.side_effect = ParseError("Test parsing error")
-
-            await helper._parse_anime_xml("bad xml")
-
-            mock_logger.exception.assert_called_once_with("XML parsing error")
+    assert rc == 0
+    assert out.exists()
+    data = json.loads(out.read_text())
+    assert data["title"] == "One Piece"
 
 
 @pytest.mark.asyncio
-async def test_get_anime_by_id_logging_exception(helper):
-    """Test that logging.exception is called when get_anime_by_id fails."""
-    with patch("enrichment.sources.anidb.anidb_helper.logger") as mock_logger:
-        helper._make_request = AsyncMock(side_effect=Exception("Network failure"))
+async def test_main_cli_anime_returns_1_when_no_xml(tmp_path: Path) -> None:
+    out = tmp_path / "output.json"
+    with (
+        patch("sys.argv", ["anidb_helper", "anime", _ANIDB_URL, str(out)]),
+        patch(
+            "enrichment.sources.anidb.anidb_helper.AniDBHelper._fetch_xml",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        from enrichment.sources.anidb.anidb_helper import main
 
-        await helper.get_anime_by_id(123)
+        rc = await main()
 
-        mock_logger.exception.assert_called_once_with(
-            "Failed to fetch anime by AniDB ID 123"
-        )
+    assert rc == 1
+    assert not out.exists()
+
+
+@pytest.mark.asyncio
+async def test_main_cli_episodes_subcommand(tmp_path: Path) -> None:
+    out = tmp_path / "episodes.json"
+    with (
+        patch("sys.argv", ["anidb_helper", "episodes", _ANIDB_URL, str(out)]),
+        patch(
+            "enrichment.sources.anidb.anidb_helper.AniDBHelper._fetch_xml",
+            new=AsyncMock(return_value=_MINIMAL_XML),
+        ),
+    ):
+        from enrichment.sources.anidb.anidb_helper import main
+
+        rc = await main()
+
+    assert rc == 0
+    assert out.exists()
+    assert json.loads(out.read_text()) == []
+
+
+@pytest.mark.asyncio
+async def test_main_cli_characters_subcommand(tmp_path: Path) -> None:
+    out = tmp_path / "characters.jsonl"
+    with (
+        patch("sys.argv", ["anidb_helper", "characters", _ANIDB_URL, str(out)]),
+        patch(
+            "enrichment.sources.anidb.anidb_helper.AniDBHelper._fetch_xml",
+            new=AsyncMock(return_value=_MINIMAL_XML),
+        ),
+    ):
+        from enrichment.sources.anidb.anidb_helper import main
+
+        rc = await main()
+
+    assert rc == 0
+    # JSONL file may not exist if no characters were fetched (empty XML)
+    if out.exists():
+        lines = [
+            json.loads(line) for line in out.read_text().splitlines() if line.strip()
+        ]
+        assert isinstance(lines, list)
+
+
+# =============================================================================
+# MISSING COVERAGE — fetch_all character exception
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_continues_when_characters_fail(helper) -> None:
+    anime_dict = {"title": "One Piece"}
+    anime_model = MagicMock()
+
+    helper._fetch_anime = AsyncMock(return_value=(anime_dict, anime_model))
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(side_effect=Exception("browser died"))
+
+    result = await helper.fetch_all({"anidb_url": _ANIDB_URL}, {})
+
+    assert result is not None
+    assert result["characters"] == []
+
+
+# =============================================================================
+# MISSING COVERAGE — _fetch_characters with output_path + id-less chars
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_characters_with_output_path_and_id_less_chars(
+    helper, tmp_path: Path
+) -> None:
+    from enrichment.sources.anidb.anidb_models import AniDBAnime, AniDBCharacter
+
+    model = AniDBAnime(
+        id=69,
+        characters=[
+            AniDBCharacter(id=474, name="Luffy"),
+            AniDBCharacter(id=None, name="Unknown"),
+        ],
+    )
+    out = tmp_path / "chars.jsonl"
+
+    with patch(
+        "enrichment.sources.anidb.anidb_helper.fetch_anidb_characters",
+        return_value=_async_gen([(474, None)]),
+    ):
+        chars = await helper._fetch_characters(model, output_path=str(out))
+
+    assert len(chars) == 2
+    lines = out.read_text().strip().splitlines()
+    assert len(lines) == 2
+
+
+# =============================================================================
+# MISSING COVERAGE — _fetch_xml exception
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_xml_exception_returns_none(helper) -> None:
+    with patch.object(
+        helper, "_make_request", new_callable=AsyncMock, side_effect=Exception("boom")
+    ):
+        result = await helper._fetch_xml(69)
+    assert result is None
+
+
+# =============================================================================
+# MISSING COVERAGE — _adaptive_rate_limit is_retry multiplier
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
+@patch("enrichment.sources.anidb.anidb_helper.time.time")
+async def test_adaptive_rate_limit_is_retry_increases_interval(
+    mock_time, mock_sleep, helper
+) -> None:
+    helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
+    mock_time.return_value = 1010.0
+    helper.metrics.last_request_time = 1010.0
+
+    await helper._adaptive_rate_limit(is_retry=True)
+
+    assert mock_sleep.called
+    wait = mock_sleep.call_args[0][0]
+    assert wait == pytest.approx(helper.min_request_interval * 1.5, abs=0.1)
+
+
+# =============================================================================
+# MISSING COVERAGE — _make_request via lock
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_make_request_delegates_via_lock(helper) -> None:
+    helper._make_request_with_retry = AsyncMock(return_value="<anime/>")
+    result = await helper._make_request({"aid": 69})
+    assert result == "<anime/>"
+    helper._make_request_with_retry.assert_awaited_once_with({"aid": 69})
+
+
+# =============================================================================
+# MISSING COVERAGE — _make_request_with_retry exception paths
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", new_callable=AsyncMock)
+async def test_make_request_with_retry_exception_retries_then_raises(
+    mock_sleep, helper
+) -> None:
+    from enrichment.sources.base.exceptions import ServiceNetworkError
+
+    helper.max_retries = 1
+    helper._ensure_session_health = AsyncMock()
+    helper._make_single_request = AsyncMock(
+        side_effect=[Exception("first"), Exception("second")]
+    )
+
+    with pytest.raises(ServiceNetworkError):
+        await helper._make_request_with_retry({"aid": 69})
+
+    assert helper.metrics.total_requests == 2
+    assert helper.metrics.failed_requests == 2
+    assert mock_sleep.call_count == 1
+
+
+# =============================================================================
+# MISSING COVERAGE — _make_single_request no session
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_make_single_request_no_session_raises(helper) -> None:
+    helper.session = None
+    with pytest.raises(RuntimeError, match="Session not initialized"):
+        await helper._make_single_request({"aid": 69}, attempt=0)
+
+
+# =============================================================================
+# MISSING COVERAGE — close() session.close raises
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_close_exception_swallowed(helper) -> None:
+    mock_session = MagicMock()
+    mock_session.close = AsyncMock(side_effect=Exception("close failed"))
+    helper.session = mock_session
+
+    await helper.close()
+
+    assert helper.session is None
+
+
+@pytest.mark.asyncio
+async def test_main_cli_all_subcommand(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    with (
+        patch("sys.argv", ["anidb_helper", "all", _ANIDB_URL, str(out_dir)]),
+        patch(
+            "enrichment.sources.anidb.anidb_helper.AniDBHelper._fetch_xml",
+            new=AsyncMock(return_value=_MINIMAL_XML),
+        ),
+    ):
+        from enrichment.sources.anidb.anidb_helper import main
+
+        rc = await main()
+
+    assert rc == 0
+    assert (out_dir / "anidb_anime.json").exists()
+    assert (out_dir / "anidb_episodes.json").exists()
+    assert (out_dir / "anidb_characters.json").exists()
+    anime = json.loads((out_dir / "anidb_anime.json").read_text())
+    assert anime["title"] == "One Piece"

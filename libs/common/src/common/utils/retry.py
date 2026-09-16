@@ -122,11 +122,7 @@ async def retry_with_backoff(
             if checker(error) and retry_count <= max_retries:
                 delay = retry_delay * (2 ** (retry_count - 1))
                 logger.warning(
-                    "Transient error on attempt %s/%s: %s. Retrying in %ss...",
-                    retry_count,
-                    max_retries + 1,
-                    error,
-                    delay,
+                    f"Transient error on attempt {retry_count}/{max_retries + 1}: {error}. Retrying in {delay}s..."
                 )
                 if on_retry:
                     on_retry(
@@ -138,7 +134,7 @@ async def retry_with_backoff(
                 await asyncio.sleep(delay)
             else:
                 if retry_count > max_retries:
-                    logger.exception("Max retries (%s) exceeded", max_retries)
+                    logger.exception(f"Max retries ({max_retries}) exceeded")
                 raise
         else:
             return result

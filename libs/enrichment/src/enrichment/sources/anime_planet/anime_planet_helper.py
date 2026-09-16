@@ -119,7 +119,9 @@ class AnimePlanetHelper(BaseEnrichmentHelper):
                         f"Anime-Planet characters fetched: {len(characters)} characters"
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to fetch characters for '{canonical_url}': {e}")
+                    logger.warning(
+                        f"Failed to fetch characters for '{canonical_url}': {e}"
+                    )
 
         except Exception:
             logger.exception(f"Error in fetch_all for URL '{url}'")

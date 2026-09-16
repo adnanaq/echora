@@ -23,7 +23,7 @@ class ServiceConfig(BaseModel):
         default=False, description="Enable GPU usage for embedding models"
     )
     enrichment_default_file_path: str = Field(
-        default="data/qdrant_storage/anime-offline-database.json",
+        default="assets/seed_data/anime-offline-database.json",
         description="Default enrichment input JSON/JSONL file path",
     )
     enrichment_output_dir: str = Field(

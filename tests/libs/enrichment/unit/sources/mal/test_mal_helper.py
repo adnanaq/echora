@@ -467,7 +467,9 @@ async def test_fetch_all_skips_both_when_both_false():
     helper._fetch_episodes = AsyncMock(return_value=[{"episode_number": 1}])
     helper._fetch_characters = AsyncMock(return_value=[{"name": "Luffy"}])
 
-    result = await helper.fetch_all(ids, {}, fetch_episodes=False, fetch_characters=False)
+    result = await helper.fetch_all(
+        ids, {}, fetch_episodes=False, fetch_characters=False
+    )
 
     assert result is not None
     assert result["episodes"] == []

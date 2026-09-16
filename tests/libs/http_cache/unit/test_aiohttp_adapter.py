@@ -689,9 +689,7 @@ class TestSessionHeadersAttributeErrorFallback:
 
 class TestSyncStreamFallback:
     @pytest.mark.asyncio
-    async def test_sync_iterable_stream_consumed(
-        self, mock_storage: AsyncMock
-    ) -> None:
+    async def test_sync_iterable_stream_consumed(self, mock_storage: AsyncMock) -> None:
         """When hishel_response.stream has no __aiter__, fall back to list()."""
         mock_session = AsyncMock()
         mock_session.headers = {}

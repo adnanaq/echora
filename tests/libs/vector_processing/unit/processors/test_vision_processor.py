@@ -1138,9 +1138,7 @@ class TestEncodeImagesBatchWithCache:
         mock_embedding_cache.set_batch.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_no_cache_encodes_all(
-        self, mock_vision_model, mock_settings
-    ):
+    async def test_no_cache_encodes_all(self, mock_vision_model, mock_settings):
         """Test that without cache, all downloaded images are encoded."""
         mock_downloader = AsyncMock()
         mock_downloader.download_and_cache_image.side_effect = [

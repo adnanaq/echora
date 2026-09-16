@@ -33,7 +33,6 @@ echora/
 │   │       └── utils/                 # ID generation, datetime helpers
 │   ├── enrichment/                    # Anime data enrichment pipeline
 │   │   └── src/enrichment/
-│   │       ├── crawlers/              # Crawl4ai-based web crawlers
 │   │       ├── pipeline/              # Multi-stage enrichment pipeline
 │   │       ├── similarity/            # Character similarity (CCIP)
 │   │       ├── sources/               # External source integrations
@@ -47,7 +46,9 @@ echora/
 │   │       │   └── mal/               # MyAnimeList (anime, characters, episodes)
 │   │       └── utils/
 │   ├── http_cache/                    # HTTP response caching (Redis-backed)
-│   │   └── src/http_cache/            # Cache manager, aiohttp adapter
+│   │   └── src/http_cache/            # Cache manager, aiohttp adapter, result cache
+│   ├── observability/                 # OpenTelemetry bootstrap (logs, traces, metrics)
+│   │   └── src/observability/         # Telemetry setup, gRPC interceptor, metric registry
 │   ├── qdrant_db/                     # Qdrant vector database client
 │   │   └── src/qdrant_db/
 │   │       ├── collection/            # Collection lifecycle + schema builder
@@ -71,8 +72,9 @@ echora/
 │   │   └── enrichment_service/        # unit/
 │   ├── libs/                          # Per-library test suites
 │   │   ├── common/                    # unit/, integration/
-│   │   ├── enrichment/                # unit/ (sources, pipeline, crawlers), integration/
+│   │   ├── enrichment/                # unit/ (sources, pipeline, utils), integration/
 │   │   ├── http_cache/                # unit/, integration/
+│   │   ├── observability/             # unit/
 │   │   ├── qdrant_db/                 # unit/ (collection), integration/
 │   │   ├── vector_db_interface/       # unit/, integration/
 │   │   └── vector_processing/         # unit/ (embedding_models, processors, reranking)
@@ -82,90 +84,173 @@ echora/
 
 ## Quick Start
 
-### Prerequisites
+Steps 0–2 are required for both paths. Then pick **Path A (Docker)** or
+**Path B (local)** — you do not need both.
 
-- Python 3.12
-- Docker and Docker Compose
-- UV package manager (recommended) or pip
+### 0. Prerequisites
 
-### Using Docker (Recommended)
-
-```bash
-# Start all services
-docker compose -f docker/docker-compose.dev.yml up -d
-
-# Services:
-# - vector_service gRPC:    localhost:8001
-# - enrichment_service gRPC: localhost:8002
-# - Qdrant UI:              http://localhost:6333/dashboard
-# - Redis:                  localhost:6379
-# - RedisInsight UI:        http://localhost:5540
-```
-
-### Local Development
-
-#### 1. Install UV Package Manager
+- **Python 3.13** — pinned in `.python-version`; Pants, ty and ruff all target 3.13
+- **Docker** and Docker Compose
+- **UV** package manager
 
 ```bash
-# Install UV (one-time setup)
+# Install UV (one-time)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Add UV to your PATH (add to ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/.local/bin:$PATH"
-
-# Verify installation
+export PATH="$HOME/.local/bin:$PATH"   # add to ~/.bashrc or ~/.zshrc
 uv --version
 ```
 
-#### 2. Install Python 3.12 and Create Virtual Environment
+### 1. Configure environment
 
 ```bash
-# UV will automatically download Python 3.12 and create venv
+cp .env.example .env
+```
+
+**Required.** `ENVIRONMENT` has no default — the services raise
+`ValueError` on startup without it. `.env.example` ships with
+`ENVIRONMENT=development` already set, so copying it is enough.
+
+The Docker path sets its own environment inline and works without `.env`;
+the local path does not.
+
+### 2. Get the anime database
+
+`data/` is gitignored, so the seed dataset is **not** in the clone. The
+enrichment service reads it from:
+
+```text
+assets/seed_data/anime-offline-database.json
+```
+
+Download it from the [manami-project/anime-offline-database](https://github.com/manami-project/anime-offline-database)
+project (this repo was last built against the `2026-02` tag — the tag is
+recorded in the file's own `$schema` field) and place it at that path.
+
+Skip this only if you will not run the enrichment pipeline. Without it the
+enrichment service still starts and reports healthy — `RunPipeline` is what
+fails.
+
+---
+
+### Path A — Docker (recommended)
+
+```bash
+docker compose -f docker/docker-compose.dev.yml up -d --build
+```
+
+> Keep the `--build`. Plain `up -d` reuses whatever image is already on the
+> machine and never rebuilds, so after pulling a branch that changed `libs/` or
+> `apps/` it will silently run the old code — typically surfacing as a config
+> `ValidationError` for a setting the stale image has never heard of.
+
+| Service | Address |
+| --- | --- |
+| vector_service (gRPC) | `localhost:8001` |
+| enrichment_service (gRPC) | `localhost:8002` |
+| Qdrant dashboard | <http://localhost:6333/dashboard> |
+| Redis | `localhost:6379` |
+| RedisInsight | <http://localhost:5540> (add host `redis`, port `6379`) |
+
+> **First run takes ~15 minutes.** It builds two images and then downloads the
+> embedding models (BGE-M3 + OpenCLIP, several GB) into the `echora_model-cache`
+> volume. `vector-service` stays `starting` until that finishes — this is why
+> its healthcheck has a 15-minute `start_period`. Subsequent starts are fast;
+> the models are only re-downloaded if you run `down -v`.
+
+### Path B — Local (Pants)
+
+```bash
+# 1. Create the venv (UV reads .python-version)
 uv venv
-
-# Verify Python version
-.venv/bin/python --version  # Should show Python 3.12.x
-```
-
-#### 3. Install Dependencies
-
-```bash
-# Install all project dependencies (including dev tools)
 uv sync
+.venv/bin/python --version        # Python 3.13.x
 
-# This creates/updates:
-# - .venv/ (virtual environment with Python 3.12)
-# - uv.lock (dependency lock file)
+# 2. Start only the backing services
+docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
+
+# 3. Run a service
+./pants run apps/vector_service:vector_service        # gRPC on :8001
+./pants run apps/enrichment_service:enrichment_service # gRPC on :8002
 ```
 
-#### 4. Start Infrastructure
+Pants resolves its own interpreter from `PATH`, independently of the venv. If
+`./pants` cannot find a 3.13 interpreter:
 
 ```bash
-# Qdrant vector database
-docker compose -f docker/docker-compose.dev.yml up -d qdrant
-# UI: http://localhost:6333/dashboard
-
-# Redis (HTTP cache for enrichment pipeline)
-docker compose -f docker/docker-compose.dev.yml up -d redis
-# RedisInsight UI: http://localhost:5540 (add host: redis, port: 6379)
+uv python install 3.13   # creates ~/.local/bin/python3.13
 ```
 
-#### 5. Run the Service
+---
 
-**Using Pants (Recommended)** — handles monorepo dependencies automatically:
+### 3. Verify
+
+Both services are **gRPC only** — there are no HTTP endpoints, so `curl` will
+not work. Use the standard gRPC health protocol:
+
+**Path A (Docker)** — `grpc_health_probe` ships in both images:
 
 ```bash
-# Run vector service (gRPC on :8001)
-./pants run apps/vector_service/:vector_service
+docker exec echora-vector-service     grpc_health_probe -addr=localhost:8001
+docker exec echora-enrichment-service grpc_health_probe -addr=localhost:8002
+```
 
-# Run enrichment service (gRPC on :8002)
-./pants run apps/enrichment_service/:enrichment_service
+**Path B (local)** — there is no container to `exec` into, and
+`grpc_health_probe` is not a Python package, so query the health service with
+the venv instead:
 
-# Run tests
-./pants test ::
+```bash
+.venv/bin/python - 8001 <<'PY'
+import sys, grpc
+from grpc_health.v1 import health_pb2, health_pb2_grpc
+channel = grpc.insecure_channel(f"localhost:{sys.argv[1]}")
+response = health_pb2_grpc.HealthStub(channel).Check(health_pb2.HealthCheckRequest())
+print(health_pb2.HealthCheckResponse.ServingStatus.Name(response.status))
+PY
+```
 
-# Run scripts
-./pants run scripts/reindex_anime_database.py
+Prints `SERVING`. Pass `8002` for enrichment_service. This works against Path A
+too, since both ports are published to the host.
+
+Qdrant is plain HTTP either way:
+
+```bash
+curl http://localhost:6333/healthz
+```
+
+```bash
+docker compose -f docker/docker-compose.dev.yml ps       # health status
+docker compose -f docker/docker-compose.dev.yml logs -f vector-service
+```
+
+### 4. Optional — observability
+
+Telemetry is **off by default** in dev. The OTel collector lives in a separate
+stack on its own network, so leaving it enabled without that stack running just
+produces `StatusCode.UNAVAILABLE` export errors.
+
+```bash
+# once per machine
+docker network create echora_observability-network
+
+# start the observability stack
+docker compose -f docker/docker-compose.obs.yml up -d
+
+# start the dev stack wired into it
+docker compose -f docker/docker-compose.dev.yml \
+               -f docker/docker-compose.obs-link.yml up -d
+```
+
+Grafana: <http://localhost:3000>. See the header of
+`docker/docker-compose.obs-link.yml` for details.
+
+### Shutting down
+
+```bash
+docker compose -f docker/docker-compose.dev.yml down     # keeps all data
+docker compose -f docker/docker-compose.dev.yml down -v  # also wipes Qdrant
+                                                         # data and the model
+                                                         # cache (forces a
+                                                         # multi-GB re-download)
 ```
 
 ## Development Workflow
@@ -352,7 +437,8 @@ QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION_NAME=anime_database
 
 # Embedding Models
-TEXT_EMBEDDING_PROVIDER=sentence-transformers
+# flagembedding is required for sparse/hybrid search (see Vector Architecture)
+TEXT_EMBEDDING_PROVIDER=flagembedding
 TEXT_EMBEDDING_MODEL=BAAI/bge-m3
 IMAGE_EMBEDDING_PROVIDER=openclip
 IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
@@ -407,12 +493,18 @@ The service uses a unified multi-vector architecture optimized for million-query
 
 **Image Vectors**:
 
-- `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art.
+- `image_vector`: 768-dimensional OpenCLIP ViT-L/14 embeddings for visual similarity of covers and character art. Stored as a Qdrant **multivector** (MAX_SIM) so one point can hold several images; HNSW is disabled on it because MAX_SIM is asymmetric.
+
+**Sparse Vectors**:
+
+- `text_sparse_vector`: lexical/keyword vector with the IDF modifier, used for sparse and hybrid text search.
+
+When more than one of these signals is active in a single query, results are fused server-side via Qdrant's Query API using RRF (default) or DBSF.
 
 ### Technology Stack
 
 - **Build System**: Pants 2.29.1
-- **Language**: Python 3.12
+- **Language**: Python 3.13
 - **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing
 - **HTTP Cache**: Redis (RFC 9111-compliant via Hishel, used by enrichment pipeline)

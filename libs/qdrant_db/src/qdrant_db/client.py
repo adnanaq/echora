@@ -58,7 +58,6 @@ class _Telemetry(Protocol):
     DB_ERRORS: Any
 
 
-
 class QdrantClient(VectorDBClient):
     """Qdrant client wrapper with strict request/response contracts."""
 
@@ -307,9 +306,7 @@ class QdrantClient(VectorDBClient):
             batch_points = [
                 PointStruct(
                     id=doc.id,
-                    vector=cast(
-                        dict[str, Any], _normalize_point_vectors(doc.vectors)
-                    ),
+                    vector=cast(dict[str, Any], _normalize_point_vectors(doc.vectors)),
                     payload=doc.payload,
                 )
                 for doc in documents[start : start + batch_size]
@@ -559,7 +556,7 @@ class QdrantClient(VectorDBClient):
         try:
             emit()
         except Exception:
-            logger.debug("Telemetry emission failed for %s", operation, exc_info=True)
+            logger.debug(f"Telemetry emission failed for {operation}", exc_info=True)
 
     async def _search_single_vector(
         self,
@@ -592,7 +589,7 @@ class QdrantClient(VectorDBClient):
                 with_vectors=False,
                 query_filter=filters,
                 score_threshold=score_threshold,
-        )
+            )
             if self._telemetry:
                 _elapsed = time.perf_counter() - _start
                 _tel = self._telemetry
@@ -614,7 +611,9 @@ class QdrantClient(VectorDBClient):
             if self._telemetry:
                 _tel = self._telemetry
                 self._emit_telemetry(
-                    lambda: _tel.DB_ERRORS.add(1, {"operation": "search_single_vector"}),
+                    lambda: _tel.DB_ERRORS.add(
+                        1, {"operation": "search_single_vector"}
+                    ),
                     "search_single_vector.error",
                 )
             raise

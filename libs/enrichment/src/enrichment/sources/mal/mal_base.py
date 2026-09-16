@@ -13,10 +13,8 @@ All crawlers import from this module — no duplicated boilerplate.
 import logging
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import Any
 
-from enrichment.sources.base.crawler_config import CrawlerRateLimiter
 from enrichment.sources.base.utils import (
     parse_broadcast_string as parse_broadcast_string,
 )  # noqa: F401
@@ -27,26 +25,6 @@ logger = logging.getLogger(__name__)
 
 # MAL base URL
 MAL_BASE_URL = "https://myanimelist.net"
-
-
-# =============================================================================
-# RATE LIMITER
-# =============================================================================
-
-
-def get_mal_scraping_limiter() -> CrawlerRateLimiter:
-    """Create a MAL scraping rate limiter with conservative timing.
-
-    Uses 2s intervals and 25 requests/minute (vs 0.5s/60rpm for Jikan).
-    Scraping is heavier than API calls — be respectful to MAL servers.
-    """
-    return CrawlerRateLimiter(min_interval_seconds=2.0, max_per_minute=25)
-
-
-@lru_cache(maxsize=1)
-def get_shared_mal_rate_limiter() -> CrawlerRateLimiter:
-    """Return a process-wide shared limiter instance for all MAL requests."""
-    return CrawlerRateLimiter(min_interval_seconds=0.5, max_per_minute=60)
 
 
 # =============================================================================
@@ -139,6 +117,32 @@ def parse_number(s: str | None) -> int | None:
     cleaned = re.sub(r"[,#\s]", "", s.strip())
     try:
         return int(cleaned)
+    except ValueError:
+        return None
+
+
+def parse_score(s: str | None) -> float | None:
+    """Parse a MAL score string to float.
+
+    An anime with too few votes renders the same ``ratingValue`` span with the
+    literal text ``N/A``, so the score must be parsed defensively: an unguarded
+    ``float()`` raises out of the crawler and discards the entire record.
+
+    Handles:
+        "8.73" → 8.73
+        "N/A"  → None
+        None   → None
+
+    Args:
+        s: String representation of a score.
+
+    Returns:
+        Float value, or None if parsing fails.
+    """
+    if not s or not s.strip():
+        return None
+    try:
+        return float(s.strip())
     except ValueError:
         return None
 

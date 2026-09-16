@@ -17,7 +17,7 @@ root_patterns = [
 ]
 
 [python]
-interpreter_constraints = ["CPython==3.12.*"]
+interpreter_constraints = ["CPython==3.13.*"]
 
 [python-infer]
 # Enable dependency inference for Python imports

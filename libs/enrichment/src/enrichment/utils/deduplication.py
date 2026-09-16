@@ -5,11 +5,16 @@ It supports simple string-based deduplication as well as semantic similarity-bas
 deduplication using embedding models with dependency injection.
 """
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from sklearn.metrics.pairwise import cosine_similarity
-from vector_processing.embedding_models.text.base import TextEmbeddingModel
+
+if TYPE_CHECKING:
+    from vector_processing.embedding_models.text.base import TextEmbeddingModel
 
 try:
     from langdetect import LangDetectException, detect

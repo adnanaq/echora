@@ -1,23 +1,17 @@
 """Unit tests for mal_base.py — sidebar parsers, number utils, model diffing."""
 
 import pytest
-from enrichment.sources.base.crawler_config import (
-    CrawlerRateLimiter,
-    get_docker_browser_config,
-    get_docker_crawler_config,
-)
 from enrichment.sources.mal.mal_base import (
     _get_entity_id,
     diff_model_lists,
     diff_models,
-    get_mal_scraping_limiter,
-    get_shared_mal_rate_limiter,
     normalize_mal_anime_url,
     parse_aired_string,
     parse_duration_seconds,
     parse_episode_ranges,
     parse_number,
     parse_premiered,
+    parse_score,
     parse_sidebar_field,
 )
 from enrichment.sources.mal.mal_models import (
@@ -47,6 +41,29 @@ from pydantic import BaseModel
 )
 def test_parse_number(raw: str | None, expected: int | None) -> None:
     assert parse_number(raw) == expected
+
+
+# =============================================================================
+# parse_score
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("8.73", 8.73),
+        ("10", 10.0),
+        (" 6.06 ", 6.06),
+        # MAL renders the same ratingValue span as "N/A" below the vote
+        # threshold; an unguarded float() there discards the whole record.
+        ("N/A", None),
+        (None, None),
+        ("", None),
+        ("   ", None),
+    ],
+)
+def test_parse_score(raw: str | None, expected: float | None) -> None:
+    assert parse_score(raw) == expected
 
 
 # =============================================================================
@@ -318,30 +335,6 @@ def test_diff_model_lists_updated_when_field_changes() -> None:
 
 
 # =============================================================================
-# get_docker_browser_config / get_docker_crawler_config
-# =============================================================================
-
-
-def test_get_docker_browser_config_returns_typed_dict() -> None:
-    result = get_docker_browser_config()
-    assert result["type"] == "BrowserConfig"
-    assert "enable_stealth" in result["params"]
-
-
-def test_get_docker_crawler_config_returns_config() -> None:
-    result = get_docker_crawler_config({"name": "test"})
-    assert result["type"] == "CrawlerRunConfig"
-    assert (
-        result["params"]["extraction_strategy"]["type"] == "JsonXPathExtractionStrategy"
-    )
-
-
-def test_get_mal_scraping_limiter_returns_limiter() -> None:
-    limiter = get_mal_scraping_limiter()
-    assert limiter is not None
-
-
-# =============================================================================
 # parse_premiered — unrecognized string → (None, None)
 # =============================================================================
 
@@ -386,18 +379,3 @@ def test_get_entity_id_returns_zero_for_bare_model() -> None:
         pass
 
     assert _get_entity_id(_Bare()) == 0
-
-
-# =============================================================================
-# get_shared_mal_rate_limiter (from mal_base)
-# =============================================================================
-
-
-def test_get_shared_mal_rate_limiter_returns_singleton() -> None:
-    a = get_shared_mal_rate_limiter()
-    b = get_shared_mal_rate_limiter()
-    assert a is b
-
-
-def test_shared_mal_rate_limiter_crawler_rate_limiter() -> None:
-    assert isinstance(get_shared_mal_rate_limiter(), CrawlerRateLimiter)

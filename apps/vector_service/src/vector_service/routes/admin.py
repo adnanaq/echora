@@ -164,9 +164,7 @@ async def get_stats(
         stats = await runtime.qdrant_client.get_stats()
         stats_error = _extract_stats_error(stats)
         if stats_error:
-            logger.warning(
-                "GetStats RPC received Qdrant error payload: %s", stats_error
-            )
+            logger.warning(f"GetStats RPC received Qdrant error payload: {stats_error}")
             return vector_admin_pb2.GetStatsResponse(
                 error=error(
                     code="GET_STATS_FAILED",

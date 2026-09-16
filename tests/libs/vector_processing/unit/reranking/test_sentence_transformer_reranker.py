@@ -1,6 +1,5 @@
 """Unit tests for SentenceTransformerReranker."""
 
-
 from vector_processing.reranking import SentenceTransformerReranker
 
 

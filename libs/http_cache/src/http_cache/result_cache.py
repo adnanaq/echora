@@ -1,7 +1,7 @@
 """
 Result-level caching for crawler functions.
 
-Since crawlers use browser automation (crawl4ai/Playwright) rather than HTTP libraries,
+Since crawlers use browser automation (zendriver/Playwright) rather than HTTP libraries,
 we cache the final extracted results instead of HTTP responses.
 
 Schema hashing: Cache keys include a hash of the function's source code.

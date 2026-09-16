@@ -43,8 +43,9 @@ async def test_rerank_sorts_by_relevance(reranker_processor):
     # Check that results are returned
     assert len(reranked) == 3
 
-    # Extract titles and scores
-    titles = [item[0] for item, score in reranked]
+    # Extract titles and scores. `item` is the original object passed in —
+    # here the title string itself, so it must not be indexed into.
+    titles = [item for item, score in reranked]
     scores = [score for item, score in reranked]
 
     # Steins;Gate should rank highest for time travel query

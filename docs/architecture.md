@@ -2,145 +2,169 @@
 
 ## Overview
 
-The Anime Vector Service is a specialized microservice designed for high-performance vector database operations, extracted from the main anime-mcp-server repository. It provides semantic search and image-based discovery capabilities for anime databases.
+Echora is a Pants monorepo housing an anime data and search platform. It is composed of
+two gRPC services backed by a set of shared libraries:
+
+- **`vector_service`** (gRPC, `:8001`) — semantic, visual, and hybrid search over Qdrant.
+- **`enrichment_service`** (gRPC, `:8002`) — orchestrates the multi-source enrichment
+  pipeline that produces the records the vector service indexes.
+
+Both services share the same configuration, data models, observability bootstrap, and
+Qdrant/embedding libraries under `libs/`.
+
+> A third service, `agent_service` (natural-language query parsing), is under active
+> development on a feature branch and is not part of the layout described here yet.
 
 ## Architecture Diagram
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        C1[Web Applications]
-        C2[Mobile Apps]
-        C3[Other Microservices]
-        C4[Client Library]
+    subgraph Clients
+        C1[Applications / Other Services]
     end
 
-    subgraph "Load Balancer"
-        LB[Nginx/ALB/Envoy]
-    end
-
-    subgraph "Anime Vector Service"
-        subgraph "FastAPI Application"
-            API[FastAPI Router]
-            MW[CORS Middleware]
-            LS[Lifespan Manager]
-        end
-
-        subgraph "API Endpoints"
-            SEARCH[Search API]
-            ADMIN[Admin APIs]
-            HEALTH[Health Check]
-        end
-
-        subgraph "Processing Layer"
-            TP[Text Processor<br/>BGE-M3]
-            VP[Vision Processor<br/>OpenCLIP]
-            MVM[Multi-Vector Manager]
-        end
-
-        subgraph "Vector Operations"
-            QC[Qdrant Client]
-            EM[Embedding Manager]
-            SI[Search Interface]
+    subgraph vector_service[":8001 vector_service"]
+        VI[AioServerInterceptor<br/>tracing - metrics - logs]
+        VA[VectorAdminService<br/>Health - GetStats]
+        VS[VectorSearchService<br/>Search]
+        subgraph VR["VectorRuntime"]
+            TP[TextProcessor<br/>BGE-M3]
+            VP[VisionProcessor<br/>OpenCLIP]
+            EM[MultiVectorEmbeddingManager]
+            QC[QdrantClient]
+            EC[EmbeddingCache]
         end
     end
 
-    subgraph "Vector Database"
-        subgraph "Qdrant Database"
-            subgraph "Collections"
-                AC[anime_database]
-                TC[integration_test_anime]
-            end
-
-            subgraph "Vector Storage"
-                TV[Text Vectors<br/>1024-dim BGE-M3]
-                IV[Image Vectors<br/>768-dim OpenCLIP<br/>(Multivector)]
-            end
-
-            subgraph "Indexes"
-                PI[Payload Index<br/>Metadata Fields]
-                HI[HNSW Index<br/>Vector Similarity]
-            end
-        end
+    subgraph enrichment_service[":8002 enrichment_service"]
+        EI[AioServerInterceptor]
+        ES[EnrichmentService<br/>Health - RunPipeline]
+        EP[EnrichmentPipeline]
+        IDX[PlatformIDExtractor]
+        AF[ApiFetcher]
     end
 
-    subgraph "Model Cache"
-        MC[HuggingFace Cache<br/>BGE-M3 + OpenCLIP]
+    subgraph Sources["External sources"]
+        API_S[REST / GraphQL / XML<br/>AniList - Kitsu - AniDB - AnimSchedule]
+        CRAWL[zendriver + lxml<br/>MAL - AniSearch - Anime-Planet - AniDB chars]
     end
 
-    C1 --> LB
-    C2 --> LB
-    C3 --> LB
-    C4 --> LB
+    subgraph Data["Data stores"]
+        QD[(Qdrant<br/>anime_database)]
+        RD[(Redis<br/>HTTP + result + embedding cache)]
+    end
 
-    LB --> API
-    API --> MW
-    MW --> LS
+    subgraph Obs["Observability"]
+        OC[OTel Collector]
+        PROM[Prometheus]
+        TEMPO[Tempo]
+        LOKI[Loki]
+        GRAF[Grafana]
+    end
 
-    API --> SEARCH
-    API --> ADMIN
-    API --> HEALTH
-
-    SEARCH --> TP
-    SEARCH --> VP
-    SEARCH --> MVM
-
-    ADMIN --> QC
-    HEALTH --> QC
-
-    TP --> EM
-    VP --> EM
-    MVM --> EM
-
+    C1 --> VI --> VA
+    VI --> VS
+    VS --> TP
+    VS --> VP
+    VS --> QC
+    VA --> QC
+    TP --> EC
+    VP --> EC
     EM --> QC
-    QC --> SI
-    SI --> AC
-    SI --> TC
+    EC --> RD
+    QC --> QD
 
-    QC --> TV
-    QC --> IV
-    QC --> PI
-    QC --> HI
+    C1 --> EI --> ES --> EP
+    EP --> IDX
+    EP --> AF
+    AF --> API_S
+    AF --> CRAWL
+    AF --> RD
 
-    TP -.-> MC
-    VP -.-> MC
+    VI -.OTLP.-> OC
+    EI -.OTLP.-> OC
+    OC --> PROM
+    OC --> TEMPO
+    OC --> LOKI
+    PROM --> GRAF
+    TEMPO --> GRAF
+    LOKI --> GRAF
 ```
 
 ## Component Relationships
 
 ### Core Components
 
-#### 1. FastAPI Application (`apps/service/src/service/main.py`)
+#### 1. Service entry points (`apps/*/src/*/main.py`)
 
-- **Purpose**: Main application entry point and service orchestration
-- **Dependencies**: Configuration, Logging, CORS, Routers
-- **Interfaces**: HTTP REST API, Health endpoints
-- **Lifecycle**: Manages startup/shutdown, initializes Qdrant client
+- **Purpose**: Process bootstrap — telemetry, runtime construction, servicer
+  registration, health reporting, and the serve loop.
+- **Order matters**: `setup_telemetry()` runs **first**; gRPC server auto-instrumentation
+  must be installed before `grpc.aio.server()` is constructed.
+- **Health**: Both services register the standard `grpc_health.v1` servicer.
+  `vector_service` starts `NOT_SERVING` and flips to `SERVING` only after a successful
+  Qdrant health check.
 
-#### 2. Configuration System (`libs/common/src/common/config/settings.py`)
+#### 2. Route adapters (`apps/*/src/*/routes/`)
 
-- **Purpose**: Centralized configuration with validation
-- **Features**: Environment variable support, type safety, field validation
-- **Dependencies**: Pydantic, environment files
-- **Scope**: Vector service, Qdrant, embedding models, API settings
+- `adapter.py` implements the generated servicer interface (PascalCase RPC names) and
+  delegates immediately to plain async functions in sibling modules.
+- Keeps proto-shaped code isolated from business logic and keeps handlers unit-testable
+  without a gRPC server.
 
-#### 3. Vector Processing Layer (`libs/vector_processing/src/vector_processing/`)
+#### 3. Runtime containers (`apps/*/src/*/runtime.py`)
 
-- **Text Processor**: BGE-M3 embeddings for semantic understanding
-- **Vision Processor**: OpenCLIP for image understanding
-- **Multi-Vector Manager**: Coordinates multiple embedding types
+- A `@dataclass(slots=True)` holding fully constructed dependencies, built once at
+  startup by `build_runtime()`.
+- `vector_service` validates that model output dimensions match the configured
+  `vector_names` **before** any Qdrant I/O, so model/config drift fails fast.
 
-#### 4. API Layer (`apps/service/src/service/routes/`)
+#### 4. Configuration (`libs/common/src/common/config/`)
 
-- **Search Router**: Text + image search endpoint (planned)
-- **Admin Router**: Database management and statistics
-- **Health**: Service health endpoint
+- `Settings(BaseSettings)` composes five `BaseModel` sub-configs: `qdrant`, `embedding`,
+  `service`, `observability`, `redis`.
+- A `mode="before"` validator routes flat environment variables (`QDRANT_URL`, …) into
+  the correct nested sub-config, JSON-parsing list/dict-typed fields.
+- Import-time assertions guarantee no field name collides across sub-configs.
+- `ENVIRONMENT` is **required** — there is no default, to prevent shipping dev settings.
+  `production` enforces `debug=False`, `log_level=WARNING`, WAL on, and model warm-up on.
 
-#### 5. Qdrant Integration (`libs/qdrant_db/src/qdrant_db/client.py`)
+#### 5. Vector processing (`libs/vector_processing/src/vector_processing/`)
 
-- **Purpose**: Vector database client and operations
-- **Features**: Multi-vector storage, HNSW indexing, payload filtering
-- **Performance**: Quantization, caching, connection pooling
+- **TextProcessor**: BGE-M3 dense embeddings, plus sparse when the model supports it.
+- **VisionProcessor**: OpenCLIP image embeddings.
+- **MultiVectorEmbeddingManager**: turns one `AnimeRecord` into anime, character, and
+  episode points.
+- **AnimeFieldMapper**: decides *what* text represents each entity; the processors decide
+  *how* to encode it.
+- **EmbeddingCache**: Redis-backed, keyed by model name + SHA-256 of input. Fail-open.
+
+#### 6. Qdrant integration (`libs/qdrant_db/src/qdrant_db/`)
+
+- `client.py` — orchestration, retries, telemetry.
+- `collection/schema_builder.py` — pure config → Qdrant model translation, no I/O.
+- `collection/manager.py` — collection lifecycle, race-safe creation, schema
+  compatibility validation.
+- `query_builder.py` / `normalizer.py` — pure filter/prefetch construction and vector
+  payload validation.
+- Implements the provider-agnostic ABCs in `libs/vector_db_interface/`.
+
+#### 7. Enrichment (`libs/enrichment/src/enrichment/`)
+
+- `PlatformIDExtractor` turns offline-database source URLs into a platform-ID dict.
+- `ApiFetcher` fans out to seven source helpers concurrently, with graceful degradation —
+  one failing source never aborts the rest.
+- Crawler-based sources use a template-method `BaseCrawler`: normalize → fetch →
+  post-process → build source model → map to canonical → persist.
+
+#### 8. Observability (`libs/observability/src/observability/`)
+
+- One `setup_telemetry()` entry point configuring structlog + OTLP logs, traces, and
+  metrics, plus optional auto-instrumentation.
+- `AioServerInterceptor` handles all four RPC shapes, extracts upstream trace context,
+  and performs contract-aware failure detection.
+- `registry` exposes pre-created metric instruments that are silent no-ops when telemetry
+  is disabled, so they are safe to call from any code path.
 
 ## Data Flow Architecture
 
@@ -149,175 +173,212 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API
-    participant Processor
+    participant Interceptor
+    participant Route as search.py
+    participant Proc as Text/Vision Processor
+    participant Cache as Redis
     participant Qdrant
-    participant Models
 
-    Client->>API: Search Request
-    API->>API: Validate Request
-    API->>Processor: Process Query
+    Client->>Interceptor: Search RPC
+    Interceptor->>Interceptor: extract traceparent, start SERVER span
+    Interceptor->>Route: invoke handler
+    Route->>Route: validate input, reject non-indexed filter fields
 
-    alt Text Search
-        Processor->>Models: BGE-M3 Embedding
-        Models-->>Processor: Text Vector
-    else Image Search
-        Processor->>Models: OpenCLIP Embedding
-        Models-->>Processor: Image Vector
+    alt query_text present
+        Route->>Proc: encode_text_with_sparse
+        Proc->>Cache: lookup by content hash
+        Cache-->>Proc: hit or miss
+        Proc-->>Route: dense + sparse vectors
+    end
+    alt image present
+        Route->>Proc: encode_image
+        Proc-->>Route: image vector
     end
 
-    Processor->>Qdrant: Vector Search
-    Qdrant->>Qdrant: HNSW Search + Filtering
-    Qdrant-->>Processor: Search Results
-    Processor->>API: Formatted Results
-    API-->>Client: JSON Response
+    alt single active signal
+        Route->>Qdrant: query_points (single vector)
+    else multiple signals
+        Route->>Qdrant: prefetch branches + RRF/DBSF fusion
+    end
+
+    Qdrant-->>Route: scored hits + payloads
+    Route-->>Interceptor: SearchResponse
+    Interceptor->>Interceptor: record duration, detect error contract
+    Interceptor-->>Client: response
 ```
 
-### Vector Storage Flow
+### Enrichment and Ingestion Flow
 
 ```mermaid
 sequenceDiagram
-    participant Pipeline
-    participant API
-    participant Processor
+    participant Client
+    participant Route as pipeline.py
+    participant Pipe as EnrichmentPipeline
+    participant Sources as 7 external sources
+    participant Embed as EmbeddingManager
     participant Qdrant
 
-    Pipeline->>API: Submit AnimeRecord
-    API->>Processor: Process AnimeRecord
+    Client->>Route: RunPipeline RPC
+    Route->>Route: validate file_path and agent_dir
+    Route->>Pipe: enrich_anime(offline_data)
+    Pipe->>Pipe: extract platform IDs
+    Pipe->>Sources: concurrent fetch (graceful degradation)
+    Sources-->>Pipe: per-source normalized payloads
+    Pipe-->>Route: merged result
+    Route->>Route: write JSON artifact
 
-    par Text Processing
-        Processor->>Processor: Extract Text Features
-        Processor->>Processor: Generate BGE-M3 Embedding
-    and Image Processing
-        Processor->>Processor: Process Anime/Character Images
-        Processor->>Processor: Generate OpenCLIP Embeddings
-    end
-
-    Processor->>Qdrant: Store Anime/Character/Episode Points
-    Qdrant->>Qdrant: Update HNSW Index
-    Qdrant->>Qdrant: Update Payload Index
-    Qdrant-->>API: Confirmation
-    API-->>Pipeline: Success Response
+    Note over Embed,Qdrant: Indexing runs separately (scripts/)
+    Embed->>Embed: AnimeRecord to anime + character + episode points
+    Embed->>Qdrant: upsert points in batches
+    Qdrant->>Qdrant: update HNSW and payload indexes
 ```
 
 ## Technology Stack
 
 ### Core Runtime
 
-- **Python**: 3.12+ for modern language features
-- **FastAPI**: 0.115+ for high-performance async API
-- **Uvicorn**: ASGI server for production deployment
+- **Python**: 3.13 (pinned in `.python-version`; Pants, ty, and ruff all target 3.13)
+- **gRPC**: `grpc.aio` async server with custom telemetry interceptors
+- **Protobuf**: schemas in `protos/`, stubs generated via `scripts/generate-proto.py`
+- **Pants**: 2.29.1 build system
+- **UV**: dependency management
 
 ### Vector Database
 
-- **Qdrant**: 1.14+ for vector storage and similarity search
-- **HNSW**: Hierarchical Navigable Small World algorithm
-- **Quantization**: Binary/scalar quantization for memory efficiency
+- **Qdrant**: `qdrant-client` 1.16.x
+- **Named vectors**: `text_vector` (1024-dim dense), `image_vector` (768-dim dense,
+  multivector/MAX_SIM), `text_sparse_vector` (sparse, IDF modifier)
+- **HNSW**: tuned per vector priority; **disabled** (`m=0`) on the multivector image
+  vector because MAX_SIM is asymmetric
+- **Fusion**: server-side RRF (default) or DBSF via the Query API
+- **Quantization**: binary/scalar/product, configurable per priority class
 
 ### AI/ML Stack
 
-- **BGE-M3**: BAAI/bge-m3 for multilingual text embeddings (1024-dim)
-- **OpenCLIP ViT-L/14**: Vision embeddings (768-dim)
-- **PyTorch**: 2.0+ as ML framework backend
-- **Sentence Transformers**: 5.0+ for embedding pipeline
-- **HuggingFace Transformers**: Model loading and caching
+- **BGE-M3**: multilingual text embeddings (1024-dim), dense + sparse in one pass
+- **OpenCLIP ViT-L/14**: vision embeddings (768-dim)
+- **Cross-encoder reranking**: `BAAI/bge-reranker-v2-m3` (opt-in)
+- **PyTorch**, **Sentence Transformers**, **FlagEmbedding**, **HuggingFace Transformers**
+
+### Enrichment
+
+- **zendriver**: CDP-driven Chrome for crawler-based sources
+- **lxml**: XPath extraction from raw HTML
+- **aiohttp**: REST/GraphQL/XML source transport
+- **Hishel + Redis**: RFC 9111 HTTP caching for API sources
+- **Result cache**: source-hash-keyed Redis caching for crawlers
+
+### Observability
+
+- **OpenTelemetry**: logs, traces, and metrics over OTLP/gRPC
+- **structlog**: JSON structured logging with trace correlation and PII redaction
+- **Collector → Prometheus / Tempo / Loki → Grafana**, with Alertmanager
 
 ### Infrastructure
 
-- **Docker**: Containerization with multi-stage builds
-- **Docker Compose**: Local development orchestration
-- **Nginx**: Load balancing and reverse proxy (production)
+- **Docker / Docker Compose**: dev, production, and observability stacks under `docker/`
 
 ## Current Workflow
 
 ### Development Workflow
 
-1. **Local Setup**: Docker Compose with Qdrant + Vector Service
-2. **Model Loading**: Automatic HuggingFace model download and caching
-3. **API Testing**: OpenAPI/Swagger documentation at `/docs`
-4. **Health Monitoring**: Continuous health checks for Qdrant connectivity
+1. **Local Setup**: `docker compose -f docker/docker-compose.dev.yml up -d`
+2. **Model Loading**: HuggingFace models downloaded into a persistent cache volume
+   (~2.2 GB on first run, which is why the healthcheck grace period is long)
+3. **API Testing**: gRPC reflection/health via `grpc_health_probe`, or a gRPC client
+4. **Health Monitoring**: `grpc_health.v1` checks wired into container healthchecks
 
 ### Production Workflow
 
-1. **Container Build**: Multi-stage Docker build with dependency optimization
-2. **Service Deployment**: Kubernetes/Docker Swarm orchestration
-3. **Load Balancing**: Nginx upstream configuration
-4. **Monitoring**: Health endpoints, metrics collection, logging
+1. **Container Build**: multi-stage Docker builds per service
+2. **Service Deployment**: container orchestration (see `docs/k8s_deployment_plan.md`)
+3. **Monitoring**: OTLP export to the collector, Grafana dashboards under
+   `docker/observability/grafana/dashboards/`
 
 ### Data Processing Workflow
 
-1. **Ingestion**: Anime data from external sources (MCP server integration)
-2. **Enrichment**: Multi-source data synthesis and AI enhancement
-3. **Vectorization**: BGE-M3 text + OpenCLIP image embedding generation
-4. **Storage**: Anime/character/episode point storage in Qdrant
-5. **Indexing**: HNSW and payload index maintenance
+1. **Ingestion**: offline anime database as the seed input
+2. **Enrichment**: concurrent multi-source fetch, normalization, and consolidation
+3. **Character matching**: ensemble fuzzy matching (semantic, phonetic, edit-distance,
+   token, and CCIP visual similarity)
+4. **Vectorization**: BGE-M3 text + OpenCLIP image embedding generation
+5. **Storage**: anime/character/episode points upserted into Qdrant
+6. **Indexing**: HNSW and payload index maintenance
 
 ## Performance Characteristics
 
 ### Response Time Targets
 
-- **Text Search**: < 100ms (95th percentile)
-- **Image Search**: < 300ms (95th percentile)
+These are design targets, not measured benchmarks.
 
-### Scalability Metrics
+- **Text Search**: < 100 ms (95th percentile)
+- **Image Search**: < 300 ms (95th percentile)
+
+### Scalability Targets
 
 - **Concurrent Requests**: 100+ simultaneous
 - **Peak Load**: 1000 RPS
 - **Data Scale**: 100,000+ anime entries
-- **Vector Storage**: 500M+ vectors total
 
 ### Optimization Features
 
-- **Model Caching**: HuggingFace local cache for embedding models
-- **Vector Quantization**: Scalar/binary quantization for memory efficiency
-- **Payload Indexing**: Fast metadata filtering on genres, year, type, etc.
-- **Connection Pooling**: Efficient Qdrant client management
-- **HNSW Tuning**: Optimized parameters for search accuracy vs speed
+- **Embedding cache**: Redis-backed, skips inference for repeated content
+- **Vector Quantization**: scalar/binary quantization for memory efficiency
+- **Payload Indexing**: fast metadata filtering; non-indexed filter fields are rejected
+  at the RPC boundary rather than silently triggering a full scan
+- **HNSW Tuning**: per-priority parameters balancing accuracy against speed
+- **Batching**: batch embedding and batched Qdrant upserts with per-batch retry
 
 ## Security Architecture
 
-### API Security
+### Transport and API
 
-- **CORS**: Configurable origin restrictions
-- **Input Validation**: Pydantic model validation
-- **Rate Limiting**: Configurable per-client limits (future)
-- **API Keys**: Optional authentication for admin endpoints (future)
+- **Input Validation**: Pydantic contract models on every request path
+- **Filter allow-list**: search filters are restricted to indexed payload fields
+- **Path validation**: `RunPipeline` confines `file_path` to an allowed directory and
+  restricts `agent_dir` to a single safe path component
+- **Transport security**: gRPC currently binds insecure ports; TLS termination is
+  expected at the ingress/mesh layer
+- **Authentication**: none at the service boundary today
+
+> `allowed_origins` / `allowed_methods` / `allowed_headers` remain in `ServiceConfig` but
+> are **not consumed** by any code — leftovers from the pre-gRPC HTTP service.
 
 ### Data Security
 
-- **TLS**: Required for production deployments
-- **No PII**: Anime metadata only, no user data
-- **Audit Logging**: Request/response logging for compliance
+- **No PII**: anime metadata only; no user data is stored
+- **Log redaction**: structlog processor strips API keys, tokens, passwords, and emails
+- **Secrets**: supplied via environment variables only, never committed
 
 ## Deployment Architecture
 
 ### Development
 
 ```
-localhost:8002 � FastAPI � Qdrant (Docker)
+localhost:8001 -> vector_service     -> Qdrant (Docker)
+localhost:8002 -> enrichment_service -> Redis  (Docker)
 ```
 
 ### Production (Recommended)
 
 ```
-Load Balancer � [Vector Service Instances] � Qdrant Cluster
-     |                      |                      |
-   Nginx              Kubernetes              Persistent Storage
+Ingress / LB -> [vector_service instances]     -> Qdrant cluster
+             -> [enrichment_service instances] -> Redis
+                          |
+                   OTel Collector -> Prometheus / Tempo / Loki -> Grafana
 ```
 
 ## Future Architecture Considerations
 
-### Phase 2 Enhancements
+### Near Term
 
-- **Distributed Qdrant**: Multi-node clustering for high availability
-- **Redis Caching**: Query result caching layer
-- **Message Queue**: Async processing with Celery/RQ
-- **Prometheus Metrics**: Detailed performance monitoring
+- **`agent_service`**: natural-language query parsing, in development on a feature branch
+- **Query result caching**: search responses are not cached yet (embedding results are)
+- **Distributed Qdrant**: multi-node clustering for high availability
 
-### Phase 3 Scalability
+### Longer Term
 
-- **Edge Deployment**: CDN integration for global performance
-- **Auto-scaling**: Kubernetes HPA based on CPU/memory/queue depth
-- **Model Serving**: Dedicated model inference services
-- **Data Pipeline**: Stream processing for real-time updates
-
+- **Message Queue**: async enrichment scheduling
+- **Auto-scaling**: horizontal scaling driven by CPU/memory/queue depth
+- **Model Serving**: dedicated inference services to decouple model memory from services
+- **Data Pipeline**: stream processing for real-time updates

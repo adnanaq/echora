@@ -1,60 +1,58 @@
-[
-  {
-    "episodes": [
-      {
-        "episode_number_raw": "1",
-        "runtime": "24 min",
-        "release_date": "20. Oct 1999",
-        "title_en": "I'm Gonna Be King of the Pirates! [4Kids Ep 1] |  I'm Luffy! The Man Who's Gonna Be King Of The Pirates!",
-        "title_ja": "Ore wa Luffy! Kaizoku Ou ni naru Otoko da! (俺はルフィ!海賊王になる男だ!)",
-        "title_de": "Hier kommt Ruffy, der künftige König der Piraten!",
-        "title_fr": "Je suis Luffy ! Celui qui deviendra Roi des pirates !",
-        "title_it": "Io sono Rufy! L'uomo che diventerà Re dei pirati!"
-      },
-      {
-        "episode_number_raw": "2",
-        "runtime": "24 min",
-        "release_date": "17. Nov 1999",
-        "title_en": "Roronoa Zolo: Pirate Hunter [4Kids Ep 2] | Enter the Great Swordsman! Pirate Hunter Roronoa Zoro!",
-        "title_ja": "Daikengou Arawaru! Kaizokugari Roronoa Zoro (大剣豪現る!海賊狩りロロノア・ゾロ)",
-        "title_de": "Piratenjäger Lorenor Zorro",
-        "title_fr": "Le grand manieur de sabre ! Roronoa Zoro, chasseur de pirates !"
-      },
-      {
-        "episode_number_raw": "279FillerRecap",
-        "runtime": "24 min",
-        "release_date": "01. Oct 2006",
-        "title_en": "Jump Towards the Falls! Luffy's Feelings!",
-        "title_ja": "Taki ni mukatte tobe! Rufi no omoi!! (滝に向かって飛べ!ルフィの想い!!)",
-        "title_de": "Ruffy und Shanks",
-        "title_fr": "Vol au-dessus des chutes d'eau ! Les sentiments de Luffy !"
-      },
-      {
-        "episode_number_raw": "457Recap",
-        "runtime": "24 min",
-        "release_date": "27. Jun 2010",
-        "title_en": "A Special Retrospective Before Marineford! The Vow of the Brotherhood!",
-        "title_ja": "Marinfōdo Chokuzen Kaisou Supesharu - Kyōdai no Chikai! (海軍本部直前回想特別編 兄弟の誓い!)",
-        "title_de": "Der große Rückblick vor dem großen Kampf. Das Versprechen der Brüder.",
-        "title_fr": "Juste avant Marine Ford ! Les souvenirs de Luffy. La promesse des deux frères."
-      },
-      {
-        "episode_number_raw": "50Filler",
-        "runtime": "24 min",
-        "release_date": "29. Nov 2000",
-        "title_en": "Usopp vs. Daddy the Parent! Showdown at High!",
-        "title_ja": "Usopp Tai Kozure no Daddy: Mahiru no Kettou (ウソップVS子連れのダディ真昼の決闘)",
-        "title_de": "Lysop und Daddy",
-        "title_fr": "Usopp vs Daddy Masterson ! Duel sous le soleil !",
-        "title_it": "Una prova di coraggio"
-      },
-      {
-        "episode_number_raw": "1144",
-        "title_en": "The Worst Nightmare - The Five Elders Come Together"
-      },
-      {
-        "episode_number_raw": "1200"
-      }
-    ]
-  }
-]
+{
+  "episodes": [
+    {
+      "episode_number_raw": "1",
+      "runtime": "24 min",
+      "release_date": "20. Oct 1999",
+      "title_en": "I'm Gonna Be King of the Pirates! [4Kids Ep 1] |  I'm Luffy! The Man Who's Gonna Be King Of The Pirates!",
+      "title_ja": "Ore wa Luffy! Kaizoku Ou ni naru Otoko da! (\u4ffa\u306f\u30eb\u30d5\u30a3!\u6d77\u8cca\u738b\u306b\u306a\u308b\u7537\u3060!)",
+      "title_de": "Hier kommt Ruffy, der k\u00fcnftige K\u00f6nig der Piraten!",
+      "title_fr": "Je suis Luffy ! Celui qui deviendra Roi des pirates !",
+      "title_it": "Io sono Rufy! L'uomo che diventer\u00e0 Re dei pirati!"
+    },
+    {
+      "episode_number_raw": "2",
+      "runtime": "24 min",
+      "release_date": "17. Nov 1999",
+      "title_en": "Roronoa Zolo: Pirate Hunter [4Kids Ep 2] | Enter the Great Swordsman! Pirate Hunter Roronoa Zoro!",
+      "title_ja": "Daikengou Arawaru! Kaizokugari Roronoa Zoro (\u5927\u5263\u8c6a\u73fe\u308b!\u6d77\u8cca\u72e9\u308a\u30ed\u30ed\u30ce\u30a2\u30fb\u30be\u30ed)",
+      "title_de": "Piratenj\u00e4ger Lorenor Zorro",
+      "title_fr": "Le grand manieur de sabre ! Roronoa Zoro, chasseur de pirates !"
+    },
+    {
+      "episode_number_raw": "279FillerRecap",
+      "runtime": "24 min",
+      "release_date": "01. Oct 2006",
+      "title_en": "Jump Towards the Falls! Luffy's Feelings!",
+      "title_ja": "Taki ni mukatte tobe! Rufi no omoi!! (\u6edd\u306b\u5411\u304b\u3063\u3066\u98db\u3079!\u30eb\u30d5\u30a3\u306e\u60f3\u3044!!)",
+      "title_de": "Ruffy und Shanks",
+      "title_fr": "Vol au-dessus des chutes d'eau ! Les sentiments de Luffy !"
+    },
+    {
+      "episode_number_raw": "457Recap",
+      "runtime": "24 min",
+      "release_date": "27. Jun 2010",
+      "title_en": "A Special Retrospective Before Marineford! The Vow of the Brotherhood!",
+      "title_ja": "Marinf\u014ddo Chokuzen Kaisou Supesharu - Ky\u014ddai no Chikai! (\u6d77\u8ecd\u672c\u90e8\u76f4\u524d\u56de\u60f3\u7279\u5225\u7de8 \u5144\u5f1f\u306e\u8a93\u3044!)",
+      "title_de": "Der gro\u00dfe R\u00fcckblick vor dem gro\u00dfen Kampf. Das Versprechen der Br\u00fcder.",
+      "title_fr": "Juste avant Marine Ford ! Les souvenirs de Luffy. La promesse des deux fr\u00e8res."
+    },
+    {
+      "episode_number_raw": "50Filler",
+      "runtime": "24 min",
+      "release_date": "29. Nov 2000",
+      "title_en": "Usopp vs. Daddy the Parent! Showdown at High!",
+      "title_ja": "Usopp Tai Kozure no Daddy: Mahiru no Kettou (\u30a6\u30bd\u30c3\u30d7VS\u5b50\u9023\u308c\u306e\u30c0\u30c7\u30a3\u771f\u663c\u306e\u6c7a\u95d8)",
+      "title_de": "Lysop und Daddy",
+      "title_fr": "Usopp vs Daddy Masterson ! Duel sous le soleil !",
+      "title_it": "Una prova di coraggio"
+    },
+    {
+      "episode_number_raw": "1144",
+      "title_en": "The Worst Nightmare - The Five Elders Come Together"
+    },
+    {
+      "episode_number_raw": "1200"
+    }
+  ]
+}

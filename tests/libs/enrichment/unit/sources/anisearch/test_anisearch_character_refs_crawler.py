@@ -7,15 +7,15 @@ Edge-case branches use inline overrides on top of the real fixture dict.
 No network calls are made.
 """
 
-import json
 from unittest.mock import AsyncMock
 
 import pytest
 from enrichment.sources.anisearch.anisearch_character_refs_crawler import (
     _ANISEARCH_BASE_URL,
+    _XPATHS,
     _absolutize,
+    _extract_refs_from_html,
     _fetch_anisearch_character_refs_data,
-    _get_character_refs_schema,
     _normalize_characters_page_url,
     _post_process_refs,
     fetch_anisearch_character_refs,
@@ -27,26 +27,53 @@ _ONE_PIECE_CHARS_URL = "https://www.anisearch.com/anime/2227,one-piece/character
 
 
 # =============================================================================
-# _get_character_refs_schema
+# _XPATHS
 # =============================================================================
 
 
-def test_refs_schema_structure() -> None:
-    schema = _get_character_refs_schema()
-    assert {f["name"] for f in schema["fields"]} == {
-        "chara1",
-        "chara2",
-        "chara3",
-        "chara4",
-        "chara5",
-        "chara50",
-    }
-    for field in schema["fields"]:
-        assert field["type"] == "list"
-        assert "character/" in field["selector"]
-    url_subfield = schema["fields"][0]["fields"][0]
-    assert url_subfield["name"] == "url"
-    assert url_subfield.get("attribute") == "href"
+def test_xpaths_covers_all_sections() -> None:
+    assert set(_XPATHS) == {"chara1", "chara2", "chara3", "chara4", "chara5", "chara50"}
+
+
+def test_xpaths_each_targets_character_href() -> None:
+    for section_id, xpath in _XPATHS.items():
+        assert f"@id='{section_id}'" in xpath
+        assert "character/" in xpath
+        assert xpath.endswith("/@href")
+
+
+# =============================================================================
+# _extract_refs_from_html
+# =============================================================================
+
+
+def test_extract_refs_returns_none_on_empty() -> None:
+    assert _extract_refs_from_html("") is None
+
+
+def test_extract_refs_returns_section_dict_on_valid_html() -> None:
+    html = """
+    <html><body>
+      <section id="chara1">
+        <a href="character/4852,monkey-d-luffy">Luffy</a>
+        <a href="character/1234,zoro">Zoro</a>
+      </section>
+      <section id="chara2">
+        <a href="character/5000,nami">Nami</a>
+      </section>
+    </body></html>
+    """
+    raw = _extract_refs_from_html(html)
+    assert raw is not None
+    assert raw["chara1"] == ["character/4852,monkey-d-luffy", "character/1234,zoro"]
+    assert raw["chara2"] == ["character/5000,nami"]
+    assert raw["chara3"] == []
+
+
+def test_extract_refs_empty_sections_return_empty_list() -> None:
+    raw = _extract_refs_from_html("<html><body></body></html>")
+    assert raw is not None
+    assert all(v == [] for v in raw.values())
 
 
 # =============================================================================
@@ -102,15 +129,17 @@ def test_absolutize_already_absolute_passthrough() -> None:
 
 
 def test_post_process_refs_returns_url_role_dicts(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     assert refs
     for ref in refs:
         assert "url" in ref and "role" in ref
         assert ref["url"].startswith("https://"), f"Relative URL: {ref['url']}"
+        # Carried so the mapper can attach `role` to the right ography entry.
+        assert ref["anime_url"] == _ONE_PIECE_CHARS_URL
 
 
 def test_post_process_refs_role_mapping(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     luffy = next(r for r in refs if "monkey-d-luffy" in r["url"])
     assert luffy["role"] == "Main Character"
     chara2_count = sum(1 for r in refs if r["role"] == "Secondary Character")
@@ -118,7 +147,7 @@ def test_post_process_refs_role_mapping(one_piece_refs_raw) -> None:
 
 
 def test_post_process_refs_count_invariants(one_piece_refs_raw) -> None:
-    refs = _post_process_refs(one_piece_refs_raw)
+    refs = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     urls = [r["url"] for r in refs]
     assert len(urls) == len(set(urls))
     assert len(refs) <= sum(len(v) for v in one_piece_refs_raw.values())
@@ -126,27 +155,27 @@ def test_post_process_refs_count_invariants(one_piece_refs_raw) -> None:
 
 def test_post_process_refs_empty_sections_skipped() -> None:
     raw = {
-        "chara1": [{"url": "character/1,test"}],
+        "chara1": ["character/1,test"],
         "chara2": [],
         "chara3": [],
         "chara4": [],
         "chara5": [],
         "chara50": [],
     }
-    refs = _post_process_refs(raw)
+    refs = _post_process_refs(raw, _ONE_PIECE_CHARS_URL)
     assert len(refs) == 1
 
 
 def test_post_process_refs_missing_url_skipped() -> None:
     raw = {
-        "chara1": [{"url": ""}, {"url": "character/1,test"}],
+        "chara1": ["", "character/1,test"],
         "chara2": [],
         "chara3": [],
         "chara4": [],
         "chara5": [],
         "chara50": [],
     }
-    refs = _post_process_refs(raw)
+    refs = _post_process_refs(raw, _ONE_PIECE_CHARS_URL)
     assert len(refs) == 1
 
 
@@ -155,62 +184,29 @@ def test_post_process_refs_missing_url_skipped() -> None:
 # =============================================================================
 
 
-async def test_fetch_refs_none_result_returns_none(mocker) -> None:
+def _make_browser_mock(mocker, html: str | None):
+    page_mock = mocker.AsyncMock()
+    page_mock.wait_for = AsyncMock()
+    page_mock.scroll_down = AsyncMock()
+    if html is None:
+        page_mock.wait_for.side_effect = Exception("timeout")
+    else:
+        page_mock.get_content = AsyncMock(return_value=html)
+    browser_mock = mocker.AsyncMock()
+    browser_mock.get = AsyncMock(return_value=page_mock)
+    browser_mock.stop = AsyncMock()
+    return browser_mock
+
+
+async def test_fetch_refs_navigation_failure_returns_none(mocker) -> None:
     mocker.patch(
         "http_cache.result_cache.get_cache_config",
         return_value=mocker.MagicMock(cache_enabled=False),
     )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
+    browser_mock = _make_browser_mock(mocker, html=None)
+    browser_mock.stop.side_effect = Exception("stop failed")
+    mocker.patch("zendriver.start", new_callable=AsyncMock, return_value=browser_mock)
     assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
-
-
-async def test_fetch_refs_404_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
-        new_callable=AsyncMock,
-        return_value={"status_code": 404, "extracted_content": "[]"},
-    )
-    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
-
-
-async def test_fetch_refs_empty_extracted_content_returns_none(mocker) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
-        new_callable=AsyncMock,
-        return_value={"status_code": 200, "extracted_content": "[]"},
-    )
-    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
-
-
-async def test_fetch_refs_redirect_logs_debug_continues(
-    mocker, one_piece_refs_raw
-) -> None:
-    mocker.patch(
-        "http_cache.result_cache.get_cache_config",
-        return_value=mocker.MagicMock(cache_enabled=False),
-    )
-    mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
-        new_callable=AsyncMock,
-        return_value={
-            "status_code": 301,
-            "extracted_content": json.dumps([one_piece_refs_raw]),
-        },
-    )
-    refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
-    assert refs is not None and len(refs) > 0
 
 
 async def test_fetch_refs_real_fixture_returns_refs(mocker, one_piece_refs_raw) -> None:
@@ -219,17 +215,48 @@ async def test_fetch_refs_real_fixture_returns_refs(mocker, one_piece_refs_raw) 
         return_value=mocker.MagicMock(cache_enabled=False),
     )
     mocker.patch(
-        "enrichment.sources.anisearch.anisearch_character_refs_crawler.crawl_single_url",
+        "enrichment.sources.anisearch.anisearch_character_refs_crawler._extract_refs_from_html",
+        return_value=one_piece_refs_raw,
+    )
+    mocker.patch(
+        "zendriver.start",
         new_callable=AsyncMock,
-        return_value={
-            "status_code": 200,
-            "extracted_content": json.dumps([one_piece_refs_raw]),
-        },
+        return_value=_make_browser_mock(mocker, html="<html></html>"),
     )
     refs = await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL)
     assert refs is not None
     assert len(refs) > 0
     assert refs[0]["url"].startswith("https://")
+
+
+async def test_fetch_refs_extraction_failure_returns_none(mocker) -> None:
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_refs_crawler._extract_refs_from_html",
+        return_value=None,
+    )
+    mocker.patch(
+        "zendriver.start",
+        new_callable=AsyncMock,
+        return_value=_make_browser_mock(mocker, html="<html></html>"),
+    )
+    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
+
+
+async def test_fetch_refs_empty_content_returns_none(mocker) -> None:
+    mocker.patch(
+        "http_cache.result_cache.get_cache_config",
+        return_value=mocker.MagicMock(cache_enabled=False),
+    )
+    mocker.patch(
+        "zendriver.start",
+        new_callable=AsyncMock,
+        return_value=_make_browser_mock(mocker, html=""),
+    )
+    assert await _fetch_anisearch_character_refs_data(_ONE_PIECE_CHARS_URL) is None
 
 
 # =============================================================================
@@ -249,7 +276,7 @@ async def test_fetch_character_refs_returns_empty_on_failure(mocker) -> None:
 async def test_fetch_character_refs_returns_list_on_success(
     mocker, one_piece_refs_raw
 ) -> None:
-    expected = _post_process_refs(one_piece_refs_raw)
+    expected = _post_process_refs(one_piece_refs_raw, _ONE_PIECE_CHARS_URL)
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_refs_crawler._fetch_anisearch_character_refs_data",
         new_callable=AsyncMock,

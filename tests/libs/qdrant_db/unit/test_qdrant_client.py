@@ -286,7 +286,9 @@ def test_search_request_requires_embedding() -> None:
 
 
 def test_search_request_accepts_sparse_embedding() -> None:
-    request = SearchRequest(sparse_embedding=SparseVectorData(indices=[1], values=[0.2]), limit=5)
+    request = SearchRequest(
+        sparse_embedding=SparseVectorData(indices=[1], values=[0.2]), limit=5
+    )
     assert request.sparse_embedding is not None
     assert request.sparse_embedding.indices == [1]
 
@@ -340,9 +342,7 @@ async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) 
 
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.query_points.return_value = SimpleNamespace(
-        points=[
-            SimpleNamespace(id="anime-1", payload={"title": "Naruto"}, score=0.9)
-        ]
+        points=[SimpleNamespace(id="anime-1", payload={"title": "Naruto"}, score=0.9)]
     )
 
     from qdrant_db.contracts import SearchRequest
@@ -426,9 +426,7 @@ async def test_search_entity_type_filter_appended(mock_client: QdrantClient) -> 
     call = async_mock.query_points.call_args.kwargs
     qdrant_filter = call["query_filter"]
     assert qdrant_filter is not None
-    assert any(
-        getattr(c, "key", None) == "entity_type" for c in qdrant_filter.must
-    )
+    assert any(getattr(c, "key", None) == "entity_type" for c in qdrant_filter.must)
 
 
 @pytest.mark.asyncio
@@ -471,10 +469,14 @@ async def test_get_by_id_returns_id_and_payload(mock_client: QdrantClient) -> No
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_with_vectors_includes_vector(mock_client: QdrantClient) -> None:
+async def test_get_by_id_with_vectors_includes_vector(
+    mock_client: QdrantClient,
+) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     fake_vector = {"text_vector": [0.1, 0.2]}
-    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=fake_vector)
+    fake_point = SimpleNamespace(
+        id="abc", payload={"title": "Bebop"}, vector=fake_vector
+    )
     async_mock.retrieve.return_value = [fake_point]
 
     result = await mock_client.get_by_id("abc", with_vectors=True)

@@ -103,10 +103,10 @@ def load_stage_data(stage_file: Path) -> list[dict[str, Any]]:
         logger.warning(f"Stage file not found: {stage_file}")
         return []
     except json.JSONDecodeError:
-        logger.exception("Invalid JSON in %s", stage_file)
+        logger.exception(f"Invalid JSON in {stage_file}")
         return []
     except Exception:
-        logger.exception("Error loading %s", stage_file)
+        logger.exception(f"Error loading {stage_file}")
         return []
 
 

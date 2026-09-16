@@ -125,6 +125,10 @@ class AniListHelper(BaseEnrichmentHelper):
             ServiceBlockedError: 403 — API disabled/blocked.
             AniListGraphQLError: HTTP 200/400 with GraphQL errors[] in body.
             ServiceNetworkError: Any other network / JSON decode failure.
+
+        Returns:
+            The GraphQL ``data`` object; a 404 yields a body with no ``Media``,
+            so callers see "not found" rather than an error.
         """
         await self._ensure_session()
         assert self.session is not None  # guaranteed by _ensure_session  # noqa: S101
@@ -170,6 +174,14 @@ class AniListHelper(BaseEnrichmentHelper):
                             "API disabled/blocked", service="anilist"
                         )
 
+                    if response.status == 404:
+                        # AniList answers a query for an id it does not have with
+                        # 404 and a GraphQL errors[] body. That is "no such
+                        # record", not a transport failure, so callers get an
+                        # empty result instead of an exception.
+                        logger.debug(f"AniList has no record for {variables}")
+                        return {"_from_cache": from_cache}
+
                     response.raise_for_status()
                     data: Any = await response.json()
 
@@ -193,8 +205,6 @@ class AniListHelper(BaseEnrichmentHelper):
 
                     return result
 
-            except (ServiceRateLimitedError, ServiceBlockedError, AniListGraphQLError):
-                raise
             except aiohttp.ClientResponseError as exc:
                 # Non-429/403 4xx are not retryable
                 if exc.status < 500:

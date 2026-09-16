@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class PlatformIDExtractor:
     """
-    Extracts platform IDs from anime source URLs using regex patterns.
+    Extracts platform IDs from anime source URLs using substring matching and regex patterns.
     100% deterministic - same input always produces same output.
     """
 
@@ -23,12 +23,12 @@ class PlatformIDExtractor:
         "anime_planet_url": "anime-planet.com/anime/",
         "anilist_url": "anilist.co/anime/",
         "anisearch_url": "anisearch.com/anime/",
+        "anidb_url": "anidb.net/anime/",
     }
 
     # Platforms where a captured group from the URL is the identifier
     PATTERNS = {
         "kitsu_url": r"(https?://kitsu\.(?:io|app)/anime/[^/\?\s]+)",
-        "anidb_id": r"anidb\.(?:net/anime/|info/a)(\d+)",
         "notify_id": r"notify\.moe/anime/([^/\?]+)",
         "livechart_id": r"livechart\.me/anime/(\d+)",
     }
@@ -88,7 +88,6 @@ class PlatformIDExtractor:
 
             # Validate numeric IDs
             if platform in [
-                "anidb_id",
                 "livechart_id",
             ]:
                 try:

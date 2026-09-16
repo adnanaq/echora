@@ -1,5 +1,6 @@
 """Unit tests for kitsu_mapper.py."""
 
+import pytest
 from common.models.anime import ThemeEntry
 from enrichment.sources.kitsu.kitsu_mapper import (
     _strip_html,
@@ -182,6 +183,42 @@ def test_anime_from_kitsu_r18_rating():
     assert result["rating"] == "Rx - Hentai"
 
 
+@pytest.mark.parametrize(
+    ("age_rating", "guide", "expected"),
+    [
+        ("PG", "Teens 13 or older", "PG-13 - Teens 13 or older"),
+        ("PG", "Children", "PG - Children"),
+        ("R", "Mild Nudity", "R+ - Mild Nudity"),
+        ("R", "17+ (violence & profanity)", "R - 17+ (violence & profanity)"),
+        ("R", "Violence, Profanity", "R - 17+ (violence & profanity)"),
+        ("G", "All Ages", "G - All Ages"),
+    ],
+)
+def test_anime_from_kitsu_rating_guide_wins(age_rating, guide, expected):
+    """ageRating alone collapses PG-13 and R+; the guide resolves them."""
+    anime = _make_anime(ageRating=age_rating, ageRatingGuide=guide)
+    result = anime_from_kitsu(anime)
+    assert result["rating"] == expected
+
+
+def test_anime_from_kitsu_unrecognized_guide_falls_back_to_code():
+    anime = _make_anime(ageRating="R", ageRatingGuide="Nudity")
+    result = anime_from_kitsu(anime)
+    assert result["rating"] == "R - 17+ (violence & profanity)"
+
+
+def test_anime_from_kitsu_missing_guide_falls_back_to_code():
+    anime = _make_anime(ageRating="R", ageRatingGuide=None)
+    result = anime_from_kitsu(anime)
+    assert result["rating"] == "R - 17+ (violence & profanity)"
+
+
+def test_anime_from_kitsu_no_rating_at_all_is_unknown():
+    anime = _make_anime(ageRating=None, ageRatingGuide=None)
+    result = anime_from_kitsu(anime)
+    assert result["rating"] == "UNKNOWN"
+
+
 def test_anime_from_kitsu_next_release_sets_broadcast():
     anime = _make_anime(nextRelease="2024-04-05T09:30:00.000+09:00")
     result = anime_from_kitsu(anime)
@@ -204,9 +241,6 @@ def test_anime_from_kitsu_season_derivation():
 # =============================================================================
 # character_from_kitsu
 # =============================================================================
-
-
-import pytest
 
 
 def test_character_from_kitsu():

@@ -65,8 +65,7 @@ class QdrantCollectionManager:
                     # Concurrent instance created the collection between our existence
                     # check and create — validate compatibility and proceed.
                     logger.info(
-                        "Collection %s created concurrently, validating compatibility",
-                        self._collection_name,
+                        f"Collection {self._collection_name} created concurrently, validating compatibility"
                     )
                     await self._validate_compatibility()
                     return
@@ -75,7 +74,7 @@ class QdrantCollectionManager:
             if self._config.qdrant_enable_payload_indexing:
                 await self.setup_payload_indexes()
 
-            logger.info("Created collection %s", self._collection_name)
+            logger.info(f"Created collection {self._collection_name}")
             return
 
         await self._validate_compatibility()

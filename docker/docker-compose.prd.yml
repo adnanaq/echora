@@ -68,7 +68,9 @@ services:
       - QDRANT_COLLECTION_NAME=anime_database
       - QDRANT_DISTANCE_METRIC=cosine
 
-      - TEXT_EMBEDDING_PROVIDER=huggingface
+      # flagembedding is the only provider that emits BGE-M3 sparse (lexical)
+      # vectors; any other provider silently disables hybrid search.
+      - TEXT_EMBEDDING_PROVIDER=flagembedding
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
       - IMAGE_EMBEDDING_PROVIDER=openclip
       - IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
@@ -126,7 +128,7 @@ services:
       - ENVIRONMENT=production
       - ENRICHMENT_SERVICE_HOST=0.0.0.0
       - ENRICHMENT_SERVICE_PORT=8002
-      - ENRICHMENT_DEFAULT_FILE_PATH=/app/data/qdrant_storage/anime-offline-database.json
+      - ENRICHMENT_DEFAULT_FILE_PATH=/app/assets/seed_data/anime-offline-database.json
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
       - CACHE_ENABLED=true
       - REDIS_URL=redis://redis:6379/0

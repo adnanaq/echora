@@ -13,7 +13,6 @@ python_distribution(
     dependencies=[
         "//libs/enrichment/src/enrichment",
         # Transitively exclude type stubs (from both direct and transitive deps via vector_processing)
-        "!!stubs/crawl4ai:crawl4ai",
         "!!stubs/fastembed:fastembed",  # Transitive via vector_processing
         "!!stubs/imgutils:imgutils",
         "!!stubs/numpy:numpy",

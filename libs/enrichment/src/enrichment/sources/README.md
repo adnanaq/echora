@@ -12,22 +12,19 @@ that implements `BaseEnrichmentHelper`.
 sources/
 ├── base/                      # Shared infrastructure
 │   ├── base_helper.py         # BaseEnrichmentHelper ABC + normalize_enrichment_payload
-│   ├── crawl4ai_docker.py     # crawl4ai Docker REST transport (crawl_single_url / crawl_batch_urls)
-│   ├── crawler_config.py      # Shared browser/crawler configs, CrawlerRateLimiter
 │   ├── exceptions.py          # ServiceNotFoundError, ServiceBlockedError, …
 │   ├── utils.py               # sanitize_output_path, etc.
 │   └── framework/             # Template-method crawler framework
 │       ├── crawler.py         # BaseCrawler[T_Source, T_Canonical]
-│       ├── interfaces.py      # ITransport, IRepository
-│       ├── repository.py      # FileRepository (JSONL append) + NullRepository
-│       └── transport.py       # DockerTransport, RateLimitedTransport
+│       ├── interfaces.py      # IRepository
+│       └── repository.py      # FileRepository (JSONL append) + NullRepository
 │
-├── mal/                       # MyAnimeList (browser scraping via crawl4ai Docker)
+├── mal/                       # MyAnimeList (browser scraping via zendriver + lxml)
 ├── kitsu/                     # Kitsu (REST API via aiohttp)
 ├── anilist/                   # AniList (GraphQL API via aiohttp)
-├── anisearch/                 # AniSearch (browser scraping via crawl4ai Docker)
-├── anime_planet/              # Anime-Planet (browser scraping via crawl4ai Docker)
-├── anidb/                     # AniDB (XML API via aiohttp)
+├── anisearch/                 # AniSearch (browser scraping via zendriver + lxml)
+├── anime_planet/              # Anime-Planet (browser scraping via zendriver + lxml)
+├── anidb/                     # AniDB (XML API via aiohttp + zendriver for characters)
 └── animeschedule/             # AnimSchedule (REST API via aiohttp)
 ```
 
@@ -59,7 +56,7 @@ Template-method crawler for single-URL detail pages. Subclasses implement:
 - `map_to_canonical(source_model) -> T_Canonical`
 
 ```python
-crawler = AnimePlanetCharacterCrawler(DockerTransport(), NullRepository())
+crawler = AnimePlanetCharacterCrawler(NullRepository())
 result = await crawler.crawl(url)
 ```
 
@@ -75,36 +72,19 @@ repo = NullRepository()     # no-op (unit tests, callers that handle writes)
 repo.save(canonical_dict)
 ```
 
-### `crawl4ai_docker.py`
-
-Low-level transport for the crawl4ai Docker REST server. All browser-based
-sources use this instead of spawning `AsyncWebCrawler` in-process.
-
-```python
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url, crawl_batch_urls
-
-result = await crawl_single_url(url, browser_config, crawler_config)
-results = await crawl_batch_urls(urls, browser_config, crawler_config)
-```
-
-Key behaviours:
-- WAF soft-block recovery: pauses up to 600 s, probes every 60 s, retries blocked URLs
-- Transient error retry: up to 3 attempts for DNS failures, connection refused, page timeouts
-- Result alignment: returned list is always the same length as input `urls`, `None` for failures
-
 ---
 
 ## Source Packages
 
 ### MAL (`sources/mal/`)
 
-Browser scraping via crawl4ai Docker REST API.
+Browser scraping via zendriver (CDP) + lxml XPath.
 
 | Module | Purpose |
 |---|---|
 | `mal_helper.py` | `MalHelper` — entry point; orchestrates anime, episodes, characters |
-| `mal_anime_crawler.py` | `fetch_mal_anime(url)` |
-| `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` |
+| `mal_anime_crawler.py` | `fetch_mal_anime(url)` — zendriver + lxml XPath |
+| `mal_episode_crawler.py` | `fetch_mal_episodes(urls, output_path)` — zendriver + lxml XPath |
 | `mal_episode_count_crawler.py` | `fetch_mal_episode_count(url)` — resolves "Unknown" counts |
 | `mal_character_refs_crawler.py` | `fetch_mal_character_refs(url)` — list page → URL list |
 | `mal_character_crawler.py` | `fetch_mal_character(url)`, `fetch_mal_characters(urls, output_path)` |
@@ -114,7 +94,25 @@ Browser scraping via crawl4ai Docker REST API.
 
 **Expected `ids` key:** `mal_url` — full slug URL (e.g. `https://myanimelist.net/anime/21/One_Piece`)
 
-**CLI:**
+**CLI — anime crawler (direct):**
+```bash
+uv run python -m enrichment.sources.mal.mal_anime_crawler \
+    https://myanimelist.net/anime/21/One_Piece
+
+uv run python -m enrichment.sources.mal.mal_anime_crawler \
+    https://myanimelist.net/anime/21/One_Piece --output one_piece.json
+```
+
+**CLI — episode crawler (direct):**
+```bash
+uv run python -m enrichment.sources.mal.mal_episode_crawler \
+    https://myanimelist.net/anime/21/One_Piece/episode/1
+
+uv run python -m enrichment.sources.mal.mal_episode_crawler \
+    https://myanimelist.net/anime/21/One_Piece/episode/1 --output ep1.json
+```
+
+**CLI — helper (all data types):**
 ```bash
 uv run python -m enrichment.sources.mal.mal_helper anime https://myanimelist.net/anime/21/One_Piece
 uv run python -m enrichment.sources.mal.mal_helper episodes https://myanimelist.net/anime/21/One_Piece <count>
@@ -167,7 +165,7 @@ uv run python -m enrichment.sources.anilist.anilist_helper characters https://an
 
 ### AniSearch (`sources/anisearch/`)
 
-Browser scraping via crawl4ai Docker REST API using XPath extraction.
+Browser scraping via zendriver (CDP) + lxml XPath.
 
 | Module | Purpose |
 |---|---|
@@ -192,8 +190,7 @@ uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://
 
 ### Anime-Planet (`sources/anime_planet/`)
 
-Browser scraping via crawl4ai Docker REST API. Cloudflare-protected — uses
-WAF recovery logic in `crawl4ai_docker.py`.
+Browser scraping via zendriver (CDP) + lxml XPath. Cloudflare-protected — rate-limit recovery via passive probe loop.
 
 | Module | Purpose |
 |---|---|
@@ -221,7 +218,10 @@ XML API via aiohttp with strict rate limiting (2 req/s, 1 req burst).
 
 | Module | Purpose |
 |---|---|
-| `anidb_helper.py` | `AniDBHelper` — anime data via XML API |
+| `anidb_helper.py` | `AniDBHelper` — anime, episodes, and characters via XML API |
+| `anidb_character_crawler.py` | `fetch_anidb_characters(char_ids)` / `fetch_anidb_character(char_id)` — character web pages via zendriver + lxml XPath |
+| `anidb_mapper.py` | XML + page responses → canonical dicts |
+| `anidb_models.py` | Pydantic source models |
 
 **Expected `ids` key:** `anidb_id` — numeric AniDB ID
 
@@ -263,6 +263,4 @@ result = await helper.fetch_all(
 
 ## Legacy
 
-`libs/enrichment/src/enrichment/crawlers/` contains `anidb_character_crawler.py`
-— a standalone script that has not been migrated to the sources/ framework.
-All other crawlers that were in that directory have been migrated here.
+All crawlers have been migrated to the `sources/` framework. The `crawlers/` directory is no longer used.

@@ -110,7 +110,7 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
                 socket_timeout=settings.redis.redis_socket_timeout,
             )
             embedding_cache = EmbeddingCache(redis_client)
-            logger.info("Embedding cache enabled (Redis: %s)", settings.redis.redis_url)
+            logger.info(f"Embedding cache enabled (Redis: {settings.redis.redis_url})")
         else:
             logger.info("Embedding cache disabled (no REDIS_URL configured)")
 

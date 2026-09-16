@@ -83,7 +83,11 @@ services:
       - QDRANT_DISTANCE_METRIC=cosine
 
       # Embedding Configuration
-      - TEXT_EMBEDDING_PROVIDER=huggingface
+      # flagembedding is the only provider that emits BGE-M3 sparse (lexical)
+      # vectors alongside dense in one pass. Switching to huggingface /
+      # sentence-transformers / fastembed silently leaves text_sparse_vector
+      # empty, which drops hybrid search back to dense-only.
+      - TEXT_EMBEDDING_PROVIDER=flagembedding
       - TEXT_EMBEDDING_MODEL=BAAI/bge-m3
       - IMAGE_EMBEDDING_PROVIDER=openclip
       - IMAGE_EMBEDDING_MODEL=ViT-L-14/laion2b_s32b_b82k
@@ -107,9 +111,13 @@ services:
       - MAX_SEARCH_LIMIT=100
       - MAX_BATCH_SIZE=500
 
-      # Observability
-      - OTEL_ENABLED=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # Observability — OFF by default. The collector lives in
+      # docker-compose.obs.yml on a separate external network, so with this
+      # stack alone `otel-collector` does not resolve and every export fails
+      # with StatusCode.UNAVAILABLE. Opt in with docker-compose.obs-link.yml
+      # (see the header of that file); telemetry calls are no-ops when off.
+      - OTEL_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_ENABLE_TRACING=true
       - OTEL_ENABLE_METRICS=true
       - OTEL_ENABLE_LOGGING=true
@@ -126,8 +134,6 @@ services:
       qdrant:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      otel-collector:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8001"]
@@ -150,11 +156,12 @@ services:
       - ENVIRONMENT=development
       - ENRICHMENT_SERVICE_HOST=0.0.0.0
       - ENRICHMENT_SERVICE_PORT=8002
-      - ENRICHMENT_DEFAULT_FILE_PATH=/app/data/qdrant_storage/anime-offline-database.json
+      - ENRICHMENT_DEFAULT_FILE_PATH=/app/assets/seed_data/anime-offline-database.json
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
       # Observability
-      - OTEL_ENABLED=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # Observability — OFF by default; see the vector-service block above.
+      - OTEL_ENABLED=${OTEL_ENABLED:-false}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       - OTEL_ENABLE_TRACING=true
       - OTEL_ENABLE_METRICS=true
       - OTEL_ENABLE_LOGGING=true
@@ -169,48 +176,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      crawl4ai:
-        condition: service_started
-      otel-collector:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=localhost:8002"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
-
-  crawl4ai:
-    image: unclecode/crawl4ai:latest
-    container_name: echora-crawl4ai
-    shm_size: "2gb" # Chromium needs large /dev/shm; default 64MB causes "browser has been closed" crashes
-    # Skip supervisord (and its bundled Redis) — use our echora-redis instead.
-    # The server reads redis.uri from config.yml mounted below.
-    command:
-      [
-        "uvicorn",
-        "server:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "11235",
-        "--log-level",
-        "info",
-        "--timeout-keep-alive",
-        "300",
-      ]
-    ports:
-      - "11235:11235"
-    environment:
-      MAX_CONCURRENT_TASKS: "3" # 3 concurrent MAL tabs
-    volumes:
-      - ./crawl4ai-config.yml:/app/config.yml:ro
-    networks:
-      - echora-network
-    depends_on:
-      redis:
-        condition: service_healthy
     restart: unless-stopped
 
 networks:
@@ -225,13 +196,15 @@ volumes:
   redisinsight-data:
     driver: local
   # Model cache for embedding models (BGE-M3 + ViT-L-14, ~4 GB total).
-  # Stored under $HOME to avoid filling the root partition.
-  # Docker manages this as a named volume so lifecycle matches other volumes
-  # (inspect/rm via `docker volume`). In production replace driver_opts with
-  # a real volume on persistent storage.
+  # Plain named volume, matching docker-compose.prd.yml. Docker creates it on
+  # first `up` and it survives `docker compose down` (only `down -v` clears it).
+  #
+  # Do NOT reintroduce `driver_opts: {type: none, o: bind, device: ...}` here:
+  # Docker does not create the host directory, so a machine that has never run
+  # the stack fails at container start with
+  #   "failed to mount local volume: ... no such file or directory".
+  #
+  #   inspect:  docker volume inspect echora_model-cache
+  #   reset:    docker volume rm echora_model-cache   (forces a ~2.2 GB re-download)
   model-cache:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HOME}/.local/share/echora/model-cache

@@ -323,7 +323,7 @@ class TestExtractAniListStatistics:
             "rankings": [
                 {
                     "rank": 96,
-                    "type": "RATED",
+                    "context": "highest rated all time",
                     "format": "TV",
                     "year": None,
                     "season": None,
@@ -331,7 +331,7 @@ class TestExtractAniListStatistics:
                 },
                 {
                     "rank": 1,
-                    "type": "POPULAR",
+                    "context": "most popular fall 2024",
                     "format": "TV",
                     "year": 2024,
                     "season": "FALL",
@@ -351,7 +351,7 @@ class TestExtractAniListStatistics:
         # Check contextual ranks
         assert len(result["contextual_ranks"]) == 2
         assert result["contextual_ranks"][0]["rank"] == 96
-        assert result["contextual_ranks"][0]["type"] == "RATED"
+        assert result["contextual_ranks"][0]["context"] == "highest rated all time"
         assert result["contextual_ranks"][0]["all_time"] is True
         assert result["contextual_ranks"][1]["rank"] == 1
         assert result["contextual_ranks"][1]["season"] == "FALL"

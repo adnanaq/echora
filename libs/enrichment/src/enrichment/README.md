@@ -14,17 +14,16 @@ libs/enrichment/src/enrichment/
 │   ├── enrichment_pipeline.py   # EnrichmentPipeline — main entry point
 │   ├── api_fetcher.py           # ApiFetcher — parallel fan-out across all sources
 │   ├── id_extractor.py          # PlatformIDExtractor — URL → ids dict
-│   ├── assembly.py              # Merge programmatic + AI outputs → AnimeRecord
 │   └── config.py                # EnrichmentConfig (Pydantic BaseSettings)
 │
 ├── sources/            # Per-source fetch packages (see sources/README.md)
 │   ├── base/           # Shared transport, framework, configs
-│   ├── mal/            # MyAnimeList — browser scraping via crawl4ai Docker
+│   ├── mal/            # MyAnimeList — browser scraping via zendriver
 │   ├── kitsu/          # Kitsu — REST API
 │   ├── anilist/        # AniList — GraphQL API
-│   ├── anisearch/      # AniSearch — browser scraping via crawl4ai Docker
-│   ├── anime_planet/   # Anime-Planet — browser scraping via crawl4ai Docker
-│   ├── anidb/          # AniDB — XML API
+│   ├── anisearch/      # AniSearch — browser scraping via zendriver
+│   ├── anime_planet/   # Anime-Planet — browser scraping via zendriver
+│   ├── anidb/          # AniDB — XML API (characters via zendriver)
 │   └── animeschedule/  # AnimSchedule — REST API
 │
 ├── utils/
@@ -33,8 +32,6 @@ libs/enrichment/src/enrichment/
 │
 ├── similarity/
 │   └── ccip.py            # CCIP character image similarity (OpenCLIP fallback)
-│
-├── crawlers/           # Legacy — only anidb_character_crawler.py remains
 │
 └── ai_character_matcher.py  # AI-powered fuzzy character name matching (BGE-M3)
 ```
@@ -84,7 +81,7 @@ Returns a dict used by every source helper's `fetch_all(ids, ...)`.
 from enrichment.pipeline.id_extractor import PlatformIDExtractor
 
 ids = PlatformIDExtractor().extract(offline_data)
-# {"mal_url": "https://myanimelist.net/anime/21", "kitsu_url": "...", ...}
+# {"mal_url": "https://myanimelist.net/anime/21", "anidb_url": "https://anidb.net/anime/69", ...}
 ```
 
 ### `EnrichmentConfig`
@@ -133,50 +130,38 @@ uv run python -m enrichment.sources.anisearch.anisearch_episode_crawler https://
 # Anime-Planet
 uv run python -m enrichment.sources.anime_planet.anime_planet_helper anime https://www.anime-planet.com/anime/one-piece
 
+# AniDB
+uv run python -m enrichment.sources.anidb.anidb_helper anime https://anidb.net/anime/69 onepiece_anidb.json
+uv run python -m enrichment.sources.anidb.anidb_helper episodes https://anidb.net/anime/69 onepiece_anidb_episodes.json
+uv run python -m enrichment.sources.anidb.anidb_helper characters https://anidb.net/anime/69 onepiece_anidb_characters.json
+uv run python -m enrichment.sources.anidb.anidb_helper all https://anidb.net/anime/69 output_dir/
+
 # AnimSchedule
 uv run python -m enrichment.sources.animeschedule.animeschedule_helper "One Piece"
 ```
 
 ---
 
-## Transport Layer
+## Browser Automation
 
-### `crawl4ai_docker.py` (`sources/base/`)
-
-All browser-based sources (MAL, AniSearch, Anime-Planet) use the shared crawl4ai
-Docker REST transport instead of spawning `AsyncWebCrawler` in-process.
+All browser-based sources (MAL, AniSearch, Anime-Planet, AniDB) use `zendriver`
+(CDP-based Chrome automation) directly inside each crawler's `fetch_raw_data` method.
+No external Docker sidecar is required.
 
 ```python
-from enrichment.sources.base.crawl4ai_docker import crawl_single_url, crawl_batch_urls
+import zendriver as zd
 
-result  = await crawl_single_url(url, browser_config, crawler_config)
-results = await crawl_batch_urls(urls, browser_config, crawler_config)
-# Returns None (single) or list aligned to input (batch) on failure
+browser = await zd.start()
+page = await browser.get(url)
+await page.wait_for("css-selector")
+html = await page.get_content()
+await browser.stop()
 ```
 
 Key behaviours:
-- **WAF recovery**: on 403 (Cloudflare) or 405 (AWS WAF), pauses 60 s between probes,
-  retries for up to 10 minutes before giving up
-- **Transient retry**: up to 3 attempts for DNS failures, connection refused, page timeouts
-- **Result alignment**: batch result list is always the same length as input; `None` for failures
-
-Requires the crawl4ai Docker container to be running:
-
-```bash
-docker compose -f docker/docker-compose.dev.yml up -d crawl4ai
-```
-
-### `crawler_config.py` (`sources/base/`)
-
-Shared browser/crawler config factories used by all Docker-based crawlers:
-
-```python
-from enrichment.sources.base.crawler_config import (
-    get_docker_browser_config,
-    get_docker_crawler_config,
-    get_ap_rate_limiter,
-)
-```
+- **WAF/Cloudflare bypass**: CDP-controlled Chrome passes browser-integrity checks natively
+- **lxml XPath extraction**: raw HTML parsed with lxml for fast, typed field extraction
+- **Rate limiting**: per-source sequential delays to avoid IP bans
 
 ---
 
@@ -193,7 +178,7 @@ from `http_cache.result_cache` with per-source TTLs.
 | AniList | 24 h |
 | AniSearch | 24 h |
 | Anime-Planet | 24 h |
-| AniDB | 7 days |
+| AniDB | 24 h |
 | AnimSchedule | 24 h |
 
 ---

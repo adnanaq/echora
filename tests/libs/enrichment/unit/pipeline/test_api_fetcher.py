@@ -453,7 +453,6 @@ class TestFetchService:
             ids, {}, None, fetch_characters=True, fetch_episodes=True
         )
 
-
     @pytest.mark.asyncio
     async def test_passes_fetch_characters_false_to_helper(self):
         fetcher = ApiFetcher()

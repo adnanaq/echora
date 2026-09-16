@@ -186,6 +186,12 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     if start_dt or end_dt:
         aired_dates = AiredDates(aired_from=start_dt, aired_to=end_dt)
 
+    # ageRating alone collapses PG-13 into PG and R+ into R; the guide carries
+    # the distinction, so prefer it and fall back to the code.
+    rating = AnimeRating(attrs.ageRatingGuide or "")
+    if rating is AnimeRating.UNKNOWN:
+        rating = AnimeRating(attrs.ageRating or "")
+
     result = Anime(
         title=title,
         title_english=titles.en,
@@ -198,7 +204,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         year=year,
         season=season,
         nsfw=attrs.nsfw,
-        rating=AnimeRating(attrs.ageRating or ""),
+        rating=rating,
         genres=anime.genres,
         themes=anime.themes,
         synonyms=attrs.abbreviatedTitles,

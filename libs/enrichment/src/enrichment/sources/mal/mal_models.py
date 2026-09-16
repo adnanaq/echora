@@ -227,7 +227,7 @@ class EpisodeStaffRef(BaseModel):
 
     person_id: int  # MAL person ID
     name: str
-    role: str  # "Script", "Animation Director", etc.
+    role: str | None
 
 
 class MalEpisode(BaseModel):
