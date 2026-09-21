@@ -11,11 +11,22 @@ logger = logging.getLogger(__name__)
 __all__ = ["normalize_japanese_text", "normalize_score"]
 
 
-def normalize_score(raw: float | None) -> float | None:
-    """Normalize a 0–100 score to 0–10, rounded to 2 decimal places."""
+def normalize_score(raw: float | None, *, source_max: float = 100.0) -> float | None:
+    """Normalize a score onto the canonical 0–10 scale, to 2 decimal places.
+
+    Providers publish on different scales: AniList and Kitsu on 0–100,
+    AniSearch on 0–5 stars, the rest already on 0–10.
+
+    Args:
+        raw: The provider's score.
+        source_max: Top of the provider's own scale.
+
+    Returns:
+        The score on 0–10, or None when there is nothing to convert.
+    """
     if raw is None:
         return None
-    return min(10.0, max(0.0, round(raw / 10, 2)))
+    return min(10.0, max(0.0, round(raw * 10 / source_max, 2)))
 
 
 @cache

@@ -50,6 +50,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchRelatedEntry,
 )
 from enrichment.sources.base.external_links import external_link
+from enrichment.utils.text_utils import normalize_score
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
 _DETAILS_TYPE_RE = re.compile(r"^([^,]+)")
@@ -192,10 +193,12 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     statistics: dict[str, Statistics] = {}
     if anime.statistics:
         stats_data: dict[str, Any] = {}
-        for field in ("score", "rank"):
-            v = getattr(anime.statistics, field)
-            if v is not None:
-                stats_data[field] = v
+        # AniSearch rates out of 5 stars; every other provider lands on 0–10.
+        score = normalize_score(anime.statistics.score, source_max=5.0)
+        if score is not None:
+            stats_data["score"] = score
+        if anime.statistics.rank is not None:
+            stats_data["rank"] = anime.statistics.rank
         if stats_data:
             statistics["anisearch"] = Statistics(**stats_data)
 
