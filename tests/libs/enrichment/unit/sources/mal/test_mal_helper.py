@@ -69,6 +69,57 @@ async def test_fetch_anime_resolves_unknown_episode_count():
 
 
 @pytest.mark.asyncio
+async def test_fetch_anime_writes_resolved_episode_count_to_file():
+    """The written record must carry the resolved count, not the page's zero.
+
+    The record used to be persisted before the episode list page was consulted,
+    so the returned dict held 1155 while the file on disk kept 0 — and stage 1
+    reads the file, not the return value. Asserting only the return value is
+    what let that through.
+    """
+    mapped = {
+        "mal_id": 21,
+        "title": "One Piece",
+        "episode_count": 0,
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "mal_anime.jsonl"
+        with (
+            patch(
+                "enrichment.sources.mal.mal_helper.fetch_mal_anime",
+                new=AsyncMock(return_value=mapped),
+            ),
+            patch(
+                "enrichment.sources.mal.mal_helper.fetch_mal_episode_count",
+                new=AsyncMock(return_value=1155),
+            ),
+        ):
+            data = await MalHelper()._fetch_anime(_ANIME_URL, output_path=str(out))
+
+        written = json.loads(out.read_text().splitlines()[0])
+
+    assert data["episode_count"] == 1155
+    assert written["episode_count"] == 1155
+
+
+@pytest.mark.asyncio
+async def test_fetch_anime_writes_one_line_per_record():
+    """Persisting happens once here, not also inside the crawler."""
+    mapped = {"mal_id": 21, "title": "One Piece", "episode_count": 12}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "mal_anime.jsonl"
+        with patch(
+            "enrichment.sources.mal.mal_helper.fetch_mal_anime",
+            new=AsyncMock(return_value=mapped),
+        ):
+            await MalHelper()._fetch_anime(_ANIME_URL, output_path=str(out))
+
+        assert len(out.read_text().splitlines()) == 1
+
+
+@pytest.mark.asyncio
 async def test_fetch_anime_skips_episode_count_resolution_when_known():
     """_fetch_anime does not call fetch_mal_episode_count when episode_count is already set."""
     mapped = {
@@ -326,6 +377,52 @@ async def test_fetch_all_standardized(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_fetch_all_accepts_url_without_title_segment():
+    """The seed supplies bare urls — 29,863 of 29,864 of them.
+
+    These used to be rejected outright, so MAL was skipped for every anime but
+    the one entry that had been edited by hand.
+    """
+    helper = MalHelper()
+    helper._fetch_anime = AsyncMock(
+        return_value={"mal_id": 21, "episode_count": 0, "title": "One Piece"}
+    )
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(return_value=[])
+
+    result = await helper.fetch_all({"mal_url": "https://myanimelist.net/anime/21"}, {})
+
+    assert result is not None
+    assert result["anime"]["title"] == "One Piece"
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_uses_canonical_url_for_sub_pages():
+    """Episode and character pages hang off the full address.
+
+    Glued onto a bare url, "/episode" is read by MAL as the title segment, so
+    the sub-page fetches must use the address the anime page reported.
+    """
+    canonical = "https://myanimelist.net/anime/21/One_Piece"
+    helper = MalHelper()
+    helper._fetch_anime = AsyncMock(
+        return_value={
+            "mal_id": 21,
+            "episode_count": 2,
+            "title": "One Piece",
+            "sources": [canonical],
+        }
+    )
+    helper._fetch_episodes = AsyncMock(return_value=[])
+    helper._fetch_characters = AsyncMock(return_value=[])
+
+    await helper.fetch_all({"mal_url": "https://myanimelist.net/anime/21"}, {})
+
+    helper._fetch_episodes.assert_awaited_once_with(canonical, 2, output_path=None)
+    helper._fetch_characters.assert_awaited_once_with(canonical, output_path=None)
+
+
+@pytest.mark.asyncio
 async def test_fetch_all_passes_episode_count_from_anime_page():
     """fetch_all passes episode_count from the anime page to _fetch_episodes."""
     ids = {"mal_url": _ANIME_URL}
@@ -479,10 +576,10 @@ async def test_fetch_all_skips_both_when_both_false():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_returns_none_on_slugless_url():
-    """fetch_all returns None when mal_url has no slug (numeric-only URL)."""
+async def test_fetch_all_returns_none_on_non_mal_url():
+    """A url that is not a MAL anime page is rejected before any fetch."""
     result = await MalHelper().fetch_all(
-        {"mal_url": "https://myanimelist.net/anime/21"}, {}
+        {"mal_url": "https://myanimelist.net/manga/13"}, {}
     )
     assert result is None
 

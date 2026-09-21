@@ -16,6 +16,7 @@ from enrichment.sources.base.base_helper import (
     BaseEnrichmentHelper,
     normalize_enrichment_payload,
 )
+from enrichment.sources.base.framework.repository import FileRepository
 from enrichment.sources.mal.mal_anime_crawler import fetch_mal_anime
 from enrichment.sources.mal.mal_base import normalize_mal_anime_url
 from enrichment.sources.mal.mal_character_crawler import (
@@ -63,13 +64,9 @@ class MalHelper(BaseEnrichmentHelper):
             return None
 
         try:
-            _, has_slug = normalize_mal_anime_url(url)
+            normalize_mal_anime_url(url)
         except ValueError:
             logger.warning(f"Invalid MAL URL: {url}")
-            return None
-
-        if not has_slug:
-            logger.warning(f"MAL URL must include slug: {url}")
             return None
 
         anime_output_path = (
@@ -89,13 +86,18 @@ class MalHelper(BaseEnrichmentHelper):
 
         logger.info(f"MAL anime fetched: {anime_info.get('title', url)}")
 
+        # The episode and character pages hang off the full address, title
+        # segment included. The anime page reports it; the seed url rarely has it.
+        sources = anime_info.get("sources") or []
+        page_url = sources[0] if sources else url
+
         episode_count = int(anime_info.get("episode_count") or 0)
 
         episodes_data: list[dict[str, Any]] = []
         if fetch_episodes and episode_count > 0:
             try:
                 episodes_data = await self._fetch_episodes(
-                    url, episode_count, output_path=episodes_output_path
+                    page_url, episode_count, output_path=episodes_output_path
                 )
             except Exception as e:
                 logger.warning(
@@ -106,7 +108,7 @@ class MalHelper(BaseEnrichmentHelper):
         if fetch_characters:
             try:
                 characters_data = await self._fetch_characters(
-                    url, output_path=characters_output_path
+                    page_url, output_path=characters_output_path
                 )
             except Exception as e:
                 logger.warning(
@@ -129,18 +131,29 @@ class MalHelper(BaseEnrichmentHelper):
     ) -> dict[str, Any] | None:
         """Fetch anime detail from MAL.
 
+        MAL renders "Episodes: Unknown" for a long-running show with no planned
+        total, so the count is filled in from the episode list page. That has to
+        happen before the record is written, not after: the crawler persists
+        what it was given, and stage 1 reads the file rather than this return
+        value.
+
         Args:
-            url: Full MAL anime slug URL.
+            url: MAL anime URL, with or without the title segment.
             output_path: If provided, write result as a JSONL line to this file.
 
         Returns:
             Canonical anime dict, or None on failure.
         """
-        anime = await fetch_mal_anime(url, output_path=output_path)
+        anime = await fetch_mal_anime(url)
         if anime is None:
             return None
         if not anime.get("episode_count"):
-            anime["episode_count"] = await fetch_mal_episode_count(url)
+            sources = anime.get("sources") or []
+            anime["episode_count"] = await fetch_mal_episode_count(
+                sources[0] if sources else url
+            )
+        if output_path:
+            FileRepository(output_path).save(anime)
         return anime
 
     async def _fetch_character_urls(self, anime_url: str) -> list[str]:
