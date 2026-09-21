@@ -265,6 +265,107 @@ def test_anime_from_anidb_ann_resource_mapped() -> None:
     assert "149" in result["external_sources"]["anime_news_network"]
 
 
+def test_anime_from_anidb_type_45_is_funimation_not_hulu() -> None:
+    """Type 45 is Funimation.
+
+    It was mapped to Hulu, which turned the real identifier ``one-piece/`` into
+    a fabricated ``hulu.com/series/one-piece/``. AniDB's own page for aid 69
+    renders this identifier as ``funimation.com/shows/one-piece/``.
+    """
+    result = anime_from_anidb(
+        _anime(
+            resources=[AniDBExternalResource(type="45", identifiers=["one-piece/"])]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert "hulu" not in result["external_sources"]
+    assert (
+        result["external_sources"]["funimation"]
+        == "https://www.funimation.com/shows/one-piece/"
+    )
+
+
+def test_anime_from_anidb_allcinema_and_anison_resources_mapped() -> None:
+    """Types 9 and 10 were absent from the map, so both were dropped silently."""
+    result = anime_from_anidb(
+        _anime(
+            resources=[
+                AniDBExternalResource(type="9", identifiers=["162790"]),
+                AniDBExternalResource(type="10", identifiers=["3270"]),
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert (
+        result["external_sources"]["allcinema"]
+        == "https://www.allcinema.net/cinema/162790"
+    )
+    assert (
+        result["external_sources"]["anison"]
+        == "http://anison.info/data/program/3270.html"
+    )
+
+
+def test_anime_from_anidb_syoboi_url_has_time_suffix() -> None:
+    """Syoboi links need the /time suffix and https, as AniDB itself renders them."""
+    result = anime_from_anidb(
+        _anime(resources=[AniDBExternalResource(type="8", identifiers=["350"])]),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"]["syoboi"] == "https://cal.syoboi.jp/tid/350/time"
+
+
+def test_anime_from_anidb_vndb_joins_its_two_identifiers() -> None:
+    """VNDB splits the entry across two identifiers: the number and the letter.
+
+    ["7721", "v"] means https://vndb.org/v7721. Treated as a single-identifier
+    resource it looks ambiguous and would be dropped entirely.
+    """
+    result = anime_from_anidb(
+        _anime(resources=[AniDBExternalResource(type="14", identifiers=["7721", "v"])]),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"]["vndb"] == "https://vndb.org/v7721"
+
+
+def test_anime_from_anidb_url_bearing_resources_pass_through() -> None:
+    """Types 5, 34 and 35 carry a full url rather than an identifier."""
+    result = anime_from_anidb(
+        _anime(
+            resources=[
+                AniDBExternalResource(type="5", urls=["https://gkids.com/"]),
+                AniDBExternalResource(type="34", urls=["https://wetv.vip/en/play/x"]),
+                AniDBExternalResource(type="35", urls=["http://blog.naver.com/fh"]),
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    sources = result["external_sources"]
+    assert sources["official_website_en"] == "https://gkids.com/"
+    assert sources["official_stream"] == "https://wetv.vip/en/play/x"
+    assert sources["official_blog"] == "http://blog.naver.com/fh"
+
+
+def test_anime_from_anidb_unverifiable_resources_emit_nothing() -> None:
+    """Types 15 and 31 are deliberately unmapped.
+
+    Marumegane (15) is a parked domain, and the Media Arts Database (31) moved
+    hosts, so its stored path no longer resolves to a record. Emitting a guessed
+    url is worse than emitting none - that is how type 45 produced Hulu links
+    for Funimation identifiers.
+    """
+    result = anime_from_anidb(
+        _anime(
+            resources=[
+                AniDBExternalResource(type="15", identifiers=["1996/akaboku"]),
+                AniDBExternalResource(type="31", identifiers=["12519"]),
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert result["external_sources"] == {}
+
+
 def test_anime_from_anidb_ambiguous_resource_is_skipped() -> None:
     """AniDB lists every platform entry for a work; none is marked as the right one.
 

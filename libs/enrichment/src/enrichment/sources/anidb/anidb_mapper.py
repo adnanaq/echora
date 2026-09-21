@@ -47,26 +47,48 @@ logger = logging.getLogger(__name__)
 
 # External resource type → (canonical key, url template).
 # {} is replaced with the resource's single identifier, or its first url.
-# Types not listed are silently skipped.
+# Types not listed are silently skipped; see docs/anidb_type_mappings.md for
+# the full type list, including the ones deliberately left out here.
 _RESOURCE_MAP: dict[str, tuple[str, str]] = {
     "1": (
         "anime_news_network",
         "https://www.animenewsnetwork.com/encyclopedia/anime.php?id={}",
     ),
     "2": ("myanimelist", "https://myanimelist.net/anime/{}"),
-    "4": ("official_website", "{}"),  # type 4 supplies a full url, not an identifier
+    # Types 4, 5, 34 and 35 supply a full url, not an identifier. Type 4 is the
+    # Japanese official site and shares this key with the anime-level <url>, so
+    # the same address collapses into one entry instead of two.
+    "4": ("official_website", "{}"),
+    "5": ("official_website_en", "{}"),
     "6": ("wikipedia_en", "https://en.wikipedia.org/wiki/{}"),
     "7": ("wikipedia_jp", "https://ja.wikipedia.org/wiki/{}"),
-    "8": ("syoboi", "http://cal.syoboi.jp/tid/{}"),
+    "8": ("syoboi", "https://cal.syoboi.jp/tid/{}/time"),
+    "9": ("allcinema", "https://www.allcinema.net/cinema/{}"),
+    "10": ("anison", "http://anison.info/data/program/{}.html"),
+    "11": ("lain", "http://lain.gr.jp/{}"),
+    # Type 14 (VNDB) is handled ahead of this table: two identifiers.
+    "16": ("animemorial", "http://www.animemorial.net/ja/{}-a"),
+    "17": ("tv_animation_museum", "http://home-aki.la.coocan.jp/anime-list/{}.htm"),
+    "19": ("wikipedia_ko", "https://ko.wikipedia.org/wiki/{}"),
+    "20": ("wikipedia_zh", "https://zh.wikipedia.org/wiki/{}"),
+    "22": ("facebook", "https://www.facebook.com/{}"),
+    "23": ("twitter", "https://twitter.com/{}"),
     "26": ("youtube", "https://www.youtube.com/{}"),
-    "32": ("amazon", "https://www.amazon.com/dp/{}"),
-    "41": ("netflix", "https://www.netflix.com/title/{}"),
-    "43": ("imdb", "https://www.imdb.com/title/{}"),
-    "45": ("hulu", "https://www.hulu.com/series/{}"),
     "28": ("crunchyroll", "https://www.crunchyroll.com/series/{}"),
+    "32": ("amazon", "https://www.amazon.com/dp/{}"),
+    "34": ("official_stream", "{}"),
+    "35": ("official_blog", "{}"),
     "38": ("bangumi", "https://bgm.tv/subject/{}"),
     "39": ("douban", "https://movie.douban.com/subject/{}"),
+    "41": ("netflix", "https://www.netflix.com/title/{}"),
+    "42": ("hidive", "https://www.hidive.com/{}"),
+    "43": ("imdb", "https://www.imdb.com/title/{}"),
+    # Type 44 (TMDB) and type 33 (Baidu Baike) are handled ahead of this table:
+    # both need more than a single-identifier substitution.
+    "45": ("funimation", "https://www.funimation.com/shows/{}"),
+    "46": ("qq_video", "https://v.qq.com/detail/{}"),
     "47": ("bilibili", "https://www.bilibili.com/{}"),
+    "48": ("prime_video", "https://www.primevideo.com/detail/{}"),
 }
 
 
@@ -130,6 +152,13 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
             if resource.identifiers:
                 slug = resource.identifiers[0].split("?")[0]
                 external_sources["baidu_baike"] = f"https://baike.baidu.com/item/{slug}"
+            continue
+        if resource.type == "14":
+            # VNDB supplies the numeric id and the entry letter separately,
+            # e.g. ["7721", "v"] for https://vndb.org/v7721.
+            if len(resource.identifiers) >= 2:
+                vn_id, vn_prefix = resource.identifiers[0], resource.identifiers[1]
+                external_sources["vndb"] = f"https://vndb.org/{vn_prefix}{vn_id}"
             continue
         if resource.type == "44":
             # TMDB has two identifiers: numeric id + media type ("tv" or "movie")
