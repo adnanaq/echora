@@ -326,6 +326,75 @@ Classify each value once, in this order; it lands in exactly one field.
 
 Two things make this cheap. The authorities already exist — nothing has to be invented or hand-maintained beyond MAL's published lists. And the pipeline already does it for one provider: `anilist_mapper.py:165-174` routes AniList tags by their category today. The change is applying that classification to **every** provider's values rather than trusting the field they arrived in.
 
+### The four steps
+
+1. **Fold case and spacing** so `Shounen` and `shounen` are one value. Some providers lowercase everything; without this the same word survives twice.
+2. **Look the value up** in the lists.
+3. **Promote it as far as it goes**, stopping at the first match: `demographics > genres > themes > tags`.
+4. **Store the list's spelling**, not the provider's.
+
+Step 4 matters as much as the others. Without it the merge produces `Shounen` *and* `shounen` in `demographics`, and `Action` *and* `action` in `genres` — the classification is right but the duplication survives. Adding it takes One Piece from 225 values to 195.
+
+### The precedence order, and why
+
+The hierarchy compares **lists**, never where a provider filed the value. Provider placement is ignored entirely.
+
+| Rank | Field | Why it sits there |
+| :--- | :---- | :---------------- |
+| 1 | `demographics` | Smallest and most specific list — 5 words. A demographic should never be allowed to rest as a genre |
+| 2 | `genres` | Highest confidence: MAL and AniList agree 17/17 on what a genre is |
+| 3 | `themes` | Larger and fuzzier — MAL's 52 plus AniList's labelled ones — so it yields to the two above |
+| 4 | `tags` | The catch-all |
+
+Worked examples, with the provider disagreement deliberately disregarded:
+
+| Value | Providers filed it as | On which list | Resolves to |
+| :---- | :-------------------- | :------------ | :---------- |
+| Shounen | demographic (AniList, MAL), genre (AnimeSchedule), theme (Kitsu) | MAL demographic | demographics |
+| Super Power | genre (Kitsu), theme (AniList) | MAL theme | themes |
+| Action | genre ×5, theme (Kitsu) | MAL genre | genres |
+
+### How often two lists actually disagree
+
+Measured: MAL's three lists have **zero overlap with each other**, and no AniList theme collides with a MAL genre or demographic. So genre-versus-theme and genre-versus-demographic conflicts do not occur.
+
+One conflict exists — 9 values MAL calls themes that AniList files as `Cast` or `Setting`: `crossdressing`, `delinquents`, `detective`, `historical`, `samurai`, `school`, `space`, `urban fantasy`, `villainess`. AniList's `Cast`/`Setting` maps to `tags` here, so the order promotes them to `themes`, which is the better reading.
+
+The precedence therefore does real work in exactly one place today, but it is deterministic if either site later introduces a value that lands on two lists.
+
+### Nothing is lost
+
+Verified over all seven providers for One Piece:
+
+```
+272 raw entries  ->  195 distinct after folding  ->  195 placed  ->  0 lost
+   demographics   1
+   genres         6
+   themes        45
+   tags         143
+```
+
+The 77 that vanish between 272 and 195 are the same word arriving from several providers — collapsed, not dropped.
+
+### Who actually decides
+
+The rule borrows two sites' editorial judgement rather than exercising its own:
+
+| Decider | Values | Effect |
+| :------ | -----: | :----- |
+| MAL's published lists | 14 | genres and demographics |
+| AniList's own labels | 38 | themes |
+| The default | 11 | values nobody classified that were not already tags |
+| Nothing | 132 | already tags, stay tags |
+
+So the default only *moves* 11 values. The other 132 are mostly AniDB's tags, which never claimed to be anything else. The 11 that move are `fighting-shounen` and `ganbatte` (AniSearch filed as genres), `friendship` (Kitsu had it in all three), and eight Kitsu themes that were already tags as well.
+
+Three consequences worth stating plainly:
+
+- **The lists are a snapshot.** If MAL adds a genre, it lands in `tags` until someone refreshes the list. That has to be a deliberate occasional chore, not silent drift.
+- **Four providers get no say.** AniSearch, Anime-Planet, AnimeSchedule and AniDB carry no category information, so nothing unique to them can ever be promoted above `tags`. AniDB's 122 tags are the bulk of the data and stay tags by construction.
+- **AniDB's tags contain junk.** `maintenance tags` is in there — a note about the database, not the anime. A separate data-quality problem this rule does not address.
+
 It also fixes Kitsu without special-casing. Kitsu's flat `categories` list has no genre/theme distinction, so it emits the same value into both — on One Piece, `action`, `adventure`, `comedy`, `fantasy`, `friendship` and `super power` all appear as both `kitsu.genres` and `kitsu.themes`. Classifying rather than trusting removes the duplication.
 
 ### Effect on the One Piece conflicts
