@@ -108,14 +108,21 @@ class VectorNormalizer:
 
         Returns:
             Normalized vector payload accepted by qdrant-client.
+
+        Raises:
+            ValidationError: If the name is not in the collection schema, the
+                payload shape is wrong, or a dense vector has the wrong size.
         """
         if vector_name in self._sparse_vector_names:
             sparse_data = self.to_sparse_vector_data(vector_data, vector_name)
             return SparseVector(indices=sparse_data.indices, values=sparse_data.values)
+        if vector_name not in self._vector_names:
+            raise ValidationError(f"Invalid vector name: {vector_name}")
         if is_sparse_payload(vector_data):
             raise ValidationError(
                 f"Vector {vector_name} received sparse payload but is not configured as sparse"
             )
+        self._validate_dense_dimension(vector_name, vector_data)
         return cast(list[float] | list[list[float]], vector_data)
 
     def validate_payload_update(self, payload: dict[str, Any]) -> None:
@@ -131,3 +138,30 @@ class VectorNormalizer:
             raise ValidationError("Payload must be a dictionary")
         if not payload:
             raise ValidationError("Payload must not be empty")
+
+    def _validate_dense_dimension(self, vector_name: str, vector_data: Any) -> None:
+        """Check a dense or multivector payload against the configured size.
+
+        Args:
+            vector_name: Named vector field.
+            vector_data: Dense list, or list of dense lists for a multivector.
+
+        Raises:
+            ValidationError: If the payload is not a list, or any row has a
+                size other than the configured dimension.
+        """
+        if not isinstance(vector_data, list):
+            raise ValidationError(f"Vector {vector_name} must be a list of floats")
+
+        expected = self._vector_names[vector_name]
+        rows = (
+            vector_data if vector_name in self._multivector_vectors else [vector_data]
+        )
+        for row in rows:
+            if not isinstance(row, list):
+                raise ValidationError(f"Vector {vector_name} must be a list of floats")
+            if len(row) != expected:
+                raise ValidationError(
+                    f"Vector {vector_name} dimension mismatch: "
+                    f"expected {expected}, got {len(row)}"
+                )
