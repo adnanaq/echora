@@ -139,7 +139,7 @@ Status: **settled** — decided and measured · **proposed** — measured, await
 | `themes` | Union, then classified: MAL's 52 themes plus AniList's `Theme-*` tags. Everything left over goes to `tags` | proposed |
 | `demographics` | Union, then classified against the agreed five (Josei, Kids, Seinen, Shoujo, Shounen). Reclaimed from other providers' `genres` — AnimeSchedule files `Shounen` there | proposed |
 | `related_source_material` | Union keyed by relation, but the keys disagree (`ADAPTATION` vs `OTHER`) — needs the same normalisation stage 3 applies via `_pick_relation` | **open** |
-| `statistics` | Provider-keyed dict, plain merge. Apply `normalize_score` — AniSearch reports on a /5 scale (`4.18`), everyone else /10. Metric sets differ per provider and that is fine | mechanical |
+| `statistics` | Provider-keyed dict, plain merge — nothing is arbitrated, since no metric is comparable across platforms. Scale conversion is **not** the merger's job: only a mapper knows its own provider's scale, so `normalize_score` is applied there. AniSearch was the one provider still on its raw scale and is now fixed at the mapper | settled |
 | `aired_dates`, `broadcast` | **Sub-field merge, never whole-object.** Providers partition these: mal/anisearch carry `day`/`time`/`timezone`, anilist/kitsu carry `next_episode_at`, animeschedule carries `jp_time`/`sub_time`/`dub_time`/`premiere_*` | mechanical |
 | `sources` | Union of provider URLs. AnimeSchedule alone supplies six cross-provider links, which makes it a useful secondary identity spine | mechanical |
 | `streaming_sources` | Union, deduped by platform + normalised URL | mechanical |
@@ -185,7 +185,9 @@ Conclusion: worth wiring, but only with a model injected, and as the **last** ti
 
 ## Adjacent Defects Found
 
-**Stage 4 is dropping data that is already shaped correctly.** Every provider emits `statistics` as `{"<provider>": {...}}` — merging is `dict.update()` seven times. Yet `stage4_statistics.json` is `{"statistics": {}}`. Same obsolete-shape defect as stage 1. Separately, `normalize_score` exists in `text_utils.py` and is not applied, so anisearch's `4.18` (a /5 scale) is merged alongside /10 scores.
+**Stage 4 is dropping data that is already shaped correctly.** Every provider emits `statistics` as `{"<provider>": {...}}` — merging is `dict.update()` seven times. Yet `stage4_statistics.json` is `{"statistics": {}}`. Same obsolete-shape defect as stage 1. Separately, `normalize_score` existed in `text_utils.py` and was not applied, so anisearch's `4.18` (a /5 scale) was merged alongside /10 scores.
+
+> Fixed. The AniSearch page states the scale itself — `Calculated Value 4.18 = 84%` against a five-star widget — so the conversion is applied in `anisearch_mapper.py`, where the provider's scale is known, and `normalize_score` now takes the source scale rather than assuming /100. One Piece: `4.18` → `8.36`, against peers at 8.34–9.07. The crawler still records the page's raw `4.18`, which is what the page says.
 
 **`external_sources` keys are unnormalised.** 33 keys across providers resolve to 31 URLs across 22 hosts — roughly 18 real entities:
 
