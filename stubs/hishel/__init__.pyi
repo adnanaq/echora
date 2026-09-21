@@ -437,13 +437,13 @@ class BaseFilter[T]:
         """Return True if filter needs response/request body to make decision."""
         ...
 
-    def apply(self, item: T, _body: bytes | None) -> bool:
+    def apply(self, item: T, body: bytes | None) -> bool:
         """
         Determine if item should be cached.
 
         Parameters:
             item: Request or Response object to filter.
-            _body: Request/response body bytes (None if needs_body() returns False).
+            body: Request/response body bytes (None if needs_body() returns False).
 
         Returns:
             True to allow caching, False to prevent caching.
