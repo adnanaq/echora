@@ -213,6 +213,7 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
         type=anime_type,
         year=year,
         season=season,
+        month=anime.month,
         episode_count=episode_count,
         duration=duration,
         source_material=source_material,
