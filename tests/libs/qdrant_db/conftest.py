@@ -6,18 +6,11 @@ QdrantClient is a database client - it works with raw vectors/points, not proces
 
 import pytest
 import pytest_asyncio
-from common.config.settings import get_settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 
-
-@pytest.fixture(scope="session")
-def settings():
-    """Get test settings with test collection name."""
-    settings = get_settings()
-    # Override to use test collection for libs tests
-    settings.qdrant.qdrant_collection_name = "anime_database_test"
-    return settings
+# `settings` comes from the root conftest, which names the test collection per
+# process so concurrent test files do not delete each other's collection.
 
 
 @pytest_asyncio.fixture(scope="session")
