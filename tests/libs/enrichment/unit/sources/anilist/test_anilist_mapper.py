@@ -386,7 +386,13 @@ def test_anime_external_sources_info() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert result["external_sources"]["official site"] == "https://one-piece.com"
+    assert result["external_sources"] == [
+        {
+            "platform": "official_site",
+            "source": "https://one-piece.com",
+            "label": "Official Site",
+        }
+    ]
 
 
 def test_anime_external_sources_social() -> None:
@@ -401,7 +407,7 @@ def test_anime_external_sources_social() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert "twitter" in result["external_sources"]
+    assert [e["platform"] for e in result["external_sources"]] == ["twitter"]
 
 
 def test_anime_external_links_skips_missing_url_or_site() -> None:
@@ -412,7 +418,7 @@ def test_anime_external_links_skips_missing_url_or_site() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert result.get("external_sources", {}) == {}
+    assert result["external_sources"] == []
 
 
 # =============================================================================

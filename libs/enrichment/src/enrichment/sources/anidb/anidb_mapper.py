@@ -23,6 +23,7 @@ from common.models.anime import (
     Character,
     CharacterRole,
     Episode,
+    ExternalLink,
     Ography,
     RelatedAnime,
     Statistics,
@@ -40,6 +41,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBCharacterPage,
     AniDBEpisode,
 )
+from enrichment.sources.base.external_links import external_link
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
 
@@ -89,6 +91,14 @@ _RESOURCE_MAP: dict[str, tuple[str, str]] = {
     "46": ("qq_video", "https://v.qq.com/detail/{}"),
     "47": ("bilibili", "https://www.bilibili.com/{}"),
     "48": ("prime_video", "https://www.primevideo.com/detail/{}"),
+}
+
+
+# Types whose language the host cannot reveal: both official sites share the
+# work's own domain.
+_RESOURCE_LANGUAGE: dict[str, str] = {
+    "4": "Japanese",
+    "5": "English",
 }
 
 
@@ -143,41 +153,46 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
     titles: dict[str, str] = dict(anime.title_others)
 
     # External sources from <resources>
-    external_sources: dict[str, str] = {}
+    external_sources: list[ExternalLink] = []
+
+    def _add(url: str, language: str | None = None) -> None:
+        link = external_link(url, language=language)
+        if link:
+            external_sources.append(link)
+
     if anime.url:
-        external_sources["official_website"] = anime.url
+        _add(anime.url, language=_RESOURCE_LANGUAGE.get("4"))
     for resource in anime.resources:
         if resource.type == "33":
             # Baidu Baike identifier may have ?fromModule=... query string — strip it
             if resource.identifiers:
                 slug = resource.identifiers[0].split("?")[0]
-                external_sources["baidu_baike"] = f"https://baike.baidu.com/item/{slug}"
+                _add(f"https://baike.baidu.com/item/{slug}")
             continue
         if resource.type == "14":
             # VNDB supplies the numeric id and the entry letter separately,
             # e.g. ["7721", "v"] for https://vndb.org/v7721.
             if len(resource.identifiers) >= 2:
                 vn_id, vn_prefix = resource.identifiers[0], resource.identifiers[1]
-                external_sources["vndb"] = f"https://vndb.org/{vn_prefix}{vn_id}"
+                _add(f"https://vndb.org/{vn_prefix}{vn_id}")
             continue
         if resource.type == "44":
             # TMDB has two identifiers: numeric id + media type ("tv" or "movie")
             if len(resource.identifiers) >= 2:
                 tmdb_id, tmdb_type = resource.identifiers[0], resource.identifiers[1]
-                external_sources["themoviedb"] = (
-                    f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}"
-                )
+                _add(f"https://www.themoviedb.org/{tmdb_type}/{tmdb_id}")
             continue
         mapping = _RESOURCE_MAP.get(resource.type)
         if mapping is None:
             continue
         key, template = mapping
+        language = _RESOURCE_LANGUAGE.get(resource.type)
         if resource.urls:
             # Several urls are all this work's own official pages, so the
             # first is incomplete rather than wrong.
-            external_sources[key] = template.format(resource.urls[0])
+            _add(template.format(resource.urls[0]), language)
         elif len(resource.identifiers) == 1:
-            external_sources[key] = template.format(resource.identifiers[0])
+            _add(template.format(resource.identifiers[0]), language)
         elif resource.identifiers:
             # Each identifier is a separate entry on that platform, and nothing
             # marks which one is this work: taking the first linked One Piece to

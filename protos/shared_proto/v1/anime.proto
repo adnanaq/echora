@@ -205,6 +205,13 @@ message RelatedSourceMaterialList {
   repeated RelatedSourceMaterial items = 1;
 }
 
+message ExternalLink {
+  string platform = 1;
+  string source = 2;
+  optional string label = 3;
+  optional string language = 4;
+}
+
 message StreamingEntry {
   string platform = 1;
   string source = 2;
@@ -424,7 +431,9 @@ message Anime {
   AiredDates aired_dates = 32;
   // Unified broadcast message (weekly slot + streaming times + premiere dates)
   Broadcast broadcast = 33;
-  map<string, string> external_sources = 34;
+  // was map<string, string> — a mapping cannot hold two links for one
+  // platform, and the provider's own label had nowhere to go
+  repeated ExternalLink external_sources = 34;
   AnimeImages images = 35;
   ScoreCalculations score = 36;
   StaffData staff_data = 37;

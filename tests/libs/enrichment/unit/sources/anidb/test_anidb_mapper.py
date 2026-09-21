@@ -31,6 +31,11 @@ def _anime(**kwargs) -> AniDBAnime:
     return AniDBAnime(id=69, **kwargs)
 
 
+def _links(result) -> dict[str, str]:
+    """external_sources as platform -> source, for single-link assertions."""
+    return {e["platform"]: e["source"] for e in result["external_sources"]}
+
+
 # =============================================================================
 # anime_from_anidb — scalars
 # =============================================================================
@@ -240,10 +245,7 @@ def test_anime_from_anidb_url_field_to_official_website() -> None:
     result = anime_from_anidb(
         _anime(url="http://onepiece.toei-anim.co.jp"), anidb_url=_ANIDB_URL
     )
-    assert (
-        result["external_sources"]["official_website"]
-        == "http://onepiece.toei-anim.co.jp"
-    )
+    assert _links(result)["official_site"] == "http://onepiece.toei-anim.co.jp"
 
 
 def test_anime_from_anidb_mal_resource_mapped() -> None:
@@ -251,9 +253,7 @@ def test_anime_from_anidb_mal_resource_mapped() -> None:
         _anime(resources=[AniDBExternalResource(type="2", identifiers=["21"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert (
-        result["external_sources"]["myanimelist"] == "https://myanimelist.net/anime/21"
-    )
+    assert _links(result)["myanimelist"] == "https://myanimelist.net/anime/21"
 
 
 def test_anime_from_anidb_ann_resource_mapped() -> None:
@@ -261,8 +261,8 @@ def test_anime_from_anidb_ann_resource_mapped() -> None:
         _anime(resources=[AniDBExternalResource(type="1", identifiers=["149"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert "anime_news_network" in result["external_sources"]
-    assert "149" in result["external_sources"]["anime_news_network"]
+    assert "anime_news_network" in _links(result)
+    assert "149" in _links(result)["anime_news_network"]
 
 
 def test_anime_from_anidb_type_45_is_funimation_not_hulu() -> None:
@@ -278,11 +278,8 @@ def test_anime_from_anidb_type_45_is_funimation_not_hulu() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert "hulu" not in result["external_sources"]
-    assert (
-        result["external_sources"]["funimation"]
-        == "https://www.funimation.com/shows/one-piece/"
-    )
+    assert "hulu" not in _links(result)
+    assert _links(result)["funimation"] == "https://www.funimation.com/shows/one-piece/"
 
 
 def test_anime_from_anidb_allcinema_and_anison_resources_mapped() -> None:
@@ -296,14 +293,8 @@ def test_anime_from_anidb_allcinema_and_anison_resources_mapped() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert (
-        result["external_sources"]["allcinema"]
-        == "https://www.allcinema.net/cinema/162790"
-    )
-    assert (
-        result["external_sources"]["anison"]
-        == "http://anison.info/data/program/3270.html"
-    )
+    assert _links(result)["allcinema"] == "https://www.allcinema.net/cinema/162790"
+    assert _links(result)["anison"] == "http://anison.info/data/program/3270.html"
 
 
 def test_anime_from_anidb_syoboi_url_has_time_suffix() -> None:
@@ -312,7 +303,7 @@ def test_anime_from_anidb_syoboi_url_has_time_suffix() -> None:
         _anime(resources=[AniDBExternalResource(type="8", identifiers=["350"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["syoboi"] == "https://cal.syoboi.jp/tid/350/time"
+    assert _links(result)["syoboi"] == "https://cal.syoboi.jp/tid/350/time"
 
 
 def test_anime_from_anidb_vndb_joins_its_two_identifiers() -> None:
@@ -325,7 +316,7 @@ def test_anime_from_anidb_vndb_joins_its_two_identifiers() -> None:
         _anime(resources=[AniDBExternalResource(type="14", identifiers=["7721", "v"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["vndb"] == "https://vndb.org/v7721"
+    assert _links(result)["vndb"] == "https://vndb.org/v7721"
 
 
 def test_anime_from_anidb_url_bearing_resources_pass_through() -> None:
@@ -340,10 +331,13 @@ def test_anime_from_anidb_url_bearing_resources_pass_through() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    sources = result["external_sources"]
-    assert sources["official_website_en"] == "https://gkids.com/"
-    assert sources["official_stream"] == "https://wetv.vip/en/play/x"
-    assert sources["official_blog"] == "http://blog.naver.com/fh"
+    # gkids and the naver blog are both the work's own pages, so both land under
+    # official_site; the list keeps both where a mapping could hold only one.
+    assert [(e["platform"], e["source"]) for e in result["external_sources"]] == [
+        ("official_site", "https://gkids.com/"),
+        ("wetv", "https://wetv.vip/en/play/x"),
+        ("official_site", "http://blog.naver.com/fh"),
+    ]
 
 
 def test_anime_from_anidb_unverifiable_resources_emit_nothing() -> None:
@@ -363,7 +357,7 @@ def test_anime_from_anidb_unverifiable_resources_emit_nothing() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"] == {}
+    assert result["external_sources"] == []
 
 
 def test_anime_from_anidb_ambiguous_resource_is_skipped() -> None:
@@ -380,7 +374,7 @@ def test_anime_from_anidb_ambiguous_resource_is_skipped() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert "myanimelist" not in result["external_sources"]
+    assert "myanimelist" not in _links(result)
 
 
 def test_anime_from_anidb_single_candidate_resource_is_kept() -> None:
@@ -394,8 +388,8 @@ def test_anime_from_anidb_single_candidate_resource_is_kept() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["imdb"] == "https://www.imdb.com/title/tt0388629"
-    assert "anime_news_network" not in result["external_sources"]
+    assert _links(result)["imdb"] == "https://www.imdb.com/title/tt0388629"
+    assert "anime_news_network" not in _links(result)
 
 
 def test_anime_from_anidb_type4_resource_uses_url_directly() -> None:
@@ -408,7 +402,7 @@ def test_anime_from_anidb_type4_resource_uses_url_directly() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert result["external_sources"]["official_website"] == "http://resource-site.jp"
+    assert _links(result)["official_site"] == "http://resource-site.jp"
 
 
 def test_anime_from_anidb_unknown_resource_type_skipped() -> None:
@@ -416,9 +410,7 @@ def test_anime_from_anidb_unknown_resource_type_skipped() -> None:
         _anime(resources=[AniDBExternalResource(type="999", identifiers=["abc"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert (
-        "external_sources" not in result or len(result.get("external_sources", {})) == 0
-    )
+    assert "external_sources" not in result or len(result["external_sources"]) == 0
 
 
 def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
@@ -427,8 +419,7 @@ def test_anime_from_anidb_crunchyroll_resource_mapped() -> None:
         anidb_url=_ANIDB_URL,
     )
     assert (
-        result["external_sources"]["crunchyroll"]
-        == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+        _links(result)["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
     )
 
 
@@ -439,10 +430,7 @@ def test_anime_from_anidb_tmdb_resource_mapped() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert (
-        result["external_sources"]["themoviedb"]
-        == "https://www.themoviedb.org/tv/37854"
-    )
+    assert _links(result)["themoviedb"] == "https://www.themoviedb.org/tv/37854"
 
 
 def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
@@ -451,7 +439,7 @@ def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
         _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert "themoviedb" not in result.get("external_sources", {})
+    assert "themoviedb" not in result["external_sources"]
 
 
 def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(
@@ -459,13 +447,9 @@ def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(
 ) -> None:
     result = anime_from_anidb(onepiece_anime, anidb_url=_ANIDB_URL)
     assert (
-        result["external_sources"]["crunchyroll"]
-        == "https://www.crunchyroll.com/series/GRMG8ZQZR"
+        _links(result)["crunchyroll"] == "https://www.crunchyroll.com/series/GRMG8ZQZR"
     )
-    assert (
-        result["external_sources"]["themoviedb"]
-        == "https://www.themoviedb.org/tv/37854"
-    )
+    assert _links(result)["themoviedb"] == "https://www.themoviedb.org/tv/37854"
 
 
 # =============================================================================

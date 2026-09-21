@@ -26,6 +26,7 @@ from common.models.anime import (
     AnimeType,
     Broadcast,
     CompanyEntry,
+    ExternalLink,
     RelatedAnime,
     SourceMaterialType,
     Statistics,
@@ -33,6 +34,7 @@ from common.models.anime import (
 )
 from common.utils.datetime_utils import normalize_to_utc
 from enrichment.sources.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -107,10 +109,12 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
             sources.append(_full_url(raw))
 
     # ── External sources (official website) ──────────────────────────────
-    external_sources: dict[str, str] = {}
+    external_sources: list[ExternalLink] = []
     official = anime.websites.get("official")
     if isinstance(official, str) and official:
-        external_sources["official"] = _full_url(official)
+        link = external_link(_full_url(official), label="official")
+        if link:
+            external_sources.append(link)
 
     # ── Genres ───────────────────────────────────────────────────────────
     genres = [g["name"] for g in anime.genres if g.get("name")]

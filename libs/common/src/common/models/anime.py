@@ -555,6 +555,15 @@ class RelatedAnime(BaseModel):
     episode_count: int | None = Field(None, description="Number of episodes")
 
 
+class ExternalLink(BaseModel):
+    """External link entry"""
+
+    platform: str = Field(..., description="Canonical platform name from the host")
+    source: str = Field(..., description="Link URL")
+    label: str | None = Field(None, description="Provider's own name for the link")
+    language: str | None = Field(None, description="Language of the linked page")
+
+
 class StreamingEntry(BaseModel):
     """Streaming platform entry"""
 
@@ -836,6 +845,9 @@ class Anime(BaseModel):
     ending_themes: list[ThemeSong] = Field(
         default_factory=list, description="Ending theme songs"
     )
+    external_sources: list[ExternalLink] = Field(
+        default_factory=list, description="External links (official site, social media)"
+    )
     genres: list[str] = Field(default_factory=list, description="Anime genres")
     licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
     opening_themes: list[ThemeSong] = Field(
@@ -877,9 +889,6 @@ class Anime(BaseModel):
     aired_dates: AiredDates | None = Field(None, description="Detailed airing dates")
     broadcast: Broadcast | None = Field(
         None, description="Recurring broadcast schedule and premiere dates"
-    )
-    external_sources: dict[str, str] = Field(
-        default_factory=dict, description="External links (official site, social media)"
     )
     hiatus: AnimeHiatus | None = Field(
         None, description="Current hiatus snapshot from AnimSchedule"

@@ -49,6 +49,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisode,
     AniSearchRelatedEntry,
 )
+from enrichment.sources.base.external_links import external_link
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
 _DETAILS_TYPE_RE = re.compile(r"^([^,]+)")
@@ -227,9 +228,11 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     related_source_material = _build_related_source_material(anime.manga_relations)
 
     # ── External sources ──────────────────────────────────────────────────
-    external_sources = {
-        w["name"]: w["url"] for w in anime.websites if w.get("name") and w.get("url")
-    }
+    external_sources = [
+        link
+        for w in anime.websites
+        if (link := external_link(w.get("url"), label=w.get("name")))
+    ]
 
     result = Anime(
         title=anime.title or anime.title_japanese or "",

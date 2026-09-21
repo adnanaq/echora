@@ -42,6 +42,7 @@ from common.models.anime import (
     VoiceActor,
 )
 from common.utils.datetime_utils import normalize_to_utc
+from enrichment.sources.base.external_links import external_link
 from enrichment.sources.mal.mal_models import (
     MalAnime,
     MalCharacter,
@@ -183,7 +184,11 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     ]
 
     # Links
-    external_sources = {link.name: link.source for link in anime.external_sources}
+    external_sources = [
+        entry
+        for link in anime.external_sources
+        if (entry := external_link(link.source, label=link.name))
+    ]
     streaming_sources = [
         StreamingEntry(platform=link.name, source=link.source)
         for link in anime.streaming
