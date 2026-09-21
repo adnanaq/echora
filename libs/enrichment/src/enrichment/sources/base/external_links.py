@@ -113,21 +113,26 @@ def canonical_platform(url: str) -> str:
 
 
 def normalize_link_url(url: str) -> str:
-    """Collapse urls that differ only cosmetically."""
+    """Collapse urls that differ only cosmetically, for comparison.
+
+    The scheme is dropped rather than kept: providers publish the same page as
+    both ``http://`` and ``https://`` — MAL and AniDB each link the Toei site
+    one way and AniSearch the other — and keeping it filed the same page twice.
+    The result is a comparison key, not a url to visit.
+    """
     parts = urlsplit(unquote(url.strip()))
     host = parts.netloc.lower()
     if host.startswith("www."):
         host = host[4:]
     if host == "x.com":
         host = "twitter.com"
-    scheme = parts.scheme or "https"
     query = "&".join(
         kv
         for kv in parts.query.split("&")
         if kv and kv.split("=")[0].lower() not in _TRACKING
     )
     path = parts.path.rstrip("/")
-    return f"{scheme}://{host}{path}" + (f"?{query}" if query else "")
+    return f"{host}{path}" + (f"?{query}" if query else "")
 
 
 def external_link(
