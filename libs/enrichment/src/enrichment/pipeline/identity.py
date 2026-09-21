@@ -43,6 +43,15 @@ _ID_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r"^https?://(?:www\.)?anilist\.co/(anime|manga)/(\d+)"), "anilist"),
     (re.compile(r"^https?://(?:www\.)?anidb\.net/(anime)/(\d+)"), "anidb"),
+    # AniDB's legacy address for the same page. MAL still links works this way,
+    # and without this it resolves to nothing and reads as a separate work.
+    (
+        re.compile(
+            r"^https?://(?:www\.)?anidb\.net/perl-bin/animedb\.pl\?"
+            r"(?=[^#]*\bshow=(anime)\b)[^#]*\baid=(\d+)"
+        ),
+        "anidb",
+    ),
     (
         re.compile(r"^https?://(?:www\.)?kitsu\.(?:app|io)/(anime|manga)/([^/?#]+)"),
         "kitsu",

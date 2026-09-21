@@ -6,6 +6,7 @@ the near misses where a high similarity score and a distinct work coincide.
 """
 
 import pytest
+from enrichment.pipeline.identity import canonical_url_key
 from enrichment.pipeline.relationship_merger import (
     load_agent_providers,
     merge_relation_field,
@@ -239,3 +240,22 @@ def test_load_agent_providers_ignores_blank_lines(
 def test_load_agent_providers_skips_empty_file(tmp_path, content: str) -> None:
     (tmp_path / "mal_anime.jsonl").write_text(content)
     assert load_agent_providers(tmp_path) == {}
+
+
+def test_anidb_legacy_url_resolves_to_the_same_work() -> None:
+    # MAL still links AniDB works through the old perl-bin address. Left
+    # unrecognised it resolves to nothing and reads as a separate work.
+    modern = canonical_url_key("https://anidb.net/anime/69")
+    assert (
+        canonical_url_key("https://anidb.net/perl-bin/animedb.pl?show=anime&aid=69")
+        == modern
+    )
+    assert (
+        canonical_url_key("http://anidb.net/perl-bin/animedb.pl?aid=69&show=anime")
+        == modern
+    )
+
+
+def test_anidb_legacy_non_anime_page_is_not_a_work() -> None:
+    url = "https://anidb.net/perl-bin/animedb.pl?show=character&charid=474"
+    assert canonical_url_key(url) == url
