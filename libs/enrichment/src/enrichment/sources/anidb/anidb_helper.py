@@ -26,7 +26,6 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -52,52 +51,64 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# A ban belongs to the client, not to one helper. ApiFetcher builds a fresh
-# helper per anime, so per-instance state is discarded before the next anime
-# and a banned client would keep calling - once per anime, for the whole run.
-# This module-level deadline is the only thing that survives that.
-_BAN_LIFTS_AT: float = 0.0
+
+class _ClientState:
+    """AniDB state that belongs to the client rather than to one helper.
+
+    ``ApiFetcher`` builds a fresh helper per anime, so anything kept on the
+    instance is discarded before the next anime begins. Everything here was
+    previously per-instance and therefore silently ineffective across a run:
+
+    * ``ban_lifts_at`` - a banned client kept calling, once per anime.
+    * ``last_request_at`` - the 2s minimum gap was only ever applied between
+      retries of one anime, never between anime.
+    * ``consecutive_failures`` - the error back-off reset on every anime.
+    * ``lock`` - requests for different anime never queued behind each other,
+      so a batch of 10 went out at once.
+
+    AniDB rate limits and bans the client, not the object, so this is the
+    boundary the limits actually apply to.
+    """
+
+    def __init__(self) -> None:
+        """Start with no ban, no request history and no lock bound yet."""
+        self.ban_lifts_at: float = 0.0
+        self.last_request_at: float = 0.0
+        self.consecutive_failures: int = 0
+        self._lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+
+    def lock(self) -> asyncio.Lock:
+        """Return the shared request lock, bound to the running event loop.
+
+        Rebinds if the loop changed, since a lock is not portable between
+        loops and the pipeline may run more than one over a process lifetime.
+
+        Returns:
+            The lock every AniDB request serialises on.
+        """
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._lock_loop is not loop:
+            self._lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._lock
+
+    def reset(self) -> None:
+        """Forget the ban, the request history and the failure streak."""
+        self.ban_lifts_at = 0.0
+        self.last_request_at = 0.0
+        self.consecutive_failures = 0
 
 
-def _ban_lifts_at() -> float:
-    """Return the timestamp at which the current AniDB ban expires."""
-    return _BAN_LIFTS_AT
+_state = _ClientState()
 
 
-def _set_ban_lifts_at(when: float) -> None:
-    """Set the timestamp at which the current AniDB ban expires."""
-    global _BAN_LIFTS_AT
-    _BAN_LIFTS_AT = when
+def reset_client_state() -> None:
+    """Clear process-wide AniDB state.
 
-
-def clear_ban() -> None:
-    """Forget any standing ban. For tests and for an operator-driven retry."""
-    _set_ban_lifts_at(0.0)
-
-
-@dataclass
-class AniDBRequestMetrics:
-    """Metrics for tracking AniDB API health and rate-limit compliance."""
-
-    total_requests: int = 0
-    successful_requests: int = 0
-    failed_requests: int = 0
-    consecutive_failures: int = 0
-    last_request_time: float = 0
-    last_error_time: float = 0
-    current_interval: float = 2.0
-
-    @property
-    def success_rate(self) -> float:
-        """Return successful requests as a percentage of total requests."""
-        if self.total_requests == 0:
-            return 100.0
-        return (self.successful_requests / self.total_requests) * 100.0
-
-    @property
-    def error_rate(self) -> float:
-        """Return failed requests as a percentage of total requests."""
-        return 100.0 - self.success_rate
+    For tests, and for an operator choosing to retry before a ban expires.
+    """
+    _state.reset()
 
 
 class AniDBHelper(BaseEnrichmentHelper):
@@ -146,9 +157,6 @@ class AniDBHelper(BaseEnrichmentHelper):
         self.max_retries = config.anidb_max_retries
 
         self.ban_cooldown = config.anidb_ban_cooldown
-
-        self.metrics = AniDBRequestMetrics()
-        self._request_lock = asyncio.Lock()
 
     # =========================================================================
     # PUBLIC INTERFACE (BaseEnrichmentHelper contract)
@@ -366,7 +374,7 @@ class AniDBHelper(BaseEnrichmentHelper):
         Returns:
             Remaining cooldown in seconds.
         """
-        return max(0.0, _ban_lifts_at() - time.time())
+        return max(0.0, _state.ban_lifts_at - time.time())
 
     def _raise_if_banned(self) -> None:
         """Stop before the network when AniDB has banned this client.
@@ -383,7 +391,7 @@ class AniDBHelper(BaseEnrichmentHelper):
 
     def _record_ban(self) -> None:
         """Latch a ban so no helper contacts AniDB until the cooldown expires."""
-        _set_ban_lifts_at(time.time() + self.ban_cooldown)
+        _state.ban_lifts_at = time.time() + self.ban_cooldown
         logger.error(
             f"AniDB banned this client (555). Standing down for "
             f"{self.ban_cooldown:.0f}s across every helper in this process."
@@ -401,10 +409,10 @@ class AniDBHelper(BaseEnrichmentHelper):
                 to add extra delay for retry attempts.
         """
         current_time = time.time()
-        time_since_last = current_time - self.metrics.last_request_time
+        time_since_last = current_time - _state.last_request_at
 
-        if self.metrics.consecutive_failures > 0:
-            error_multiplier = min(2**self.metrics.consecutive_failures, 8)
+        if _state.consecutive_failures > 0:
+            error_multiplier = min(2**_state.consecutive_failures, 8)
             adaptive_interval = min(
                 self.error_cooldown_base * error_multiplier, self.max_request_interval
             )
@@ -419,8 +427,7 @@ class AniDBHelper(BaseEnrichmentHelper):
             logger.info(f"Rate limiting: waiting {wait_time:.2f}s")
             await asyncio.sleep(wait_time)
 
-        self.metrics.last_request_time = time.time()
-        self.metrics.current_interval = adaptive_interval
+        _state.last_request_at = time.time()
 
     # =========================================================================
     # HTTP SESSION
@@ -468,7 +475,7 @@ class AniDBHelper(BaseEnrichmentHelper):
         Returns:
             Decoded response content, or None on failure.
         """
-        async with self._request_lock:
+        async with _state.lock():
             return await self._make_request_with_retry(params)
 
     async def _make_request_with_retry(self, params: dict[str, Any]) -> str | None:
@@ -497,12 +504,10 @@ class AniDBHelper(BaseEnrichmentHelper):
 
                 result = await self._make_single_request(params, attempt)
                 if result is not None:
-                    self.metrics.successful_requests += 1
-                    self.metrics.consecutive_failures = 0
+                    _state.consecutive_failures = 0
                     return result
                 else:
-                    self.metrics.failed_requests += 1
-                    self.metrics.consecutive_failures += 1
+                    _state.consecutive_failures += 1
                     if attempt < self.max_retries:
                         wait = (2**attempt) + (time.time() % 1)
                         logger.warning(
@@ -513,12 +518,10 @@ class AniDBHelper(BaseEnrichmentHelper):
             except ServiceBlockedError:
                 # Retrying a ban is what deepens it, and the gate above means
                 # every later anime stops before it reaches the network.
-                self.metrics.failed_requests += 1
                 raise
             except Exception as e:
                 last_exception = e
-                self.metrics.failed_requests += 1
-                self.metrics.consecutive_failures += 1
+                _state.consecutive_failures += 1
                 if attempt < self.max_retries:
                     wait = (2**attempt) + (time.time() % 1)
                     logger.warning(f"Request exception, retrying in {wait:.2f}s: {e}")
@@ -527,8 +530,6 @@ class AniDBHelper(BaseEnrichmentHelper):
                     logger.exception(
                         f"Request failed after {self.max_retries + 1} attempts"
                     )
-            finally:
-                self.metrics.total_requests += 1
 
         if last_exception:
             raise ServiceNetworkError(service="anidb", cause=last_exception)
@@ -578,11 +579,9 @@ class AniDBHelper(BaseEnrichmentHelper):
 
             elif response.status == 503:
                 logger.warning("AniDB service unavailable (503)")
-                self.metrics.last_error_time = time.time()
                 return None
 
             elif response.status == 555:
-                self.metrics.last_error_time = time.time()
                 self._record_ban()
                 raise ServiceBlockedError(
                     "banned/blocked (555) — serious rate limit violation",
@@ -591,7 +590,6 @@ class AniDBHelper(BaseEnrichmentHelper):
 
             else:
                 logger.warning(f"AniDB HTTP {response.status}")
-                self.metrics.last_error_time = time.time()
                 return None
 
     def _decode_content(self, content: bytes) -> str | None:
