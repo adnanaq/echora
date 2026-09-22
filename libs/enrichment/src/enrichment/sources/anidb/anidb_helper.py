@@ -28,7 +28,7 @@ import sys
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from common.utils.jsonl_utils import append_jsonl
@@ -47,6 +47,9 @@ from enrichment.sources.base.base_helper import (
 from enrichment.sources.base.exceptions import ServiceBlockedError, ServiceNetworkError
 from enrichment.sources.base.utils import sanitize_output_path
 from http_cache.instance import http_cache_manager as _cache_manager
+
+if TYPE_CHECKING:
+    from enrichment.pipeline.config import EnrichmentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -93,39 +96,44 @@ class AniDBHelper(BaseEnrichmentHelper):
     """
 
     def __init__(
-        self, client_name: str | None = None, client_version: str | None = None
+        self,
+        client_name: str | None = None,
+        client_version: str | None = None,
+        config: EnrichmentConfig | None = None,
     ) -> None:
         """Initialise the AniDB helper with client metadata and resilience config.
 
         Args:
             client_name: Client identifier sent to AniDB. Defaults to the
-                ``ANIDB_CLIENT`` environment variable or ``"animeenrichment"``.
+                configured ``ANIDB_CLIENT``.
             client_version: Client version sent to AniDB. Defaults to the
-                ``ANIDB_CLIENTVER`` environment variable or ``"1.0"``.
+                configured ``ANIDB_CLIENTVER``.
+            config: Enrichment settings to read credentials and rate limits
+                from. Defaults to a freshly loaded ``EnrichmentConfig``.
         """
+        # Imported here, not at module scope: enrichment.pipeline's __init__
+        # eagerly imports api_fetcher, which imports this module, so a
+        # top-level import would close a cycle.
+        from enrichment.pipeline.config import EnrichmentConfig
+
+        config = config or EnrichmentConfig()
+
         self.base_url = "http://api.anidb.net:9001/httpapi"
-        self.client_name = client_name or os.getenv("ANIDB_CLIENT", "animeenrichment")
-        self.client_version = client_version or os.getenv("ANIDB_CLIENTVER", "1.0")
+        self.client_name = client_name or config.anidb_client
+        self.client_version = client_version or config.anidb_clientver
+        self.protocol_version = config.anidb_protover
 
         self.session = None
         self._session_created_at: float = 0.0
         self._session_max_age = 300
 
-        self.min_request_interval = float(
-            os.getenv("ANIDB_MIN_REQUEST_INTERVAL", "2.0")
-        )
-        self.max_request_interval = float(
-            os.getenv("ANIDB_MAX_REQUEST_INTERVAL", "10.0")
-        )
-        self.error_cooldown_base = float(os.getenv("ANIDB_ERROR_COOLDOWN_BASE", "5.0"))
-        self.max_retries = int(os.getenv("ANIDB_MAX_RETRIES", "3"))
+        self.min_request_interval = config.anidb_min_request_interval
+        self.max_request_interval = config.anidb_max_request_interval
+        self.error_cooldown_base = config.anidb_error_cooldown_base
+        self.max_retries = config.anidb_max_retries
 
-        self.circuit_breaker_threshold = int(
-            os.getenv("ANIDB_CIRCUIT_BREAKER_THRESHOLD", "5")
-        )
-        self.circuit_breaker_timeout = float(
-            os.getenv("ANIDB_CIRCUIT_BREAKER_TIMEOUT", "300")
-        )
+        self.circuit_breaker_threshold = config.anidb_circuit_breaker_threshold
+        self.circuit_breaker_timeout = config.anidb_circuit_breaker_timeout
         self.circuit_breaker_state = CircuitBreakerState.CLOSED
         self.circuit_breaker_opened_at = 0.0
 
@@ -579,7 +587,7 @@ class AniDBHelper(BaseEnrichmentHelper):
             **params,
             "client": self.client_name,
             "clientver": self.client_version,
-            "protover": os.getenv("ANIDB_PROTOVER", "1"),
+            "protover": self.protocol_version,
         }
 
         if self.session is None:
