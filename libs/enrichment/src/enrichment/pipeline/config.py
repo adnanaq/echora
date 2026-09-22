@@ -108,15 +108,10 @@ class EnrichmentConfig(BaseSettings):
         validation_alias="ANIDB_MAX_RETRIES",
         description="Retries before giving up on an AniDB request",
     )
-    anidb_circuit_breaker_threshold: int = Field(
-        default=5,
-        validation_alias="ANIDB_CIRCUIT_BREAKER_THRESHOLD",
-        description="Consecutive AniDB failures that open the circuit",
-    )
-    anidb_circuit_breaker_timeout: float = Field(
+    anidb_ban_cooldown: float = Field(
         default=300.0,
-        validation_alias="ANIDB_CIRCUIT_BREAKER_TIMEOUT",
-        description="Seconds the AniDB circuit stays open",
+        validation_alias="ANIDB_BAN_COOLDOWN",
+        description="Seconds to stop contacting AniDB after it returns a 555 ban",
     )
 
     # Feature Flags

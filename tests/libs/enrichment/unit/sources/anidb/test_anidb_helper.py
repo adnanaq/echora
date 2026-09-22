@@ -12,8 +12,18 @@ import pytest
 from enrichment.sources.anidb.anidb_helper import (
     AniDBHelper,
     AniDBRequestMetrics,
-    CircuitBreakerState,
+    clear_ban,
 )
+from enrichment.sources.base.exceptions import ServiceBlockedError
+
+
+@pytest.fixture(autouse=True)
+def _no_standing_ban():
+    """Keep the module-level ban deadline from leaking between tests."""
+    clear_ban()
+    yield
+    clear_ban()
+
 
 _ANIDB_URL = "https://anidb.net/anime/69"
 
@@ -70,13 +80,11 @@ def mock_session():
 # =============================================================================
 
 
-@patch("enrichment.sources.anidb.anidb_helper.os.getenv")
-def test_helper_initialization(mock_getenv) -> None:
-    mock_getenv.side_effect = lambda key, default=None: default
-    h = AniDBHelper()
+def test_helper_initialization() -> None:
+    h = AniDBHelper(client_name="animeenrichment", client_version="1.0")
     assert h.client_name == "animeenrichment"
     assert h.client_version == "1.0"
-    assert h.circuit_breaker_state == CircuitBreakerState.CLOSED
+    assert h._ban_remaining() == 0
 
 
 def test_request_metrics() -> None:
@@ -91,61 +99,74 @@ def test_request_metrics() -> None:
 
 
 # =============================================================================
-# CIRCUIT BREAKER
+# BAN GATE
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_circuit_breaker_logic(helper) -> None:
-    with patch("enrichment.sources.anidb.anidb_helper.time.time") as mock_time:
-        mock_time.return_value = 1000.0
+async def test_ban_stops_retrying_the_same_request(helper) -> None:
+    # Retrying a ban is what deepens it. Before the gate, a 555 was caught by
+    # the loop's bare `except Exception` and retried three more times.
+    calls = 0
 
-        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold - 1
-        helper._update_circuit_breaker(success=False)
-        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
-        assert helper.circuit_breaker_opened_at == 1000.0
+    async def banned(params, attempt):
+        nonlocal calls
+        calls += 1
+        helper._record_ban()
+        raise ServiceBlockedError("banned/blocked (555)", service="anidb")
 
-        assert not await helper._check_circuit_breaker()
+    with (
+        patch.object(helper, "_make_single_request", banned),
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+    ):
+        with pytest.raises(ServiceBlockedError):
+            await helper._make_request_with_retry({"aid": 123})
 
-        mock_time.return_value = 1000.0 + helper.circuit_breaker_timeout + 1
-        assert await helper._check_circuit_breaker()
-        assert helper.circuit_breaker_state == CircuitBreakerState.HALF_OPEN
-
-        helper._update_circuit_breaker(success=True)
-        assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-        assert helper.metrics.consecutive_failures == 0
-
-        helper.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
-        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold
-        helper._update_circuit_breaker(success=False)
-        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+    assert calls == 1
 
 
 @pytest.mark.asyncio
-async def test_circuit_breaker_blocking(helper) -> None:
-    helper.circuit_breaker_state = CircuitBreakerState.OPEN
-    helper.circuit_breaker_opened_at = time.time()
+async def test_ban_outlives_the_helper_that_hit_it(helper) -> None:
+    # ApiFetcher builds a fresh helper per anime, so a per-instance flag is
+    # discarded before the next anime and a banned client keeps calling.
+    helper._record_ban()
 
+    later = AniDBHelper()
     with patch.object(
-        helper, "_adaptive_rate_limit", new_callable=AsyncMock
-    ) as mock_rate:
-        result = await AniDBHelper._make_request_with_retry(helper, {"aid": 123})
-        assert result is None
-        mock_rate.assert_not_called()
+        later, "_adaptive_rate_limit", new_callable=AsyncMock
+    ) as rate_limit:
+        with pytest.raises(ServiceBlockedError):
+            await later._make_request_with_retry({"aid": 456})
+    rate_limit.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_reset_circuit_breaker_complete(helper) -> None:
-    helper.circuit_breaker_state = CircuitBreakerState.OPEN
-    helper.circuit_breaker_opened_at = time.time()
-    helper.metrics.consecutive_failures = 5
+async def test_requests_resume_once_the_ban_expires(helper) -> None:
+    helper._record_ban()
+    with patch(
+        "enrichment.sources.anidb.anidb_helper.time.time",
+        return_value=time.time() + helper.ban_cooldown + 1,
+    ):
+        helper._raise_if_banned()  # no longer banned, so this must not raise
 
-    assert await helper.reset_circuit_breaker() is True
-    assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-    assert helper.circuit_breaker_opened_at == 0.0
-    assert helper.metrics.consecutive_failures == 0
 
-    assert await helper.reset_circuit_breaker() is False
+@pytest.mark.asyncio
+async def test_ordinary_errors_do_not_latch_a_ban(helper) -> None:
+    # AniDB reports most failures as HTTP 200 with an <error> body. Those are
+    # retried and must not stop the rest of the run.
+    with (
+        patch.object(
+            helper, "_make_single_request", new_callable=AsyncMock, return_value=None
+        ) as request,
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        assert await helper._make_request_with_retry({"aid": 123}) is None
+
+    assert request.call_count == helper.max_retries + 1
+    assert helper._ban_remaining() == 0
 
 
 # =============================================================================
@@ -191,13 +212,12 @@ async def test_make_single_request_http_errors(
 
 @pytest.mark.asyncio
 async def test_make_single_request_555_raises_blocked(helper, mock_session) -> None:
-    from enrichment.sources.base.exceptions import ServiceBlockedError
-
     mock_session.get.return_value.__aenter__.return_value.status = 555
     helper.session = mock_session
     with pytest.raises(ServiceBlockedError):
         await helper._make_single_request({"request": "anime", "aid": 1}, attempt=0)
-    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+    # The ban is latched for the process, not just for this helper.
+    assert helper._ban_remaining() > 0
 
 
 @pytest.mark.asyncio

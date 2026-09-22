@@ -27,7 +27,6 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -53,13 +52,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# A ban belongs to the client, not to one helper. ApiFetcher builds a fresh
+# helper per anime, so per-instance state is discarded before the next anime
+# and a banned client would keep calling - once per anime, for the whole run.
+# This module-level deadline is the only thing that survives that.
+_BAN_LIFTS_AT: float = 0.0
 
-class CircuitBreakerState(Enum):
-    """Circuit breaker states for AniDB API protection."""
 
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
+def _ban_lifts_at() -> float:
+    """Return the timestamp at which the current AniDB ban expires."""
+    return _BAN_LIFTS_AT
+
+
+def _set_ban_lifts_at(when: float) -> None:
+    """Set the timestamp at which the current AniDB ban expires."""
+    global _BAN_LIFTS_AT
+    _BAN_LIFTS_AT = when
+
+
+def clear_ban() -> None:
+    """Forget any standing ban. For tests and for an operator-driven retry."""
+    _set_ban_lifts_at(0.0)
 
 
 @dataclass
@@ -132,10 +145,7 @@ class AniDBHelper(BaseEnrichmentHelper):
         self.error_cooldown_base = config.anidb_error_cooldown_base
         self.max_retries = config.anidb_max_retries
 
-        self.circuit_breaker_threshold = config.anidb_circuit_breaker_threshold
-        self.circuit_breaker_timeout = config.anidb_circuit_breaker_timeout
-        self.circuit_breaker_state = CircuitBreakerState.CLOSED
-        self.circuit_breaker_opened_at = 0.0
+        self.ban_cooldown = config.anidb_ban_cooldown
 
         self.metrics = AniDBRequestMetrics()
         self._request_lock = asyncio.Lock()
@@ -347,83 +357,37 @@ class AniDBHelper(BaseEnrichmentHelper):
             return None
 
     # =========================================================================
-    # CIRCUIT BREAKER
+    # BAN GATE
     # =========================================================================
 
-    async def _check_circuit_breaker(self) -> bool:
-        """Check whether the circuit breaker allows a request.
-
-        Transitions from OPEN to HALF_OPEN once the timeout has elapsed.
+    def _ban_remaining(self) -> float:
+        """Seconds left on a standing AniDB ban, or 0 when not banned.
 
         Returns:
-            True if requests are allowed (CLOSED or HALF_OPEN), False if
-            the circuit is OPEN and the timeout has not expired.
+            Remaining cooldown in seconds.
         """
-        current_time = time.time()
-        if self.circuit_breaker_state == CircuitBreakerState.OPEN:
-            if (
-                current_time - self.circuit_breaker_opened_at
-                > self.circuit_breaker_timeout
-            ):
-                self.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
-                logger.info("Circuit breaker moved to HALF_OPEN state")
-                return True
-            remaining = self.circuit_breaker_timeout - (
-                current_time - self.circuit_breaker_opened_at
-            )
-            logger.warning(
-                f"Circuit breaker OPEN — blocking request. {remaining:.1f}s remaining"
-            )
-            return False
-        return True
+        return max(0.0, _ban_lifts_at() - time.time())
 
-    def _update_circuit_breaker(self, success: bool) -> None:
-        """Update circuit breaker state based on the outcome of a request.
+    def _raise_if_banned(self) -> None:
+        """Stop before the network when AniDB has banned this client.
 
-        On success, resets the consecutive failure count and transitions
-        HALF_OPEN → CLOSED. On failure, increments the failure count and
-        may open the circuit.
-
-        Args:
-            success: True if the request succeeded, False otherwise.
+        Raises:
+            ServiceBlockedError: While a ban is still in force.
         """
-        if success:
-            if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
-                self.circuit_breaker_state = CircuitBreakerState.CLOSED
-                logger.info("Circuit breaker CLOSED — service recovered")
-            self.metrics.consecutive_failures = 0
-        else:
-            self.metrics.consecutive_failures += 1
-            if self.circuit_breaker_state == CircuitBreakerState.HALF_OPEN:
-                self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = time.time()
-                logger.warning("Circuit breaker OPEN from HALF_OPEN")
-            elif (
-                self.circuit_breaker_state == CircuitBreakerState.CLOSED
-                and self.metrics.consecutive_failures >= self.circuit_breaker_threshold
-            ):
-                self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = time.time()
-                logger.error(
-                    f"Circuit breaker OPENED after {self.metrics.consecutive_failures} failures"
-                )
-
-    async def reset_circuit_breaker(self) -> bool:
-        """Manually reset the circuit breaker to CLOSED state.
-
-        Returns:
-            True if the state was changed, False if it was already CLOSED.
-        """
-        if self.circuit_breaker_state != CircuitBreakerState.CLOSED:
-            old_state = self.circuit_breaker_state
-            self.circuit_breaker_state = CircuitBreakerState.CLOSED
-            self.circuit_breaker_opened_at = 0.0
-            self.metrics.consecutive_failures = 0
-            logger.info(
-                f"Circuit breaker manually reset from {old_state.value} to CLOSED"
+        remaining = self._ban_remaining()
+        if remaining:
+            raise ServiceBlockedError(  # noqa: TRY003
+                f"banned — standing down for another {remaining:.0f}s",
+                service="anidb",
             )
-            return True
-        return False
+
+    def _record_ban(self) -> None:
+        """Latch a ban so no helper contacts AniDB until the cooldown expires."""
+        _set_ban_lifts_at(time.time() + self.ban_cooldown)
+        logger.error(
+            f"AniDB banned this client (555). Standing down for "
+            f"{self.ban_cooldown:.0f}s across every helper in this process."
+        )
 
     # =========================================================================
     # RATE LIMITING
@@ -521,23 +485,24 @@ class AniDBHelper(BaseEnrichmentHelper):
         """
         last_exception = None
 
+        # Checked once per call rather than per attempt: nothing inside the
+        # loop can lift a ban, and a 555 raises out of it immediately.
+        self._raise_if_banned()
+
         for attempt in range(self.max_retries + 1):
             try:
                 is_retry = attempt > 0
-                if not await self._check_circuit_breaker():
-                    return None
-
                 await self._adaptive_rate_limit(is_retry=is_retry)
                 await self._ensure_session_health()
 
                 result = await self._make_single_request(params, attempt)
                 if result is not None:
                     self.metrics.successful_requests += 1
-                    self._update_circuit_breaker(success=True)
+                    self.metrics.consecutive_failures = 0
                     return result
                 else:
                     self.metrics.failed_requests += 1
-                    self._update_circuit_breaker(success=False)
+                    self.metrics.consecutive_failures += 1
                     if attempt < self.max_retries:
                         wait = (2**attempt) + (time.time() % 1)
                         logger.warning(
@@ -545,10 +510,15 @@ class AniDBHelper(BaseEnrichmentHelper):
                         )
                         await asyncio.sleep(wait)
 
+            except ServiceBlockedError:
+                # Retrying a ban is what deepens it, and the gate above means
+                # every later anime stops before it reaches the network.
+                self.metrics.failed_requests += 1
+                raise
             except Exception as e:
                 last_exception = e
                 self.metrics.failed_requests += 1
-                self._update_circuit_breaker(success=False)
+                self.metrics.consecutive_failures += 1
                 if attempt < self.max_retries:
                     wait = (2**attempt) + (time.time() % 1)
                     logger.warning(f"Request exception, retrying in {wait:.2f}s: {e}")
@@ -613,8 +583,7 @@ class AniDBHelper(BaseEnrichmentHelper):
 
             elif response.status == 555:
                 self.metrics.last_error_time = time.time()
-                self.circuit_breaker_state = CircuitBreakerState.OPEN
-                self.circuit_breaker_opened_at = time.time()
+                self._record_ban()
                 raise ServiceBlockedError(
                     "banned/blocked (555) — serious rate limit violation",
                     service="anidb",
