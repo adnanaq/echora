@@ -169,3 +169,40 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 **AniSearch**: No age rating field. Has community rating score (numeric, displayed as star rating on the page). Maps to `statistics["anisearch"]`, not to `rating` (age classification).
 
 ---
+
+## Taxonomy Vocabularies
+
+Where each source publishes its own list of genres / themes / tags, and what it
+costs to fetch. Verified live on 2026-09-22. These are the authorities behind
+`libs/enrichment/src/enrichment/pipeline/word_lists.py`, which classifies a
+value by what the word is rather than which field a provider filed it under.
+
+| Source | Endpoint | Calls | Size | Notes |
+| :----- | :------- | ----: | ---: | :---- |
+| MAL/Jikan | `api.jikan.moe/v4/genres/anime` | 1 | 78 | Returns all four kinds together; split by MAL's own filters it is 5 demographics, 21 genres, 52 themes. The filtered variants (`?filter=themes`) returned `504` twice while this was verified, so prefer the unfiltered call |
+| AniList | GraphQL `{ GenreCollection }` | 1 | 19 | Fixed genre list |
+| AniList | GraphQL `{ MediaTagCollection { name category isAdult } }` | 1 | 428 | Carries the category (`Theme-*`, `Cast-*`, `Setting-*`, `Technical`, `Demographic`) that the mapper routes on, plus `isAdult` for `content_warnings` |
+| AniDB | `httpapi?request=taglist` | **1** | **1,723** | The largest vocabulary of the seven. Carries `id`, `parentid` and `isverified`, so the tag hierarchy comes free. Not listed with the other request types — `request=tag` answers `<error code="320">` |
+| Kitsu | `api/edge/categories` | paginated | 218 | `meta.count` gives the total |
+| Anime-Planet | `/anime/tags` | 20 pages | 675 | 35 per page, fixed server-side — `per_page`, `limit` and `size` are all ignored. Cloudflare rejects curl with `403`; needs a browser |
+| AniSearch | `/anime/genre` | 1 | 20 main + 26 subsidiary | Plain HTTP. `main` and `subsidiary` are separate link classes on one page. No tag index found |
+| AnimeSchedule | `/genres` | 1 | 30 | Plain HTTP page; the v3 API has no `/genres` endpoint (`404`) |
+
+**Prefer the API over the browser.** AniDB's `taglist` replaces roughly 97 browser
+page-fetches at 30 tags each, and needs no Cloudflare handling at all. It was
+found by probing request types after the documented ones came back invalid —
+worth repeating for other sources before writing a crawler.
+
+**Reaching AniDB pages with a browser**, where no API exists: it must be
+`headless=False`. A headless browser gets the antileech block page (~28 KB);
+the same navigation with a head returns the real page (~50 KB). Follow the
+pattern in `anidb_character_crawler.py` — poll until the page settles into
+either content or a recognised block rather than sleeping a fixed time, then
+solve and wait for the reload. `zendriver.core.cloudflare.verify_cf` plus the
+"Please Unban Me" button covers both block types.
+
+**Cloudflare status**: AniDB and Anime-Planet block plain HTTP entirely.
+AniSearch and AnimeSchedule serve these index pages to curl with a normal
+user-agent. MAL, AniList and Kitsu are APIs and need no browser.
+
+---
