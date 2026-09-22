@@ -217,9 +217,10 @@ def test_id_requires_at_least_one_source() -> None:
         merged_anime_id([])
 
 
-def test_categories_route_by_the_word_not_the_field_it_arrived_in() -> None:
-    # Shounen arrives as a demographic, a genre and a theme depending on the
-    # provider. Trusting the field would keep all three copies.
+def test_the_most_trusted_provider_decides_the_field() -> None:
+    # Shounen arrives as a demographic, a genre and a theme depending on who
+    # is asked. MAL is trusted most, so its demographic stands - AnimeSchedule
+    # calling it a genre does not override that.
     merged = merge_provider_records(
         {
             "mal": _record(demographics=["Shounen"]),
@@ -232,22 +233,107 @@ def test_categories_route_by_the_word_not_the_field_it_arrived_in() -> None:
     assert [t["name"] for t in merged["themes"]] == ["Super Power"]
 
 
-def test_category_spelling_comes_from_the_word_list() -> None:
-    merged = merge_provider_records({"mal": _record(genres=["action", "ACTION"])})
+def test_a_tag_is_not_a_classification() -> None:
+    # AniDB has no genre, theme or demographic field, so everything it knows
+    # arrives as a tag. Letting that count would demote the word on its
+    # say-so alone, even though a less trusted provider classified it.
+    merged = merge_provider_records(
+        {
+            "anidb": _record(tags=["swordplay"]),
+            "kitsu": _record(themes=[{"name": "Swordplay"}]),
+        }
+    )
+    assert [t["name"] for t in merged["themes"]] == ["Swordplay"]
+    assert merged["tags"] == []
+
+
+def test_field_order_settles_one_provider_using_two_of_its_own_fields() -> None:
+    # Kitsu files the same word under both its genres and its themes.
+    merged = merge_provider_records(
+        {"kitsu": _record(genres=["Super Power"], themes=[{"name": "Super Power"}])}
+    )
+    assert merged["genres"] == ["Super Power"]
+    assert merged["themes"] == []
+
+
+def test_tags_only_hold_what_nobody_else_claimed() -> None:
+    merged = merge_provider_records(
+        {
+            "anidb": _record(tags=["Military", "bounty hunter"]),
+            "mal": _record(themes=[{"name": "Military"}]),
+        }
+    )
+    assert [t["name"] for t in merged["themes"]] == ["Military"]
+    assert merged["tags"] == ["bounty hunter"]
+
+
+def test_a_word_no_provider_classified_stays_a_tag() -> None:
+    # AniDB files everything as a tag. With nobody else supplying the word,
+    # a tag is what it is - we do not second-guess it from a word list.
+    merged = merge_provider_records({"anidb": _record(tags=["ecchi"])})
+    assert merged["tags"] == ["ecchi"]
+    assert merged["genres"] == []
+
+
+def test_provider_specific_genres_are_kept_as_genres() -> None:
+    # AniSearch has genres MAL never heard of. They are still genres.
+    merged = merge_provider_records(
+        {"anisearch": _record(genres=["Fighting-Shounen", "Ganbatte"])}
+    )
+    assert merged["genres"] == ["Fighting-Shounen", "Ganbatte"]
+
+
+def test_most_providers_decide_the_spelling() -> None:
+    # AniDB writes everything lowercase. One provider must not decide how a
+    # word is stored when six others disagree.
+    merged = merge_provider_records(
+        {
+            "mal": _record(genres=["Action"]),
+            "anilist": _record(genres=["Action"]),
+            "anidb": _record(genres=["action"]),
+        }
+    )
     assert merged["genres"] == ["Action"]
 
 
-def test_unknown_words_fall_through_to_tags() -> None:
-    merged = merge_provider_records({"anisearch": _record(genres=["Fighting-Shounen"])})
-    assert merged["genres"] == []
-    assert merged["tags"] == ["Fighting-Shounen"]
+def test_the_trusted_provider_breaks_a_spelling_tie() -> None:
+    merged = merge_provider_records(
+        {"mal": _record(genres=["Sci-Fi"]), "anidb": _record(genres=["sci-fi"])}
+    )
+    assert merged["genres"] == ["Sci-Fi"]
 
 
-def test_a_word_promoted_into_themes_becomes_an_object() -> None:
-    # themes hold ThemeEntry objects; the other three hold plain strings, so a
-    # word changing field has to change shape or the model rejects it.
-    merged = merge_provider_records({"kitsu": _record(genres=["Super Power"])})
-    assert merged["themes"] == [{"name": "Super Power"}]
+def test_differently_written_words_collapse_into_one() -> None:
+    merged = merge_provider_records(
+        {
+            "mal": _record(genres=["Sci-Fi"]),
+            "anidb": _record(tags=["science fiction"]),
+            "kitsu": _record(themes=[{"name": "Cross Dressing"}]),
+            "anilist": _record(tags=["Crossdressing"]),
+        }
+    )
+    assert merged["genres"] == ["Sci-Fi"]
+    assert "science fiction" not in merged["tags"]
+    assert [t["name"] for t in merged["themes"]] == ["Cross Dressing"]
+
+
+def test_a_theme_keeps_its_description() -> None:
+    merged = merge_provider_records(
+        {"anilist": _record(themes=[{"name": "Travel", "description": "Moves about."}])}
+    )
+    assert merged["themes"] == [{"name": "Travel", "description": "Moves about."}]
+
+
+def test_a_word_promoted_out_of_themes_drops_the_description() -> None:
+    # genres hold plain strings, so a word leaving themes has to change shape.
+    merged = merge_provider_records(
+        {
+            "kitsu": _record(themes=[{"name": "Magic", "description": "Spells."}]),
+            "animeschedule": _record(genres=["Magic"]),
+        }
+    )
+    assert merged["genres"] == ["Magic"]
+    assert merged["themes"] == []
 
 
 def test_object_fields_merge_one_sub_field_at_a_time() -> None:

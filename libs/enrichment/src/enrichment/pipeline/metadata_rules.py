@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Any
 
 from enrichment.pipeline.relationship_merger import is_signal
-from enrichment.pipeline.word_lists import which_field
+from enrichment.pipeline.same_word import word_key
 from enrichment.utils.text_utils import (
     fold_for_comparison,
     has_cjk,
@@ -43,6 +43,15 @@ _EPISODE_COUNT_PRIORITY: tuple[str, ...] = ("mal", "anidb", "anime_planet")
 # A synopsis within this fraction of the longest is treated as equally complete,
 # so provider priority rather than a few characters decides between them.
 _SYNOPSIS_TIE = 0.10
+
+# Most specific field first. A word goes to the highest one any provider
+# filed it under, so tags only holds what nobody else claimed.
+_CATEGORY_ORDER: tuple[str, ...] = (
+    "genres",
+    "demographics",
+    "themes",
+    "tags",
+)
 
 
 Ranked = list[tuple[str, dict[str, Any]]]
@@ -209,53 +218,120 @@ def merge_title_japanese(ranked: Ranked) -> str | None:
 def merge_categories(ranked: Ranked) -> dict[str, list[Any]]:
     """Put every genre, theme, demographic and tag in exactly one field.
 
-    These four fields overlap because providers disagree about where a word
-    goes, not about the word itself: ``Shounen`` arrives as a demographic from
-    MAL and AniList, a genre from AnimeSchedule and a theme from Kitsu. Sorting
-    by the field it arrived in keeps all three. Sorting by the word keeps one.
+    The four fields overlap because providers disagree about where a word goes,
+    not about the word: ``Shounen`` arrives as a demographic from MAL and
+    AniList, a genre from AnimeSchedule, a theme from Kitsu and a tag from
+    AniDB. Keeping all four would store one word four times.
 
-    Themes carry a description, so they are merged as objects rather than
-    plain strings; a theme that ends up in ``tags`` keeps only its name, which
-    is all that field holds.
+    The most trusted provider that actually classified the word decides where
+    it goes. A ``tags`` entry is not a classification - it means the provider
+    had nothing to say, and AniDB has no genre, theme or demographic field at
+    all, so everything it knows arrives as a tag. Letting those count would
+    demote ``Swordplay`` out of themes on AniDB's say-so alone.
+
+    ``genres > demographics > themes > tags`` then settles a single provider
+    that used two of its own fields - Kitsu files ``Super Power`` under both
+    its genres and its themes. A word nobody classified stays a tag.
+
+    There is no vocabulary of our own. The providers decide.
+
+    The surviving spelling is the one most providers used, since AniDB writes
+    everything lowercase and would otherwise decide the storage form on its
+    own. Provider priority breaks a tie.
+
+    Themes carry a description, so they are objects while the other three hold
+    plain strings; a word changing field changes shape with it.
 
     Args:
         ranked: Provider records in priority order.
 
     Returns:
-        ``genres``, ``themes``, ``demographics`` and ``tags``, deduplicated and
-        spelled the way the word lists spell them.
+        ``genres``, ``demographics``, ``themes`` and ``tags``, each word in
+        exactly one of them.
     """
-    buckets: dict[str, dict[str, Any]] = {
-        "demographics": {},
-        "genres": {},
-        "themes": {},
-        "tags": {},
-    }
-    for source_field in ("demographics", "genres", "themes", "tags"):
-        # A value already filed as a theme stays one unless a higher-precedence
-        # list claims it: that is how AniList's Theme-* tags keep their meaning
-        # without restating AniList's vocabulary here.
-        fallback = "themes" if source_field == "themes" else "tags"
-        for _, values in providers_supplying(ranked, source_field):
-            for raw in values:
+    # word -> field -> spelling -> [rank of each provider that wrote it that way]
+    claims: dict[str, dict[str, dict[str, list[int]]]] = {}
+    descriptions: dict[str, str] = {}
+
+    for rank, (_, record) in enumerate(ranked):
+        for field in _CATEGORY_ORDER:
+            for raw in record.get(field) or []:
                 name = raw.get("name") if isinstance(raw, dict) else raw
                 if not name:
                     continue
-                field, canonical = which_field(name, default=fallback)
-                # themes hold objects, the other three hold plain strings, so a
-                # word changing field has to change shape with it. A word
-                # arriving as a bare genre and leaving as a theme gains a name
-                # and no description; one leaving themes loses its description.
-                if field == "themes":
-                    entry = (
-                        {**raw, "name": canonical}
-                        if isinstance(raw, dict)
-                        else {"name": canonical}
-                    )
-                else:
-                    entry = canonical
-                buckets[field].setdefault(canonical.casefold(), entry)
-    return {field: list(values.values()) for field, values in buckets.items()}
+                key = word_key(name)
+                claims.setdefault(key, {}).setdefault(field, {}).setdefault(
+                    name, []
+                ).append(rank)
+                if isinstance(raw, dict) and raw.get("description"):
+                    descriptions.setdefault(key, raw["description"])
+
+    merged: dict[str, list[Any]] = {field: [] for field in _CATEGORY_ORDER}
+    for key, by_field in claims.items():
+        field = _chosen_field(by_field)
+        name = _agreed_spelling(by_field[field])
+        if field == "themes":
+            description = descriptions.get(key)
+            merged[field].append(
+                {"name": name, "description": description}
+                if description
+                else {"name": name}
+            )
+        else:
+            merged[field].append(name)
+    return merged
+
+
+def _chosen_field(by_field: dict[str, dict[str, list[int]]]) -> str:
+    """Decide which field a word belongs in.
+
+    Args:
+        by_field: Each field the word was filed under, holding the spellings
+            used and the priority rank of every provider that used them.
+
+    Returns:
+        The field the most trusted provider that classified the word used.
+        ``tags`` only when no provider classified it.
+    """
+    classified = {f: v for f, v in by_field.items() if f != "tags"}
+    if not classified:
+        return "tags"
+    best = min(
+        min(ranks) for spellings in classified.values() for ranks in spellings.values()
+    )
+    contenders = {
+        field
+        for field, spellings in classified.items()
+        if any(min(ranks) == best for ranks in spellings.values())
+    }
+    return next(f for f in _CATEGORY_ORDER if f in contenders)
+
+
+def _agreed_spelling(by_spelling: dict[str, list[int]]) -> str:
+    """Choose how a word is written, from how the providers wrote it.
+
+    Most providers win. AniDB publishes everything in lowercase, so letting the
+    most trusted provider decide alone would store ``action`` wherever AniDB
+    happened to be the only one filing it in the winning field. Counting
+    instead lets six providers outvote it.
+
+    An even split prefers a spelling that is not entirely lowercase, because
+    AniDB's lowercase is a house style rather than how the word is written -
+    it alone turns ``Ocean`` into ``ocean``. A word every provider writes in
+    lowercase is unaffected, and the most trusted provider settles what is
+    left.
+
+    Args:
+        by_spelling: Each spelling seen, with the priority rank of every
+            provider that used it.
+
+    Returns:
+        The spelling the providers most agree on.
+    """
+    return max(
+        by_spelling,
+        key=lambda s: (len(by_spelling[s]), not s.islower(), -min(by_spelling[s])),
+    )
 
 
 def merge_synonyms(ranked: Ranked, titles: Iterable[str | None]) -> list[str]:
