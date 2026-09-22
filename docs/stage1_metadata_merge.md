@@ -199,11 +199,15 @@ Providers decorate the same id differently. MAL publishes `/anime/21/One_Piece` 
 
 **Both halves are unioned because neither is complete.** The offline seed carries livechart, simkl and animecountdown, which no provider returns; the providers carry animeschedule, which the seed does not list.
 
+AniDB is addressable two ways as well: MAL links its works through the old `anidb.net/perl-bin/animedb.pl?show=anime&aid=69` address. `canonical_url_key` recognises it, so it folds into `anidb.net/anime/69` rather than reading as a separate work — which matters for relations too, since the same resolver backs `relationship_merger`.
+
 Kitsu is the one provider addressable two ways — providers report the slug (`kitsu.io/anime/one-piece`), the seed the numeric id (`kitsu.app/anime/12`) — and neither string reveals the other. The numeric form drops when a slug names the same work. MAL and AniList identify every work numerically, so their keys never meet a slug rival and are never dropped. Both slugged and slugless URLs are safe to feed back to the crawlers: MAL follows its own canonical link, and Kitsu resolves a slug via `filter[slug]`.
 
 ### `external_sources` is the residual
 
 A link is excluded when another field already owns it, decided **by platform as well as by URL**. URL comparison alone is not enough: AniDB links Crunchyroll as `/series/GRMG8ZQZR` where MAL links `/series-257631`, so the URLs differ and a streaming link would sit in the residual field. The platform does not differ, and that settles it.
+
+A claimed link is **moved, not discarded**. `merge_streaming_sources` reads from `external_sources` as well as its own field, so AniDB's Crunchyroll, Amazon and Funimation links — at URLs no other provider reports — land in `streaming_sources` instead of vanishing. Excluding them from the residual without collecting them elsewhere lost three links outright on One Piece, Funimation entirely.
 
 On a collision the richer entry wins — MAL states a `label`, AniDB a `language`, and neither should erase the other.
 
@@ -382,8 +386,7 @@ Recorded because each was silent, and each is the kind of thing that can return:
 - **MAL's episode count never reached disk.** The record was persisted before the fallback patched `episode_count`, so callers saw 1174 while the file kept 0.
 - **AnimeSchedule's `month` was fetched, parsed and dropped.** The API returns `"month": "October"` and the source model declared the field; the mapper never mapped it.
 - **AniSearch's score was merged on the wrong scale.** It rates out of five stars (the page states `Calculated Value 4.18 = 84%`) while every other provider reports out of ten, so its score merged at roughly half. Converted in the mapper, where the provider's scale is known.
-- **AniDB credentials in `.env` never reach AniDB.** Three things have to line up and none do: `anidb_helper.py:107` reads `os.getenv("ANIDB_CLIENT", "animeenrichment")`, which sees only the process environment; pydantic's `env_file=".env"` (`settings.py:156`) loads into the `Settings` object and never into `os.environ`; and `ANIDB_*` is not a field on `Settings`, which sets `extra="ignore"`, so those lines are discarded even there. Any run not launched from a pre-sourced shell fetches AniDB with the fallback client name, which AniDB rejects with `error code="302"`.
-- **The pipeline reported `Success Rate: 100.0%` in the same run whose summary showed `anidb: ✗`.**
+- **`Success Rate: 100.0%` is reported in the same run whose summary shows `anidb: ✗`.** `api_fetcher.py:278` computes it from `len(api_timings) + len(api_errors)`, but a helper that returns `None` — no data, no exception — still records a timing and never lands in `api_errors`. "Returned nothing" therefore counts as success. Still open.
 - **`normalize_mal_anime_url` still returns `has_slug`**, which no caller uses — dead since the crawler started resolving the canonical URL itself.
 
 ### Superseded claims
