@@ -602,3 +602,40 @@ def test_nsfw_defaults_to_false_when_nobody_supplies_it() -> None:
     # The flag is never left empty: consumers always get a usable answer
     # rather than having to decide what an absent one means.
     assert merge_provider_records({"mal": _record()})["nsfw"] is False
+
+
+def test_a_content_warning_outranks_every_provider() -> None:
+    # MAL is trusted most, but calling a word a theme is not a denial that it
+    # is adult content. The two mistakes are not equally bad.
+    merged = merge_provider_records(
+        {
+            "mal": _record(themes=[{"name": "Nudity"}]),
+            "anilist": _record(content_warnings=["Nudity"]),
+        }
+    )
+    assert merged["content_warnings"] == ["Nudity"]
+    assert merged["themes"] == []
+
+
+def test_a_warning_does_not_also_sit_in_tags() -> None:
+    # AniDB publishes 31 of AniList's adult-flagged words as ordinary tags.
+    merged = merge_provider_records(
+        {
+            "anilist": _record(content_warnings=["Large Breasts"]),
+            "anidb": _record(tags=["large breasts"]),
+        }
+    )
+    assert merged["content_warnings"] == ["Large Breasts"]
+    assert merged["tags"] == []
+
+
+def test_words_nobody_flagged_are_untouched_by_the_warning_rule() -> None:
+    merged = merge_provider_records(
+        {
+            "mal": _record(genres=["Action"], themes=[{"name": "Military"}]),
+            "anilist": _record(content_warnings=["Nudity"]),
+        }
+    )
+    assert merged["genres"] == ["Action"]
+    assert [t["name"] for t in merged["themes"]] == ["Military"]
+    assert merged["content_warnings"] == ["Nudity"]

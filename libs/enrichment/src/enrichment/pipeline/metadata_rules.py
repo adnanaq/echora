@@ -47,6 +47,7 @@ _SYNOPSIS_TIE = 0.10
 # Most specific field first. A word goes to the highest one any provider
 # filed it under, so tags only holds what nobody else claimed.
 _CATEGORY_ORDER: tuple[str, ...] = (
+    "content_warnings",
     "genres",
     "demographics",
     "themes",
@@ -229,6 +230,9 @@ def merge_categories(ranked: Ranked) -> dict[str, list[Any]]:
     all, so everything it knows arrives as a tag. Letting those count would
     demote ``Swordplay`` out of themes on AniDB's say-so alone.
 
+    ``content_warnings`` is the exception: any provider flagging a word as
+    adult content wins outright, whoever else disagrees.
+
     ``genres > demographics > themes > tags`` then settles a single provider
     that used two of its own fields - Kitsu files ``Super Power`` under both
     its genres and its themes. A word nobody classified stays a tag.
@@ -293,6 +297,12 @@ def _chosen_field(by_field: dict[str, dict[str, list[int]]]) -> str:
         The field the most trusted provider that classified the word used.
         ``tags`` only when no provider classified it.
     """
+    # A content warning outranks everyone, including MAL. Another provider
+    # calling the word a theme is not a denial that it is adult content, and
+    # the two mistakes are not equally bad - the same reasoning as `nsfw`.
+    if "content_warnings" in by_field:
+        return "content_warnings"
+
     classified = {f: v for f, v in by_field.items() if f != "tags"}
     if not classified:
         return "tags"

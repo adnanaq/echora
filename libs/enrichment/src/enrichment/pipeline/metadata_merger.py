@@ -107,7 +107,9 @@ _SINGLE_SOURCE: tuple[str, ...] = (
 )
 
 # Plain unions over scalar list values, deduplicated on the value itself.
-_UNION: tuple[str, ...] = ("content_warnings",)
+# content_warnings is not here: it is one of the category fields, so a
+# warning cannot also sit in tags or themes.
+_UNION: tuple[str, ...] = ()
 
 
 def _ranked(records: dict[str, dict[str, Any]]) -> Ranked:
