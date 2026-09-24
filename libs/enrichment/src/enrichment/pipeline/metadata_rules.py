@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from datetime import datetime
+from statistics import mean, median
 from typing import Any
 
 from enrichment.pipeline.relationship_merger import is_signal
@@ -425,6 +426,65 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
     except ValueError:
         logger.warning(f"Cannot read a month from aired_from: {aired_from!r}")
         return None
+
+
+def merge_score(
+    statistics: dict[str, dict[str, Any]],
+    *,
+    baseline_score: float,
+    baseline_votes: int,
+) -> dict[str, float] | None:
+    """Reduce the providers' scores to the three figures we publish.
+
+    Computed from the scores this run actually collected, not taken from the
+    offline seed. The seed's aggregate is frozen - its upstream was archived -
+    and it cannot reflect a provider being added, removed, or corrected. On
+    One Piece the seed says 8.74 where the seven live scores average 8.60,
+    most of the gap being the AniSearch five-star scale the seed never fixed.
+
+    Every score is already on 0-10 by the time it reaches here; the mappers
+    convert, since only a mapper knows its own provider's scale.
+
+    ``weighted`` treats every anime as carrying ``baseline_votes`` votes of
+    ``baseline_score`` on top of its real ones, so a title a handful of people
+    rated sits near the ordinary score while a title hundreds of thousands
+    rated keeps its own. Providers count once each toward the mean; the vote
+    totals only decide how far that mean is trusted. It is left out when no
+    provider reports a count, because the formula would otherwise return the
+    baseline and claim an unrated anime had been measured and found average.
+    See docs/score_calculation.md for the evidence behind both constants.
+
+    Args:
+        statistics: The merged per-provider statistics.
+        baseline_score: Score the baseline votes carry.
+        baseline_votes: How many baseline votes each anime carries.
+
+    Returns:
+        ``mean``, ``median`` and, when any provider reported a vote count,
+        ``weighted``. ``None`` when no provider scored the work.
+    """
+    scores = [
+        float(block["score"])
+        for block in statistics.values()
+        if isinstance(block.get("score"), (int, float))
+    ]
+    if not scores:
+        return None
+
+    average = mean(scores)
+    merged = {"mean": round(average, 2), "median": round(median(scores), 2)}
+
+    votes = sum(
+        int(block["scored_by"])
+        for block in statistics.values()
+        if isinstance(block.get("scored_by"), int)
+    )
+    if votes:
+        weighted = (votes * average + baseline_votes * baseline_score) / (
+            votes + baseline_votes
+        )
+        merged["weighted"] = round(weighted, 2)
+    return merged
 
 
 def merge_statistics(ranked: Ranked) -> dict[str, dict[str, Any]]:

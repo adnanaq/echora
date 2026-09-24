@@ -71,6 +71,28 @@ def test_statistics_are_kept_per_provider_without_arbitration() -> None:
     }
 
 
+def test_score_carries_mean_median_and_weighted() -> None:
+    merged = merge_provider_records(
+        {
+            "mal": _record(statistics={"mal": {"score": 8.7, "scored_by": 900_000}}),
+            "anisearch": _record(
+                statistics={"anisearch": {"score": 8.3, "scored_by": 7_900}}
+            ),
+        }
+    )
+    assert merged["score"]["mean"] == 8.5
+    assert merged["score"]["median"] == 8.5
+    assert merged["score"]["weighted"] == pytest.approx(8.5, abs=0.01)
+
+
+def test_score_omits_weighted_when_nobody_reported_votes() -> None:
+    merged = merge_provider_records(
+        {"mal": _record(statistics={"mal": {"score": 8.7}})}
+    )
+    assert merged["score"]["mean"] == 8.7
+    assert "weighted" not in merged["score"]
+
+
 def test_sources_keep_one_url_per_work_preferring_the_slug() -> None:
     merged = merge_provider_records(
         {

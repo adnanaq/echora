@@ -777,10 +777,14 @@ class Statistics(BaseModel):
 class ScoreCalculations(BaseModel):
     """Aggregated score calculations across platforms"""
 
-    arithmetic_geometric_mean: float | None = Field(
-        None, description="Arithmetic-geometric mean of scores"
+    weighted: float | None = Field(
+        None,
+        description=(
+            "Confidence-adjusted score used for ranking. Unset until at least "
+            "one provider reports a vote count. See docs/score_calculation.md"
+        ),
     )
-    arithmetic_mean: float | None = Field(None, description="Arithmetic mean of scores")
+    mean: float | None = Field(None, description="Arithmetic mean of scores")
     median: float | None = Field(None, description="Median of scores")
 
 
@@ -814,11 +818,6 @@ class Anime(BaseModel):
     )
     season: AnimeSeason | None = Field(
         None, description="Anime season (SPRING, SUMMER, FALL, WINTER)"
-    )
-    similarity_score: float | None = Field(
-        None,
-        description="Vector similarity score from Qdrant search (populated at query time, not persisted)",
-        exclude=True,
     )
     source_material: SourceMaterialType | None = Field(
         None, description="Source material type (manga, light novel, etc.)"

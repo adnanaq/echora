@@ -51,6 +51,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from enrichment.pipeline.config import EnrichmentConfig
 from enrichment.pipeline.link_rules import (
     merge_external_sources,
     merge_images,
@@ -66,6 +67,7 @@ from enrichment.pipeline.metadata_rules import (
     merge_month,
     merge_nsfw,
     merge_object,
+    merge_score,
     merge_statistics,
     merge_synonyms,
     merge_synopsis,
@@ -292,6 +294,14 @@ def merge_provider_records(
     statistics = merge_statistics(ranked)
     if statistics:
         merged["statistics"] = statistics
+        config = EnrichmentConfig()
+        score = merge_score(
+            statistics,
+            baseline_score=config.weighted_score_baseline,
+            baseline_votes=config.weighted_score_baseline_votes,
+        )
+        if score:
+            merged["score"] = score
 
     merged.update(merge_relationships(records))
     merged["id"] = merged_anime_id(merged["sources"])

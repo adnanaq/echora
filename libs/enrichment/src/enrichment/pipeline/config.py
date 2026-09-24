@@ -114,6 +114,25 @@ class EnrichmentConfig(BaseSettings):
         description="Seconds to stop contacting AniDB after it returns a 555 ban",
     )
 
+    # Weighted Score
+    weighted_score_baseline: float = Field(
+        default=6.2,
+        validation_alias="WEIGHTED_SCORE_BASELINE",
+        description=(
+            "What a typical anime scores across our providers. Recompute every "
+            "5,000 newly enriched anime and whenever the provider set changes; "
+            "see docs/score_calculation.md"
+        ),
+    )
+    weighted_score_baseline_votes: int = Field(
+        default=1000,
+        validation_alias="WEIGHTED_SCORE_BASELINE_VOTES",
+        description=(
+            "Baseline votes every anime carries, deciding how many real voters "
+            "it takes before its own score wins; see docs/score_calculation.md"
+        ),
+    )
+
     # Feature Flags
     skip_failed_apis: bool = Field(
         default=True,

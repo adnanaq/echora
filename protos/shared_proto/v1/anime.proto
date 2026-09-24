@@ -324,8 +324,8 @@ message Statistics {
 }
 
 message ScoreCalculations {
-  optional float arithmetic_geometric_mean = 1;
-  optional float arithmetic_mean = 2;
+  optional float weighted = 1;
+  optional float mean = 2;
   optional float median = 3;
 }
 
@@ -397,7 +397,7 @@ message Episode {
 
 message Anime {
   optional string background = 1;
-  optional string country_of_origin = 44;
+  optional string country_of_origin = 43;
   optional int32 duration = 2;
   int32 episode_count = 3;
   string id = 4;
@@ -406,43 +406,42 @@ message Anime {
   optional bool nsfw = 7;
   optional AnimeRating rating = 8;
   optional AnimeSeason season = 9;
-  optional float similarity_score = 10;
-  optional SourceMaterialType source_material = 11;
-  AnimeStatus status = 12;
-  optional string synopsis = 13;
-  string title = 14;
-  optional string title_english = 15;
-  optional string title_japanese = 16;
-  AnimeType type = 17;
-  optional int32 year = 18;
-  repeated string content_warnings = 19;
-  repeated string demographics = 20;
-  repeated ThemeSong ending_themes = 21;
-  repeated string genres = 22;
-  repeated ThemeSong opening_themes = 23;
-  map<string, RelatedAnimeList> related_anime = 24;
-  map<string, RelatedSourceMaterialList> related_source_material = 25;
-  repeated string sources = 26;
-  repeated StreamingEntry streaming_sources = 27;
-  repeated string synonyms = 28;
-  repeated string tags = 29;
-  repeated ThemeEntry themes = 30;
-  repeated TrailerEntry trailers = 31;
-  AiredDates aired_dates = 32;
+  optional SourceMaterialType source_material = 10;
+  AnimeStatus status = 11;
+  optional string synopsis = 12;
+  string title = 13;
+  optional string title_english = 14;
+  optional string title_japanese = 15;
+  AnimeType type = 16;
+  optional int32 year = 17;
+  repeated string content_warnings = 18;
+  repeated string demographics = 19;
+  repeated ThemeSong ending_themes = 20;
+  repeated string genres = 21;
+  repeated ThemeSong opening_themes = 22;
+  map<string, RelatedAnimeList> related_anime = 23;
+  map<string, RelatedSourceMaterialList> related_source_material = 24;
+  repeated string sources = 25;
+  repeated StreamingEntry streaming_sources = 26;
+  repeated string synonyms = 27;
+  repeated string tags = 28;
+  repeated ThemeEntry themes = 29;
+  repeated TrailerEntry trailers = 30;
+  AiredDates aired_dates = 31;
   // Unified broadcast message (weekly slot + streaming times + premiere dates)
-  Broadcast broadcast = 33;
+  Broadcast broadcast = 32;
   // was map<string, string> — a mapping cannot hold two links for one
   // platform, and the provider's own label had nowhere to go
-  repeated ExternalLink external_sources = 34;
-  AnimeImages images = 35;
-  ScoreCalculations score = 36;
-  StaffData staff_data = 37;
-  map<string, Statistics> statistics = 38;
-  repeated CompanyEntry licensors = 39;
-  repeated CompanyEntry producers = 40;
-  repeated CompanyEntry studios = 41;
-  optional AnimeHiatus hiatus = 42;
-  map<string, string> titles = 43;
+  repeated ExternalLink external_sources = 33;
+  AnimeImages images = 34;
+  ScoreCalculations score = 35;
+  StaffData staff_data = 36;
+  map<string, Statistics> statistics = 37;
+  repeated CompanyEntry licensors = 38;
+  repeated CompanyEntry producers = 39;
+  repeated CompanyEntry studios = 40;
+  optional AnimeHiatus hiatus = 41;
+  map<string, string> titles = 42;
 }
 
 message AnimeRecord {

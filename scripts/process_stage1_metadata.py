@@ -954,16 +954,10 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
     else:
         output["premiere_dates"] = None
 
-    # Score calculations from offline database (convert camelCase to snake_case)
-    offline_score = offline_data.get("score")
-    if offline_score and isinstance(offline_score, dict):
-        output["score"] = {
-            "arithmetic_geometric_mean": offline_score.get("arithmeticGeometricMean"),
-            "arithmetic_mean": offline_score.get("arithmeticMean"),
-            "median": offline_score.get("median"),
-        }
-    else:
-        output["score"] = None
+    # Scores come from the providers this run collected, never from the offline
+    # database, which averages sites we do not use. See merge_score in
+    # enrichment.pipeline.metadata_rules and docs/score_calculation.md.
+    output["score"] = None
 
     # Clean up None values in nested objects
     for key, value in output.items():

@@ -209,6 +209,7 @@ class QdrantConfig(BaseModel):
             "statistics.mal.scored_by": "integer",
             # Statistics - AniList
             "statistics.anilist.score": "float",
+            "statistics.anilist.scored_by": "integer",
             # Statistics - AniDB
             "statistics.anidb.score": "float",
             "statistics.anidb.scored_by": "integer",
@@ -217,11 +218,13 @@ class QdrantConfig(BaseModel):
             "statistics.animeplanet.scored_by": "integer",
             # Statistics - Kitsu
             "statistics.kitsu.score": "float",
+            "statistics.kitsu.scored_by": "integer",
             # Statistics - AnimeSchedule
             "statistics.animeschedule.score": "float",
             "statistics.animeschedule.scored_by": "integer",
             # Aggregate score
-            "score.arithmetic_mean": "float",
+            "score.mean": "float",
+            "score.weighted": "float",
         },
         description="Payload fields with their types for optimized indexing (excludes operational metadata)",
     )

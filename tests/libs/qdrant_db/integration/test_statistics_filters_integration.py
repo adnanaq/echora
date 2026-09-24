@@ -232,14 +232,14 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
         ),
         # Aggregate Score Field (1 field)
         (
-            {"score.arithmetic_mean": {"gte": 7.0}},
+            {"score.mean": {"gte": 7.0}},
             "Aggregate score >= 7.0",
-            ["title", "score.arithmetic_mean"],
+            ["title", "score.mean"],
         ),
         (
-            {"score.arithmetic_mean": {"gte": 6.0, "lte": 8.0}},
+            {"score.mean": {"gte": 6.0, "lte": 8.0}},
             "Aggregate score 6.0-8.0",
-            ["title", "score.arithmetic_mean"],
+            ["title", "score.mean"],
         ),
     ]
 
@@ -281,7 +281,7 @@ async def test_comprehensive_statistics_filters(client: QdrantClient) -> None:
     # Test 2: Popular on MAL with high aggregate score
     combo_filter_dict = {
         "statistics.mal.members": {"gte": 50000},
-        "score.arithmetic_mean": {"gte": 7.0},
+        "score.mean": {"gte": 7.0},
     }
     combo_results, _ = await client.scroll(
         limit=5, scroll_filter=_to_search_filter_conditions(combo_filter_dict)

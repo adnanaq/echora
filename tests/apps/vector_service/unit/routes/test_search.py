@@ -22,7 +22,7 @@ from vector_service.routes.search import (
 # ---------------------------------------------------------------------------
 
 _INDEXED_FIELDS: frozenset[str] = frozenset(
-    {"type", "status", "year", "genres", "entity_type", "score.arithmetic_mean"}
+    {"type", "status", "year", "genres", "entity_type", "score.mean", "score.weighted"}
 )
 
 
