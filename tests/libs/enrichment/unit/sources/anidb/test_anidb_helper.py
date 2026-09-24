@@ -211,15 +211,29 @@ async def test_make_single_request_555_raises_blocked(helper, mock_session) -> N
 
 
 @pytest.mark.asyncio
+async def test_make_single_request_ban_in_200_body_raises_blocked(
+    helper, mock_session
+) -> None:
+    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
+        return_value=b'<error code="500">banned</error>'
+    )
+    helper.session = mock_session
+    with pytest.raises(ServiceBlockedError):
+        await helper._make_single_request({"request": "anime", "aid": 1}, attempt=0)
+    assert helper._ban_remaining() > 0
+
+
+@pytest.mark.asyncio
 async def test_make_single_request_api_error_xml(helper, mock_session) -> None:
     mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
-        return_value=b"<error>Banned</error>"
+        return_value=b'<error code="330">no such anime</error>'
     )
     helper.session = mock_session
     result = await helper._make_single_request(
         {"request": "anime", "aid": 1}, attempt=0
     )
     assert result is None
+    assert helper._ban_remaining() == 0
 
 
 # =============================================================================

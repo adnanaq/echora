@@ -543,6 +543,12 @@ class AniDBHelper(BaseEnrichmentHelper):
         Handles gzip decompression and AniDB-specific error status codes
         (503 service unavailable, 555 banned).
 
+        A ban arrives two ways. HTTP 555 is the documented one. In practice
+        AniDB also answers HTTP 200 with ``<error code="500">banned</error>``
+        when the daily request volume is exceeded, which is the form seen in
+        the wild; both record the ban so the client stands down. Other error
+        bodies, such as ``no such anime``, are not bans and return None.
+
         Args:
             params: AniDB API query parameters.
             attempt: Zero-based attempt number (used for debug logging).
@@ -552,7 +558,8 @@ class AniDBHelper(BaseEnrichmentHelper):
 
         Raises:
             RuntimeError: If the session has not been initialised.
-            ServiceBlockedError: On HTTP 555 (banned/rate-limit violation).
+            ServiceBlockedError: On HTTP 555, or on an HTTP 200 body reporting
+                a ban.
         """
         request_params = {
             **params,
@@ -574,6 +581,12 @@ class AniDBHelper(BaseEnrichmentHelper):
                 if text and not text.strip().startswith("<error"):
                     return text
                 if text and "<error" in text:
+                    if "banned" in text.lower():
+                        self._record_ban()
+                        raise ServiceBlockedError(
+                            "banned — daily request volume exceeded",
+                            service="anidb",
+                        )
                     logger.warning(f"AniDB error response: {text[:200]}")
                 return None
 
