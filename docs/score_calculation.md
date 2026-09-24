@@ -20,7 +20,7 @@ more importantly, **why** — so that a constant which looks arbitrary is not
 4. [Why C Is 6.2](#why-c-is-62)
 5. [Why m Is 1000](#why-m-is-1000)
 6. [When We Publish Nothing](#when-we-publish-nothing)
-7. [Recalculating C and m](#recalculating-c-and-m)
+7. [Recalculating C and m](#recalculating-c-and-m) — **not built yet**
 8. [Where It Lives In The Code](#where-it-lives-in-the-code)
 9. [Known Drawbacks](#known-drawbacks)
 10. [Open Problem: Provider Offsets](#open-problem-provider-offsets)
@@ -250,6 +250,10 @@ zero score.
 
 ## Recalculating C and m
 
+**Not implemented.** Nothing enriched at scale yet, so there is no populated
+database to compute a new `C` from. This section is the design to pick up when
+there is.
+
 Both are settings, not constants. `C` is what a typical anime scores, and that
 moves as the database grows and as providers are added.
 
@@ -305,10 +309,44 @@ Two consequences worth expecting:
   registers a change in `C`, which is correct — `C` was never doing much work
   there.
 
+### Nothing extra needs tracking
+
+The database already knows both things this needs, so no running tally has to be
+kept during enrichment:
+
+- **The new `C`** is the average of `score.mean` over the collection. That is an
+  indexed payload field, so it is a read, not a number accumulated as records are
+  written.
+- **The trigger** is the collection's point count against the last recalculation's
+  count.
+
+What the database does *not* know is which `C` and `m` produced the scores it is
+holding, and that has to be stored deliberately — the value, the date, and how
+many anime it was computed from. Not for the arithmetic, but so that a stored
+score can be explained and reproduced later, and so it is possible to tell
+whether a record is stale. A score nobody can account for six months on is a
+score nobody can debug.
+
+### Mechanics, and one thing to check first
+
+The pieces exist in `libs/qdrant_db/src/qdrant_db/client.py`:
+
+- `scroll` — pages through points
+- `update_payload` — writes the recomputed `weighted` back
+
+**There is no aggregation call on the client.** Computing `C` therefore means
+scrolling the whole collection and averaging in Python. At around 40,000 records
+that is perfectly workable, but check whether the Qdrant version in use offers a
+facet or aggregation API before writing the scroll loop — it would be cheaper and
+would avoid pulling every payload across the wire.
+
+The rewrite step touches every record but only its payload. Vectors are untouched
+and nothing is re-embedded, so the cost is a bulk payload update rather than a
+reindex.
+
 ### Recording it
 
 Store the `C` and `m` used, with the date and sample size, alongside the setting.
-A score that cannot be explained six months later is a score nobody can debug.
 
 ---
 

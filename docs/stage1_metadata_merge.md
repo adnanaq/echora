@@ -113,7 +113,7 @@ Disagreement on a field expected to be uniform is **logged**, because for those 
 | `score`, `staff_data` | Computed. No provider supplies them |
 | `studios`, `producers`, `licensors` | **Open** — see [Company Fields](#company-fields--still-open) |
 
-Coverage note: **AniDB and Kitsu supply no company data at all**, and AniDB supplies neither `genres` nor `duration`. AniDB is the only source of `titles`, and carries by far the most `tags` (122 against AniList's 32).
+Coverage note: AniDB supplies neither `genres` nor `duration`. AniDB is the only source of `titles`, and carries by far the most `tags` (122 against AniList's 32).
 
 ---
 
@@ -352,7 +352,7 @@ Use `titles`, not `langdetect`. AniDB ships `titles` as an ISO-keyed map (`de`, 
 
 **Role is a property of the work, not the company.** In the offline database's 40,346 entries, 1,219 names (18%) appear as both studio and producer — `toei animation` is 391 studio / 1047 producer, `production i.g` 255 / 454. On One Piece, 4 of 5 companies land in different fields depending on the provider. So a company cannot be filed by role once and for all.
 
-Related: our AniList mapper splits on `isAnimationStudio`, a *company* property, to populate per-work role fields, while `isMain` — the per-work signal — is fetched and discarded (`anilist_mapper.py:176-187`, `anilist_helper.py:312-320`).
+An earlier version of this section claimed the AniList mapper uses the wrong field for this. It does not. AniList's schema defines `isAnimationStudio` as "if the studio is an animation studio or a different kind of company" and `isMain` as "if the studio is the main animation studio of the anime" — different questions. `isAnimationStudio` is the studio-versus-producer signal and the mapper uses it correctly (`anilist_mapper.py:181-189`). `isMain` marks the lead studio among several: on One Piece it is true for Toei Animation alone, while TAP, Magic Bus, Mushi Production, Studio Guts and Asahi Production are all `isAnimationStudio=True, isMain=False`. Our three roles cannot express that distinction. `isMain` is also queried (`anilist_helper.py:324`) and parsed into `AniListStudioEdge.is_main`, not discarded — merely unused.
 
 **The same company arrives under different names.** AniSearch writes `Toei Animation Co., Ltd.` where the others write `Toei Animation`. At scale, 703 names in the offline database merge under legal-suffix folding, affecting 38,381 credits — though that dataset is already merged and lowercased, so it is not a fair proxy for what stage 1 receives.
 
@@ -360,7 +360,21 @@ The fold itself is straightforward: NFKC, case, punctuation, plus legal suffixes
 
 **What is undecided** is the shape: union per field, one provider decides, or a single `companies` list carrying roles. The last is a model **and proto** change.
 
-**Coverage.** AniDB and Kitsu supply no company data at all.
+**Coverage.** All seven providers supply company data, and all seven supply a company URL. Measured over 276 anime:
+
+| provider | studios | producers | licensors | anime covered |
+| :--- | ---: | ---: | ---: | ---: |
+| mal | 281 | 451 | 102 | 270 |
+| kitsu | 150 | 485 | 52 | 205 |
+| anilist | 248 | 350 | 0 | 240 |
+| animeschedule | 227 | 0 | 0 | 202 |
+| anisearch | 225 | 0 | 0 | 225 |
+| anime_planet | 0 | 260 | 0 | 236 |
+| anidb | — | — | — | banned during collection; a cache replay gave studios and producers on 53 of 219 |
+
+Only MAL and Kitsu carry all three roles, so every licensor we publish rests on those two. AniSearch has a single studio field and structurally cannot report a second company. Anime-Planet's figure is producers only because `animeplanet_mapper.py:118` files its *studios* there — the site calls them studios and links them at `/anime/studios/…`, so that mapping is likely wrong.
+
+An earlier version of this section said AniDB and Kitsu supply no company data. That was read off our own mappers rather than the providers: AniDB's `<creators>` carries companies under the `Animation Work` and `Work` types and the parser already captured them, and Kitsu exposes all three roles on its `anime-productions` endpoint, which we were not calling. Both are now mapped.
 
 **Limits.** The role and name-variation counts come from the offline database; the raw cross-provider comparison is still One Piece alone. An earlier claim that provider company names match exactly was drawn from three providers on one title and is wrong.
 
