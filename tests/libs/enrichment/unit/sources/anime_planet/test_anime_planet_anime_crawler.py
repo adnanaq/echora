@@ -350,7 +350,12 @@ def test_extract_from_html_fixture(ap_anime_html: str) -> None:
     assert raw["season_url"] == "/anime/seasons/fall-1999"
     assert "161" in raw["rank_text"]
     assert raw["aka"] == "Alt title: ワンピース"
-    assert raw["studios"] == ["Toei Animation"]
+    assert raw["studios"] == [
+        {
+            "name": "Toei Animation",
+            "url": "https://www.anime-planet.com/anime/studios/toei-animation",
+        }
+    ]
     assert "Shounen" in raw["tags"]
     assert raw["cover"] is not None and "one-piece" in raw["cover"]
     assert len(raw["related_anime_raw"]) == 67
@@ -516,7 +521,10 @@ def test_build_anime_from_raw_from_fixture(ap_anime_extracted: dict) -> None:
     assert anime.rank == 161
     assert anime.alt_title == "ワンピース"
     assert anime.number_of_episodes == 1165
-    assert anime.studios == ["Toei Animation"]
+    assert [s.name for s in anime.studios] == ["Toei Animation"]
+    assert anime.studios[0].url == (
+        "https://www.anime-planet.com/anime/studios/toei-animation"
+    )
     assert "Shounen" in anime.tags
     assert "Action" in anime.genres
     assert anime.aggregate_rating is not None

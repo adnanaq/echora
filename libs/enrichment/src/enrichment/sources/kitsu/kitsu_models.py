@@ -86,6 +86,23 @@ class KitsuAnime(BaseModel):
     # Populated by the helper after fetching /genres and /categories endpoints
     genres: list[str] = Field(default_factory=list)
     themes: list[ThemeEntry] = Field(default_factory=list)
+    # Populated by the helper after fetching /anime-productions
+    companies: list["KitsuProduction"] = Field(default_factory=list)
+
+
+class KitsuProduction(BaseModel):
+    """One company's involvement in one anime.
+
+    Kitsu carries the role on the join row rather than on the company, so one
+    company can appear twice for the same anime under different roles - it
+    files Madhouse as both producer and studio on Death Note.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    name: str
+    role: str | None = None  # "studio", "producer", "licensor"
+    company_id: str | None = None  # Kitsu producer id, the only stable handle
 
 
 class KitsuGenreAttributes(BaseModel):

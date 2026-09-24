@@ -26,6 +26,7 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuMediaCharacterAttributes,
     KitsuPerson,
     KitsuPersonAttributes,
+    KitsuProduction,
     KitsuTitles,
 )
 
@@ -58,9 +59,36 @@ def _make_anime(**overrides) -> KitsuAnime:
         youtubeVideoId="abc123",
         abbreviatedTitles=["OP"],
     )
+    companies = overrides.pop("companies", [])
     for key, val in overrides.items():
         setattr(attrs, key, val)
-    return KitsuAnime(id="12", attributes=attrs)
+    return KitsuAnime(id="12", attributes=attrs, companies=companies)
+
+
+def test_companies_split_by_role() -> None:
+    result = anime_from_kitsu(
+        _make_anime(
+            companies=[
+                KitsuProduction(name="Toei Animation", role="studio"),
+                KitsuProduction(name="Fuji TV", role="producer"),
+                KitsuProduction(name="Funimation", role="licensor"),
+                KitsuProduction(name="Madhouse", role="studio"),
+                KitsuProduction(name="Madhouse", role="producer"),
+            ]
+        )
+    )
+    assert [c["name"] for c in result["studios"]] == ["Toei Animation", "Madhouse"]
+    assert [c["name"] for c in result["producers"]] == ["Fuji TV", "Madhouse"]
+    assert [c["name"] for c in result["licensors"]] == ["Funimation"]
+
+
+def test_companies_with_unknown_role_are_dropped() -> None:
+    result = anime_from_kitsu(
+        _make_anime(companies=[KitsuProduction(name="Mystery Co", role="publisher")])
+    )
+    assert result.get("studios", []) == []
+    assert result.get("producers", []) == []
+    assert result.get("licensors", []) == []
 
 
 def _make_media_char(

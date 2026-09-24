@@ -115,7 +115,10 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
 
     # ── Sources / producers ───────────────────────────────────────────────
     sources = [anime.url] if anime.url else []
-    producers = [CompanyEntry(name=s) for s in anime.studios]
+    producers = [
+        CompanyEntry(name=studio.name, sources=[studio.url] if studio.url else [])
+        for studio in anime.studios
+    ]
 
     # ── Related anime (same_franchise + other_franchise buckets) ──────────
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}

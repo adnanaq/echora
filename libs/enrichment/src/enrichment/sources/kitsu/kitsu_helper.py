@@ -35,6 +35,7 @@ from .kitsu_models import (
     KitsuGenre,
     KitsuMediaCharacter,
     KitsuPerson,
+    KitsuProduction,
 )
 
 logger = logging.getLogger(__name__)
@@ -363,6 +364,61 @@ class KitsuHelper(BaseEnrichmentHelper):
         """
         return await self._fetch_all_pages(f"/anime/{anime_id}/genres", session=session)
 
+    async def get_anime_productions(
+        self, anime_id: int, *, session: Any | None = None
+    ) -> list[KitsuProduction]:
+        """Fetch the companies credited on a Kitsu anime, with their roles.
+
+        The role lives on the join row, not on the company, so the same company
+        can come back twice under different roles for one anime.
+
+        A join row names no company - it references one by id. Kitsu's
+        ``include`` parameter, spelled as the JSON:API standard requires, asks
+        for those referenced companies to be returned in the response's
+        ``included`` array, so the names arrive in the same request rather than
+        one lookup per company.
+
+        Args:
+            anime_id: Kitsu integer anime ID.
+            session: Optional aiohttp session to reuse.
+
+        Kitsu repeats some join rows verbatim - Death Note credits VAP, Konami,
+        Shueisha and Viz Media twice each, same company id and same role - so
+        rows are deduplicated on that pair. Two records for one real company are
+        left alone: Madhouse is both id 5 and id 917 there, and reconciling that
+        is a question about names, which the merge answers.
+
+        Returns:
+            One ``KitsuProduction`` per credited company and role, skipping rows
+            whose company failed to sideload.
+        """
+        sideload_companies = {"include": "producer"}
+        join_rows, sideloaded = await self._paginate(
+            f"/anime/{anime_id}/anime-productions",
+            params=sideload_companies,
+            session=session,
+        )
+        company_names = {
+            company["id"]: (company.get("attributes") or {}).get("name")
+            for company in sideloaded
+            if company.get("type") == "producers"
+        }
+        credited: dict[tuple[str | None, str | None], KitsuProduction] = {}
+        for join_row in join_rows:
+            company_id = (
+                (join_row.get("relationships") or {}).get("producer", {}).get("data")
+                or {}
+            ).get("id")
+            name = company_names.get(company_id)
+            if not name:
+                continue
+            role = (join_row.get("attributes") or {}).get("role")
+            credited.setdefault(
+                (company_id, role),
+                KitsuProduction(name=name, role=role, company_id=company_id),
+            )
+        return list(credited.values())
+
     async def get_anime_characters(
         self, anime_id: int, *, session: Any | None = None
     ) -> list[KitsuMediaCharacter]:
@@ -481,10 +537,11 @@ class KitsuHelper(BaseEnrichmentHelper):
             if session is None
             else nullcontext(session)
         ) as active_session:  # type: ignore[attr-defined]
-            anime_raw, genre_raw, category_raw = await asyncio.gather(
+            anime_raw, genre_raw, category_raw, production_raw = await asyncio.gather(
                 self.get_anime_by_id(anime_id, session=active_session),
                 self.get_anime_genres(anime_id, session=active_session),
                 self.get_anime_categories(anime_id, session=active_session),
+                self.get_anime_productions(anime_id, session=active_session),
                 return_exceptions=True,
             )
 
@@ -511,9 +568,14 @@ class KitsuHelper(BaseEnrichmentHelper):
                         )
                     )
 
+        companies: list[KitsuProduction] = []
+        if isinstance(production_raw, list):
+            companies = production_raw
+
         anime_model = KitsuAnime.model_validate(anime_raw)  # type: ignore[arg-type]
         anime_model.genres = genres
         anime_model.themes = themes
+        anime_model.companies = companies
         result = anime_from_kitsu(anime_model)
         logger.info(f"Kitsu anime fetched: {result.get('title', anime_id)}")
 

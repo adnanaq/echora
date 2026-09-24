@@ -10,6 +10,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBCategory,
     AniDBCharacter,
     AniDBCharacterPage,
+    AniDBCreator,
     AniDBEpisode,
     AniDBExternalResource,
     AniDBRatings,
@@ -29,6 +30,35 @@ _ANIDB_URL = "https://anidb.net/anime/69"
 def _anime(**kwargs) -> AniDBAnime:
     """Minimal AniDBAnime factory with controlled fields."""
     return AniDBAnime(id=69, **kwargs)
+
+
+def _company_names(result, field: str) -> list[str]:
+    return [c["name"] for c in result.get(field) or []]
+
+
+def test_anime_from_anidb_companies_by_creator_type() -> None:
+    result = anime_from_anidb(
+        _anime(
+            creators=[
+                AniDBCreator(name="Toei Animation", role="Animation Work"),
+                AniDBCreator(name="Fuji TV", role="Work"),
+                AniDBCreator(name="Toei Animation", role="Work"),
+                AniDBCreator(name="Oda Eiichirou", role="Original Work"),
+                AniDBCreator(name="Tanaka Kouhei", role="Music"),
+                AniDBCreator(name="Shinkai Makoto", role="Animation Production"),
+                AniDBCreator(name="Tezuka Osamu", role="Original Plan"),
+            ]
+        ),
+        anidb_url=_ANIDB_URL,
+    )
+    assert _company_names(result, "studios") == ["Toei Animation"]
+    assert _company_names(result, "producers") == ["Fuji TV", "Toei Animation"]
+
+
+def test_anime_from_anidb_no_creators_yields_no_companies() -> None:
+    result = anime_from_anidb(_anime(), anidb_url=_ANIDB_URL)
+    assert _company_names(result, "studios") == []
+    assert _company_names(result, "producers") == []
 
 
 def _links(result) -> dict[str, str]:

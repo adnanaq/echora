@@ -22,6 +22,7 @@ from common.models.anime import (
     AnimeType,
     Character,
     CharacterRole,
+    CompanyEntry,
     Episode,
     ExternalLink,
     Ography,
@@ -222,6 +223,28 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
         )
         related_anime.setdefault(rel_type, []).append(entry)
 
+    # ── Companies ─────────────────────────────────────────────────────────────
+    # <creators> mixes companies and people under one list, told apart only by
+    # the type attribute. Measured over 219 cached responses, "Animation Work"
+    # is 72 distinct names and all companies, and "Work" is 66 and all but one.
+    # Every other type is people, including two that read like company fields:
+    # "Animation Production" held only Shinkai Makoto, and "Original Plan" mixes
+    # Bandai and Bushiroad with Tezuka Osamu and Jules Verne.
+    def _companies(role: str) -> list[CompanyEntry]:
+        return [
+            CompanyEntry(
+                name=creator.name,
+                sources=(
+                    [f"https://anidb.net/creator/{creator.id}"] if creator.id else []
+                ),
+            )
+            for creator in anime.creators
+            if creator.role == role and creator.name
+        ]
+
+    studios = _companies("Animation Work")
+    producers = _companies("Work")
+
     # ── Build canonical object ────────────────────────────────────────────────
     result = Anime(
         episode_count=episode_count,
@@ -243,6 +266,8 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
         images=images,
         related_anime=related_anime,
         statistics=statistics,
+        studios=studios,
+        producers=producers,
     )
 
     return result.model_dump(mode="json", exclude_none=True)

@@ -394,6 +394,26 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
     def _texts(key: str) -> list[str]:
         return [_tc(el) for el in cast(list[Any], tree.xpath(_XPATHS[key])) if _tc(el)]
 
+    def _studios() -> list[dict[str, str | None]]:
+        """Keep each studio's own page alongside its name.
+
+        The XPath already selects the anchor, so the href costs nothing extra
+        and is the only cross-provider identifier anime-planet offers.
+        """
+        found = []
+        for el in cast(list[Any], tree.xpath(_XPATHS["studios"])):
+            name = _tc(el)
+            if not name:
+                continue
+            href = el.get("href") or ""
+            found.append(
+                {
+                    "name": name,
+                    "url": f"https://www.anime-planet.com{href}" if href else None,
+                }
+            )
+        return found
+
     def _related(key: str, *, is_manga: bool = False) -> list[dict[str, Any]]:
         return [
             _parse_related_entry_element(el, is_manga=is_manga)
@@ -415,7 +435,7 @@ def _extract_anime_from_html(html: str) -> dict[str, Any] | None:
         "rank_text": _t("rank_text"),
         "aka": _t("aka"),
         "cover": _a("cover"),
-        "studios": _texts("studios"),
+        "studios": _studios(),
         "tags": _texts("tags"),
         "related_anime_raw": _related("related_anime"),
         "related_anime_other_raw": _related("related_anime_other"),
