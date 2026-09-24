@@ -123,11 +123,37 @@ async def test_ban_outlives_the_helper_that_hit_it(helper) -> None:
     helper._record_ban()
 
     later = AniDBHelper()
-    with patch.object(
-        later, "_adaptive_rate_limit", new_callable=AsyncMock
-    ) as rate_limit:
-        with pytest.raises(ServiceBlockedError):
-            await later._make_request_with_retry({"aid": 456})
+    with (
+        patch.object(later, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            later, "_make_single_request", new_callable=AsyncMock, return_value=None
+        ) as request,
+        patch.object(
+            later, "_adaptive_rate_limit", new_callable=AsyncMock
+        ) as rate_limit,
+    ):
+        assert await later._make_request_with_retry({"aid": 456}) is None
+
+    rate_limit.assert_not_called()
+    assert request.await_args.kwargs["cache_only"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cached", ["<anime/>", None])
+async def test_ban_serves_whatever_the_cache_holds(helper, cached) -> None:
+    helper._record_ban()
+
+    with (
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            helper, "_make_single_request", new_callable=AsyncMock, return_value=cached
+        ),
+        patch.object(
+            helper, "_adaptive_rate_limit", new_callable=AsyncMock
+        ) as rate_limit,
+    ):
+        assert await helper._make_request_with_retry({"aid": 69}) == cached
+
     rate_limit.assert_not_called()
 
 

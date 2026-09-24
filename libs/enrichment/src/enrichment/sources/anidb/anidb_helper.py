@@ -493,8 +493,13 @@ class AniDBHelper(BaseEnrichmentHelper):
         last_exception = None
 
         # Checked once per call rather than per attempt: nothing inside the
-        # loop can lift a ban, and a 555 raises out of it immediately.
-        self._raise_if_banned()
+        # loop can lift a ban, and a 555 raises out of it immediately. While
+        # banned the request still runs, restricted to the cache, so responses
+        # already stored stay readable; a miss comes back as no data without
+        # calling a service that has refused us.
+        if self._ban_remaining() > 0:
+            await self._ensure_session_health()
+            return await self._make_single_request(params, 0, cache_only=True)
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -536,7 +541,7 @@ class AniDBHelper(BaseEnrichmentHelper):
         return None
 
     async def _make_single_request(
-        self, params: dict[str, Any], attempt: int
+        self, params: dict[str, Any], attempt: int, *, cache_only: bool = False
     ) -> str | None:
         """Make a single HTTP request to the AniDB API.
 
@@ -552,6 +557,9 @@ class AniDBHelper(BaseEnrichmentHelper):
         Args:
             params: AniDB API query parameters.
             attempt: Zero-based attempt number (used for debug logging).
+            cache_only: Serve from the HTTP cache and never call AniDB. Used
+                while banned, so stored responses stay readable. A miss comes
+                back as 504 and is reported as no data.
 
         Returns:
             Decoded XML string on success, or None on error responses.
@@ -571,7 +579,15 @@ class AniDBHelper(BaseEnrichmentHelper):
         if self.session is None:
             raise RuntimeError("Session not initialized")
 
-        async with self.session.get(self.base_url, params=request_params) as response:
+        cache_only_header = (
+            {"headers": {"Cache-Control": "only-if-cached"}} if cache_only else {}
+        )
+        async with self.session.get(
+            self.base_url, params=request_params, **cache_only_header
+        ) as response:
+            if cache_only and response.status == 504:
+                logger.debug("AniDB banned and this anime is not cached")
+                return None
             if response.status == 200:
                 content = await response.read()
                 if content.startswith(b"\x1f\x8b"):
