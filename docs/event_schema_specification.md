@@ -156,9 +156,9 @@ Mirrors `libs/common/src/common/models/anime.py::ScoreCalculations`.
 
 ```protobuf
 message ScoreCalculations {
-  float arithmetic_geometric_mean = 1;  // arithmetic-geometric mean across platforms
-  float arithmetic_mean           = 2;
-  float median                    = 3;
+  float weighted = 1;  // confidence-adjusted, unset until a provider reports votes
+  float mean     = 2;  // plain average across platforms
+  float median   = 3;
 }
 ```
 

@@ -110,7 +110,7 @@ Disagreement on a field expected to be uniform is **logged**, because for those 
 | `content_warnings` | Union. AniList populates it from tags flagged adult, so it is empty for most titles rather than unused |
 | `related_anime`, `related_source_material` | Merged by `relationship_merger.py`, called from the same pass |
 | `id` | Assigned at merge time, deterministic from the work's identity |
-| `score`, `staff_data`, `similarity_score` | Computed or query-time. No provider supplies them |
+| `score`, `staff_data` | Computed. No provider supplies them |
 | `studios`, `producers`, `licensors` | **Open** — see [Company Fields](#company-fields--still-open) |
 
 Coverage note: **AniDB and Kitsu supply no company data at all**, and AniDB supplies neither `genres` nor `duration`. AniDB is the only source of `titles`, and carries by far the most `tags` (122 against AniList's 32).

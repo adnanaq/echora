@@ -120,11 +120,13 @@ All statistics fields support `range` and `eq` operators.
 | `statistics.mal.score` | float |
 | `statistics.mal.scored_by` | integer |
 | `statistics.anilist.score` | float |
+| `statistics.anilist.scored_by` | integer |
 | `statistics.anidb.score` | float |
 | `statistics.anidb.scored_by` | integer |
 | `statistics.animeplanet.score` | float |
 | `statistics.animeplanet.scored_by` | integer |
 | `statistics.kitsu.score` | float |
+| `statistics.kitsu.scored_by` | integer |
 | `statistics.animeschedule.score` | float |
 | `statistics.animeschedule.scored_by` | integer |
 
@@ -132,7 +134,8 @@ All statistics fields support `range` and `eq` operators.
 
 | Field | Index type | Description |
 |---|---|---|
-| `score.arithmetic_mean` | float | Simple average across all platform scores |
+| `score.mean` | float | Simple average across all platform scores |
+| `score.weighted` | float | Confidence-adjusted score, the field to rank by. See [score_calculation.md](score_calculation.md) |
 
 ---
 
@@ -202,14 +205,14 @@ filters = [
 
 ```json
 { "filters": [
-  { "field": "score.arithmetic_mean",      "operator": "range", "value": { "gte": 7.5 } },
+  { "field": "score.mean",      "operator": "range", "value": { "gte": 7.5 } },
   { "field": "statistics.mal.scored_by",   "operator": "range", "value": { "lte": 50000 } }
 ]}
 ```
 
 ```python
 filters = [
-    SearchFilterCondition(field="score.arithmetic_mean", operator="range", value=SearchRange(gte=7.5)),
+    SearchFilterCondition(field="score.mean", operator="range", value=SearchRange(gte=7.5)),
     SearchFilterCondition(field="statistics.mal.scored_by", operator="range", value=SearchRange(lte=50000)),
 ]
 ```
@@ -222,7 +225,7 @@ filters = [
 { "filters": [
   { "field": "type",                  "operator": "eq",    "value": "TV" },
   { "field": "status",                "operator": "eq",    "value": "FINISHED" },
-  { "field": "score.arithmetic_mean", "operator": "range", "value": { "gte": 7.0 } }
+  { "field": "score.mean", "operator": "range", "value": { "gte": 7.0 } }
 ]}
 ```
 
@@ -230,7 +233,7 @@ filters = [
 filters = [
     SearchFilterCondition(field="type", operator="eq", value="TV"),
     SearchFilterCondition(field="status", operator="eq", value="FINISHED"),
-    SearchFilterCondition(field="score.arithmetic_mean", operator="range", value=SearchRange(gte=7.0)),
+    SearchFilterCondition(field="score.mean", operator="range", value=SearchRange(gte=7.0)),
 ]
 ```
 

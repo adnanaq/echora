@@ -74,7 +74,7 @@ At air-time job:
 ```
 For each anime in scope:
   fetch statistics in parallel: MAL, AniList, Kitsu
-  compute ScoreCalculations (arithmetic_mean, median, geometric_mean)
+  compute ScoreCalculations (mean, median, weighted)
   if score delta > threshold:
     publish anime.updated to NATS (score + statistics fields only)
 ```
