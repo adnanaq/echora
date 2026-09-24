@@ -48,6 +48,7 @@ def _make_anime(**overrides) -> KitsuAnime:
         averageRating="83.40",
         userCount=500000,
         favoritesCount=30000,
+        ratingFrequencies={"14": "40000", "16": "60000", "18": "70000", "20": "90000"},
         popularityRank=3,
         ratingRank=50,
         ageRating="PG",
@@ -149,6 +150,7 @@ def test_anime_from_kitsu_full():
     assert result["images"]["covers"] == ["https://example.com/cover.jpg"]
     assert result["statistics"]["kitsu"]["score"] == pytest.approx(8.34, abs=0.01)
     assert result["statistics"]["kitsu"]["members"] == 500000
+    assert result["statistics"]["kitsu"]["scored_by"] == 260000
     assert result["statistics"]["kitsu"]["rank"] == 50
     assert result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=abc123"
     assert result["aired_dates"]["aired_from"].startswith(

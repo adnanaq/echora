@@ -35,6 +35,14 @@ def _make_anime(**overrides) -> AniListAnime:
         "averageScore": 87,
         "popularity": 673293,
         "favourites": 98448,
+        "stats": {
+            "scoreDistribution": [
+                {"score": 70, "amount": 20793},
+                {"score": 80, "amount": 35929},
+                {"score": 90, "amount": 74887},
+                {"score": 100, "amount": 137750},
+            ]
+        },
         "genres": ["Action", "Adventure"],
         "synonyms": ["OP"],
         "tags": [],
@@ -495,6 +503,12 @@ def test_anime_statistics_members_and_favorites() -> None:
     stats = result["statistics"]["anilist"]
     assert stats["members"] == 673293
     assert stats["favorites"] == 98448
+    assert stats["scored_by"] == 269359
+
+
+def test_anime_statistics_scored_by_absent_without_distribution() -> None:
+    result = anime_from_anilist(_make_anime(stats=None))
+    assert "scored_by" not in result["statistics"]["anilist"]
 
 
 def test_anime_contextual_ranks_mapped() -> None:

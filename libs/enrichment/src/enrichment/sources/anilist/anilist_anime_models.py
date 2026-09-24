@@ -113,6 +113,21 @@ class AniListRanking(BaseModel):
     all_time: bool = Field(False, alias="allTime")
 
 
+class AniListScoreBucket(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    score: int | None = None
+    amount: int | None = None
+
+
+class AniListStats(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    score_distribution: list[AniListScoreBucket] = Field(
+        default_factory=list, alias="scoreDistribution"
+    )
+
+
 class AniListAnime(BaseModel):
     """Root model for an AniList Media (ANIME) response."""
 
@@ -137,6 +152,7 @@ class AniListAnime(BaseModel):
     average_score: int | None = Field(None, alias="averageScore")
     popularity: int | None = None
     favourites: int | None = None
+    stats: AniListStats | None = None
     genres: list[str] = Field(default_factory=list)
     synonyms: list[str] = Field(default_factory=list)
     tags: list[AniListTag] = Field(default_factory=list)
@@ -158,3 +174,23 @@ class AniListAnime(BaseModel):
             if isinstance(data.get(key), dict):
                 data[key] = data[key].get("edges", [])
         return data
+
+    @property
+    def scored_by(self) -> int | None:
+        """How many users scored this anime.
+
+        AniList publishes no vote count of its own; `popularity` counts everyone
+        with the anime on a list, which on One Piece is 753,033 against 292,159
+        who actually scored it. The score distribution is the only true count:
+        it holds one bucket per decile and none for unscored entries, so its
+        amounts sum to voters alone.
+
+        Note the buckets are rounded to tens, so they give an exact count but
+        not an exact mean - the score itself still comes from `averageScore`.
+
+        Returns:
+            Total votes, or ``None`` when AniList reported no distribution.
+        """
+        if not self.stats or not self.stats.score_distribution:
+            return None
+        return sum(bucket.amount or 0 for bucket in self.stats.score_distribution)

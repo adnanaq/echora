@@ -197,6 +197,8 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         score = normalize_score(anime.statistics.score, source_max=5.0)
         if score is not None:
             stats_data["score"] = score
+        if anime.statistics.scored_by is not None:
+            stats_data["scored_by"] = anime.statistics.scored_by
         if anime.statistics.rank is not None:
             stats_data["rank"] = anime.statistics.rank
         if stats_data:

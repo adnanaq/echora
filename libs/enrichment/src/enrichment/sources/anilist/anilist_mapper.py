@@ -236,6 +236,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     ]
     anilist_stats = Statistics(
         score=normalize_score(anime.average_score) if anime.average_score else None,
+        scored_by=anime.scored_by,
         members=anime.popularity,
         favorites=anime.favourites,
         contextual_ranks=contextual_ranks or None,

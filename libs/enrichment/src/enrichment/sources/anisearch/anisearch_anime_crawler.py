@@ -38,6 +38,7 @@ _INTER_REQUEST_DELAY = 3.0
 _LABEL_RE = re.compile(r"^\s*[^:]+:\s*")
 _DATE_RANGE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})\s*[-–‑]\s*(\d{2}\.\d{2}\.\d{4})")
 _SINGLE_DATE_RE = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
+_VOTES_RE = re.compile(r"(\d[\d,]*)\s+members? have rated it")
 _SCORE_RE = re.compile(r"(\d+\.\d+)")
 _RANK_RE = re.compile(r"#(\d+)")
 _IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
@@ -65,6 +66,7 @@ _XPATHS: dict[str, str] = {
     "rating_score": "//*[@id='ratingstats']//tr[2]//td[1]//b",
     "rank_toplist": "//*[@id='ratingstats']//tr[2]//td[2]//b",
     "rank_trending": "//*[@id='ratingstats']//tr[3]//td[2]//b",
+    "rating_votes": "//ul[@id='rating-stats']//a/@aria-label",
     "websites": "//section[@id='information']//div[contains(@class,'websites')]//a",
     # Relations sub-page
     "anime_relation_rows": "//section[@id='relations_anime']//tbody//tr",
@@ -102,6 +104,16 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
     def _attr(key: str) -> str | None:
         vals = cast(list[str], tree.xpath(_XPATHS[key]))
         return vals[0].strip() if vals else None
+
+    def _vote_total() -> int | None:
+        """Sum the per-star vote counts into one total."""
+        labels = cast(list[str], tree.xpath(_XPATHS["rating_votes"]))
+        counts = [
+            int(m.group(1).replace(",", ""))
+            for label in labels
+            if (m := _VOTES_RE.match(label.strip()))
+        ]
+        return sum(counts) if counts else None
 
     genre_els = cast(list[Any], tree.xpath(_XPATHS["genres"]))
     genres = [
@@ -145,6 +157,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "rating_score": _text("rating_score"),
         "rank_toplist": _text("rank_toplist"),
         "rank_trending": _text("rank_trending"),
+        "rating_votes": _vote_total(),
         "websites": websites,
     }
 
@@ -329,7 +342,7 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
 
     score: float | None = None
     m_score = _SCORE_RE.search(raw.get("rating_score") or "")
-    if m_score:
+    if m_score and float(m_score.group(1)) > 0:
         score = float(m_score.group(1))
 
     def _parse_rank(text: str | None) -> int | None:
@@ -341,6 +354,9 @@ def _post_process_main(raw: dict[str, Any]) -> dict[str, Any]:
     stats: dict[str, Any] = {}
     if score is not None:
         stats["score"] = score
+    votes = raw.get("rating_votes")
+    if isinstance(votes, int) and votes > 0:
+        stats["scored_by"] = votes
     rank = _parse_rank(raw.get("rank_toplist"))
     if rank is not None:
         stats["rank"] = rank

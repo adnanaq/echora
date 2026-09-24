@@ -163,6 +163,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     statistics: dict[str, Statistics] = {
         "kitsu": Statistics(
             score=kitsu_score,
+            scored_by=attrs.scored_by,
             members=attrs.userCount,
             favorites=attrs.favoritesCount,
             popularity=attrs.popularityRank,

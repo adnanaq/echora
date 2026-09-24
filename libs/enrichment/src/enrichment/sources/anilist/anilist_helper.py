@@ -280,6 +280,12 @@ class AniListHelper(BaseEnrichmentHelper):
         averageScore
         popularity
         favourites
+        stats {
+          scoreDistribution {
+            score
+            amount
+          }
+        }
         genres
         synonyms
         tags {

@@ -91,9 +91,12 @@ def test_anime_id_absent_from_mapped_output() -> None:
 def test_statistics_score_rescaled_from_five_stars() -> None:
     # The page states "Calculated Value 4.18 = 84%" — 4.18 of 5, so 8.36 of 10.
     stats = anime_from_anisearch(
-        AniSearchAnime(statistics=AniSearchStatistics(score=4.18, rank=124))
+        AniSearchAnime(
+            statistics=AniSearchStatistics(score=4.18, scored_by=7902, rank=124)
+        )
     )["statistics"]["anisearch"]
     assert stats["score"] == 8.36
+    assert stats["scored_by"] == 7902
     assert stats["rank"] == 124
 
 
