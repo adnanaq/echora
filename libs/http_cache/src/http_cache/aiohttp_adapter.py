@@ -433,6 +433,28 @@ class CachedAiohttpSession:
                 This is a closure that accesses self.session and self.force_cache
                 from the enclosing CachedAiohttpSession.__init__ scope.
             """
+            # RFC 9111 5.2.1.7: only-if-cached means serve from cache or fail,
+            # never contact the origin. Hishel calls this sender only when the
+            # cache could not satisfy the request, so reaching here with that
+            # directive is the failure case. Callers use it to keep using cached
+            # data from a service that is refusing them - a banned AniDB client
+            # otherwise loses responses it already holds locally.
+            request_directives = " ".join(
+                str(value).lower()
+                for key, value in dict(request.headers).items()
+                if key.lower() == "cache-control"
+            )
+            if "only-if-cached" in request_directives:
+
+                async def unsatisfied_stream() -> AsyncIteratorABC[bytes]:
+                    yield b""
+
+                return Response(
+                    status_code=504,
+                    headers=Headers({"Cache-Control": "no-store"}),
+                    stream=unsatisfied_stream(),
+                )
+
             # Handle streaming body if present
             data = None
             if request.stream:

@@ -213,6 +213,41 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert call_kwargs["headers"]["Content-Type"] == "application/json"
         assert "X-Hishel-Body-Key" not in call_kwargs["headers"]
 
+    @pytest.mark.parametrize(
+        ("directive", "expected_status", "origin_called"),
+        [
+            ("only-if-cached", 504, False),
+            ("no-cache", 200, True),
+            (None, 200, True),
+        ],
+    )
+    async def test_only_if_cached_fails_instead_of_calling_origin(
+        self,
+        mock_storage: AsyncMock,
+        directive: str | None,
+        expected_status: int,
+        origin_called: bool,
+    ) -> None:
+        """RFC 9111 5.2.1.7 — reaching the sender means the cache missed."""
+        mock_session = AsyncMock()
+        mock_session.headers = {}
+        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        mock_session.request = AsyncMock(return_value=_make_origin_resp())
+
+        async def body_stream():
+            yield b""
+
+        req = Request(
+            method="GET",
+            url="https://example.com/thing",
+            headers={"Cache-Control": directive} if directive else {},
+            stream=body_stream(),
+        )
+        hishel_resp = await cached._proxy.handle_request(req)
+
+        assert hishel_resp.status_code == expected_status
+        assert mock_session.request.called is origin_called
+
     def test_session_headers_type_error_falls_back_to_empty(
         self, mock_storage: AsyncMock
     ) -> None:
