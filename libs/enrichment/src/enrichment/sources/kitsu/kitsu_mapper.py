@@ -31,6 +31,7 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
@@ -237,6 +238,11 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         broadcast=broadcast,
         trailers=trailers,
         aired_dates=aired_dates,
+        companies=companies_from_roles(
+            studios=by_role["studio"],
+            producers=by_role["producer"],
+            licensors=by_role["licensor"],
+        ),
         studios=by_role["studio"],
         producers=by_role["producer"],
         licensors=by_role["licensor"],

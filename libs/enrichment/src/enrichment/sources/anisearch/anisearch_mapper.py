@@ -49,6 +49,7 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisode,
     AniSearchRelatedEntry,
 )
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
@@ -251,6 +252,9 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         synopsis=anime.synopsis,
         genres=anime.genres,
         tags=anime.tags,
+        companies=companies_from_roles(
+            studios=studios,
+        ),
         studios=studios,
         sources=[anime.url] if anime.url else [],
         images=images,

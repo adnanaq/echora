@@ -42,6 +42,7 @@ from enrichment.sources.anidb.anidb_models import (
     AniDBCharacterPage,
     AniDBEpisode,
 )
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 
 _CDN_BASE = "https://cdn-eu.anidb.net/images/main"
@@ -266,6 +267,10 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
         images=images,
         related_anime=related_anime,
         statistics=statistics,
+        companies=companies_from_roles(
+            studios=studios,
+            producers=producers,
+        ),
         studios=studios,
         producers=producers,
     )

@@ -622,7 +622,7 @@ def test_mapper_from_fixture(ap_anime_extracted: dict) -> None:
     assert canonical["status"] == "ONGOING"
     assert canonical["episode_count"] == 1165
     assert canonical["title_japanese"] == "ワンピース"
-    assert any(p["name"] == "Toei Animation" for p in canonical["producers"])
+    assert any(p["name"] == "Toei Animation" for p in canonical["studios"])
     stats = canonical["statistics"]["anime_planet"]
     assert stats["score"] == pytest.approx(8.63)
     assert stats["scored_by"] == 64986
@@ -777,7 +777,7 @@ async def test_fetch_success_with_html_fixture(
     assert anime["status"] == "ONGOING"
     assert anime["episode_count"] == 1165
     assert anime["title_japanese"] == "ワンピース"
-    assert any(p["name"] == "Toei Animation" for p in anime["producers"])
+    assert any(p["name"] == "Toei Animation" for p in anime["studios"])
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")

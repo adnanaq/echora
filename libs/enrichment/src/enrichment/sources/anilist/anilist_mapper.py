@@ -41,6 +41,7 @@ from enrichment.sources.anilist.anilist_character_models import (
     AniListCharacterEdge,
     AniListFuzzyDate,
 )
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
@@ -275,6 +276,10 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         themes=themes,
         tags=tags,
         content_warnings=content_warnings,
+        companies=companies_from_roles(
+            studios=studios,
+            producers=producers,
+        ),
         studios=studios,
         producers=producers,
         streaming_sources=streaming_sources,

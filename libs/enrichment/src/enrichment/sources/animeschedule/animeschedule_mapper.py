@@ -34,6 +34,7 @@ from common.models.anime import (
 )
 from common.utils.datetime_utils import normalize_to_utc
 from enrichment.sources.animeschedule.animeschedule_models import AnimScheduleAnime
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
@@ -220,6 +221,9 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
         synopsis=synopsis,
         synonyms=synonyms,
         genres=genres,
+        companies=companies_from_roles(
+            studios=studios,
+        ),
         studios=studios,
         sources=sources,
         images=images,
