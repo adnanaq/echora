@@ -1,8 +1,11 @@
 """Datetime utility functions for anime data processing."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 from common.models.anime import AnimeSeason, AnimeStatus
+
+# Japan keeps no daylight saving, so a fixed offset is exact all year.
+JAPAN_TIME = timezone(timedelta(hours=9), "JST")
 
 # Module-level constant for season mapping (winter, spring, summer, fall)
 _SEASONS = (
@@ -136,6 +139,25 @@ def normalize_to_utc(
         return None
 
 
+def to_japan_time(moment: datetime) -> datetime:
+    """Read a stored UTC datetime as Japan time.
+
+    The inverse of the Midnight JST rule in ``normalize_to_utc``: a premiere on
+    1 April is stored as 15:00 UTC on 31 March, and only in Japan time does it
+    fall on the day and month the providers stated.
+
+    Args:
+        moment: A datetime, as stored. A naive one is taken as UTC, as
+            ``normalize_to_utc`` does.
+
+    Returns:
+        The same moment in Japan time.
+    """
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(JAPAN_TIME)
+
+
 def _parse_date(date_str: str) -> datetime:
     """Parse various date formats to a timezone-aware UTC datetime.
 
@@ -173,9 +195,9 @@ def _parse_date(date_str: str) -> datetime:
     # sent by a source will be shifted by up to ±9 h, but that trade-off is
     # accepted; in practice these sources never send true non-JST midnight dates.
     if len(normalized) == 10 or "T00:00:00" in normalized:
-        normalized = normalized[:10] + "T00:00:00+09:00"
-
-    dt = datetime.fromisoformat(normalized)
+        dt = datetime.fromisoformat(normalized[:10]).replace(tzinfo=JAPAN_TIME)
+    else:
+        dt = datetime.fromisoformat(normalized)
 
     # 4. Final normalization to UTC
     if dt.tzinfo is None:

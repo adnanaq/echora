@@ -26,6 +26,8 @@ from datetime import datetime
 from statistics import mean, median
 from typing import Any
 
+from common.utils.datetime_utils import to_japan_time
+
 from enrichment.pipeline.relationship_merger import is_signal
 from enrichment.pipeline.same_company import company_keys
 from enrichment.pipeline.same_word import word_key
@@ -411,6 +413,10 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
     shape. Treating the field as AnimeSchedule's alone would leave it empty
     whenever that one fetch fails, so the date is used as the second source.
 
+    The date is read in Japan time. A premiere on the 1st is stored as 15:00
+    UTC on the last day of the month before, so reading it in UTC names the
+    wrong month.
+
     Args:
         ranked: Provider records in priority order.
         aired_dates: The already-merged ``aired_dates``, used as the fallback.
@@ -425,10 +431,11 @@ def merge_month(ranked: Ranked, aired_dates: dict[str, Any] | None) -> str | Non
     if not aired_from:
         return None
     try:
-        return datetime.fromisoformat(str(aired_from)).strftime("%B")
+        premiere = datetime.fromisoformat(str(aired_from))
     except ValueError:
         logger.warning(f"Cannot read a month from aired_from: {aired_from!r}")
         return None
+    return to_japan_time(premiere).strftime("%B")
 
 
 def merge_score(

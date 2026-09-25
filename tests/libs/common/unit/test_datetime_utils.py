@@ -351,3 +351,27 @@ class TestNormalizeToUtc:
         assert result.tzinfo == UTC
         assert result.day == 3
         assert result.hour == 15
+
+    @pytest.mark.parametrize(
+        ("provider_date", "japanese_date"),
+        [
+            ("2024-04-01", "2024-04-01"),
+            ("01.04.2024", "2024-04-01"),
+            ("2024-04-01T00:00:00+00:00", "2024-04-01"),
+            ("2024-10-04T00:26:00+09:00", "2024-10-04"),
+        ],
+    )
+    def test_to_japan_time_recovers_the_japanese_date(
+        self, provider_date: str, japanese_date: str
+    ):
+        from common.utils.datetime_utils import normalize_to_utc, to_japan_time
+
+        stored = normalize_to_utc(provider_date)
+        assert to_japan_time(stored).date().isoformat() == japanese_date
+
+    def test_to_japan_time_reads_a_naive_datetime_as_utc(self):
+        from common.utils.datetime_utils import to_japan_time
+
+        assert to_japan_time(datetime(2024, 3, 31, 15, 0)).isoformat() == (
+            "2024-04-01T00:00:00+09:00"
+        )
