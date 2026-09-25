@@ -5,16 +5,20 @@ Fixture tests use a 5-row HTML subset captured from:
 containing character tables for: Brook, Luffy, Aisa, Bariete, Shivercalero.
 """
 
+import re
+import time
 from unittest.mock import AsyncMock
 
 import pytest
 from enrichment.sources.mal.mal_character_refs_crawler import (
-    _CHAR_URL_XPATH,
+    _CHARACTER_LINK_IN_TABLE_XPATH,
+    _CHARACTER_TABLE_XPATH,
     _extract_character_urls,
     _fetch_characters_page_html,
     _fetch_mal_characters_data,
     fetch_mal_character_refs,
 )
+from lxml import etree
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,14 +34,15 @@ _EXPECTED_URLS = [
 
 
 # =============================================================================
-# _CHAR_URL_XPATH invariant
+# XPath invariants
 # =============================================================================
 
 
 def test_xpath_targets_character_tables() -> None:
-    assert "js-anime-character-table" in _CHAR_URL_XPATH
-    assert "/character/" in _CHAR_URL_XPATH
-    assert _CHAR_URL_XPATH.endswith("/@href")
+    assert "js-anime-character-table" in _CHARACTER_TABLE_XPATH
+    assert _CHARACTER_LINK_IN_TABLE_XPATH.startswith(".//")
+    assert "/character/" in _CHARACTER_LINK_IN_TABLE_XPATH
+    assert _CHARACTER_LINK_IN_TABLE_XPATH.endswith("/@href")
 
 
 # =============================================================================
@@ -80,6 +85,34 @@ def test_extract_preserves_order() -> None:
         "https://myanimelist.net/character/2/B",
         "https://myanimelist.net/character/3/C",
     ]
+
+
+def _long_cast_list(fixture_html: str, characters: int) -> str:
+    tree = etree.fromstring(fixture_html.encode(), etree.HTMLParser(encoding="utf-8"))
+    tables = [
+        etree.tostring(table, encoding="unicode", method="html")
+        for table in tree.xpath(_CHARACTER_TABLE_XPATH)
+    ]
+    body = "".join(
+        re.sub(r"/character/\d+/", f"/character/{n}/", tables[n % len(tables)])
+        for n in range(characters)
+    )
+    return f"<html><body>{body}</body></html>"
+
+
+def test_long_cast_list_is_extracted_whole_and_in_page_order(
+    mal_char_refs_html,
+) -> None:
+    urls = _extract_character_urls(_long_cast_list(mal_char_refs_html, 1500))
+    ids = [int(url.split("/character/")[1].split("/")[0]) for url in urls]
+    assert ids == list(range(1500))
+
+
+def test_long_cast_list_extraction_stays_fast(mal_char_refs_html) -> None:
+    page = _long_cast_list(mal_char_refs_html, 1500)
+    start = time.perf_counter()
+    _extract_character_urls(page)
+    assert time.perf_counter() - start < 5
 
 
 def test_extract_ignores_non_character_links() -> None:
