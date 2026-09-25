@@ -28,8 +28,14 @@ def _anime(**overrides) -> Anime:
 
 def _production_text(anime: Anime) -> str:
     text = AnimeFieldMapper().extract_anime_text(anime)
-    return next((part for part in text.split("\n") if "Studios:" in part or
-                 "Producers:" in part or "Licensors:" in part), "")
+    return next(
+        (
+            part
+            for part in text.split("\n")
+            if "Studios:" in part or "Producers:" in part or "Licensors:" in part
+        ),
+        "",
+    )
 
 
 def test_each_role_is_labelled() -> None:
