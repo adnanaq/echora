@@ -252,22 +252,9 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 
 **Note**: When using `run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
 
-#### Stage 1: Metadata Extraction (`process_stage1_metadata.py`)
+#### Stage 1: Metadata, Relationships and Statistics
 
-**Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--current-anime` (legacy support)
-
-**Example Usage**:
-
-```bash
-# Recommended: Use agent_id
-python process_stage1_metadata.py One_agent1
-
-# Custom temp directory
-python process_stage1_metadata.py One_agent1 --temp-dir custom_temp
-
-# Legacy: Use file path
-python process_stage1_metadata.py --current-anime temp/One_agent1/current_anime.json
-```
+Merged by the library, not a script: `enrichment.pipeline.metadata_merger`. `merge_provider_records` takes the provider payloads in memory, and `merge_agent_metadata(Path("temp/<agent_id>"))` reads an agent folder. It covers what the old stage 1, 3 and 4 scripts did. It has no command-line entry point yet.
 
 #### Stage 2: Episode Processing (`process_stage2_episodes.py`)
 
@@ -283,37 +270,6 @@ python process_stage2_episodes.py One_agent1
 
 # Custom temp directory
 python process_stage2_episodes.py One_agent1 --temp-dir custom_temp
-```
-
-#### Stage 3: Relationship Processing (`process_stage3_relationships.py`)
-
-**Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`), `--current-anime` (legacy support)
-
-**Example Usage**:
-
-```bash
-# Recommended: Use agent_id
-python process_stage3_relationships.py One_agent1
-
-# Custom temp directory
-python process_stage3_relationships.py One_agent1 --temp-dir custom_temp
-
-# Legacy: Use file path
-python process_stage3_relationships.py --current-anime temp/One_agent1/current_anime.json
-```
-
-#### Stage 4: Statistics Extraction (`process_stage4_statistics.py`)
-
-**Arguments**: `agent_id` (positional), `--temp-dir` (default: `temp`)
-
-**Example Usage**:
-
-```bash
-# Recommended: Use agent_id
-python scripts/process_stage4_statistics.py Dandadan_agent1
-
-# Custom temp directory
-python scripts/process_stage4_statistics.py Dandadan_agent1 --temp-dir custom_temp
 ```
 
 #### Stage 5: AI Character Matching (`process_stage5_characters.py`)
