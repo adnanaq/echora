@@ -469,7 +469,7 @@ def test_anime_from_anidb_tmdb_single_identifier_skipped() -> None:
         _anime(resources=[AniDBExternalResource(type="44", identifiers=["37854"])]),
         anidb_url=_ANIDB_URL,
     )
-    assert "themoviedb" not in result["external_sources"]
+    assert "themoviedb" not in _links(result)
 
 
 def test_anime_from_anidb_onepiece_has_crunchyroll_and_tmdb(
