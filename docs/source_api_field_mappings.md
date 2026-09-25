@@ -206,3 +206,68 @@ AniSearch and AnimeSchedule serve these index pages to curl with a normal
 user-agent. MAL, AniList and Kitsu are APIs and need no browser.
 
 ---
+
+## Company Fields
+
+Where each source publishes studios, producers and licensors, and the URL it
+gives for a company. Verified live on 2026-09-24 over 684 anime.
+
+| Source | Where | Roles | Company URL |
+| :----- | :---- | :---- | :---------- |
+| MAL | anime page | studio, producer, licensor | `myanimelist.net/anime/producer/{id}/{Name}` |
+| AniList | GraphQL `studios { edges { node { isAnimationStudio } } }` | studio, producer | `anilist.co/studio/{id}` |
+| Kitsu | `api/edge/anime/{id}/anime-productions?include=producer` | studio, producer, licensor | `api/edge/producers/{id}` |
+| AniDB | `httpapi?request=anime`, the `<creators>` block | studio, producer | `anidb.net/creator/{id}` |
+| Anime-Planet | anime page, `entryBar` studio anchors | studio | `anime-planet.com/anime/studios/{slug}` |
+| AniSearch | anime page, single studio field | studio | `anisearch.com/company/{id},{slug}` |
+| AnimeSchedule | `api/v3/anime/{route}` | studio | `animeschedule.net/studios/{route}` |
+
+Coverage over the same 684 anime:
+
+| Source | studios | producers | licensors | anime covered |
+| :----- | ------: | --------: | --------: | ------------: |
+| MAL | 659 | 1,100 | 276 | 665 |
+| AniList | 628 | 933 | 0 | 611 |
+| Anime-Planet | 624 | 0 | 0 | 578 |
+| AniSearch | 560 | 0 | 0 | 560 |
+| AnimeSchedule | 556 | 0 | 0 | 493 |
+| Kitsu | 356 | 1,222 | 140 | 495 |
+| AniDB | 168 | 155 | 0 | 230 |
+
+Per-source notes, each of which cost something to find:
+
+- **Only MAL and Kitsu carry all three roles.** Every licensor we publish rests
+  on those two.
+- **AniDB's `<creators>` mixes companies and people**, told apart only by the
+  `type` attribute. `Animation Work` is the studio and `Work` the producer; over
+  219 cached responses those are 72 and 66 distinct names and all but one are
+  companies. Every other type is people - including two that read like company
+  fields. `Animation Production` held only `Shinkai Makoto`, and `Original Plan`
+  mixes `Bandai` and `Bushiroad` with `Tezuka Osamu` and `Jules Verne`. Neither
+  is mapped.
+- **Kitsu carries the role on the join row, not the company**, so one company can
+  appear twice for one anime under different roles - it files Madhouse as both
+  producer and studio on Death Note. It also repeats join rows verbatim, and
+  holds separate records for one company: `MADHOUSE` is producer 5 and
+  `Madhouse` is producer 917, the second with an auto-suffixed slug because the
+  name already existed.
+- **Kitsu has no public producer page.** `kitsu.app/producers/{slug}` renders an
+  empty title and site chrome only, while an anime page renders properly, so the
+  `403` from curl was real rather than Cloudflare. The API resource is the only
+  stable URL.
+- **AniSearch has a single studio field** and structurally cannot report a second
+  company: 560 names across 560 anime.
+- **AniDB's figure is a floor.** It was banned throughout collection and served
+  only what the HTTP cache already held, while carrying an AniDB URL for 579 of
+  660 titles.
+- **AniList's `isMain` is not a role signal.** Its schema defines
+  `isAnimationStudio` as whether the company is an animation studio - the
+  studio-versus-producer question - and `isMain` as which studio led this anime.
+  On One Piece `isMain` is true for Toei Animation alone while TAP, Magic Bus,
+  Mushi Production, Studio Guts and Asahi Production are all
+  `isAnimationStudio=True, isMain=False`.
+
+How these are reconciled into one company list is a separate question - see
+[merge_rules.md](merge_rules.md).
+
+---
