@@ -685,8 +685,15 @@ class CachedAiohttpSession:
                 # Avoid breaking semantics by bypassing cache in that case.
                 unsupported_body = True
 
-        if self.always_revalidate:
-            # Force hishel to revalidate by adding no-cache to request
+        # Force hishel to revalidate by adding no-cache to the request, unless
+        # the caller asked for only-if-cached: that means never contact the
+        # origin (a banned AniDB client relies on it), and no-cache would undo it.
+        caller_directive = " ".join(
+            str(value).lower()
+            for key, value in request_headers.items()
+            if key.lower() == "cache-control"
+        )
+        if self.always_revalidate and "only-if-cached" not in caller_directive:
             request_headers["Cache-Control"] = "no-cache"
 
         # When body-key is enabled, Hishel requires a stream even for GET requests

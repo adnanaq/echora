@@ -301,10 +301,17 @@ class TestCachedAiohttpSessionRequestBuilding:
         mock_storage.create_entry.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("caller_directive", "sent_directive"),
+        [(None, "no-cache"), ("only-if-cached", "only-if-cached")],
+    )
     async def test_always_revalidate_injects_no_cache(
-        self, mock_storage: AsyncMock
+        self,
+        mock_storage: AsyncMock,
+        caller_directive: str | None,
+        sent_directive: str,
     ) -> None:
-        """always_revalidate=True must add Cache-Control: no-cache to the request."""
+        """always_revalidate adds no-cache, but never overrides only-if-cached."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(
@@ -324,10 +331,11 @@ class TestCachedAiohttpSessionRequestBuilding:
             )
 
         cached._proxy.handle_request = AsyncMock(side_effect=handle)
-        await cached._request("GET", "https://example.com/api")
+        headers = {"Cache-Control": caller_directive} if caller_directive else {}
+        await cached._request("GET", "https://example.com/api", headers=headers)
 
         assert captured
-        assert captured[0].headers.get("Cache-Control") == "no-cache"
+        assert captured[0].headers.get("Cache-Control") == sent_directive
 
 
 # =============================================================================
