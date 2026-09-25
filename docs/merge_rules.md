@@ -59,6 +59,7 @@ So the merge routes by **what the value is**, never by the field it came in on.
 | `pipeline/metadata_merger.py` | Orchestration and the generic mechanisms. Two entry points: `merge_agent_metadata(agent_dir, offline_data)` reads an agent directory; `merge_provider_records(records, offline_data)` takes records already in memory from `ApiFetcher` |
 | `pipeline/metadata_rules.py` | Per-field rules for values and text — episode count, synopsis, titles, categories, synonyms, object fields, month, statistics, score |
 | `pipeline/link_rules.py` | Per-field rules for links, images and media, plus `merged_anime_id` |
+| `pipeline/same_work.py` | When two provider URLs denote the same work, and the work id the offline database supplies |
 | `pipeline/same_word.py` | When two differently-written category words are the same word |
 | `pipeline/same_company.py` | When two differently-written company names are the same company |
 | `pipeline/relationship_merger.py` | Relations, and `PROVIDER_PRIORITY`. Its `merge_provider_records` is called by the metadata merger, so one call yields a complete record |

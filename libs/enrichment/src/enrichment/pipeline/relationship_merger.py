@@ -66,7 +66,7 @@ from common.models.anime import (
 )
 from rapidfuzz import fuzz
 
-from enrichment.pipeline.identity import NullIdentityResolver, WorkIdentityResolver
+from enrichment.pipeline.same_work import NullIdentityResolver, WorkIdentityResolver
 from enrichment.utils.text_utils import normalize_japanese_text
 
 logger = logging.getLogger(__name__)

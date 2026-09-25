@@ -1,4 +1,4 @@
-"""Work identity resolution for relationship consolidation.
+"""Decide when two provider URLs denote the same work.
 
 Providers each report a related work under their own URL, so two entries for the
 same work share nothing a string comparison can use - romaji and English titles

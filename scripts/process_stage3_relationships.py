@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from enrichment.pipeline.identity import (
+from enrichment.pipeline.same_work import (
     OfflineDatabaseResolver,
     WorkIdentityResolver,
 )
