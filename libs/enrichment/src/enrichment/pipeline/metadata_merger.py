@@ -63,6 +63,7 @@ from enrichment.pipeline.link_rules import (
 from enrichment.pipeline.metadata_rules import (
     Ranked,
     merge_categories,
+    merge_companies,
     merge_episode_count,
     merge_month,
     merge_nsfw,
@@ -253,6 +254,10 @@ def merge_provider_records(
     month = merge_month(ranked, merged.get("aired_dates"))
     if month is not None:
         merged["month"] = month
+
+    companies = merge_companies(ranked)
+    if companies:
+        merged["companies"] = companies
 
     merged["episode_count"] = merge_episode_count(ranked)
     merged["sources"] = merge_sources(ranked, offline_data)

@@ -20,13 +20,16 @@ merger stays a list of field assignments rather than a nest of special cases.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
 from statistics import mean, median
 from typing import Any
 
 from enrichment.pipeline.relationship_merger import is_signal
+from enrichment.pipeline.same_company import company_keys
 from enrichment.pipeline.same_word import word_key
+from enrichment.sources.base.external_links import normalize_link_url
 from enrichment.utils.text_utils import (
     fold_for_comparison,
     has_cjk,
@@ -452,7 +455,7 @@ def merge_score(
     totals only decide how far that mean is trusted. It is left out when no
     provider reports a count, because the formula would otherwise return the
     baseline and claim an unrated anime had been measured and found average.
-    See docs/score_calculation.md for the evidence behind both constants.
+    See docs/merge_rules.md for the evidence behind both constants.
 
     Args:
         statistics: The merged per-provider statistics.
@@ -507,3 +510,102 @@ def merge_statistics(ranked: Ranked) -> dict[str, dict[str, Any]]:
             if stats:
                 merged[provider] = stats
     return dict(sorted(merged.items()))
+
+
+# Providers that carry more than one company field, so filing a company as a
+# studio is a choice rather than the only option available. Anime-Planet,
+# AniSearch and AnimeSchedule have a single studio field each: measured against
+# these four on the same anime, their studio label is right 82-97% of the time,
+# and when it is wrong it is because a distributor or a broadcaster had nowhere
+# else to go. See docs/merge_rules.md.
+_CHOOSES_COMPANY_ROLE = frozenset({"mal", "anilist", "kitsu", "anidb"})
+
+
+def merge_companies(ranked: Ranked) -> list[dict[str, Any]]:
+    """Reduce every provider's companies to one entry per company.
+
+    Three questions have to be answered for each company, and they are settled
+    separately because the evidence differs.
+
+    **Is it the same company.** ``company_keys`` folds case, punctuation, legal
+    suffixes and paired plurals, so ``Toei Animation Co., Ltd.`` and
+    ``Toei Animation`` are one. Over 684 anime that collapses 21% of all names.
+
+    **Which spelling to store.** The one most providers used. AniSearch alone
+    writes the registered form and AniDB writes lowercase, so letting the most
+    trusted provider decide would store one site's house style. Priority breaks
+    a tie, which is needed more often than it sounds - a third of groups with
+    two spellings have one provider each.
+
+    **Which roles it holds.** Only the providers that have somewhere else to put
+    a producer get a say. A provider with one studio field is not claiming the
+    company animates, it is reporting an association, and treating that as
+    evidence marks distributors like GKIDS as studios. Their label is used only
+    when no other provider covers the company at all.
+
+    Sources are unioned, so a well-covered company carries a link from every
+    provider that named it - stronger evidence of identity than the name.
+
+    Args:
+        ranked: Provider records in priority order.
+
+    Returns:
+        One entry per company, each with its roles and pooled sources.
+    """
+    names: list[str] = []
+    seen: list[tuple[str, int, dict[str, Any]]] = []
+    for rank, (provider, record) in enumerate(ranked):
+        for company in record.get("companies") or []:
+            name = company.get("name")
+            if name:
+                names.append(name)
+                seen.append((provider, rank, company))
+    if not seen:
+        return []
+
+    keys = company_keys(names)
+    grouped: dict[str, list[tuple[str, int, dict[str, Any]]]] = defaultdict(list)
+    for provider, rank, company in seen:
+        grouped[keys[company["name"]]].append((provider, rank, company))
+
+    merged: list[dict[str, Any]] = []
+    for members in grouped.values():
+        spellings: dict[str, list[int]] = defaultdict(list)
+        for _, rank, company in members:
+            spellings[company["name"]].append(rank)
+
+        chosen: dict[str, Any] = {
+            "name": max(
+                spellings,
+                key=lambda name: (len(spellings[name]), -min(spellings[name])),
+            ),
+            "roles": _company_roles(members),
+        }
+
+        sources: dict[str, str] = {}
+        for _, _, company in members:
+            for url in company.get("sources") or []:
+                sources.setdefault(normalize_link_url(url), url)
+        if sources:
+            chosen["sources"] = list(sources.values())
+        merged.append(chosen)
+
+    return merged
+
+
+def _company_roles(members: list[tuple[str, int, dict[str, Any]]]) -> list[str]:
+    """Decide a company's roles from the providers that had a choice.
+
+    Args:
+        members: Every ``(provider, rank, company)`` naming one company.
+
+    Returns:
+        The roles, ordered by the priority of the provider that first gave each
+        one, so output does not depend on dict iteration order.
+    """
+    deciding = [m for m in members if m[0] in _CHOOSES_COMPANY_ROLE]
+    roles: dict[str, int] = {}
+    for _, rank, company in sorted(deciding or members, key=lambda m: m[1]):
+        for role in company.get("roles") or []:
+            roles.setdefault(role, rank)
+    return list(roles)
