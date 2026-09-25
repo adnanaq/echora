@@ -113,17 +113,40 @@ def test_normalize_sparse_vector_returns_qdrant_sparse() -> None:
     assert result.values == [0.9, 0.4]
 
 
-def test_normalize_dense_vector_passthrough() -> None:
-    norm = _normalizer()
-    vec = [0.1, 0.2, 0.3, 0.4]
-    result = norm.normalize_vector_payload("text_vector", vec)
+@pytest.mark.parametrize(
+    ("vector_name", "vec"),
+    [
+        ("text_vector", [0.1, 0.2, 0.3, 0.4]),
+        ("image_vector", [[0.1, 0.2, 0.3], [1, 0, -1]]),
+    ],
+)
+def test_normalize_dense_vector_passthrough(vector_name: str, vec: list) -> None:
+    norm = _normalizer(multivector={"image_vector"})
+    result = norm.normalize_vector_payload(vector_name, vec)
     assert result is vec
 
 
-def test_sparse_payload_to_dense_vector_raises() -> None:
-    norm = _normalizer()
-    with pytest.raises(ValidationError, match="not configured as sparse"):
-        norm.normalize_vector_payload("text_vector", SPARSE_DICT)
+@pytest.mark.parametrize(
+    ("vector_name", "vector_data", "error"),
+    [
+        ("text_vector", SPARSE_DICT, "not configured as sparse"),
+        ("text_vector", (0.1, 0.2, 0.3, 0.4), "must be a list of floats"),
+        ("text_vector", [0.1, 0.2, 0.3], "dimension mismatch"),
+        ("text_vector", [None, 0.2, 0.3, 0.4], "finite numbers"),
+        ("text_vector", ["invalid", 0.2, 0.3, 0.4], "finite numbers"),
+        ("text_vector", [True, 0.2, 0.3, 0.4], "finite numbers"),
+        ("text_vector", [float("nan"), 0.2, 0.3, 0.4], "finite numbers"),
+        ("text_vector", [float("-inf"), 0.2, 0.3, 0.4], "finite numbers"),
+        ("image_vector", [[0.1, 0.2, 0.3], "row"], "must be a list of floats"),
+        ("image_vector", [[0.1, 0.2, 0.3], [0.1, None, 0.3]], "finite numbers"),
+    ],
+)
+def test_invalid_dense_payload_raises(
+    vector_name: str, vector_data: object, error: str
+) -> None:
+    norm = _normalizer(multivector={"image_vector"})
+    with pytest.raises(ValidationError, match=error):
+        norm.normalize_vector_payload(vector_name, vector_data)
 
 
 # ---------------------------------------------------------------------------

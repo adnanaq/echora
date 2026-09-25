@@ -171,20 +171,30 @@ async def test_update_vectors_rejects_invalid_vector_name(client: QdrantClient) 
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_rejects_dimension_mismatch(client: QdrantClient) -> None:
-    """Invalid dimensions are rejected before issuing update."""
+@pytest.mark.parametrize(
+    ("vector_data", "error"),
+    [
+        ([0.1] * 512, "dimension mismatch"),
+        ([float("nan")] + [0.1] * 1023, "finite numbers"),
+        ([float("inf")] + [0.1] * 1023, "finite numbers"),
+    ],
+)
+async def test_update_vectors_rejects_invalid_dense_vector(
+    client: QdrantClient, vector_data: list, error: str
+) -> None:
+    """Invalid dense vectors are rejected before issuing update."""
     doc_id = str(uuid.uuid4())
     await client.add_documents(
-        [_make_doc(doc_id=doc_id, title="Bad Dim")], batch_size=1
+        [_make_doc(doc_id=doc_id, title="Bad Vector")], batch_size=1
     )
 
-    with pytest.raises(ValidationError, match="dimension mismatch"):
+    with pytest.raises(ValidationError, match=error):
         await client.update_vectors(
             [
                 BatchVectorUpdateItem(
                     point_id=doc_id,
                     vector_name="text_vector",
-                    vector_data=[0.1] * 512,
+                    vector_data=vector_data,
                 )
             ]
         )

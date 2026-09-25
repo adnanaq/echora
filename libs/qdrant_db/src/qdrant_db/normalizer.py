@@ -4,6 +4,7 @@ Stateless except for the config values injected at construction.
 No I/O, no async.
 """
 
+import math
 from typing import Any, TypeGuard, cast
 
 from qdrant_client.models import SparseVector
@@ -147,8 +148,10 @@ class VectorNormalizer:
             vector_data: Dense list, or list of dense lists for a multivector.
 
         Raises:
-            ValidationError: If the payload is not a list, or any row has a
-                size other than the configured dimension.
+            ValidationError: If the payload is not a list, any row has a size
+                other than the configured dimension, or any element is not a
+                finite number. qdrant-client rejects the rest with its own
+                error, and Qdrant rejects NaN only after the write is retried.
         """
         if not isinstance(vector_data, list):
             raise ValidationError(f"Vector {vector_name} must be a list of floats")
@@ -165,3 +168,26 @@ class VectorNormalizer:
                     f"Vector {vector_name} dimension mismatch: "
                     f"expected {expected}, got {len(row)}"
                 )
+            if not all(_is_finite_number(value) for value in row):
+                raise ValidationError(
+                    f"Vector {vector_name} must contain only finite numbers"
+                )
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Tell whether a vector element is a real, finite number.
+
+    ``bool`` is excluded although Python treats it as an ``int``: ``True`` in a
+    vector is a caller's mistake, not the value 1.
+
+    Args:
+        value: One element of a dense vector.
+
+    Returns:
+        True for a finite ``int`` or ``float``.
+    """
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
