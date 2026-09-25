@@ -232,6 +232,39 @@ class CharacterRole(StrEnum):
         return _map.get(v, cls.UNKNOWN)
 
 
+class CompanyRole(StrEnum):
+    """What a company did on one specific anime.
+
+    A role belongs to the work, not the company: Toei Animation animates one
+    title and finances another, and both are true. A company can also hold two
+    roles on a single anime, which is why these are collected in a list.
+    """
+
+    STUDIO = "STUDIO"
+    PRODUCER = "PRODUCER"
+    LICENSOR = "LICENSOR"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "CompanyRole":
+        """Normalize source-specific strings into standard Enum members.
+
+        Kitsu is the only provider sending a raw role string, lowercase on its
+        anime-productions rows, and it sends values outside the three we model.
+        Those become UNKNOWN rather than dropping the company: the name and its
+        link are still worth keeping when the role is not.
+        """
+        if not isinstance(value, str):
+            return cls.UNKNOWN
+
+        _map = {
+            "studio": cls.STUDIO,
+            "producer": cls.PRODUCER,
+            "licensor": cls.LICENSOR,
+        }
+        return _map.get(value.lower(), cls.UNKNOWN)
+
+
 class SourceMaterialType(StrEnum):
     """Source material type — used on both Anime and RelatedSourceMaterial models."""
 
@@ -711,6 +744,10 @@ class CompanyEntry(BaseModel):
     """Studio/Producer/Licensor company entry"""
 
     name: str = Field(..., description="Company name")
+    roles: list[CompanyRole] = Field(
+        default_factory=list,
+        description="What this company did on this anime; a company may hold more than one",
+    )
     description: str | None = Field(None, description="Company bio/description")
     sources: list[str] = Field(
         default_factory=list, description="Canonical source URLs"
@@ -781,7 +818,7 @@ class ScoreCalculations(BaseModel):
         None,
         description=(
             "Confidence-adjusted score used for ranking. Unset until at least "
-            "one provider reports a vote count. See docs/score_calculation.md"
+            "one provider reports a vote count. See docs/merge_rules.md"
         ),
     )
     mean: float | None = Field(None, description="Arithmetic mean of scores")
@@ -835,6 +872,10 @@ class Anime(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
+    companies: list[CompanyEntry] = Field(
+        default_factory=list,
+        description="Studios, producers and licensors, each carrying its roles",
+    )
     content_warnings: list[str] = Field(
         default_factory=list, description="Content warnings"
     )

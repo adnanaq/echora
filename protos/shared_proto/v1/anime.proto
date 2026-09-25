@@ -98,6 +98,15 @@ enum CharacterRole {
   CHARACTER_ROLE_UNKNOWN = 4;
 }
 
+// What a company did on one specific anime. A company may hold more than one.
+enum CompanyRole {
+  COMPANY_ROLE_UNSPECIFIED = 0;
+  COMPANY_ROLE_STUDIO = 1;
+  COMPANY_ROLE_PRODUCER = 2;
+  COMPANY_ROLE_LICENSOR = 3;
+  COMPANY_ROLE_UNKNOWN = 4;
+}
+
 // Relation type between two anime entries (13 types).
 // ALTERNATIVE_VERSION = same story retold (e.g. TV vs. movie cut).
 // ALTERNATIVE_SETTING = same characters, different universe / AU.
@@ -282,6 +291,7 @@ message CompanyEntry {
   string name = 1;
   optional string description = 2;
   repeated string sources = 3;
+  repeated CompanyRole roles = 4;
 }
 
 // Anime cover/poster/banner images organized by type.
@@ -442,6 +452,7 @@ message Anime {
   repeated CompanyEntry studios = 40;
   optional AnimeHiatus hiatus = 41;
   map<string, string> titles = 42;
+  repeated CompanyEntry companies = 44;
 }
 
 message AnimeRecord {
