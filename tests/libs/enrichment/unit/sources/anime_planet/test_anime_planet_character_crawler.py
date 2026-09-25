@@ -4,6 +4,7 @@ Fixture-grounded tests use the monkey-d-luffy HTML fixture (2026-06-10).
 Edge-case tests use synthetic inline HTML snippets.
 """
 
+import re
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -279,6 +280,71 @@ def test_extract_anime_roles_from_fixture(ap_character_html: str) -> None:
     one_piece = next(r for r in roles if "One Piece" in r.title)
     assert one_piece.role == "Main"
     assert "jp" in one_piece.voice_actors
+
+
+_AD_ANNOTATED_ROLES_HEADING = (
+    '<h3><a href="#" class="google-anno" data-google-vignette="false" '
+    'data-google-interstitial="false" style="position: initial !important;">'
+    '<svg viewBox="100 -1000 840 840" width="calc(22.4px - 2px)" height="22.4px">'
+    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg>&nbsp;'
+    '<span class="google-anno-t" style="text-decoration: underline dotted !important;">'
+    "Anime</span></a> Roles</h3>"
+)
+
+
+def _with_ad_annotated_roles_heading(html: str) -> str:
+    return html.replace("<h3>Anime Roles</h3>", _AD_ANNOTATED_ROLES_HEADING)
+
+
+_AD_SUGGESTION_CHIP = (
+    '<div class="google-anno-skip google-anno-sc" tabindex="0" role="link" '
+    'aria-label="Anime &amp; Manga" data-google-vignette="false" '
+    'data-google-interstitial="false" style="display: inline-flex !important;">'
+    '<span><span><svg viewBox="0 -960 960 960" width="16px" height="16px">'
+    '<path d="M168-144q-29.7 0-50.85-21.15Z"></path></svg></span>'
+    "<span>Anime</span></span><span>&amp; Manga</span></div>"
+)
+_DESCRIPTION_BLOCK = re.compile(
+    r'(<div[^>]+itemprop="description">.*?)(</div>)', re.DOTALL
+)
+
+
+def _with_ad_suggestion_chip_in_description(html: str) -> str:
+    return _DESCRIPTION_BLOCK.sub(
+        lambda block: block.group(1) + _AD_SUGGESTION_CHIP + block.group(2),
+        html,
+        count=1,
+    )
+
+
+def test_ad_annotated_heading_hides_the_roles_section(
+    each_ap_character_html: str,
+) -> None:
+    annotated = _with_ad_annotated_roles_heading(each_ap_character_html)
+    assert annotated != each_ap_character_html
+    assert _extract_anime_roles(each_ap_character_html)
+    assert _extract_anime_roles(annotated) == []
+
+
+def test_ad_suggestion_chip_leaks_into_the_description(
+    each_ap_character_html: str,
+) -> None:
+    chipped = _with_ad_suggestion_chip_in_description(each_ap_character_html)
+    assert chipped != each_ap_character_html
+    assert _extract_description(chipped) != _extract_description(each_ap_character_html)
+
+
+def test_character_extraction_is_unchanged_by_ad_markup(
+    each_ap_character_html: str,
+) -> None:
+    changed = _with_ad_suggestion_chip_in_description(
+        _with_ad_annotated_roles_heading(each_ap_character_html)
+    )
+    extracted = _extract_character_from_html(changed)
+    assert extracted == _extract_character_from_html(each_ap_character_html)
+    assert extracted is not None
+    assert extracted["anime_roles"]
+    assert extracted["description"]
 
 
 # =============================================================================

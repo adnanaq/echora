@@ -7,6 +7,8 @@ HTML fixtures are real pages captured from live AP pages:
 - ap_character_extracted: result of _extract_character_from_html(ap_character_html)
 - ap_character_raw:       https://www.anime-planet.com/characters/monkey-d-luffy (2026-04-17)
 - ap_char_refs_html:      https://www.anime-planet.com/anime/dandadan/characters (2026-06-10)
+- each_ap_character_html: the Luffy, Roronoa Zoro and Light Yagami character pages,
+                          one test run per page
 """
 
 from pathlib import Path
@@ -36,6 +38,18 @@ def ap_anime_extracted(ap_anime_html: str) -> dict:
 @pytest.fixture(scope="session")
 def ap_character_html() -> str:
     return (_FIXTURES / "ap_char_monkey-d-luffy.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture(
+    scope="session",
+    params=[
+        "ap_char_monkey-d-luffy.html",
+        "ap_char_roronoa-zoro.html",
+        "ap_char_light-yagami.html",
+    ],
+)
+def each_ap_character_html(request: pytest.FixtureRequest) -> str:
+    return (_FIXTURES / request.param).read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="session")

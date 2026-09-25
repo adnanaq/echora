@@ -23,6 +23,7 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
 from enrichment.sources.anime_planet.animeplanet_mapper import (
     character_from_animeplanet,
 )
+from enrichment.sources.base.ad_annotations import remove_ad_annotations
 from enrichment.sources.base.framework import (
     BaseCrawler,
     FileRepository,
@@ -278,6 +279,7 @@ def _extract_character_from_html(html: str) -> dict[str, Any] | None:
     if not html:
         return None
 
+    html = remove_ad_annotations(html)
     tree = etree.fromstring(html, etree.HTMLParser(encoding="utf-8"))
 
     def _t(key: str) -> str | None:
@@ -381,7 +383,7 @@ async def _fetch_page_html(browser: Any, url: str) -> str | None:
 @cached_result(
     ttl=TTL_ANIME_PLANET,
     key_prefix="animeplanet_character_detail",
-    dependencies=[_extract_character_from_html],
+    dependencies=[_extract_character_from_html, remove_ad_annotations],
 )
 async def _fetch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by url.
