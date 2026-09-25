@@ -81,7 +81,7 @@ async def shared_redis(redis_client, browser_available):
     """Point the result cache at the same client the assertions inspect."""
     from redis.asyncio import Redis as AsyncRedis
 
-    real_client = AsyncRedis.from_url("redis://localhost:6379/0", decode_responses=True)
+    real_client = AsyncRedis.from_url(TEST_REDIS_URL, decode_responses=True)
     with patch("http_cache.result_cache.Redis.from_url", return_value=real_client):
         result_cache._redis_client = real_client
         yield real_client
