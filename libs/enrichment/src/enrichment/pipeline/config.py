@@ -121,7 +121,7 @@ class EnrichmentConfig(BaseSettings):
         description=(
             "What a typical anime scores across our providers. Recompute every "
             "5,000 newly enriched anime and whenever the provider set changes; "
-            "see docs/score_calculation.md"
+            "see docs/merge_rules.md"
         ),
     )
     weighted_score_baseline_votes: int = Field(
@@ -129,7 +129,7 @@ class EnrichmentConfig(BaseSettings):
         validation_alias="WEIGHTED_SCORE_BASELINE_VOTES",
         description=(
             "Baseline votes every anime carries, deciding how many real voters "
-            "it takes before its own score wins; see docs/score_calculation.md"
+            "it takes before its own score wins; see docs/merge_rules.md"
         ),
     )
 

@@ -956,7 +956,7 @@ def process_stage1_metadata(current_anime_file: str, temp_dir: str) -> dict[str,
 
     # Scores come from the providers this run collected, never from the offline
     # database, which averages sites we do not use. See merge_score in
-    # enrichment.pipeline.metadata_rules and docs/score_calculation.md.
+    # enrichment.pipeline.metadata_rules and docs/merge_rules.md.
     output["score"] = None
 
     # Clean up None values in nested objects

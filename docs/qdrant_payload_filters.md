@@ -135,7 +135,7 @@ All statistics fields support `range` and `eq` operators.
 | Field | Index type | Description |
 |---|---|---|
 | `score.mean` | float | Simple average across all platform scores |
-| `score.weighted` | float | Confidence-adjusted score, the field to rank by. See [score_calculation.md](score_calculation.md) |
+| `score.weighted` | float | Confidence-adjusted score, the field to rank by. See [merge_rules.md](merge_rules.md) |
 
 ---
 
