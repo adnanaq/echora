@@ -8,7 +8,7 @@ pipeline, determining what information is important for semantic search.
 
 import logging
 
-from common.models.anime import Anime, Character, Episode
+from common.models.anime import Anime, Character, CompanyRole, Episode
 
 logger = logging.getLogger(__name__)
 
@@ -98,19 +98,24 @@ class AnimeFieldMapper:
             sections.append(" | ".join(meta_parts))
 
         # 4. Production Companies
-        production_parts = []
-        if anime.studios:
-            names = [s.name for s in anime.studios if s.name]
-            if names:
-                production_parts.append(f"Studios: {', '.join(names)}")
-        if anime.producers:
-            names = [p.name for p in anime.producers if p.name]
-            if names:
-                production_parts.append(f"Producers: {', '.join(names)}")
-        if anime.licensors:
-            names = [l.name for l in anime.licensors if l.name]
-            if names:
-                production_parts.append(f"Licensors: {', '.join(names)}")
+        # One company can hold several roles, so it is listed under each. The
+        # text is what gets embedded, and a company that both animated and
+        # produced a work is relevant to a query about either.
+        by_role: dict[CompanyRole, list[str]] = {}
+        for company in anime.companies:
+            if not company.name:
+                continue
+            for role in company.roles:
+                by_role.setdefault(role, []).append(company.name)
+        production_parts = [
+            f"{label}: {', '.join(by_role[role])}"
+            for role, label in (
+                (CompanyRole.STUDIO, "Studios"),
+                (CompanyRole.PRODUCER, "Producers"),
+                (CompanyRole.LICENSOR, "Licensors"),
+            )
+            if by_role.get(role)
+        ]
         if production_parts:
             sections.append(" | ".join(production_parts))
 
