@@ -6,9 +6,14 @@ an empty container rather than a missing key — the case that silently discarde
 AniDB's `titles` before `_provider_supplied` existed.
 """
 
+import json
+
 import pytest
 from enrichment.pipeline.link_rules import merged_anime_id
-from enrichment.pipeline.metadata_merger import merge_provider_records
+from enrichment.pipeline.metadata_merger import (
+    merge_agent_metadata,
+    merge_provider_records,
+)
 
 _MAL_URL = "https://myanimelist.net/anime/21/One_Piece"
 
@@ -221,7 +226,7 @@ def test_id_is_stable_across_differing_provider_coverage() -> None:
     full = merge_provider_records(
         {
             "mal": _record(),
-            "kitsu": _record(sources=["https://kitsu.io/anime/one-piece"]),
+            "kitsu": _record(sources=["https://kitsu.io/anime/one-piece", ""]),
         }
     )
     mal_only = merge_provider_records({"mal": _record()})
@@ -463,6 +468,7 @@ def test_trailers_keep_different_videos_and_the_richer_record() -> None:
                 trailers=[
                     {"source": "https://www.youtube.com/watch?v=aaa"},
                     {"source": "https://youtube.com/watch?v=bbb"},
+                    {"title": "PV without a link"},
                 ]
             ),
         }
@@ -493,6 +499,7 @@ def test_external_sources_drop_links_another_field_owns() -> None:
                         "platform": "wikipedia_en",
                         "source": "https://en.wikipedia.org/wiki/One_Piece",
                     },
+                    {"platform": "wikipedia_de"},
                 ]
             )
         }
@@ -661,3 +668,61 @@ def test_words_nobody_flagged_are_untouched_by_the_warning_rule() -> None:
     assert merged["genres"] == ["Action"]
     assert [t["name"] for t in merged["themes"]] == ["Military"]
     assert merged["content_warnings"] == ["Nudity"]
+
+
+def test_a_category_entry_without_a_name_is_dropped() -> None:
+    merged = merge_provider_records(
+        {"mal": _record(genres=[{"name": ""}, {"name": "Action"}, None])}
+    )
+    assert merged["genres"] == ["Action"]
+
+
+def test_an_unreadable_premiere_date_leaves_the_month_unset(caplog) -> None:
+    merged = merge_provider_records(
+        {"mal": _record(aired_dates={"aired_from": "sometime in autumn"})}
+    )
+    assert "month" not in merged
+    assert "Cannot read a month" in caplog.text
+
+
+def test_themes_union_across_providers_in_priority_order() -> None:
+    merged = merge_provider_records(
+        {
+            "kitsu": _record(
+                opening_themes=["We Are!"], ending_themes=["Memories", ""]
+            ),
+            "mal": _record(opening_themes=["We Are!", "Believe"]),
+        }
+    )
+    assert merged["opening_themes"] == ["We Are!", "Believe"]
+    assert merged["ending_themes"] == ["Memories"]
+
+
+def test_companies_reach_the_merged_record() -> None:
+    merged = merge_provider_records(
+        {
+            "mal": _record(companies=[{"name": "Toei Animation", "roles": ["STUDIO"]}]),
+            "kitsu": _record(
+                companies=[{"name": "Toei Animation Co., Ltd.", "roles": ["PRODUCER"]}]
+            ),
+        }
+    )
+    assert merged["companies"] == [
+        {"name": "Toei Animation", "roles": ["STUDIO", "PRODUCER"]}
+    ]
+
+
+def test_no_companies_leaves_the_field_off_the_record() -> None:
+    assert "companies" not in merge_provider_records({"mal": _record()})
+
+
+def test_merge_agent_metadata_reads_the_per_provider_files(tmp_path) -> None:
+    (tmp_path / "mal_anime.jsonl").write_text(
+        json.dumps({"sources": [_MAL_URL], "type": "TV", "year": 1999}) + "\n"
+    )
+    (tmp_path / "kitsu_anime.jsonl").write_text(
+        json.dumps({"sources": [_MAL_URL], "type": "OVA"}) + "\n"
+    )
+    merged = merge_agent_metadata(tmp_path)
+    assert merged["type"] == "TV"
+    assert merged["year"] == 1999

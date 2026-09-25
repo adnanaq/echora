@@ -5,10 +5,13 @@ apart. Every franchise title shares a long prefix, so the interesting cases are
 the near misses where a high similarity score and a distinct work coincide.
 """
 
+import json
+
 import pytest
-from enrichment.pipeline.identity import canonical_url_key
+from enrichment.pipeline.identity import OfflineDatabaseResolver, canonical_url_key
 from enrichment.pipeline.relationship_merger import (
     load_agent_providers,
+    merge_agent_relationships,
     merge_relation_field,
     titles_match,
     validate,
@@ -29,6 +32,10 @@ def _entry(title: str, url: str, **extra: object) -> dict[str, object]:
     return {"title": title, "type": "MOVIE", "sources": [url], **extra}
 
 
+def _url(anime_id: int) -> str:
+    return f"https://myanimelist.net/anime/{anime_id}"
+
+
 def _count(merged: dict[str, list[dict[str, object]]]) -> int:
     return sum(len(entries) for entries in merged.values())
 
@@ -47,6 +54,9 @@ def _count(merged: dict[str, list[dict[str, object]]]) -> int:
         ),
         # A differing trailing sequence number vetoes regardless of score.
         ("Collabo Special", "Collabo Special 2"),
+        # Nothing left to compare once punctuation is stripped.
+        ("", "One Piece"),
+        ("---", "One Piece"),
     ],
 )
 def test_titles_match_rejects_distinct_works(left: str, right: str) -> None:
@@ -65,6 +75,7 @@ def test_titles_match_rejects_distinct_works(left: str, right: str) -> None:
             "One Piece Film: Gold Episode 0 - 711 ver.",
             "one-piece-film-gold-episode-0-711ver",
         ),
+        ("ONE PIECE 東の海編", "ONE PIECE　東の海編"),  # full-width space between kanji
     ],
 )
 def test_titles_match_accepts_spelling_variants(left: str, right: str) -> None:
@@ -160,9 +171,23 @@ def test_concrete_value_beats_sentinel_regardless_of_rank() -> None:
 
 def test_merged_output_validates_against_the_models() -> None:
     per_provider = {
-        "mal": {"side_story": [_entry("Work", "https://myanimelist.net/anime/1")]}
+        "mal": {
+            "side_story": [
+                _entry(
+                    "Work",
+                    "https://myanimelist.net/anime/1",
+                    year=1999,
+                    episode_count=12,
+                    status="FINISHED",
+                )
+            ]
+        }
     }
     merged = merge_relation_field(per_provider, is_source_material=False)
+    entry = next(iter(merged.values()))[0]
+    assert entry["year"] == 1999
+    assert entry["episode_count"] == 12
+    assert entry["status"] == "FINISHED"
     assert validate({"related_anime": merged, "related_source_material": {}}) == []
 
 
@@ -259,3 +284,134 @@ def test_anidb_legacy_url_resolves_to_the_same_work() -> None:
 def test_anidb_legacy_non_anime_page_is_not_a_work() -> None:
     url = "https://anidb.net/perl-bin/animedb.pl?show=character&charid=474"
     assert canonical_url_key(url) == url
+
+
+def test_sentinel_type_survives_when_no_source_names_a_real_one() -> None:
+    per_provider = {
+        "mal": {
+            "side_story": [
+                {
+                    "title": "Work",
+                    "type": "UNKNOWN",
+                    "sources": ["https://myanimelist.net/anime/1"],
+                }
+            ]
+        }
+    }
+    merged = merge_relation_field(per_provider, is_source_material=False)
+    assert next(iter(merged.values()))[0]["type"] == "UNKNOWN"
+
+
+def test_the_sentinel_relation_is_kept_when_it_is_all_anyone_reported() -> None:
+    per_provider = {
+        "mal": {"OTHER": [_entry("Work", "https://myanimelist.net/anime/1")]}
+    }
+    merged = merge_relation_field(per_provider, is_source_material=False)
+    assert list(merged) == ["OTHER"]
+
+
+def test_three_spellings_of_one_title_fuse_into_a_single_work() -> None:
+    per_provider = {
+        "mal": {"side_story": [_entry("CHOPPER's Big Adventure", _url(1))]},
+        "anidb": {"side_story": [_entry("choppers big adventure", _url(2))]},
+        "kitsu": {"side_story": [_entry("Chopper's Big Adventures", _url(3))]},
+    }
+    merged = merge_relation_field(per_provider, is_source_material=False)
+    assert _count(merged) == 1
+    assert len(next(iter(merged.values()))[0]["sources"]) == 3
+
+
+def test_merge_agent_relationships_reads_both_fields_from_a_directory(
+    tmp_path,
+) -> None:
+    (tmp_path / "mal_anime.jsonl").write_text(
+        json.dumps(
+            {
+                "related_anime": {
+                    "side_story": [_entry("Side Story", _url(1))],
+                },
+                "related_source_material": {
+                    "adaptation": [
+                        {
+                            "title": "The Manga",
+                            "type": "MANGA",
+                            "sources": ["https://myanimelist.net/manga/13"],
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n"
+    )
+    merged = merge_agent_relationships(tmp_path)
+    assert _count(merged["related_anime"]) == 1
+    assert _count(merged["related_source_material"]) == 1
+
+
+def test_validate_reports_an_entry_the_models_reject() -> None:
+    merged = {
+        "related_anime": {
+            "SIDE_STORY": [{"title": "X", "type": "TV", "sources": "not-a-list"}]
+        },
+        "related_source_material": {
+            "ADAPTATION": [{"title": "Y", "type": "MANGA", "sources": "not-a-list"}]
+        },
+    }
+    errors = validate(merged)
+    assert len(errors) == 2
+    assert any("SIDE_STORY/'X'" in error for error in errors)
+    assert any("ADAPTATION/'Y'" in error for error in errors)
+
+
+def test_the_offline_database_places_every_url_of_one_work_together() -> None:
+    resolver = OfflineDatabaseResolver(
+        [{"sources": [_url(21), "https://anidb.net/anime/69"]}]
+    )
+    assert resolver.resolve(_url(21)) == resolver.resolve("https://anidb.net/anime/69")
+
+
+def test_the_offline_database_indexes_one_key_per_url() -> None:
+    resolver = OfflineDatabaseResolver(
+        [
+            {"sources": [_url(21), "https://anidb.net/anime/69"]},
+            {"sources": [_url(1)]},
+            {"sources": []},
+            {},
+        ]
+    )
+    assert len(resolver) == 3
+
+
+def test_an_unlisted_url_resolves_to_nothing() -> None:
+    resolver = OfflineDatabaseResolver([{"sources": [_url(21)]}])
+    assert resolver.resolve(_url(9999)) is None
+
+
+def test_two_works_never_share_a_work_id() -> None:
+    resolver = OfflineDatabaseResolver(
+        [{"sources": [_url(21)]}, {"sources": [_url(1)]}]
+    )
+    assert resolver.resolve(_url(21)) != resolver.resolve(_url(1))
+
+
+def test_the_work_id_does_not_depend_on_the_order_sources_are_listed_in() -> None:
+    forward = OfflineDatabaseResolver(
+        [{"sources": [_url(21), "https://anidb.net/anime/69"]}]
+    )
+    reversed_order = OfflineDatabaseResolver(
+        [{"sources": ["https://anidb.net/anime/69", _url(21)]}]
+    )
+    assert forward.resolve(_url(21)) == reversed_order.resolve(_url(21))
+
+
+def test_a_decorated_url_resolves_to_the_same_work_as_the_bare_one() -> None:
+    resolver = OfflineDatabaseResolver([{"sources": [_url(21)]}])
+    assert resolver.resolve("https://myanimelist.net/anime/21/One_Piece") is not None
+
+
+def test_the_offline_database_loads_from_a_file(tmp_path) -> None:
+    path = tmp_path / "anime-offline-database.json"
+    path.write_text(json.dumps({"data": [{"sources": [_url(21)]}]}))
+    resolver = OfflineDatabaseResolver.from_file(path)
+    assert len(resolver) == 1
+    assert resolver.resolve(_url(21)) is not None
