@@ -109,11 +109,6 @@ _SINGLE_SOURCE: tuple[str, ...] = (
     "titles",
 )
 
-# Plain unions over scalar list values, deduplicated on the value itself.
-# content_warnings is not here: it is one of the category fields, so a
-# warning cannot also sit in tags or themes.
-_UNION: tuple[str, ...] = ()
-
 
 def _ranked(records: dict[str, dict[str, Any]]) -> Ranked:
     """Order provider records by trust, most trusted first.
@@ -223,11 +218,6 @@ def merge_provider_records(
         value = _first_signal(ranked, field, warn=field in _FIRST_SIGNAL)
         if value is not None:
             merged[field] = value
-
-    for field in _UNION:
-        values = _union_values(ranked, field)
-        if values:
-            merged[field] = values
 
     for field in ("title", "title_english"):
         title = merge_title(ranked, field)
