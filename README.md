@@ -89,7 +89,7 @@ Steps 0–2 are required for both paths. Then pick **Path A (Docker)** or
 
 ### 0. Prerequisites
 
-- **Python 3.13** — pinned in `.python-version`; Pants, ty and ruff all target 3.13
+- **Python 3.14** — pinned in `.python-version`; Pants, ty and ruff all target 3.14
 - **Docker** and Docker Compose
 - **UV** package manager
 
@@ -163,7 +163,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 # 1. Create the venv (UV reads .python-version)
 uv venv
 uv sync
-.venv/bin/python --version        # Python 3.13.x
+.venv/bin/python --version        # Python 3.14.x
 
 # 2. Start only the backing services
 docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
@@ -174,10 +174,10 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant redis
 ```
 
 Pants resolves its own interpreter from `PATH`, independently of the venv. If
-`./pants` cannot find a 3.13 interpreter:
+`./pants` cannot find a 3.14 interpreter:
 
 ```bash
-uv python install 3.13   # creates ~/.local/bin/python3.13
+uv python install 3.14   # creates ~/.local/bin/python3.14
 ```
 
 ---
@@ -504,7 +504,7 @@ When more than one of these signals is active in a single query, results are fus
 ### Technology Stack
 
 - **Build System**: Pants 2.29.1
-- **Language**: Python 3.13
+- **Language**: Python 3.14
 - **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing
 - **HTTP Cache**: Redis (RFC 9111-compliant via Hishel, used by enrichment pipeline)

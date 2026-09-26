@@ -237,7 +237,7 @@ sequenceDiagram
 
 ### Core Runtime
 
-- **Python**: 3.13 (pinned in `.python-version`; Pants, ty, and ruff all target 3.13)
+- **Python**: 3.14 (pinned in `.python-version`; Pants, ty, and ruff all target 3.14)
 - **gRPC**: `grpc.aio` async server with custom telemetry interceptors
 - **Protobuf**: schemas in `protos/`, stubs generated via `scripts/generate-proto.py`
 - **Pants**: 2.29.1 build system
