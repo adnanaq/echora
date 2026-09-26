@@ -142,7 +142,6 @@ setup_telemetry(
     enable_logging=True,                 # structlog + OTel log bridge
     enable_tracing=True,                 # TracerProvider + OTLP trace exporter
     enable_metrics=True,                 # MeterProvider + OTLP metric exporter
-    enable_grpc_server_instrumentation=False,   # auto-instrument ALL server calls
     enable_grpc_client_instrumentation=False,   # auto-instrument gRPC client stubs
     enable_aiohttp_client_instrumentation=False, # auto-instrument aiohttp sessions
     enable_qdrant_client_instrumentation=False,  # auto-instrument Qdrant SDK
@@ -167,8 +166,7 @@ WARN/ERROR/CRITICAL log events are **never** sampled out regardless of `log_samp
 ```python
 from observability import (
     AioServerInterceptor,           # gRPC async server interceptor
-    instrument_grpc_server,         # enable auto-instrumentation
-    instrument_grpc_client,
+    instrument_grpc_client,         # enable auto-instrumentation
     instrument_aiohttp_client,
     instrument_qdrant_client,
     registry,                       # metric instrument singleton
@@ -253,9 +251,6 @@ def _setup_observability(settings) -> None:
         enable_logging=settings.observability.otel_enable_logging,
         enable_tracing=settings.observability.otel_enable_tracing,
         enable_metrics=settings.observability.otel_enable_metrics,
-        enable_grpc_server_instrumentation=(
-            settings.observability.otel_enable_grpc_server_instrumentation
-        ),
     )
 
 
@@ -264,7 +259,10 @@ async def serve() -> None:
     _setup_observability(settings)          # MUST be first
 
     interceptors = []
-    if settings.observability.otel_enabled:
+    if (
+        settings.observability.otel_enabled
+        and settings.observability.otel_enable_grpc_server_instrumentation
+    ):
         interceptors.append(AioServerInterceptor())
 
     server = grpc.aio.server(interceptors=interceptors)
@@ -277,9 +275,9 @@ async def serve() -> None:
         stop_logging()                      # flush log queue on shutdown
 ```
 
-`setup_telemetry` must be called **before** any `grpc.aio.server()` creation if
-`enable_grpc_server_instrumentation=True` (the auto-instrumentor patches the server
-factory).
+Server spans and RPC metrics come from `AioServerInterceptor`, added when
+`OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` is true. There is no separate gRPC server
+auto-instrumentation: it would record every request a second time, as its own trace.
 
 ### Step 2 — Add service-specific metrics to the registry
 

@@ -184,7 +184,7 @@ Services can be tuned via environment variables (see `ObservabilityConfig`):
 | `OTEL_ENABLE_LOGGING` | `true` | Enable Structlog/OTel bridge. |
 | `OTEL_ENABLE_TRACING` | `true` | Enable trace generation. |
 | `OTEL_ENABLE_METRICS` | `true` | Enable metric aggregation. |
-| `OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` | `true` | Enable gRPC server spans. |
+| `OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` | `true` | Add `AioServerInterceptor` to the gRPC server (RPC spans and metrics). |
 | `OTEL_ENABLE_GRPC_CLIENT_INSTRUMENTATION` | `true` | Enable gRPC client spans/headers. |
 | `OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION` | `false` | Enable HTTP client spans/headers. |
 | `OTEL_ENABLE_REDIS_INSTRUMENTATION` | `false` | Enable Redis client spans. |
