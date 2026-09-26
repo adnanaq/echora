@@ -105,8 +105,13 @@ gRPC call arrives
 │    vector_processing.vision.encode_batch            │
 │  Metrics (via opentelemetry.get_meter):             │
 │    echora_embedding_duration_seconds  {modality}   │
+│    echora_embedding_cache_total                     │
+│    echora_cache_operation_duration_seconds          │
 │    echora_image_download_duration_seconds           │
 │    echora_image_download_failures_total             │
+│    echora_enrichment_api_requests_total             │
+│    echora_enrichment_api_duration_seconds           │
+│  Metrics (via the registry passed to QdrantClient): │
 │    echora_db_query_duration_seconds                 │
 │    echora_db_errors_total                           │
 └─────────────────────────────────────────────────────┘
@@ -196,13 +201,25 @@ is called (or when OTel is disabled), all calls are no-ops — safe everywhere.
 | `echora_inflight_rpcs` | UpDownCounter | `rpc_method` | Concurrent RPC calls in progress |
 | `echora_db_query_duration_seconds` | Histogram | _(none)_ | Qdrant query duration |
 | `echora_db_errors_total` | Counter | _(none)_ | Qdrant query errors |
-| `echora_embedding_duration_seconds` | Histogram | `modality` (`text`\|`image`) | ML model inference time (excludes semaphore wait) |
 | `echora_search_results_count` | Histogram | `entity_type` | Results returned per search request |
 | `echora_search_empty_results_total` | Counter | `entity_type` | Searches returning zero results |
 | `echora_pipeline_runs_total` | Counter | `status` (`success`\|`error`) | Enrichment pipeline executions |
 | `echora_pipeline_duration_seconds` | Histogram | `status` | Enrichment pipeline end-to-end duration |
-| `echora_image_download_duration_seconds` | Histogram | _(none)_ | Image CDN fetch + cache duration |
-| `echora_image_download_failures_total` | Counter | _(none)_ | Image downloads failed after all retries |
+
+Library code records these through its own `get_meter()` instruments:
+
+| Instrument | Type | Labels | Recorded in |
+|---|---|---|---|
+| `echora_embedding_duration_seconds` | Histogram | `modality` (`text`\|`image`) | Text and vision processors; model inference time, excluding semaphore wait |
+| `echora_embedding_cache_total` | Counter | `result` (`hit`\|`miss`), `modality` | Text and vision processors |
+| `echora_cache_operation_duration_seconds` | Histogram | `operation` (`get`\|`get_batch`\|`set`\|`set_batch`) | Embedding cache (Redis) |
+| `echora_image_download_duration_seconds` | Histogram | _(none)_ | Vision processor; image fetch + cache |
+| `echora_image_download_failures_total` | Counter | _(none)_ | Vision processor; downloads failed after all retries |
+| `echora_enrichment_api_requests_total` | Counter | `service`, `status` (`success`\|`error`) | Enrichment API fetcher |
+| `echora_enrichment_api_duration_seconds` | Histogram | `service` | Enrichment API fetcher |
+
+Every metric also carries `deployment_environment`, which the collector copies from
+the service's `deployment.environment`.
 
 **Cardinality rules:**
 - Labels must use bounded value sets. Never use free-text user input (URL, title, ID) as a label.
@@ -497,6 +514,12 @@ docker compose -f docker/docker-compose.obs.yml down -v
 - Vector Service overview: `http://localhost:3000/d/echora-vector-service-overview`
 - Enrichment Service overview: `http://localhost:3000/d/echora-enrichment-service-overview`
 - Trace journey: `http://localhost:3000/d/echora-trace-journey/echora-trace-journey`
+
+One observability stack serves every environment. Services tag all telemetry with
+`deployment.environment` (from `ENVIRONMENT`), and each dashboard has an
+**Environment** dropdown that filters every panel by it. Metrics carry it as the
+`deployment_environment` label, which the collector copies onto each data point;
+logs in Loki and traces in Tempo (`resource.deployment.environment`) carry it too.
 
 ### Verification Scripts
 

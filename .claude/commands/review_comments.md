@@ -64,7 +64,7 @@ Based on your analysis, choose one path:
 ## Current Context
 
 Project: Echora (anime semantic search microservice)
-Tech Stack: Pants, Python, FastAPI, Qdrant, vector embeddings
+Tech Stack: Pants, Python, gRPC, Qdrant, vector embeddings
 Role: **$ARGUMENTS[0]**
 
 Review Comment:

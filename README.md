@@ -152,7 +152,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 | RedisInsight | <http://localhost:5540> (add host `redis`, port `6379`) |
 
 > **First run takes ~15 minutes.** It builds two images and then downloads the
-> embedding models (BGE-M3 + OpenCLIP, several GB) into the `echora_model-cache`
+> embedding models (BGE-M3 + OpenCLIP, several GB) into the `echora-dev_model-cache`
 > volume. `vector-service` stays `starting` until that finishes — this is why
 > its healthcheck has a 15-minute `start_period`. Subsequent starts are fast;
 > the models are only re-downloaded if you run `down -v`.
@@ -190,8 +190,8 @@ not work. Use the standard gRPC health protocol:
 **Path A (Docker)** — `grpc_health_probe` ships in both images:
 
 ```bash
-docker exec echora-vector-service     grpc_health_probe -addr=localhost:8001
-docker exec echora-enrichment-service grpc_health_probe -addr=localhost:8002
+docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
+docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
 ```
 
 **Path B (local)** — there is no container to `exec` into, and
@@ -317,9 +317,6 @@ uv run ty check scripts/ libs/ apps/
 
 # Update vectors
 ./pants run scripts/update_vectors.py -- --vectors title_vector
-
-# Validate enrichment database
-./pants run scripts/validate_enrichment_database.py
 
 # View script help
 ./pants run scripts/update_vectors.py -- --help
@@ -503,7 +500,7 @@ When more than one of these signals is active in a single query, results are fus
 
 ### Technology Stack
 
-- **Build System**: Pants 2.29.1
+- **Build System**: Pants 2.33.1
 - **Language**: Python 3.14
 - **RPC Framework**: gRPC (`grpc.aio`)
 - **Vector Database**: Qdrant with HNSW indexing

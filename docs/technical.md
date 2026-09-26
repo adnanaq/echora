@@ -6,13 +6,13 @@
 
 #### Core Framework
 
-- **FastAPI 0.115+**: Chosen for high-performance async capabilities, automatic OpenAPI documentation, and excellent type safety with Pydantic
-- **Python 3.12+**: Latest Python for performance improvements, improved type hints, and modern language features
-- **Uvicorn**: ASGI server for production-grade async request handling
+- **gRPC (`grpc.aio`)**: Both services are async gRPC servers; the contracts are the `.proto` files in `protos/`
+- **Python 3.14**
+- **Pydantic 2**: Data models and settings
 
 #### Vector Database Architecture
 
-- **Qdrant 1.14+**: Selected for its superior performance with HNSW indexing, multi-vector support, and production-ready features
+- **Qdrant 1.19**: Selected for its performance with HNSW indexing, multi-vector support, and production-ready features
 - **HNSW Algorithm**: Hierarchical Navigable Small World for fast approximate nearest neighbor search
 - **Advanced Quantization**: Binary, scalar, and product quantization for speedup potential
 - **2-Vector Primary Collection**: `text_vector` (1024-dim) + `image_vector` (768-dim) with multivector image storage
@@ -26,12 +26,13 @@
 
 - **BGE-M3 (BAAI/bge-m3)**: State-of-the-art multilingual embedding model with 1024 dimensions, supporting 8192 token context
 - **OpenCLIP ViT-L/14**: Vision transformer for 768-dimensional image embeddings with commercial-friendly licensing
-- **Multi-Provider Support**: FastEmbed, HuggingFace, Sentence Transformers for dynamic model selection
-- **PyTorch 2.0+**: Backend ML framework with optimized inference
+- **Multi-Provider Support**: FlagEmbedding (default, also produces the sparse vector), HuggingFace, Sentence Transformers
+- **Reranking**: optional cross-encoder reranker (`BAAI/bge-reranker-v2-m3` via Sentence Transformers)
+- **PyTorch 2.14**: Backend ML framework; CUDA build in production images, CPU build in dev
 
 #### Supporting Libraries
 
-- **Qdrant Client**: `qdrant-client[fastembed]` for vector operations
+- **Qdrant Client**: `qdrant-client` for vector operations
 - **HTTP**: `aiohttp` for async requests, `hishel` for HTTP caching
 - **Caching**: `redis` for cache backends
 - **Crawling**: `zendriver` (CDP) for web extraction pipelines
@@ -42,7 +43,7 @@
 
 **System Requirements:**
 
-- Python 3.12+ for modern language features
+- Python 3.14
 - Docker and Docker Compose for containerization
 - Git for version control
 - 8GB+ RAM required for model loading
@@ -57,14 +58,14 @@
 2. Install Python dependencies via `uv sync` (pyproject.toml + uv.lock)
 3. Start Qdrant database using Docker Compose
 4. Run service using Python module execution
-5. Access API documentation at localhost:8002/docs
+5. Call the gRPC services on `localhost:8001` (vector) and `localhost:8002` (enrichment), using the contracts in `protos/`
 
 #### Docker Development
 
 **Container-based Development:**
 
 - Full stack deployment using docker compose
-- Service health verification via health endpoint
+- Service health verification with `grpc_health_probe`
 - Isolated development environment
 
 ### Configuration Management
@@ -106,7 +107,7 @@ The service uses Pydantic Settings for type-safe configuration:
 
 - **Decision**: Store text and image vectors in the same collection with multivector image storage
 - **Rationale**: Enables text and image search while maintaining data locality
-- **Implementation**: Named vectors in Qdrant (`text_vector`, `image_vector`)
+- **Implementation**: Named vectors in Qdrant (`text_vector`, `image_vector`) plus the sparse `text_sparse_vector`
 
 #### Embedding Model Selection
 
@@ -116,14 +117,14 @@ The service uses Pydantic Settings for type-safe configuration:
 
 #### Async Architecture
 
-- **FastAPI Async**: All endpoints are async for non-blocking I/O
+- **Async gRPC**: All RPCs are async for non-blocking I/O
 - **Qdrant Async Client**: Ensures database operations don't block request handling
-- **Lifespan Management**: Proper async initialization and cleanup
+- **Startup and Shutdown**: Models, clients and caches are built once at startup and closed on shutdown
 
 #### Error Handling Strategy
 
-- **HTTP Exceptions**: Proper status codes with detailed error messages
-- **Validation Errors**: Pydantic automatically handles request validation
+- **Error Responses**: A failed RPC returns `ErrorDetails` (`code`, `message`, `retryable`, `details_json`) in its response, for example `INVALID_FILTERS` or `MISSING_QUERY_INPUT`
+- **Validation**: Requests are checked in the handlers; filters may only use indexed payload fields, and search limits are capped at 100
 - **Database Errors**: Graceful degradation when Qdrant is unavailable
 - **Logging**: Structured logging with configurable levels
 
@@ -132,8 +133,7 @@ The service uses Pydantic Settings for type-safe configuration:
 #### Dependency Injection
 
 - **Settings**: Cached settings instance using `@lru_cache`
-- **Qdrant Client**: Global instance initialized during lifespan
-- **Router Dependencies**: Future support for authentication/authorization
+- **Runtime**: One runtime object built at service startup holds the Qdrant client, models and caches, and is passed to the RPC handlers
 
 #### Factory Pattern
 
@@ -143,7 +143,7 @@ The service uses Pydantic Settings for type-safe configuration:
 #### Repository Pattern
 
 - **Vector Operations**: Abstracted through QdrantClient interface
-- **Data Models**: Pydantic models for request/response validation
+- **Data Models**: Protobuf messages at the service boundary, Pydantic models inside
 - **Configuration**: Settings class encapsulates all configuration logic
 
 #### Observer Pattern (Future)
@@ -170,8 +170,6 @@ The service uses Pydantic Settings for type-safe configuration:
 
 - **Async Processing**: Non-blocking request handling
 - **Connection Pooling**: Efficient Qdrant client connection management
-- **Response Compression**: Automatic FastAPI compression
-- **CORS Optimization**: Configurable CORS settings
 
 ### Technical Constraints
 
@@ -198,7 +196,7 @@ The service uses Pydantic Settings for type-safe configuration:
 #### Build and Dependency Management
 
 - **UV**: Dependency management via pyproject.toml + uv.lock
-- **Pants**: Monorepo build/test orchestration
+- **Pants**: Monorepo build/test orchestration; tests run from the lockfile at `3rdparty/python/default.lock`
 
 #### Code Quality
 
@@ -209,21 +207,19 @@ The service uses Pydantic Settings for type-safe configuration:
 
 - **pytest**: Unit and integration testing
 - **pytest-asyncio**: Async test support
-- **httpx**: HTTP client for API testing
 - **pytest-mock**: Mocking for isolated tests
+- **pytest-cov**: Coverage, collected by Pants on every test run
 
 #### API Documentation
 
-- **FastAPI OpenAPI**: Automatic API documentation
-- **Swagger UI**: Interactive API explorer at `/docs`
-- **ReDoc**: Alternative documentation at `/redoc`
+- **Protobuf Contracts**: The `.proto` files in `protos/` define every RPC and message
 
 #### Monitoring and Observability
 
 - **Structured Logging**: JSON-formatted logs with timestamps
-- **Health Endpoints**: `/health` for service and database status
+- **Health Checks**: Standard gRPC health service (`grpc_health_probe`) plus `Health` and `GetStats` RPCs
 - **Error Tracking**: Exception logging with context
-- **Performance Metrics**: Response time logging (future Prometheus integration)
+- **OpenTelemetry**: Traces, metrics and logs go through the collector to Tempo, Prometheus and Loki, viewed in Grafana
 
 ### Deployment Considerations
 
@@ -238,29 +234,27 @@ The service uses Pydantic Settings for type-safe configuration:
 
 - **Debug Mode**: Disabled in production
 - **Logging**: INFO level with structured format
-- **CORS**: Restricted origins for security
 - **Health Checks**: Docker health check configuration
 
 #### Scaling Considerations
 
 - **Stateless Design**: No local state, suitable for horizontal scaling
 - **Database Sharing**: Multiple instances can share same Qdrant cluster
-- **Load Balancing**: Standard HTTP load balancing compatible
+- **Load Balancing**: gRPC keeps long-lived HTTP/2 connections, so it needs a load balancer that balances per request rather than per connection
 - **Resource Requirements**: 2 CPU cores, 4GB RAM per instance recommended
 
 ### Security Considerations
 
 #### API Security
 
-- **Input Validation**: Pydantic models prevent injection attacks
-- **CORS Configuration**: Configurable origin restrictions
+- **Input Validation**: Requests are validated in the handlers, and filters are limited to indexed payload fields
 - **Error Information**: Careful error message exposure
 - **Request Limits**: Configurable batch and search limits
 
 #### Data Security
 
 - **No Sensitive Data**: Only public anime metadata stored
-- **TLS Termination**: HTTPS recommended for production
+- **TLS**: TLS on the gRPC endpoints recommended for production
 - **Access Logging**: Request logging for audit trails
 
 #### Infrastructure Security
@@ -367,7 +361,6 @@ Based on comprehensive Anime schema analysis and 2-vector architecture:
 
 **API Performance Optimization:**
 
-- **Response Compression:** Automatic FastAPI gzip compression
 - **Field Selection:** Dynamic payload field selection based on request type
 - **Batch Operations:** Optimized for 1000-item batch processing
 - **Streaming Responses:** Large result set streaming support

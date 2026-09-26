@@ -343,17 +343,17 @@ The cache manager is designed for **async concurrency** within Python's asyncio 
 
 ```bash
 # Clear all cached data (HTTP + result caches)
-docker exec echora-redis redis-cli FLUSHALL
+docker exec echora-dev-redis redis-cli FLUSHALL
 
 # Alternative: Clear specific database (DB 0)
-docker exec echora-redis redis-cli FLUSHDB
+docker exec echora-dev-redis redis-cli FLUSHDB
 ```
 
 ### View Cache Statistics
 
 ```bash
 # Connect to Redis CLI
-docker exec -it echora-redis redis-cli
+docker exec -it echora-dev-redis redis-cli
 
 # Check total cache size
 > DBSIZE
@@ -375,40 +375,10 @@ docker exec -it echora-redis redis-cli
 
 ### Cache Manager Tests
 
-**Unit Tests** (fast, no external dependencies):
+Redis is mocked in these tests, so none of them needs a running Redis:
 
 ```bash
-# Test cache manager components (in tests/libs/http_cache/)
-pytest tests/libs/http_cache/
-
-# Run with coverage
-pytest tests/libs/http_cache/ --cov=http_cache
-```
-
-**Integration Tests** (require Redis):
-
-```bash
-# Start Redis for testing
-docker compose up -d redis
-
-# Run integration tests
-REDIS_URL=redis://localhost:6379/1 pytest tests/libs/http_cache/integration/
-
-# Stop Redis
-docker compose down redis
-```
-
-### Testing Best Practices
-
-**Use separate Redis database for tests:**
-```bash
-REDIS_URL=redis://localhost:6379/1  # DB 1 for tests
-REDIS_URL=redis://localhost:6379/0  # DB 0 for dev/production
-```
-
-**Disable caching in tests when needed:**
-```bash
-CACHE_ENABLED=false pytest tests/
+./pants test tests/libs/http_cache::
 ```
 
 For enrichment pipeline-specific tests, see [enrichment/README.md - Testing](../enrichment/README.md#testing).
@@ -465,7 +435,7 @@ echo $CACHE_ENABLED  # Should be "true"
 redis-cli -h localhost -p 6379 PING  # Should return "PONG"
 
 # Check cache keys exist
-docker exec -it echora-redis redis-cli
+docker exec -it echora-dev-redis redis-cli
 > KEYS *
 > DBSIZE
 ```
