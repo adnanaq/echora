@@ -226,6 +226,29 @@ def _build(raw: dict, picture_urls: list[str] | None = None):
     )
 
 
+def test_extract_reads_canonical_url(mal_anime_html) -> None:
+    """The page names its own full address, title segment included."""
+    raw = _extract_anime_from_html(mal_anime_html)
+    assert raw["canonical_url"] == "https://myanimelist.net/anime/21/One_Piece"
+
+
+def test_build_prefers_canonical_url_over_requested_url() -> None:
+    """A bare url must not be echoed back: episode and character pages need
+    the title segment, and the page is the only place it comes from."""
+    raw = {"canonical_url": "https://myanimelist.net/anime/21/One_Piece"}
+    anime = _build_anime_from_raw(
+        raw, url="https://myanimelist.net/anime/21", picture_urls=[]
+    )
+    assert anime.source == "https://myanimelist.net/anime/21/One_Piece"
+
+
+def test_build_falls_back_to_requested_url_without_canonical() -> None:
+    anime = _build_anime_from_raw(
+        {}, url="https://myanimelist.net/anime/21", picture_urls=[]
+    )
+    assert anime.source == "https://myanimelist.net/anime/21"
+
+
 def test_build_from_fixture(mal_anime_extracted) -> None:
     anime = _build(mal_anime_extracted)
 

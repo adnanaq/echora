@@ -280,6 +280,12 @@ class AniListHelper(BaseEnrichmentHelper):
         averageScore
         popularity
         favourites
+        stats {
+          scoreDistribution {
+            score
+            amount
+          }
+        }
         genres
         synonyms
         tags {
@@ -426,7 +432,7 @@ class AniListHelper(BaseEnrichmentHelper):
         query = """
         query ($id: Int!, $page: Int!) {
           Media(id: $id, type: ANIME) {
-            characters(page: $page, perPage: 50, sort: ROLE) {
+            characters(page: $page, perPage: 50, sort: [ROLE, ID]) {
               pageInfo { hasNextPage }
               edges {
                 node {

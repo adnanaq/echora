@@ -26,6 +26,7 @@ from enrichment.sources.kitsu.kitsu_models import (
     KitsuMediaCharacterAttributes,
     KitsuPerson,
     KitsuPersonAttributes,
+    KitsuProduction,
     KitsuTitles,
 )
 
@@ -48,6 +49,7 @@ def _make_anime(**overrides) -> KitsuAnime:
         averageRating="83.40",
         userCount=500000,
         favoritesCount=30000,
+        ratingFrequencies={"14": "40000", "16": "60000", "18": "70000", "20": "90000"},
         popularityRank=3,
         ratingRank=50,
         ageRating="PG",
@@ -57,9 +59,38 @@ def _make_anime(**overrides) -> KitsuAnime:
         youtubeVideoId="abc123",
         abbreviatedTitles=["OP"],
     )
+    companies = overrides.pop("companies", [])
     for key, val in overrides.items():
         setattr(attrs, key, val)
-    return KitsuAnime(id="12", attributes=attrs)
+    return KitsuAnime(id="12", attributes=attrs, companies=companies)
+
+
+def test_companies_split_by_role() -> None:
+    result = anime_from_kitsu(
+        _make_anime(
+            companies=[
+                KitsuProduction(name="Toei Animation", role="studio"),
+                KitsuProduction(name="Fuji TV", role="producer"),
+                KitsuProduction(name="Funimation", role="licensor"),
+                KitsuProduction(name="Madhouse", role="studio"),
+                KitsuProduction(name="Madhouse", role="producer"),
+            ]
+        )
+    )
+    assert {c["name"]: c["roles"] for c in result["companies"]} == {
+        "Toei Animation": ["STUDIO"],
+        "Madhouse": ["STUDIO", "PRODUCER"],
+        "Fuji TV": ["PRODUCER"],
+        "Funimation": ["LICENSOR"],
+    }
+    assert not {"studios", "producers", "licensors"} & result.keys()
+
+
+def test_companies_with_unknown_role_are_dropped() -> None:
+    result = anime_from_kitsu(
+        _make_anime(companies=[KitsuProduction(name="Mystery Co", role="publisher")])
+    )
+    assert result.get("companies", []) == []
 
 
 def _make_media_char(
@@ -149,6 +180,7 @@ def test_anime_from_kitsu_full():
     assert result["images"]["covers"] == ["https://example.com/cover.jpg"]
     assert result["statistics"]["kitsu"]["score"] == pytest.approx(8.34, abs=0.01)
     assert result["statistics"]["kitsu"]["members"] == 500000
+    assert result["statistics"]["kitsu"]["scored_by"] == 260000
     assert result["statistics"]["kitsu"]["rank"] == 50
     assert result["trailers"][0]["source"] == "https://www.youtube.com/watch?v=abc123"
     assert result["aired_dates"]["aired_from"].startswith(

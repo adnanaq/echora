@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -23,16 +24,27 @@ from .utils import _mask_url_credentials
 logger = logging.getLogger(__name__)
 
 
+# Some APIs report failure in the body while still answering HTTP 200. AniDB
+# does this: a rate-limit ban comes back as 200 with
+# ``<error code="500">banned</error>``, which a status check alone would cache
+# and keep serving long after the ban lifts.
+_XML_ERROR_ROOT = re.compile(rb"^\s*(?:<\?xml[^>]*\?>\s*)?<error[\s>]", re.IGNORECASE)
+
+# Error envelopes are tiny; cap the scan so a large body is never searched.
+_MAX_ERROR_BODY_BYTES = 4096
+
+
 class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
-    """Hishel response filter that prevents caching of HTTP error responses.
+    """Hishel response filter that prevents caching of error responses.
 
-    This filter ensures that error responses (4xx/5xx status codes) are never
-    cached, forcing fresh network requests on retry. This is critical for:
+    Rejects 4xx/5xx by status, and also rejects a 200 whose body is an XML
+    error envelope, so an API that signals failure in the body cannot poison
+    the cache. Forcing a fresh request matters for:
 
-    - Rate limit errors (429): Retries should check current limit status
-    - Server errors (5xx): Transient failures shouldn't be cached
-    - Auth failures (401/403): Auth state may change between requests
-    - Not Found (404): Resources might be created later
+    - Rate limit errors (429, or AniDB's 200 + ``<error code="500">banned``)
+    - Server errors (5xx): transient failures shouldn't be cached
+    - Auth failures (401/403): auth state may change between requests
+    - Not Found (404): resources might be created later
 
     The filter is integrated into Hishel's FilterPolicy and evaluated before
     responses are stored in the cache backend.
@@ -40,42 +52,42 @@ class NeverCacheErrorsFilter(BaseFilter[HishelResponse]):
     Examples:
         >>> policy = FilterPolicy(response_filters=[NeverCacheErrorsFilter()])
         >>> manager = HTTPCacheManager(policy=policy)
-
-    Note:
-        This filter works at the Hishel policy level, preventing error responses
-        from ever reaching the storage backend. It's more efficient than storing
-        and checking errors later.
     """
 
     def needs_body(self) -> bool:
         """Indicate whether response body is needed for filtering decision.
 
         Returns:
-            Always False - status code alone determines cacheability.
+            True - a 200 can still carry an error envelope in its body.
         """
-        return False
+        return True
 
-    def apply(self, item: HishelResponse, _body: bytes | None) -> bool:
-        """Determine if response should be cached based on status code.
+    def apply(self, item: HishelResponse, body: bytes | None) -> bool:
+        """Determine whether a response may be cached.
 
         Args:
             item: Hishel Response object containing status code and headers.
-            _body: Response body bytes (unused, always None since needs_body=False).
+            body: Response body bytes, or None when unavailable.
 
         Returns:
-            True to allow caching (2xx/3xx), False to prevent caching (4xx/5xx).
+            True to allow caching, False to prevent it.
 
         Examples:
             >>> filter = NeverCacheErrorsFilter()
-            >>> response_200 = Response(status_code=200, ...)
-            >>> filter.apply(response_200, None)  # Returns True (cache allowed)
+            >>> filter.apply(Response(status_code=200), b"<anime>...</anime>")
             True
-            >>> response_429 = Response(status_code=429, ...)
-            >>> filter.apply(response_429, None)  # Returns False (no cache)
+            >>> filter.apply(Response(status_code=200), b'<error code="500">banned</error>')
             False
         """
-        # Only cache successful responses (2xx, 3xx)
-        return item.status_code < 400
+        if item.status_code >= 400:
+            return False
+        if (
+            body is not None
+            and len(body) <= _MAX_ERROR_BODY_BYTES
+            and _XML_ERROR_ROOT.match(body)
+        ):
+            return False
+        return True
 
 
 class HTTPCacheManager:

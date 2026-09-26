@@ -225,10 +225,10 @@ class TestGetStats:
 class TestNeverCacheErrorsFilter:
     """Test NeverCacheErrorsFilter methods directly."""
 
-    def test_needs_body_returns_false(self) -> None:
-        """needs_body() always returns False — status code alone decides cacheability."""
+    def test_needs_body_returns_true(self) -> None:
+        """needs_body() returns True — a 200 can still carry an error envelope."""
         f = NeverCacheErrorsFilter()
-        assert f.needs_body() is False
+        assert f.needs_body() is True
 
     def test_apply_caches_success(self) -> None:
         """apply() returns True for 2xx/3xx responses."""
@@ -249,6 +249,50 @@ class TestNeverCacheErrorsFilter:
             item = MagicMock()
             item.status_code = status
             assert f.apply(item, None) is False
+
+    def test_apply_blocks_xml_error_body_on_200(self) -> None:
+        """A 200 whose body is an XML error envelope is not cached.
+
+        AniDB answers a rate-limit ban this way, so a status check alone would
+        cache the ban and keep serving it long after it lifts.
+        """
+        from unittest.mock import MagicMock
+
+        f = NeverCacheErrorsFilter()
+        item = MagicMock()
+        item.status_code = 200
+        for body in (
+            b'<error code="500">banned</error>',
+            b'<?xml version="1.0" encoding="UTF-8"?><error code="302">Client Outdated</error>',
+            b"\n  <error>unknown</error>",
+        ):
+            assert f.apply(item, body) is False
+
+    def test_apply_caches_valid_body_on_200(self) -> None:
+        """A 200 carrying real data is cached, even if it mentions an error."""
+        from unittest.mock import MagicMock
+
+        f = NeverCacheErrorsFilter()
+        item = MagicMock()
+        item.status_code = 200
+        for body in (
+            b"<anime><titles><title>One Piece</title></titles></anime>",
+            b'{"data": {"error": null}}',
+            b"<html><body>no error here</body></html>",
+        ):
+            assert f.apply(item, body) is True
+
+    def test_apply_skips_scan_for_large_body(self) -> None:
+        """Bodies past the scan cap are cached without inspection."""
+        from unittest.mock import MagicMock
+
+        from http_cache.manager import _MAX_ERROR_BODY_BYTES
+
+        f = NeverCacheErrorsFilter()
+        item = MagicMock()
+        item.status_code = 200
+        body = b'<error code="500">banned</error>' + b"x" * _MAX_ERROR_BODY_BYTES
+        assert f.apply(item, body) is True
 
 
 class TestCloseAsyncException:

@@ -10,7 +10,7 @@ via mal_character_crawler.
 
 import asyncio
 import logging
-from typing import cast
+from typing import Any, cast
 
 from http_cache.config import get_cache_config
 from http_cache.result_cache import cached_result
@@ -21,13 +21,26 @@ logger = logging.getLogger(__name__)
 _CACHE_CONFIG = get_cache_config()
 TTL_MAL = _CACHE_CONFIG.ttl_jikan
 
-_CHAR_URL_XPATH = (
-    "//table[contains(@class,'js-anime-character-table')]"
-    "//td[1]//a[contains(@href,'/character/')]/@href"
-)
+_CHARACTER_TABLE_XPATH = "//table[contains(@class,'js-anime-character-table')]"
+_CHARACTER_LINK_IN_TABLE_XPATH = ".//td[1]//a[contains(@href,'/character/')]/@href"
 
 
 def _extract_character_urls(html: str) -> list[str]:
+    """Return every character URL on a cast list page, in page order.
+
+    MAL renders each character as its own table. Evaluating the link expression
+    once per table, rather than once over the whole page, selects exactly the
+    same links: a single ``//table//td[1]//a`` expression over the page took 60 s
+    on One Piece's 1,481 tables, growing faster than the number of tables, where
+    the per-table form takes 0.1 s. Extraction runs on the event loop, so the
+    slow form stalled every other crawl for that minute.
+
+    Args:
+        html: A rendered MAL ``/characters`` page.
+
+    Returns:
+        Unique character URLs in the order they appear.
+    """
     if not html:
         return []
     try:
@@ -35,7 +48,12 @@ def _extract_character_urls(html: str) -> list[str]:
     except Exception:
         logger.exception("Failed to parse character refs HTML")
         return []
-    urls = cast(list[str], tree.xpath(_CHAR_URL_XPATH))
+    tables = cast(list[Any], tree.xpath(_CHARACTER_TABLE_XPATH))
+    urls = [
+        link
+        for table in tables
+        for link in cast(list[str], table.xpath(_CHARACTER_LINK_IN_TABLE_XPATH))
+    ]
     return list(dict.fromkeys(urls))
 
 

@@ -1,7 +1,14 @@
-"""Unit tests for anisearch_mapper.py — episode_from_anisearch value normalization."""
+"""Unit tests for anisearch_mapper.py — value normalization during mapping."""
 
-from enrichment.sources.anisearch.anisearch_anime_models import AniSearchEpisode
-from enrichment.sources.anisearch.anisearch_mapper import episode_from_anisearch
+from enrichment.sources.anisearch.anisearch_anime_models import (
+    AniSearchAnime,
+    AniSearchEpisode,
+    AniSearchStatistics,
+)
+from enrichment.sources.anisearch.anisearch_mapper import (
+    anime_from_anisearch,
+    episode_from_anisearch,
+)
 
 
 def _ep(**kwargs) -> AniSearchEpisode:
@@ -79,3 +86,37 @@ def test_source_none_omits_sources() -> None:
 def test_anime_id_absent_from_mapped_output() -> None:
     # anime_id is a UUID assigned during assembly, not available at crawl time
     assert "anime_id" not in episode_from_anisearch(_ep())
+
+
+def test_statistics_score_rescaled_from_five_stars() -> None:
+    # The page states "Calculated Value 4.18 = 84%" — 4.18 of 5, so 8.36 of 10.
+    stats = anime_from_anisearch(
+        AniSearchAnime(
+            statistics=AniSearchStatistics(score=4.18, scored_by=7902, rank=124)
+        )
+    )["statistics"]["anisearch"]
+    assert stats["score"] == 8.36
+    assert stats["scored_by"] == 7902
+    assert stats["rank"] == 124
+
+
+def test_statistics_omitted_without_values() -> None:
+    result = anime_from_anisearch(AniSearchAnime(statistics=AniSearchStatistics()))
+    assert "statistics" not in result or not result["statistics"]
+
+
+def test_studio_becomes_a_company() -> None:
+    result = anime_from_anisearch(
+        AniSearchAnime(
+            studio="Toei Animation Co., Ltd.",
+            studio_url="https://www.anisearch.com/company/412,toei-animation-co-ltd",
+        )
+    )
+    assert result["companies"] == [
+        {
+            "name": "Toei Animation Co., Ltd.",
+            "roles": ["STUDIO"],
+            "sources": ["https://www.anisearch.com/company/412,toei-animation-co-ltd"],
+        }
+    ]
+    assert "studios" not in result

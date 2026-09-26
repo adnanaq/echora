@@ -565,6 +565,7 @@ class TestAniListHelperQueryBuilders:
         assert "description" in fields
         # Note: characters and staff are not in the query fields, they are fetched separately
         assert "genres" in fields
+        assert "scoreDistribution" in fields
 
     def test_build_query_by_anilist_id(self):
         """Test AniList ID query builder."""

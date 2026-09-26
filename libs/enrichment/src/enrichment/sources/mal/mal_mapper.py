@@ -42,6 +42,8 @@ from common.models.anime import (
     VoiceActor,
 )
 from common.utils.datetime_utils import normalize_to_utc
+from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.external_links import external_link
 from enrichment.sources.mal.mal_models import (
     MalAnime,
     MalCharacter,
@@ -183,7 +185,11 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
     ]
 
     # Links
-    external_sources = {link.name: link.source for link in anime.external_sources}
+    external_sources = [
+        entry
+        for link in anime.external_sources
+        if (entry := external_link(link.source, label=link.name))
+    ]
     streaming_sources = [
         StreamingEntry(platform=link.name, source=link.source)
         for link in anime.streaming
@@ -207,14 +213,16 @@ def anime_from_mal(anime: MalAnime) -> dict[str, Any]:
         demographics=demographics,
         ending_themes=ending_themes,
         genres=genres,
-        licensors=licensors,
         opening_themes=opening_themes,
-        producers=producers,
         related_anime=related_anime,
         related_source_material=related_source_material,
         sources=sources,
         streaming_sources=streaming_sources,
-        studios=studios,
+        companies=companies_from_roles(
+            studios=studios,
+            producers=producers,
+            licensors=licensors,
+        ),
         synonyms=synonyms,
         themes=themes,
         trailers=trailers,

@@ -86,6 +86,26 @@ from yarl import URL  # pants: no-infer-dep
 logger = logging.getLogger(__name__)
 
 
+def _cache_directives(headers: dict[str, Any]) -> set[str]:
+    """Name every Cache-Control directive in a set of request headers.
+
+    Directives are compared by exact name, case-insensitively (RFC 9111 5.2),
+    so ``x-only-if-cached`` is not mistaken for ``only-if-cached``.
+
+    Args:
+        headers: Request headers, under any capitalisation of Cache-Control.
+
+    Returns:
+        Lowercased directive names, without their arguments.
+    """
+    return {
+        part.split("=", 1)[0].strip().lower()
+        for key, value in headers.items()
+        if key.lower() == "cache-control"
+        for part in str(value).split(",")
+    } - {""}
+
+
 class ReusableBodyStream(AsyncIteratorABC[bytes]):
     """Reusable async-iterable stream for HTTP request bodies.
 
@@ -433,6 +453,23 @@ class CachedAiohttpSession:
                 This is a closure that accesses self.session and self.force_cache
                 from the enclosing CachedAiohttpSession.__init__ scope.
             """
+            # RFC 9111 5.2.1.7: only-if-cached means serve from cache or fail,
+            # never contact the origin. Hishel calls this sender only when the
+            # cache could not satisfy the request, so reaching here with that
+            # directive is the failure case. Callers use it to keep using cached
+            # data from a service that is refusing them - a banned AniDB client
+            # otherwise loses responses it already holds locally.
+            if "only-if-cached" in _cache_directives(dict(request.headers)):
+
+                async def unsatisfied_stream() -> AsyncIteratorABC[bytes]:
+                    yield b""
+
+                return Response(
+                    status_code=504,
+                    headers=Headers({"Cache-Control": "no-store"}),
+                    stream=unsatisfied_stream(),
+                )
+
             # Handle streaming body if present
             data = None
             if request.stream:
@@ -663,8 +700,11 @@ class CachedAiohttpSession:
                 # Avoid breaking semantics by bypassing cache in that case.
                 unsupported_body = True
 
-        if self.always_revalidate:
-            # Force hishel to revalidate by adding no-cache to request
+        # Force hishel to revalidate by adding no-cache to the request, unless
+        # the caller asked for only-if-cached: that means never contact the
+        # origin (a banned AniDB client relies on it), and no-cache would undo it.
+        cache_only = "only-if-cached" in _cache_directives(request_headers)
+        if self.always_revalidate and not cache_only:
             request_headers["Cache-Control"] = "no-cache"
 
         # When body-key is enabled, Hishel requires a stream even for GET requests
@@ -674,6 +714,18 @@ class CachedAiohttpSession:
         # If we can't safely represent the body in the cache key or upstream request,
         # fall back to a non-cached network request.
         if unsupported_body:
+            # Bypassing the cache must not bypass only-if-cached: with nothing
+            # stored to serve, RFC 9111 5.2.1.7 answers 504 without a request.
+            if cache_only:
+                return _CachedResponse(
+                    status=504,
+                    headers={"Cache-Control": "no-store"},
+                    body=b"",
+                    url=str(request_url),
+                    method=method,
+                    request_headers=request_headers,
+                    from_cache=False,
+                )
             async with self.session.request(
                 method=method,
                 url=str(request_url),

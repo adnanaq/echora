@@ -93,7 +93,6 @@ __pypackages__/
 
 # Celery stuff
 celerybeat-schedule
-celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
@@ -145,16 +144,11 @@ models/anime_finetuned/
 
 # Logs
 logs/
-*.log
 *.out
 *.err
 
 # Development and testing
-.pytest_cache/
-.coverage
-htmlcov/
 test-results/
-.tox/
 
 # IDE and editor files
 .vscode/
@@ -191,28 +185,22 @@ secrets/
 
 # Process ID files
 *.pid
-service.pid
-
-# Enrichment process temp files
-temp/
 
 # AI processing temporary files
 stage*_*.json
-__pycache__/
 
+# Agent and tooling directories
 .worktrees/
-
 .gemini/
 gha-creds-*.json
 
 # Pants build system
 /.pants.d/
+.pants-sandbox/
 .pids/
 .serena/
 
 # Bmad-method
-_bmad/
-_bmad-output/
 .codex/
 .agent/
 .mcp.json

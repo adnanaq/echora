@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 class AniSearchStatistics(BaseModel):
     score: float | None = None
+    scored_by: int | None = None
     rank: int | None = None
     trending: int | None = None
 

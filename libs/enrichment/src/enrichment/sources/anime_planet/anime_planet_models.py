@@ -42,6 +42,13 @@ class AnimePlanetAggregateRating(BaseModel):
     rating_count: int | None = None  # 64676
 
 
+class AnimePlanetStudio(BaseModel):
+    """A studio credited on an anime page, with its anime-planet page."""
+
+    name: str
+    url: str | None = None  # https://www.anime-planet.com/anime/studios/{slug}
+
+
 class AnimePlanetAnime(BaseModel):
     """Scraped anime data from an anime-planet.com anime page.
 
@@ -65,7 +72,7 @@ class AnimePlanetAnime(BaseModel):
     type_raw: str | None = None  # "TV\n  (1156+ eps)" raw entryBar span text
     season: str | None = None  # season name e.g. "fall" — parsed from seasons slug
     rank: int | None = None  # parsed from "Rank #157" → 157
-    studios: list[str] = []
+    studios: list[AnimePlanetStudio] = []
     alt_title: str | None = None  # cleaned h2.aka text e.g. "ワンピース"
     tags: list[str] = []  # ["Action", "Adventure", ...]
     cover: str | None = None  # from img[itemprop="image"] — actual poster

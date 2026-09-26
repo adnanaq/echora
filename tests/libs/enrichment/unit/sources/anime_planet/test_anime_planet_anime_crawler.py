@@ -350,7 +350,12 @@ def test_extract_from_html_fixture(ap_anime_html: str) -> None:
     assert raw["season_url"] == "/anime/seasons/fall-1999"
     assert "161" in raw["rank_text"]
     assert raw["aka"] == "Alt title: ワンピース"
-    assert raw["studios"] == ["Toei Animation"]
+    assert raw["studios"] == [
+        {
+            "name": "Toei Animation",
+            "url": "https://www.anime-planet.com/anime/studios/toei-animation",
+        }
+    ]
     assert "Shounen" in raw["tags"]
     assert raw["cover"] is not None and "one-piece" in raw["cover"]
     assert len(raw["related_anime_raw"]) == 67
@@ -516,7 +521,10 @@ def test_build_anime_from_raw_from_fixture(ap_anime_extracted: dict) -> None:
     assert anime.rank == 161
     assert anime.alt_title == "ワンピース"
     assert anime.number_of_episodes == 1165
-    assert anime.studios == ["Toei Animation"]
+    assert [s.name for s in anime.studios] == ["Toei Animation"]
+    assert anime.studios[0].url == (
+        "https://www.anime-planet.com/anime/studios/toei-animation"
+    )
     assert "Shounen" in anime.tags
     assert "Action" in anime.genres
     assert anime.aggregate_rating is not None
@@ -614,7 +622,10 @@ def test_mapper_from_fixture(ap_anime_extracted: dict) -> None:
     assert canonical["status"] == "ONGOING"
     assert canonical["episode_count"] == 1165
     assert canonical["title_japanese"] == "ワンピース"
-    assert any(p["name"] == "Toei Animation" for p in canonical["producers"])
+    assert {"name": "Toei Animation", "roles": ["STUDIO"]}.items() <= next(
+        c for c in canonical["companies"] if c["name"] == "Toei Animation"
+    ).items()
+    assert "studios" not in canonical
     stats = canonical["statistics"]["anime_planet"]
     assert stats["score"] == pytest.approx(8.63)
     assert stats["scored_by"] == 64986
@@ -769,7 +780,7 @@ async def test_fetch_success_with_html_fixture(
     assert anime["status"] == "ONGOING"
     assert anime["episode_count"] == 1165
     assert anime["title_japanese"] == "ワンピース"
-    assert any(p["name"] == "Toei Animation" for p in anime["producers"])
+    assert any(c["name"] == "Toei Animation" for c in anime["companies"])
 
 
 @pytest.mark.usefixtures("mock_redis_cache_miss")

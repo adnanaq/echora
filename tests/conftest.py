@@ -6,12 +6,60 @@ Provides isolated test collection to avoid touching production data.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+
+# Pants runs each test file in its own pytest process against one Redis server.
+# Integration tests clear the cache to measure hit/miss behaviour, so a shared
+# database means one file wipes the cache another is mid-way through filling —
+# and db 0 is the developer's own cache. Give every process its own database
+# (1-14, never 0) before any module reads REDIS_URL to build its cache client.
+#
+# A database is claimed, not derived from the process id: two ids that differ
+# by the number of databases would otherwise land on the same one. Claims live
+# in db 15, which no test writes to, so a test clearing its own database never
+# drops another process's claim. A claim expires on its own if the process dies
+# before releasing it.
+_REDIS_SERVER = "redis://localhost:6379"
+_CLAIMS_DB = 15
+_TEST_DBS = range(1, _CLAIMS_DB)
+_CLAIM_SECONDS = 2 * 60 * 60
+
+
+def _claim_test_redis_db() -> int:
+    """Claim a Redis database no other test process is using.
+
+    Returns:
+        The claimed database number. Without Redis, or with every database
+        claimed, one derived from the process id: tests that need Redis skip
+        when it is down, and the fallback is no worse than before.
+    """
+    import atexit
+
+    import redis
+
+    try:
+        claims = redis.Redis.from_url(
+            f"{_REDIS_SERVER}/{_CLAIMS_DB}", socket_connect_timeout=0.5
+        )
+        for db in _TEST_DBS:
+            key = f"echora:test-redis-db:{db}"
+            if claims.set(key, os.getpid(), nx=True, ex=_CLAIM_SECONDS):
+                atexit.register(claims.delete, key)
+                return db
+    except redis.RedisError:
+        pass
+    return _TEST_DBS[os.getpid() % len(_TEST_DBS)]
+
+
+TEST_REDIS_DB = _claim_test_redis_db()
+TEST_REDIS_URL = f"{_REDIS_SERVER}/{TEST_REDIS_DB}"
+os.environ["REDIS_URL"] = TEST_REDIS_URL
 
 if TYPE_CHECKING:
     from common.config.settings import Settings
@@ -57,16 +105,21 @@ def settings() -> Settings:
     """
     Provide application settings configured to use the test Qdrant collection.
 
-    Overrides the `qdrant_collection_name` attribute to "anime_database_test" so all tests operate against the dedicated test collection.
+    Overrides `qdrant_collection_name` so tests never touch production data.
+    The name carries the process id because Pants runs each test file in its own
+    pytest process against the same Qdrant server: with one shared name, the
+    first process to finish deletes the collection the others are still using.
 
     Returns:
-        settings: Settings instance with `qdrant_collection_name` set to "anime_database_test".
+        settings: Settings instance pointing at this process's test collection.
     """
+    import os
+
     from common.config.settings import get_settings
 
     settings = get_settings()
     # Override to use test collection for ALL tests
-    settings.qdrant.qdrant_collection_name = "anime_database_test"
+    settings.qdrant.qdrant_collection_name = f"anime_database_test_{os.getpid()}"
     return settings
 
 

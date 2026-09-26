@@ -2,7 +2,7 @@
   "cover_image": "https://cdn.anisearch.com/images/anime/cover/2/2227_600.webp",
   "title_alt": "ワンピース",
   "title_ja": "One Piece",
-  "type": "Type: TV-Series,  1200 (~24 min, Total: ~20 d)",
+  "type": "Type: TV-Series, 1200 (~24 min, Total: ~20 d)",
   "status": "Status: Ongoing",
   "published": "Published: 20.10.1999 ‑ ?",
   "studio": "Toei Animation Co., Ltd.",
@@ -91,8 +91,9 @@
     }
   ],
   "rating_score": "4.18 = 84%",
-  "rank_toplist": "#126",
-  "rank_trending": "#66",
+  "rank_toplist": "#125",
+  "rank_trending": "#26",
+  "rating_votes": 7902,
   "websites": [
     {
       "name": "X",

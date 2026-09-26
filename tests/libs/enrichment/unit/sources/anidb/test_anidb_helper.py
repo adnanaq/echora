@@ -1,5 +1,6 @@
 """Unit tests for anidb_helper.py — AniDBHelper orchestrator, HTTP transport, circuit breaker."""
 
+import asyncio
 import gzip
 import json
 import time
@@ -11,9 +12,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from enrichment.sources.anidb.anidb_helper import (
     AniDBHelper,
-    AniDBRequestMetrics,
-    CircuitBreakerState,
+    _state,
+    reset_client_state,
 )
+from enrichment.sources.base.exceptions import ServiceBlockedError
+
+
+@pytest.fixture(autouse=True)
+def _clean_client_state():
+    """Keep process-wide AniDB state from leaking between tests."""
+    reset_client_state()
+    yield
+    reset_client_state()
+
 
 _ANIDB_URL = "https://anidb.net/anime/69"
 
@@ -70,82 +81,119 @@ def mock_session():
 # =============================================================================
 
 
-@patch("enrichment.sources.anidb.anidb_helper.os.getenv")
-def test_helper_initialization(mock_getenv) -> None:
-    mock_getenv.side_effect = lambda key, default=None: default
-    h = AniDBHelper()
+def test_helper_initialization() -> None:
+    h = AniDBHelper(client_name="animeenrichment", client_version="1.0")
     assert h.client_name == "animeenrichment"
     assert h.client_version == "1.0"
-    assert h.circuit_breaker_state == CircuitBreakerState.CLOSED
-
-
-def test_request_metrics() -> None:
-    metrics = AniDBRequestMetrics()
-    assert metrics.success_rate == 100.0
-    assert metrics.error_rate == 0.0
-
-    metrics.total_requests = 10
-    metrics.successful_requests = 7
-    assert metrics.success_rate == 70.0
-    assert metrics.error_rate == 30.0
+    assert h._ban_remaining() == 0
 
 
 # =============================================================================
-# CIRCUIT BREAKER
+# BAN GATE
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_circuit_breaker_logic(helper) -> None:
-    with patch("enrichment.sources.anidb.anidb_helper.time.time") as mock_time:
-        mock_time.return_value = 1000.0
+async def test_ban_stops_retrying_the_same_request(helper) -> None:
+    # Retrying a ban is what deepens it. Before the gate, a 555 was caught by
+    # the loop's bare `except Exception` and retried three more times.
+    calls = 0
 
-        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold - 1
-        helper._update_circuit_breaker(success=False)
-        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
-        assert helper.circuit_breaker_opened_at == 1000.0
+    async def banned(params, attempt):
+        nonlocal calls
+        calls += 1
+        helper._record_ban()
+        raise ServiceBlockedError("banned/blocked (555)", service="anidb")
 
-        assert not await helper._check_circuit_breaker()
+    with (
+        patch.object(helper, "_make_single_request", banned),
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+    ):
+        with pytest.raises(ServiceBlockedError):
+            await helper._make_request_with_retry({"aid": 123})
 
-        mock_time.return_value = 1000.0 + helper.circuit_breaker_timeout + 1
-        assert await helper._check_circuit_breaker()
-        assert helper.circuit_breaker_state == CircuitBreakerState.HALF_OPEN
-
-        helper._update_circuit_breaker(success=True)
-        assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-        assert helper.metrics.consecutive_failures == 0
-
-        helper.circuit_breaker_state = CircuitBreakerState.HALF_OPEN
-        helper.metrics.consecutive_failures = helper.circuit_breaker_threshold
-        helper._update_circuit_breaker(success=False)
-        assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+    assert calls == 1
 
 
 @pytest.mark.asyncio
-async def test_circuit_breaker_blocking(helper) -> None:
-    helper.circuit_breaker_state = CircuitBreakerState.OPEN
-    helper.circuit_breaker_opened_at = time.time()
+async def test_ban_outlives_the_helper_that_hit_it(helper) -> None:
+    # ApiFetcher builds a fresh helper per anime, so a per-instance flag is
+    # discarded before the next anime and a banned client keeps calling.
+    helper._record_ban()
 
-    with patch.object(
-        helper, "_adaptive_rate_limit", new_callable=AsyncMock
-    ) as mock_rate:
-        result = await AniDBHelper._make_request_with_retry(helper, {"aid": 123})
-        assert result is None
-        mock_rate.assert_not_called()
+    later = AniDBHelper()
+    with (
+        patch.object(later, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            later, "_make_single_request", new_callable=AsyncMock, return_value=None
+        ) as request,
+        patch.object(
+            later, "_adaptive_rate_limit", new_callable=AsyncMock
+        ) as rate_limit,
+    ):
+        assert await later._make_request_with_retry({"aid": 456}) is None
+
+    rate_limit.assert_not_called()
+    assert request.await_args.kwargs["cache_only"] is True
 
 
 @pytest.mark.asyncio
-async def test_reset_circuit_breaker_complete(helper) -> None:
-    helper.circuit_breaker_state = CircuitBreakerState.OPEN
-    helper.circuit_breaker_opened_at = time.time()
-    helper.metrics.consecutive_failures = 5
+@pytest.mark.parametrize("cached", ["<anime/>", None])
+async def test_ban_serves_whatever_the_cache_holds(helper, cached) -> None:
+    helper._record_ban()
 
-    assert await helper.reset_circuit_breaker() is True
-    assert helper.circuit_breaker_state == CircuitBreakerState.CLOSED
-    assert helper.circuit_breaker_opened_at == 0.0
-    assert helper.metrics.consecutive_failures == 0
+    with (
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            helper, "_make_single_request", new_callable=AsyncMock, return_value=cached
+        ),
+        patch.object(
+            helper, "_adaptive_rate_limit", new_callable=AsyncMock
+        ) as rate_limit,
+    ):
+        assert await helper._make_request_with_retry({"aid": 69}) == cached
 
-    assert await helper.reset_circuit_breaker() is False
+    rate_limit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_requests_resume_once_the_ban_expires(helper) -> None:
+    helper._record_ban()
+    with (
+        patch(
+            "enrichment.sources.anidb.anidb_helper.time.time",
+            return_value=time.time() + helper.ban_cooldown + 1,
+        ),
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            helper,
+            "_make_single_request",
+            new_callable=AsyncMock,
+            return_value="<anime/>",
+        ) as request,
+    ):
+        assert await helper._make_request_with_retry({"aid": 69}) == "<anime/>"
+
+    assert request.await_args.kwargs.get("cache_only", False) is False
+
+
+@pytest.mark.asyncio
+async def test_ordinary_errors_do_not_latch_a_ban(helper) -> None:
+    # AniDB reports most failures as HTTP 200 with an <error> body. Those are
+    # retried and must not stop the rest of the run.
+    with (
+        patch.object(
+            helper, "_make_single_request", new_callable=AsyncMock, return_value=None
+        ) as request,
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        assert await helper._make_request_with_retry({"aid": 123}) is None
+
+    assert request.call_count == helper.max_retries + 1
+    assert helper._ban_remaining() == 0
 
 
 # =============================================================================
@@ -191,25 +239,38 @@ async def test_make_single_request_http_errors(
 
 @pytest.mark.asyncio
 async def test_make_single_request_555_raises_blocked(helper, mock_session) -> None:
-    from enrichment.sources.base.exceptions import ServiceBlockedError
-
     mock_session.get.return_value.__aenter__.return_value.status = 555
     helper.session = mock_session
     with pytest.raises(ServiceBlockedError):
         await helper._make_single_request({"request": "anime", "aid": 1}, attempt=0)
-    assert helper.circuit_breaker_state == CircuitBreakerState.OPEN
+    # The ban is latched for the process, not just for this helper.
+    assert helper._ban_remaining() > 0
+
+
+@pytest.mark.asyncio
+async def test_make_single_request_ban_in_200_body_raises_blocked(
+    helper, mock_session
+) -> None:
+    mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
+        return_value=b'<error code="500">banned</error>'
+    )
+    helper.session = mock_session
+    with pytest.raises(ServiceBlockedError):
+        await helper._make_single_request({"request": "anime", "aid": 1}, attempt=0)
+    assert helper._ban_remaining() > 0
 
 
 @pytest.mark.asyncio
 async def test_make_single_request_api_error_xml(helper, mock_session) -> None:
     mock_session.get.return_value.__aenter__.return_value.read = AsyncMock(
-        return_value=b"<error>Banned</error>"
+        return_value=b'<error code="330">no such anime</error>'
     )
     helper.session = mock_session
     result = await helper._make_single_request(
         {"request": "anime", "aid": 1}, attempt=0
     )
     assert result is None
+    assert helper._ban_remaining() == 0
 
 
 # =============================================================================
@@ -232,9 +293,6 @@ async def test_make_request_with_retry(mock_sleep, helper) -> None:
     assert result == "<anime id='1'></anime>"
     assert helper._make_single_request.call_count == 3
     assert mock_sleep.call_count == 2
-    assert helper.metrics.total_requests == 3
-    assert helper.metrics.successful_requests == 1
-    assert helper.metrics.failed_requests == 2
 
 
 @pytest.mark.asyncio
@@ -250,9 +308,6 @@ async def test_make_request_with_retry_permanent_failure(mock_sleep, helper) -> 
     assert result is None
     assert helper._make_single_request.call_count == 2
     assert mock_sleep.call_count == 1
-    assert helper.metrics.total_requests == 2
-    assert helper.metrics.successful_requests == 0
-    assert helper.metrics.failed_requests == 2
 
 
 # =============================================================================
@@ -315,22 +370,22 @@ async def test_adaptive_rate_limit_logic(mock_time, mock_sleep, helper) -> None:
     helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
 
     mock_time.return_value = 1000.0
-    helper.metrics.last_request_time = 995.0
+    _state.last_request_at = 995.0
     await helper._adaptive_rate_limit()
     mock_sleep.assert_not_called()
 
     mock_time.return_value = 1010.0
-    helper.metrics.last_request_time = 1010.0
+    _state.last_request_at = 1010.0
     await helper._adaptive_rate_limit()
     mock_sleep.assert_called_once()
     mock_sleep.reset_mock()
 
     mock_time.return_value = 1020.0
-    helper.metrics.consecutive_failures = 3
-    helper.metrics.last_request_time = 1020.0
+    _state.consecutive_failures = 3
+    _state.last_request_at = 1020.0
     await helper._adaptive_rate_limit()
     expected = min(
-        helper.error_cooldown_base * (2**helper.metrics.consecutive_failures),
+        helper.error_cooldown_base * (2**_state.consecutive_failures),
         helper.max_request_interval,
     )
     assert mock_sleep.call_args[0][0] == pytest.approx(expected, abs=0.1)
@@ -741,7 +796,7 @@ async def test_adaptive_rate_limit_is_retry_increases_interval(
 ) -> None:
     helper._adaptive_rate_limit = AniDBHelper._adaptive_rate_limit.__get__(helper)
     mock_time.return_value = 1010.0
-    helper.metrics.last_request_time = 1010.0
+    _state.last_request_at = 1010.0
 
     await helper._adaptive_rate_limit(is_retry=True)
 
@@ -783,9 +838,6 @@ async def test_make_request_with_retry_exception_retries_then_raises(
 
     with pytest.raises(ServiceNetworkError):
         await helper._make_request_with_retry({"aid": 69})
-
-    assert helper.metrics.total_requests == 2
-    assert helper.metrics.failed_requests == 2
     assert mock_sleep.call_count == 1
 
 
@@ -837,3 +889,84 @@ async def test_main_cli_all_subcommand(tmp_path: Path) -> None:
     assert (out_dir / "anidb_characters.json").exists()
     anime = json.loads((out_dir / "anidb_anime.json").read_text())
     assert anime["title"] == "One Piece"
+
+
+# =============================================================================
+# PACING ACROSS HELPERS
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_minimum_gap_holds_between_anime() -> None:
+    # ApiFetcher builds a fresh helper per anime. While pacing lived on the
+    # instance, last_request_time reset to 0 each time and the gap was skipped.
+    sent: list[float] = []
+    clock = [1000.0]
+
+    async def transport(params, attempt):
+        sent.append(clock[0])
+        return "<anime/>"
+
+    async def fake_sleep(seconds):
+        clock[0] += seconds
+
+    with (
+        patch("enrichment.sources.anidb.anidb_helper.time.time", lambda: clock[0]),
+        patch("enrichment.sources.anidb.anidb_helper.asyncio.sleep", fake_sleep),
+    ):
+        for aid in range(3):
+            helper = AniDBHelper()
+            with (
+                patch.object(helper, "_make_single_request", transport),
+                patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+            ):
+                await helper._make_request({"aid": aid})
+
+    gaps = [b - a for a, b in zip(sent, sent[1:])]
+    assert all(gap >= AniDBHelper().min_request_interval for gap in gaps), gaps
+
+
+@pytest.mark.asyncio
+async def test_concurrent_anime_queue_behind_one_lock() -> None:
+    # The request lock was per-instance too, so a batch of concurrent anime
+    # went out together instead of queueing.
+    in_flight = 0
+    overlapped = False
+
+    async def transport(params, attempt):
+        nonlocal in_flight, overlapped
+        in_flight += 1
+        overlapped = overlapped or in_flight > 1
+        await asyncio.sleep(0)
+        in_flight -= 1
+        return "<anime/>"
+
+    async def one(aid: int) -> None:
+        helper = AniDBHelper()
+        with (
+            patch.object(helper, "_make_single_request", transport),
+            patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+            patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+        ):
+            await helper._make_request({"aid": aid})
+
+    await asyncio.gather(*[one(aid) for aid in range(5)])
+    assert not overlapped
+
+
+@pytest.mark.asyncio
+async def test_failure_backoff_carries_into_the_next_anime() -> None:
+    helper = AniDBHelper()
+    with (
+        patch.object(
+            helper, "_make_single_request", new_callable=AsyncMock, return_value=None
+        ),
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(helper, "_adaptive_rate_limit", new_callable=AsyncMock),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await helper._make_request({"aid": 1})
+
+    # A new helper for the next anime must still see the streak, or the
+    # back-off restarts from zero on every anime.
+    assert _state.consecutive_failures == helper.max_retries + 1

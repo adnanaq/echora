@@ -35,6 +35,14 @@ def _make_anime(**overrides) -> AniListAnime:
         "averageScore": 87,
         "popularity": 673293,
         "favourites": 98448,
+        "stats": {
+            "scoreDistribution": [
+                {"score": 70, "amount": 20793},
+                {"score": 80, "amount": 35929},
+                {"score": 90, "amount": 74887},
+                {"score": 100, "amount": 137750},
+            ]
+        },
         "genres": ["Action", "Adventure"],
         "synonyms": ["OP"],
         "tags": [],
@@ -332,8 +340,11 @@ def test_anime_studios_split_from_producers() -> None:
         }
     )
     result = anime_from_anilist(anime)
-    assert any(s["name"] == "Toei Animation" for s in result["studios"])
-    assert any(p["name"] == "Funimation" for p in result["producers"])
+    assert {c["name"]: c["roles"] for c in result["companies"]} == {
+        "Toei Animation": ["STUDIO"],
+        "Funimation": ["PRODUCER"],
+    }
+    assert not {"studios", "producers", "licensors"} & result.keys()
 
 
 def test_anime_studio_source_url() -> None:
@@ -351,7 +362,7 @@ def test_anime_studio_source_url() -> None:
         }
     )
     result = anime_from_anilist(anime)
-    assert result["studios"][0]["sources"] == ["https://anilist.co/studio/18"]
+    assert result["companies"][0]["sources"] == ["https://anilist.co/studio/18"]
 
 
 # =============================================================================
@@ -386,7 +397,13 @@ def test_anime_external_sources_info() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert result["external_sources"]["official site"] == "https://one-piece.com"
+    assert result["external_sources"] == [
+        {
+            "platform": "official_site",
+            "source": "https://one-piece.com",
+            "label": "Official Site",
+        }
+    ]
 
 
 def test_anime_external_sources_social() -> None:
@@ -401,7 +418,7 @@ def test_anime_external_sources_social() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert "twitter" in result["external_sources"]
+    assert [e["platform"] for e in result["external_sources"]] == ["twitter"]
 
 
 def test_anime_external_links_skips_missing_url_or_site() -> None:
@@ -412,7 +429,7 @@ def test_anime_external_links_skips_missing_url_or_site() -> None:
         ]
     )
     result = anime_from_anilist(anime)
-    assert result.get("external_sources", {}) == {}
+    assert result["external_sources"] == []
 
 
 # =============================================================================
@@ -489,6 +506,12 @@ def test_anime_statistics_members_and_favorites() -> None:
     stats = result["statistics"]["anilist"]
     assert stats["members"] == 673293
     assert stats["favorites"] == 98448
+    assert stats["scored_by"] == 269359
+
+
+def test_anime_statistics_scored_by_absent_without_distribution() -> None:
+    result = anime_from_anilist(_make_anime(stats=None))
+    assert "scored_by" not in result["statistics"]["anilist"]
 
 
 def test_anime_contextual_ranks_mapped() -> None:

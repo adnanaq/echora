@@ -113,7 +113,7 @@ class EnrichmentValidator:
         "relations",
         "related_anime",
         "content_warnings",
-        "licensors",
+        "companies",
         "synonyms",
         "tags",
         "trailers",

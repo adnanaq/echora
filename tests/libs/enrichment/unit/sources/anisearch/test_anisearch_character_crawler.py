@@ -27,6 +27,7 @@ from enrichment.sources.anisearch.anisearch_character_crawler import (
     _fetch_page_html,
     _parse_favorites,
     _post_process_character,
+    _wait_until_document_parsed,
     fetch_anisearch_character,
     fetch_anisearch_characters,
 )
@@ -375,6 +376,69 @@ async def test_fetch_page_html_exception_returns_none(mocker) -> None:
     assert await _fetch_page_html(browser_mock, "https://example.com") is None
 
 
+def _still_arriving(html: str) -> str:
+    return html[: html.index('id="htitle"') + 400]
+
+
+class _PageStillLoading:
+    def __init__(self, html: str, loading_reads: int) -> None:
+        self._html = html
+        self._loading_reads = loading_reads
+
+    async def wait_for(self, selector: str, timeout: float) -> None:
+        return None
+
+    async def evaluate(self, expression: str) -> str:
+        if self._loading_reads:
+            self._loading_reads -= 1
+            return "loading"
+        return "interactive"
+
+    async def get_content(self) -> str:
+        return _still_arriving(self._html) if self._loading_reads else self._html
+
+
+def test_a_character_page_read_mid_load_loses_its_late_fields(
+    luffy_char_html: str,
+) -> None:
+    complete = _extract_character_from_html(luffy_char_html)
+    partial = _extract_character_from_html(_still_arriving(luffy_char_html))
+    assert complete is not None and partial is not None
+    assert complete["name"] == partial["name"] == "Monkey D. Luffy"
+    assert complete["favorites"] and not partial["favorites"]
+    assert complete["tags"] and not partial["tags"]
+    assert complete["screenshot_images"] and not partial["screenshot_images"]
+
+
+@pytest.mark.asyncio
+async def test_character_page_is_read_after_its_document_finishes_loading(
+    luffy_char_html: str, mocker
+) -> None:
+    mocker.patch(
+        "enrichment.sources.anisearch.anisearch_character_crawler.asyncio.sleep",
+        new_callable=AsyncMock,
+    )
+    browser_mock = mocker.AsyncMock()
+    browser_mock.get = AsyncMock(
+        return_value=_PageStillLoading(luffy_char_html, loading_reads=3)
+    )
+
+    html = await _fetch_page_html(browser_mock, _LUFFY_URL, wait_selector="#htitle")
+
+    assert html == luffy_char_html
+
+
+@pytest.mark.asyncio
+async def test_a_document_that_never_finishes_is_read_after_the_timeout(
+    luffy_char_html: str, caplog
+) -> None:
+    page = _PageStillLoading(luffy_char_html, loading_reads=1_000_000)
+
+    await _wait_until_document_parsed(page, _LUFFY_URL, timeout=0.1)
+
+    assert "still loading" in caplog.text
+
+
 # =============================================================================
 # _fetch_anisearch_character_data (async, mocked)
 # =============================================================================
@@ -707,8 +771,6 @@ async def test_fetch_characters_cached_detail_ography_miss_starts_browser(
 async def test_fetch_anisearch_characters_writes_output_path(
     mocker, luffy_char_processed, tmp_path
 ) -> None:
-    import json
-
     refs = [{"url": _LUFFY_URL, "role": "Main Character"}]
     mocker.patch(
         "enrichment.sources.anisearch.anisearch_character_crawler._fetch_anisearch_character_data.cache_batch_get",

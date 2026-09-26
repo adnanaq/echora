@@ -169,3 +169,105 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 **AniSearch**: No age rating field. Has community rating score (numeric, displayed as star rating on the page). Maps to `statistics["anisearch"]`, not to `rating` (age classification).
 
 ---
+
+## Taxonomy Vocabularies
+
+Where each source publishes its own list of genres / themes / tags, and what it
+costs to fetch. Verified live on 2026-09-22. These are the authorities behind
+`libs/enrichment/src/enrichment/pipeline/word_lists.py`, which classifies a
+value by what the word is rather than which field a provider filed it under.
+
+| Source | Endpoint | Calls | Size | Notes |
+| :----- | :------- | ----: | ---: | :---- |
+| MAL/Jikan | `api.jikan.moe/v4/genres/anime` | 1 | 78 | Returns all four kinds together; split by MAL's own filters it is 5 demographics, 21 genres, 52 themes. The filtered variants (`?filter=themes`) returned `504` twice while this was verified, so prefer the unfiltered call |
+| AniList | GraphQL `{ GenreCollection }` | 1 | 19 | Fixed genre list |
+| AniList | GraphQL `{ MediaTagCollection { name category isAdult } }` | 1 | 428 | Carries the category (`Theme-*`, `Cast-*`, `Setting-*`, `Technical`, `Demographic`) that the mapper routes on, plus `isAdult` for `content_warnings` |
+| AniDB | `httpapi?request=taglist` | **1** | **1,723** | The largest vocabulary of the seven. Carries `id`, `parentid` and `isverified`, so the tag hierarchy comes free. Not listed with the other request types — `request=tag` answers `<error code="320">` |
+| Kitsu | `api/edge/categories` | paginated | 218 | `meta.count` gives the total |
+| Anime-Planet | `/anime/tags` | 20 pages | 675 | 35 per page, fixed server-side — `per_page`, `limit` and `size` are all ignored. Cloudflare rejects curl with `403`; needs a browser |
+| AniSearch | `/anime/genre` | 1 | 20 main + 26 subsidiary | Plain HTTP. `main` and `subsidiary` are separate link classes on one page. No tag index found |
+| AnimeSchedule | `/genres` | 1 | 30 | Plain HTTP page; the v3 API has no `/genres` endpoint (`404`) |
+
+**Prefer the API over the browser.** AniDB's `taglist` replaces roughly 97 browser
+page-fetches at 30 tags each, and needs no Cloudflare handling at all. It was
+found by probing request types after the documented ones came back invalid —
+worth repeating for other sources before writing a crawler.
+
+**Reaching AniDB pages with a browser**, where no API exists: it must be
+`headless=False`. A headless browser gets the antileech block page (~28 KB);
+the same navigation with a head returns the real page (~50 KB). Follow the
+pattern in `anidb_character_crawler.py` — poll until the page settles into
+either content or a recognised block rather than sleeping a fixed time, then
+solve and wait for the reload. `zendriver.core.cloudflare.verify_cf` plus the
+"Please Unban Me" button covers both block types.
+
+**Cloudflare status**: AniDB and Anime-Planet block plain HTTP entirely.
+AniSearch and AnimeSchedule serve these index pages to curl with a normal
+user-agent. MAL, AniList and Kitsu are APIs and need no browser.
+
+---
+
+## Company Fields
+
+Where each source publishes studios, producers and licensors, and the URL it
+gives for a company. Verified live on 2026-09-24 over 684 anime.
+
+| Source | Where | Roles | Company URL |
+| :----- | :---- | :---- | :---------- |
+| MAL | anime page | studio, producer, licensor | `myanimelist.net/anime/producer/{id}/{Name}` |
+| AniList | GraphQL `studios { edges { node { isAnimationStudio } } }` | studio, producer | `anilist.co/studio/{id}` |
+| Kitsu | `api/edge/anime/{id}/anime-productions?include=producer` | studio, producer, licensor | `api/edge/producers/{id}` |
+| AniDB | `httpapi?request=anime`, the `<creators>` block | studio, producer | `anidb.net/creator/{id}` |
+| Anime-Planet | anime page, `entryBar` studio anchors | studio | `anime-planet.com/anime/studios/{slug}` |
+| AniSearch | anime page, single studio field | studio | `anisearch.com/company/{id},{slug}` |
+| AnimeSchedule | `api/v3/anime/{route}` | studio | `animeschedule.net/studios/{route}` |
+
+Coverage over the same 684 anime:
+
+| Source | studios | producers | licensors | anime covered |
+| :----- | ------: | --------: | --------: | ------------: |
+| MAL | 659 | 1,100 | 276 | 665 |
+| AniList | 628 | 933 | 0 | 611 |
+| Anime-Planet | 624 | 0 | 0 | 578 |
+| AniSearch | 560 | 0 | 0 | 560 |
+| AnimeSchedule | 556 | 0 | 0 | 493 |
+| Kitsu | 356 | 1,222 | 140 | 495 |
+| AniDB | 168 | 155 | 0 | 230 |
+
+Per-source notes, each of which cost something to find:
+
+- **Only MAL and Kitsu carry all three roles.** Every licensor we publish rests
+  on those two.
+- **AniDB's `<creators>` mixes companies and people**, told apart only by the
+  `type` attribute. `Animation Work` is the studio and `Work` the producer; over
+  219 cached responses those are 72 and 66 distinct names and all but one are
+  companies. Every other type is people - including two that read like company
+  fields. `Animation Production` held only `Shinkai Makoto`, and `Original Plan`
+  mixes `Bandai` and `Bushiroad` with `Tezuka Osamu` and `Jules Verne`. Neither
+  is mapped.
+- **Kitsu carries the role on the join row, not the company**, so one company can
+  appear twice for one anime under different roles - it files Madhouse as both
+  producer and studio on Death Note. It also repeats join rows verbatim, and
+  holds separate records for one company: `MADHOUSE` is producer 5 and
+  `Madhouse` is producer 917, the second with an auto-suffixed slug because the
+  name already existed.
+- **Kitsu has no public producer page.** `kitsu.app/producers/{slug}` renders an
+  empty title and site chrome only, while an anime page renders properly, so the
+  `403` from curl was real rather than Cloudflare. The API resource is the only
+  stable URL.
+- **AniSearch has a single studio field** and structurally cannot report a second
+  company: 560 names across 560 anime.
+- **AniDB's figure is a floor.** It was banned throughout collection and served
+  only what the HTTP cache already held, while carrying an AniDB URL for 579 of
+  660 titles.
+- **AniList's `isMain` is not a role signal.** Its schema defines
+  `isAnimationStudio` as whether the company is an animation studio - the
+  studio-versus-producer question - and `isMain` as which studio led this anime.
+  On One Piece `isMain` is true for Toei Animation alone while TAP, Magic Bus,
+  Mushi Production, Studio Guts and Asahi Production are all
+  `isAnimationStudio=True, isMain=False`.
+
+How these are reconciled into one company list is a separate question - see
+[merge_rules.md](merge_rules.md).
+
+---

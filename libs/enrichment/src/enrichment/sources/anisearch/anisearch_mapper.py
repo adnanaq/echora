@@ -49,6 +49,9 @@ from enrichment.sources.anisearch.anisearch_anime_models import (
     AniSearchEpisode,
     AniSearchRelatedEntry,
 )
+from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.external_links import external_link
+from enrichment.utils.text_utils import normalize_score
 
 _ANISEARCH_BASE_URL = "https://www.anisearch.com/"
 _DETAILS_TYPE_RE = re.compile(r"^([^,]+)")
@@ -191,10 +194,14 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     statistics: dict[str, Statistics] = {}
     if anime.statistics:
         stats_data: dict[str, Any] = {}
-        for field in ("score", "rank"):
-            v = getattr(anime.statistics, field)
-            if v is not None:
-                stats_data[field] = v
+        # AniSearch rates out of 5 stars; every other provider lands on 0–10.
+        score = normalize_score(anime.statistics.score, source_max=5.0)
+        if score is not None:
+            stats_data["score"] = score
+        if anime.statistics.scored_by is not None:
+            stats_data["scored_by"] = anime.statistics.scored_by
+        if anime.statistics.rank is not None:
+            stats_data["rank"] = anime.statistics.rank
         if stats_data:
             statistics["anisearch"] = Statistics(**stats_data)
 
@@ -227,9 +234,11 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
     related_source_material = _build_related_source_material(anime.manga_relations)
 
     # ── External sources ──────────────────────────────────────────────────
-    external_sources = {
-        w["name"]: w["url"] for w in anime.websites if w.get("name") and w.get("url")
-    }
+    external_sources = [
+        link
+        for w in anime.websites
+        if (link := external_link(w.get("url"), label=w.get("name")))
+    ]
 
     result = Anime(
         title=anime.title or anime.title_japanese or "",
@@ -243,7 +252,9 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         synopsis=anime.synopsis,
         genres=anime.genres,
         tags=anime.tags,
-        studios=studios,
+        companies=companies_from_roles(
+            studios=studios,
+        ),
         sources=[anime.url] if anime.url else [],
         images=images,
         aired_dates=aired_dates,

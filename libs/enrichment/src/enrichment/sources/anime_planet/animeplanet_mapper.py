@@ -45,6 +45,7 @@ from enrichment.sources.anime_planet.anime_planet_character_models import (
     AnimePlanetCharacter,
 )
 from enrichment.sources.anime_planet.anime_planet_models import AnimePlanetAnime
+from enrichment.sources.base.companies import companies_from_roles
 
 _AP_BASE_URL = "https://www.anime-planet.com"
 
@@ -113,9 +114,12 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
     # ── Images ────────────────────────────────────────────────────────────
     images = AnimeImages(covers=[anime.cover] if anime.cover else [])
 
-    # ── Sources / producers ───────────────────────────────────────────────
+    # ── Sources / studios ─────────────────────────────────────────────────
     sources = [anime.url] if anime.url else []
-    producers = [CompanyEntry(name=s) for s in anime.studios]
+    studios = [
+        CompanyEntry(name=studio.name, sources=[studio.url] if studio.url else [])
+        for studio in anime.studios
+    ]
 
     # ── Related anime (same_franchise + other_franchise buckets) ──────────
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = {}
@@ -179,7 +183,9 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
         season=season,
         episode_count=anime.number_of_episodes or 0,
         sources=sources,
-        producers=producers,
+        companies=companies_from_roles(
+            studios=studios,
+        ),
         tags=tags,
         images=images,
         aired_dates=aired_dates,

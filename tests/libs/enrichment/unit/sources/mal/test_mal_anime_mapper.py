@@ -106,13 +106,21 @@ def test_anime_from_mal_broadcast_built() -> None:
     assert broadcast["timezone"] == "JST"
 
 
-def test_anime_from_mal_studios_mapped() -> None:
+def test_anime_from_mal_companies_mapped() -> None:
     result = anime_from_mal(_make_sample_anime())
-    assert "studios" in result
-    assert result["studios"][0]["name"] == "Toei Animation"
-    assert (
-        "https://myanimelist.net/anime/producer/18" in result["studios"][0]["sources"]
-    )
+    assert result["companies"] == [
+        {
+            "name": "Toei Animation",
+            "roles": ["STUDIO"],
+            "sources": ["https://myanimelist.net/anime/producer/18"],
+        },
+        {
+            "name": "Fuji TV",
+            "roles": ["PRODUCER"],
+            "sources": ["https://myanimelist.net/anime/producer/29"],
+        },
+    ]
+    assert not {"studios", "producers", "licensors"} & result.keys()
 
 
 def test_anime_from_mal_related_anime_split() -> None:

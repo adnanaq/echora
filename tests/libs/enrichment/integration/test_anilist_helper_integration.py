@@ -15,6 +15,8 @@ import pytest_asyncio
 import redis
 from enrichment.sources.anilist.anilist_helper import AniListHelper
 
+from tests.conftest import TEST_REDIS_URL
+
 # Mark all tests in this module as integration tests
 # Use redis_client fixture for setup/teardown side effects
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("redis_client")]
@@ -24,15 +26,15 @@ pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("redis_client")]
 def redis_client():
     """Provides a Redis client for the test module, skipping tests if Redis is unavailable."""
     try:
-        r = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+        r = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
         r.ping()
-        # Flush once at module start
-        r.flushall()
+        # flushdb, not flushall: flushall wipes every database on the server,
+        # including the developer's own cache in db 0.
+        r.flushdb()
         yield r
-        # Optionally flush at module end
-        r.flushall()
+        r.flushdb()
     except redis.exceptions.ConnectionError:
-        pytest.skip("Redis is not available on redis://localhost:6379/0")
+        pytest.skip(f"Redis is not available on {TEST_REDIS_URL}")
 
 
 @pytest_asyncio.fixture

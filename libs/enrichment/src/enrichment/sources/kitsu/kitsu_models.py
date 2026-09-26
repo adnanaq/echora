@@ -38,6 +38,8 @@ class KitsuAnimeAttributes(BaseModel):
     averageRating: str | None = None  # "78.34" — string from API
     userCount: int | None = None
     favoritesCount: int | None = None
+    # Rating histogram, keys "2".."20", counts as strings. See `scored_by`.
+    ratingFrequencies: dict[str, str] = Field(default_factory=dict)
     startDate: str | None = None  # "1999-10-20"
     endDate: str | None = None
     popularityRank: int | None = None
@@ -54,6 +56,26 @@ class KitsuAnimeAttributes(BaseModel):
     nextRelease: str | None = None  # ISO datetime e.g. "2023-10-08T09:30:00.000+09:00"
     nsfw: bool = False
 
+    @property
+    def scored_by(self) -> int | None:
+        """How many users rated this anime.
+
+        Kitsu publishes no vote count. `userCount` counts everyone with the
+        anime in their library, which on One Piece is 324,398 against 167,208
+        who rated it, and the ratio varies by title, so it cannot stand in.
+
+        The rating histogram is the real count: recomputing the mean from its
+        buckets reproduces Kitsu's own `averageRating` to within 0.3%, so these
+        are the ratings behind that average. There is no bucket for unrated
+        library entries.
+
+        Returns:
+            Total ratings, or ``None`` when Kitsu reported no histogram.
+        """
+        if not self.ratingFrequencies:
+            return None
+        return sum(int(count) for count in self.ratingFrequencies.values())
+
 
 class KitsuAnime(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="allow")
@@ -64,6 +86,23 @@ class KitsuAnime(BaseModel):
     # Populated by the helper after fetching /genres and /categories endpoints
     genres: list[str] = Field(default_factory=list)
     themes: list[ThemeEntry] = Field(default_factory=list)
+    # Populated by the helper after fetching /anime-productions
+    companies: list["KitsuProduction"] = Field(default_factory=list)
+
+
+class KitsuProduction(BaseModel):
+    """One company's involvement in one anime.
+
+    Kitsu carries the role on the join row rather than on the company, so one
+    company can appear twice for the same anime under different roles - it
+    files Madhouse as both producer and studio on Death Note.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    name: str
+    role: str | None = None  # "studio", "producer", "licensor"
+    company_id: str | None = None  # Kitsu producer id, the only stable handle
 
 
 class KitsuGenreAttributes(BaseModel):

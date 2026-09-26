@@ -20,8 +20,13 @@ from pydantic import ValidationError
 class TestCacheConfigModel:
     """Test CacheConfig Pydantic model."""
 
-    def test_default_values(self) -> None:
-        """Test CacheConfig instantiation with all default values."""
+    def test_default_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test CacheConfig instantiation with all default values.
+
+        CacheConfig reads the environment, so REDIS_URL is cleared to assert the
+        declared default rather than whatever the surrounding session set.
+        """
+        monkeypatch.delenv("REDIS_URL", raising=False)
         config = CacheConfig()
 
         # Core settings
@@ -56,8 +61,9 @@ class TestCacheConfigModel:
         assert config.ttl_jikan == 3600
         assert config.ttl_anilist == 7200
 
-    def test_disabled_cache(self) -> None:
+    def test_disabled_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test CacheConfig with caching disabled."""
+        monkeypatch.delenv("REDIS_URL", raising=False)
         config = CacheConfig(cache_enabled=False)
 
         assert config.cache_enabled is False
@@ -271,6 +277,7 @@ class TestGetCacheConfig:
     ) -> None:
         """Test that get_cache_config() preserves default values for unset fields."""
         get_cache_config.cache_clear()
+        monkeypatch.delenv("REDIS_URL", raising=False)
         monkeypatch.setenv("CACHE_ENABLED", "false")
         # Only set one env var, others should have defaults
 

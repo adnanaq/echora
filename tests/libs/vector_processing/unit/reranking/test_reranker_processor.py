@@ -6,14 +6,18 @@ from vector_processing.processors import RerankerProcessor
 from vector_processing.reranking import SentenceTransformerReranker
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def reranker_processor():
-    """Create a reranker processor for testing."""
+    """Create a reranker processor once per module, pinned to CPU.
+
+    Pants runs test files as concurrent processes; two copies of this model on
+    one GPU exhausts its memory, so the unit tests stay off the GPU.
+    """
     config = EmbeddingConfig(
         reranking_enabled=True,
         reranking_model="BAAI/bge-reranker-v2-m3",
     )
-    model = SentenceTransformerReranker(model_name=config.reranking_model)
+    model = SentenceTransformerReranker(model_name=config.reranking_model, device="cpu")
     return RerankerProcessor(model, config)
 
 

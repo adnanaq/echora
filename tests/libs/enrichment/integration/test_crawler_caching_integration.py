@@ -19,6 +19,8 @@ from http_cache import result_cache
 from redis import exceptions
 from redis.asyncio import Redis
 
+from tests.conftest import TEST_REDIS_URL
+
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
@@ -35,19 +37,21 @@ RedisType = Redis
 @pytest_asyncio.fixture(scope="module")
 async def redis_client() -> AsyncGenerator[RedisType]:
     """Async Redis fixture for tests."""
-    client = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+    client = Redis.from_url(TEST_REDIS_URL, decode_responses=True)
 
     try:
         await client.ping()
     except exceptions.ConnectionError:
-        pytest.skip("Redis is not available on redis://localhost:6379/0")
+        pytest.skip(f"Redis is not available on {TEST_REDIS_URL}")
 
-    await client.flushall()
+    # flushdb, not flushall: flushall wipes every database on the server,
+    # including the developer's own cache in db 0.
+    await client.flushdb()
 
     try:
         yield client
     finally:
-        await client.flushall()
+        await client.flushdb()
         try:
             await client.close()
         except RuntimeError:
@@ -77,7 +81,7 @@ async def shared_redis(redis_client, browser_available):
     """Point the result cache at the same client the assertions inspect."""
     from redis.asyncio import Redis as AsyncRedis
 
-    real_client = AsyncRedis.from_url("redis://localhost:6379/0", decode_responses=True)
+    real_client = AsyncRedis.from_url(TEST_REDIS_URL, decode_responses=True)
     with patch("http_cache.result_cache.Redis.from_url", return_value=real_client):
         result_cache._redis_client = real_client
         yield real_client

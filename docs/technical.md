@@ -677,7 +677,8 @@ class AnimeStaticSparseProcessor:
                 values.append(self.static_weights[feature_name])
 
         # Studio features
-        for studio in anime.studios:
+        studios = [c.name for c in anime.companies if CompanyRole.STUDIO in c.roles]
+        for studio in studios:
             feature_name = f"studio_{studio.lower().replace(' ', '_')}"
             if feature_name in self.static_weights:
                 indices.append(self._get_feature_index(feature_name))

@@ -87,6 +87,7 @@ _XPATHS: dict[str, str] = {
     # Schema.org stats
     "score": "//span[@itemprop='ratingValue']",
     "scored_by": "//span[@itemprop='ratingCount']",
+    "canonical_url": "//link[@rel='canonical']/@href",
     "synopsis": "//p[@itemprop='description']",
     "cover_image_src": "//img[@itemprop='image']/@data-src",
     # Background (outer HTML of the containing <td>; regex in _build extracts text)
@@ -281,6 +282,7 @@ def _extract_anime_from_html(html_text: str) -> dict[str, Any] | None:
         "related_table_entries": table_entries,
         "external_sources_raw": external_sources_raw,
         "streaming_links_raw": streaming_links_raw,
+        "canonical_url": _attr("canonical_url"),
         "title": _text("title"),
         "title_og": _attr("title_og"),
         "score": _text("score"),
@@ -678,8 +680,9 @@ def _build_anime_from_raw(
 
     related_entries = _parse_all_related_entries(raw)
 
+    canonical = raw.get("canonical_url")
     return MalAnime(
-        source=url,
+        source=canonical if canonical and "/anime/" in canonical else url,
         title=title,
         title_english=title_english,
         title_japanese=title_japanese,

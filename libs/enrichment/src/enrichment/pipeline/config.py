@@ -6,7 +6,7 @@ Following configuration-driven patterns from lessons learned.
 import logging
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,71 @@ class EnrichmentConfig(BaseSettings):
         default="temp", description="Temporary directory for processing"
     )
 
+    # AniDB
+    # AniDB is the only provider that needs registered credentials: it answers
+    # an unrecognised client with `<error code="302">` rather than data. These
+    # keep their bare ANIDB_ names via validation_alias, so the ENRICHMENT_
+    # prefix does not apply and the names already in .env keep working.
+    anidb_client: str = Field(
+        default="animeenrichment",
+        validation_alias="ANIDB_CLIENT",
+        description="Registered AniDB client name",
+    )
+    anidb_clientver: str = Field(
+        default="1.0",
+        validation_alias="ANIDB_CLIENTVER",
+        description="AniDB client version",
+    )
+    anidb_protover: str = Field(
+        default="1",
+        validation_alias="ANIDB_PROTOVER",
+        description="AniDB API protocol version",
+    )
+    anidb_min_request_interval: float = Field(
+        default=2.0,
+        validation_alias="ANIDB_MIN_REQUEST_INTERVAL",
+        description="Shortest gap between AniDB requests, in seconds",
+    )
+    anidb_max_request_interval: float = Field(
+        default=10.0,
+        validation_alias="ANIDB_MAX_REQUEST_INTERVAL",
+        description="Longest gap between AniDB requests, in seconds",
+    )
+    anidb_error_cooldown_base: float = Field(
+        default=5.0,
+        validation_alias="ANIDB_ERROR_COOLDOWN_BASE",
+        description="Base seconds to wait after an AniDB error response",
+    )
+    anidb_max_retries: int = Field(
+        default=3,
+        validation_alias="ANIDB_MAX_RETRIES",
+        description="Retries before giving up on an AniDB request",
+    )
+    anidb_ban_cooldown: float = Field(
+        default=300.0,
+        validation_alias="ANIDB_BAN_COOLDOWN",
+        description="Seconds to stop contacting AniDB after it returns a 555 ban",
+    )
+
+    # Weighted Score
+    weighted_score_baseline: float = Field(
+        default=6.2,
+        validation_alias="WEIGHTED_SCORE_BASELINE",
+        description=(
+            "What a typical anime scores across our providers. Recompute every "
+            "5,000 newly enriched anime and whenever the provider set changes; "
+            "see docs/merge_rules.md"
+        ),
+    )
+    weighted_score_baseline_votes: int = Field(
+        default=1000,
+        validation_alias="WEIGHTED_SCORE_BASELINE_VOTES",
+        description=(
+            "Baseline votes every anime carries, deciding how many real voters "
+            "it takes before its own score wins; see docs/merge_rules.md"
+        ),
+    )
+
     # Feature Flags
     skip_failed_apis: bool = Field(
         default=True,
@@ -112,9 +177,13 @@ class EnrichmentConfig(BaseSettings):
             raise ValueError("Cache TTL must be non-negative")
         return v
 
-    class Config:
-        env_prefix = "ENRICHMENT_"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_prefix="ENRICHMENT_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     def log_configuration(self) -> None:
         """Log current configuration for debugging (context-rich errors)."""

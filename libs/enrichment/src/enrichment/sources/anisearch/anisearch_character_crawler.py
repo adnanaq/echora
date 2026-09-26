@@ -46,6 +46,8 @@ _INTER_REQUEST_DELAY = 3.0  # seconds between browser navigations
 # repeats, capped so a permanently empty list cannot hang the fetch.
 _ROW_SETTLE_POLLS = 15
 _CHARACTER_BATCH_SIZE = 20
+_DOCUMENT_PARSE_TIMEOUT_SECONDS = 10.0
+_DOCUMENT_PARSE_POLL_SECONDS = 0.05
 
 # ---------------------------------------------------------------------------
 # XPath selectors — direct lxml XPath, anchored on structural attributes
@@ -223,6 +225,36 @@ def _extract_ography_from_html(html: str) -> list[dict[str, Any]] | None:
 # ---------------------------------------------------------------------------
 
 
+async def _wait_until_document_parsed(
+    page: Any, url: str, timeout: float = _DOCUMENT_PARSE_TIMEOUT_SECONDS
+) -> None:
+    """Wait until the browser has read the whole HTML document.
+
+    ``#htitle`` sits near the top of a character page, so it appears while the
+    rest of the HTML is still arriving. Reading the page at that moment lost
+    the favorites count, traits and both image galleries: measured on
+    2026-09-25 over eight characters, six lost fields (Luffy 49 of 94, Zoro 52
+    of 96), and the two that did not had nothing late to lose. Those fields
+    arrive with the document itself, not by a later request, so once
+    ``document.readyState`` leaves ``"loading"`` the page matched one read 8
+    seconds later on all eight, about 0.1 s after the name appeared.
+
+    Args:
+        page: The tab being read.
+        url: The page's URL, for the log line if it never finishes.
+        timeout: Seconds to wait before reading whatever has arrived.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while await page.evaluate("document.readyState") == "loading":
+        if loop.time() >= deadline:
+            logger.warning(
+                f"document still loading after {timeout}s, reading anyway: {url}"
+            )
+            return
+        await asyncio.sleep(_DOCUMENT_PARSE_POLL_SECONDS)
+
+
 async def _fetch_page_html(
     browser: Any,
     url: str,
@@ -230,6 +262,9 @@ async def _fetch_page_html(
     row_extractor: Callable[[str], list[Any] | None] | None = None,
 ) -> str | None:
     """Navigate to url with an existing browser session and return page HTML.
+
+    The page is only read once its HTML document has fully arrived, whatever
+    ``wait_selector`` finds first; see ``_wait_until_document_parsed``.
 
     Args:
         browser: An already-started browser session.
@@ -251,6 +286,7 @@ async def _fetch_page_html(
             await page.wait_for(selector=wait_selector, timeout=10)
         else:
             await asyncio.sleep(2)
+        await _wait_until_document_parsed(page, url)
         if row_extractor is None:
             return await page.get_content()
 
@@ -444,7 +480,11 @@ def _build_character_from_raw(
 @cached_result(
     ttl=TTL_ANISEARCH,
     key_prefix="anisearch_character_detail",
-    dependencies=[_extract_character_from_html],
+    dependencies=[
+        _extract_character_from_html,
+        _fetch_page_html,
+        _wait_until_document_parsed,
+    ],
 )
 async def _fetch_anisearch_character_data(url: str) -> dict[str, Any] | None:
     """Fetch a character detail page and extract raw fields. Cached by URL.

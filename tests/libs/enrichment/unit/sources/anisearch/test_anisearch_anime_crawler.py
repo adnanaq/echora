@@ -165,6 +165,7 @@ def test_extract_anime_from_html_rating_score(one_piece_main_html) -> None:
     assert raw is not None
     assert raw["rating_score"] is not None
     assert "." in raw["rating_score"]
+    assert raw["rating_votes"] == 7902
 
 
 def test_extract_anime_from_html_empty_returns_none() -> None:
@@ -426,20 +427,38 @@ def test_post_process_websites_empty_url_skipped(one_piece_main_raw) -> None:
 def test_post_process_score_extracted(one_piece_main_raw) -> None:
     data = _post_process_main(one_piece_main_raw)
     assert data["statistics"]["score"] == pytest.approx(4.18)
+    assert data["statistics"]["scored_by"] == 7902
+
+
+def test_post_process_zero_votes_omits_scored_by(one_piece_main_raw) -> None:
+    raw = {**one_piece_main_raw, "rating_votes": 0}
+    assert "scored_by" not in _post_process_main(raw)["statistics"]
+
+
+def test_post_process_unrated_omits_score(one_piece_main_raw) -> None:
+    raw = {
+        **one_piece_main_raw,
+        "rating_score": "Calculated Value0.00 = 0%",
+        "rating_votes": 0,
+    }
+    stats = _post_process_main(raw)["statistics"]
+    assert "score" not in stats
+    assert "scored_by" not in stats
 
 
 def test_post_process_rank_extracted(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["statistics"]["rank"] == 126
+    assert _post_process_main(one_piece_main_raw)["statistics"]["rank"] == 125
 
 
 def test_post_process_trending_extracted(one_piece_main_raw) -> None:
-    assert _post_process_main(one_piece_main_raw)["statistics"]["trending"] == 66
+    assert _post_process_main(one_piece_main_raw)["statistics"]["trending"] == 26
 
 
 def test_post_process_stats_all_missing_returns_none(one_piece_main_raw) -> None:
     raw = {
         **one_piece_main_raw,
         "rating_score": None,
+        "rating_votes": None,
         "rank_toplist": None,
         "rank_trending": None,
     }
@@ -450,7 +469,7 @@ def test_post_process_score_missing_rank_still_populated(one_piece_main_raw) -> 
     raw = {**one_piece_main_raw, "rating_score": None}
     stats = _post_process_main(raw)["statistics"]
     assert "score" not in stats
-    assert stats["rank"] == 126
+    assert stats["rank"] == 125
 
 
 def test_post_process_description_stripped(one_piece_main_raw) -> None:
@@ -519,8 +538,9 @@ def test_build_anime_statistics(one_piece_processed) -> None:
     anime = _build_anime_from_raw(one_piece_processed, _URL)
     assert anime.statistics is not None
     assert anime.statistics.score == pytest.approx(4.18)
-    assert anime.statistics.rank == 126
-    assert anime.statistics.trending == 66
+    assert anime.statistics.scored_by == 7902
+    assert anime.statistics.rank == 125
+    assert anime.statistics.trending == 26
 
 
 def test_build_anime_no_statistics(one_piece_processed) -> None:

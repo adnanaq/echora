@@ -213,6 +213,43 @@ class TestCachedAiohttpSessionRequestBuilding:
         assert call_kwargs["headers"]["Content-Type"] == "application/json"
         assert "X-Hishel-Body-Key" not in call_kwargs["headers"]
 
+    @pytest.mark.parametrize(
+        ("directive", "expected_status", "origin_called"),
+        [
+            ("only-if-cached", 504, False),
+            ("max-age=0, Only-If-Cached", 504, False),
+            ("x-only-if-cached", 200, True),
+            ("no-cache", 200, True),
+            (None, 200, True),
+        ],
+    )
+    async def test_only_if_cached_fails_instead_of_calling_origin(
+        self,
+        mock_storage: AsyncMock,
+        directive: str | None,
+        expected_status: int,
+        origin_called: bool,
+    ) -> None:
+        """RFC 9111 5.2.1.7 — reaching the sender means the cache missed."""
+        mock_session = AsyncMock()
+        mock_session.headers = {}
+        cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
+        mock_session.request = AsyncMock(return_value=_make_origin_resp())
+
+        async def body_stream():
+            yield b""
+
+        req = Request(
+            method="GET",
+            url="https://example.com/thing",
+            headers={"Cache-Control": directive} if directive else {},
+            stream=body_stream(),
+        )
+        hishel_resp = await cached._proxy.handle_request(req)
+
+        assert hishel_resp.status_code == expected_status
+        assert mock_session.request.called is origin_called
+
     def test_session_headers_type_error_falls_back_to_empty(
         self, mock_storage: AsyncMock
     ) -> None:
@@ -245,10 +282,22 @@ class TestCachedAiohttpSessionRequestBuilding:
             assert resp.status == 200
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("directive", "expected_status", "origin_called"),
+        [
+            (None, 200, True),
+            ("only-if-cached", 504, False),
+            ("x-only-if-cached", 200, True),
+        ],
+    )
     async def test_unsupported_body_bypasses_cache(
-        self, mock_storage: AsyncMock
+        self,
+        mock_storage: AsyncMock,
+        directive: str | None,
+        expected_status: int,
+        origin_called: bool,
     ) -> None:
-        """data=FormData (unsupported type) must bypass the cache entirely."""
+        """data=FormData (unsupported type) bypasses the cache, never only-if-cached."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
@@ -260,16 +309,31 @@ class TestCachedAiohttpSessionRequestBuilding:
 
         # Pass an object that is not str/bytes/bytearray (e.g. a mock FormData)
         form_data = MagicMock()
-        async with cached.post("https://example.com/api", data=form_data) as resp:
-            assert resp.status == 200
+        headers = {"Cache-Control": directive} if directive else {}
+        async with cached.post(
+            "https://example.com/api", data=form_data, headers=headers
+        ) as resp:
+            assert resp.status == expected_status
+        assert mock_session.request.called is origin_called
         # Cache must not have been written
         mock_storage.create_entry.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("caller_directive", "sent_directive"),
+        [
+            (None, "no-cache"),
+            ("only-if-cached", "only-if-cached"),
+            ("x-only-if-cached", "no-cache"),
+        ],
+    )
     async def test_always_revalidate_injects_no_cache(
-        self, mock_storage: AsyncMock
+        self,
+        mock_storage: AsyncMock,
+        caller_directive: str | None,
+        sent_directive: str,
     ) -> None:
-        """always_revalidate=True must add Cache-Control: no-cache to the request."""
+        """always_revalidate adds no-cache, but never overrides only-if-cached."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(
@@ -289,10 +353,11 @@ class TestCachedAiohttpSessionRequestBuilding:
             )
 
         cached._proxy.handle_request = AsyncMock(side_effect=handle)
-        await cached._request("GET", "https://example.com/api")
+        headers = {"Cache-Control": caller_directive} if caller_directive else {}
+        await cached._request("GET", "https://example.com/api", headers=headers)
 
         assert captured
-        assert captured[0].headers.get("Cache-Control") == "no-cache"
+        assert captured[0].headers.get("Cache-Control") == sent_directive
 
 
 # =============================================================================

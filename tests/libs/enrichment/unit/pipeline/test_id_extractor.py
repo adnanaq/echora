@@ -110,6 +110,25 @@ def test_missing_sources_key_returns_all_none(extractor: PlatformIDExtractor) ->
     assert all(v is None for v in result.values())
 
 
+def test_a_source_that_is_not_a_string_is_reported_not_fatal(
+    extractor: PlatformIDExtractor, caplog
+) -> None:
+    data = {
+        "sources": [
+            "https://myanimelist.net/anime/21",
+            "https://anime-planet.com/anime/one-piece",
+            "https://anilist.co/anime/21",
+            "https://anisearch.com/anime/2227",
+            "https://anidb.net/anime/69",
+            12345,
+        ]
+    }
+    result = extractor.extract_all_ids(data)
+    assert result["mal_url"] == "https://myanimelist.net/anime/21"
+    assert result["kitsu_url"] is None
+    assert "Error extracting ID from 12345" in caplog.text
+
+
 def test_first_match_wins_for_url_keys(extractor: PlatformIDExtractor) -> None:
     """When multiple MAL URLs appear only the first is kept."""
     data = {

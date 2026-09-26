@@ -22,6 +22,7 @@ from common.models.anime import (
     CharacterRole,
     CompanyEntry,
     ContextualRank,
+    ExternalLink,
     RelatedAnime,
     RelatedSourceMaterial,
     SourceMaterialRelationType,
@@ -40,6 +41,8 @@ from enrichment.sources.anilist.anilist_character_models import (
     AniListCharacterEdge,
     AniListFuzzyDate,
 )
+from enrichment.sources.base.companies import companies_from_roles
+from enrichment.sources.base.external_links import external_link
 from enrichment.utils.text_utils import normalize_score
 
 # AniList relation types that represent the anime being the SOURCE of a relation
@@ -188,7 +191,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
 
     # ── Streaming & external links ────────────────────────────────────────────
     streaming_sources: list[StreamingEntry] = []
-    external_sources: dict[str, str] = {}
+    external_sources: list[ExternalLink] = []
     for link in anime.external_links:
         if not link.url or not link.site:
             continue
@@ -197,7 +200,9 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
                 StreamingEntry(platform=link.site, source=link.url)
             )
         elif link.type in ("INFO", "SOCIAL"):
-            external_sources[link.site.lower()] = link.url
+            entry = external_link(link.url, label=link.site, language=link.language)
+            if entry:
+                external_sources.append(entry)
 
     # ── Trailer ───────────────────────────────────────────────────────────────
     trailers: list[TrailerEntry] = []
@@ -232,6 +237,7 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
     ]
     anilist_stats = Statistics(
         score=normalize_score(anime.average_score) if anime.average_score else None,
+        scored_by=anime.scored_by,
         members=anime.popularity,
         favorites=anime.favourites,
         contextual_ranks=contextual_ranks or None,
@@ -270,8 +276,10 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
         themes=themes,
         tags=tags,
         content_warnings=content_warnings,
-        studios=studios,
-        producers=producers,
+        companies=companies_from_roles(
+            studios=studios,
+            producers=producers,
+        ),
         streaming_sources=streaming_sources,
         external_sources=external_sources,
         trailers=trailers,

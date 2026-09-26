@@ -24,6 +24,7 @@ class SentenceTransformerReranker(RerankerModel):
         model_name: str,
         cache_dir: str | None = None,
         max_length: int = 512,
+        device: str | None = None,
     ):
         """Initialize sentence transformer reranker.
 
@@ -31,12 +32,16 @@ class SentenceTransformerReranker(RerankerModel):
             model_name: HuggingFace model identifier.
             cache_dir: Optional cache directory for model files.
             max_length: Maximum sequence length (default: 512).
+            device: Torch device to load onto (e.g. "cpu", "cuda"). Defaults to
+                whatever sentence-transformers picks, which is the GPU when one
+                is available.
         """
         logger.info(f"Loading reranker model: {model_name}")
         self.model = CrossEncoder(
             model_name,
             max_length=max_length,
             cache_folder=cache_dir,
+            device=device,
         )
         self._model_name = model_name
         self._max_length = max_length

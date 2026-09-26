@@ -19,6 +19,7 @@ from common.models.anime import (
     Broadcast,
     Character,
     CharacterRole,
+    CompanyEntry,
     Episode,
     Ography,
     Statistics,
@@ -30,6 +31,7 @@ from common.utils.datetime_utils import (
     determine_anime_year,
     normalize_to_utc,
 )
+from enrichment.sources.base.companies import companies_from_roles
 from enrichment.sources.kitsu.kitsu_models import (
     KitsuAnime,
     KitsuEpisode,
@@ -163,6 +165,7 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     statistics: dict[str, Statistics] = {
         "kitsu": Statistics(
             score=kitsu_score,
+            scored_by=attrs.scored_by,
             members=attrs.userCount,
             favorites=attrs.favoritesCount,
             popularity=attrs.popularityRank,
@@ -192,6 +195,27 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
     if rating is AnimeRating.UNKNOWN:
         rating = AnimeRating(attrs.ageRating or "")
 
+    by_role: dict[str, list[CompanyEntry]] = {
+        "studio": [],
+        "producer": [],
+        "licensor": [],
+    }
+    for production in anime.companies:
+        credited = by_role.get(production.role or "")
+        if credited is not None:
+            credited.append(
+                CompanyEntry(
+                    name=production.name,
+                    sources=(
+                        [
+                            f"https://kitsu.app/api/edge/producers/{production.company_id}"
+                        ]
+                        if production.company_id
+                        else []
+                    ),
+                )
+            )
+
     result = Anime(
         title=title,
         title_english=titles.en,
@@ -214,6 +238,11 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
         broadcast=broadcast,
         trailers=trailers,
         aired_dates=aired_dates,
+        companies=companies_from_roles(
+            studios=by_role["studio"],
+            producers=by_role["producer"],
+            licensors=by_role["licensor"],
+        ),
     )
     return result.model_dump(mode="json", exclude_none=True)
 
