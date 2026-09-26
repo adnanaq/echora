@@ -20,7 +20,8 @@ class ObservabilityConfig(BaseModel):
     )
     otel_enable_metrics: bool = Field(default=True, description="Enable metrics setup")
     otel_enable_grpc_server_instrumentation: bool = Field(
-        default=True, description="Enable gRPC server auto-instrumentation"
+        default=True,
+        description="Add the telemetry interceptor (RPC spans and metrics) to the gRPC server",
     )
     otel_enable_grpc_client_instrumentation: bool = Field(
         default=True, description="Enable gRPC client auto-instrumentation"

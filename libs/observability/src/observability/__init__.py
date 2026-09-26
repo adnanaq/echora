@@ -14,7 +14,6 @@ from .context import (
 from .instrumentation import (
     instrument_aiohttp_client,
     instrument_grpc_client,
-    instrument_grpc_server,
     instrument_qdrant_client,
     instrument_redis,
 )
@@ -34,7 +33,6 @@ __all__ = [
     "AioServerInterceptor",
     "instrument_aiohttp_client",
     "instrument_grpc_client",
-    "instrument_grpc_server",
     "instrument_qdrant_client",
     "instrument_redis",
     "extract_context_from_nats_headers",
@@ -63,7 +61,6 @@ def setup_telemetry(
     enable_logging: bool = True,
     enable_tracing: bool = True,
     enable_metrics: bool = True,
-    enable_grpc_server_instrumentation: bool = False,
     enable_grpc_client_instrumentation: bool = False,
     enable_aiohttp_client_instrumentation: bool = False,
     enable_qdrant_client_instrumentation: bool = False,
@@ -84,8 +81,6 @@ def setup_telemetry(
         enable_logging: When True, configures structlog with OTel log bridge.
         enable_tracing: When True, configures TracerProvider with OTLP exporter.
         enable_metrics: When True, configures MeterProvider with OTLP exporter.
-        enable_grpc_server_instrumentation: Auto-instrument all gRPC server calls.
-            Must be called BEFORE grpc.aio.server() is created.
         enable_grpc_client_instrumentation: Auto-instrument gRPC client stubs.
         enable_aiohttp_client_instrumentation: Auto-instrument aiohttp sessions.
         enable_qdrant_client_instrumentation: Auto-instrument Qdrant client.
@@ -112,7 +107,6 @@ def setup_telemetry(
         enable_logging,
         enable_tracing,
         enable_metrics,
-        enable_grpc_server_instrumentation,
         enable_grpc_client_instrumentation,
         enable_aiohttp_client_instrumentation,
         enable_qdrant_client_instrumentation,
@@ -164,8 +158,6 @@ def setup_telemetry(
                 insecure=insecure,
             )
 
-        if enable_grpc_server_instrumentation:
-            instrument_grpc_server()
         if enable_grpc_client_instrumentation:
             instrument_grpc_client()
         if enable_aiohttp_client_instrumentation:

@@ -35,11 +35,6 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         observability,
-        "instrument_grpc_server",
-        lambda: calls.append(("grpc_server", True)),
-    )
-    monkeypatch.setattr(
-        observability,
         "instrument_grpc_client",
         lambda: calls.append(("grpc_client", True)),
     )
@@ -55,7 +50,6 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
         environment="development",
         endpoint="http://otel-collector:4317",
         log_level="DEBUG",
-        enable_grpc_server_instrumentation=True,
         enable_grpc_client_instrumentation=True,
         enable_aiohttp_client_instrumentation=True,
     )
@@ -65,10 +59,14 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
         "logging",
         "tracing",
         "metrics",
-        "grpc_server",
         "grpc_client",
         "aiohttp_client",
     ]
+
+
+def test_no_grpc_server_hook_is_exported() -> None:
+    assert "instrument_grpc_server" not in observability.__all__
+    assert not hasattr(observability, "instrument_grpc_server")
 
 
 def test_setup_telemetry_respects_signal_toggles(monkeypatch) -> None:
@@ -112,9 +110,6 @@ def test_setup_telemetry_idempotent_repeated_calls(monkeypatch) -> None:
         observability, "setup_metrics", lambda **_: calls.append("metrics")
     )
     monkeypatch.setattr(
-        observability, "instrument_grpc_server", lambda: calls.append("grpc_server")
-    )
-    monkeypatch.setattr(
         observability, "instrument_grpc_client", lambda: calls.append("grpc_client")
     )
 
@@ -123,7 +118,6 @@ def test_setup_telemetry_idempotent_repeated_calls(monkeypatch) -> None:
         version="1.2.3",
         environment="development",
         endpoint="http://otel-collector:4317",
-        enable_grpc_server_instrumentation=True,
         enable_grpc_client_instrumentation=True,
     )
     observability.setup_telemetry(
@@ -131,8 +125,7 @@ def test_setup_telemetry_idempotent_repeated_calls(monkeypatch) -> None:
         version="1.2.3",
         environment="development",
         endpoint="http://otel-collector:4317",
-        enable_grpc_server_instrumentation=True,
         enable_grpc_client_instrumentation=True,
     )
 
-    assert calls == ["logging", "tracing", "metrics", "grpc_server", "grpc_client"]
+    assert calls == ["logging", "tracing", "metrics", "grpc_client"]

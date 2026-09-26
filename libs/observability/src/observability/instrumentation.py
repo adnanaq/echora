@@ -3,35 +3,10 @@
 import logging
 
 logger = logging.getLogger(__name__)
-_GRPC_SERVER_INSTRUMENTED = False
 _GRPC_CLIENT_INSTRUMENTED = False
 _AIOHTTP_CLIENT_INSTRUMENTED = False
 _QDRANT_CLIENT_INSTRUMENTED = False
 _REDIS_INSTRUMENTED = False
-
-
-def instrument_grpc_server() -> None:
-    """Enable OpenTelemetry auto-instrumentation for the gRPC server.
-
-    Installs ``GrpcInstrumentorServer`` which creates SERVER-kind spans for
-    every inbound RPC automatically. Idempotent — safe to call more than once.
-
-    Note:
-        Must be called **before** ``grpc.aio.server()`` is created. If called
-        after server construction, existing handlers will not be instrumented.
-    """
-    global _GRPC_SERVER_INSTRUMENTED
-    if _GRPC_SERVER_INSTRUMENTED:
-        return
-
-    try:
-        from opentelemetry.instrumentation.grpc import GrpcInstrumentorServer
-    except ImportError:
-        logger.warning("gRPC server instrumentation is unavailable")
-        return
-
-    GrpcInstrumentorServer().instrument()
-    _GRPC_SERVER_INSTRUMENTED = True
 
 
 def instrument_grpc_client() -> None:
