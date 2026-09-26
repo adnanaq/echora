@@ -299,11 +299,8 @@ def character_from_anisearch(char: AniSearchCharacter) -> dict[str, Any]:
         result["traits"] = char.tags
 
     # ── Roles ─────────────────────────────────────────────────────────────
-    all_roles: set[CharacterRole] = set()
     if char.role:
-        all_roles.add(CharacterRole(char.role))
-    if all_roles:
-        result["roles"] = [r.value for r in all_roles]
+        result["roles"] = [CharacterRole(char.role).value]
 
     # ── Animeography (full list from /anime sub-page; fallback to detail page) ──
     # The sub-page lists titles without roles, so every entry would otherwise be
