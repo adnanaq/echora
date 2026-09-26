@@ -335,6 +335,36 @@ class TestEncodeTextsBatch:
                 assert vec == [0.0] * 1024
 
 
+class TestEmbeddingDurationMetric:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "argument"),
+        [
+            ("encode_text", "Hello world"),
+            ("encode_texts_batch", ["Hello", "world"]),
+            ("encode_text_with_sparse", "Hello world"),
+            ("encode_texts_batch_with_sparse", ["Hello", "world"]),
+        ],
+    )
+    async def test_records_one_inference_duration(
+        self, mock_text_model, mock_settings, method, argument
+    ):
+        mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
+        mock_text_model.encode_with_sparse.return_value = (
+            [[0.1] * 1024, [0.2] * 1024],
+            [None, None],
+        )
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
+
+        with patch(
+            "vector_processing.processors.text_processor._embedding_duration"
+        ) as duration:
+            await getattr(processor, method)(argument)
+
+        duration.record.assert_called_once()
+        assert duration.record.call_args.args[1] == {"modality": "text"}
+
+
 class TestGetZeroEmbedding:
     """Tests for get_zero_embedding method."""
 

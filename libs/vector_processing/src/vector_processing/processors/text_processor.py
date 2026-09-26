@@ -252,8 +252,12 @@ class TextProcessor:
 
         try:
             async with self._semaphore:
+                _start = time.perf_counter()
                 dense_list, sparse_list = await asyncio.to_thread(
                     self.model.encode_with_sparse, [text]
+                )
+                _embedding_duration.record(
+                    time.perf_counter() - _start, {"modality": "text"}
                 )
         except Exception:
             logger.exception("Text encoding with sparse failed")
@@ -295,8 +299,12 @@ class TextProcessor:
 
         try:
             async with self._semaphore:
+                _start = time.perf_counter()
                 encoded_dense, encoded_sparse = await asyncio.to_thread(
                     self.model.encode_with_sparse, valid_texts
+                )
+                _embedding_duration.record(
+                    time.perf_counter() - _start, {"modality": "text"}
                 )
         except Exception:
             logger.exception("Batch text encoding with sparse failed")
