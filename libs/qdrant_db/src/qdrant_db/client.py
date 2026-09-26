@@ -159,7 +159,7 @@ class QdrantClient(VectorDBClient):
         url: str | None = None,
         collection_name: str | None = None,
         telemetry: _Telemetry | None = None,
-    ) -> "QdrantClient":
+    ) -> QdrantClient:
         """Create a client and ensure collection state is initialized.
 
         Args:

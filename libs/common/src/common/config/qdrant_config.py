@@ -274,7 +274,7 @@ class QdrantConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_primary_vector_names(self) -> "QdrantConfig":
+    def validate_primary_vector_names(self) -> QdrantConfig:
         """Validate explicit primary vector names against vector_names."""
         if self.primary_text_vector_name not in self.vector_names:
             raise ValueError(  # noqa: TRY003

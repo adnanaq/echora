@@ -31,7 +31,7 @@ class _TabMock(AsyncMock):
     """
 
     def __await__(self):
-        async def _settled() -> "_TabMock":
+        async def _settled() -> _TabMock:
             return self
 
         return _settled().__await__()

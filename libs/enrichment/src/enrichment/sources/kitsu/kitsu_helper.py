@@ -683,7 +683,7 @@ class KitsuHelper(BaseEnrichmentHelper):
     async def close(self) -> None:
         """No-op — sessions are created per-request and managed by the cache manager."""
 
-    async def __aenter__(self) -> "KitsuHelper":
+    async def __aenter__(self) -> KitsuHelper:
         """Return self."""
         return self
 

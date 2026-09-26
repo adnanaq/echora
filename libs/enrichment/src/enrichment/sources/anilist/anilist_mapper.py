@@ -56,7 +56,7 @@ def _best_cover(cover_image) -> str | None:  # type: ignore[no-untyped-def]
     return cover_image.extra_large or cover_image.large or None
 
 
-def _fuzzy_date_str(d: "AniListFuzzyDate | None") -> str | None:
+def _fuzzy_date_str(d: AniListFuzzyDate | None) -> str | None:
     """Format a FuzzyDate as YYYY-MM-DD, YYYY-MM, or YYYY depending on available parts."""
     if not d or d.year is None:
         return None

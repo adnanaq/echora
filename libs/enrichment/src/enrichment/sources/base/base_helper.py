@@ -101,7 +101,7 @@ class BaseEnrichmentHelper(ABC):
         """Close any open sessions or resources."""
         pass
 
-    async def __aenter__(self) -> "BaseEnrichmentHelper":
+    async def __aenter__(self) -> BaseEnrichmentHelper:
         return self
 
     async def __aexit__(

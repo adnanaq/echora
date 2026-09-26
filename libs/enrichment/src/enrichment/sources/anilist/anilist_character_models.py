@@ -108,7 +108,7 @@ class AniListCharacterNode(BaseModel):
     description_spoilers: dict[str, str] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
-    def _parse_description(self) -> "AniListCharacterNode":
+    def _parse_description(self) -> AniListCharacterNode:
         """Split AniList markdown description into prose, attributes, and spoilers."""
         if not self.description:
             return self

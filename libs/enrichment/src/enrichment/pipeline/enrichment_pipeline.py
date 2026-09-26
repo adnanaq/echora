@@ -325,7 +325,7 @@ class EnrichmentPipeline:
 
         return "\n".join(report)
 
-    async def __aenter__(self) -> "EnrichmentPipeline":
+    async def __aenter__(self) -> EnrichmentPipeline:
         """
         Enter the asynchronous context for the pipeline.
 

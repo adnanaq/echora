@@ -15,7 +15,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # Only import for type checking to avoid runtime errors
@@ -1459,7 +1459,7 @@ async def process_characters_with_ai_matching(
     anilist_chars: list[dict[str, Any]],
     anidb_chars: list[dict[str, Any]],
     anime_planet_chars: list[dict[str, Any]] | None = None,
-    matcher: Optional["AICharacterMatcher"] = None,
+    matcher: AICharacterMatcher | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Process and integrate character data from multiple sources using AI-powered matching.

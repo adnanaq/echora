@@ -36,7 +36,7 @@ class SearchRange(BaseModel):
     lte: float | int | None = None
 
     @model_validator(mode="after")
-    def validate_has_bound(self) -> "SearchRange":
+    def validate_has_bound(self) -> SearchRange:
         """Ensure at least one range boundary is set.
 
         Returns:
@@ -68,7 +68,7 @@ class SearchFilterCondition(BaseModel):
     clause: FilterClause = "must"
 
     @model_validator(mode="after")
-    def validate_value(self) -> "SearchFilterCondition":
+    def validate_value(self) -> SearchFilterCondition:
         """Validate operator/value compatibility.
 
         Returns:
@@ -160,7 +160,7 @@ class SparseVectorData(BaseModel):
     values: list[float] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def validate_sparse_shape(self) -> "SparseVectorData":
+    def validate_sparse_shape(self) -> SparseVectorData:
         """Validate sparse vector indices/values alignment and constraints.
 
         This validator ensures that sparse vector data conforms to Qdrant's
@@ -246,7 +246,7 @@ class SearchRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_embeddings(self) -> "SearchRequest":
+    def validate_embeddings(self) -> SearchRequest:
         """Validate embedding requirements and element types.
 
         Returns:
@@ -293,7 +293,7 @@ class BatchVectorUpdateItem(BaseModel):
     vector_data: list[float] | list[list[float]] | SparseVectorData
 
     @model_validator(mode="after")
-    def validate_vector_data(self) -> "BatchVectorUpdateItem":
+    def validate_vector_data(self) -> BatchVectorUpdateItem:
         """Validate vector payload shape.
 
         Returns:
