@@ -2,12 +2,12 @@
 name = "echora"
 version = "0.1.0"
 description = "Microservice for anime vector database operations with semantic search capabilities"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     # Core FastAPI dependencies
     "fastapi==0.115.13",
     "uvicorn==0.34.3",
-    "pydantic==2.11.7",
+    "pydantic==2.13.5",
     "pydantic-settings==2.10.0",
     "python-dotenv>=1.1.0",
     # Vector database
@@ -25,7 +25,7 @@ dependencies = [
     # Image processing
     "pillow>=11.2.1",
     # HTTP client for external requests
-    "aiohttp==3.12.13",
+    "aiohttp==3.14.3",
     # Fine-tuning capabilities
     "peft==0.16.0",
     "huggingface-hub>=0.20.0", # For downloading from HuggingFace
@@ -125,7 +125,7 @@ dev = [
 [tool.ty.environment]
 # Must stay in sync with requires-python, [tool.ruff] target-version,
 # pants.toml interpreter_constraints, and .python-version.
-python-version = "3.13"
+python-version = "3.14"
 
 # Additional search paths for module resolution
 # Includes both first-party monorepo libs and custom third-party stubs
@@ -158,7 +158,7 @@ respect-type-ignore-comments = false
 [tool.ruff]
 # Same as Black
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 # Applies the excludes below to explicitly-passed paths too.
 force-exclude = true
 exclude = [
@@ -186,7 +186,7 @@ ignore = [
     "E501",   # Line too long (handled by formatter)
     "N805",   # First argument should be `self` (false positive for Pydantic validators using `cls`)
     "N817",   # CamelCase imported as acronym (e.g., ElementTree as ET)
-    "UP047",  # Generic function type parameters (not needed for Python 3.13)
+    "UP047",  # Generic function type parameters (not needed for Python 3.14)
 ]
 
 # Per-file ignores
