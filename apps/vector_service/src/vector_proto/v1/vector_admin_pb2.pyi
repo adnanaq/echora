@@ -28,7 +28,7 @@ class HealthResponse(_message.Message):
     version: str
     database: _struct_pb2.Struct
     error: _error_pb2.ErrorDetails
-    def __init__(self, healthy: bool = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., service: _Optional[str] = ..., version: _Optional[str] = ..., database: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+    def __init__(self, healthy: _Optional[bool] = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., service: _Optional[str] = ..., version: _Optional[str] = ..., database: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
 
 class GetStatsRequest(_message.Message):
     __slots__ = ()

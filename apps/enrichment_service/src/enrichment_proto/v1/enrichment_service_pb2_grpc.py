@@ -5,7 +5,7 @@ import warnings
 
 from enrichment_proto.v1 import enrichment_service_pb2 as v1_dot_enrichment__service__pb2
 
-GRPC_GENERATED_VERSION = '1.78.0'
+GRPC_GENERATED_VERSION = '1.84.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -25,7 +25,7 @@ if _version_not_supported:
     )
 
 
-class EnrichmentServiceStub(object):
+class EnrichmentServiceStub:
     """RPCs for enrichment pipeline health and execution.
     """
 
@@ -47,7 +47,7 @@ class EnrichmentServiceStub(object):
                 _registered_method=True)
 
 
-class EnrichmentServiceServicer(object):
+class EnrichmentServiceServicer:
     """RPCs for enrichment pipeline health and execution.
     """
 
@@ -86,7 +86,7 @@ def add_EnrichmentServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class EnrichmentService(object):
+class EnrichmentService:
     """RPCs for enrichment pipeline health and execution.
     """
 

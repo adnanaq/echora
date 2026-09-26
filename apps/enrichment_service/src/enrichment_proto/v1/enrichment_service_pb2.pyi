@@ -21,7 +21,7 @@ class HealthResponse(_message.Message):
     service: str
     details_json: str
     error: _error_pb2.ErrorDetails
-    def __init__(self, healthy: bool = ..., service: _Optional[str] = ..., details_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+    def __init__(self, healthy: _Optional[bool] = ..., service: _Optional[str] = ..., details_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
 
 class RunPipelineRequest(_message.Message):
     __slots__ = ("file_path", "index", "title", "agent_dir", "skip_services", "only_services", "skip_characters", "skip_episodes")
@@ -41,7 +41,7 @@ class RunPipelineRequest(_message.Message):
     only_services: _containers.RepeatedScalarFieldContainer[str]
     skip_characters: bool
     skip_episodes: bool
-    def __init__(self, file_path: _Optional[str] = ..., index: _Optional[int] = ..., title: _Optional[str] = ..., agent_dir: _Optional[str] = ..., skip_services: _Optional[_Iterable[str]] = ..., only_services: _Optional[_Iterable[str]] = ..., skip_characters: bool = ..., skip_episodes: bool = ...) -> None: ...
+    def __init__(self, file_path: _Optional[str] = ..., index: _Optional[int] = ..., title: _Optional[str] = ..., agent_dir: _Optional[str] = ..., skip_services: _Optional[_Iterable[str]] = ..., only_services: _Optional[_Iterable[str]] = ..., skip_characters: _Optional[bool] = ..., skip_episodes: _Optional[bool] = ...) -> None: ...
 
 class RunPipelineResponse(_message.Message):
     __slots__ = ("success", "output_path", "result_json", "error")
@@ -53,4 +53,4 @@ class RunPipelineResponse(_message.Message):
     output_path: str
     result_json: str
     error: _error_pb2.ErrorDetails
-    def __init__(self, success: bool = ..., output_path: _Optional[str] = ..., result_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...
+    def __init__(self, success: _Optional[bool] = ..., output_path: _Optional[str] = ..., result_json: _Optional[str] = ..., error: _Optional[_Union[_error_pb2.ErrorDetails, _Mapping]] = ...) -> None: ...

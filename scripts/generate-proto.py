@@ -14,11 +14,26 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 REPO_ROOT = Path.cwd()
 PROTO_ROOT = REPO_ROOT / "protos"
 
-TARGETS = [
+
+class ProtoTarget(TypedDict):
+    """One stub-generation target: which protos, where they go, how imports are fixed."""
+
+    name: str
+    protos: list[Path]
+    proto_include: Path
+    out_root: Path
+    rewrites: tuple[tuple[str, str], ...]
+    proto_extra_includes: NotRequired[list[Path]]
+    relocate_shared_proto_v1_to_v1: NotRequired[bool]
+    optional: NotRequired[bool]
+
+
+TARGETS: list[ProtoTarget] = [
     {
         "name": "shared_proto",
         "protos": [
