@@ -137,6 +137,7 @@ def test_normalize_dense_vector_passthrough(vector_name: str, vec: list) -> None
         ("text_vector", [True, 0.2, 0.3, 0.4], "finite numbers"),
         ("text_vector", [float("nan"), 0.2, 0.3, 0.4], "finite numbers"),
         ("text_vector", [float("-inf"), 0.2, 0.3, 0.4], "finite numbers"),
+        ("text_vector", [10**400, 0.2, 0.3, 0.4], "finite numbers"),
         ("image_vector", [[0.1, 0.2, 0.3], "row"], "must be a list of floats"),
         ("image_vector", [[0.1, 0.2, 0.3], [0.1, None, 0.3]], "finite numbers"),
     ],
