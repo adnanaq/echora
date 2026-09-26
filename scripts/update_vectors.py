@@ -52,6 +52,7 @@ from common.models.anime import AnimeRecord
 from pydantic import ValidationError
 from qdrant_client import AsyncQdrantClient
 from qdrant_db.client import QdrantClient
+from qdrant_db.errors import QdrantOperationError
 from vector_processing.embedding_models.factory import EmbeddingModelFactory
 from vector_processing.processors.anime_field_mapper import AnimeFieldMapper
 from vector_processing.processors.embedding_manager import MultiVectorEmbeddingManager
@@ -258,27 +259,19 @@ async def update_vectors(
 
         # Update Qdrant with this batch (Using Upsert/add_documents instead of partial update)
         if gen_results:
-            # gen_results is list[VectorDocument]
-            result = await client.add_documents(gen_results, batch_size=batch_size)
-
-            # Adapt result format to match expected loop output
-            # add_documents returns {"success": bool, "points_count": int, ...}
-            if result["success"]:
-                all_batch_results.append(
-                    {
-                        "success": successful_batch,
-                        "failed": failed_batch,
-                        "results": [],  # We lose granular per-vector results in add_documents
-                    }
-                )
-                logger.info(
-                    f"Batch {batch_num + 1} complete: Upserted {len(gen_results)} points "
-                    f"({successful_batch} anime, {failed_batch} failed)."
-                )
-            else:
-                error_msg = result.get("error", "Unknown error")
-                logger.error(f"Batch {batch_num + 1} failed to upsert: {error_msg}")
+            try:
+                result = await client.add_documents(gen_results, batch_size=batch_size)
+            except QdrantOperationError:
+                logger.exception(f"Batch {batch_num + 1} failed to upsert")
                 all_batch_results.append({"success": 0, "failed": len(batch_anime)})
+                continue
+            all_batch_results.append(
+                {"success": successful_batch, "failed": failed_batch}
+            )
+            logger.info(
+                f"Batch {batch_num + 1} complete: Upserted {result.successful} points "
+                f"({successful_batch} anime, {failed_batch} failed)."
+            )
         else:
             logger.warning(f"Batch {batch_num + 1} generated no documents.")
             all_batch_results.append({"success": 0, "failed": len(batch_anime)})
@@ -438,7 +431,7 @@ Examples:
             logger.info("Update completed successfully")
             sys.exit(0)  # Complete success
 
-    except (InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError):
+    except InvalidVectorNameError, AnimeNotFoundError, FileNotFoundError:
         logger.exception("Validation error")
         sys.exit(1)
     except KeyboardInterrupt:
