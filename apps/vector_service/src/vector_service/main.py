@@ -41,14 +41,15 @@ def _setup_observability(settings) -> None:
         enable_logging=settings.observability.otel_enable_logging,
         enable_tracing=settings.observability.otel_enable_tracing,
         enable_metrics=settings.observability.otel_enable_metrics,
-        enable_grpc_server_instrumentation=(
-            settings.observability.otel_enable_grpc_server_instrumentation
-        ),
-        enable_grpc_client_instrumentation=(
-            settings.observability.otel_enable_grpc_client_instrumentation
-        ),
+        enable_grpc_client_instrumentation=settings.observability.otel_enable_grpc_client_instrumentation,
         enable_aiohttp_client_instrumentation=(
             settings.observability.otel_enable_aiohttp_client_instrumentation
+        ),
+        enable_qdrant_client_instrumentation=(
+            settings.observability.otel_enable_qdrant_client_instrumentation
+        ),
+        enable_redis_instrumentation=(
+            settings.observability.otel_enable_redis_instrumentation
         ),
     )
 

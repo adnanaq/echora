@@ -7,9 +7,11 @@ All write and search entry points use explicit contract models and domain errors
 
 import logging
 import time
+from contextlib import AbstractContextManager
 from typing import Any, Protocol, cast
 
 from common.config import QdrantConfig
+from opentelemetry import trace
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Filter,
@@ -51,6 +53,9 @@ from qdrant_db.query_builder import (
 from qdrant_db.utils import DuplicateKeyError, deduplicate_items, retry_with_backoff
 
 logger = logging.getLogger(__name__)
+# The Qdrant auto-instrumentation does not wrap the async client's query_points
+# or retrieve, so those calls get their spans here.
+_tracer = trace.get_tracer("echora.qdrant_db")
 
 
 class _Telemetry(Protocol):
@@ -514,12 +519,13 @@ class QdrantClient(VectorDBClient):
             Dictionary with ``id``, ``payload``, and (if requested) ``vector``
             when found, else ``None``.
         """
-        points = await self._async_client.retrieve(
-            collection_name=self.collection_name,
-            ids=[point_id],
-            with_payload=True,
-            with_vectors=with_vectors,
-        )
+        with self._qdrant_span("qdrant.retrieve"):
+            points = await self._async_client.retrieve(
+                collection_name=self.collection_name,
+                ids=[point_id],
+                with_payload=True,
+                with_vectors=with_vectors,
+            )
         if not points:
             return None
         point = points[0]
@@ -558,6 +564,17 @@ class QdrantClient(VectorDBClient):
         except Exception:
             logger.debug(f"Telemetry emission failed for {operation}", exc_info=True)
 
+    def _qdrant_span(self, operation: str) -> AbstractContextManager[trace.Span]:
+        """Start a CLIENT span for one Qdrant call on this collection."""
+        return _tracer.start_as_current_span(
+            operation,
+            kind=trace.SpanKind.CLIENT,
+            attributes={
+                "db.system": "qdrant",
+                "db.collection.name": self.collection_name,
+            },
+        )
+
     async def _search_single_vector(
         self,
         vector_name: str,
@@ -580,16 +597,17 @@ class QdrantClient(VectorDBClient):
         """
         _start = time.perf_counter()
         try:
-            response = await self._async_client.query_points(
-                collection_name=self.collection_name,
-                query=vector_data,
-                using=vector_name,
-                limit=limit,
-                with_payload=True,
-                with_vectors=False,
-                query_filter=filters,
-                score_threshold=score_threshold,
-            )
+            with self._qdrant_span("qdrant.query_points"):
+                response = await self._async_client.query_points(
+                    collection_name=self.collection_name,
+                    query=vector_data,
+                    using=vector_name,
+                    limit=limit,
+                    with_payload=True,
+                    with_vectors=False,
+                    query_filter=filters,
+                    score_threshold=score_threshold,
+                )
             if self._telemetry:
                 _elapsed = time.perf_counter() - _start
                 _tel = self._telemetry
@@ -643,15 +661,16 @@ class QdrantClient(VectorDBClient):
 
         _start = time.perf_counter()
         try:
-            response = await self._async_client.query_points(
-                collection_name=self.collection_name,
-                prefetch=prefetch_queries,
-                query=query,
-                limit=limit,
-                with_payload=True,
-                with_vectors=False,
-                score_threshold=score_threshold,
-            )
+            with self._qdrant_span("qdrant.query_points"):
+                response = await self._async_client.query_points(
+                    collection_name=self.collection_name,
+                    prefetch=prefetch_queries,
+                    query=query,
+                    limit=limit,
+                    with_payload=True,
+                    with_vectors=False,
+                    score_threshold=score_threshold,
+                )
             if self._telemetry:
                 _elapsed = time.perf_counter() - _start
                 _tel = self._telemetry
