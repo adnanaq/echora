@@ -223,7 +223,7 @@ class EnrichmentPipeline:
         failed = []
 
         for anime, result in zip(anime_list, results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Failed to enrich {anime.get('title')}: {result}")
                 failed.append(anime)
             else:

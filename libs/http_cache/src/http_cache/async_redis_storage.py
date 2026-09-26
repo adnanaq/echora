@@ -464,13 +464,11 @@ class AsyncRedisStorage(AsyncBaseStorage):
 
         async for chunk in stream:
             # Save chunk to Redis list
-            await cast("Awaitable[int]", self.client.rpush(stream_key, chunk))
+            await self.client.rpush(stream_key, chunk)
             yield chunk
 
         # Mark stream as complete
-        await cast(
-            "Awaitable[int]", self.client.rpush(stream_key, self._COMPLETE_CHUNK_MARKER)
-        )
+        await self.client.rpush(stream_key, self._COMPLETE_CHUNK_MARKER)
 
         # Apply TTL now that the stream key exists
         if ttl is not None:
@@ -586,10 +584,7 @@ class AsyncRedisStorage(AsyncBaseStorage):
             index_key = self._index_key(cache_key)
 
             # Remove from index
-            await cast(
-                "Awaitable[int]",
-                self.client.srem(index_key, str(entry_id).encode("utf-8")),
-            )
+            await self.client.srem(index_key, str(entry_id).encode("utf-8"))
 
         # Delete entry and stream
         pipe = self.client.pipeline()

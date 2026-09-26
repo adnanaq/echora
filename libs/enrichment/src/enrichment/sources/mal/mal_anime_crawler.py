@@ -529,7 +529,7 @@ def _parse_all_related_entries(raw: dict[str, Any]) -> list[MalRelatedEntry]:
     related_entries = []
     for item in unified_items:
         relation = (item.get("relation") or "").strip().rstrip(":")
-        source_url = _normalize_mal_url(item.get("source", ""))
+        source_url = _normalize_mal_url(item.get("source") or "")
         title = (item.get("title") or "").strip()
 
         if not title or not source_url:

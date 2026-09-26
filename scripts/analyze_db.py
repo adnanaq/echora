@@ -225,7 +225,7 @@ def analyze_added_years(added_entries: list[dict[str, Any]], output_file: Any) -
                 eras["2025"] += count
             else:
                 eras["Future (2026+)"] += count
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             eras["Unknown"] += count
 
     print("\nSummary by Era:")
@@ -269,7 +269,7 @@ def main() -> None:
     added_keys = keys_new - keys_old
     common_keys = keys_old.intersection(keys_new)
 
-    changed_entries = {}
+    changed_entries: dict[str, dict[str, Any]] = {}
     field_change_counts = {}
     identical_count = 0
 

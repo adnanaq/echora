@@ -311,12 +311,9 @@ class VisionProcessor:
             to_cache: dict[str, list[float]] = {}
             for j, pos in enumerate(uncached_positions):
                 cached_results[pos] = encoded_new[j]
-                if (
-                    self._cache is not None
-                    and pos < len(file_hashes)
-                    and file_hashes[pos] is not None
-                ):
-                    to_cache[file_hashes[pos]] = encoded_new[j]  # type: ignore[index]
+                file_hash = file_hashes[pos] if pos < len(file_hashes) else None
+                if self._cache is not None and file_hash is not None:
+                    to_cache[file_hash] = encoded_new[j]
 
             if self._cache is not None and to_cache:
                 await self._cache.set_batch(self.model.model_name, to_cache)

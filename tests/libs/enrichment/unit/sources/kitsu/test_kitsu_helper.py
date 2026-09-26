@@ -1,5 +1,6 @@
 """Unit tests for kitsu_helper.py."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -665,7 +666,12 @@ async def test_fetch_characters_skips_chars_without_character_object():
 
 
 @pytest.mark.asyncio
-async def test_fetch_characters_handles_voices_exception():
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("fail"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_fetch_characters_handles_voices_exception(failure):
     """get_character_voices raising → voices treated as [] and char still mapped."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -676,7 +682,7 @@ async def test_fetch_characters_handles_voices_exception():
         with patch.object(
             helper,
             "get_character_voices",
-            new=AsyncMock(side_effect=RuntimeError("voices fail")),
+            new=AsyncMock(side_effect=failure),
         ):
             with patch.object(
                 helper, "get_character_animeography", new=AsyncMock(return_value=[])
@@ -691,7 +697,12 @@ async def test_fetch_characters_handles_voices_exception():
 
 
 @pytest.mark.asyncio
-async def test_fetch_characters_handles_animeography_exception():
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("fail"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_fetch_characters_handles_animeography_exception(failure):
     """get_character_animeography raising → animeography treated as [] and char still mapped."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -705,7 +716,7 @@ async def test_fetch_characters_handles_animeography_exception():
             with patch.object(
                 helper,
                 "get_character_animeography",
-                new=AsyncMock(side_effect=RuntimeError("anim fail")),
+                new=AsyncMock(side_effect=failure),
             ):
                 with patch(
                     "enrichment.sources.kitsu.kitsu_helper.character_from_kitsu",
@@ -963,7 +974,12 @@ async def test_fetch_all_slug_resolved_to_numeric_id():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_episodes_exception_yields_empty_list():
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("fail"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_fetch_all_episodes_exception_yields_empty_list(failure):
     """fetch_episodes raising inside gather → canonical_episodes = []."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -980,7 +996,7 @@ async def test_fetch_all_episodes_exception_yields_empty_list():
             with patch.object(
                 helper,
                 "fetch_episodes",
-                new=AsyncMock(side_effect=RuntimeError("ep fail")),
+                new=AsyncMock(side_effect=failure),
             ):
                 with patch.object(
                     helper, "fetch_characters", new=AsyncMock(return_value=[])
@@ -994,7 +1010,12 @@ async def test_fetch_all_episodes_exception_yields_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_characters_exception_yields_empty():
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("fail"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_fetch_all_characters_exception_yields_empty(failure):
     """fetch_characters raising inside gather → canonical_characters = []."""
     from enrichment.sources.kitsu.kitsu_helper import KitsuHelper
 
@@ -1012,7 +1033,7 @@ async def test_fetch_all_characters_exception_yields_empty():
                 with patch.object(
                     helper,
                     "fetch_characters",
-                    new=AsyncMock(side_effect=RuntimeError("char fail")),
+                    new=AsyncMock(side_effect=failure),
                 ):
                     result = await helper.fetch_all(
                         {"kitsu_url": "https://kitsu.app/anime/1"}, {}

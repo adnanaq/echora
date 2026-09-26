@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, cast
+from typing import Any
 
 logging.basicConfig(
     level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
@@ -179,20 +179,18 @@ Available services: mal, anilist, kitsu, anidb, anime_planet, anisearch, animesc
     if anime_entry is None:
         sys.exit(1)
 
-    # Cast needed because ty doesn't narrow dict | None after None check (beta limitation)
-    anime_data = cast(dict[str, Any], anime_entry)
-    anime_title = anime_data.get("title", "Unknown")
+    anime_title = anime_entry.get("title", "Unknown")
     print(f"\n{'=' * 60}")
     print(f"Processing: {anime_title}")
-    print(f"Type: {anime_data.get('type', 'Unknown')}")
-    print(f"Episodes: {anime_data.get('episodes', 'Unknown')}")
-    print(f"Status: {anime_data.get('status', 'Unknown')}")
+    print(f"Type: {anime_entry.get('type', 'Unknown')}")
+    print(f"Episodes: {anime_entry.get('episodes', 'Unknown')}")
+    print(f"Status: {anime_entry.get('status', 'Unknown')}")
     print(f"{'=' * 60}\n")
 
     async with EnrichmentPipeline() as pipeline:
         # Run enrichment with optional service filtering and agent directory
         result = await pipeline.enrich_anime(
-            anime_data,
+            anime_entry,
             agent_dir=args.agent,
             skip_services=args.skip,
             only_services=args.only,

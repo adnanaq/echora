@@ -41,9 +41,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import grpc
-from google.protobuf import struct_pb2
-from vector_proto.v1 import vector_admin_pb2, vector_admin_pb2_grpc
-from vector_proto.v1 import vector_search_pb2, vector_search_pb2_grpc
+from vector_proto.v1 import (
+    vector_admin_pb2,
+    vector_admin_pb2_grpc,
+    vector_search_pb2,
+    vector_search_pb2_grpc,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -157,8 +160,8 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--qdrant-container",
-        default="echora-qdrant",
-        help="Qdrant Docker container name for chaos (default: echora-qdrant)",
+        default="echora-dev-qdrant",
+        help="Qdrant Docker container name for chaos (default: echora-dev-qdrant)",
     )
     return p.parse_args()
 
@@ -250,9 +253,14 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
             limit=1,
         )
 
-        filt = struct_pb2.Struct()
-        filt.update({"type": "TV"})
-        await _ok("text + filters payload", query_text="comedy", filters=filt, limit=10)
+        tv_only = vector_search_pb2.FilterCondition(
+            field="type",
+            operator=vector_search_pb2.FILTER_OPERATOR_EQ,
+            value={"string_value": "TV"},
+        )
+        await _ok(
+            "text + filters payload", query_text="comedy", filters=[tv_only], limit=10
+        )
 
         # ── Image paths ────────────────────────────────────────────────────
         print("\n  [Search — image paths]")
@@ -278,13 +286,16 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
             query_text="   ",
         )
 
-        bad = struct_pb2.Struct()
-        bad.update({"genre": {"nested": {"deeply": "invalid"}}})
+        unindexed_field = vector_search_pb2.FilterCondition(
+            field="not_an_indexed_field",
+            operator=vector_search_pb2.FILTER_OPERATOR_EQ,
+            value={"string_value": "invalid"},
+        )
         await _err(
             "bad filters (→INVALID_FILTERS)",
             "INVALID_FILTERS",
             query_text="test",
-            filters=bad,
+            filters=[unindexed_field],
         )
 
         # Repeat error calls so rpc_errors_total has multiple observations
@@ -297,10 +308,13 @@ async def _generate_traffic(host: str, burst: int) -> TrafficReport:
         queries = (_BURST_QUERIES * ((burst // len(_BURST_QUERIES)) + 1))[:burst]
         for query_text, entity_type, limit in queries:
             try:
-                kw = {"query_text": query_text, "limit": limit}
-                if entity_type:
-                    kw["entity_type"] = entity_type
-                await svc.Search(SR(**kw))
+                await svc.Search(
+                    SR(
+                        query_text=query_text,
+                        limit=limit,
+                        entity_type=entity_type or None,
+                    )
+                )
                 burst_ok += 1
             except Exception:
                 pass
@@ -452,7 +466,7 @@ def _prom_query(base_url: str, query: str) -> tuple[str, str | None]:
     raw = results[0].get("value", [None, "—"])[1]
     try:
         return f"{float(raw):.4g}", None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return str(raw), None
 
 

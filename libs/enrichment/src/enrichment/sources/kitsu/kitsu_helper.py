@@ -143,12 +143,12 @@ class KitsuHelper(BaseEnrichmentHelper):
                     return_exceptions=True,
                 )
 
-            if isinstance(canonical_episodes, Exception):
+            if isinstance(canonical_episodes, BaseException):
                 logger.error(
                     f"Kitsu episodes fetch failed for ID {numeric_id}: {canonical_episodes}"
                 )
                 canonical_episodes = []
-            if isinstance(canonical_characters, Exception):
+            if isinstance(canonical_characters, BaseException):
                 logger.error(
                     f"Kitsu characters fetch failed for ID {numeric_id}: {canonical_characters}"
                 )
@@ -224,8 +224,10 @@ class KitsuHelper(BaseEnrichmentHelper):
             operation=_execute,
             max_retries=3,
             retry_delay=1.0,
-            is_transient_error=lambda e: isinstance(e, aiohttp.ClientError)
-            and not isinstance(e, aiohttp.ClientResponseError),
+            is_transient_error=lambda e: (
+                isinstance(e, aiohttp.ClientError)
+                and not isinstance(e, aiohttp.ClientResponseError)
+            ),
         )
 
     async def _fetch_all_pages(
@@ -545,20 +547,20 @@ class KitsuHelper(BaseEnrichmentHelper):
                 return_exceptions=True,
             )
 
-        if not anime_raw or isinstance(anime_raw, Exception):
+        if not anime_raw or isinstance(anime_raw, BaseException):
             return None
 
         genres: list[str] = []
-        if not isinstance(genre_raw, Exception):
+        if not isinstance(genre_raw, BaseException):
             genres = [
                 name
-                for g in genre_raw  # type: ignore[union-attr]
+                for g in genre_raw
                 if (name := KitsuGenre.model_validate(g).attributes.name) is not None
             ]
 
         themes: list[ThemeEntry] = []
-        if not isinstance(category_raw, Exception):
-            for c in category_raw:  # type: ignore[union-attr]
+        if not isinstance(category_raw, BaseException):
+            for c in category_raw:
                 cat = KitsuCategory.model_validate(c)
                 if cat.attributes.title:
                     themes.append(
@@ -639,17 +641,21 @@ class KitsuHelper(BaseEnrichmentHelper):
         """
         logger.info(f"Fetching Kitsu characters for: {anime_id}")
         media_chars = await self.get_anime_characters(anime_id, session=session)
-        resolved = [char for char in media_chars if char.character is not None]
+        resolved = [
+            (char, char.character) for char in media_chars if char.character is not None
+        ]
         total = len(resolved)
 
         sem = asyncio.Semaphore(_CHARACTER_CONCURRENCY)
         repo = FileRepository(output_path) if output_path else NullRepository()
 
-        async def _fetch_one(char: KitsuMediaCharacter) -> dict[str, Any] | None:
-            char_id = char.character.id  # ty: ignore[possibly-missing-attribute]  # resolved guarantees non-None
+        async def _fetch_one(
+            char: KitsuMediaCharacter, character: KitsuCharacter
+        ) -> dict[str, Any] | None:
+            char_id = character.id
             char_name = (
-                char.character.attributes.canonicalName  # ty: ignore[possibly-missing-attribute]
-                or char.character.attributes.name  # ty: ignore[possibly-missing-attribute]
+                character.attributes.canonicalName
+                or character.attributes.name
                 or char_id
             )
             async with sem:
@@ -658,16 +664,16 @@ class KitsuHelper(BaseEnrichmentHelper):
                     self.get_character_animeography(char_id, session=session),
                     return_exceptions=True,
                 )
-            if isinstance(voices, Exception):
+            if isinstance(voices, BaseException):
                 logger.warning(f"Voices fetch failed for mediaChar {char.id}: {voices}")
                 voices = []
-            if isinstance(animeography, Exception):
+            if isinstance(animeography, BaseException):
                 logger.warning(
                     f"Animeography fetch failed for char {char_id}: {animeography}"
                 )
                 animeography = []
-            char.voices = voices  # type: ignore[assignment]
-            char.animeography = animeography  # type: ignore[assignment]
+            char.voices = voices
+            char.animeography = animeography
             try:
                 result = character_from_kitsu(char)
             except Exception:
@@ -677,7 +683,9 @@ class KitsuHelper(BaseEnrichmentHelper):
             repo.save(result)
             return result
 
-        char_results = await asyncio.gather(*[_fetch_one(char) for char in resolved])
+        char_results = await asyncio.gather(
+            *[_fetch_one(char, character) for char, character in resolved]
+        )
         return [r for r in char_results if r is not None]
 
     async def close(self) -> None:
