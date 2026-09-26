@@ -324,7 +324,7 @@ async def main() -> int:  # pragma: no cover
 
     try:
         data = await fetch_anisearch_episodes(args.url, output_path=args.output)
-    except (ValueError, OSError):
+    except ValueError, OSError:
         logger.exception("Failed to fetch AniSearch episode data")
         return 1
     except Exception:

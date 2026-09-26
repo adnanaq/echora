@@ -233,10 +233,10 @@ class AniListHelper(BaseEnrichmentHelper):
             operation=lambda: self._execute_request(query, variables),
             max_retries=3,
             retry_delay=1.0,
-            is_transient_error=lambda e: isinstance(
-                e, (aiohttp.ClientError, json.JSONDecodeError, TimeoutError)
-            )
-            and not isinstance(e, aiohttp.ClientResponseError),
+            is_transient_error=lambda e: (
+                isinstance(e, (aiohttp.ClientError, json.JSONDecodeError, TimeoutError))
+                and not isinstance(e, aiohttp.ClientResponseError)
+            ),
         )
 
     def _get_media_query_fields(self) -> str:

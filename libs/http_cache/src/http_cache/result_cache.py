@@ -119,10 +119,10 @@ def _compute_schema_hash(
             for dep in dependencies:
                 try:
                     source += inspect.getsource(dep)
-                except (OSError, TypeError):
+                except OSError, TypeError:
                     source += getattr(dep, "__name__", repr(dep))
         return hashlib.sha256(source.encode()).hexdigest()[:16]
-    except (OSError, TypeError):
+    except OSError, TypeError:
         # If we can't get source (built-in, lambda, etc.), use function name
         return hashlib.sha256(
             getattr(func, "__name__", repr(func)).encode()

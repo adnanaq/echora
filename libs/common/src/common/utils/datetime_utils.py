@@ -73,7 +73,7 @@ def determine_anime_status(
     # Parse start_date
     try:
         start_dt = _parse_date(start_date)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return AnimeStatus.UNKNOWN
 
     # Check if upcoming (start date in future)
@@ -88,7 +88,7 @@ def determine_anime_status(
     # Parse end_date
     try:
         end_dt = _parse_date(end_date)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         # If end_date exists but can't be parsed, treat as ongoing
         return AnimeStatus.ONGOING
 
@@ -135,7 +135,7 @@ def normalize_to_utc(
 
         # Convert to UTC
         return dt.astimezone(UTC)
-    except (ValueError, TypeError, OSError):
+    except ValueError, TypeError, OSError:
         return None
 
 
@@ -259,7 +259,7 @@ def determine_anime_season(date_str: str | None) -> AnimeSeason | None:
         # Validation: Ensure month is valid (1-12)
         if not (1 <= month <= 12):
             return None
-    except (ValueError, TypeError, IndexError):
+    except ValueError, TypeError, IndexError:
         return None
 
     # Use mathematical mapping: (month % 12) // 3
@@ -298,5 +298,5 @@ def determine_anime_year(date_str: str | None) -> int | None:
         if year <= 0:
             return None
         return year
-    except (ValueError, TypeError, IndexError):
+    except ValueError, TypeError, IndexError:
         return None

@@ -125,7 +125,7 @@ def _strip_html(text: str | None) -> str | None:
     text = html.unescape(text).strip()
     try:
         text = text.encode("cp1252").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
+    except UnicodeEncodeError, UnicodeDecodeError:
         pass
     return text or None
 

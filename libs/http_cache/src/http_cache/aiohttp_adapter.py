@@ -424,7 +424,7 @@ class CachedAiohttpSession:
             self._session_default_headers: dict[str, str] = dict(  # type: ignore[arg-type]
                 getattr(self.session, "headers", {})  # aiohttp: CIMultiDictProxy
             )
-        except (TypeError, AttributeError):
+        except TypeError, AttributeError:
             self._session_default_headers = {}
 
         async def request_sender(request: Request) -> Response:
