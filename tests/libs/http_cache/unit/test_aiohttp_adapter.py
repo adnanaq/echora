@@ -217,6 +217,8 @@ class TestCachedAiohttpSessionRequestBuilding:
         ("directive", "expected_status", "origin_called"),
         [
             ("only-if-cached", 504, False),
+            ("max-age=0, Only-If-Cached", 504, False),
+            ("x-only-if-cached", 200, True),
             ("no-cache", 200, True),
             (None, 200, True),
         ],
@@ -280,10 +282,22 @@ class TestCachedAiohttpSessionRequestBuilding:
             assert resp.status == 200
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("directive", "expected_status", "origin_called"),
+        [
+            (None, 200, True),
+            ("only-if-cached", 504, False),
+            ("x-only-if-cached", 200, True),
+        ],
+    )
     async def test_unsupported_body_bypasses_cache(
-        self, mock_storage: AsyncMock
+        self,
+        mock_storage: AsyncMock,
+        directive: str | None,
+        expected_status: int,
+        origin_called: bool,
     ) -> None:
-        """data=FormData (unsupported type) must bypass the cache entirely."""
+        """data=FormData (unsupported type) bypasses the cache, never only-if-cached."""
         mock_session = AsyncMock()
         mock_session.headers = {}
         cached = CachedAiohttpSession(storage=mock_storage, session=mock_session)
@@ -295,15 +309,23 @@ class TestCachedAiohttpSessionRequestBuilding:
 
         # Pass an object that is not str/bytes/bytearray (e.g. a mock FormData)
         form_data = MagicMock()
-        async with cached.post("https://example.com/api", data=form_data) as resp:
-            assert resp.status == 200
+        headers = {"Cache-Control": directive} if directive else {}
+        async with cached.post(
+            "https://example.com/api", data=form_data, headers=headers
+        ) as resp:
+            assert resp.status == expected_status
+        assert mock_session.request.called is origin_called
         # Cache must not have been written
         mock_storage.create_entry.assert_not_called()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("caller_directive", "sent_directive"),
-        [(None, "no-cache"), ("only-if-cached", "only-if-cached")],
+        [
+            (None, "no-cache"),
+            ("only-if-cached", "only-if-cached"),
+            ("x-only-if-cached", "no-cache"),
+        ],
     )
     async def test_always_revalidate_injects_no_cache(
         self,
