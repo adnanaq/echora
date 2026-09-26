@@ -310,11 +310,13 @@ class TestNormalizeToUtc:
 
         assert normalize_to_utc("") is None
 
-    def test_returns_none_for_invalid_format(self):
-        """Returns None when date format is invalid."""
+    @pytest.mark.parametrize(
+        "date_str", ["not-a-date", "2024-04-01T00:00:00+25:00", "2024-02-30"]
+    )
+    def test_returns_none_for_invalid_format(self, date_str):
         from common.utils.datetime_utils import normalize_to_utc
 
-        assert normalize_to_utc("not-a-date") is None
+        assert normalize_to_utc(date_str) is None
 
     def test_handles_unix_timestamp_int(self):
         """Handles integer Unix timestamps from AniList."""

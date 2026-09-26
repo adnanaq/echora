@@ -1,6 +1,6 @@
 """Datetime utility functions for anime data processing."""
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 
 from common.models.anime import AnimeSeason, AnimeStatus
 
@@ -194,10 +194,11 @@ def _parse_date(date_str: str) -> datetime:
     # commonly mislabel JST midnight as UTC midnight. A real non-JST midnight
     # sent by a source will be shifted by up to ±9 h, but that trade-off is
     # accepted; in practice these sources never send true non-JST midnight dates.
+    # The whole string is parsed first, so a malformed time or offset is
+    # rejected rather than cut off with everything after the date.
+    dt = datetime.fromisoformat(normalized)
     if len(normalized) == 10 or "T00:00:00" in normalized:
-        dt = datetime.fromisoformat(normalized[:10]).replace(tzinfo=JAPAN_TIME)
-    else:
-        dt = datetime.fromisoformat(normalized)
+        dt = datetime.combine(dt.date(), time(), JAPAN_TIME)
 
     # 4. Final normalization to UTC
     if dt.tzinfo is None:
