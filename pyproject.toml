@@ -4,71 +4,65 @@ version = "0.1.0"
 description = "Microservice for anime vector database operations with semantic search capabilities"
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    # Core FastAPI dependencies
-    "fastapi==0.115.13",
-    "uvicorn==0.34.3",
+    # Core
     "pydantic==2.13.5",
-    "pydantic-settings==2.10.0",
-    "python-dotenv>=1.1.0",
+    "pydantic-settings==2.15.0",
     # Vector database
-    "qdrant-client==1.16.2",
-    # "qdrant-client[fastembed]==1.16.2",  # Uncomment to enable FastEmbed dense provider
+    "qdrant-client==1.19.1",
+    # "qdrant-client[fastembed]==1.19.1",  # Uncomment to enable FastEmbed dense provider
     # Embedding models
-    "sentence-transformers==5.0.0",
-    # >=4.56 required: FlagEmbedding 1.4.x calls AutoModel.from_pretrained(dtype=...),
-    # which transformers only accepts from 4.56 (torch_dtype -> dtype rename).
-    # On 4.55 the flagembedding provider raises TypeError at model init.
-    # Upper bound comes from sentence-transformers 5.0.0 (<5.0.0).
-    "transformers==4.57.6",
-    "torch>=2.0.0",
-    "open-clip-torch>=2.29.0", # OpenCLIP for vision embeddings
+    "sentence-transformers==6.1.0",
+    # FlagEmbedding 1.4.x calls AutoModel.from_pretrained(dtype=...), which
+    # transformers accepts from 4.56. sentence-transformers 6 needs 5.x, and
+    # transformers 5 keeps huggingface-hub below 2.0.
+    "transformers==5.17.0",
+    "torch>=2.14.0",
+    "open-clip-torch>=3.3.0", # OpenCLIP for vision embeddings
     # Image processing
-    "pillow>=11.2.1",
+    "pillow>=12.3.0",
     # HTTP client for external requests
     "aiohttp==3.14.3",
-    # Fine-tuning capabilities
-    "peft==0.16.0",
-    "huggingface-hub>=0.20.0", # For downloading from HuggingFace
+    # Imported directly by the aiohttp cache adapter; aiohttp installs them too
+    "multidict>=6.9.1",
+    "yarl>=1.25.1",
     # HTTP dependencies
-    "requests>=2.32.4",
-    "hishel>=1.0.0,<2.0.0",
-    "redis>=7.1.0,<8.0.0",
-    "rapidfuzz>=3.14.1",
-    "jellyfish>=1.2.0",
-    "jaconv>=0.4.0",
+    "requests>=2.34.2",
+    "hishel>=1.4.0,<2.0.0",
+    "redis>=8.1.0,<9.0.0",
+    "rapidfuzz>=3.14.6",
+    "jellyfish>=1.2.1",
+    "jaconv>=0.5.0",
     "pykakasi>=2.3.0",
-    "scikit-learn>=1.7.2",
+    "scikit-learn>=1.9.1",
+    "numpy>=2.5.3",
     "langdetect>=1.0.9",
     "lxml>=5.0.0",
     # "dghs-imgutils>=0.19.0",
     "defusedxml>=0.7.1",
-    "grpcio==1.78.0",
-    "grpcio-health-checking==1.78.0",
-    "protobuf==6.33.5",
-    "flagembedding>=1.4.0",
+    "grpcio==1.84.0",
+    "grpcio-health-checking==1.84.0",
+    "protobuf==7.36.2",
+    "flagembedding>=1.4.2",
     # Observability
-    "opentelemetry-api==1.39.1",
-    "opentelemetry-sdk==1.39.1",
-    "opentelemetry-exporter-otlp==1.39.1",
-    "opentelemetry-instrumentation-fastapi==0.60b1",
-    "opentelemetry-instrumentation-redis==0.60b1",
-    "opentelemetry-instrumentation-grpc==0.60b1",
-    "opentelemetry-instrumentation-aiohttp-client==0.60b1",
-    "opentelemetry-instrumentation-qdrant==0.53.0",
-    "structlog>=25.5.0",
-    "zendriver>=0.15.3",
+    "opentelemetry-api==1.45.0",
+    "opentelemetry-sdk==1.45.0",
+    "opentelemetry-exporter-otlp==1.45.0",
+    "opentelemetry-instrumentation-redis==0.66b0",
+    "opentelemetry-instrumentation-grpc==0.66b0",
+    "opentelemetry-instrumentation-aiohttp-client==0.66b0",
+    "opentelemetry-instrumentation-qdrant==0.62.3",
+    "structlog>=26.1.0",
+    "zendriver>=0.16.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     # Testing dependencies
-    # Note: pytest 8.4.1 is bundled with Pants, but we declare it explicitly
-    # for version control and to allow BUILD files to reference it
-    "pytest>=8.2.0",
-    "pytest-asyncio==1.0.0",  # Required plugin for async test support
-    "httpx>=0.28.1",           # HTTP client for testing
-    "pytest-mock==3.14.1",     # Required plugin for mocking
-    "grpcio-tools==1.78.0",    # Proto stub generation (referenced by scripts/BUILD)
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",      # Pants collects test coverage through it
+    "pytest-asyncio==1.4.0",  # Required plugin for async test support
+    "pytest-mock==3.15.1",     # Required plugin for mocking
+    "grpcio-tools==1.84.0",    # Proto stub generation (referenced by scripts/BUILD)
 ]
 
 [tool.pytest.ini_options]
@@ -112,14 +106,10 @@ exclude_lines = [
 dev = [
     "grpc-stubs>=1.53.0.6",
     "lxml-stubs>=0.5.1",
-    "ruff==0.14.10",
+    "ruff==0.16.9",
     "scikit-learn-stubs>=0.0.3",
-    "scipy-stubs>=1.16.2.0",
-    "ty>=0.0.13",
-    "types-pillow>=10.2.0.20240822",
-    "types-python-dateutil>=2.9.0.20250822",
-    "types-requests>=2.32.4.20250913",
-    "types-setuptools>=80.9.0.20250822",
+    "ty>=0.0.84",
+    "types-requests>=2.33.0.20260906",
 ]
 
 [tool.ty.environment]
@@ -199,6 +189,8 @@ ignore = [
 "**/routes/adapter.py" = ["N802"]  # gRPC servicer methods must match proto PascalCase RPC names
 
 [tool.ruff.format]
+# Leave code snippets in Markdown docs as written.
+exclude = ["*.md"]
 # Use double quotes (Black default)
 quote-style = "double"
 
