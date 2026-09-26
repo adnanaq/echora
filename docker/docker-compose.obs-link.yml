@@ -23,7 +23,7 @@
 #
 # Without step 3 the dev stack runs exactly as before, just without telemetry.
 
-name: echora
+name: echora-dev
 
 services:
   vector-service:
