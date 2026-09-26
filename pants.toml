@@ -1,5 +1,5 @@
 [GLOBAL]
-pants_version = "2.29.1"
+pants_version = "2.33.1"
 backend_packages = [
   "pants.backend.python",
   "pants.backend.docker",
@@ -18,6 +18,11 @@ root_patterns = [
 
 [python]
 interpreter_constraints = ["CPython==3.14.*"]
+# Tests run from the lockfile at 3rdparty/python/default.lock, generated from
+# pyproject.toml with `pants generate-lockfiles`. Regenerate it when dependencies change.
+enable_resolves = true
+# Lock exactly what installs on this platform; everything runs on Linux x86_64.
+resolves_to_lock_style = { "python-default" = "strict" }
 
 [python-infer]
 # Enable dependency inference for Python imports
@@ -26,6 +31,9 @@ imports = true
 string_imports = true
 
 [pytest]
+# Same lockfile as the code, so the pytest that runs the tests is the one they import.
+install_from_resolve = "python-default"
+requirements = ["//:reqs0#pytest", "//:reqs0#pytest-cov"]
 args = ["-v", "--tb=short"]
 config_discovery = true
 
