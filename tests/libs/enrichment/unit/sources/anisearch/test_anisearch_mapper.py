@@ -103,3 +103,20 @@ def test_statistics_score_rescaled_from_five_stars() -> None:
 def test_statistics_omitted_without_values() -> None:
     result = anime_from_anisearch(AniSearchAnime(statistics=AniSearchStatistics()))
     assert "statistics" not in result or not result["statistics"]
+
+
+def test_studio_becomes_a_company() -> None:
+    result = anime_from_anisearch(
+        AniSearchAnime(
+            studio="Toei Animation Co., Ltd.",
+            studio_url="https://www.anisearch.com/company/412,toei-animation-co-ltd",
+        )
+    )
+    assert result["companies"] == [
+        {
+            "name": "Toei Animation Co., Ltd.",
+            "roles": ["STUDIO"],
+            "sources": ["https://www.anisearch.com/company/412,toei-animation-co-ltd"],
+        }
+    ]
+    assert "studios" not in result

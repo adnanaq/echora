@@ -407,7 +407,7 @@ message Episode {
 
 message Anime {
   optional string background = 1;
-  optional string country_of_origin = 43;
+  optional string country_of_origin = 40;
   optional int32 duration = 2;
   int32 episode_count = 3;
   string id = 4;
@@ -447,12 +447,9 @@ message Anime {
   ScoreCalculations score = 35;
   StaffData staff_data = 36;
   map<string, Statistics> statistics = 37;
-  repeated CompanyEntry licensors = 38;
-  repeated CompanyEntry producers = 39;
-  repeated CompanyEntry studios = 40;
-  optional AnimeHiatus hiatus = 41;
-  map<string, string> titles = 42;
-  repeated CompanyEntry companies = 44;
+  optional AnimeHiatus hiatus = 38;
+  map<string, string> titles = 39;
+  repeated CompanyEntry companies = 41;
 }
 
 message AnimeRecord {

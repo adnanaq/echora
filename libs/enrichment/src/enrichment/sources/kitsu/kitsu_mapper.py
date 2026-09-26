@@ -243,9 +243,6 @@ def anime_from_kitsu(anime: KitsuAnime) -> dict[str, Any]:
             producers=by_role["producer"],
             licensors=by_role["licensor"],
         ),
-        studios=by_role["studio"],
-        producers=by_role["producer"],
-        licensors=by_role["licensor"],
     )
     return result.model_dump(mode="json", exclude_none=True)
 

@@ -32,8 +32,8 @@ def _anime(**kwargs) -> AniDBAnime:
     return AniDBAnime(id=69, **kwargs)
 
 
-def _company_names(result, field: str) -> list[str]:
-    return [c["name"] for c in result.get(field) or []]
+def _company_roles(result) -> dict[str, list[str]]:
+    return {c["name"]: c["roles"] for c in result.get("companies") or []}
 
 
 def test_anime_from_anidb_companies_by_creator_type() -> None:
@@ -51,14 +51,16 @@ def test_anime_from_anidb_companies_by_creator_type() -> None:
         ),
         anidb_url=_ANIDB_URL,
     )
-    assert _company_names(result, "studios") == ["Toei Animation"]
-    assert _company_names(result, "producers") == ["Fuji TV", "Toei Animation"]
+    assert _company_roles(result) == {
+        "Toei Animation": ["STUDIO", "PRODUCER"],
+        "Fuji TV": ["PRODUCER"],
+    }
+    assert not {"studios", "producers", "licensors"} & result.keys()
 
 
 def test_anime_from_anidb_no_creators_yields_no_companies() -> None:
     result = anime_from_anidb(_anime(), anidb_url=_ANIDB_URL)
-    assert _company_names(result, "studios") == []
-    assert _company_names(result, "producers") == []
+    assert _company_roles(result) == {}
 
 
 def _links(result) -> dict[str, str]:

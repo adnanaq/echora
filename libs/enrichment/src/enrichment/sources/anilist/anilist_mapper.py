@@ -280,8 +280,6 @@ def anime_from_anilist(anime: AniListAnime) -> dict[str, Any]:
             studios=studios,
             producers=producers,
         ),
-        studios=studios,
-        producers=producers,
         streaming_sources=streaming_sources,
         external_sources=external_sources,
         trailers=trailers,

@@ -77,18 +77,20 @@ def test_companies_split_by_role() -> None:
             ]
         )
     )
-    assert [c["name"] for c in result["studios"]] == ["Toei Animation", "Madhouse"]
-    assert [c["name"] for c in result["producers"]] == ["Fuji TV", "Madhouse"]
-    assert [c["name"] for c in result["licensors"]] == ["Funimation"]
+    assert {c["name"]: c["roles"] for c in result["companies"]} == {
+        "Toei Animation": ["STUDIO"],
+        "Madhouse": ["STUDIO", "PRODUCER"],
+        "Fuji TV": ["PRODUCER"],
+        "Funimation": ["LICENSOR"],
+    }
+    assert not {"studios", "producers", "licensors"} & result.keys()
 
 
 def test_companies_with_unknown_role_are_dropped() -> None:
     result = anime_from_kitsu(
         _make_anime(companies=[KitsuProduction(name="Mystery Co", role="publisher")])
     )
-    assert result.get("studios", []) == []
-    assert result.get("producers", []) == []
-    assert result.get("licensors", []) == []
+    assert result.get("companies", []) == []
 
 
 def _make_media_char(

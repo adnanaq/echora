@@ -271,8 +271,6 @@ def anime_from_anidb(anime: AniDBAnime, *, anidb_url: str) -> dict[str, Any]:
             studios=studios,
             producers=producers,
         ),
-        studios=studios,
-        producers=producers,
     )
 
     return result.model_dump(mode="json", exclude_none=True)

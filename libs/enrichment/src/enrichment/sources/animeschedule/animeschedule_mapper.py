@@ -224,7 +224,6 @@ def anime_from_animeschedule(anime: AnimScheduleAnime) -> dict[str, Any]:
         companies=companies_from_roles(
             studios=studios,
         ),
-        studios=studios,
         sources=sources,
         images=images,
         statistics=statistics,

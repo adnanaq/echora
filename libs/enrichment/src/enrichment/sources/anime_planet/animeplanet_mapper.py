@@ -186,7 +186,6 @@ def anime_from_animeplanet(anime: AnimePlanetAnime) -> dict[str, Any]:
         companies=companies_from_roles(
             studios=studios,
         ),
-        studios=studios,
         tags=tags,
         images=images,
         aired_dates=aired_dates,

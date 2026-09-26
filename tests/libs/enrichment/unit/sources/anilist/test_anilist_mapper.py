@@ -340,8 +340,11 @@ def test_anime_studios_split_from_producers() -> None:
         }
     )
     result = anime_from_anilist(anime)
-    assert any(s["name"] == "Toei Animation" for s in result["studios"])
-    assert any(p["name"] == "Funimation" for p in result["producers"])
+    assert {c["name"]: c["roles"] for c in result["companies"]} == {
+        "Toei Animation": ["STUDIO"],
+        "Funimation": ["PRODUCER"],
+    }
+    assert not {"studios", "producers", "licensors"} & result.keys()
 
 
 def test_anime_studio_source_url() -> None:
@@ -359,7 +362,7 @@ def test_anime_studio_source_url() -> None:
         }
     )
     result = anime_from_anilist(anime)
-    assert result["studios"][0]["sources"] == ["https://anilist.co/studio/18"]
+    assert result["companies"][0]["sources"] == ["https://anilist.co/studio/18"]
 
 
 # =============================================================================

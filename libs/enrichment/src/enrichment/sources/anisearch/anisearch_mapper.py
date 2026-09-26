@@ -255,7 +255,6 @@ def anime_from_anisearch(anime: AniSearchAnime) -> dict[str, Any]:
         companies=companies_from_roles(
             studios=studios,
         ),
-        studios=studios,
         sources=[anime.url] if anime.url else [],
         images=images,
         aired_dates=aired_dates,

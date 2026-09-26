@@ -889,11 +889,9 @@ class Anime(BaseModel):
         default_factory=list, description="External links (official site, social media)"
     )
     genres: list[str] = Field(default_factory=list, description="Anime genres")
-    licensors: list[CompanyEntry] = Field(default_factory=list, description="Licensors")
     opening_themes: list[ThemeSong] = Field(
         default_factory=list, description="Opening theme songs"
     )
-    producers: list[CompanyEntry] = Field(default_factory=list, description="Producers")
     related_anime: dict[AnimeRelationType, list[RelatedAnime]] = Field(
         default_factory=dict,
         description="Related anime grouped by relationship type (SEQUEL, PREQUEL, etc.)",
@@ -907,9 +905,6 @@ class Anime(BaseModel):
     sources: list[str] = Field(..., description="Source URLs from various providers")
     streaming_sources: list[StreamingEntry] = Field(
         default_factory=list, description="Streaming platform information"
-    )
-    studios: list[CompanyEntry] = Field(
-        default_factory=list, description="Animation studios"
     )
     synonyms: list[str] = Field(default_factory=list, description="Alternative titles")
     tags: list[str] = Field(

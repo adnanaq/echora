@@ -30,3 +30,17 @@ def test_calendar_fields_reach_the_canonical_record() -> None:
 
 def test_month_absent_when_the_api_omits_it() -> None:
     assert "month" not in anime_from_animeschedule(_anime(month=None))
+
+
+def test_studios_become_companies() -> None:
+    mapped = anime_from_animeschedule(
+        _anime(studios=[{"name": "Toei Animation", "route": "toei-animation"}])
+    )
+    assert mapped["companies"] == [
+        {
+            "name": "Toei Animation",
+            "roles": ["STUDIO"],
+            "sources": ["https://animeschedule.net/studios/toei-animation"],
+        }
+    ]
+    assert "studios" not in mapped
