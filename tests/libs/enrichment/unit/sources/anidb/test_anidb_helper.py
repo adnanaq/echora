@@ -160,11 +160,22 @@ async def test_ban_serves_whatever_the_cache_holds(helper, cached) -> None:
 @pytest.mark.asyncio
 async def test_requests_resume_once_the_ban_expires(helper) -> None:
     helper._record_ban()
-    with patch(
-        "enrichment.sources.anidb.anidb_helper.time.time",
-        return_value=time.time() + helper.ban_cooldown + 1,
+    with (
+        patch(
+            "enrichment.sources.anidb.anidb_helper.time.time",
+            return_value=time.time() + helper.ban_cooldown + 1,
+        ),
+        patch.object(helper, "_ensure_session_health", new_callable=AsyncMock),
+        patch.object(
+            helper,
+            "_make_single_request",
+            new_callable=AsyncMock,
+            return_value="<anime/>",
+        ) as request,
     ):
-        helper._raise_if_banned()  # no longer banned, so this must not raise
+        assert await helper._make_request_with_retry({"aid": 69}) == "<anime/>"
+
+    assert request.await_args.kwargs.get("cache_only", False) is False
 
 
 @pytest.mark.asyncio

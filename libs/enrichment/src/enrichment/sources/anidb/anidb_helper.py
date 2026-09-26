@@ -376,19 +376,6 @@ class AniDBHelper(BaseEnrichmentHelper):
         """
         return max(0.0, _state.ban_lifts_at - time.time())
 
-    def _raise_if_banned(self) -> None:
-        """Stop before the network when AniDB has banned this client.
-
-        Raises:
-            ServiceBlockedError: While a ban is still in force.
-        """
-        remaining = self._ban_remaining()
-        if remaining:
-            raise ServiceBlockedError(  # noqa: TRY003
-                f"banned — standing down for another {remaining:.0f}s",
-                service="anidb",
-            )
-
     def _record_ban(self) -> None:
         """Latch a ban so no helper contacts AniDB until the cooldown expires."""
         _state.ban_lifts_at = time.time() + self.ban_cooldown
