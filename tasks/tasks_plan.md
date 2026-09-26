@@ -101,7 +101,6 @@ Phase 2.5 (✅ COMPLETE) → Phase 3 (Validation) → Phase 4 (Sparse Vectors) �
 
 - [ ] **Step 5 Assembly Implementation** (IN PROGRESS)
   - [x] Assembly module for merging agentic AI stage outputs (implemented in `libs/enrichment/src/enrichment/programmatic/assembly.py`)
-  - [x] Schema validation integration (EnrichmentValidator from `scripts/validate_enrichment_database.py`)
   - [x] Object-to-schema mapping based on prompt definitions (field mapping + schema ordering)
   - [ ] Testing with mock stage outputs
   - [ ] Complete enrichment pipeline validation
