@@ -412,7 +412,7 @@ POST /api/v1/search                    # Semantic text search
   "popularity": 1,
   "members": 3000000,
   "favorites": 150000,
-  "studios": ["Sunrise"],
+  "companies": [{"name": "Sunrise", "roles": ["STUDIO"]}],
   "source": "Manga",
   "duration": 24,
   "episodes": 25,
