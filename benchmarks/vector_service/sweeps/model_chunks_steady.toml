@@ -1,0 +1,30 @@
+# Steady 600 searches/s near the limit, one pass per batch against chunks of
+# 32. Run with --timed to see where searches wait (ECHO-54 finding 30).
+name = "model_chunks_steady"
+
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_PREFER_GRPC = "true"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "load"
+
+[load.k6]
+RATE = "600"
+HOLD = "60s"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "one pass per batch (256)"
+[variant.service_env]
+EMBED_MODEL_CHUNK_SIZE = "256"
+
+[[variant]]
+name = "chunks of 32"
+[variant.service_env]
+EMBED_MODEL_CHUNK_SIZE = "32"

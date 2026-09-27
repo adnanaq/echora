@@ -1,0 +1,34 @@
+# CPU only: PyTorch's own thread count against one matched to the container's
+# CPU limit. PyTorch reads the host's cores, not the container's limit, so in
+# a 2-CPU container on a 24-thread host it starts 12 threads. Run with the
+# docker kind and the limit under test, e.g.
+#   --set service_start.kind=docker --set service_start.qdrant_url=http://qdrant:6333
+#   --set service_start.docker_cpus=2 --set service_start.docker_memory=8g
+# and set OMP_NUM_THREADS in the second variant to the same number of CPUs.
+name = "cpu_threads"
+
+[service_env]
+ENABLE_GPU = "false"
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "breakpoint"
+
+[load.k6]
+MAX_RATE = "60"
+BREAKPOINT_DURATION = "5m"
+WITH_PAYLOAD = "false"
+
+[[variant]]
+name = "PyTorch default threads"
+[variant.service_env]
+
+[[variant]]
+name = "threads matched to CPU limit"
+[variant.service_env]
+OMP_NUM_THREADS = "2"
