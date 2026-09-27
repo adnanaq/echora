@@ -5,7 +5,7 @@ import warnings
 
 from vector_proto.v1 import vector_admin_pb2 as v1_dot_vector__admin__pb2
 
-GRPC_GENERATED_VERSION = '1.78.0'
+GRPC_GENERATED_VERSION = '1.84.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -25,7 +25,7 @@ if _version_not_supported:
     )
 
 
-class VectorAdminServiceStub(object):
+class VectorAdminServiceStub:
     """Administrative RPCs for health and runtime diagnostics.
     """
 
@@ -47,7 +47,7 @@ class VectorAdminServiceStub(object):
                 _registered_method=True)
 
 
-class VectorAdminServiceServicer(object):
+class VectorAdminServiceServicer:
     """Administrative RPCs for health and runtime diagnostics.
     """
 
@@ -86,7 +86,7 @@ def add_VectorAdminServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class VectorAdminService(object):
+class VectorAdminService:
     """Administrative RPCs for health and runtime diagnostics.
     """
 

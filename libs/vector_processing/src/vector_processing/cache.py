@@ -64,7 +64,7 @@ class EmbeddingCache:
         try:
             key = self._key(model_name, input_hash)
             _start = time.perf_counter()
-            await self._redis.set(key, json.dumps(embedding), ex=self._ttl)  # ty: ignore[possibly-missing-attribute]
+            await self._redis.set(key, json.dumps(embedding), ex=self._ttl)
             _cache_op_duration.record(
                 time.perf_counter() - _start, {"operation": "set"}
             )
@@ -80,7 +80,7 @@ class EmbeddingCache:
         try:
             keys = [self._key(model_name, h) for h in input_hashes]
             _start = time.perf_counter()
-            raw_values = await self._redis.mget(keys)  # ty: ignore[possibly-missing-attribute]
+            raw_values = await self._redis.mget(keys)
             _cache_op_duration.record(
                 time.perf_counter() - _start, {"operation": "get_batch"}
             )
@@ -97,7 +97,7 @@ class EmbeddingCache:
             pipe = self._redis.pipeline(transaction=False)
             for input_hash, embedding in entries.items():
                 key = self._key(model_name, input_hash)
-                pipe.set(key, json.dumps(embedding), ex=self._ttl)  # ty: ignore[possibly-missing-attribute]
+                pipe.set(key, json.dumps(embedding), ex=self._ttl)
             _start = time.perf_counter()
             await pipe.execute()
             _cache_op_duration.record(

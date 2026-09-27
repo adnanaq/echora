@@ -31,7 +31,7 @@ class _TabMock(AsyncMock):
     """
 
     def __await__(self):
-        async def _settled() -> "_TabMock":
+        async def _settled() -> _TabMock:
             return self
 
         return _settled().__await__()
@@ -546,6 +546,22 @@ async def test_fetch_character_returns_none(mocker) -> None:
     )
 
     assert await fetch_anidb_character(474) is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_character_stops_browser_before_returning(
+    fetch_mocks, mocker
+) -> None:
+    mocker.patch(
+        "enrichment.sources.anidb.anidb_character_crawler._fetch_page_html",
+        new_callable=AsyncMock,
+        return_value=(_CHAR_HTML, False, AsyncMock()),
+    )
+
+    page = await fetch_anidb_character(474)
+
+    assert page is not None
+    fetch_mocks.browser.stop.assert_awaited_once()
 
 
 # =============================================================================

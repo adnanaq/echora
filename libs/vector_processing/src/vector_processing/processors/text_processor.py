@@ -105,6 +105,7 @@ class TextProcessor:
             attributes={
                 "embedding.model": self.model.model_name,
                 "embedding.input_length": len(text),
+                "embedding.sparse": False,
             },
         ):
             try:
@@ -192,6 +193,7 @@ class TextProcessor:
                     "embedding.model": self.model.model_name,
                     "embedding.batch_size": len(uncached_texts),
                     "embedding.cache_hits": len(valid_texts) - len(uncached_positions),
+                    "embedding.sparse": False,
                 },
             ):
                 try:
@@ -251,10 +253,22 @@ class TextProcessor:
             return self.get_zero_embedding(), None
 
         try:
-            async with self._semaphore:
-                dense_list, sparse_list = await asyncio.to_thread(
-                    self.model.encode_with_sparse, [text]
-                )
+            with _tracer.start_as_current_span(
+                "vector_processing.text.encode",
+                attributes={
+                    "embedding.model": self.model.model_name,
+                    "embedding.input_length": len(text),
+                    "embedding.sparse": True,
+                },
+            ):
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    dense_list, sparse_list = await asyncio.to_thread(
+                        self.model.encode_with_sparse, [text]
+                    )
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "text"}
+                    )
         except Exception:
             logger.exception("Text encoding with sparse failed")
             return None, None
@@ -294,10 +308,22 @@ class TextProcessor:
             )
 
         try:
-            async with self._semaphore:
-                encoded_dense, encoded_sparse = await asyncio.to_thread(
-                    self.model.encode_with_sparse, valid_texts
-                )
+            with _tracer.start_as_current_span(
+                "vector_processing.text.encode_batch",
+                attributes={
+                    "embedding.model": self.model.model_name,
+                    "embedding.batch_size": len(valid_texts),
+                    "embedding.sparse": True,
+                },
+            ):
+                async with self._semaphore:
+                    _start = time.perf_counter()
+                    encoded_dense, encoded_sparse = await asyncio.to_thread(
+                        self.model.encode_with_sparse, valid_texts
+                    )
+                    _embedding_duration.record(
+                        time.perf_counter() - _start, {"modality": "text"}
+                    )
         except Exception:
             logger.exception("Batch text encoding with sparse failed")
             return [None] * len(texts), [None] * len(texts)

@@ -12,7 +12,31 @@
   "version": 3,
   "refresh": "15s",
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(echora_rpc_requests_total, deployment_environment)",
+        "query": {
+          "query": "label_values(echora_rpc_requests_total, deployment_environment)",
+          "refId": "environment"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
   },
   "panels": [
     {
@@ -30,8 +54,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(echora_vector_service_rpc_requests_total[5m]))",
-          "legendFormat": "rps"
+          "expr": "sum(rate(echora_rpc_requests_total{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "Requests/s"
         }
       ]
     },
@@ -50,8 +74,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(echora_vector_service_rpc_errors_total[5m])) / clamp_min(sum(rate(echora_vector_service_rpc_requests_total[5m])),1)",
-          "legendFormat": "error_rate"
+          "expr": "sum(rate(echora_rpc_errors_total{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m])) / clamp_min(sum(rate(echora_rpc_requests_total{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m])), 0.001)",
+          "legendFormat": "Error ratio"
         }
       ]
     },
@@ -70,7 +94,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum(rate(echora_vector_service_rpc_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(echora_rpc_duration_seconds_bucket{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m])) by (le))",
           "legendFormat": "p99"
         }
       ]
@@ -90,7 +114,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (rpc_method) (rate(echora_vector_service_rpc_requests_total[5m]))",
+          "expr": "sum by (rpc_method) (rate(echora_rpc_requests_total{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m]))",
           "legendFormat": "{{rpc_method}}"
         }
       ]
@@ -110,7 +134,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (error_code) (rate(echora_vector_service_rpc_errors_total[5m]))"
+          "expr": "sum by (error_code) (rate(echora_rpc_errors_total{exported_job=\"echora-vector-service\", deployment_environment=~\"$environment\"}[5m]))",
+          "legendFormat": "{{error_code}}"
         }
       ]
     }

@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import tempfile
-from typing import Any
+from typing import Any, NoReturn
 
 import grpc
 from common.grpc.error_details import build_error_details as error
@@ -60,7 +60,7 @@ class InvalidFiltersPayloadError(ValueError):
         super().__init__(message)
 
 
-def _raise_invalid_filters(message: str = "Invalid filter payload.") -> None:
+def _raise_invalid_filters(message: str = "Invalid filter payload.") -> NoReturn:
     """Raise the canonical invalid-filters exception.
 
     Raises:
@@ -148,7 +148,7 @@ def _map_filter_conditions(
         conditions.append(
             SearchFilterCondition(
                 field=proto_cond.field,
-                operator=operator,  # type: ignore[arg-type]
+                operator=operator,
                 value=value,
                 clause=clause,
             )

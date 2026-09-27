@@ -351,7 +351,7 @@ def _extract_attributes(html: str) -> dict[str, str]:
         lang = lang_match.group(1).lower() if lang_match else ""
         li_blocks.append((lang, li_html))
 
-    li_blocks.sort(key=lambda t: (0 if t[0] == "en" else 1))
+    li_blocks.sort(key=lambda t: 0 if t[0] == "en" else 1)
 
     def _attrs_from_li(li_html: str) -> dict[str, str]:
         result: dict[str, str] = {}

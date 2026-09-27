@@ -249,7 +249,7 @@ class _CachedResponse:
                 headers=self.headers,
             )
 
-    async def __aenter__(self) -> "_CachedResponse":
+    async def __aenter__(self) -> _CachedResponse:
         """
         Enter the async context and yield the cached response instance.
 
@@ -290,7 +290,7 @@ class _CachedRequestContextManager:
         self._coro = coro
         self._response: _CachedResponse | None = None
 
-    async def __aenter__(self) -> "_CachedResponse":
+    async def __aenter__(self) -> _CachedResponse:
         """
         Execute the pending request and return the resulting cached or live response.
 
@@ -424,7 +424,7 @@ class CachedAiohttpSession:
             self._session_default_headers: dict[str, str] = dict(  # type: ignore[arg-type]
                 getattr(self.session, "headers", {})  # aiohttp: CIMultiDictProxy
             )
-        except (TypeError, AttributeError):
+        except TypeError, AttributeError:
             self._session_default_headers = {}
 
         async def request_sender(request: Request) -> Response:
@@ -647,7 +647,7 @@ class CachedAiohttpSession:
         finally:
             await self.storage.close()
 
-    async def _request(self, method: str, url: str, **kwargs: Any) -> "_CachedResponse":
+    async def _request(self, method: str, url: str, **kwargs: Any) -> _CachedResponse:
         """
         Perform an HTTP request using the wrapped session and return a cached-friendly response, serving from Redis-backed storage when a matching cache entry exists.
 
@@ -779,7 +779,7 @@ class CachedAiohttpSession:
             from_cache=from_cache,
         )
 
-    async def __aenter__(self) -> "CachedAiohttpSession":
+    async def __aenter__(self) -> CachedAiohttpSession:
         """
         Enter the async context for the cached aiohttp session.
 

@@ -39,6 +39,7 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
     assert captured["environment"] == "staging"
     assert captured["endpoint"] == "http://otel:4317"
     assert captured["enable_aiohttp_client_instrumentation"] is True
+    assert "enable_grpc_server_instrumentation" not in captured
 
 
 class _FakeLoop:

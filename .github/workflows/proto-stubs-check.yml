@@ -46,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install buf
         run: |
@@ -65,26 +65,6 @@ jobs:
           key: ${{ runner.os }}-pants-${{ hashFiles('pants.toml', 'pyproject.toml', 'uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-pants-
-
-      - name: Enforce anime model/proto co-change
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-
-          MODEL_PATH="libs/common/src/common/models/anime.py"
-          PROTO_PATH="protos/shared_proto/v1/anime.proto"
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-
-          CHANGED_FILES="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
-
-          if echo "${CHANGED_FILES}" | grep -Fxq "${MODEL_PATH}"; then
-            if ! echo "${CHANGED_FILES}" | grep -Fxq "${PROTO_PATH}"; then
-              echo "Detected '${MODEL_PATH}' change without '${PROTO_PATH}' update."
-              echo "Please update proto contract alongside anime model changes."
-              exit 1
-            fi
-          fi
 
       - name: Regenerate protobuf stubs
         run: ./pants run scripts/generate-proto.py

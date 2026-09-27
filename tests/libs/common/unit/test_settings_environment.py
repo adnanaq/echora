@@ -10,14 +10,18 @@ from common.config.settings import Environment, Settings, get_environment
 class TestEnvironmentEnum:
     """Test Environment enum values."""
 
-    def test_has_development(self):
-        assert Environment.DEVELOPMENT == "development"
-
-    def test_has_staging(self):
-        assert Environment.STAGING == "staging"
-
-    def test_has_production(self):
-        assert Environment.PRODUCTION == "production"
+    @pytest.mark.parametrize(
+        ("member", "text"),
+        [
+            (Environment.DEVELOPMENT, "development"),
+            (Environment.STAGING, "staging"),
+            (Environment.PRODUCTION, "production"),
+        ],
+    )
+    def test_member_reads_as_its_value(self, member, text):
+        assert member == text
+        assert str(member) == text
+        assert f"{member}" == text
 
 
 class TestGetEnvironment:

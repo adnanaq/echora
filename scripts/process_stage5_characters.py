@@ -229,7 +229,7 @@ def load_working_file(file_path: Path) -> list[dict[str, Any]]:
     try:
         with open(file_path, encoding="utf-8") as f:
             return json.load(f)
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         logger.warning(f"Failed to load working file {file_path}")
         return []
 
@@ -245,7 +245,7 @@ def save_working_file(file_path: Path, data: list[dict[str, Any]]) -> None:
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except (OSError, TypeError):
+    except OSError, TypeError:
         logger.exception(f"Failed to save working file {file_path}")
 
 

@@ -16,7 +16,7 @@ class TestSentenceTransformerModel:
             mock.return_value = mock_instance
 
             # Setup default behavior
-            mock_instance.get_sentence_embedding_dimension.return_value = 384
+            mock_instance.get_embedding_dimension.return_value = 384
             mock_instance.max_seq_length = 512
 
             yield mock_instance
@@ -28,7 +28,7 @@ class TestSentenceTransformerModel:
         assert model.model_name == "test-model"
         assert model.embedding_size == 384
         assert model.max_length == 512
-        mock_sentence_transformer.get_sentence_embedding_dimension.assert_called_once()
+        mock_sentence_transformer.get_embedding_dimension.assert_called_once()
 
     def test_encode_success(self, mock_sentence_transformer):
         """Test successful encoding."""

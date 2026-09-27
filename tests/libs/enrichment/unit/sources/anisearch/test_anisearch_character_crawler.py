@@ -1028,4 +1028,4 @@ def test_character_from_anisearch_role_in_roles(luffy_char_processed) -> None:
         role="Main Character",
     )
     result = character_from_anisearch(char)
-    assert "MAIN" in result.get("roles", [])
+    assert result["roles"] == ["MAIN"]

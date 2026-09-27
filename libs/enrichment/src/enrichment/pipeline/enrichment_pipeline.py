@@ -223,7 +223,7 @@ class EnrichmentPipeline:
         failed = []
 
         for anime, result in zip(anime_list, results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Failed to enrich {anime.get('title')}: {result}")
                 failed.append(anime)
             else:
@@ -325,7 +325,7 @@ class EnrichmentPipeline:
 
         return "\n".join(report)
 
-    async def __aenter__(self) -> "EnrichmentPipeline":
+    async def __aenter__(self) -> EnrichmentPipeline:
         """
         Enter the asynchronous context for the pipeline.
 

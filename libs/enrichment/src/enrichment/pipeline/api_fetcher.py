@@ -281,7 +281,7 @@ class ApiFetcher:
         )
         logger.info(f"  Success Rate: {success_rate:.1f}%")
 
-    async def __aenter__(self) -> "ApiFetcher":
+    async def __aenter__(self) -> ApiFetcher:
         """Enter async context."""
         return self
 

@@ -76,10 +76,6 @@ echora/
 buf lint
   └── enforces STANDARD naming/style rules on protos/
 
-Co-change enforcement
-  └── if anime.py is changed → anime.proto must also be changed in the same PR
-      (fails with an explicit error if proto update is missing)
-
 ./pants run scripts/generate-proto.py
   └── regenerates libs/common/src/shared_proto/ from protos/
 
@@ -156,7 +152,6 @@ libs/common/src/shared_proto/v1/
 | Layer | How drift is caught |
 |-------|-------------------|
 | **anime.py → proto fields** | `check_anime_model_proto_contract.py` — fails CI if any Pydantic field is missing from the proto or vice versa |
-| **anime.py change without proto update** | Co-change rule in CI — fails the PR explicitly |
 | **proto → checked-in stubs** | `git diff --exit-code` after `generate-proto.py` — fails if stubs are stale |
 
 ### Adding a field

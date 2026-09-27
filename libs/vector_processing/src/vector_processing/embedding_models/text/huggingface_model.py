@@ -24,9 +24,10 @@ class HuggingFaceModel(TextEmbeddingModel):
 
             # Load model and tokenizer
             self.model = AutoModel.from_pretrained(model_name, cache_dir=cache_dir)
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_name, cache_dir=cache_dir
-            )
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+            if tokenizer is None:
+                raise ValueError(f"No tokenizer could be loaded for {model_name}")
+            self.tokenizer = tokenizer
 
             # Set device
             self.device = "cuda" if torch.cuda.is_available() else "cpu"

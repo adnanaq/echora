@@ -25,6 +25,7 @@ import logging
 import sys
 import time
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from typing import Any, cast
 
 from enrichment.sources.anidb.anidb_mapper import character_from_anidb
@@ -418,9 +419,14 @@ async def fetch_anidb_characters(
 
 
 async def fetch_anidb_character(char_id: int) -> AniDBCharacterPage | None:
-    """Fetch a single AniDB character page. Convenience wrapper."""
-    async for _, page in fetch_anidb_characters([char_id]):
-        return page
+    """Fetch a single AniDB character page. Convenience wrapper.
+
+    `aclosing` closes the generator on return, so its browser is stopped before
+    this function returns rather than in a background task later.
+    """
+    async with aclosing(fetch_anidb_characters([char_id])) as pages:
+        async for _, page in pages:
+            return page
     return None
 
 

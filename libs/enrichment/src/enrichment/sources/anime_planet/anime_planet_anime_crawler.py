@@ -342,12 +342,12 @@ def _parse_aggregate_rating(
     if ar.get("ratingValue") is not None:
         try:
             rating_value = float(ar["ratingValue"])
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
     if ar.get("ratingCount") is not None:
         try:
             rating_count = int(ar["ratingCount"])
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
     if rating_value is None and rating_count is None:
         return None

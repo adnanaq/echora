@@ -23,6 +23,13 @@ processors:
     detectors: [env, system]
     timeout: 5s
     override: false
+  # Copy only deployment.environment onto every data point, so Prometheus gets a
+  # deployment_environment label and one stack can serve dev and production.
+  # Copying all resource attributes instead would add host and instance labels
+  # and multiply the number of series.
+  transform/environment-label:
+    metric_statements:
+      - set(datapoint.attributes["deployment.environment"], resource.attributes["deployment.environment"]) where resource.attributes["deployment.environment"] != nil
 
 exporters:
   otlp/tempo:
@@ -57,7 +64,7 @@ service:
       exporters: [otlp/tempo]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, resourcedetection, transform/environment-label, batch]
       exporters: [prometheus]
     logs:
       receivers: [otlp]

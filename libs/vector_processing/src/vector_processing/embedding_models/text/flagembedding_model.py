@@ -59,10 +59,28 @@ class FlagEmbeddingModel(TextEmbeddingModel):
             return_sparse=True,
             return_colbert_vecs=False,
         )
+        device = self._model.target_devices[0]
+        self._move_model_to_device(device)
 
         logger.info(
-            f"Initialized FlagEmbeddingModel: {model_name} (fp16={use_fp16}, max_length={max_length})"
+            f"Initialized FlagEmbeddingModel: {model_name} on {device} (fp16={use_fp16}, max_length={max_length})"
         )
+
+    def _move_model_to_device(self, device: str) -> None:
+        """Move the model to its device once, at load.
+
+        FlagEmbedding loads the model on the CPU and moves it at the start of
+        every encode call. Two threads doing that first move together crash
+        the process, so the move happens here instead and later calls find the
+        model already in place.
+        """
+        model = self._model.model
+        if model is None:
+            raise RuntimeError(f"FlagEmbedding loaded no model for {self._model_name}")
+        if device == "cpu":
+            model.float()
+        model.to(device)
+        model.eval()
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         """Encode texts to dense vectors (sparse output discarded).

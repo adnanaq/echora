@@ -5,7 +5,7 @@ import logging
 import os
 import types
 import typing
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from typing import Any
 
@@ -21,7 +21,7 @@ from .service_config import ServiceConfig
 logger = logging.getLogger(__name__)
 
 
-class Environment(str, Enum):
+class Environment(StrEnum):
     """Application environment types."""
 
     DEVELOPMENT = "development"

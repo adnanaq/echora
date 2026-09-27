@@ -60,7 +60,9 @@ class SentenceTransformerReranker(RerankerModel):
         if not pairs:
             return []
 
-        scores = self.model.predict(pairs, show_progress_bar=False)
+        scores = self.model.predict(
+            [(query, document) for query, document in pairs], show_progress_bar=False
+        )
         return scores.tolist()
 
     @property

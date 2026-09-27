@@ -20,7 +20,7 @@ class AnimeStatus(StrEnum):
     UPCOMING = "UPCOMING"
 
     @classmethod
-    def _missing_(cls, value: object) -> "AnimeStatus":
+    def _missing_(cls, value: object) -> AnimeStatus:
         """Normalize source-specific strings into standard Enum members.
 
         Handles values from MAL, AniList, Kitsu, AniDB, AniSearch, etc.
@@ -81,7 +81,7 @@ class AnimeType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def _missing_(cls, value: object) -> "AnimeType":
+    def _missing_(cls, value: object) -> AnimeType:
         """Normalize format strings from multiple sources.
 
         Handles variants from MAL, AniList, AniDB, AnimePlanet, etc.
@@ -141,7 +141,7 @@ class AnimeRating(StrEnum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def _missing_(cls, value: object) -> "AnimeRating":
+    def _missing_(cls, value: object) -> AnimeRating:
         if not isinstance(value, str):
             return cls.UNKNOWN
         _map = {
@@ -176,7 +176,7 @@ class AnimeSeason(StrEnum):
     WINTER = "WINTER"
 
     @classmethod
-    def _missing_(cls, value: object) -> "AnimeSeason | None":
+    def _missing_(cls, value: object) -> AnimeSeason | None:
         if not isinstance(value, str):
             return None  # type: ignore[return-value]
         _map = {
@@ -197,7 +197,7 @@ class CharacterRole(StrEnum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def _missing_(cls, value: object) -> "CharacterRole":
+    def _missing_(cls, value: object) -> CharacterRole:
         """Normalize source-specific strings into standard Enum members.
 
         Handles values from MAL, AniList, AnimePlanet, AniSearch, and AniDB.
@@ -246,7 +246,7 @@ class CompanyRole(StrEnum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def _missing_(cls, value: object) -> "CompanyRole":
+    def _missing_(cls, value: object) -> CompanyRole:
         """Normalize source-specific strings into standard Enum members.
 
         Kitsu is the only provider sending a raw role string, lowercase on its
@@ -297,7 +297,7 @@ class SourceMaterialType(StrEnum):
     )
 
     @classmethod
-    def _missing_(cls, value: object) -> "SourceMaterialType":
+    def _missing_(cls, value: object) -> SourceMaterialType:
         """Normalize source-specific strings from all enrichment sources.
 
         Handles MAL/Jikan, AniList, AnimSchedule, and other variant spellings.
@@ -367,7 +367,7 @@ class SourceMaterialRelationType(StrEnum):
     OTHER = "OTHER"
 
     @classmethod
-    def _missing_(cls, value: object) -> "SourceMaterialRelationType":
+    def _missing_(cls, value: object) -> SourceMaterialRelationType:
         """Normalize source-specific relation strings from all enrichment sources."""
         if not isinstance(value, str):
             return cls.OTHER
@@ -421,7 +421,7 @@ class AnimeRelationType(StrEnum):
     SUMMARY = "SUMMARY"
 
     @classmethod
-    def _missing_(cls, value: object) -> "AnimeRelationType":
+    def _missing_(cls, value: object) -> AnimeRelationType:
         """Normalize source-specific relation strings from all enrichment sources.
 
         Handles MAL, AniList, Kitsu, AnimSchedule (camelCase dict keys), and others.
@@ -563,7 +563,7 @@ class RelatedSourceMaterial(BaseModel):
         default_factory=list,
         description="Source URLs for this work from various platforms",
     )
-    status: "AnimeStatus | None" = Field(None, description="Current publication status")
+    status: AnimeStatus | None = Field(None, description="Current publication status")
     score: float | None = Field(None, description="Average score (0-10)")
     images: list[str] = Field(default_factory=list, description="Cover image URLs")
     chapters: int | None = Field(None, description="Number of chapters (manga)")
@@ -581,7 +581,7 @@ class RelatedAnime(BaseModel):
         default_factory=list,
         description="Source URLs for this anime from various platforms",
     )
-    status: "AnimeStatus | None" = Field(None, description="Current release status")
+    status: AnimeStatus | None = Field(None, description="Current release status")
     year: int | None = Field(None, description="Year the related anime aired")
     score: float | None = Field(None, description="Average score (0-10)")
     images: list[str] = Field(default_factory=list, description="Cover image URLs")
@@ -663,7 +663,7 @@ class EpisodeCharacter(BaseModel):
         default_factory=list,
         description="Source URLs for this character (e.g., MAL character page URL)",
     )
-    voice_actors: list["VoiceActor"] = Field(
+    voice_actors: list[VoiceActor] = Field(
         default_factory=list,
         description="Voice actors for this character in this episode",
     )
@@ -1063,7 +1063,7 @@ class Episode(BaseModel):
     # =====================================================================
     # ARRAY FIELDS (alphabetical)
     # =====================================================================
-    characters: list["EpisodeCharacter"] = Field(
+    characters: list[EpisodeCharacter] = Field(
         default_factory=list,
         description="Characters appearing in this episode (community-contributed via MAL)",
     )
@@ -1072,7 +1072,7 @@ class Episode(BaseModel):
         default_factory=list,
         description="Episode page URLs from different platforms",
     )
-    staff: list["EpisodeStaff"] = Field(
+    staff: list[EpisodeStaff] = Field(
         default_factory=list,
         description="Staff credits for this episode (community-contributed via MAL)",
     )

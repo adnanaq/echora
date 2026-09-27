@@ -1,6 +1,6 @@
 ## Repository Overview
 
-This is a specialized microservice for semantic search over anime content using vector embeddings and Qdrant database. The service provides text, image, and multimodal search capabilities with production-ready features including health checks, monitoring, and CORS support.
+This is a specialized microservice for semantic search over anime content using vector embeddings and Qdrant database. The service provides text, image, and multimodal search over gRPC, with health checks and monitoring.
 
 ## Development Commands
 
@@ -18,6 +18,15 @@ docker compose -f docker/docker-compose.dev.yml up -d qdrant
 
 # Run service locally for development
 ./pants run apps/vector_service:vector_service
+```
+
+### Changing Dependencies
+
+Dependencies live in `pyproject.toml` and are locked twice: `uv.lock` for uv and the Docker images, and `3rdparty/python/default.lock` for Pants, which runs the tests. After any change to `pyproject.toml`, regenerate both so they hold the same versions:
+
+```bash
+uv lock
+./pants generate-lockfiles
 ```
 
 ### Docker Development (Recommended)
@@ -89,9 +98,9 @@ docker compose -f docker/docker-compose.dev.yml up -d redis redisinsight
 **Code Quality Tools**:
 
 - Type checking: ty
-- Formatting: ruff format (replaces black)
-- Import sorting: ruff (replaces isort)
-- Linting: ruff check (replaces autoflake and flake8)
+- Formatting: ruff format
+- Import sorting: ruff
+- Linting: ruff check
 - Always use plain language instead of complex jorgans and metaphorical language
 - Do not make up the terms, instead use terms that are commonly used in the domain
 - Focus on making your code expressive, efficient instead of adding comments unecessairly outside docstrings
@@ -133,8 +142,8 @@ reach them.
 
 ```bash
 # Service health (grpc_health_probe ships in both images)
-docker exec echora-vector-service     grpc_health_probe -addr=localhost:8001
-docker exec echora-enrichment-service grpc_health_probe -addr=localhost:8002
+docker exec echora-dev-vector-service     grpc_health_probe -addr=localhost:8001
+docker exec echora-dev-enrichment-service grpc_health_probe -addr=localhost:8002
 
 # Qdrant health (plain HTTP)
 curl http://localhost:6333/healthz

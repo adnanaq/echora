@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 try:
     from langdetect import LangDetectException, detect
 except ImportError:
-    detect = None  # ty: ignore[invalid-assignment]
-    LangDetectException = Exception  # ty: ignore[invalid-assignment]
+    detect = None
+    LangDetectException = Exception
 
 logger = logging.getLogger(__name__)
 

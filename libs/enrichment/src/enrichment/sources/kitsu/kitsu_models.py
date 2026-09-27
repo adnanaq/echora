@@ -87,7 +87,7 @@ class KitsuAnime(BaseModel):
     genres: list[str] = Field(default_factory=list)
     themes: list[ThemeEntry] = Field(default_factory=list)
     # Populated by the helper after fetching /anime-productions
-    companies: list["KitsuProduction"] = Field(default_factory=list)
+    companies: list[KitsuProduction] = Field(default_factory=list)
 
 
 class KitsuProduction(BaseModel):
@@ -180,8 +180,8 @@ class KitsuMediaCharacter(BaseModel):
     )
     character: KitsuCharacter | None = None  # resolved from included[] at parse time
     # Populated by the helper after fetching /voices and /media-characters endpoints
-    voices: list["KitsuCharacterVoice"] = Field(default_factory=list)
-    animeography: list["KitsuAnimeographyEntry"] = Field(default_factory=list)
+    voices: list[KitsuCharacterVoice] = Field(default_factory=list)
+    animeography: list[KitsuAnimeographyEntry] = Field(default_factory=list)
 
 
 class KitsuPersonAttributes(BaseModel):

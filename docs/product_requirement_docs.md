@@ -286,25 +286,17 @@ Create a robust, scalable, and intelligent vector database service that serves a
 - [ ] Memory usage stays under 4GB per instance
 - [ ] 99.5% uptime SLA compliance
 
-### API Endpoints
+### API
 
-#### Implemented APIs (Current)
+Both services are gRPC only. The contracts are the `.proto` files in `protos/`.
 
-```http
-GET  /health                                # Basic health check
-GET  /                                      # Service information
-GET  /docs                                  # OpenAPI documentation
-GET  /api/v1/admin/health                   # Detailed health check
-GET  /api/v1/admin/stats                    # Database statistics
-GET  /api/v1/admin/collection/info          # Collection information
-POST /api/v1/admin/reindex                  # Rebuild vector index
-DELETE /api/v1/admin/vectors/{anime_id}     # Delete vectors
-```
-
-#### Planned APIs (Requirements)
-
-```http
-POST /api/v1/search                    # Semantic text search
+```text
+vector_service.v1.VectorSearchService/Search       # Text, image or combined search, with typed filters
+vector_service.v1.VectorAdminService/Health        # Service and database health
+vector_service.v1.VectorAdminService/GetStats      # Collection statistics
+enrichment_service.v1.EnrichmentService/Health     # Service health
+enrichment_service.v1.EnrichmentService/RunPipeline # Enrich one anime from the offline database
+grpc.health.v1.Health/Check                        # Standard gRPC health check (both services)
 ```
 
 ---
@@ -326,10 +318,10 @@ POST /api/v1/search                    # Semantic text search
                   │
 ┌─────────────────▼───────────────────────────────────┐
 │           Anime Vector Service                      │
-│                (FastAPI)                            │
+│                  (gRPC)                             │
 │  ┌─────────────┬─────────────┬─────────────────┐   │
-│  │Search APIs  │Similarity   │Admin APIs       │   │
-│  │             │APIs         │                 │   │
+│  │Search RPC   │Admin RPCs   │gRPC Health      │   │
+│  │             │             │                 │   │
 │  └─────────────┴─────────────┴─────────────────┘   │
 └─────────────────┬───────────────────────────────────┘
                   │
@@ -369,12 +361,12 @@ POST /api/v1/search                    # Semantic text search
 
 **Core Technologies:**
 
-- **Runtime**: Python 3.12+
-- **Web Framework**: FastAPI 0.115+
-- **Vector Database**: Qdrant 1.14+
-- **Text Embeddings**: BGE-m3 (BAAI/bge-m3)
+- **Runtime**: Python 3.14
+- **Service Framework**: gRPC (`grpc.aio`) with Protobuf contracts
+- **Vector Database**: Qdrant 1.19
+- **Text Embeddings**: BGE-m3 (BAAI/bge-m3), dense and sparse, via FlagEmbedding
 - **Image Embeddings**: OpenCLIP (ViT-L/14)
-- **ML Framework**: PyTorch 2.0+, Sentence Transformers 5.0+
+- **ML Framework**: PyTorch 2.14, Transformers 5, Sentence Transformers 6
 
 **Infrastructure:**
 
@@ -386,9 +378,9 @@ POST /api/v1/search                    # Semantic text search
 
 **Development:**
 
-- **API Documentation**: OpenAPI/Swagger
-- **Testing**: pytest, pytest-asyncio
-- **Code Quality**: Black, isort, autoflake
+- **API Documentation**: Protobuf contracts in `protos/`
+- **Testing**: pytest, pytest-asyncio, pytest-mock, run through Pants
+- **Code Quality**: Ruff (formatting and linting), ty (type checking)
 - **CI/CD**: GitHub Actions (extensible)
 
 ### Data Models
@@ -512,7 +504,7 @@ class SearchResponse(BaseModel):
 
 - **Data Privacy**: GDPR compliance for EU users
 - **Content Policy**: Respect for content licensing and copyright
-- **API Standards**: OpenAPI 3.0 specification compliance
+- **API Standards**: Protobuf contracts pass `buf lint`
 - **Accessibility**: WCAG 2.1 AA compliance for admin interfaces
 
 ---
@@ -525,7 +517,7 @@ class SearchResponse(BaseModel):
 
 **Deliverables**:
 
-- [x] ✅ Basic FastAPI service with health endpoints
+- [x] ✅ Basic gRPC service with health checks
 - [x] ✅ Qdrant integration with multi-vector support
 - [x] ✅ Text search with BGE-m3 embeddings
 - [x] ✅ Image search with OpenCLIP
@@ -799,7 +791,7 @@ Enterprise Tier (Custom):
 
 ### Documentation Strategy
 
-- **API Documentation**: Comprehensive OpenAPI specification with examples
+- **API Documentation**: Protobuf contracts in `protos/`, with field comments
 - **Integration Guides**: Step-by-step guides for common use cases
 - **SDK Documentation**: Client library documentation for multiple languages
 - **Best Practices**: Performance optimization and implementation guides

@@ -80,7 +80,7 @@ class ServiceConfig(BaseModel):
         return v.upper()
 
     @model_validator(mode="after")
-    def validate_batch_sizes(self) -> "ServiceConfig":
+    def validate_batch_sizes(self) -> ServiceConfig:
         """Ensure default_batch_size does not exceed max_batch_size."""
         if self.default_batch_size > self.max_batch_size:
             raise ValueError(

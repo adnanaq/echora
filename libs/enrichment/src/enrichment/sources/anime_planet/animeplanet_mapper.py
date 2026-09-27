@@ -238,16 +238,14 @@ def character_from_animeplanet(char: AnimePlanetCharacter) -> dict[str, Any]:
     if attributes:
         result["attributes"] = attributes
 
-    # ── Roles (aggregate unique roles across all ography entries) ─────────
-    all_roles: set[CharacterRole] = set()
-    for entry in char.anime_roles:
-        if entry.role:
-            all_roles.add(CharacterRole(entry.role))
-    for entry in char.manga_roles:
-        if entry.role:
-            all_roles.add(CharacterRole(entry.role))
-    if all_roles:
-        result["roles"] = [r.value for r in all_roles]
+    # ── Roles (unique roles across all ography entries, in page order) ────
+    roles_in_page_order = dict.fromkeys(
+        CharacterRole(entry.role).value
+        for entry in [*char.anime_roles, *char.manga_roles]
+        if entry.role
+    )
+    if roles_in_page_order:
+        result["roles"] = list(roles_in_page_order)
 
     # ── Animeography ─────────────────────────────────────────────────────
     if char.anime_roles:

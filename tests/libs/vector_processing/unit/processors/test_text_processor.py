@@ -8,8 +8,19 @@ import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from vector_processing.cache import EmbeddingCache
 from vector_processing.processors.text_processor import TextProcessor
+
+_SPANS = InMemorySpanExporter()
+_TRACER_PROVIDER = TracerProvider()
+_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
+trace.set_tracer_provider(_TRACER_PROVIDER)
 
 # Fixtures mock_text_model and mock_settings are provided by conftest.py
 
@@ -333,6 +344,74 @@ class TestEncodeTextsBatch:
                 assert vec[0] == float(i // 2)
             else:  # Empty string
                 assert vec == [0.0] * 1024
+
+
+class TestEmbeddingDurationMetric:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "argument"),
+        [
+            ("encode_text", "Hello world"),
+            ("encode_texts_batch", ["Hello", "world"]),
+            ("encode_text_with_sparse", "Hello world"),
+            ("encode_texts_batch_with_sparse", ["Hello", "world"]),
+        ],
+    )
+    async def test_records_one_inference_duration(
+        self, mock_text_model, mock_settings, method, argument
+    ):
+        mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
+        mock_text_model.encode_with_sparse.return_value = (
+            [[0.1] * 1024, [0.2] * 1024],
+            [None, None],
+        )
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
+
+        with patch(
+            "vector_processing.processors.text_processor._embedding_duration"
+        ) as duration:
+            await getattr(processor, method)(argument)
+
+        duration.record.assert_called_once()
+        assert duration.record.call_args.args[1] == {"modality": "text"}
+
+
+class TestEncodingSpans:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "argument", "span_name"),
+        [
+            ("encode_text", "Hello world", "vector_processing.text.encode"),
+            ("encode_text_with_sparse", "Hello world", "vector_processing.text.encode"),
+            (
+                "encode_texts_batch",
+                ["Hello", "world"],
+                "vector_processing.text.encode_batch",
+            ),
+            (
+                "encode_texts_batch_with_sparse",
+                ["Hello", "world"],
+                "vector_processing.text.encode_batch",
+            ),
+        ],
+    )
+    async def test_records_one_encoding_span(
+        self, mock_text_model, mock_settings, method, argument, span_name
+    ):
+        mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
+        mock_text_model.encode_with_sparse.return_value = (
+            [[0.1] * 1024, [0.2] * 1024],
+            [None, None],
+        )
+        processor = TextProcessor(model=mock_text_model, config=mock_settings)
+        _SPANS.clear()
+
+        await getattr(processor, method)(argument)
+
+        (span,) = _SPANS.get_finished_spans()
+        assert span.name == span_name
+        assert span.attributes["embedding.model"] == "test-text-model"
+        assert span.attributes["embedding.sparse"] == method.endswith("_with_sparse")
 
 
 class TestGetZeroEmbedding:

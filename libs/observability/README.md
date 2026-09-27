@@ -105,8 +105,13 @@ gRPC call arrives
 │    vector_processing.vision.encode_batch            │
 │  Metrics (via opentelemetry.get_meter):             │
 │    echora_embedding_duration_seconds  {modality}   │
+│    echora_embedding_cache_total                     │
+│    echora_cache_operation_duration_seconds          │
 │    echora_image_download_duration_seconds           │
 │    echora_image_download_failures_total             │
+│    echora_enrichment_api_requests_total             │
+│    echora_enrichment_api_duration_seconds           │
+│  Metrics (via the registry passed to QdrantClient): │
 │    echora_db_query_duration_seconds                 │
 │    echora_db_errors_total                           │
 └─────────────────────────────────────────────────────┘
@@ -137,7 +142,6 @@ setup_telemetry(
     enable_logging=True,                 # structlog + OTel log bridge
     enable_tracing=True,                 # TracerProvider + OTLP trace exporter
     enable_metrics=True,                 # MeterProvider + OTLP metric exporter
-    enable_grpc_server_instrumentation=False,   # auto-instrument ALL server calls
     enable_grpc_client_instrumentation=False,   # auto-instrument gRPC client stubs
     enable_aiohttp_client_instrumentation=False, # auto-instrument aiohttp sessions
     enable_qdrant_client_instrumentation=False,  # auto-instrument Qdrant SDK
@@ -162,8 +166,7 @@ WARN/ERROR/CRITICAL log events are **never** sampled out regardless of `log_samp
 ```python
 from observability import (
     AioServerInterceptor,           # gRPC async server interceptor
-    instrument_grpc_server,         # enable auto-instrumentation
-    instrument_grpc_client,
+    instrument_grpc_client,         # enable auto-instrumentation
     instrument_aiohttp_client,
     instrument_qdrant_client,
     registry,                       # metric instrument singleton
@@ -196,13 +199,25 @@ is called (or when OTel is disabled), all calls are no-ops — safe everywhere.
 | `echora_inflight_rpcs` | UpDownCounter | `rpc_method` | Concurrent RPC calls in progress |
 | `echora_db_query_duration_seconds` | Histogram | _(none)_ | Qdrant query duration |
 | `echora_db_errors_total` | Counter | _(none)_ | Qdrant query errors |
-| `echora_embedding_duration_seconds` | Histogram | `modality` (`text`\|`image`) | ML model inference time (excludes semaphore wait) |
 | `echora_search_results_count` | Histogram | `entity_type` | Results returned per search request |
 | `echora_search_empty_results_total` | Counter | `entity_type` | Searches returning zero results |
 | `echora_pipeline_runs_total` | Counter | `status` (`success`\|`error`) | Enrichment pipeline executions |
 | `echora_pipeline_duration_seconds` | Histogram | `status` | Enrichment pipeline end-to-end duration |
-| `echora_image_download_duration_seconds` | Histogram | _(none)_ | Image CDN fetch + cache duration |
-| `echora_image_download_failures_total` | Counter | _(none)_ | Image downloads failed after all retries |
+
+Library code records these through its own `get_meter()` instruments:
+
+| Instrument | Type | Labels | Recorded in |
+|---|---|---|---|
+| `echora_embedding_duration_seconds` | Histogram | `modality` (`text`\|`image`) | Text and vision processors; model inference time, excluding semaphore wait |
+| `echora_embedding_cache_total` | Counter | `result` (`hit`\|`miss`), `modality` | Text and vision processors |
+| `echora_cache_operation_duration_seconds` | Histogram | `operation` (`get`\|`get_batch`\|`set`\|`set_batch`) | Embedding cache (Redis) |
+| `echora_image_download_duration_seconds` | Histogram | _(none)_ | Vision processor; image fetch + cache |
+| `echora_image_download_failures_total` | Counter | _(none)_ | Vision processor; downloads failed after all retries |
+| `echora_enrichment_api_requests_total` | Counter | `service`, `status` (`success`\|`error`) | Enrichment API fetcher |
+| `echora_enrichment_api_duration_seconds` | Histogram | `service` | Enrichment API fetcher |
+
+Every metric also carries `deployment_environment`, which the collector copies from
+the service's `deployment.environment`.
 
 **Cardinality rules:**
 - Labels must use bounded value sets. Never use free-text user input (URL, title, ID) as a label.
@@ -236,9 +251,6 @@ def _setup_observability(settings) -> None:
         enable_logging=settings.observability.otel_enable_logging,
         enable_tracing=settings.observability.otel_enable_tracing,
         enable_metrics=settings.observability.otel_enable_metrics,
-        enable_grpc_server_instrumentation=(
-            settings.observability.otel_enable_grpc_server_instrumentation
-        ),
     )
 
 
@@ -247,7 +259,10 @@ async def serve() -> None:
     _setup_observability(settings)          # MUST be first
 
     interceptors = []
-    if settings.observability.otel_enabled:
+    if (
+        settings.observability.otel_enabled
+        and settings.observability.otel_enable_grpc_server_instrumentation
+    ):
         interceptors.append(AioServerInterceptor())
 
     server = grpc.aio.server(interceptors=interceptors)
@@ -260,9 +275,9 @@ async def serve() -> None:
         stop_logging()                      # flush log queue on shutdown
 ```
 
-`setup_telemetry` must be called **before** any `grpc.aio.server()` creation if
-`enable_grpc_server_instrumentation=True` (the auto-instrumentor patches the server
-factory).
+Server spans and RPC metrics come from `AioServerInterceptor`, added when
+`OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` is true. There is no separate gRPC server
+auto-instrumentation: it would record every request a second time, as its own trace.
 
 ### Step 2 — Add service-specific metrics to the registry
 
@@ -497,6 +512,12 @@ docker compose -f docker/docker-compose.obs.yml down -v
 - Vector Service overview: `http://localhost:3000/d/echora-vector-service-overview`
 - Enrichment Service overview: `http://localhost:3000/d/echora-enrichment-service-overview`
 - Trace journey: `http://localhost:3000/d/echora-trace-journey/echora-trace-journey`
+
+One observability stack serves every environment. Services tag all telemetry with
+`deployment.environment` (from `ENVIRONMENT`), and each dashboard has an
+**Environment** dropdown that filters every panel by it. Metrics carry it as the
+`deployment_environment` label, which the collector copies onto each data point;
+logs in Loki and traces in Tempo (`resource.deployment.environment`) carry it too.
 
 ### Verification Scripts
 

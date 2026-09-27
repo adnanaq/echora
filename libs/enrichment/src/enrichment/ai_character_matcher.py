@@ -15,7 +15,7 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # Only import for type checking to avoid runtime errors
@@ -45,27 +45,27 @@ try:
 
     VISION_AVAILABLE = True
 except ImportError:
-    VisionProcessor = None  # ty: ignore[invalid-assignment]
-    CCIP = None  # ty: ignore[invalid-assignment]
-    EmbeddingConfig = None  # ty: ignore[invalid-assignment]
-    Settings = None  # ty: ignore[invalid-assignment]
-    AnimeFieldMapper = None  # ty: ignore[invalid-assignment]
-    EmbeddingModelFactory = None  # ty: ignore[invalid-assignment]
-    ImageDownloader = None  # ty: ignore[invalid-assignment]
+    VisionProcessor = None
+    CCIP = None
+    EmbeddingConfig = None
+    Settings = None
+    AnimeFieldMapper = None
+    EmbeddingModelFactory = None
+    ImageDownloader = None
     VISION_AVAILABLE = False
 
 try:
     from sklearn.metrics.pairwise import cosine_similarity
 except ImportError:
-    cosine_similarity = None  # ty: ignore[invalid-assignment]
+    cosine_similarity = None
 
 # Language detection and processing
 try:
     import jaconv  # Japanese character conversion (has type stubs since v0.4.0)
     import pykakasi  # Kanji to romaji conversion
 except ImportError:
-    jaconv = None  # ty: ignore[invalid-assignment]
-    pykakasi = None  # ty: ignore[invalid-assignment]
+    jaconv = None
+    pykakasi = None
 
 logger = logging.getLogger(__name__)
 
@@ -439,6 +439,7 @@ class EnsembleFuzzyMatcher:
                     and EmbeddingModelFactory is not None
                     and ImageDownloader is not None
                     and AnimeFieldMapper is not None
+                    and CCIP is not None
                 ):
                     embedding_config = Settings().embedding
                     vision_model = EmbeddingModelFactory.create_vision_model(
@@ -676,7 +677,12 @@ class EnsembleFuzzyMatcher:
         return text.strip()
 
     def _semantic_similarity(self, text1: str, text2: str) -> float:
-        if not self.embedding_model or not text1 or not text2:
+        if (
+            not self.embedding_model
+            or cosine_similarity is None
+            or not text1
+            or not text2
+        ):
             return 0.0
         try:
             # Pre-normalize both texts for consistent embeddings
@@ -1459,7 +1465,7 @@ async def process_characters_with_ai_matching(
     anilist_chars: list[dict[str, Any]],
     anidb_chars: list[dict[str, Any]],
     anime_planet_chars: list[dict[str, Any]] | None = None,
-    matcher: Optional["AICharacterMatcher"] = None,
+    matcher: AICharacterMatcher | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Process and integrate character data from multiple sources using AI-powered matching.

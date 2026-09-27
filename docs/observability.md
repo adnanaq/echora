@@ -108,7 +108,9 @@ sequenceDiagram
 
 ### 4.2 Metrics Registry
 
-The following metrics are tracked across the platform:
+The following metrics are tracked across the platform. Every metric also carries a
+`deployment_environment` label, which the collector copies from the service's
+`deployment.environment`, so one stack can tell development and production apart.
 
 | Metric Name | Type | Description |
 |-------------|------|-------------|
@@ -119,10 +121,13 @@ The following metrics are tracked across the platform:
 | `echora_db_query_duration_seconds` | Histogram | Qdrant database query duration in seconds. |
 | `echora_db_errors_total` | Counter | Total database errors. |
 | `echora_embedding_duration_seconds` | Histogram | Embedding model inference duration in seconds. |
+| `echora_embedding_cache_total` | Counter | Embedding cache lookups by result (hit/miss) and modality. |
 | `echora_search_results_count` | Histogram | Number of results returned per search request. |
 | `echora_search_empty_results_total` | Counter | Total search requests that returned zero results. |
 | `echora_pipeline_runs_total` | Counter | Total enrichment pipeline executions. |
 | `echora_pipeline_duration_seconds` | Histogram | Enrichment pipeline execution duration. |
+| `echora_enrichment_api_requests_total` | Counter | External anime API fetches by provider and status. |
+| `echora_enrichment_api_duration_seconds` | Histogram | External anime API fetch duration by provider. |
 | `echora_image_download_duration_seconds` | Histogram | Image download and cache duration. |
 | `echora_image_download_failures_total` | Counter | Total image download failures. |
 | `echora_cache_operation_duration_seconds` | Histogram | Redis cache operation duration. |
@@ -179,9 +184,11 @@ Services can be tuned via environment variables (see `ObservabilityConfig`):
 | `OTEL_ENABLE_LOGGING` | `true` | Enable Structlog/OTel bridge. |
 | `OTEL_ENABLE_TRACING` | `true` | Enable trace generation. |
 | `OTEL_ENABLE_METRICS` | `true` | Enable metric aggregation. |
-| `OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` | `true` | Enable gRPC server spans. |
+| `OTEL_ENABLE_GRPC_SERVER_INSTRUMENTATION` | `true` | Add `AioServerInterceptor` to the gRPC server (RPC spans and metrics). |
 | `OTEL_ENABLE_GRPC_CLIENT_INSTRUMENTATION` | `true` | Enable gRPC client spans/headers. |
 | `OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION` | `false` | Enable HTTP client spans/headers. |
+| `OTEL_ENABLE_REDIS_INSTRUMENTATION` | `false` | Enable Redis client spans. |
+| `OTEL_ENABLE_QDRANT_CLIENT_INSTRUMENTATION` | `false` | Enable Qdrant client spans. |
 
 ---
 

@@ -129,7 +129,7 @@ async def test_run_pipeline_and_write_artifact_with_title_selector(
     )
 
     class _FakePipeline:
-        async def __aenter__(self) -> "_FakePipeline":
+        async def __aenter__(self) -> _FakePipeline:
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:
@@ -163,7 +163,7 @@ async def test_run_pipeline_forwards_fetch_flags(
     )
 
     class _FakePipeline:
-        async def __aenter__(self) -> "_FakePipeline":
+        async def __aenter__(self) -> _FakePipeline:
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:

@@ -25,7 +25,7 @@ class CCIP:
     - Reference: https://github.com/adnanaq/echora/pull/27#discussion_r2593563165
     """
 
-    def __init__(self, config: "EmbeddingConfig | None" = None):
+    def __init__(self, config: EmbeddingConfig | None = None):
         """Initialize CCIP with optional config.
 
         Args:
@@ -34,7 +34,7 @@ class CCIP:
         self.config = config
         self._fallback_model: VisionEmbeddingModel | None = None
 
-    def _get_fallback_model(self) -> "VisionEmbeddingModel | None":
+    def _get_fallback_model(self) -> VisionEmbeddingModel | None:
         """Lazy-load OpenCLIP model for fallback similarity calculation.
 
         Note: If self.config is None, this method will initialize it with

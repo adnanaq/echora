@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import cast
 
 from PIL import Image
@@ -113,7 +114,7 @@ class OpenClipModel(VisionEmbeddingModel):
             logger.exception(f"Failed to load OpenCLIP model {model_name}")
             raise
 
-    def encode_image(self, images: list[Image.Image | str]) -> list[list[float]]:
+    def encode_image(self, images: Sequence[Image.Image | str]) -> list[list[float]]:
         """Encode a list of images into embeddings.
 
         Args:

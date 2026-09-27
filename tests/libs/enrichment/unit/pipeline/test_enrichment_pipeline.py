@@ -2,6 +2,7 @@
 Tests for EnrichmentPipeline.
 """
 
+import asyncio
 import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -338,7 +339,12 @@ class TestEnrichBatch:
         assert len(results) == 2
 
     @pytest.mark.asyncio
-    async def test_drops_failed_entries(self, pipeline, tmp_path):
+    @pytest.mark.parametrize(
+        "failure",
+        [RuntimeError("failed"), asyncio.CancelledError()],
+        ids=["error", "cancelled"],
+    )
+    async def test_drops_failed_entries(self, pipeline, tmp_path, failure):
         pipeline.config = EnrichmentConfig(temp_dir=str(tmp_path))
         anime_list = [{"title": "Good"}, {"title": "Bad"}]
 
@@ -348,7 +354,7 @@ class TestEnrichBatch:
             nonlocal call_count
             call_count += 1
             if anime["title"] == "Bad":
-                raise RuntimeError("failed")
+                raise failure
             return {"offline_data": anime}
 
         with patch.object(pipeline, "enrich_anime", side_effect=fake_enrich):

@@ -82,6 +82,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
         method = handler_call_details.method
         # method usually looks like '/package.Service/Method'
         method_name = method.split("/")[-1] if "/" in method else method
+        service_name = method.strip("/").rpartition("/")[0]
 
         handler = await continuation(handler_call_details)
         if not handler:
@@ -89,28 +90,34 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
         if handler.unary_unary:
             return grpc.unary_unary_rpc_method_handler(
-                self._wrap_unary(handler.unary_unary, method_name),
+                self._wrap_unary(handler.unary_unary, service_name, method_name),
                 request_deserializer=handler.request_deserializer,
                 response_serializer=handler.response_serializer,
             )
 
         if handler.unary_stream:
             return grpc.unary_stream_rpc_method_handler(
-                self._wrap_unary_stream(handler.unary_stream, method_name),
+                self._wrap_unary_stream(
+                    handler.unary_stream, service_name, method_name
+                ),
                 request_deserializer=handler.request_deserializer,
                 response_serializer=handler.response_serializer,
             )
 
         if handler.stream_unary:
             return grpc.stream_unary_rpc_method_handler(
-                self._wrap_stream_unary(handler.stream_unary, method_name),
+                self._wrap_stream_unary(
+                    handler.stream_unary, service_name, method_name
+                ),
                 request_deserializer=handler.request_deserializer,
                 response_serializer=handler.response_serializer,
             )
 
         if handler.stream_stream:
             return grpc.stream_stream_rpc_method_handler(
-                self._wrap_stream_stream(handler.stream_stream, method_name),
+                self._wrap_stream_stream(
+                    handler.stream_stream, service_name, method_name
+                ),
                 request_deserializer=handler.request_deserializer,
                 response_serializer=handler.response_serializer,
             )
@@ -129,7 +136,18 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
         registry.RPC_ERRORS.add(1, {**attrs, "error_code": safe_code})
         span.set_attribute("rpc.error", True)
         span.set_attribute("rpc.error_code", error_code)
+        span.set_status(trace.Status(trace.StatusCode.ERROR, error_code))
         _log.error("rpc.failure", error_code=error_code)
+
+    def _set_grpc_status_code(
+        self,
+        span: trace.Span,
+        context: grpc.aio.ServicerContext,
+        code_when_unset: grpc.StatusCode,
+    ) -> None:
+        """Record the gRPC status code sent to the caller as a span attribute."""
+        code = context.code() or code_when_unset
+        span.set_attribute("rpc.grpc.status_code", code.value[0])
 
     def _detect_error_code(
         self, context: grpc.aio.ServicerContext, response: Any = None
@@ -159,7 +177,9 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                     return getattr(response.error, "code", "UNKNOWN")
         return None
 
-    def _wrap_unary(self, behavior: Callable, method_name: str) -> Callable:
+    def _wrap_unary(
+        self, behavior: Callable, service_name: str, method_name: str
+    ) -> Callable:
         """Wrap a unary-unary RPC handler with telemetry instrumentation."""
 
         async def new_behavior(request: Any, context: grpc.aio.ServicerContext) -> Any:
@@ -182,6 +202,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                 kind=trace.SpanKind.SERVER,
             ) as span:
                 span.set_attribute("rpc.system", "grpc")
+                span.set_attribute("rpc.service", service_name)
                 span.set_attribute("rpc.method", method_name)
 
                 try:
@@ -189,9 +210,11 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                     error_code = self._detect_error_code(context, response)
                     if error_code:
                         self._record_failure(span, attrs, error_code)
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.OK)
                     return response
                 except Exception as exc:
                     self._record_failure(span, attrs, "EXCEPTION")
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.UNKNOWN)
                     span.record_exception(exc)
                     raise
                 finally:
@@ -202,7 +225,9 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
         return new_behavior
 
-    def _wrap_unary_stream(self, behavior: Callable, method_name: str) -> Callable:
+    def _wrap_unary_stream(
+        self, behavior: Callable, service_name: str, method_name: str
+    ) -> Callable:
         """Wrap a unary-stream RPC handler with telemetry instrumentation."""
 
         async def new_behavior(
@@ -227,6 +252,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                 kind=trace.SpanKind.SERVER,
             ) as span:
                 span.set_attribute("rpc.system", "grpc")
+                span.set_attribute("rpc.service", service_name)
                 span.set_attribute("rpc.method", method_name)
 
                 try:
@@ -237,8 +263,10 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                     error_code = self._detect_error_code(context)
                     if error_code:
                         self._record_failure(span, attrs, error_code)
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.OK)
                 except Exception as exc:
                     self._record_failure(span, attrs, "EXCEPTION")
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.UNKNOWN)
                     span.record_exception(exc)
                     raise
                 finally:
@@ -249,7 +277,9 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
         return new_behavior
 
-    def _wrap_stream_unary(self, behavior: Callable, method_name: str) -> Callable:
+    def _wrap_stream_unary(
+        self, behavior: Callable, service_name: str, method_name: str
+    ) -> Callable:
         """Wrap a stream-unary RPC handler with telemetry instrumentation."""
 
         async def new_behavior(
@@ -274,6 +304,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                 kind=trace.SpanKind.SERVER,
             ) as span:
                 span.set_attribute("rpc.system", "grpc")
+                span.set_attribute("rpc.service", service_name)
                 span.set_attribute("rpc.method", method_name)
 
                 try:
@@ -281,9 +312,11 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                     error_code = self._detect_error_code(context, response)
                     if error_code:
                         self._record_failure(span, attrs, error_code)
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.OK)
                     return response
                 except Exception as exc:
                     self._record_failure(span, attrs, "EXCEPTION")
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.UNKNOWN)
                     span.record_exception(exc)
                     raise
                 finally:
@@ -294,7 +327,9 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
 
         return new_behavior
 
-    def _wrap_stream_stream(self, behavior: Callable, method_name: str) -> Callable:
+    def _wrap_stream_stream(
+        self, behavior: Callable, service_name: str, method_name: str
+    ) -> Callable:
         """Wrap a stream-stream RPC handler with telemetry instrumentation."""
 
         async def new_behavior(
@@ -319,6 +354,7 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                 kind=trace.SpanKind.SERVER,
             ) as span:
                 span.set_attribute("rpc.system", "grpc")
+                span.set_attribute("rpc.service", service_name)
                 span.set_attribute("rpc.method", method_name)
 
                 try:
@@ -328,8 +364,10 @@ class AioServerInterceptor(grpc.aio.ServerInterceptor):
                     error_code = self._detect_error_code(context)
                     if error_code:
                         self._record_failure(span, attrs, error_code)
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.OK)
                 except Exception as exc:
                     self._record_failure(span, attrs, "EXCEPTION")
+                    self._set_grpc_status_code(span, context, grpc.StatusCode.UNKNOWN)
                     span.record_exception(exc)
                     raise
                 finally:
