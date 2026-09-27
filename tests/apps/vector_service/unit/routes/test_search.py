@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from google.protobuf import struct_pb2
+from qdrant_db.contracts import SearchRange
 from vector_proto.v1 import vector_search_pb2
 from vector_service.routes import search as search_route
-from qdrant_db.contracts import SearchRange
 from vector_service.routes.search import (
     InvalidFiltersPayloadError,
     _map_filter_conditions,
@@ -305,6 +305,33 @@ async def test_successful_text_search_returns_data() -> None:
     assert response.data[0].id == "1"
     assert abs(response.data[0].similarity_score - 0.95) < 1e-6
     assert not response.HasField("error")
+
+
+@pytest.mark.asyncio
+async def test_search_returns_payloads_when_not_asked() -> None:
+    hits = [SimpleNamespace(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
+    runtime = _runtime(search_results=hits)
+    request = vector_search_pb2.SearchRequest(query_text="space western")
+
+    response = await search_route.search(runtime, request, context=None)
+
+    assert runtime.qdrant_client.search.call_args.args[0].with_payload is True
+    assert response.data[0].payload_json == '{"title": "Cowboy Bebop"}'
+
+
+@pytest.mark.asyncio
+async def test_search_without_payload_returns_ids_and_scores_only() -> None:
+    hits = [SimpleNamespace(id="1", score=0.95, payload={})]
+    runtime = _runtime(search_results=hits)
+    request = vector_search_pb2.SearchRequest(
+        query_text="space western", with_payload=False
+    )
+
+    response = await search_route.search(runtime, request, context=None)
+
+    assert runtime.qdrant_client.search.call_args.args[0].with_payload is False
+    assert response.data[0].id == "1"
+    assert response.data[0].payload_json == ""
 
 
 @pytest.mark.asyncio

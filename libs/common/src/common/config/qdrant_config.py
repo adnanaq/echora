@@ -77,6 +77,63 @@ class QdrantConfig(BaseModel):
             "E.g. limit=10 with multiplier=10 prefetches 100 candidates per branch."
         ),
     )
+    qdrant_search_hnsw_ef: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "HNSW ef for the dense text vector search: how many candidates the "
+            "graph search keeps. Higher is more accurate and slower. Unset uses "
+            "Qdrant's default."
+        ),
+    )
+    qdrant_search_rescore: bool | None = Field(
+        default=None,
+        description=(
+            "Re-rank the dense text vector's quantized candidates with the original "
+            "vectors. Qdrant does not rescore scalar-quantized search by default. "
+            "Unset uses Qdrant's default."
+        ),
+    )
+    qdrant_search_oversampling: float | None = Field(
+        default=None,
+        ge=1.0,
+        description=(
+            "How many times more quantized candidates to fetch for rescoring on the "
+            "dense text vector (e.g. 4.0 fetches 4x the branch limit). Only useful "
+            "with rescoring. Unset uses Qdrant's default."
+        ),
+    )
+    qdrant_prefer_grpc: bool = Field(
+        default=False,
+        description="Talk to Qdrant over gRPC instead of HTTP",
+    )
+    qdrant_grpc_port: int = Field(
+        default=6334, ge=1, le=65535, description="Qdrant gRPC port"
+    )
+    qdrant_query_batch_max_size: int = Field(
+        default=1,
+        ge=1,
+        le=256,
+        description=(
+            "Most concurrent searches sent to Qdrant in one query_batch_points "
+            "call; 1 sends each search on its own with query_points"
+        ),
+    )
+    qdrant_query_batch_max_wait_ms: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "How long a batch of searches that is not full waits for more before "
+            "it is sent, in milliseconds; 0 sends whatever has queued at once"
+        ),
+    )
+    qdrant_query_batch_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="query_batch_points calls that may run at the same time",
+    )
     vector_priorities: dict[str, list[str]] = Field(
         default={
             "high": [

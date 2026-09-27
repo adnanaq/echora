@@ -248,6 +248,9 @@ async def search(
             entity_type if entity_type in _KNOWN_ENTITY_TYPES else "unknown"
         )
         raw_limit = request.limit if request.HasField("limit") else 10
+        with_payload = (
+            request.with_payload if request.HasField("with_payload") else True
+        )
 
         current_span.add_event("validation.complete")
 
@@ -300,6 +303,7 @@ async def search(
                 entity_type=entity_type or None,
                 limit=_normalize_limit(raw_limit),
                 filters=filter_conditions,
+                with_payload=with_payload,
             )
         )
 
@@ -315,7 +319,9 @@ async def search(
             vector_search_pb2.SearchData(
                 id=hit.id,
                 similarity_score=hit.score,
-                payload_json=json.dumps(hit.payload, ensure_ascii=False),
+                payload_json=(
+                    json.dumps(hit.payload, ensure_ascii=False) if with_payload else ""
+                ),
             )
             for hit in raw_hits
         ]

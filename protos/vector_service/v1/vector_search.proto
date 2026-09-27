@@ -53,6 +53,9 @@ message SearchRequest {
   optional int32 limit = 4;
   // Typed filter conditions for metadata-based filtering.
   repeated FilterCondition filters = 5;
+  // Return each hit's payload in payload_json (default: true). Set false to get
+  // IDs and scores only, which is cheaper for Qdrant and for this service.
+  optional bool with_payload = 6;
 }
 
 message SearchData {

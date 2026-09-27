@@ -1,10 +1,13 @@
 """Unit tests for vector_service runtime helpers."""
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from common.config import get_settings
+from qdrant_client.http.models import QueryRequest
 from qdrant_db.errors import ConfigurationError
-from vector_service.runtime import _validate_model_dimensions
+from vector_service.runtime import _create_qdrant_client, _validate_model_dimensions
 
 
 def _make_settings(text_dim: int = 1024, image_dim: int = 768) -> SimpleNamespace:
@@ -84,3 +87,54 @@ def test_validate_model_dimensions_fails_on_text_first_when_both_wrong() -> None
 
     with pytest.raises(ConfigurationError, match="text_vector"):
         _validate_model_dimensions(settings, text_proc, vision_proc)
+
+
+def test_qdrant_client_uses_http_by_default() -> None:
+    qdrant_settings = get_settings().qdrant.model_copy(update={"qdrant_api_key": None})
+    with patch("vector_service.runtime.AsyncQdrantClient") as client_class:
+        _create_qdrant_client(qdrant_settings)
+
+    client_class.assert_called_once_with(
+        url=qdrant_settings.qdrant_url,
+        api_key=None,
+        prefer_grpc=False,
+        grpc_port=6334,
+        cloud_inference=True,
+    )
+
+
+def test_qdrant_client_can_prefer_grpc() -> None:
+    qdrant_settings = get_settings().qdrant.model_copy(
+        update={
+            "qdrant_prefer_grpc": True,
+            "qdrant_grpc_port": 7334,
+            "qdrant_api_key": "key",
+        }
+    )
+    with patch("vector_service.runtime.AsyncQdrantClient") as client_class:
+        _create_qdrant_client(qdrant_settings)
+
+    client_class.assert_called_once_with(
+        url=qdrant_settings.qdrant_url,
+        api_key="key",
+        prefer_grpc=True,
+        grpc_port=7334,
+        cloud_inference=True,
+    )
+
+
+async def test_qdrant_client_skips_local_inference_inspection() -> None:
+    qdrant_settings = get_settings().qdrant.model_copy(update={"qdrant_api_key": None})
+    client = _create_qdrant_client(qdrant_settings)
+    request = QueryRequest(query=[0.1] * 1024, using="text_vector", limit=10)
+
+    with (
+        patch.object(client._inference_inspector, "inspect") as inspect,
+        patch.object(
+            client._client, "query_batch_points", AsyncMock(return_value=[])
+        ) as query_batch_points,
+    ):
+        await client.query_batch_points("anime", [request])
+
+    inspect.assert_not_called()
+    query_batch_points.assert_awaited_once()

@@ -6,7 +6,9 @@ from qdrant_client.models import (
     MatchAny,
     MatchExcept,
     MatchValue,
+    QuantizationSearchParams,
     Range,
+    SearchParams,
     SparseVector,
 )
 from qdrant_db.contracts import SearchFilterCondition, SearchRequest, SparseVectorData
@@ -14,6 +16,7 @@ from qdrant_db.query_builder import (
     build_filter,
     build_prefetch_queries,
     build_sparse_query,
+    build_text_search_params,
 )
 
 # ---------------------------------------------------------------------------
@@ -271,3 +274,53 @@ def test_build_prefetch_expanded_with_other_modalities() -> None:
     image_branches = [p for p in result if p.using == "image_vec"]
     assert len(text_branches) == 2
     assert len(image_branches) == 1
+
+
+def test_build_text_search_params_is_none_when_nothing_is_set() -> None:
+    assert (
+        build_text_search_params(hnsw_ef=None, rescore=None, oversampling=None) is None
+    )
+
+
+def test_build_text_search_params_sets_ef_and_rescoring() -> None:
+    assert build_text_search_params(
+        hnsw_ef=512, rescore=True, oversampling=4.0
+    ) == SearchParams(
+        hnsw_ef=512,
+        quantization=QuantizationSearchParams(rescore=True, oversampling=4.0),
+    )
+
+
+def test_build_text_search_params_sets_ef_alone() -> None:
+    assert build_text_search_params(
+        hnsw_ef=128, rescore=None, oversampling=None
+    ) == SearchParams(hnsw_ef=128)
+
+
+def test_build_prefetch_applies_search_params_to_text_branches_only() -> None:
+    search_params = SearchParams(
+        quantization=QuantizationSearchParams(rescore=True, oversampling=4.0)
+    )
+    request = SearchRequest(
+        text_embedding=[0.1] * 1024,
+        expanded_text_embeddings=[[0.3] * 1024],
+        image_embedding=[0.2] * 768,
+        sparse_embedding={"indices": [0], "values": [1.0]},
+        limit=10,
+    )
+    result = build_prefetch_queries(
+        request,
+        "text_vec",
+        "image_vec",
+        "sparse_vec",
+        None,
+        prefetch_limit=20,
+        text_search_params=search_params,
+    )
+    params_by_branch = [(branch.using, branch.params) for branch in result]
+    assert params_by_branch == [
+        ("text_vec", search_params),
+        ("text_vec", search_params),
+        ("image_vec", None),
+        ("sparse_vec", None),
+    ]

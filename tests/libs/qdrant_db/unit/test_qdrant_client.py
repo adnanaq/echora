@@ -1,5 +1,6 @@
 """Unit tests for strict-contract QdrantClient."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
@@ -15,6 +16,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from qdrant_client.models import (
     OverwritePayloadOperation,
+    QuantizationSearchParams,
+    SearchParams,
     SetPayloadOperation,
     SparseVector,
 )
@@ -456,6 +459,45 @@ async def test_search_score_threshold_forwarded_to_query(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_payload", [True, False])
+async def test_search_single_vector_forwards_with_payload(
+    mock_client: QdrantClient, with_payload: bool
+) -> None:
+    async_mock = cast(AsyncMock, mock_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5, with_payload=with_payload)
+    )
+
+    assert async_mock.query_points.call_args.kwargs["with_payload"] is with_payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_payload", [True, False])
+async def test_search_fusion_forwards_with_payload(
+    mock_sparse_client: QdrantClient, with_payload: bool
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_sparse_client.search(
+        SearchRequest(
+            text_embedding=[0.1] * 1024,
+            sparse_embedding=SparseVectorData(indices=[1, 4], values=[0.9, 0.2]),
+            limit=10,
+            with_payload=with_payload,
+        )
+    )
+
+    assert async_mock.query_points.call_args.kwargs["with_payload"] is with_payload
+
+
+def test_search_request_returns_payloads_by_default() -> None:
+    assert SearchRequest(text_embedding=[0.1] * 1024).with_payload is True
+
+
+@pytest.mark.asyncio
 async def test_get_by_id_returns_none_when_not_found(mock_client: QdrantClient) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.retrieve.return_value = []
@@ -544,6 +586,102 @@ async def test_search_records_qdrant_query_span(
     assert span.attributes["db.collection.name"] == mock_client.collection_name
 
 
+@pytest_asyncio.fixture
+async def batching_client() -> QdrantClient:
+    settings = get_settings()
+    batching_config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "primary_sparse_vector_name": "text_sparse_vector",
+            "qdrant_query_batch_max_size": 16,
+            "qdrant_query_batch_max_wait_ms": 5.0,
+        },
+    )
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
+    ):
+        client = await QdrantClient.create(
+            config=batching_config, async_qdrant_client=AsyncMock()
+        )
+    yield client
+    await client.close()
+
+
+def _hybrid_request(point_id: int) -> SearchRequest:
+    return SearchRequest(
+        text_embedding=[0.1] * 1024,
+        sparse_embedding=SparseVectorData(indices=[point_id], values=[1.0]),
+        limit=10,
+        with_payload=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_searches_share_one_query_batch_call(
+    batching_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, batching_client._async_client)
+    async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
+        SimpleNamespace(
+            points=[
+                SimpleNamespace(
+                    id=request.prefetch[1].query.indices[0], score=0.5, payload=None
+                )
+            ]
+        )
+        for request in requests
+    ]
+
+    results = await asyncio.gather(
+        *(batching_client.search(_hybrid_request(point_id)) for point_id in (1, 2, 3))
+    )
+
+    assert async_mock.query_batch_points.call_count == 1
+    assert len(async_mock.query_batch_points.call_args.kwargs["requests"]) == 3
+    assert [[hit.id for hit in hits] for hits in results] == [["1"], ["2"], ["3"]]
+    async_mock.query_points.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_query_batch_span_records_the_batch_size(
+    batching_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, batching_client._async_client)
+    async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
+        SimpleNamespace(points=[]) for _ in requests
+    ]
+    _SPANS.clear()
+
+    await asyncio.gather(
+        *(batching_client.search(_hybrid_request(point_id)) for point_id in (1, 2))
+    )
+
+    (span,) = _SPANS.get_finished_spans()
+    assert span.name == "qdrant.query_batch_points"
+    assert span.attributes["db.operation.batch.size"] == 2
+
+
+@pytest.mark.asyncio
+async def test_single_search_in_a_batch_call_has_no_batch_size(
+    batching_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, batching_client._async_client)
+    async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
+        SimpleNamespace(points=[]) for _ in requests
+    ]
+    _SPANS.clear()
+
+    await batching_client.search(_hybrid_request(1))
+
+    (span,) = _SPANS.get_finished_spans()
+    assert "db.operation.batch.size" not in span.attributes
+
+
+def test_query_batching_is_off_by_default() -> None:
+    assert get_settings().qdrant.qdrant_query_batch_max_size == 1
+
+
 @pytest.mark.asyncio
 async def test_get_by_id_records_qdrant_retrieve_span(
     mock_client: QdrantClient,
@@ -557,3 +695,88 @@ async def test_get_by_id_records_qdrant_retrieve_span(
     (span,) = _SPANS.get_finished_spans()
     assert span.name == "qdrant.retrieve"
     assert span.attributes["db.collection.name"] == mock_client.collection_name
+
+
+@pytest_asyncio.fixture
+async def tuned_search_client() -> QdrantClient:
+    settings = get_settings()
+    tuned_config = settings.qdrant.model_copy(
+        deep=True,
+        update={
+            "sparse_vector_names": ["text_sparse_vector"],
+            "primary_sparse_vector_name": "text_sparse_vector",
+            "qdrant_search_hnsw_ef": 512,
+            "qdrant_search_rescore": True,
+            "qdrant_search_oversampling": 4.0,
+        },
+    )
+    with patch.object(
+        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
+    ):
+        return await QdrantClient.create(
+            config=tuned_config, async_qdrant_client=AsyncMock()
+        )
+
+
+TUNED_SEARCH_PARAMS = SearchParams(
+    hnsw_ef=512,
+    quantization=QuantizationSearchParams(rescore=True, oversampling=4.0),
+)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_sends_search_params_on_dense_text_branch(
+    tuned_search_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, tuned_search_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await tuned_search_client.search(
+        SearchRequest(
+            text_embedding=[0.1] * 1024,
+            sparse_embedding=SparseVectorData(indices=[1], values=[0.9]),
+            limit=10,
+        )
+    )
+
+    prefetch = async_mock.query_points.call_args.kwargs["prefetch"]
+    assert [(branch.using, branch.params) for branch in prefetch] == [
+        ("text_vector", TUNED_SEARCH_PARAMS),
+        ("text_sparse_vector", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_text_only_search_sends_search_params(
+    tuned_search_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, tuned_search_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await tuned_search_client.search(
+        SearchRequest(text_embedding=[0.1] * 1024, limit=5)
+    )
+
+    assert async_mock.query_points.call_args.kwargs["search_params"] == (
+        TUNED_SEARCH_PARAMS
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_sends_no_search_params_by_default(
+    mock_sparse_client: QdrantClient,
+) -> None:
+    async_mock = cast(AsyncMock, mock_sparse_client._async_client)
+    async_mock.query_points.return_value = SimpleNamespace(points=[])
+
+    await mock_sparse_client.search(
+        SearchRequest(
+            text_embedding=[0.1] * 1024,
+            sparse_embedding=SparseVectorData(indices=[1], values=[0.9]),
+            limit=10,
+        )
+    )
+
+    call = async_mock.query_points.call_args.kwargs
+    assert call["search_params"] is None
+    assert all(branch.params is None for branch in call["prefetch"])

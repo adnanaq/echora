@@ -11,7 +11,7 @@ import logging
 import os
 from dataclasses import dataclass
 
-from common.config import Settings
+from common.config import QdrantConfig, Settings
 from qdrant_client import AsyncQdrantClient
 from qdrant_db import QdrantClient
 from qdrant_db.errors import ConfigurationError
@@ -71,6 +71,25 @@ def _validate_model_dimensions(
             )
 
 
+def _create_qdrant_client(qdrant_settings: QdrantConfig) -> AsyncQdrantClient:
+    """Create the async Qdrant client over HTTP, or gRPC when preferred.
+
+    ``cloud_inference=True`` stops the client from searching every request for
+    ``Document`` or ``Image`` objects to embed locally with FastEmbed. The
+    service always sends finished vectors, and that search walks every number
+    of every query vector: ~1.2 ms of CPU per hybrid query in qdrant-client
+    1.19.1. Nothing is sent to Qdrant for inference unless a request holds
+    such an object.
+    """
+    return AsyncQdrantClient(
+        url=qdrant_settings.qdrant_url,
+        api_key=qdrant_settings.qdrant_api_key,
+        prefer_grpc=qdrant_settings.qdrant_prefer_grpc,
+        grpc_port=qdrant_settings.qdrant_grpc_port,
+        cloud_inference=True,
+    )
+
+
 async def build_runtime(settings: Settings) -> VectorRuntime:
     """Initialize runtime state for vector_service.
 
@@ -91,13 +110,7 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
     async_qdrant_client: AsyncQdrantClient | None = None
     embedding_cache: EmbeddingCache | None = None
     try:
-        if settings.qdrant.qdrant_api_key:
-            async_qdrant_client = AsyncQdrantClient(
-                url=settings.qdrant.qdrant_url,
-                api_key=settings.qdrant.qdrant_api_key,
-            )
-        else:
-            async_qdrant_client = AsyncQdrantClient(url=settings.qdrant.qdrant_url)
+        async_qdrant_client = _create_qdrant_client(settings.qdrant)
 
         # Build optional embedding cache from Redis config
         if settings.redis.redis_url:
