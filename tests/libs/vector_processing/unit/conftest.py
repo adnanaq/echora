@@ -17,6 +17,8 @@ def mock_settings():
     # Add configuration fields
     config.max_concurrent_image_downloads = 10
     config.embed_max_concurrency = 2
+    config.embed_batch_max_size = 1
+    config.embed_batch_max_wait_ms = 0.0
     return config
 
 

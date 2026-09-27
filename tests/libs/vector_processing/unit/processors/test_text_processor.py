@@ -42,6 +42,7 @@ class TestTextProcessorInit:
         ) as mock_config_class:
             mock_default_config = MagicMock()
             mock_default_config.embed_max_concurrency = 2
+            mock_default_config.embed_batch_max_size = 1
             mock_config_class.return_value = mock_default_config
 
             processor = TextProcessor(model=mock_text_model)

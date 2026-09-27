@@ -68,6 +68,24 @@ class EmbeddingConfig(BaseModel):
         le=16,
         description="Maximum concurrent embedding tasks per process",
     )
+    embed_batch_max_size: int = Field(
+        default=1,
+        ge=1,
+        le=256,
+        description=(
+            "Most concurrent single-text encodes (search queries) combined into "
+            "one model call; 1 encodes each text on its own"
+        ),
+    )
+    embed_batch_max_wait_ms: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "How long a batch that is not full waits for more texts before "
+            "encoding, in milliseconds; 0 encodes whatever has queued at once"
+        ),
+    )
 
     # ==================== Reranking Configuration ====================
 
