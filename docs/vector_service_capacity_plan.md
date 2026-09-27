@@ -144,10 +144,10 @@ Built by `benchmarks/vector_service/test_data/build_load_test_collection.py` (`r
       with exact search (needed before tuning RRF weights)
 
 Remaining work, in the suggested order: step 5 (query cache), step 6's
-CPU-only re-measurement, step 8 (portable measurement tools), then step 6's
-model server and ONNX comparisons, which need many runs on different setups.
-The smaller items in step 9 fit in between. Step 6's cloud part and step 7 wait
-for a cloud account and region.
+CPU-only re-measurement, then step 6's model server and ONNX comparisons,
+each compared with the settings sweep (step 8, built). The smaller items in
+step 9 fit in between. Step 6's cloud part and step 7 wait for a cloud account
+and region.
 
 ### 4. Several worker processes per instance
 
@@ -223,30 +223,48 @@ meanwhile.
 - A new environment needs a new settings file and, at most, one new module
   kind (for example "restart through `kubectl`"); nothing else changes.
 
-**Hard-coded today, to become inputs**
+**Built** (`benchmarks/vector_service/`, see its README)
 
-| Where | Value |
-| -- | -- |
-| `benchmarks/vector_service/quality/measure_qdrant_search.py` | Qdrant batch size 32, query sample size 150 and seed 54, query and output paths, collection `anime_accuracy_test`, container `echora-dev-qdrant`, CPU read from a local Docker cgroup path |
-| `benchmarks/vector_service/diagnostics/profile_service.sh` | 120 s ramp and 15 s settle (tied to the `load` test's shape), default target `localhost:8001` |
-| `benchmarks/vector_service/load/run_vector_search.sh` | container `echora-dev-vector-service`, GPU from local `nvidia-smi`, results folder |
-| `benchmarks/vector_service/reports/summarize_load_test.py` | results folder |
-| `benchmarks/vector_service/diagnostics/run_timed_vector_service.py` | 10 s report interval; wraps the service's functions, so only for a service run as a local process |
+- `environments/laptop.toml` and `toolkit/settings.py`: one file per
+  environment, `--set section.field=value` overrides, protected collections
+  refused, the Qdrant key only from the variable the file names
+- `toolkit/k6_runner.py` + `load/run_load_test.py`: the k6 run, with k6's
+  HTML report and millisecond sample timestamps added; `run_vector_search.sh`
+  is a wrapper with its old arguments and variables
+- `toolkit/resources.py`: local process (`/proc`, including the event loop
+  thread), Docker container (`docker stats`, cgroup), `nvidia-smi`; the
+  resource CSV keeps its first six columns and adds Qdrant CPU and event loop
+  thread CPU
+- `toolkit/service_control.py`: a local process or its own container
+  (`echora-bench-vector-service`, with CPU/memory/GPU limits), started with a
+  run's settings, ready when the gRPC health check reports SERVING; fails a
+  run that asks for the GPU but is not on it
+- `toolkit/results.py`: per-window latency, steady-part summary, resource
+  means, profile grouping; the two summary scripts print exactly what they
+  printed before
+- `sweep.py` + `sweeps/*.toml`: one comparison table per sweep; it
+  reproduced finding 24 (one against two model calls at 500/s: p50 82 against
+  106 ms)
+- `quality/measure_qdrant_search.py`: `--environment`, `--batch-size`,
+  `--sample-size`, `--seed`
+- Tests in `benchmarks/vector_service/tests/`
 
-`benchmarks/vector_service/load/vector_search.js` already takes all its inputs as variables.
+Still fixed: the `load` test's 2 min ramp is mirrored in `sweep.py` and
+`diagnostics/profile_service.sh` (overridable there with `RAMP_SECONDS`).
 
 **Work, in stages**
 
-- [ ] Now: design written here
-- [ ] With step 6's CPU re-measurement and model-server comparisons (many
-      runs with different settings): settings file and loader, resource
-      readers moved out of the scripts, service control, then the settings
-      sweep; shell wrappers' sampling moves into Python
-- [ ] With the cloud work (steps 6–7): Prometheus and Qdrant `/metrics`
-      readers, copying test collections by snapshot, queue wait / batch size /
-      batch call time as the service's own OpenTelemetry metrics (replaces
+- [x] Design
+- [x] Settings file and loader, resource readers, service control (local
+      process and Docker), settings sweep; the shell wrapper's sampling moved
+      into Python
+- [ ] With the cloud work (steps 6–7): `kubectl` service control, Prometheus
+      and Qdrant `/metrics` readers, copying test collections by snapshot,
+      queue wait / batch size / batch call time as the service's own
+      OpenTelemetry metrics (replaces
       `benchmarks/vector_service/diagnostics/run_timed_vector_service.py`)
 - [ ] Pick `RATE` / `MAX_RATE` automatically from a short coarse ramp
+- [ ] An `extends` option so similar environment files share a base
 
 ### 9. Smaller open items
 
@@ -279,7 +297,7 @@ batch sizes depend on the hardware measured in step 6.
 | `QDRANT_QUERY_BATCH_MAX_SIZE` | 1 (off) | 8 | Sends concurrent searches in one `query_batch_points` call. Qdrant runs one batch's searches one after another per segment, so smaller batches finish sooner | findings 17, 24 |
 | `QDRANT_QUERY_BATCH_MAX_WAIT_MS` | 0 | 0 | As above | finding 17 |
 | `QDRANT_QUERY_BATCH_CONCURRENCY` | 4 | 16 | With batches of 8, lets Qdrant search several batches on separate threads | finding 24 |
-| `QDRANT_PREFER_GRPC` | `false` | `true` when callers ask for IDs only | 30–40% lower latency without payloads; slower with payloads | findings 7, 18 |
+| `QDRANT_PREFER_GRPC` | `false` | `true` when callers ask for IDs only | At 300/s: IDs only p50 66 → 46 ms, p95 92 → 65 ms; with payloads 60–65% slower (p50 124 → 201 ms). Applies to every search of the service | findings 7, 18, 25 |
 | `QDRANT_GRPC_PORT` | 6334 | 6334 | Qdrant and Qdrant Cloud default | finding 18 |
 | `QDRANT_SEARCH_RESCORE` | unset | `true` | Hybrid recall 0.917 → 0.958 with oversampling | findings 19–20, step 3F |
 | `QDRANT_SEARCH_OVERSAMPLING` | unset | 4.0 | Rescoring needs extra candidates in a merged segment | step 3F |
