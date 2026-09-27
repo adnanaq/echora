@@ -39,6 +39,8 @@ class EmbeddingModelFactory:
                 model_name,
                 cache_dir=cache_dir,
                 max_length=config.bge_max_length,
+                chunk_size=config.embed_model_chunk_size,
+                max_tokens_per_pass=config.embed_model_max_tokens_per_pass,
             )
         elif provider == "fastembed":
             return FastEmbedModel(model_name, cache_dir=cache_dir)
