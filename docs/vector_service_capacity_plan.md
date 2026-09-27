@@ -32,7 +32,22 @@ k6 breakpoint test, realistic query mix:
 | GPU, plus rescoring with 4× oversampling (hybrid recall 0.917 → 0.958) | 1.3M points | ~585 searches/s | per window: 15 / 30 ms up to ~95/s, 63 / 91 ms at ~310/s, 103 / 140 ms at ~490/s, 148 / 240 ms at ~570/s | the Python side and the GPU; ~1.4 CPU cores, GPU 40–80% busy |
 | GPU, plus one model call at a time and Qdrant batches of up to 8 (16 in flight) | 1.3M points | ~590 searches/s | per window: 42 / 58 ms at ~255/s, 70 / 94 ms at ~415/s, 85 / 119 ms at ~495/s, 118 / 173 ms at ~545/s | query embedding: at the limit every model call is a full batch of 64, back to back (~600 texts/s for this query mix); service ~1.3 CPU cores, Qdrant ~5 cores, machine 39% busy |
 
-Latency in the rows above the last one is k6's Prometheus figure, which
+CPU only, every change above, in a container with a CPU limit (laptop's
+Ryzen AI 9 HX 370; breakpoint test, stopped when p95 passes 2 s):
+
+| CPU limit | PyTorch threads | Keeps up to | p50 across the run | Memory under load |
+| -- | -- | -- | -- | -- |
+| 2 CPUs | PyTorch's own (12) | ~3 searches/s | 2,240 ms | 4.3 GiB |
+| 2 CPUs | 2 (`OMP_NUM_THREADS=2`) | ~6 searches/s | 580 ms | 2.9–4.4 GiB |
+| 4 CPUs | 4 | ~12 searches/s | 265 ms | 4.4 GiB |
+| 8 CPUs | 8 | ~20 searches/s | 310 ms | 5.0 GiB |
+
+About 2.5–3 searches/s per CPU; one search alone takes ~200 ms. The
+service needs at least 6 GB of memory: with 4 GB it is killed while loading
+the models (steady use ~4.1 GiB, of which ~1.8 GiB is model files kept in
+the page cache).
+
+Latency in the GPU rows above the last one is k6's Prometheus figure, which
 covers every search since the run started, so at the higher rates it reads
 lower than the latency at that moment. The last row is per 20 s window, from
 the run's raw samples (`benchmarks/vector_service/reports/summarize_load_test.py`). The "keeps up to"
@@ -143,11 +158,11 @@ Built by `benchmarks/vector_service/test_data/build_load_test_collection.py` (`r
 - [ ] Build a labelled query set to measure relevance, not just agreement
       with exact search (needed before tuning RRF weights)
 
-Remaining work, in the suggested order: step 5 (query cache), step 6's
-CPU-only re-measurement, then step 6's model server and ONNX comparisons,
-each compared with the settings sweep (step 8, built). The smaller items in
-step 9 fit in between. Step 6's cloud part and step 7 wait for a cloud account
-and region.
+Remaining work, in the suggested order: step 6's CPU-only re-measurement,
+then step 6's model server and ONNX comparisons, each compared with the
+settings sweep (step 8, built). Step 5, the query cache, is on hold. The
+smaller items in step 9 fit in between. Step 6's cloud part and step 7 wait
+for a cloud account and region.
 
 ### 4. Several worker processes per instance
 
@@ -157,31 +172,126 @@ and region.
 
 ### 5. Query-embedding cache
 
-Query embedding is the limit, so a search answered from a cache skips the
-bottleneck. Text searches never use the existing embedding cache today
-(`encode_text_with_sparse` embeds every query; finding 3).
+On hold (decision 2026-09-27; revisit later). A search's text is embedded
+before Qdrant sees anything, and embedding is the limit, so only a cache that
+skips the model call helps. What was found:
 
-- [ ] Read how the existing cache works (Redis, keys, what it stores) and
-      whether it can hold dense + sparse text embeddings
-- [ ] Cache text query embeddings; check results are unchanged
-- [ ] Load-test with repeated queries and with `UNIQUE=true` (no hits); measure
-      the saving, and the cost when nothing hits
-- [ ] Estimate the hit rate on realistic traffic (how often the same query
-      text repeats)
+- An exact-text cache (with light normalisation such as trimming spaces) is
+  the only kind that skips the model: web-search logs show 20–40% of queries
+  are exact repeats (Markatos, Excite: 20–30%; Xie & O'Hallaron, CMU: 30–40%;
+  Teevan et al., Yahoo: 33% repeated by the same user, ~18% across users).
+  Anime search may differ; the real rate needs real traffic
+  (`echora_embedding_cache_total`).
+- A semantic cache (matching paraphrases by embedding similarity, e.g.
+  GPTCache) cannot skip the model: looking up a paraphrase needs the new
+  query's embedding first. It could only skip Qdrant, and it risks returning
+  wrong results for close but different wording. A paraphrase already gets a
+  nearly identical embedding and so nearly the same results.
+- Today text search never uses the existing embedding cache
+  (`encode_text_with_sparse`; finding 3), and the cache stores dense vectors
+  only.
+
+If picked up: exact-text cache holding dense and sparse vectors, checked
+before the model queue; measured with a sweep on the normal query set
+(repeats) and `UNIQUE=true` (no repeats); lowercasing only if the accuracy
+tool shows unchanged results. A result cache (text + filters → IDs) could
+also skip Qdrant but needs expiry when data changes.
 
 ### 6. Hardware and hosting
 
-- [ ] Re-measure a CPU-only instance with every change so far (production
-      compose runs CPU only, 2 CPUs / 4 GB; the only CPU number is the
-      original ~4.5 searches/s). Includes whether `EMBED_MAX_CONCURRENCY=1`
-      also suits CPU, and a batch size for CPU
-- [ ] A batching model server (Hugging Face TEI, Triton, m3serve) against
-      batching in the service; first check which serve BGE-M3's sparse output
+- [x] Re-measure a CPU-only instance with every change so far (see "Current
+      numbers"; sweeps `cpu_threads` and `cpu_scaling`). PyTorch sizes its
+      thread pool from the host's cores, not the container's CPU limit
+      (PyTorch issues #64864, #193859; vLLM PR #34462 saw ~30% lost
+      throughput from the same thing): 12 threads in a 2-CPU container here.
+      Setting `OMP_NUM_THREADS` to the CPU limit doubled throughput
+- [x] On CPU: `EMBED_MAX_CONCURRENCY` and batch size (sweep `cpu_embedding`,
+      4 CPUs): every combination peaked at 8–14 searches/s, within run-to-run
+      noise; two model calls with 4 threads each was worst (8/s). Keep batch 64,
+      one call at a time
+- [x] Production compose: one NVIDIA GPU (`ENABLE_GPU=true`, device
+      reservation; the image's torch is the CUDA 13.0 build from `uv.lock`, so
+      the host needs driver 580 or newer), memory limit 6G (reservation 5G),
+      `OMP_NUM_THREADS=2` for its 2-CPU limit, and every recommended setting
+      from the configuration table. `QDRANT_PREFER_GRPC` stays `false` until
+      callers ask for IDs only. Values were measured on the laptop GPU;
+      re-check them on the production GPU with the sweep
+- The dev image installs CPU-only torch (`Dockerfile.dev`), so the benchmark's
+  Docker kind with `echora-vector-service:dev` cannot use a GPU; GPU runs use
+  the local process kind, or the production image
+- [x] Which batching model servers return BGE-M3's sparse output: TEI no
+      (dense only; PR #899 open), Infinity and Xinference no, vLLM only as a
+      separate request (the model would run twice per search), Triton with an
+      ONNX export yes, m3serve yes (an in-process library, not a server)
+- [x] Where a batch's time goes on the GPU (batch of 64, query mix): model
+      pass 78 ms, tokenizing 2 ms, converting results 2 ms. Overlapping them,
+      as m3serve does, can gain ~5% at most
+- [ ] Split each batch into length-sorted chunks: 73% of the tokens in a
+      batch of 64 are padding. Chunks of 16: 770 → 1,370 texts/s on the model
+      alone (32: 1,120; 8: 1,100), vectors unchanged within fp16 rounding
+      (dense cosine ≥ 0.9994, sparse tokens same in 1,277 of 1,280). Setting
+      `EMBED_MODEL_CHUNK_SIZE` (default 256: one pass per query batch).
+      End to end (sweep `model_chunks`, GPU breakpoint): most searches/s
+      256 → ~620, 32 → ~710, 16 → ~630; latency at the same rate unchanged
+      (p50 74–76 ms at ~450/s in all three)
+- [x] Where searches wait at a steady 600/s (`--timed`, sweep
+      `model_chunks_steady`; chunks of 32 against 256): p50 174 against
+      242 ms. Per search: model wait ~104 against ~154 ms, Qdrant wait ~63
+      against ~72 ms. The model thread is still the limit: busy ~83% at 600/s
+      (calls of ~57 ms on batches of ~41 texts). The GPU reads only 36–51%
+      busy because a pass is many small steps started from Python. Real
+      batches are ~41 texts, not 64; with fixed chunks of 32 one chunk still
+      holds every long query, so a batch of 41 takes 48 ms alone against
+      57 ms for 64. The event loop thread (45% busy) slows each model call by
+      ~13% through Python's GIL (48 → 55 ms in a test with a second busy
+      thread). The laptop's CPU was 40–50% busy; Qdrant (~54 ms per batch of
+      8, ~4 of 16 batches in flight) was not queueing
+- [x] Group each batch by length with a token budget per pass
+      (`EMBED_MODEL_MAX_TOKENS_PER_PASS`, off by default; sweeps
+      `token_budget_breakpoint` / `token_budget_load`). Model alone, batches
+      of 41: chunks of 32 884 texts/s, budget 256 1,424, 384 1,211, 512 1,279.
+      End to end it does not help: most searches/s no budget ~707, 256 ~613,
+      384 ~650, 512 ~683. Inside the service at 600/s a pass with budget 256
+      costs ~2× what it costs alone (46 texts in 63 ms against ~30 ms), against
+      ~1.2× for chunks of 32: every extra pass pays Python overhead that grows
+      under load (Python's GIL, the laptop CPU slowing when busy). Kept, off,
+      to try again after the next item
+- [ ] Fewer Python steps per pass (CUDA graphs, `torch.compile`, or ONNX
+      Runtime / TensorRT), and the model in its own process to avoid the GIL
+- [x] Search results with chunks of 32 (2,021 real queries, hybrid top 10
+      on `anime_accuracy_test`): overlap with one pass 0.977, the same as
+      today's own variation from batch makeup (batches of 41 vs one text at a
+      time: 0.975; the same batches run twice: 0.990, only 40% identical in
+      order, near-tied ranks swap)
+- [ ] A model server only if it beats the above: Triton + ONNX (fp16,
+      TensorRT) for a faster model pass
 - [ ] CPU inference with ONNX Runtime
 - [ ] A cloud GPU (e.g. L4) and a cloud CPU instance: cost per 1,000 searches/s
       (needs a cloud account)
 - [ ] Fail at startup when a GPU is requested but not usable (today the
       service falls back to CPU silently)
+
+**Sizing for the overall target** (estimates from measured per-instance
+numbers; the cloud machines themselves are not measured yet)
+
+| Option | Per instance | Instances for 10,000 / 20,000 searches/s | On-demand price (AWS us-east-1) |
+| -- | -- | -- | -- |
+| CPU only | ~2.5–3 searches/s per CPU | ~3,500–4,000 / ~7,000–8,000 CPUs | not viable |
+| GPU, RTX 4070 Laptop as measured | ~590 searches/s | ~17 / ~34 | – |
+| NVIDIA T4, `g4dn.xlarge` (4 vCPU, 16 GiB, 16 GB GPU) | not measured | ~17 / ~34 if like the laptop | $0.526/h (~$384/month each) |
+| NVIDIA L4, `g6.xlarge` (4 vCPU, 16 GiB, 24 GB GPU) | not measured | ~17 / ~34 if like the laptop | $0.805/h (~$588/month each) |
+
+- Published numbers, other setups: BGE-M3 on a T4 with a batching server
+  (m3serve) reached ~1,600–1,900 texts/s at batches of 64–128; the same
+  model on 1–2 cloud vCPUs, ~0.6–0.8 requests/s (nullmirror, llama.cpp);
+  guides put CPU at "fine below ~10 searches/s" and recommend a GPU above
+  that (Jina sizing guide), with the L4 as the usual choice for BGE-M3-class
+  models (Jina, Superlinked).
+- Memory per instance: at least 6 GB for the service (both models load at
+  start); a GPU with 4 GB or more holds BGE-M3 (~2 GB in FP16).
+- Qdrant memory, from Qdrant's capacity-planning formula, per million
+  points: `text_vector` 1024 × 4 bytes ≈ 4.1 GB, its int8 copy ≈ 1 GB,
+  HNSW (`m` 64) ≈ 0.6 GB, plus sparse vectors, image vectors and payloads.
 
 ### 7. Qdrant Cloud
 
@@ -284,14 +394,17 @@ Still fixed: the `load` test's 2 min ramp is mirrored in `sweep.py` and
 
 Every setting studied, what the code does by default and what to set. Code
 defaults keep main's behaviour; tuned values are set through environment
-variables per deployment. `docker/docker-compose.dev.yml` sets the
-recommended values; `docker/docker-compose.prd.yml` sets none yet, since
-batch sizes depend on the hardware measured in step 6.
+variables per deployment. `docker/docker-compose.dev.yml` and
+`docker/docker-compose.prd.yml` set the recommended values (production on one
+NVIDIA GPU); they were measured on the laptop GPU and are re-checked on the
+production GPU once deployed.
 
 | Setting | Code default | Recommended | Why | Evidence |
 | -- | -- | -- | -- | -- |
 | Qdrant client `cloud_inference` | `True` (in code) | keep | Skips a check that cost ~1.2 ms CPU per query; the service always sends vectors | ECHO-54 finding 22 |
 | `EMBED_BATCH_MAX_SIZE` | 1 (off) | 64 | Encodes concurrent queries in one model call; 128 gave no more | findings 15, 24 |
+| `EMBED_MODEL_CHUNK_SIZE` | 256 (one pass per query batch) | 32 | Model alone 1.8× faster with 16 on batches of 64; end to end ~620 → ~710 searches/s with 32, p50 at 600/s 242 → 174 ms; results within today's variation | findings 29–31 |
+| `EMBED_MODEL_MAX_TOKENS_PER_PASS` | 0 (off) | 0 for now | Model alone 1.6× faster with 256, but end to end slower (~613/s): each extra pass costs more under load. Retry after fewer Python steps per pass | finding 31 |
 | `EMBED_BATCH_MAX_WAIT_MS` | 0 | 0 | A lone search is not delayed; not tuned yet (step 2) | finding 15 |
 | `EMBED_MAX_CONCURRENCY` | 2 | 1 on one GPU | Parallel model calls on one GPU only add waiting: p50 at 500/s 82 ms with 1, 102 with 2. Not measured on CPU instances or for indexing, which uses the same setting | finding 24 |
 | `QDRANT_QUERY_BATCH_MAX_SIZE` | 1 (off) | 8 | Sends concurrent searches in one `query_batch_points` call. Qdrant runs one batch's searches one after another per segment, so smaller batches finish sooner | findings 17, 24 |
@@ -299,6 +412,8 @@ batch sizes depend on the hardware measured in step 6.
 | `QDRANT_QUERY_BATCH_CONCURRENCY` | 4 | 16 | With batches of 8, lets Qdrant search several batches on separate threads | finding 24 |
 | `QDRANT_PREFER_GRPC` | `false` | `true` when callers ask for IDs only | At 300/s: IDs only p50 66 → 46 ms, p95 92 → 65 ms; with payloads 60–65% slower (p50 124 → 201 ms). Applies to every search of the service | findings 7, 18, 25 |
 | `QDRANT_GRPC_PORT` | 6334 | 6334 | Qdrant and Qdrant Cloud default | finding 18 |
+| `OMP_NUM_THREADS` (CPU instances) | unset: PyTorch uses the host's core count | the container's CPU limit (production compose: 2) | 2 CPUs: ~3 → ~6 searches/s, p50 2,240 → 580 ms | finding 27 |
+| Container memory limit | – | at least 6G (production compose: 6G) | 4G is killed while loading the models | finding 27 |
 | `QDRANT_SEARCH_RESCORE` | unset | `true` | Hybrid recall 0.917 → 0.958 with oversampling | findings 19–20, step 3F |
 | `QDRANT_SEARCH_OVERSAMPLING` | unset | 4.0 | Rescoring needs extra candidates in a merged segment | step 3F |
 | `QDRANT_SEARCH_HNSW_EF` | unset | unset | `ef` 512 with 2× oversampling gives 0.001 more hybrid recall for 7% more Qdrant CPU | step 3F |

@@ -130,7 +130,9 @@ service setting with `--set service_start.env.NAME=value`. The tools never
 edit `docker/*.yml`, `.env` or the service's settings code, and never touch
 the dev stack: the benchmark's service is a separate local process on its own
 port, or its own container (`echora-bench-vector-service`). The Docker kind
-runs the dev image, so rebuild it to benchmark current code.
+runs the dev image, so rebuild it to benchmark current code. The dev image has
+CPU-only torch; for a GPU in Docker, point `service_start.docker_image` at the
+production image (CUDA torch) and set `docker_gpus`.
 
 ## Settings sweep
 
@@ -155,6 +157,13 @@ as `WITH_PAYLOAD` for that variant). Examples in `sweeps/`:
 | -- | -- |
 | `embed_concurrency` | One against two model calls at a time, at 500/s (ECHO-54 finding 24) |
 | `grpc_and_payloads` | gRPC against HTTP to Qdrant, with and without payloads, at 300/s (finding 25) |
+| `cpu_threads` | CPU only: PyTorch's own thread count against one matched to the CPU limit, breakpoint (finding 27) |
+| `cpu_embedding` | CPU only: embedding batch size and model calls at a time, breakpoint (finding 28) |
+| `model_chunks` | Texts per BGE-M3 model pass (`EMBED_MODEL_CHUNK_SIZE`) 256 / 32 / 16, GPU breakpoint (finding 29) |
+| `model_chunks_steady` | Chunks of 256 against 32 at a steady 600/s; run with `--timed` (finding 30) |
+| `token_budget_breakpoint` | Token budget per pass (`EMBED_MODEL_MAX_TOKENS_PER_PASS`) 384 / 512 on chunks of 32, GPU breakpoint (finding 31) |
+| `token_budget_load` | Token budget 256 at a steady 600/s; run with `--timed` (finding 31) |
+| `cpu_scaling` | CPU only, one container size per run: CPU limit and `OMP_NUM_THREADS` set with `--set`, breakpoint (finding 27) |
 
 The results folder gets `sweep-<name>-<time>.md` with one table (completed searches/s and
 p50/p95/p99 over the steady part, failures, drops, service CPU, event loop
