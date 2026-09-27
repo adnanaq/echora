@@ -49,7 +49,9 @@ async def test_batches_never_exceed_the_maximum_size():
     results = await asyncio.gather(*(batcher.submit(text) for text in texts))
 
     assert all(len(batch) <= 4 for batch in batch_function.batches)
-    assert sorted(text for batch in batch_function.batches for text in batch) == sorted(texts)
+    assert sorted(text for batch in batch_function.batches for text in batch) == sorted(
+        texts
+    )
     assert [sparse["text"] for _, sparse in results] == texts
     await batcher.close()
 
