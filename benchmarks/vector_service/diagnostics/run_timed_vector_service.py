@@ -2,7 +2,7 @@
 """Run the vector service with per-stage timing, to find where searches wait.
 
 A diagnostic run, not for production: it wraps the service's own functions
-and prints, every 10 s to stderr, the mean, p50 and p95 of:
+and prints, every REPORT_SECONDS (default 10 s) to stderr, the mean, p50 and p95 of:
 
 - ``search handler``: one search from start to finish inside the service
 - ``model wait per search`` / ``qdrant wait per search``: from queueing a
@@ -19,6 +19,7 @@ It reads the same environment variables as the service. Run it outside Docker:
 """
 
 import asyncio
+import os
 import statistics
 import sys
 import time
@@ -34,7 +35,7 @@ from vector_service import main as service_main
 from vector_service.routes import search as search_route
 from vector_service.runtime import VectorRuntime
 
-REPORT_SECONDS = 10
+REPORT_SECONDS = float(os.environ.get("REPORT_SECONDS", "10"))
 samples: dict[str, list[float]] = defaultdict(list)
 
 

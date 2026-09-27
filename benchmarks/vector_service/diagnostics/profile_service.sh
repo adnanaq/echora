@@ -4,7 +4,8 @@
 # Usage: SERVICE_PID=<pid> benchmarks/vector_service/diagnostics/profile_service.sh RATE [TARGET] [k6 options...]
 #
 # Runs the load test at RATE searches/s (default target localhost:8001) and,
-# once the 2 minute ramp is over, records PROFILE_SECONDS (default 25) of
+# once the ramp is over (RAMP_SECONDS, default 120, the load test's ramp; then
+# SETTLE_SECONDS, default 15), records PROFILE_SECONDS (default 25) of
 # py-spy samples from the service process. The service must run outside Docker
 # so py-spy can attach to SERVICE_PID; attaching may need sudo or
 # kernel.yama.ptrace_scope=0. Options after TARGET go to k6, for example
@@ -25,8 +26,8 @@ RATE="$1"
 TARGET="${2:-localhost:8001}"
 shift $(( $# >= 2 ? 2 : 1 ))
 PROFILE_SECONDS="${PROFILE_SECONDS:-25}"
-RAMP_SECONDS=120
-SETTLE_SECONDS=15
+RAMP_SECONDS="${RAMP_SECONDS:-120}"
+SETTLE_SECONDS="${SETTLE_SECONDS:-15}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RESULTS_DIR="${REPO_ROOT}/benchmarks/vector_service/load/results"
 RUN_TIME="$(date +%Y%m%d-%H%M%S)"

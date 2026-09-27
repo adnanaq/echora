@@ -1,6 +1,6 @@
 python_sources(
     name="benchmarks",
-    sources=["**/*.py"],
+    sources=["**/*.py", "!tests/**"],
     dependencies=[
         "//libs/common/src/common",
         "//libs/enrichment/src/enrichment",
@@ -13,3 +13,5 @@ python_sources(
     # (test data, query files, results), so they run outside the sandbox.
     run_goal_use_sandbox=False,
 )
+
+resources(name="environments", sources=["environments/*.toml", "sweeps/*.toml"])

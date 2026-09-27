@@ -31,7 +31,6 @@ since noisy copies lower recall on their own.
 import argparse
 import json
 import random
-import subprocess
 import time
 import urllib.request
 import warnings
@@ -41,14 +40,20 @@ from typing import Any
 
 from common.config.qdrant_config import QdrantConfig
 
+from benchmarks.vector_service.toolkit.resources import ContainerCgroupReader
+from benchmarks.vector_service.toolkit.settings import (
+    ProtectedCollectionError,
+    load_environment,
+)
+
 QUERY_SOURCE = Path("benchmarks/vector_service/load/search_queries.json")
 OUTPUT_DIR = Path("data/search_quality")
 QUERY_FILE = OUTPUT_DIR / "queries.json"
-QUERY_SEED = 54
-SAMPLE_SIZE = 150
+DEFAULT_QUERY_SEED = 54
+DEFAULT_SAMPLE_SIZE = 150
 TOP_K = 10
 RRF_K = 2
-BATCH_SIZE = 32
+DEFAULT_BATCH_SIZE = 32
 DEFAULT_BATCHES_IN_FLIGHT = 4
 QUERY_KINDS = ("short", "title", "long")
 EXACT_SEARCH = {"exact": True, "quantization": {"ignore": True}}
@@ -90,7 +95,13 @@ class UnexpectedRanxResultError(TypeError):
 
 
 class QdrantRestClient:
-    def __init__(self, url: str, api_key: str | None, collection: str) -> None:
+    def __init__(
+        self,
+        url: str,
+        api_key: str | None,
+        collection: str,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+    ) -> None:
         if not url.startswith(("http://", "https://")):
             raise UnsupportedUrlSchemeError(url)
         self._url = url.rstrip("/")
@@ -98,6 +109,7 @@ class QdrantRestClient:
         if api_key:
             self._headers["api-key"] = api_key
         self._collection = collection
+        self.batch_size = batch_size
 
     def query_batch(self, bodies: list[dict[str, Any]]) -> dict[str, Any]:
         request = urllib.request.Request(  # noqa: S310 - scheme checked in __init__
@@ -113,8 +125,8 @@ class QdrantRestClient:
     ) -> tuple[list[dict[str, float]], float]:
         hits: list[dict[str, float]] = []
         qdrant_seconds = 0.0
-        for start in range(0, len(bodies), BATCH_SIZE):
-            response = self.query_batch(bodies[start : start + BATCH_SIZE])
+        for start in range(0, len(bodies), self.batch_size):
+            response = self.query_batch(bodies[start : start + self.batch_size])
             qdrant_seconds += response["time"]
             hits.extend(
                 {str(point["id"]): point["score"] for point in result["points"]}
@@ -169,20 +181,20 @@ def build_queries(
     return [hybrid_query(query, search_params, candidates) for query in queries]
 
 
-def embed_queries() -> None:
+def embed_queries(sample_size: int, seed: int) -> None:
     from vector_processing.embedding_models.text.flagembedding_model import (
         FlagEmbeddingModel,
     )
 
     source = json.loads(QUERY_SOURCE.read_text())
-    random_generator = random.Random(QUERY_SEED)  # noqa: S311 - repeatable sample, not security
+    random_generator = random.Random(seed)  # noqa: S311 - repeatable sample, not security
     texts = [
         ("short", text)
-        for text in random_generator.sample(source["short"], SAMPLE_SIZE)
+        for text in random_generator.sample(source["short"], sample_size)
     ]
     texts += [
         ("title", text)
-        for text in random_generator.sample(source["title"], SAMPLE_SIZE)
+        for text in random_generator.sample(source["title"], sample_size)
     ]
     texts += [("long", text) for text in source["long"]]
     model = FlagEmbeddingModel("BAAI/bge-m3")
@@ -271,22 +283,7 @@ def measure_accuracy(
 
 
 def container_cpu_seconds(container: str) -> float | None:
-    inspect = subprocess.run(  # noqa: S603 - fixed docker command, no shell
-        ["docker", "inspect", "-f", "{{.Id}}", container],  # noqa: S607 - docker from PATH
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    container_id = inspect.stdout.strip()
-    stat_file = Path(
-        f"/sys/fs/cgroup/system.slice/docker-{container_id}.scope/cpu.stat"
-    )
-    if inspect.returncode != 0 or not stat_file.exists():
-        return None
-    for line in stat_file.read_text().splitlines():
-        if line.startswith("usage_usec"):
-            return int(line.split()[1]) / 1_000_000
-    return None
+    return ContainerCgroupReader(container).cpu_seconds()
 
 
 def run_in_flight(
@@ -296,8 +293,8 @@ def run_in_flight(
     batches_in_flight: int,
 ) -> float:
     batches = [
-        bodies[start : start + BATCH_SIZE]
-        for start in range(0, len(bodies), BATCH_SIZE)
+        bodies[start : start + client.batch_size]
+        for start in range(0, len(bodies), client.batch_size)
     ] * rounds
     started = time.perf_counter()
     with ThreadPoolExecutor(batches_in_flight) as pool:
@@ -340,28 +337,58 @@ def measure_cost(
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     steps = parser.add_subparsers(dest="step", required=True)
-    steps.add_parser("queries", help="embed the fixed query sample")
+    queries_parser = steps.add_parser("queries", help="embed the fixed query sample")
+    queries_parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
+    queries_parser.add_argument("--seed", type=int, default=DEFAULT_QUERY_SEED)
     for step in ("accuracy", "cost"):
         step_parser = steps.add_parser(step)
         step_parser.add_argument("settings", nargs="+", choices=sorted(SEARCH_SETTINGS))
-        step_parser.add_argument("--collection", default="anime_accuracy_test")
+        step_parser.add_argument(
+            "--environment",
+            help="benchmark environment (name or file) for Qdrant and collections",
+        )
+        step_parser.add_argument("--set", action="append", default=[], dest="overrides")
+        step_parser.add_argument("--collection")
         step_parser.add_argument("--candidates", type=int, default=100)
+        step_parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     cost_parser = steps.choices["cost"]
-    cost_parser.add_argument("--container", default="echora-dev-qdrant")
+    cost_parser.add_argument("--container")
     cost_parser.add_argument("--rounds", type=int, default=20)
     cost_parser.add_argument("--in-flight", type=int, default=DEFAULT_BATCHES_IN_FLIGHT)
     return parser.parse_args()
 
 
+def build_qdrant_client(arguments: argparse.Namespace) -> QdrantRestClient:
+    """Qdrant address, key and collection: from an environment, else the service settings."""
+    if arguments.environment:
+        environment = load_environment(arguments.environment, arguments.overrides)
+        url, api_key = environment.qdrant.url, environment.qdrant.api_key()
+        default_collection = (
+            environment.collections.accuracy
+            if arguments.step == "accuracy"
+            else environment.collections.load
+        )
+        protected = environment.collections.protected
+        default_container = environment.qdrant.container
+    else:
+        qdrant_settings = QdrantConfig()
+        url, api_key = qdrant_settings.qdrant_url, qdrant_settings.qdrant_api_key
+        default_collection, protected = "anime_accuracy_test", ("anime_database",)
+        default_container = "echora-dev-qdrant"
+    arguments.collection = arguments.collection or default_collection
+    if arguments.step == "cost":
+        arguments.container = arguments.container or default_container
+    if arguments.collection in protected:
+        raise ProtectedCollectionError(arguments.collection)
+    return QdrantRestClient(url, api_key, arguments.collection, arguments.batch_size)
+
+
 def main() -> None:
     arguments = parse_arguments()
     if arguments.step == "queries":
-        embed_queries()
+        embed_queries(arguments.sample_size, arguments.seed)
         return
-    qdrant_settings = QdrantConfig()
-    client = QdrantRestClient(
-        qdrant_settings.qdrant_url, qdrant_settings.qdrant_api_key, arguments.collection
-    )
+    client = build_qdrant_client(arguments)
     if arguments.step == "accuracy":
         measure_accuracy(
             client, arguments.collection, arguments.settings, arguments.candidates
