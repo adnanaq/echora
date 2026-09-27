@@ -1,0 +1,46 @@
+# gRPC against HTTP to Qdrant, with and without payloads in the results, at a
+# steady 300 searches/s with the tuned settings. QDRANT_PREFER_GRPC applies to
+# the whole service, so this shows which transport suits which kind of traffic.
+name = "grpc_and_payloads"
+
+[service_env]
+EMBED_BATCH_MAX_SIZE = "64"
+EMBED_MAX_CONCURRENCY = "1"
+QDRANT_QUERY_BATCH_MAX_SIZE = "8"
+QDRANT_QUERY_BATCH_CONCURRENCY = "16"
+QDRANT_SEARCH_RESCORE = "true"
+QDRANT_SEARCH_OVERSAMPLING = "4.0"
+
+[load]
+test_type = "load"
+
+[load.k6]
+RATE = "300"
+HOLD = "60s"
+
+# WITH_PAYLOAD is a k6 setting, so each variant also sets it through
+# k6_env below.
+
+[[variant]]
+name = "HTTP, IDs only"
+k6_env = { WITH_PAYLOAD = "false" }
+[variant.service_env]
+QDRANT_PREFER_GRPC = "false"
+
+[[variant]]
+name = "gRPC, IDs only"
+k6_env = { WITH_PAYLOAD = "false" }
+[variant.service_env]
+QDRANT_PREFER_GRPC = "true"
+
+[[variant]]
+name = "HTTP, with payloads"
+k6_env = { WITH_PAYLOAD = "true" }
+[variant.service_env]
+QDRANT_PREFER_GRPC = "false"
+
+[[variant]]
+name = "gRPC, with payloads"
+k6_env = { WITH_PAYLOAD = "true" }
+[variant.service_env]
+QDRANT_PREFER_GRPC = "true"
