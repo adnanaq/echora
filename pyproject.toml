@@ -63,6 +63,7 @@ dev = [
     "pytest-asyncio==1.4.0",  # Required plugin for async test support
     "pytest-mock==3.15.1",     # Required plugin for mocking
     "grpcio-tools==1.84.0",    # Proto stub generation (referenced by scripts/BUILD)
+    "ranx==0.3.21",            # Search accuracy scores (benchmarks/vector_service/quality/measure_qdrant_search.py)
 ]
 
 [tool.pytest.ini_options]
