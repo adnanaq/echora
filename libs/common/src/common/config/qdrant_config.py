@@ -105,7 +105,11 @@ class QdrantConfig(BaseModel):
     )
     qdrant_prefer_grpc: bool = Field(
         default=False,
-        description="Talk to Qdrant over gRPC instead of HTTP",
+        description=(
+            "Talk to Qdrant over gRPC instead of HTTP. Applies to every search: "
+            "faster when searches ask for IDs and scores only (with_payload=false), "
+            "slower when they return payloads"
+        ),
     )
     qdrant_grpc_port: int = Field(
         default=6334, ge=1, le=65535, description="Qdrant gRPC port"

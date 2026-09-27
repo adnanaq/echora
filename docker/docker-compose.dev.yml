@@ -113,6 +113,9 @@ services:
       - QDRANT_QUERY_BATCH_MAX_SIZE=8
       - QDRANT_QUERY_BATCH_MAX_WAIT_MS=0
       - QDRANT_QUERY_BATCH_CONCURRENCY=16
+      # gRPC to Qdrant is ~30% faster when searches ask for IDs and scores only
+      # (with_payload=false) but ~60% slower when they return payloads, which
+      # the load test and manual searches do by default (ECHO-54 finding 25).
       - QDRANT_PREFER_GRPC=true
       - QDRANT_GRPC_PORT=6334
       - QDRANT_SEARCH_RESCORE=true
