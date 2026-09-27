@@ -9,8 +9,9 @@
 # ----------------------
 # - Model cache volume is pre-populated before first deploy (no cold download).
 # - ENVIRONMENT=production disables debug mode and sets log_level=INFO.
-# - GPU disabled by default; set ENABLE_GPU=true + add devices: to compose spec
-#   if running on a GPU node.
+# - torch is the CUDA build from uv.lock (CUDA 13.0, driver 580 or newer);
+#   docker-compose.prd.yml gives the container one NVIDIA GPU and sets
+#   ENABLE_GPU=true. Without a GPU the service runs on CPU.
 # =============================================================================
 
 # -----------------------------------------------------------------------------

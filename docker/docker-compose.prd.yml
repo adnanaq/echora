@@ -49,17 +49,47 @@ services:
     container_name: echora-vector-service
     ports:
       - "8001:8001"
+    # Runs on one NVIDIA GPU. The host needs the NVIDIA Container Toolkit and
+    # a driver for CUDA 13.0 (580 or newer; torch comes from uv.lock), and the
+    # GPU 4 GB of memory or more. CPU only is ~100x
+    # slower per instance (ECHO-54 findings 24, 27). Both models load at
+    # start: 4G of RAM is killed while loading them, and the service uses up
+    # to ~5 GiB under load (finding 27).
     deploy:
       resources:
         limits:
           cpus: "2"
-          memory: 4G
+          memory: 6G
         reservations:
           cpus: "1"
-          memory: 2G
+          memory: 5G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     environment:
       # Environment (enforces production safety)
       - ENVIRONMENT=production
+
+      # The service falls back to CPU silently if the GPU is not usable;
+      # check its start-up log for the device.
+      - ENABLE_GPU=true
+
+      # PyTorch sizes its thread pool from the host's cores, not the CPU limit
+      # above; keep this equal to limits.cpus (ECHO-54 finding 27).
+      - OMP_NUM_THREADS=2
+
+      # Query embedding. Values measured on an RTX 4070 Laptop GPU; re-check
+      # on the production GPU with benchmarks/vector_service (ECHO-54).
+      # Concurrent search texts share one model call (findings 15, 24)
+      - EMBED_BATCH_MAX_SIZE=64
+      - EMBED_BATCH_MAX_WAIT_MS=0
+      # One model call at a time on one GPU (finding 24)
+      - EMBED_MAX_CONCURRENCY=1
+      # Texts per model pass; cuts padding (findings 29-31)
+      - EMBED_MODEL_CHUNK_SIZE=32
+      # Token budget per pass; off until each pass costs less (finding 31)
+      - EMBED_MODEL_MAX_TOKENS_PER_PASS=0
 
       - VECTOR_SERVICE_HOST=0.0.0.0
       - VECTOR_SERVICE_PORT=8001
@@ -80,6 +110,20 @@ services:
       - QDRANT_ENABLE_PAYLOAD_INDEXING=true
       - QDRANT_PREFETCH_LIMIT_MULTIPLIER=10
       - QDRANT_RRF_K=2
+
+      # Concurrent searches share one query_batch_points call (findings 17, 24)
+      - QDRANT_QUERY_BATCH_MAX_SIZE=8
+      - QDRANT_QUERY_BATCH_MAX_WAIT_MS=0
+      - QDRANT_QUERY_BATCH_CONCURRENCY=16
+      # Rescore quantized candidates: hybrid recall 0.917 -> 0.958 for ~30%
+      # more Qdrant CPU (findings 19-23)
+      - QDRANT_SEARCH_RESCORE=true
+      - QDRANT_SEARCH_OVERSAMPLING=4.0
+      # gRPC is ~30% faster when searches ask for IDs and scores only, ~60%
+      # slower when they return payloads, and applies to every search. Set
+      # true once callers ask for IDs only (the Rust backend; finding 25)
+      - QDRANT_PREFER_GRPC=false
+      - QDRANT_GRPC_PORT=6334
 
       - API_TITLE=Anime Vector Service
       - API_VERSION=1.0.0
