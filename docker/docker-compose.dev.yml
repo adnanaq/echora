@@ -110,6 +110,11 @@ services:
       - EMBED_BATCH_MAX_SIZE=64
       - EMBED_BATCH_MAX_WAIT_MS=0
       - EMBED_MAX_CONCURRENCY=1
+      # Texts per BGE-M3 pass; 32 cuts padding (ECHO-54 findings 29-31)
+      - EMBED_MODEL_CHUNK_SIZE=32
+      # Token budget per pass; off until each pass costs less under load
+      # (finding 31)
+      - EMBED_MODEL_MAX_TOKENS_PER_PASS=0
       - QDRANT_QUERY_BATCH_MAX_SIZE=8
       - QDRANT_QUERY_BATCH_MAX_WAIT_MS=0
       - QDRANT_QUERY_BATCH_CONCURRENCY=16
