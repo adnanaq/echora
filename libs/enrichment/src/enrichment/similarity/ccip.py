@@ -122,7 +122,7 @@ class CCIP:
             # Calculate cosine similarity
             # Note: OpenCLIP already returns normalized embeddings, so dot product = cosine similarity
             # Clamp to [0.0, 1.0] to match CCIP range and handle floating-point edge cases
-            similarity = float(np.clip(np.dot(emb1, emb2), 0.0, 1.0))  # ty: ignore[unresolved-attribute]
+            similarity = float(np.clip(np.dot(emb1, emb2), 0.0, 1.0))
             logger.debug(f"OpenCLIP fallback similarity: {similarity}")
             return similarity  # noqa: TRY300
         except Exception:
