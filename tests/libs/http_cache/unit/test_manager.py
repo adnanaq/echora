@@ -92,7 +92,7 @@ class TestGetAiohttpSession:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            session = manager.get_aiohttp_session("jikan")
+            session = manager.get_aiohttp_session("mal")
 
             assert session == mock_session
             mock_session_class.assert_called_once()
@@ -112,7 +112,7 @@ class TestGetAiohttpSession:
                 mock_session_class.return_value = mock_session
 
                 manager = HTTPCacheManager(config)
-                session = manager.get_aiohttp_session("jikan")
+                session = manager.get_aiohttp_session("mal")
 
                 # Should fall back to regular session
                 assert session == mock_session
@@ -137,7 +137,7 @@ class TestGetAiohttpSession:
                     mock_cached_session.return_value = mock_session_instance
 
                     manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("jikan")
+                    session = manager.get_aiohttp_session("mal")
 
                     # Should create cached session
                     mock_cached_session.assert_called_once()
@@ -147,7 +147,7 @@ class TestGetAiohttpSession:
     @pytest.mark.asyncio
     async def test_get_aiohttp_session_service_specific_ttl(self) -> None:
         """Test that service-specific TTL is used."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis", ttl_jikan=7200)
+        config = CacheConfig(cache_enabled=True, storage_type="redis", ttl_mal=7200)
 
         with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
             mock_async_redis = MagicMock()
@@ -158,7 +158,7 @@ class TestGetAiohttpSession:
             ) as mock_async_storage:
                 with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
-                    manager.get_aiohttp_session("jikan")
+                    manager.get_aiohttp_session("mal")
 
                     # Check TTL passed to AsyncRedisStorage
                     call_kwargs = mock_async_storage.call_args[1]
@@ -170,9 +170,9 @@ class TestServiceTTL:
 
     def test_get_service_ttl_known_service(self) -> None:
         """Test TTL retrieval for known services."""
-        config = CacheConfig(cache_enabled=True, ttl_jikan=3600)
+        config = CacheConfig(cache_enabled=True, ttl_mal=3600)
         manager = HTTPCacheManager(config)
-        assert manager._get_service_ttl("jikan") == 3600
+        assert manager._get_service_ttl("mal") == 3600
 
     def test_get_service_ttl_unknown_service_default(self) -> None:
         """Test that unknown service returns default 24h TTL."""
@@ -196,7 +196,7 @@ class TestCacheManagerClose:
             with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
                 with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
                     manager = HTTPCacheManager(config)
-                    manager.get_aiohttp_session("jikan")
+                    manager.get_aiohttp_session("mal")
                     await manager.close_async()
 
                     mock_async_redis.aclose.assert_called_once()
@@ -419,7 +419,7 @@ class TestGetOrCreateRedisClient:
                 ) as mock_session_class:
                     mock_session_class.return_value = MagicMock()
                     manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("jikan")
+                    session = manager.get_aiohttp_session("mal")
                     assert session == mock_session_class.return_value
 
     @pytest.mark.asyncio
@@ -440,5 +440,5 @@ class TestGetOrCreateRedisClient:
                 ) as mock_session_class:
                     mock_session_class.return_value = MagicMock()
                     manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("jikan")
+                    session = manager.get_aiohttp_session("mal")
                     assert session == mock_session_class.return_value

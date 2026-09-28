@@ -113,7 +113,7 @@ REDIS_HEALTH_CHECK_INTERVAL=30
 **Service-Specific TTLs (all default to 86400 seconds / 24 hours):**
 
 ```bash
-TTL_JIKAN=86400
+TTL_MAL=86400
 TTL_ANILIST=86400
 TTL_ANIDB=86400
 TTL_KITSU=86400
@@ -131,7 +131,7 @@ Create a `.env` file in your working directory for local development:
 CACHE_ENABLED=false
 REDIS_URL=redis://prod-redis:6379/2
 FORCE_CACHE=false
-TTL_JIKAN=3600
+TTL_MAL=3600
 TTL_ANILIST=7200
 ```
 
@@ -143,7 +143,7 @@ from http_cache.config import CacheConfig
 config = CacheConfig(
     cache_enabled=False,
     redis_url="redis://custom:6379/1",
-    ttl_jikan=3600,
+    ttl_mal=3600,
     force_cache=False,
 )
 ```
@@ -170,13 +170,13 @@ The `CachedAiohttpSession` returned by `http_cache_manager.get_aiohttp_session()
 from http_cache.instance import http_cache_manager
 
 # Recommended: Use as context manager (automatic cleanup)
-async with http_cache_manager.get_aiohttp_session("jikan") as session:
+async with http_cache_manager.get_aiohttp_session("mal") as session:
     async with session.get("https://api.example.com/data") as response:
         data = await response.json()
 # Session and storage automatically closed
 
 # Alternative: Manual cleanup (if context manager not feasible)
-session = http_cache_manager.get_aiohttp_session("jikan")
+session = http_cache_manager.get_aiohttp_session("mal")
 try:
     async with session.get("https://api.example.com/data") as response:
         data = await response.json()

@@ -37,7 +37,7 @@ class TestCacheConfigModel:
         # Character-bearing sources are held for 7 days so a franchise's shared
         # characters are not re-crawled for each title; animeschedule carries
         # broadcast timings only and stays at 24 hours.
-        assert config.ttl_jikan == 604800
+        assert config.ttl_mal == 604800
         assert config.ttl_anilist == 604800
         assert config.ttl_anidb == 604800
         assert config.ttl_kitsu == 604800
@@ -51,14 +51,14 @@ class TestCacheConfigModel:
             cache_enabled=True,
             storage_type="redis",
             redis_url="redis://custom-host:6380/1",
-            ttl_jikan=3600,
+            ttl_mal=3600,
             ttl_anilist=7200,
         )
 
         assert config.cache_enabled is True
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://custom-host:6380/1"
-        assert config.ttl_jikan == 3600
+        assert config.ttl_mal == 3600
         assert config.ttl_anilist == 7200
 
     def test_disabled_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -74,7 +74,7 @@ class TestCacheConfigModel:
     def test_all_service_ttls_custom(self) -> None:
         """Test setting custom TTLs for all services."""
         custom_ttls = {
-            "ttl_jikan": 1800,
+            "ttl_mal": 1800,
             "ttl_anilist": 3600,
             "ttl_anidb": 7200,
             "ttl_kitsu": 14400,
@@ -85,7 +85,7 @@ class TestCacheConfigModel:
 
         config = CacheConfig(**custom_ttls)
 
-        assert config.ttl_jikan == 1800
+        assert config.ttl_mal == 1800
         assert config.ttl_anilist == 3600
         assert config.ttl_anidb == 7200
         assert config.ttl_kitsu == 14400
@@ -110,13 +110,13 @@ class TestCacheConfigModel:
     def test_invalid_ttl_type(self) -> None:
         """Test that invalid TTL type raises ValidationError."""
         with pytest.raises(ValidationError):
-            CacheConfig(ttl_jikan="not_an_int")  # type: ignore
+            CacheConfig(ttl_mal="not_an_int")  # type: ignore
 
     def test_negative_ttl(self) -> None:
         """Test that negative TTL values are accepted (Pydantic allows by default)."""
         # Note: No validation prevents negative TTLs in current implementation
-        config = CacheConfig(ttl_jikan=-1)
-        assert config.ttl_jikan == -1
+        config = CacheConfig(ttl_mal=-1)
+        assert config.ttl_mal == -1
 
     def test_zero_ttl(self) -> None:
         """Test that zero TTL is accepted."""
@@ -288,7 +288,7 @@ class TestGetCacheConfig:
         assert config.storage_type == "redis"
         assert config.redis_url == "redis://localhost:6379/0"
         # Service TTLs should be defaults
-        assert config.ttl_jikan == 604800
+        assert config.ttl_mal == 604800
         assert config.ttl_anilist == 604800
 
     def test_get_cache_config_singleton(self) -> None:
@@ -408,7 +408,7 @@ class TestCacheConfigIntegration:
             cache_enabled=True,
             storage_type="redis",
             redis_url="redis://prod-redis.example.com:6379/0",
-            ttl_jikan=86400,
+            ttl_mal=86400,
             ttl_anilist=86400,
         )
 
@@ -428,7 +428,7 @@ class TestCacheConfigIntegration:
     def test_multi_service_ttl_variation(self) -> None:
         """Test realistic scenario with different TTLs per service."""
         config = CacheConfig(
-            ttl_jikan=86400,  # 24 hours - frequently updated
+            ttl_mal=86400,  # 24 hours - frequently updated
             ttl_anilist=86400,  # 24 hours
             ttl_anidb=86400,  # 24 hours
             ttl_kitsu=86400,  # 24 hours
@@ -438,7 +438,7 @@ class TestCacheConfigIntegration:
         )
 
         # Verify all are 24 hours as per unified configuration
-        assert config.ttl_jikan == 86400
+        assert config.ttl_mal == 86400
         assert config.ttl_anilist == 86400
         assert config.ttl_anidb == 86400
         assert config.ttl_kitsu == 86400

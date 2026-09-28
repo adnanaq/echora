@@ -26,8 +26,8 @@ Examples:
 
         from http_cache.instance import http_cache_manager
 
-        session = http_cache_manager.get_aiohttp_session("jikan")
-        async with session.get("https://api.jikan.moe/v4/anime/21") as response:
+        session = http_cache_manager.get_aiohttp_session("mal")
+        async with session.get("https://myanimelist.net/anime/21") as response:
             data = await response.json()
             print(response.from_cache)  # False on first request, True on second
 

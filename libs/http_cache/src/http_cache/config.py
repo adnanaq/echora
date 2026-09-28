@@ -43,9 +43,7 @@ class CacheConfig(BaseSettings):
     # across those titles, so a 24-hour window expired between runs and every
     # shared character was crawled again. Each source page is fetched at most
     # once a week instead.
-    ttl_jikan: int = Field(
-        default=604800, description="Jikan (MyAnimeList) cache TTL - 7 days"
-    )
+    ttl_mal: int = Field(default=604800, description="MyAnimeList cache TTL - 7 days")
     ttl_anilist: int = Field(default=604800, description="AniList cache TTL - 7 days")
     ttl_anidb: int = Field(default=604800, description="AniDB cache TTL - 7 days")
     ttl_kitsu: int = Field(default=604800, description="Kitsu cache TTL - 7 days")
@@ -130,7 +128,7 @@ def get_cache_config() -> CacheConfig:
         REDIS_SOCKET_TIMEOUT (default: 10)
         REDIS_RETRY_ON_TIMEOUT (default: true)
         REDIS_HEALTH_CHECK_INTERVAL (default: 30)
-        TTL_JIKAN, TTL_ANILIST, TTL_ANIDB, etc. (default: 86400)
+        TTL_MAL, TTL_ANILIST, TTL_ANIDB, etc. (default: 86400)
 
     Returns:
         Cached CacheConfig instance.

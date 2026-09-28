@@ -38,7 +38,7 @@ from http_cache.result_cache import cached_result
 logger = logging.getLogger(__name__)
 
 _CACHE_CONFIG = get_cache_config()
-TTL_MAL = _CACHE_CONFIG.ttl_jikan
+TTL_MAL = _CACHE_CONFIG.ttl_mal
 
 _INTER_REQUEST_DELAY = 3.0
 
