@@ -12,10 +12,10 @@ settings are in `docs/vector_service_capacity_plan.md`.
 | `sweep.py` | Runs a sweep and writes one comparison table |
 | `load/` | k6 load test (`vector_search.js`, `run_load_test.py`, `run_vector_search.sh`), its queries, and `results/` (git-ignored) |
 | `test_data/` | Builds the test collections and the query file |
-| `quality/` | Search accuracy against exact search, and Qdrant's cost per search |
-| `diagnostics/` | Profiling and per-stage timing of a running service |
+| `quality/` | Search accuracy against exact search, Qdrant's cost per search, and whether a model setting changes results |
+| `diagnostics/` | Profiling and per-stage timing of a running service; timing the model on its own |
 | `reports/` | Turns a load test's raw samples into per-window numbers |
-| `toolkit/` | Shared modules: settings, k6 runner, resource readers, service control, result readers |
+| `toolkit/` | Shared modules: settings, k6 runner, resource readers, service control, result readers, query mix, result agreement |
 | `tests/` | Tests of these tools (`./pants test benchmarks/vector_service/tests::`) |
 
 The tests of the service's own code stay in `tests/`; these tools measure it.
@@ -161,8 +161,8 @@ as `WITH_PAYLOAD` for that variant). Examples in `sweeps/`:
 | `cpu_embedding` | CPU only: embedding batch size and model calls at a time, breakpoint (finding 28) |
 | `model_chunks` | Texts per BGE-M3 model pass (`EMBED_MODEL_CHUNK_SIZE`) 256 / 32 / 16, GPU breakpoint (finding 29) |
 | `model_chunks_steady` | Chunks of 256 against 32 at a steady 600/s; run with `--timed` (finding 30) |
-| `token_budget_breakpoint` | Token budget per pass (`EMBED_MODEL_MAX_TOKENS_PER_PASS`) 384 / 512 on chunks of 32, GPU breakpoint (finding 31) |
-| `token_budget_load` | Token budget 256 at a steady 600/s; run with `--timed` (finding 31) |
+| `token_budget_breakpoint` | Token budget per pass (`EMBED_MODEL_MAX_TOKENS_PER_PASS`) none / 256 / 512 on chunks of 32, GPU breakpoint (findings 31, 33) |
+| `token_budget_load` | No budget against budget 256 at a steady 600/s; run with `--timed` (findings 32, 33) |
 | `cpu_scaling` | CPU only, one container size per run: CPU limit and `OMP_NUM_THREADS` set with `--set`, breakpoint (finding 27) |
 
 The results folder gets `sweep-<name>-<time>.md` with one table (completed searches/s and
@@ -303,7 +303,63 @@ outside Docker with the service's usual environment variables, then load it
 with the `load` test at a steady rate. It wraps the service's own functions,
 so it is for diagnosis only.
 
+For each model call it also prints how the call's time splits, from Linux's
+per-thread scheduler counters (`/proc/thread-self/schedstat`): running on a
+CPU (including waiting on the GPU), ready but waiting for a free core, and
+blocked, which in the service is mostly waiting for Python's GIL.
+
+### Service and Qdrant on separate cores
+
+On a machine that also runs Qdrant and k6, the OS may put the model thread on
+slow cores next to a busy Qdrant, which makes the service look slower than it
+is where Qdrant runs elsewhere (ECHO-54 finding 33). To measure without that,
+give each its own cores for the run, then restore Qdrant. Check the layout
+first with `lscpu -e=CPU,CORE,MAXMHZ` (logical CPUs sharing a `CORE` belong
+together). On the laptop:
+
+```bash
+docker update --cpuset-cpus 4-11,16-23 echora-dev-qdrant      # slower cores
+taskset -c 0-3,12-15 uv run python -m benchmarks.vector_service.sweep token_budget_load --timed
+docker update --cpuset-cpus 0-23 echora-dev-qdrant             # restore
+```
+
+The sweep's service instance inherits the `taskset` cores; k6 runs in Docker
+and is not pinned.
+
+## The model on its own
+
+`diagnostics/time_model_passes.py` times BGE-M3 outside the service on batches
+in the load test's query mix: per batch size, chunk size
+(`EMBED_MODEL_CHUNK_SIZE`) and token budget
+(`EMBED_MODEL_MAX_TOKENS_PER_PASS`), the time per batch, texts/s, passes per
+batch, and the lowest dense cosine against one eager pass. `--runners` adds
+`torch.compile` (`compiled`) and CUDA graphs (`cuda_graphs`),
+`--busy-python-thread` repeats each timing with a second busy Python thread
+(as the event loop under load), and `--phases` splits a pass into tokenizing,
+the model and converting results.
+
+```bash
+./pants run benchmarks/vector_service/diagnostics/time_model_passes.py -- \
+  --batch-sizes 41 64 --chunk-sizes 256 32 --token-budgets 0 256 512 --phases
+# compiled / cuda_graphs need the project's Python (Triton needs Python's C headers)
+PYTHONPATH=$(printf '%s:' libs/*/src apps/*/src) .venv/bin/python -m \
+  benchmarks.vector_service.diagnostics.time_model_passes --runners eager compiled cuda_graphs
+```
+
 ## Search accuracy and Qdrant cost
+
+`quality/compare_search_results.py` checks whether a model setting changes
+search results: it embeds every query in `load/search_queries.json` with two
+settings, runs the same hybrid search on the environment's accuracy
+collection, and prints how many top-10 lists are identical and the share of
+IDs in common. The exact order already varies between runs (fp16 rounding
+changes with the other texts in a batch, and near-tied results swap), so
+`--with-baseline` also measures that variation for the first setting:
+
+```bash
+./pants run benchmarks/vector_service/quality/compare_search_results.py -- \
+  --first-chunk-size 256 --second-chunk-size 32 --second-token-budget 512 --with-baseline
+```
 
 Changes to Qdrant's search settings can change results, so each one is
 measured for accuracy as well as speed with `benchmarks/vector_service/quality/measure_qdrant_search.py`:
