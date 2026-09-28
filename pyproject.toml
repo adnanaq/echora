@@ -183,7 +183,7 @@ ignore = [
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101", "TRY003"]  # Tests: allow uppercase vars/args, imports not at top, unused vars, redefinitions, assert statements, long exception messages in mocks
-"benchmarks/**/tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101", "TRY003"]  # Benchmark tool tests: same allowances as tests/
+"benchmarks/**/tests/**/*.py" = ["N806", "N803", "E402", "F841", "F811", "S101", "S311", "TRY003"]  # Benchmark tool tests: same allowances as tests/, plus seeded random test data
 "stubs/**/*.pyi" = ["N801", "N803", "UP046"]  # Stub files: allow non-CapWords names, uppercase args, Generic subclass patterns
 "**/*_pb2.py" = ["ALL"]    # Generated protobuf code — do not lint
 "**/*_pb2.pyi" = ["ALL"]   # Generated protobuf type stubs — do not lint
