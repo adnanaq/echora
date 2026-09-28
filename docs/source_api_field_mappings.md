@@ -5,7 +5,7 @@
 
 | Source       | Verification method                                                                                           |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
-| MAL/Jikan    | Jikan API v4 calls (One Piece, AoT, Fate, Bleach, DB Kai, etc.)                                               |
+| MAL          | MAL's own page strings, as the MAL crawlers read them (One Piece, AoT, Fate, Bleach, DB Kai, etc.)          |
 | AniList      | GraphQL `__type` introspection + live queries (One Piece, AoT, Fate, Railgun, NGE, etc.)                      |
 | Kitsu        | REST API calls + [server source](https://github.com/hummingbird-me/kitsu-server) (One Piece, AoT, Fate, etc.) |
 | AnimSchedule | REST API v3 calls + filter queries (One Piece, AoT, Fate/kaleid, Cyberpunk, Isekai Quartet, etc.)             |
@@ -17,7 +17,7 @@
 
 ## Relation Types
 
-| Canonical             | MAL/Jikan               | AniList       | Kitsu                 | AnimSchedule   | AniDB                        | AnimePlanet                              | AniSearch                                                     | Verified with                                         |
+| Canonical             | MAL               | AniList       | Kitsu                 | AnimSchedule   | AniDB                        | AnimePlanet                              | AniSearch                                                     | Verified with                                         |
 | --------------------- | ----------------------- | ------------- | --------------------- | -------------- | ---------------------------- | ---------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
 | `SEQUEL`              | `"Sequel"`              | `SEQUEL`      | `sequel`              | `sequels`      | `"Sequel"`                   | subtype `"Sequel"`                       | `"Sequel"`                                                    | AoT S2, FSN UBW, Bleach TYBW                          |
 | `PREQUEL`             | `"Prequel"`             | `PREQUEL`     | `prequel`             | `prequels`     | `"Prequel"`                  | subtype `"Prequel"`                      | `"Prequel"`                                                   | AoT S2, FSN UBW, Steins;Gate 0, DBZ                   |
@@ -49,7 +49,7 @@
 
 ## Anime Type / Format
 
-| Canonical    | MAL/Jikan      | AniList    | Kitsu (`subtype`) | AnimSchedule (`mediaTypes`)                        | AniDB           | AnimePlanet     | AniSearch       | Verified with                                      |
+| Canonical    | MAL      | AniList    | Kitsu (`subtype`) | AnimSchedule (`mediaTypes`)                        | AniDB           | AnimePlanet     | AniSearch       | Verified with                                      |
 | ------------ | -------------- | ---------- | ----------------- | -------------------------------------------------- | --------------- | --------------- | --------------- | -------------------------------------------------- |
 | `TV`         | `"TV"`         | `TV`       | `"TV"`            | `"TV"` (route: `tv`)                               | `"TV Series"`   | `"TV"`          | `"TV-Series"`   | One Piece, AoT, NGE, HxH, Kanon                    |
 | `TV_SHORT`   | —              | `TV_SHORT` | —                 | `"TV Short"` (route: `tv-short`)                   | —               | —               | —               | AniList: Saiki Kusuo; AS: Isekai Quartet           |
@@ -81,7 +81,7 @@
 
 ## Status
 
-| Canonical   | MAL/Jikan            | AniList            | Kitsu          | AnimSchedule | AniDB                            | AnimePlanet            | AniSearch     | Verified with                              |
+| Canonical   | MAL            | AniList            | Kitsu          | AnimSchedule | AniDB                            | AnimePlanet            | AniSearch     | Verified with                              |
 | ----------- | -------------------- | ------------------ | -------------- | ------------ | -------------------------------- | ---------------------- | ------------- | ------------------------------------------ |
 | `ONGOING`   | `"Currently Airing"` | `RELEASING`        | `"current"`    | `"Ongoing"`  | _(derived: start < now, no end)_ | _(derived from dates)_ | `"Ongoing"`   | One Piece, Omae Gotoki                     |
 | `FINISHED`  | `"Finished Airing"`  | `FINISHED`         | `"finished"`   | `"Finished"` | _(derived: end date set)_        | _(derived from dates)_ | `"Completed"` | AoT, NGE, Cowboy Bebop, Steins;Gate        |
@@ -107,7 +107,7 @@
 
 Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirmed from [Anime model source](https://github.com/hummingbird-me/kitsu-server/blob/the-future/app/models/anime.rb). AnimePlanet encodes source material as **genre tags** (e.g., `"Based on a Manga"`, `"Original Work"`) rather than a structured field. **AniDB** also has no dedicated field — source material is encoded as **tags** under parent tag `original work` (t2609), extracted by matching tag names from the flat tags list.
 
-| Canonical        | MAL/Jikan        | AniList                         | AnimSchedule (`sources`) | AniDB (tag name)                                                    | AnimePlanet (genre tag)                               | AniSearch (`adapted`) | Verified with                                     |
+| Canonical        | MAL        | AniList                         | AnimSchedule (`sources`) | AniDB (tag name)                                                    | AnimePlanet (genre tag)                               | AniSearch (`adapted`) | Verified with                                     |
 | ---------------- | ---------------- | ------------------------------- | ------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------- | --------------------- | ------------------------------------------------- |
 | `MANGA`          | `"Manga"`        | `MANGA`                         | `"Manga"`                | `"manga"` (t2798)                                       | `"Based on a Manga"`, `"Based on a Webtoon"`          | `"Manga"`             | One Piece, Bocchi the Rock, AoT, Dandadan         |
 | `KOMA_4`         | `"4-koma manga"` | —                               | `"4-koma Manga"`         | —                                                       | `"Based on a 4-koma Manga"`                           | —                     | Azumanga Daioh, Lucky Star, K-On!                 |
@@ -149,7 +149,7 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 
 ## Rating / Age Rating
 
-| Canonical   | MAL/Jikan                          | Kitsu (`ageRating`) | AniDB                                        | AnimePlanet                 | AniSearch                | Verified with               |
+| Canonical   | MAL                          | Kitsu (`ageRating`) | AniDB                                        | AnimePlanet                 | AniSearch                | Verified with               |
 | ----------- | ---------------------------------- | ------------------- | -------------------------------------------- | --------------------------- | ------------------------ | --------------------------- |
 | `G`         | `"G - All Ages"`                   | `"G"` (6,727)       | —                                            | —                           | —                        | On Your Mark (1047)         |
 | `PG`        | `"PG - Children"`                  | `"PG"` (10,394)     | —                                            | —                           | —                        | Pokemon (527), One Piece    |
@@ -160,7 +160,7 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 | _(omit)_    | `null`                             | `null`              | —                                            | —                           | —                        | Some upcoming/obscure anime |
 | _(numeric)_ | —                                  | —                   | `permanent` / `temporary` / `review` ratings | `aggregateRating` (JSON-LD) | community rating (score) | One Piece (69)              |
 
-**MAL**: `AnimeRating` enum uses full Jikan strings — no normalization needed.
+**MAL**: `AnimeRating` enum uses MAL's full rating strings — no normalization needed.
 **AniList**: Uses `isAdult` (boolean) instead of rating.
 **Kitsu**: 3 active values (G, PG, R) + R18 (0 entries). `ageRatingGuide` has free-text description. No PG-13 equivalent — Kitsu maps PG-13 content to PG with guide text.
 **AnimSchedule**: No rating/age rating field.
@@ -173,13 +173,14 @@ Kitsu and AnimePlanet have **no dedicated source material field**. Kitsu confirm
 ## Taxonomy Vocabularies
 
 Where each source publishes its own list of genres / themes / tags, and what it
-costs to fetch. Verified live on 2026-09-22. These are the authorities behind
-`libs/enrichment/src/enrichment/pipeline/word_lists.py`, which classifies a
-value by what the word is rather than which field a provider filed it under.
+costs to fetch. Verified live on 2026-09-22. These lists were compared to find
+the spellings in `libs/enrichment/src/enrichment/pipeline/same_word.py` that mean
+the same word (`science fiction` and `Sci-Fi`, `Superpowers` and `Super Power`).
+No code fetches them: `merge_categories` in `metadata_rules.py` files each word
+by what the providers called it, not by a vocabulary.
 
 | Source | Endpoint | Calls | Size | Notes |
 | :----- | :------- | ----: | ---: | :---- |
-| MAL/Jikan | `api.jikan.moe/v4/genres/anime` | 1 | 78 | Returns all four kinds together; split by MAL's own filters it is 5 demographics, 21 genres, 52 themes. The filtered variants (`?filter=themes`) returned `504` twice while this was verified, so prefer the unfiltered call |
 | AniList | GraphQL `{ GenreCollection }` | 1 | 19 | Fixed genre list |
 | AniList | GraphQL `{ MediaTagCollection { name category isAdult } }` | 1 | 428 | Carries the category (`Theme-*`, `Cast-*`, `Setting-*`, `Technical`, `Demographic`) that the mapper routes on, plus `isAdult` for `content_warnings` |
 | AniDB | `httpapi?request=taglist` | **1** | **1,723** | The largest vocabulary of the seven. Carries `id`, `parentid` and `isverified`, so the tag hierarchy comes free. Not listed with the other request types — `request=tag` answers `<error code="320">` |

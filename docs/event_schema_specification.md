@@ -65,7 +65,7 @@ message EpisodeAiredEvent {
   string event_id = 1;                           // UUID
   google.protobuf.Timestamp timestamp = 2;
   string anime_id = 3;                           // UUID
-  string source = 4;                             // "jikan", "anilist"
+  string source = 4;                             // "mal", "anilist"
   string aired_at = 5;                           // ISO 8601 actual air datetime
   EpisodeData episode = 6;
 }

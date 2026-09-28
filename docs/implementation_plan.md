@@ -740,7 +740,7 @@ This phase is updated to reflect the shift to a GraphQL API, which moves the pri
 - **Goal:** To reduce redundant API calls, avoid rate-limiting, and speed up the backend enrichment process.
 - **Logic:**
   1.  The core data fetching method in each helper will be modified.
-  2.  Before making a live HTTP request, it will first check the Redis cache for the requested data using a standardized key (e.g., `jikan:anime:123`).
+  2.  Before making a live HTTP request, it will first check the Redis cache for the requested data keyed by the request itself (Redis keys of the form `hishel_cache:<type>:<id>`).
   3.  **On a cache hit,** it will return the cached data immediately.
   4.  **On a cache miss,** it will perform the real API request, save the result to the Redis cache with an appropriate TTL (Time-To-Live), and then return the data.
 
@@ -1254,7 +1254,7 @@ The V1 implementation of this service only processes public, non-personal anime 
   - **Workflow Logic:**
       1. Makes an API call to the **Qdrant Cloud** API to check cluster status and vector counts.
       2. Connects to **MongoDB Atlas** to run a `db.serverStatus()` command and check for slow queries.
-      3. Makes a test call to a critical external API (like Jikan) to ensure it's responsive.
+      3. Makes a test call to a critical external source (like AniList) to ensure it's responsive.
       4. Compiles these results into a single "Daily System Health" message posted to Slack.
   - **Benefit:** Proactively informs you of potential degradation (e.g., "Qdrant cluster CPU is at 85%") before it becomes a critical issue.
     

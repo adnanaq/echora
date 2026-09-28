@@ -206,7 +206,7 @@ echora/
 
 ### Enrichment Pipeline Usage
 
-**Script**: `run_enrichment.py` - Main entry point for programmatic enrichment
+**Script**: `scripts/run_enrichment.py` - Main entry point for programmatic enrichment
 
 **Database**: Reads from `assets/seed_data/anime-offline-database.json` (39,244+ anime entries)
 
@@ -216,31 +216,31 @@ echora/
 - `--title "Title"`: Search for anime by title (case-insensitive, partial match)
 - `--file PATH`: Use custom database file (optional)
 - `--agent "name"`: Specify agent directory name (optional, auto-generated if not provided)
-- `--skip service1 service2`: Skip specific services (e.g., `--skip jikan anidb`)
+- `--skip service1 service2`: Skip specific services (e.g., `--skip mal anidb`)
 - `--only service1 service2`: Only fetch specific services (e.g., `--only anime_planet`)
 
-**Available Services**: `jikan`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
+**Available Services**: `mal`, `anilist`, `kitsu`, `anidb`, `anime_planet`, `anisearch`, `animeschedule`
 
 **Example Usage**:
 
 ```bash
 # Process first anime in database
-python run_enrichment.py --index 0
+python scripts/run_enrichment.py --index 0
 
 # Process One Piece
-python run_enrichment.py --title "One Piece"
+python scripts/run_enrichment.py --title "One Piece"
 
 # Use custom database
-python run_enrichment.py --file custom.json --index 5
+python scripts/run_enrichment.py --file custom.json --index 5
 
 # Specify agent directory
-python run_enrichment.py --title "Dandadan" --agent "Dandadan_test"
+python scripts/run_enrichment.py --title "Dandadan" --agent "Dandadan_test"
 
 # Skip specific services
-python run_enrichment.py --title "Dandadan" --skip animeschedule anidb
+python scripts/run_enrichment.py --title "Dandadan" --skip animeschedule anidb
 
 # Only fetch from specific services
-python run_enrichment.py --title "Dandadan" --only anime_planet anisearch
+python scripts/run_enrichment.py --title "Dandadan" --only anime_planet anisearch
 ```
 
 **Notes**:
@@ -259,7 +259,7 @@ All stage scripts follow a consistent pattern for multi-agent concurrent process
 
 **Multi-agent Directory Structure**: `temp/<agent_id>/` (e.g., `temp/One_agent1/`, `temp/Dandadan_agent1/`)
 
-**Note**: When using `run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
+**Note**: When using `scripts/run_enrichment.py`, agent IDs are assigned automatically. Manual specification only needed for independent stage script execution.
 
 #### Stage 1: Metadata, Relationships and Statistics
 

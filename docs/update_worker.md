@@ -26,7 +26,7 @@ The Update Worker (`apps/update_worker/`) is the Python service responsible for 
 **Tech Stack**:
 - `APScheduler` — cron-style job scheduling
 - `nats-py` — NATS JetStream publisher
-- `libs/enrichment` — reuses existing API helpers (Jikan, AniList, MAL, Kitsu)
+- `libs/enrichment` — reuses existing source helpers (MAL, AniList, Kitsu)
 - GraphQL client — queries PostgreSQL Service for broadcast schedules
 
 ## Jobs
@@ -47,7 +47,7 @@ Midnight rebuild:
     schedule job at expected_air_datetime
 
 At air-time job:
-  1. Fetch episode from Jikan/AniList for anime_id
+  1. Fetch episode from MAL/AniList for anime_id
   2. Verify episode_number == expected_episode_num
   3. Found     → publish anime.episode.aired to NATS
   4. Not found → reschedule +2hrs, retry up to 3 times
@@ -161,7 +161,7 @@ Reuses `libs/enrichment` helpers — no new API integrations needed:
 
 | Source | Data Fetched |
 |--------|-------------|
-| Jikan (MAL) | Episode details, air status |
+| MAL | Episode details, air status |
 | AniList | Episode details, score |
 | MAL | Score, statistics |
 | Kitsu | Score, statistics |
