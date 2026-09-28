@@ -299,8 +299,10 @@ also skip Qdrant but needs expiry when data changes.
 - [ ] CPU inference with ONNX Runtime
 - [ ] A cloud GPU (e.g. L4) and a cloud CPU instance: cost per 1,000 searches/s
       (needs a cloud account)
-- [ ] Fail at startup when a GPU is requested but not usable (today the
-      service falls back to CPU silently)
+- [x] Fail at startup when a GPU is requested but not usable: with
+      `ENABLE_GPU=true` the vector service stops with `GpuUnavailableError`,
+      naming a CPU-only PyTorch build or a missing CUDA device, and otherwise
+      logs the GPU it uses
 
 **Sizing for the overall target** (estimates from measured per-instance
 numbers; the cloud machines themselves are not measured yet)
@@ -331,7 +333,13 @@ numbers; the cloud machines themselves are not measured yet)
 - [ ] Network round trip between the service and Qdrant nodes at the chosen
       provider, single vs batched queries
 - [ ] Cluster size (nodes, shards, replicas) for the overall target
-- [ ] Index the image vector (it has no HNSW index today, `m=0`)
+- [x] Image vector without an index (`m=0`): correct, since HNSW cannot index
+      MaxSim multivectors (Qdrant docs); every image search scores every image
+      vector that passes its filter (ECHO-54 finding 34)
+- [ ] If image searches must cover characters or everything at scale: a
+      second, indexed image vector per point (e.g. the main image) for
+      candidates, then MaxSim over all images to rerank (Qdrant's two-stage
+      pattern); needs a schema change and re-indexing
 
 ### 8. Portable measurement tools
 
@@ -398,6 +406,11 @@ meanwhile.
   hybrid search results, against today's own variation
 - `diagnostics/run_timed_vector_service.py` splits each model call into
   running, waiting for a core and blocked (Linux scheduler counters)
+- `test_data/build_image_load_test_collection.py` +
+  `quality/measure_image_search.py`: image search cost at production size
+- `diagnostics/simulate_indexing_load.py` + `sweeps/search_steady.toml`:
+  search latency while indexing shares the GPU
+- `sweeps/low_load_transport.toml`: HTTP against gRPC at 1 search/s, timed
 - Tests in `benchmarks/vector_service/tests/`
 
 Still fixed: the `load` test's 2 min ramp is mirrored in `sweep.py` and
@@ -419,11 +432,40 @@ Still fixed: the `load` test's 2 min ramp is mirrored in `sweep.py` and
 
 ### 9. Smaller open items
 
-- [ ] The ~45 ms Qdrant call at 1 search/s over HTTP (see "Found along the
-      way")
-- [ ] Measure image search (OpenCLIP) the same way as text search
-- [ ] Check that indexing does not slow search when both run in one instance
-      (they share `EMBED_MAX_CONCURRENCY` and the GPU)
+- [x] The ~45 ms Qdrant call at 1 search/s over HTTP no longer happens
+      (finding 37, sweep `low_load_transport` with `--timed`): at 1 search/s
+      the Qdrant call takes 8.4–8.8 ms over HTTP and 5.9–7.2 ms over gRPC,
+      the whole search 16 and 13–14 ms; the code path has changed since
+      (inference check skipped, query batching, gRPC). The only outlier was
+      the first search after start-up (~230–250 ms): `MODEL_WARM_UP`, which
+      production forces on, was read nowhere. The service now runs each model
+      once at start-up when it is set, before it reports healthy; the first
+      search then takes 17–21 ms and p99 at 1/s fell from 226–252 to
+      23–25 ms
+- [x] Measure image search (finding 34, `quality/measure_image_search.py`
+      on `anime_image_load_test`: 40,346 anime with 1–6 random image vectors
+      and 769,693 characters with 1–2, production's image vector settings).
+      Qdrant, laptop: no filter p50 31 ms, ~74 searches/s, ~246 ms Qdrant CPU
+      per search; anime only 5.5 ms, ~485/s, ~12 ms; characters only 31 ms,
+      ~78/s, ~224 ms (hybrid text search: ~9–12 ms, ~1,200/s). Encoding the
+      uploaded image with OpenCLIP ViT-L/14: 41–43 ms on the GPU in fp32,
+      ~650 ms on 4 CPU threads
+- [x] OpenCLIP in fp16 on the GPU (`torch.autocast`, as OpenCLIP's README
+      runs inference; finding 35): 256 real images, cosine against fp32 ≥
+      0.99986, 99.7% of top-10 neighbours shared; images/s at batch 1 / 8 /
+      32: 24 / 29 / 30 → 44 / 85 / 81. Also speeds up indexing
+- [ ] Image searches in the service go through one model call at a time
+      (`EMBED_MAX_CONCURRENCY`) and are not batched: ~44 images/s per
+      instance on this GPU even in fp16
+- [x] Search while indexing shares the GPU (finding 36). The vector service
+      does not index today (only `scripts/`; the planned consumer that embeds
+      on NATS events does not exist yet), so this measures a GPU shared with an
+      indexing process (`diagnostics/simulate_indexing_load.py`: 200-token
+      texts in batches of 32 plus 8 images per loop, flat out) against the
+      `search_steady` sweep at 400/s: search held 400/s, but p50 / p95 went
+      from 61 / 86 to 277 / 381 ms; indexing ran ~72 texts/s and ~18 images/s
+      meanwhile. Bulk indexing belongs on its own GPU, or throttled / off
+      peak; a trickle of updates is a much smaller load
 - [ ] `libs/qdrant_db/src/qdrant_db/client.py` is over 500 lines; split it
 
 ### 10. Write up
@@ -446,6 +488,7 @@ production GPU once deployed.
 | `EMBED_BATCH_MAX_SIZE` | 1 (off) | 64 | Encodes concurrent queries in one model call; 128 gave no more | findings 15, 24 |
 | `EMBED_MODEL_CHUNK_SIZE` | 256 (one pass per query batch) | 32 | Model alone 1.8× faster with 16 on batches of 64; end to end ~620 → ~710 searches/s with 32, p50 at 600/s 242 → 174 ms; results within today's variation | findings 29–31 |
 | `EMBED_MODEL_MAX_TOKENS_PER_PASS` | 0 (off) | 0 for now; 512 looks best | Unpinned on the laptop: 256 slower (~613 against ~707/s), 512 even. Service and Qdrant on separate cores (closer to production): 512 ~833 against ~791/s, p50 at ~728/s 120 against 185 ms. Single runs; re-check on the production GPU | findings 31, 33 |
+| `MODEL_WARM_UP` | false (production forces true) | true | Runs each model once at start-up, so the first searches after a start do not take ~230–250 ms | finding 37 |
 | `EMBED_BATCH_MAX_WAIT_MS` | 0 | 0 | A lone search is not delayed; not tuned yet (step 2) | finding 15 |
 | `EMBED_MAX_CONCURRENCY` | 2 | 1 on one GPU | Parallel model calls on one GPU only add waiting: p50 at 500/s 82 ms with 1, 102 with 2. Not measured on CPU instances or for indexing, which uses the same setting | finding 24 |
 | `QDRANT_QUERY_BATCH_MAX_SIZE` | 1 (off) | 8 | Sends concurrent searches in one `query_batch_points` call. Qdrant runs one batch's searches one after another per segment, so smaller batches finish sooner | findings 17, 24 |
@@ -473,10 +516,6 @@ Found along the way, not changed:
 - qdrant-client's `query_batch_points` deep-copies every request
   (`_resolve_query_batch_request`), with no option to skip it: ~0.06 ms per
   search, too small to work around
-- In a smoke test at 1 search/s over HTTP, the Qdrant call took ~45 ms inside
-  the service against ~6 ms for the same kind of query sent to Qdrant
-  directly; not explained yet (under load over gRPC the whole search takes
-  13–15 ms)
 
 ## Open decisions
 

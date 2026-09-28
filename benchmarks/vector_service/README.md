@@ -11,7 +11,7 @@ settings are in `docs/vector_service_capacity_plan.md`.
 | `sweeps/` | Sweep definitions: service settings to compare under one load |
 | `sweep.py` | Runs a sweep and writes one comparison table |
 | `load/` | k6 load test (`vector_search.js`, `run_load_test.py`, `run_vector_search.sh`), its queries, and `results/` (git-ignored) |
-| `test_data/` | Builds the test collections and the query file |
+| `test_data/` | Builds the test collections (text, and image vectors only) and the query file |
 | `quality/` | Search accuracy against exact search, Qdrant's cost per search, and whether a model setting changes results |
 | `diagnostics/` | Profiling and per-stage timing of a running service; timing the model on its own |
 | `reports/` | Turns a load test's raw samples into per-window numbers |
@@ -163,6 +163,8 @@ as `WITH_PAYLOAD` for that variant). Examples in `sweeps/`:
 | `model_chunks_steady` | Chunks of 256 against 32 at a steady 600/s; run with `--timed` (finding 30) |
 | `token_budget_breakpoint` | Token budget per pass (`EMBED_MODEL_MAX_TOKENS_PER_PASS`) none / 256 / 512 on chunks of 32, GPU breakpoint (findings 31, 33) |
 | `token_budget_load` | No budget against budget 256 at a steady 600/s; run with `--timed` (findings 32, 33) |
+| `search_steady` | The recommended settings at a steady 400/s, to compare conditions such as indexing on the same GPU (finding 36) |
+| `low_load_transport` | HTTP against gRPC to Qdrant at 1 search/s (smoke); run with `--timed` (finding 37) |
 | `cpu_scaling` | CPU only, one container size per run: CPU limit and `OMP_NUM_THREADS` set with `--set`, breakpoint (finding 27) |
 
 The results folder gets `sweep-<name>-<time>.md` with one table (completed searches/s and
@@ -326,6 +328,20 @@ docker update --cpuset-cpus 0-23 echora-dev-qdrant             # restore
 The sweep's service instance inherits the `taskset` cores; k6 runs in Docker
 and is not pinned.
 
+## Search while indexing shares the GPU
+
+`diagnostics/simulate_indexing_load.py` keeps the GPU busy the way indexing
+would (document-length texts through BGE-M3, cached images through OpenCLIP,
+nothing written anywhere) and prints its own texts/s and images/s. Run the
+`search_steady` sweep once alone and once while it runs:
+
+```bash
+uv run python -m benchmarks.vector_service.sweep search_steady
+PYTHONPATH=$(printf '%s:' libs/*/src apps/*/src) .venv/bin/python -m \
+  benchmarks.vector_service.diagnostics.simulate_indexing_load --seconds 520 &
+uv run python -m benchmarks.vector_service.sweep search_steady
+```
+
 ## The model on its own
 
 `diagnostics/time_model_passes.py` times BGE-M3 outside the service on batches
@@ -347,6 +363,20 @@ PYTHONPATH=$(printf '%s:' libs/*/src apps/*/src) .venv/bin/python -m \
 ```
 
 ## Search accuracy and Qdrant cost
+
+`quality/measure_image_search.py` measures what an image search costs
+Qdrant on `anime_image_load_test`, a collection of image vectors only, at
+production size (anime and characters, random unit vectors, production's
+image vector settings), built by
+`test_data/build_image_load_test_collection.py`. The image vector has no HNSW
+index (MaxSim cannot use one), so each search scores every image vector its
+filter lets through; the tool reports latency, Qdrant CPU per search and
+searches/s with no filter, anime only and characters only.
+
+```bash
+./pants run benchmarks/vector_service/test_data/build_image_load_test_collection.py
+./pants run benchmarks/vector_service/quality/measure_image_search.py
+```
 
 `quality/compare_search_results.py` checks whether a model setting changes
 search results: it embeds every query in `load/search_queries.json` with two
