@@ -25,6 +25,7 @@ import argparse
 import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from common.config.qdrant_config import QdrantConfig
@@ -32,11 +33,14 @@ from qdrant_client import QdrantClient, models
 from qdrant_db.collection.schema_builder import (
     build_optimizers_config,
     build_vector_config,
+    get_hnsw_config,
+    get_per_vector_quantization_config,
 )
 
 from benchmarks.vector_service.toolkit.settings import load_environment
 
 ENTITY_TYPE_FIELD = "entity_type"
+AVERAGE_VECTOR = "image_main_average"
 
 
 class ImageCollectionExistsError(RuntimeError):
@@ -75,17 +79,40 @@ def image_points(
             point_id += 1
 
 
-def to_qdrant_point(point: ImagePoint, vector_name: str) -> models.PointStruct:
+def to_qdrant_point(
+    point: ImagePoint, vector_name: str, average_vector: str | None = None
+) -> models.PointStruct:
+    """The point's images; with ``average_vector``, also their unit-length average."""
+    vectors: dict[str, Any] = {vector_name: point.images}
+    if average_vector:
+        average = np.asarray(point.images, dtype=np.float32).mean(axis=0)
+        vectors[average_vector] = (average / np.linalg.norm(average)).tolist()
     return models.PointStruct(
         id=point.point_id,
-        vector={vector_name: point.images},
+        vector=vectors,
         payload={ENTITY_TYPE_FIELD: point.entity_type},
     )
 
 
+def vectors_config(
+    config: QdrantConfig, image_vector: str, average_vector: str | None
+) -> dict[str, models.VectorParams]:
+    vectors = {image_vector: build_vector_config(config)[image_vector]}
+    if average_vector:
+        vectors[average_vector] = models.VectorParams(
+            size=config.vector_names[image_vector],
+            distance=models.Distance.COSINE,
+            hnsw_config=get_hnsw_config(config, "high"),
+            quantization_config=get_per_vector_quantization_config(config, "high"),
+        )
+    return vectors
+
+
 def create_collection(
-    client: QdrantClient, collection: str, recreate: bool
+    client: QdrantClient, collection: str, recreate: bool, average_vector: str | None
 ) -> QdrantConfig:
+    """Create the collection; ``average_vector`` adds an indexed single vector
+    per point (the average of its images) for a two-stage image search."""
     config = QdrantConfig()
     if client.collection_exists(collection):
         if not recreate:
@@ -94,7 +121,7 @@ def create_collection(
     image_vector = config.primary_image_vector_name
     client.create_collection(
         collection,
-        vectors_config={image_vector: build_vector_config(config)[image_vector]},
+        vectors_config=vectors_config(config, image_vector, average_vector),
         optimizers_config=build_optimizers_config(config),
     )
     client.create_payload_index(
@@ -124,6 +151,11 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=54)
     parser.add_argument("--recreate", action="store_true")
+    parser.add_argument(
+        "--average-vector",
+        action="store_true",
+        help=f"also store each point's average image as {AVERAGE_VECTOR} (indexed)",
+    )
     return parser.parse_args()
 
 
@@ -137,7 +169,8 @@ def main() -> None:
         prefer_grpc=True,
         timeout=300,
     )
-    config = create_collection(client, collection, args.recreate)
+    average_vector = AVERAGE_VECTOR if args.average_vector else None
+    config = create_collection(client, collection, args.recreate, average_vector)
     image_vector = config.primary_image_vector_name
     kinds = [
         EntityImages("anime", args.anime, args.anime_images),
@@ -147,7 +180,7 @@ def main() -> None:
     client.upload_points(
         collection,
         (
-            to_qdrant_point(point, image_vector)
+            to_qdrant_point(point, image_vector, average_vector)
             for point in image_points(
                 kinds, config.vector_names[image_vector], args.seed
             )

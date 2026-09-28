@@ -22,7 +22,7 @@ import argparse
 import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from common.config.qdrant_config import QdrantConfig
@@ -40,8 +40,12 @@ class ImageSearch:
     collection: str
     vector_name: str
     limit: int
+    stage_one_vector: str | None = None
+    stage_one_candidates: int = 100
 
     def run(self, image: list[float], entity_type: str | None) -> None:
+        """Today's search, or with ``stage_one_vector`` a two-stage search: that
+        indexed vector finds candidates, the image multivector reranks them."""
         condition = (
             models.Filter(
                 must=[
@@ -53,8 +57,19 @@ class ImageSearch:
             if entity_type
             else None
         )
+        prefetch = (
+            models.Prefetch(
+                query=image,
+                using=self.stage_one_vector,
+                limit=self.stage_one_candidates,
+                filter=condition,
+            )
+            if self.stage_one_vector
+            else None
+        )
         self.client.query_points(
             self.collection,
+            prefetch=prefetch,
             query=image,
             using=self.vector_name,
             query_filter=condition,
@@ -71,14 +86,23 @@ def random_images(count: int, dimensions: int, seed: int) -> list[list[float]]:
 
 def latency_ms(
     search: ImageSearch, images: list[list[float]], entity_type: str | None
-) -> tuple[float, float]:
+) -> dict[str, float]:
+    """Latency of searches sent one at a time: min, mean, p50, p95, p99, max."""
     times = []
     for image in images:
         started = time.perf_counter()
         search.run(image, entity_type)
         times.append((time.perf_counter() - started) * 1000)
     times.sort()
-    return statistics.median(times), times[int(0.95 * (len(times) - 1))]
+    last = len(times) - 1
+    return {
+        "min": times[0],
+        "mean": statistics.mean(times),
+        "p50": statistics.median(times),
+        "p95": times[int(0.95 * last)],
+        "p99": times[int(0.99 * last)],
+        "max": times[-1],
+    }
 
 
 def throughput(
@@ -115,6 +139,12 @@ def parse_arguments() -> argparse.Namespace:
         "--limit", type=int, default=100, help="candidates, as the service's prefetch"
     )
     parser.add_argument("--seed", type=int, default=54)
+    parser.add_argument(
+        "--two-stage-vector",
+        default="image_main_average",
+        help="indexed vector for stage 1, if the collection has it",
+    )
+    parser.add_argument("--two-stage-candidates", type=int, default=100)
     return parser.parse_args()
 
 
@@ -136,15 +166,35 @@ def main() -> None:
     for image in images[:20]:
         search.run(image, None)
     print(f"{search.collection}: {client.count(search.collection).count} points")
-    for entity_type in ENTITY_TYPES:
-        p50, p95 = latency_ms(
-            search, images[: max(20, args.searches // 3)], entity_type
+    searches = {"today": search}
+    stored_vectors = client.get_collection(search.collection).config.params.vectors
+    if isinstance(stored_vectors, dict) and args.two_stage_vector in stored_vectors:
+        searches[f"two-stage, {args.two_stage_candidates} cand."] = replace(
+            search,
+            stage_one_vector=args.two_stage_vector,
+            stage_one_candidates=args.two_stage_candidates,
         )
-        rate, cpu_ms = throughput(search, images, entity_type, args.in_flight, cpu)
+    for label, variant in searches.items():
+        print(f"\n{label}")
+        measure_variant(variant, images, args.in_flight, cpu)
+
+
+def measure_variant(
+    search: ImageSearch,
+    images: list[list[float]],
+    in_flight: int,
+    cpu: ContainerCgroupReader,
+) -> None:
+    for image in images[:20]:
+        search.run(image, None)
+    for entity_type in ENTITY_TYPES:
+        latency = latency_ms(search, images, entity_type)
+        rate, cpu_ms = throughput(search, images, entity_type, in_flight, cpu)
         cpu_text = f"{cpu_ms:6.1f} ms" if cpu_ms is not None else "unknown"
+        spread = " ".join(f"{name} {value:5.1f}" for name, value in latency.items())
         print(
-            f"filter {entity_type or 'none':9} | one at a time p50 {p50:6.1f} ms p95 {p95:6.1f} ms "
-            f"| {args.in_flight} in flight {rate:6.0f} searches/s | Qdrant CPU per search {cpu_text}",
+            f"filter {entity_type or 'none':9} | one at a time (ms): {spread} "
+            f"| {in_flight} in flight {rate:6.0f} searches/s | Qdrant CPU per search {cpu_text}",
             flush=True,
         )
 

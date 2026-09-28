@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from benchmarks.vector_service.test_data.build_image_load_test_collection import (
     EntityImages,
@@ -38,3 +39,22 @@ def test_qdrant_point_holds_the_images_under_the_vector_name():
     assert point.id == 7
     assert point.vector == {"image_vector": [[1.0, 0.0]]}
     assert point.payload == {"entity_type": "anime"}
+
+
+def test_qdrant_point_can_carry_the_average_of_its_images():
+    point = to_qdrant_point(
+        ImagePoint(3, "character", [[1.0, 0.0], [0.0, 1.0]]),
+        "image_vector",
+        average_vector="image_main_average",
+    )
+
+    assert isinstance(point.vector, dict)
+    assert point.vector["image_main_average"] == pytest.approx([2**-0.5, 2**-0.5])
+    assert point.vector["image_vector"] == [[1.0, 0.0], [0.0, 1.0]]
+
+
+def test_without_an_average_name_only_the_images_are_stored():
+    point = to_qdrant_point(ImagePoint(4, "anime", [[1.0, 0.0]]), "image_vector")
+
+    assert isinstance(point.vector, dict)
+    assert list(point.vector) == ["image_vector"]

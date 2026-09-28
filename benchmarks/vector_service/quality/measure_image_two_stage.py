@@ -34,7 +34,6 @@ from pathlib import Path
 
 import numpy as np
 from common.config.qdrant_config import QdrantConfig
-from PIL import Image
 from qdrant_client import QdrantClient, models
 from qdrant_db.collection.schema_builder import (
     build_optimizers_config,
@@ -42,8 +41,12 @@ from qdrant_db.collection.schema_builder import (
     get_hnsw_config,
     get_per_vector_quantization_config,
 )
-from vector_processing.embedding_models.vision.openclip_model import OpenClipModel
 
+from benchmarks.vector_service.quality.image_embedders import (
+    SERVICE_MODEL,
+    embed_images,
+    embeddings_store,
+)
 from benchmarks.vector_service.test_data.download_images import image_urls
 from benchmarks.vector_service.toolkit.image_entities import (
     ImageEntity,
@@ -99,23 +102,6 @@ def extra_entities(
     ]
 
 
-def embed_images(
-    urls: Sequence[str], store: Path, batch_size: int = 32
-) -> dict[str, np.ndarray]:
-    """OpenCLIP embeddings per URL, reusing the ones saved in ``store``."""
-    saved = dict(np.load(store)) if store.exists() else {}
-    missing = [url for url in urls if url not in saved]
-    if missing:
-        model = OpenClipModel("ViT-L-14/laion2b_s32b_b82k")
-        for start in range(0, len(missing), batch_size):
-            batch = missing[start : start + batch_size]
-            images = [Image.open(cached_path(url)).convert("RGB") for url in batch]
-            for url, vector in zip(batch, model.encode_image(images), strict=True):
-                saved[url] = np.asarray(vector, dtype=np.float32)
-        np.savez(store, **saved)
-    return {url: saved[url] for url in urls}
-
-
 def main_vectors(images: np.ndarray) -> dict[str, list[float]]:
     average = images.mean(axis=0)
     return {
@@ -125,11 +111,11 @@ def main_vectors(images: np.ndarray) -> dict[str, list[float]]:
 
 
 def create_collection(
-    client: QdrantClient, collection: str, config: QdrantConfig
+    client: QdrantClient, collection: str, config: QdrantConfig, dimensions: int
 ) -> str:
     image_vector = config.primary_image_vector_name
     main_params = models.VectorParams(
-        size=config.vector_names[image_vector],
+        size=dimensions,
         distance=models.Distance.COSINE,
         hnsw_config=get_hnsw_config(config, "high"),
         quantization_config=get_per_vector_quantization_config(config, "high"),
@@ -139,7 +125,9 @@ def create_collection(
     client.create_collection(
         collection,
         vectors_config={
-            image_vector: build_vector_config(config)[image_vector],
+            image_vector: build_vector_config(config)[image_vector].model_copy(
+                update={"size": dimensions}
+            ),
             **dict.fromkeys(MAIN_VECTORS, main_params),
         },
         optimizers_config=build_optimizers_config(config),
@@ -411,6 +399,11 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=54)
     parser.add_argument(
+        "--image-model",
+        default=SERVICE_MODEL,
+        help="openclip:<architecture>/<pretrained> or hf-clip:<repo>",
+    )
+    parser.add_argument(
         "--export-candidates",
         type=Path,
         help="write each query's candidates (today, average, first) for reranking elsewhere",
@@ -430,7 +423,8 @@ def main() -> None:
     entities = entities + extras
     types = {entity.key: entity.entity_type for entity in entities}
     urls = sorted({url for entity in entities for url in entity.urls})
-    embeddings = embed_images(urls, environment.results_dir / "image_embeddings.npz")
+    store = embeddings_store(environment.results_dir, args.image_model)
+    embeddings = embed_images(urls, args.image_model, store)
     print(
         f"{len(stored)} entities ({len(extras)} extra one-image), {len(urls)} images, "
         f"{len(queries)} queries",
@@ -441,7 +435,8 @@ def main() -> None:
         url=environment.qdrant.url, api_key=environment.qdrant.api_key(), timeout=300
     )
     collection = environment.collections.image_accuracy
-    image_vector = create_collection(client, collection, config)
+    dimensions = len(next(iter(embeddings.values())))
+    image_vector = create_collection(client, collection, config, dimensions)
     ids_to_keys = fill_collection(
         client, collection, image_vector, stored, types, embeddings
     )
