@@ -16,14 +16,19 @@ QDRANT_SEARCH_OVERSAMPLING = "4.0"
 test_type = "breakpoint"
 
 [load.k6]
-MAX_RATE = "1500"
+MAX_RATE = "2000"
 BREAKPOINT_DURATION = "5m"
 WITH_PAYLOAD = "false"
 
 [[variant]]
-name = "chunks of 32, budget 384"
+name = "chunks of 32, no budget"
 [variant.service_env]
-EMBED_MODEL_MAX_TOKENS_PER_PASS = "384"
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "0"
+
+[[variant]]
+name = "chunks of 32, budget 256"
+[variant.service_env]
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "256"
 
 [[variant]]
 name = "chunks of 32, budget 512"

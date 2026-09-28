@@ -21,6 +21,11 @@ HOLD = "60s"
 WITH_PAYLOAD = "false"
 
 [[variant]]
+name = "chunks of 32, no budget"
+[variant.service_env]
+EMBED_MODEL_MAX_TOKENS_PER_PASS = "0"
+
+[[variant]]
 name = "chunks of 32, budget 256"
 [variant.service_env]
 EMBED_MODEL_MAX_TOKENS_PER_PASS = "256"

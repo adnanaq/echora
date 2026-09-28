@@ -9,6 +9,10 @@ and prints, every REPORT_SECONDS (default 10 s) to stderr, the mean, p50 and p95
   search's text or query to getting its result (queue time plus the call)
 - ``model batch call`` / ``qdrant batch call`` and their batch sizes
 - ``model encode in thread``: the model call inside its worker thread
+- ``model thread on CPU`` / ``model thread waiting for CPU`` /
+  ``model thread blocked``: how that call's time splits, from Linux's
+  per-thread scheduler counters: running, ready but waiting for a free core
+  (a busy machine), and neither (mostly waiting for Python's GIL)
 - ``event loop lag``: how late a 10 ms timer fires; high values mean the
   event loop thread is saturated
 
@@ -24,6 +28,7 @@ import statistics
 import sys
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -85,12 +90,26 @@ async def timed_search(
         samples["search handler"].append(time.perf_counter() - started)
 
 
+def thread_scheduler_seconds() -> tuple[float, float]:
+    """Seconds this thread has run on a CPU and waited for one (Linux)."""
+    on_cpu, waiting = Path("/proc/thread-self/schedstat").read_text().split()[:2]
+    return int(on_cpu) / 1e9, int(waiting) / 1e9
+
+
 def timed_encode(self: flagembedding_model.FlagEmbeddingModel, texts: list[str]) -> Any:
     started = time.perf_counter()
+    on_cpu_before, waiting_before = thread_scheduler_seconds()
     try:
         return original_encode(self, texts)
     finally:
-        samples["model encode in thread"].append(time.perf_counter() - started)
+        elapsed = time.perf_counter() - started
+        on_cpu_after, waiting_after = thread_scheduler_seconds()
+        on_cpu = on_cpu_after - on_cpu_before
+        waiting = waiting_after - waiting_before
+        samples["model encode in thread"].append(elapsed)
+        samples["model thread on CPU"].append(on_cpu)
+        samples["model thread waiting for CPU"].append(waiting)
+        samples["model thread blocked"].append(max(0.0, elapsed - on_cpu - waiting))
 
 
 async def loop_lag_monitor() -> None:
