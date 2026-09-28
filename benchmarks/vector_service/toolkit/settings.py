@@ -73,10 +73,16 @@ class Collections:
     load: str = "anime_load_test"
     accuracy: str = "anime_accuracy_test"
     image_load: str = "anime_image_load_test"
+    image_accuracy: str = "anime_image_accuracy_test"
     protected: tuple[str, ...] = ("anime_database",)
 
     def __post_init__(self) -> None:
-        for collection in (self.load, self.accuracy, self.image_load):
+        for collection in (
+            self.load,
+            self.accuracy,
+            self.image_load,
+            self.image_accuracy,
+        ):
             if collection in self.protected:
                 raise ProtectedCollectionError(collection)
 
