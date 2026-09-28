@@ -401,6 +401,17 @@ PYTHONPATH=$(printf '%s:' libs/*/src apps/*/src) .venv/bin/python -m \
   benchmarks.vector_service.quality.measure_image_two_stage --extra-images covers.json
 ```
 
+`--image-model` compares other image models on the same test
+(`quality/image_embedders.py`): `service:<architecture>/<pretrained>` is the
+service's own `OpenClipModel` and the default, `openclip:<architecture>/<pretrained>`
+any other OpenCLIP model (e.g. `openclip:ViT-SO400M-14-SigLIP2-378/webli`), and
+`hf-clip:<repo>` a Hugging Face CLIP model (e.g. `hf-clip:OysterQAQ/DanbooruCLIP`).
+Weights download on first use; each model's embeddings are saved in the
+results folder as `image_embeddings_<model>.npz`. Delete both when done (the
+Hugging Face cache and those files); a rerun downloads and embeds again.
+`quality/rerank_with_ccip.py` reranks exported candidates with CCIP in its own
+Python 3.12 environment (see its docstring).
+
 `quality/compare_search_results.py` checks whether a model setting changes
 search results: it embeds every query in `load/search_queries.json` with two
 settings, runs the same hybrid search on the environment's accuracy

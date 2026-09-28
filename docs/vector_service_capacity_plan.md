@@ -365,6 +365,19 @@ numbers; the cloud machines themselves are not measured yet)
       answers are anime covers; production adds ~770k characters, whose
       pictures look more alike, so the stage-1 rank should be re-checked when
       real character images exist at scale
+- [x] Two-stage image search cost (finding 43): `anime_image_load_test`
+      rebuilt with each point's average image vector, indexed
+      (`build_image_load_test_collection.py --average-vector`), measured with
+      `measure_image_search.py` (two-stage variant). Qdrant CPU per search /
+      most searches/s, today → two-stage with 100 candidates: no filter
+      252 ms / 72 → 29 ms / 281; characters 237 ms / 77 → 26 ms / 285; anime
+      9.4 ms / 533 → 5.0 ms / 381. With 50 or 20 candidates the cost is the
+      same within noise (25–34 ms), so stage 1 (the index search) is most of
+      it; with random vectors that is likely pessimistic. Keep 100 candidates.
+      One at a time (fastest / average / p99 / slowest): no filter today
+      20.1 / 23.7 / 28.6 / 29.6 ms, two-stage 4.9 / 6.3 / 8.1 / 8.4 ms;
+      characters today 19.0 / 22.6 / 28.0 / 28.5 ms, two-stage 6.3 / 8.2 /
+      9.9 / 10.5 ms
 - [ ] If image searches must cover characters or everything at scale:
       implement the average main vector (schema change and re-indexing),
       with the candidate count from the check above
@@ -403,6 +416,14 @@ numbers; the cloud machines themselves are not measured yet)
       image 46.6 / 61.7% → 51.6 / 66.7%. Anime (26): 1st 88.5 → 80.8%, top
       10 unchanged (CCIP is built for single-character images, covers are
       not). So CCIP helps character searches only; 17 ms per image on the GPU
+- [x] Other image models (finding 42, `--image-model` in
+      `quality/measure_image_two_stage.py`; the service's own OpenCLIP class
+      stays the default): right entity 1st / in top 10 on the real-image
+      test, and stage-1 rank (average vector) holding 99% of today's answers.
+      Service OpenCLIP ViT-L/14: 53.8 / 69.6%, 28. SigLIP 2 SO400M (378px):
+      51.1 / 70.2%, 157. SigLIP 2 Large (384px): 44.1 / 64.3%, 77.
+      DanbooruCLIP: 39.7 / 51.1%, 105 (and no licence stated). The current
+      model stays; CCIP reranking is the gain so far
 
 ### 8. Portable measurement tools
 
