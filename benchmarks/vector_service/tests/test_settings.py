@@ -114,6 +114,19 @@ def test_protected_collection_is_refused(tmp_path: Path) -> None:
         )
 
 
+def test_protected_image_collection_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ProtectedCollectionError):
+        load_environment(
+            write_environment(tmp_path), ["collections.image_load=anime_database"]
+        )
+
+
+def test_image_collection_has_its_own_default_name(tmp_path: Path) -> None:
+    environment = load_environment(write_environment(tmp_path))
+
+    assert environment.collections.image_load == "anime_image_load_test"
+
+
 def test_api_key_comes_from_the_named_variable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

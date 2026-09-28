@@ -35,6 +35,7 @@ container = "echora-dev-qdrant"
 [collections]
 load = "anime_load_test"
 accuracy = "anime_accuracy_test"
+image_load = "anime_image_load_test"
 
 # service: "process" (local process, /proc), "container" (Docker), or "none".
 [resources]
