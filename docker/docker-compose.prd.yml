@@ -71,8 +71,8 @@ services:
       # Environment (enforces production safety)
       - ENVIRONMENT=production
 
-      # The service falls back to CPU silently if the GPU is not usable;
-      # check its start-up log for the device.
+      # The service stops at start-up if it cannot use the GPU, rather than
+      # running on the CPU; its log names the GPU it uses.
       - ENABLE_GPU=true
 
       # PyTorch sizes its thread pool from the host's cores, not the CPU limit

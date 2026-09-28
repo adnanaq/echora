@@ -1,13 +1,20 @@
 """Unit tests for vector_service runtime helpers."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from common.config import get_settings
 from qdrant_client.http.models import QueryRequest
 from qdrant_db.errors import ConfigurationError
-from vector_service.runtime import _create_qdrant_client, _validate_model_dimensions
+from vector_service.runtime import (
+    GpuUnavailableError,
+    _create_qdrant_client,
+    _require_usable_gpu,
+    _validate_model_dimensions,
+    _warm_up_models,
+    build_runtime,
+)
 
 
 def _make_settings(text_dim: int = 1024, image_dim: int = 768) -> SimpleNamespace:
@@ -138,3 +145,49 @@ async def test_qdrant_client_skips_local_inference_inspection() -> None:
 
     inspect.assert_not_called()
     query_batch_points.assert_awaited_once()
+
+
+def test_gpu_check_passes_when_a_cuda_device_is_usable() -> None:
+    _require_usable_gpu(cuda_available=True, cuda_build="13.0")
+
+
+def test_gpu_check_names_a_cpu_only_torch_build() -> None:
+    with pytest.raises(GpuUnavailableError, match="CPU-only"):
+        _require_usable_gpu(cuda_available=False, cuda_build=None)
+
+
+def test_gpu_check_names_a_missing_device_on_a_cuda_build() -> None:
+    with pytest.raises(GpuUnavailableError, match="no usable CUDA device"):
+        _require_usable_gpu(cuda_available=False, cuda_build="13.0")
+
+
+def test_gpu_check_error_says_how_to_run_on_cpu() -> None:
+    with pytest.raises(GpuUnavailableError, match="ENABLE_GPU=false"):
+        _require_usable_gpu(cuda_available=False, cuda_build=None)
+
+
+@pytest.mark.asyncio
+async def test_runtime_stops_when_gpu_is_requested_but_not_usable() -> None:
+    settings = SimpleNamespace(service=SimpleNamespace(enable_gpu=True))
+    with (
+        patch("torch.cuda.is_available", return_value=False),
+        patch("torch.version.cuda", None),
+        patch("vector_service.runtime._create_qdrant_client") as create_client,
+        pytest.raises(GpuUnavailableError),
+    ):
+        await build_runtime(settings)
+
+    create_client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_warm_up_runs_each_model_once() -> None:
+    text_processor = SimpleNamespace(encode_text_with_sparse=AsyncMock())
+    image_model = SimpleNamespace(encode_image=MagicMock(return_value=[[1.0]]))
+    vision_processor = SimpleNamespace(model=image_model)
+
+    await _warm_up_models(text_processor, vision_processor)
+
+    text_processor.encode_text_with_sparse.assert_awaited_once()
+    image_model.encode_image.assert_called_once()
+    assert len(image_model.encode_image.call_args.args[0]) == 1

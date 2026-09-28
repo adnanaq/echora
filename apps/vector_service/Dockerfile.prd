@@ -11,7 +11,8 @@
 # - ENVIRONMENT=production disables debug mode and sets log_level=INFO.
 # - torch is the CUDA build from uv.lock (CUDA 13.0, driver 580 or newer);
 #   docker-compose.prd.yml gives the container one NVIDIA GPU and sets
-#   ENABLE_GPU=true. Without a GPU the service runs on CPU.
+#   ENABLE_GPU=true. With ENABLE_GPU=true and no usable GPU the service stops
+#   at start-up; set ENABLE_GPU=false to run on the CPU.
 # =============================================================================
 
 # -----------------------------------------------------------------------------

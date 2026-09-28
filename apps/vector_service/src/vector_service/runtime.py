@@ -7,8 +7,10 @@ by route handlers.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
 
 from common.config import QdrantConfig, Settings
@@ -40,6 +42,39 @@ class VectorRuntime:
     embedding_cache: EmbeddingCache | None
 
 
+class GpuUnavailableError(RuntimeError):
+    """Raised when ENABLE_GPU is true but PyTorch cannot use a GPU."""
+
+    def __init__(self, cuda_build: str | None) -> None:
+        if cuda_build is None:
+            reason = "PyTorch is a CPU-only build"
+        else:
+            reason = (
+                f"PyTorch (CUDA {cuda_build}) finds no usable CUDA device; check "
+                "the NVIDIA driver, and in a container the NVIDIA Container "
+                "Toolkit and the GPU reservation"
+            )
+        super().__init__(
+            f"ENABLE_GPU is true but {reason}; the models would run on the CPU, "
+            "far slower. Fix the GPU setup, or set ENABLE_GPU=false to run on the "
+            "CPU on purpose"
+        )
+
+
+def _require_usable_gpu(cuda_available: bool, cuda_build: str | None) -> None:
+    """Stop start-up when a GPU is requested but PyTorch cannot use one.
+
+    Args:
+        cuda_available: ``torch.cuda.is_available()``.
+        cuda_build: ``torch.version.cuda``; ``None`` for a CPU-only build.
+
+    Raises:
+        GpuUnavailableError: If no CUDA device is usable.
+    """
+    if not cuda_available:
+        raise GpuUnavailableError(cuda_build)
+
+
 def _validate_model_dimensions(
     settings: Settings,
     text_processor: TextProcessor,
@@ -69,6 +104,25 @@ def _validate_model_dimensions(
                 f"model produces {actual_dim}-dim vectors but config expects {expected_dim}. "
                 f"Update vector_names['{vector_name}'] or change the embedding model."
             )
+
+
+async def _warm_up_models(
+    text_processor: TextProcessor, vision_processor: VisionProcessor
+) -> None:
+    """Run each model once so the first searches do not pay for it.
+
+    A model's first pass is several times slower than later ones (~230 ms
+    against ~15 ms for a whole search on the laptop GPU, ECHO-54 finding 37).
+    Runs before the service reports healthy.
+    """
+    from PIL import Image
+
+    started = time.perf_counter()
+    await text_processor.encode_text_with_sparse("warm up")
+    await asyncio.to_thread(
+        vision_processor.model.encode_image, [Image.new("RGB", (224, 224))]
+    )
+    logger.info(f"Models warmed up in {time.perf_counter() - started:.1f} s")
 
 
 def _create_qdrant_client(qdrant_settings: QdrantConfig) -> AsyncQdrantClient:
@@ -104,7 +158,12 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
     """
     logger.info("Initializing vector_service runtime dependencies")
 
-    if not settings.service.enable_gpu:
+    if settings.service.enable_gpu:
+        import torch
+
+        _require_usable_gpu(torch.cuda.is_available(), torch.version.cuda)
+        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+    else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
     async_qdrant_client: AsyncQdrantClient | None = None
@@ -150,6 +209,8 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
         # any Qdrant I/O. Catches model/config drift (e.g. wrong IMAGE_EMBEDDING_MODEL
         # env var) at the earliest possible moment — before collection init or writes.
         _validate_model_dimensions(settings, text_processor, vision_processor)
+        if settings.embedding.model_warm_up:
+            await _warm_up_models(text_processor, vision_processor)
 
         telemetry_registry = None
         if settings.observability.otel_enabled:
