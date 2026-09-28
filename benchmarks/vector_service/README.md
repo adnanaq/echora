@@ -15,7 +15,7 @@ settings are in `docs/vector_service_capacity_plan.md`.
 | `quality/` | Search accuracy against exact search, Qdrant's cost per search, and whether a model setting changes results |
 | `diagnostics/` | Profiling and per-stage timing of a running service; timing the model on its own |
 | `reports/` | Turns a load test's raw samples into per-window numbers |
-| `toolkit/` | Shared modules: settings, k6 runner, resource readers, service control, result readers, query mix, result agreement |
+| `toolkit/` | Shared modules: settings, k6 runner, resource readers, service control, result readers, query mix, result agreement, image entities |
 | `tests/` | Tests of these tools (`./pants test benchmarks/vector_service/tests::`) |
 
 The tests of the service's own code stay in `tests/`; these tools measure it.
@@ -376,6 +376,29 @@ searches/s with no filter, anime only and characters only.
 ```bash
 ./pants run benchmarks/vector_service/test_data/build_image_load_test_collection.py
 ./pants run benchmarks/vector_service/quality/measure_image_search.py
+```
+
+`quality/measure_image_two_stage.py` checks the accuracy of a two-stage
+image search against today's: each point also gets one indexed "main" vector
+(the average of its images, or its first image); stage 1 finds candidates by
+it, stage 2 compares the query with every image of those candidates. It uses
+real images from the local enrichment data (`temp/` agent folders and
+`assets/seed_data/anime_database.json`), grouped by anime, character or
+episode (`toolkit/image_entities.py`; providers' pictures of the same
+character are grouped by name), holds out one image of every entity with two
+or more as its query, and reports how often the right entity is first and in
+the top 10, how much of today's top 10 each variant keeps, and where the
+right entity ranks in stage 1. `--extra-images` adds cached images from other
+files as one-image wrong answers, to make the collection bigger. The images
+must be in the image cache first: `test_data/download_images.py` downloads
+the image URLs found in given files (AniDB left out unless `--only-host
+anidb.net`, which should run one at a time with a longer pause).
+
+```bash
+./pants run benchmarks/vector_service/test_data/download_images.py -- \
+  temp/*/*.json temp/*/*.jsonl assets/seed_data/anime_database.json
+PYTHONPATH=$(printf '%s:' libs/*/src apps/*/src) .venv/bin/python -m \
+  benchmarks.vector_service.quality.measure_image_two_stage --extra-images covers.json
 ```
 
 `quality/compare_search_results.py` checks whether a model setting changes

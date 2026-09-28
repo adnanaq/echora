@@ -32,6 +32,8 @@ k6 breakpoint test, realistic query mix:
 | GPU, plus skipping the Qdrant client's inference check | 1.3M points | ~595 searches/s | per window: 13 / 17 ms up to ~95/s, 57 / 77 ms at ~310/s, 84 / 110 ms at ~490/s, 113 / 190 ms at ~570/s | the Python side and, increasingly, the GPU; ~1.4 CPU cores, GPU 35–70% busy |
 | GPU, plus rescoring with 4× oversampling (hybrid recall 0.917 → 0.958) | 1.3M points | ~585 searches/s | per window: 15 / 30 ms up to ~95/s, 63 / 91 ms at ~310/s, 103 / 140 ms at ~490/s, 148 / 240 ms at ~570/s | the Python side and the GPU; ~1.4 CPU cores, GPU 40–80% busy |
 | GPU, plus one model call at a time and Qdrant batches of up to 8 (16 in flight) | 1.3M points | ~590 searches/s | per window: 42 / 58 ms at ~255/s, 70 / 94 ms at ~415/s, 85 / 119 ms at ~495/s, 118 / 173 ms at ~545/s | query embedding: at the limit every model call is a full batch of 64, back to back (~600 texts/s for this query mix); service ~1.3 CPU cores, Qdrant ~5 cores, machine 39% busy |
+| GPU, plus texts per model pass: chunks of 32 | 1.3M points | ~710 searches/s | per window: p50 74–76 ms at ~450/s; at a steady 600/s p50 / p95 173 / 244 ms | the model thread (~83% busy at 600/s); Python's GIL 20–28% of each model call (findings 29–32) |
+| GPU, service and Qdrant on separate cores | 1.3M points | ~790 (no budget) to ~833 (budget 512) searches/s | at a steady 600/s p50 / p95 79 / 114 ms; at ~728/s p50 120–185 ms | likely Qdrant on the laptop's 8 slower cores (finding 33) |
 
 CPU only, every change above, in a container with a CPU limit (laptop's
 Ryzen AI 9 HX 370; breakpoint test, stopped when p95 passes 2 s):
@@ -336,10 +338,71 @@ numbers; the cloud machines themselves are not measured yet)
 - [x] Image vector without an index (`m=0`): correct, since HNSW cannot index
       MaxSim multivectors (Qdrant docs); every image search scores every image
       vector that passes its filter (ECHO-54 finding 34)
-- [ ] If image searches must cover characters or everything at scale: a
-      second, indexed image vector per point (e.g. the main image) for
-      candidates, then MaxSim over all images to rerank (Qdrant's two-stage
-      pattern); needs a schema change and re-indexing
+- [x] Two-stage image search, accuracy on real images (finding 38,
+      `quality/measure_image_two_stage.py`): each point also gets one indexed
+      main vector; stage 1 finds candidates by it, stage 2 compares the query
+      with every image of those candidates (Qdrant's documented pattern: an
+      indexed mean-pooled vector for candidates, the original multivector to
+      rerank; for ColPali Qdrant reports 13x faster retrieval with near
+      identical quality using mean pooling). Test data: 1,921 anime,
+      characters and episodes with 4,930 real images from the local
+      enrichment data (all providers, AniDB included), one image of each
+      entity with two or more held out as the query (935 queries). Right
+      entity in top 10: today 69.6%; average main 69.3% (20 candidates),
+      69.7% (50), 69.8% (100); first image as main 62.5% (100). The average
+      keeps today's answers: for the 651 queries today answers, stage 1 ranks
+      the right entity within 9 for 95% and within 28 for 99%. The first
+      image does not (90% within 200). Choice: the average of a point's
+      images, not a chosen main image
+- [x] Same check at 41,013 points (finding 41): the offline database's 39,092
+      anime covers added as one-image wrong answers. Stage 1 with the average
+      vector, for queries today answers: 95% within 9, 99% within 28, the
+      same as at 1,921 points. Right entity 1st / top 10: today 53.2 / 69.0%,
+      average main with 20 candidates 53.3 / 68.9%, with 100 53.3 / 69.0%;
+      first image with 100 47.1 / 61.8%. With CCIP on the top 50, characters
+      52.9 / 68.5% → 58.6 / 74.0% (average main). Candidate count: 100 in
+      stage 1 leaves a wide margin over rank 28. Caveat: the added wrong
+      answers are anime covers; production adds ~770k characters, whose
+      pictures look more alike, so the stage-1 rank should be re-checked when
+      real character images exist at scale
+- [ ] If image searches must cover characters or everything at scale:
+      implement the average main vector (schema change and re-indexing),
+      with the candidate count from the check above
+- [ ] Image search accuracy itself (today 53.8% right entity first, 69.6%
+      in top 10 on this test; anime 88.5%, characters 52.8%). Found so far,
+      not measured here: general CLIP models fit anime illustrations poorly
+      (anime-illust-image-searcher); CLIP fine-tuned on anime data does
+      better (Anime-2026 dataset paper: P@10 8.56 → 10.21; DanbooruCLIP,
+      ViT-L/14 fine-tuned on Danbooru); anime character models such as CCIP
+      (contrastive anime character image pre-training); combining image and
+      tags (TCSR-Net: R@1 0.94 with full tags, ~1k-item gallery). Research
+      (finding 39), to be measured with `quality/measure_image_two_stage.py`:
+      - Another image model: SigLIP 2 (one report on fine-grained
+        classification: SigLIP2 ~92%, CLIP ViT-L ~59%, DINOv2 ~41%);
+        DanbooruCLIP (the same ViT-L/14 as ours, fine-tuned on Danbooru 2021
+        and pixiv); fine-tuned DINOv2 did best in an anime-to-manga matcher
+        (~81% R@1)
+      - CCIP (deepghs): trained to tell whether two single-character anime
+        images show the same character (~240k images, 3,982 characters;
+        best model F1 0.94, the default one 0.92). It compares images with
+        its own learned metric, not cosine, so it fits as a reranker of
+        candidates, not as the Qdrant vector; it knows no character names
+      - An anime tagger (WD EVA02-Large v3, Danbooru): ratings, character
+        and general tags (P=R threshold 0.53, macro F1 0.48); only tags with
+        600+ Danbooru images, so minor characters are missing. Tags could
+        filter or boost results, or be a sparse vector next to the image
+        vector
+      - Fine-tuning on our own data: pictures of the same character from
+        different providers are ready-made positive pairs for contrastive
+        training
+- [x] CCIP as a reranker (finding 40, `quality/rerank_with_ccip.py` in its own
+      Python 3.12 environment, since `dghs-imgutils` needs numpy 1.x; top 50
+      of each search reranked by each candidate's closest image). Characters
+      (909 queries), right entity 1st / in top 10: today 52.8 / 69.1% →
+      58.1 / 73.6%; average two-stage 52.8 / 69.3% → 58.4 / 74.1%; first
+      image 46.6 / 61.7% → 51.6 / 66.7%. Anime (26): 1st 88.5 → 80.8%, top
+      10 unchanged (CCIP is built for single-character images, covers are
+      not). So CCIP helps character searches only; 17 ms per image on the GPU
 
 ### 8. Portable measurement tools
 
@@ -411,6 +474,9 @@ meanwhile.
 - `diagnostics/simulate_indexing_load.py` + `sweeps/search_steady.toml`:
   search latency while indexing shares the GPU
 - `sweeps/low_load_transport.toml`: HTTP against gRPC at 1 search/s, timed
+- `test_data/download_images.py`, `toolkit/image_entities.py`,
+  `quality/measure_image_two_stage.py`: real images grouped by entity, and
+  today's image search against the two-stage search
 - Tests in `benchmarks/vector_service/tests/`
 
 Still fixed: the `load` test's 2 min ramp is mirrored in `sweep.py` and
