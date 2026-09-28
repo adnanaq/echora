@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test suite for process_stage2_episodes.py script.
-Tests episode processing with multi-source integration (Jikan, Kitsu, AniSearch).
+Tests episode processing with multi-source integration (MAL, Kitsu, AniSearch).
 Achieves 100% code coverage including all edge cases.
 """
 
@@ -362,10 +362,10 @@ class TestEpisodeProcessing:
         return [
             {
                 "episode_number": 1,
-                "title": "Jikan Title 1",
-                "title_japanese": "Jikan Japanese 1",
-                "title_romaji": "Jikan Romaji 1",
-                "synopsis": "Jikan synopsis",
+                "title": "MAL Title 1",
+                "title_japanese": "MAL Japanese 1",
+                "title_romaji": "MAL Romaji 1",
+                "synopsis": "MAL synopsis",
                 "aired": "1999-10-20T00:00:00+09:00",
                 "duration": 1440,
                 "score": 8.5,
@@ -375,7 +375,7 @@ class TestEpisodeProcessing:
             },
             {
                 "episode_number": 2,
-                "title": None,  # Missing Jikan title, should fallback
+                "title": None,  # Missing MAL title, should fallback
                 "title_japanese": None,
                 "title_romaji": None,
                 "synopsis": None,
@@ -456,13 +456,13 @@ class TestEpisodeProcessing:
         episodes = output["episodes"]
         assert len(episodes) == 3
 
-        # Test Episode 1: Jikan data
+        # Test Episode 1: MAL data
         ep1 = episodes[0]
         assert ep1["episode_number"] == 1
-        assert ep1["title"] == "Jikan Title 1"
-        assert ep1["title_japanese"] == "Jikan Japanese 1"
-        assert ep1["title_romaji"] == "Jikan Romaji 1"
-        assert ep1["synopsis"] == "Jikan synopsis"
+        assert ep1["title"] == "MAL Title 1"
+        assert ep1["title_japanese"] == "MAL Japanese 1"
+        assert ep1["title_romaji"] == "MAL Romaji 1"
+        assert ep1["synopsis"] == "MAL synopsis"
         assert ep1["aired"] == "1999-10-19T15:00:00Z"  # Converted to UTC
         assert ep1["duration"] == 1440
         assert ep1["score"] == 8.5
@@ -501,7 +501,7 @@ class TestEpisodeProcessing:
         assert ep3["episode_pages"] == {}  # No URL
 
     def test_process_all_episodes_title_fallback_priority(self, complete_test_env):
-        """Test that title fallback follows Jikan → Kitsu → AniSearch priority."""
+        """Test that title fallback follows MAL → Kitsu → AniSearch priority."""
         process_all_episodes(complete_test_env)
 
         output_file = Path(complete_test_env) / "stage2_episodes.json"
@@ -510,13 +510,13 @@ class TestEpisodeProcessing:
 
         episodes = output["episodes"]
 
-        # Episode 1: Has Jikan title
-        assert episodes[0]["title"] == "Jikan Title 1"
+        # Episode 1: Has MAL title
+        assert episodes[0]["title"] == "MAL Title 1"
 
-        # Episode 2: No Jikan, has Kitsu
+        # Episode 2: No MAL, has Kitsu
         assert episodes[1]["title"] == "Kitsu Title 2"
 
-        # Episode 3: No Jikan or Kitsu, has AniSearch
+        # Episode 3: No MAL or Kitsu, has AniSearch
         assert episodes[2]["title"] == "AniSearch Title 3"
 
     def test_process_all_episodes_episode_pages(self, complete_test_env):
@@ -792,8 +792,8 @@ class TestEdgeCases:
             # Should contain actual Japanese characters, not unicode escapes
             assert "テスト" in content
 
-    def test_synopsis_fallback_with_empty_jikan(self, tmp_path):
-        """Test synopsis fallback when Jikan has empty string."""
+    def test_synopsis_fallback_with_empty_mal(self, tmp_path):
+        """Test synopsis fallback when MAL has empty string."""
         episodes_data = [
             {
                 "episode_number": 1,

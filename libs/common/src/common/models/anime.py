@@ -30,7 +30,7 @@ class AnimeStatus(StrEnum):
 
         v = value.lower()
         _map = {
-            # MAL / Jikan
+            # MAL
             "currently airing": cls.ONGOING,
             "finished airing": cls.FINISHED,
             "not yet aired": cls.UPCOMING,
@@ -300,12 +300,12 @@ class SourceMaterialType(StrEnum):
     def _missing_(cls, value: object) -> SourceMaterialType:
         """Normalize source-specific strings from all enrichment sources.
 
-        Handles MAL/Jikan, AniList, AnimSchedule, and other variant spellings.
+        Handles MAL, AniList, AnimSchedule, and other variant spellings.
         """
         if not isinstance(value, str):
             return cls.UNKNOWN
         _map = {
-            # MAL / Jikan / AnimSchedule (Title Case → lowercase key)
+            # MAL / AnimSchedule (Title Case → lowercase key)
             "manga": cls.MANGA,
             "4-koma manga": cls.KOMA_4,
             "4-koma": cls.KOMA_4,
@@ -372,7 +372,7 @@ class SourceMaterialRelationType(StrEnum):
         if not isinstance(value, str):
             return cls.OTHER
         _map = {
-            # MAL / Jikan (Title Case)
+            # MAL (Title Case)
             "adaptation": cls.ADAPTATION,
             "source": cls.SOURCE,
             "alternative": cls.ALTERNATIVE,
@@ -429,7 +429,7 @@ class AnimeRelationType(StrEnum):
         if not isinstance(value, str):
             return cls.OTHER
         _map = {
-            # MAL / Jikan (Title Case)
+            # MAL (Title Case)
             "sequel": cls.SEQUEL,
             "prequel": cls.PREQUEL,
             "alternative version": cls.ALTERNATIVE_VERSION,
@@ -511,11 +511,11 @@ class AiredDates(BaseModel):
 class Broadcast(BaseModel):
     """Recurring broadcast schedule and premiere dates.
 
-    Merges the weekly broadcast slot (from MAL/Jikan) with per-version
+    Merges the weekly broadcast slot (from MAL) with per-version
     airtimes and premiere dates (from AnimSchedule).
     """
 
-    # Weekly recurring slot (from MAL/Jikan)
+    # Weekly recurring slot (from MAL)
     day: str | None = Field(None, description="Broadcast day (e.g., 'Sundays')")
     time: str | None = Field(
         None, description="Broadcast time in JP timezone (e.g., '23:15')"

@@ -4,9 +4,6 @@ Field names in these models are intentionally chosen to match the canonical
 models in libs/common/src/common/models/anime.py wherever possible. This means
 the mapper (mal_mapper.py) only performs value normalization (e.g., "Currently
 Airing" → "ONGOING"), never field renaming.
-
-These models replace the old Jikan-shaped models (MalAnimeFull, MalAnimeCharacterEntry,
-etc.) from libs/common/src/common/models/mal_models.py.
 """
 
 from typing import Any
