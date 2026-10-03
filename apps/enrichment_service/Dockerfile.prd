@@ -2,8 +2,8 @@
 # =============================================================================
 # Enrichment Service — production image (uv multi-stage)
 #
-# Build:  docker compose -f docker/docker-compose.prd.yml build enrichment-service
-# Run:    docker compose -f docker/docker-compose.prd.yml up -d enrichment-service
+# Build:  docker compose --env-file .env -f docker/docker-compose.prd.yml build enrichment-service
+# Run:    docker compose --env-file .env -f docker/docker-compose.prd.yml up -d enrichment-service
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -27,7 +27,10 @@ FROM python:3.14-slim AS app
 
 ARG TARGETARCH
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# chromium and xvfb: the MAL, AniSearch, anime-planet and AniDB crawlers drive
+# a real browser through zendriver, and AniSearch and AniDB open a visible
+# window, so the browser needs a virtual screen.
+RUN apt-get update && apt-get install -y --no-install-recommends curl chromium xvfb \
     && rm -rf /var/lib/apt/lists/* \
     && set -eux; \
        arch="${TARGETARCH:-amd64}"; \
@@ -54,18 +57,29 @@ COPY apps/enrichment_service/src/  /app/apps/enrichment_service/src/
 
 ENV PYTHONPATH="/app/apps/enrichment_service/src:/app/libs/common/src:/app/libs/observability/src:/app/libs/http_cache/src:/app/libs/enrichment/src"
 
+# /app/temp holds each run's provider files (ENRICHMENT_TEMP_DIR); it exists in
+# the image so a volume mounted there is owned by appuser. Xvfb running as
+# appuser cannot create /tmp/.X11-unix itself. Chrome's own sandbox cannot
+# start as a non-root user under Docker's default seccomp profile, so the
+# container is the isolation boundary; Debian's chromium launcher reads extra
+# flags from /etc/chromium.d/.
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --create-home appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /app/temp \
+    && chown -R appuser:appuser /app \
+    && mkdir -p /tmp/.X11-unix \
+    && chmod 1777 /tmp/.X11-unix \
+    && echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox"' > /etc/chromium.d/no-sandbox
 
 USER appuser
 
 ENV PYTHONUNBUFFERED=1 \
-    ENVIRONMENT=production
+    ENVIRONMENT=production \
+    DISPLAY=:99
 
 EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD grpc_health_probe -addr=localhost:8002 || exit 1
 
-ENTRYPOINT ["python", "-m", "enrichment_service.main"]
+ENTRYPOINT ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & exec python -m enrichment_service.main"]
