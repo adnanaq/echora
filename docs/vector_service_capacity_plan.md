@@ -335,6 +335,15 @@ numbers; the cloud machines themselves are not measured yet)
 - [ ] Network round trip between the service and Qdrant nodes at the chosen
       provider, single vs batched queries
 - [ ] Cluster size (nodes, shards, replicas) for the overall target
+- [ ] Compare Qdrant machines (machine types at the EU provider, Qdrant Hybrid
+      Cloud against self-hosted) with
+      [VectorDBBench](https://github.com/zilliztech/vectordbbench): QPS,
+      recall, latency and load time of Qdrant alone, with self-hosted and
+      cloud Qdrant clients, loading our own dense `text_vector` embeddings as
+      a custom Parquet dataset. Its Qdrant client tests one dense vector with
+      HNSW settings and filters only (no sparse or hybrid search, multivectors
+      or quantization settings; server defaults), so it compares machines,
+      while the tools in `benchmarks/vector_service/` measure whole searches
 - [x] Image vector without an index (`m=0`): correct, since HNSW cannot index
       MaxSim multivectors (Qdrant docs); every image search scores every image
       vector that passes its filter (ECHO-54 finding 34)
