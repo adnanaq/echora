@@ -450,6 +450,15 @@ def test_encode_text_empty_string_returns_zero_embedding(): ...
 - The 500-line limit applies to source files only; test files have no line limit.
 - No comments or docstrings in test files; the test name says what it checks.
 
+**Mocks, fakes and spies** (from [Thea Flowers' Python testing style guide](https://blog.thea.codes/my-python-testing-style-guide/))
+
+- Use the real object when it is cheap to build: `Settings`, `EmbeddingConfig`, dataclasses such as `VectorRuntime`, protobuf messages, Qdrant's response models (`qdrant_client.http.models.QueryResponse`, `ScoredPoint`, `Record`), grpc's `HealthServicer`.
+- When a collaborator must be replaced, autospec it: `create_autospec(AsyncQdrantClient, instance=True)` or `patch.object(module, "name", autospec=True)`. Never a plain `Mock()`, `MagicMock()` or `AsyncMock()`, and never a hand-written `spec=[...]` list: they accept any method and arguments, so a test keeps passing after the real interface changes. Autospec gives async methods an `AsyncMock` automatically.
+- To see calls on a real object while keeping its behaviour, use a spy: `Mock(wraps=real_object)`.
+- A fake (a working implementation with shortcuts, such as an in-memory store) should subclass the collaborator it stands in for.
+- Name a mock like the collaborator it replaces (`client`, `text_model`), without a `mock_` prefix.
+- Assert outcomes (return values, published state, recorded spans and metrics) rather than which calls were made. Check call arguments only when the request sent to an external service is what the test is about, such as the query a search builds for Qdrant.
+
 **Shared setup** (`tests/conftest.py`)
 
 - Tests that check spans or metrics use the `span_exporter` and `metric_reader` fixtures. Never call `trace.set_tracer_provider` or `metrics.set_meter_provider` in a test file: OpenTelemetry keeps only the first provider set in a process, so a second one makes other files' tests collect nothing when pytest runs them together.
