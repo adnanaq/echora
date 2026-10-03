@@ -2,7 +2,7 @@
 
 import asyncio
 import contextvars
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -27,6 +27,21 @@ class BatcherClosedError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("RequestBatcher is closed")
+
+
+class BatchResultCountError(RuntimeError):
+    """Raised when a batch function returns a different number of results than items."""
+
+    def __init__(self, item_count: int, result_count: int) -> None:
+        super().__init__(
+            f"batch function returned {result_count} results for {item_count} requests"
+        )
+
+
+def _require_one_result_per_item(item_count: int, results: Sized) -> None:
+    """Raise unless a batch call returned one result per item."""
+    if len(results) != item_count:
+        raise BatchResultCountError(item_count, len(results))
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +180,7 @@ class RequestBatcher[ItemT, ResultT]:
         with self._batch_span(batch) as span:
             try:
                 results = await self._process_batch([request.item for request in batch])
+                _require_one_result_per_item(len(batch), results)
             except Exception as exc:
                 span.record_exception(exc)
                 span.set_status(trace.Status(trace.StatusCode.ERROR, str(exc)))

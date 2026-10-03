@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from common.utils.request_batcher import RequestBatcher
+from common.utils.request_batcher import BatchResultCountError, RequestBatcher
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import HistogramDataPoint, InMemoryMetricReader
@@ -356,3 +356,40 @@ async def test_requests_without_a_trace_still_get_a_batch_span():
     assert await batcher.submit("a") == "a"
 
     assert _span("batch.model").links == ()
+
+
+async def _returns_too_few(items: list[str]) -> list[str]:
+    return items[:-1]
+
+
+async def test_a_wrong_result_count_fails_every_request_instead_of_hanging():
+    batcher = RequestBatcher(
+        _returns_too_few, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
+    )
+
+    results = await asyncio.wait_for(
+        asyncio.gather(
+            *(batcher.submit(text) for text in ["a", "b"]), return_exceptions=True
+        ),
+        timeout=2,
+    )
+
+    assert all(isinstance(result, BatchResultCountError) for result in results)
+    assert "1 results for 2 requests" in str(results[0])
+    await batcher.close()
+
+
+async def test_a_wrong_result_count_marks_the_batch_span_as_an_error():
+    batcher = RequestBatcher(
+        _returns_too_few,
+        max_batch_size=8,
+        max_wait_seconds=0,
+        concurrency=1,
+        name="model",
+    )
+
+    with pytest.raises(BatchResultCountError):
+        await asyncio.wait_for(_submit_in_span(batcher, "search.only", "a"), timeout=2)
+
+    assert _span("batch.model").status.status_code is StatusCode.ERROR
+    await batcher.close()
