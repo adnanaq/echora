@@ -18,7 +18,9 @@ def tracer(span_exporter: InMemorySpanExporter) -> trace.Tracer:
     return trace.get_tracer(__name__)
 
 
-def test_trace_context_round_trip_parent_child(tracer: trace.Tracer) -> None:
+def test_extract_trace_context_injected_headers_returns_parent_context(
+    tracer: trace.Tracer,
+) -> None:
 
     with tracer.start_as_current_span("parent") as parent_span:
         headers = inject_trace_context({})
@@ -34,14 +36,16 @@ def test_trace_context_round_trip_parent_child(tracer: trace.Tracer) -> None:
         assert parent.span_id == parent_context.span_id
 
 
-def test_extract_trace_context_handles_missing_headers(tracer: trace.Tracer) -> None:
+def test_extract_trace_context_missing_headers_returns_no_parent(
+    tracer: trace.Tracer,
+) -> None:
     extracted_context = extract_trace_context({})
 
     with tracer.start_as_current_span("root", context=extracted_context) as span:
         assert cast(Any, span).parent is None
 
 
-def test_extract_trace_context_handles_invalid_traceparent(
+def test_extract_trace_context_invalid_traceparent_returns_no_parent(
     tracer: trace.Tracer,
 ) -> None:
     extracted_context = extract_trace_context({"traceparent": "invalid"})
@@ -50,7 +54,9 @@ def test_extract_trace_context_handles_invalid_traceparent(
         assert cast(Any, span).parent is None
 
 
-def test_nats_and_temporal_helpers_inject_traceparent(tracer: trace.Tracer) -> None:
+def test_inject_context_into_nats_and_temporal_headers_active_span_adds_traceparent(
+    tracer: trace.Tracer,
+) -> None:
 
     with tracer.start_as_current_span("producer"):
         nats_headers = inject_context_into_nats_headers({})

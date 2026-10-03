@@ -51,7 +51,7 @@ def _document() -> VectorDocument:
     )
 
 
-def test_qdrant_span_names_call_and_collection(
+def test_qdrant_span_with_collection_records_call_and_collection(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     with qdrant_span("scroll", COLLECTION):
@@ -77,7 +77,7 @@ def test_qdrant_span_without_collection_has_no_collection_attribute(
     assert "db.collection.name" not in span.attributes
 
 
-def test_qdrant_span_marks_failed_calls_as_errors(
+def test_qdrant_span_failed_call_marks_span_as_error(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     with pytest.raises(RuntimeError), qdrant_span("upsert", COLLECTION):
@@ -88,7 +88,7 @@ def test_qdrant_span_marks_failed_calls_as_errors(
 
 
 @pytest.mark.asyncio
-async def test_qdrant_span_covers_awaited_call(
+async def test_qdrant_span_awaited_call_spans_full_duration(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     with qdrant_span("query_points", COLLECTION):
@@ -142,7 +142,7 @@ CLIENT_CALLS: list[
     [(call, spans) for _, call, spans in CLIENT_CALLS],
     ids=[name for name, _, _ in CLIENT_CALLS],
 )
-async def test_client_calls_record_one_span_per_qdrant_call(
+async def test_qdrant_client_each_method_records_one_span_per_qdrant_call(
     call: Callable[[QdrantClient], Awaitable[object]],
     expected_spans: list[str],
     span_exporter: InMemorySpanExporter,
@@ -158,7 +158,7 @@ async def test_client_calls_record_one_span_per_qdrant_call(
 
 
 @pytest.mark.asyncio
-async def test_each_upsert_retry_records_its_own_span(
+async def test_add_documents_retried_upsert_records_span_per_attempt(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     async_client = _async_client()
@@ -177,7 +177,7 @@ async def test_each_upsert_retry_records_its_own_span(
 
 
 @pytest.mark.asyncio
-async def test_failed_stats_call_records_error_span(
+async def test_get_stats_failed_qdrant_call_records_error_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     async_client = _async_client()
@@ -220,7 +220,7 @@ MANAGER_CALLS: list[
     [(call, spans) for _, call, spans in MANAGER_CALLS],
     ids=[name for name, _, _ in MANAGER_CALLS],
 )
-async def test_manager_calls_record_one_span_per_qdrant_call(
+async def test_collection_manager_each_method_records_one_span_per_qdrant_call(
     call: Callable[[QdrantCollectionManager], Awaitable[object]],
     expected_spans: list[str],
     span_exporter: InMemorySpanExporter,
@@ -241,7 +241,7 @@ async def test_manager_calls_record_one_span_per_qdrant_call(
 
 
 @pytest.mark.asyncio
-async def test_payload_index_setup_records_span_per_index(
+async def test_setup_payload_indexes_each_index_records_one_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     manager = _manager(_async_client())
@@ -257,7 +257,7 @@ async def test_payload_index_setup_records_span_per_index(
 
 
 @pytest.mark.asyncio
-async def test_compatibility_check_records_get_collection_span(
+async def test_validate_compatibility_failed_get_collection_records_error_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     async_client = _async_client()

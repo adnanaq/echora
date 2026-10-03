@@ -41,7 +41,7 @@ def _only_span(spans: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_successful_call_records_service_and_ok_status_code(
+async def test_intercept_service_successful_call_records_service_and_ok_status(
     span_exporter: InMemorySpanExporter,
 ):
     async def behavior(_request, _context):
@@ -57,7 +57,7 @@ async def test_successful_call_records_service_and_ok_status_code(
 
 
 @pytest.mark.asyncio
-async def test_error_in_response_marks_span_as_error(
+async def test_intercept_service_error_in_response_marks_span_as_error(
     span_exporter: InMemorySpanExporter,
 ):
     async def behavior(_request, _context):
@@ -73,7 +73,7 @@ async def test_error_in_response_marks_span_as_error(
 
 
 @pytest.mark.asyncio
-async def test_grpc_status_error_marks_span_as_error(
+async def test_intercept_service_grpc_error_status_marks_span_as_error(
     span_exporter: InMemorySpanExporter,
 ):
     async def behavior(_request, _context):
@@ -87,7 +87,7 @@ async def test_grpc_status_error_marks_span_as_error(
 
 
 @pytest.mark.asyncio
-async def test_raised_exception_marks_span_as_error_with_unknown_code(
+async def test_intercept_service_raised_exception_marks_span_as_error_with_unknown_code(
     span_exporter: InMemorySpanExporter,
 ):
     async def behavior(_request, _context):

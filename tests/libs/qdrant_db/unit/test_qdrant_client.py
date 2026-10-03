@@ -72,7 +72,9 @@ async def mock_sparse_client() -> QdrantClient:
 
 
 @pytest.mark.asyncio
-async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> None:
+async def test_search_text_only_returns_hits_from_query_points(
+    mock_client: QdrantClient,
+) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.query_points.return_value = SimpleNamespace(
         points=[
@@ -94,7 +96,7 @@ async def test_search_text_only_uses_query_api(mock_client: QdrantClient) -> Non
 
 
 @pytest.mark.asyncio
-async def test_search_multivector_uses_prefetch_fusion(
+async def test_search_text_and_image_sends_prefetch_fusion_query(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -113,7 +115,7 @@ async def test_search_multivector_uses_prefetch_fusion(
 
 
 @pytest.mark.asyncio
-async def test_search_sparse_only_uses_query_api(
+async def test_search_sparse_only_returns_hits_from_query_points(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
@@ -141,7 +143,7 @@ async def test_search_sparse_only_uses_query_api(
 
 
 @pytest.mark.asyncio
-async def test_search_text_sparse_uses_prefetch_fusion(
+async def test_search_text_and_sparse_sends_two_prefetch_branches(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
@@ -188,7 +190,9 @@ async def test_add_documents_sparse_payload_converts_to_sparse_vector(
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_last_wins(mock_client: QdrantClient) -> None:
+async def test_update_vectors_duplicate_with_last_wins_keeps_last_update(
+    mock_client: QdrantClient,
+) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.update_vectors.return_value = None
 
@@ -215,7 +219,9 @@ async def test_update_vectors_last_wins(mock_client: QdrantClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_duplicate_fail_raises(mock_client: QdrantClient) -> None:
+async def test_update_vectors_duplicate_with_fail_policy_raises_duplicate_update_error(
+    mock_client: QdrantClient,
+) -> None:
     with pytest.raises(DuplicateUpdateError):
         await mock_client.update_vectors(
             updates=[
@@ -282,17 +288,17 @@ async def test_update_payload_overwrite_uses_overwrite_operation(
     assert isinstance(operations[0], OverwritePayloadOperation)
 
 
-def test_search_filter_condition_range_validation() -> None:
+def test_search_filter_condition_invalid_range_raises_value_error() -> None:
     with pytest.raises(ValueError):
         SearchFilterCondition(field="score", operator="range", value={})
 
 
-def test_search_request_requires_embedding() -> None:
+def test_search_request_without_embedding_raises_value_error() -> None:
     with pytest.raises(ValueError):
         SearchRequest(limit=10)
 
 
-def test_search_request_accepts_sparse_embedding() -> None:
+def test_search_request_sparse_embedding_only_is_accepted() -> None:
     request = SearchRequest(
         sparse_embedding=SparseVectorData(indices=[1], values=[0.2]), limit=5
     )
@@ -300,7 +306,7 @@ def test_search_request_accepts_sparse_embedding() -> None:
     assert request.sparse_embedding.indices == [1]
 
 
-def test_search_request_rejects_sparse_length_mismatch() -> None:
+def test_search_request_sparse_length_mismatch_raises_value_error() -> None:
     with pytest.raises(ValueError):
         SearchRequest(
             sparse_embedding=SparseVectorData(indices=[1, 2], values=[0.2]),
@@ -309,7 +315,9 @@ def test_search_request_rejects_sparse_length_mismatch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_initialize_collection_includes_sparse_vectors_config() -> None:
+async def test_initialize_collection_missing_collection_creates_it_with_sparse_vectors() -> (
+    None
+):
     settings = get_settings()
     sparse_config = settings.qdrant.model_copy(
         deep=True,
@@ -333,7 +341,9 @@ async def test_initialize_collection_includes_sparse_vectors_config() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) -> None:
+async def test_search_telemetry_raises_still_returns_hits(
+    mock_client: QdrantClient,
+) -> None:
     class _ExplodingTelemetry:
         class DB_QUERY_DURATION:
             @staticmethod
@@ -362,7 +372,9 @@ async def test_search_succeeds_when_telemetry_raises(mock_client: QdrantClient) 
 
 
 @pytest.mark.asyncio
-async def test_add_documents_batch_size_zero_raises(mock_client: QdrantClient) -> None:
+async def test_add_documents_batch_size_zero_raises_validation_error(
+    mock_client: QdrantClient,
+) -> None:
     with pytest.raises(ValidationError, match="batch_size must be >= 1"):
         await mock_client.add_documents(
             documents=[
@@ -377,7 +389,7 @@ async def test_add_documents_batch_size_zero_raises(mock_client: QdrantClient) -
 
 
 @pytest.mark.asyncio
-async def test_add_documents_retries_on_transient_failure(
+async def test_add_documents_transient_failure_retries_and_succeeds(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -401,7 +413,7 @@ async def test_add_documents_retries_on_transient_failure(
 
 
 @pytest.mark.asyncio
-async def test_add_documents_raises_permanent_after_all_retries(
+async def test_add_documents_every_retry_fails_raises_permanent_error(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -422,7 +434,9 @@ async def test_add_documents_raises_permanent_after_all_retries(
 
 
 @pytest.mark.asyncio
-async def test_search_entity_type_filter_appended(mock_client: QdrantClient) -> None:
+async def test_search_entity_type_adds_entity_type_filter(
+    mock_client: QdrantClient,
+) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.query_points.return_value = SimpleNamespace(points=[])
 
@@ -437,7 +451,7 @@ async def test_search_entity_type_filter_appended(mock_client: QdrantClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_search_score_threshold_forwarded_to_query(
+async def test_search_score_threshold_forwards_it_to_query_points(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -453,7 +467,7 @@ async def test_search_score_threshold_forwarded_to_query(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("with_payload", [True, False])
-async def test_search_single_vector_forwards_with_payload(
+async def test_search_single_vector_forwards_payload_choice(
     mock_client: QdrantClient, with_payload: bool
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -468,7 +482,7 @@ async def test_search_single_vector_forwards_with_payload(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("with_payload", [True, False])
-async def test_search_fusion_forwards_with_payload(
+async def test_search_fusion_forwards_payload_choice(
     mock_sparse_client: QdrantClient, with_payload: bool
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
@@ -486,12 +500,12 @@ async def test_search_fusion_forwards_with_payload(
     assert async_mock.query_points.call_args.kwargs["with_payload"] is with_payload
 
 
-def test_search_request_returns_payloads_by_default() -> None:
+def test_search_request_payload_choice_unset_defaults_to_true() -> None:
     assert SearchRequest(text_embedding=[0.1] * 1024).with_payload is True
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_returns_none_when_not_found(mock_client: QdrantClient) -> None:
+async def test_get_by_id_missing_point_returns_none(mock_client: QdrantClient) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.retrieve.return_value = []
 
@@ -501,7 +515,9 @@ async def test_get_by_id_returns_none_when_not_found(mock_client: QdrantClient) 
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_returns_id_and_payload(mock_client: QdrantClient) -> None:
+async def test_get_by_id_existing_point_returns_id_and_payload(
+    mock_client: QdrantClient,
+) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=None)
     async_mock.retrieve.return_value = [fake_point]
@@ -532,7 +548,7 @@ async def test_get_by_id_with_vectors_includes_vector(
 
 
 @pytest.mark.asyncio
-async def test_update_vectors_sparse_data_normalized(
+async def test_update_vectors_sparse_data_converts_to_sparse_vector(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
@@ -563,7 +579,7 @@ async def test_update_vectors_sparse_data_normalized(
     ],
     ids=["single_vector", "fusion"],
 )
-async def test_search_records_qdrant_query_span(
+async def test_search_unbatched_records_query_points_span(
     mock_client: QdrantClient, request_args: dict, span_exporter: InMemorySpanExporter
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
@@ -611,7 +627,7 @@ def _hybrid_request(point_id: int) -> SearchRequest:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_searches_share_one_query_batch_call(
+async def test_search_concurrent_searches_share_one_query_batch_call(
     batching_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
@@ -637,7 +653,7 @@ async def test_concurrent_searches_share_one_query_batch_call(
 
 
 @pytest.mark.asyncio
-async def test_query_batch_span_records_batch_size(
+async def test_search_batched_searches_record_batch_size_on_span(
     batching_client: QdrantClient,
     span_exporter: InMemorySpanExporter,
 ) -> None:
@@ -659,7 +675,7 @@ async def test_query_batch_span_records_batch_size(
 
 
 @pytest.mark.asyncio
-async def test_single_search_in_batch_call_has_no_batch_size(
+async def test_search_lone_batched_search_records_no_batch_size(
     batching_client: QdrantClient,
     span_exporter: InMemorySpanExporter,
 ) -> None:
@@ -677,12 +693,12 @@ async def test_single_search_in_batch_call_has_no_batch_size(
     )
 
 
-def test_query_batching_is_off_by_default() -> None:
+def test_qdrant_config_query_batching_defaults_to_off() -> None:
     assert get_settings().qdrant.qdrant_query_batch_max_size == 1
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_records_qdrant_retrieve_span(
+async def test_get_by_id_records_retrieve_span(
     mock_client: QdrantClient,
     span_exporter: InMemorySpanExporter,
 ) -> None:
@@ -725,7 +741,7 @@ TUNED_SEARCH_PARAMS = SearchParams(
 
 
 @pytest.mark.asyncio
-async def test_hybrid_search_sends_search_params_on_dense_text_branch(
+async def test_search_hybrid_sends_search_params_on_dense_branch_only(
     tuned_search_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, tuned_search_client._async_client)
@@ -747,7 +763,7 @@ async def test_hybrid_search_sends_search_params_on_dense_text_branch(
 
 
 @pytest.mark.asyncio
-async def test_text_only_search_sends_search_params(
+async def test_search_text_only_sends_search_params(
     tuned_search_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, tuned_search_client._async_client)
@@ -763,7 +779,7 @@ async def test_text_only_search_sends_search_params(
 
 
 @pytest.mark.asyncio
-async def test_search_sends_no_search_params_by_default(
+async def test_search_default_settings_sends_no_search_params(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)

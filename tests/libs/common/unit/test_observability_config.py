@@ -7,7 +7,7 @@ import pytest
 from common.config.settings import Settings
 
 
-def test_settings_routes_otel_env_vars_to_observability_config() -> None:
+def test_settings_otel_env_vars_fill_observability_config() -> None:
     with patch.dict(
         "os.environ",
         {
@@ -25,14 +25,14 @@ def test_settings_routes_otel_env_vars_to_observability_config() -> None:
     assert settings.observability.otel_enable_aiohttp_client_instrumentation is True
 
 
-def test_query_text_is_not_recorded_by_default() -> None:
+def test_settings_record_query_text_unset_defaults_to_false() -> None:
     with patch.dict("os.environ", {"ENVIRONMENT": "development"}, clear=True):
         settings = Settings()
 
     assert settings.observability.otel_record_query_text is False
 
 
-def test_query_text_recording_can_be_turned_on() -> None:
+def test_settings_record_query_text_env_true_turns_recording_on() -> None:
     with patch.dict(
         "os.environ",
         {"ENVIRONMENT": "development", "OTEL_RECORD_QUERY_TEXT": "true"},
@@ -43,7 +43,7 @@ def test_query_text_recording_can_be_turned_on() -> None:
     assert settings.observability.otel_record_query_text is True
 
 
-def test_settings_ignore_local_env_file_in_tests(
+def test_settings_local_env_file_present_is_ignored(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / ".env").write_text("OTEL_RECORD_QUERY_TEXT=true\n")

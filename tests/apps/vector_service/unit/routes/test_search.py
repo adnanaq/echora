@@ -89,29 +89,29 @@ def _range_value(**bounds: float) -> struct_pb2.Value:
 # ---------------------------------------------------------------------------
 
 
-def test_proto_value_string() -> None:
+def test_proto_value_to_python_string_returns_str() -> None:
     assert _proto_value_to_python(_str_value("TV")) == "TV"
 
 
-def test_proto_value_whole_number_becomes_int() -> None:
+def test_proto_value_to_python_whole_number_returns_int() -> None:
     assert _proto_value_to_python(_num_value(2020.0)) == 2020
     assert isinstance(_proto_value_to_python(_num_value(2020.0)), int)
 
 
-def test_proto_value_fractional_stays_float() -> None:
+def test_proto_value_to_python_fractional_number_returns_float() -> None:
     assert _proto_value_to_python(_num_value(8.5)) == 8.5
     assert isinstance(_proto_value_to_python(_num_value(8.5)), float)
 
 
-def test_proto_value_bool() -> None:
+def test_proto_value_to_python_bool_returns_bool() -> None:
     assert _proto_value_to_python(struct_pb2.Value(bool_value=True)) is True
 
 
-def test_proto_value_list() -> None:
+def test_proto_value_to_python_list_returns_list() -> None:
     assert _proto_value_to_python(_list_value("Action", "Drama")) == ["Action", "Drama"]
 
 
-def test_proto_value_struct_range() -> None:
+def test_proto_value_to_python_range_struct_returns_bounds() -> None:
     result = _proto_value_to_python(_range_value(gte=2020.0, lte=2023.0))
     assert result == {"gte": 2020, "lte": 2023}
 
@@ -121,14 +121,14 @@ def test_proto_value_struct_range() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_validate_filter_fields_passes_known_field() -> None:
+def test_validate_filter_fields_known_field_passes() -> None:
     cond = _make_condition(
         "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
     )
     _validate_filter_fields([cond], _INDEXED_FIELDS)  # must not raise
 
 
-def test_validate_filter_fields_rejects_unknown_field() -> None:
+def test_validate_filter_fields_unknown_field_raises_invalid_filters() -> None:
     cond = _make_condition(
         "unknown_field", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("x")
     )
@@ -136,7 +136,7 @@ def test_validate_filter_fields_rejects_unknown_field() -> None:
         _validate_filter_fields([cond], _INDEXED_FIELDS)
 
 
-def test_validate_filter_fields_rejects_on_first_unknown() -> None:
+def test_validate_filter_fields_several_unknown_fields_raises_invalid_filters() -> None:
     conditions = [
         _make_condition(
             "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
@@ -154,7 +154,7 @@ def test_validate_filter_fields_rejects_on_first_unknown() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_map_eq_condition() -> None:
+def test_map_filter_conditions_eq_operator_returns_eq_condition() -> None:
     cond = _make_condition(
         "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
     )
@@ -166,7 +166,7 @@ def test_map_eq_condition() -> None:
     assert result[0].clause == "must"
 
 
-def test_map_ne_condition() -> None:
+def test_map_filter_conditions_ne_operator_returns_ne_condition() -> None:
     cond = _make_condition(
         "status", vector_search_pb2.FILTER_OPERATOR_NE, _str_value("CANCELLED")
     )
@@ -175,7 +175,7 @@ def test_map_ne_condition() -> None:
     assert result[0].value == "CANCELLED"
 
 
-def test_map_in_condition() -> None:
+def test_map_filter_conditions_in_operator_returns_in_condition() -> None:
     cond = _make_condition(
         "genres", vector_search_pb2.FILTER_OPERATOR_IN, _list_value("Action", "Drama")
     )
@@ -184,7 +184,7 @@ def test_map_in_condition() -> None:
     assert result[0].value == ["Action", "Drama"]
 
 
-def test_map_not_in_condition() -> None:
+def test_map_filter_conditions_not_in_operator_returns_not_in_condition() -> None:
     cond = _make_condition(
         "type", vector_search_pb2.FILTER_OPERATOR_NOT_IN, _list_value("MUSIC", "CM")
     )
@@ -193,7 +193,7 @@ def test_map_not_in_condition() -> None:
     assert result[0].value == ["MUSIC", "CM"]
 
 
-def test_map_range_condition() -> None:
+def test_map_filter_conditions_range_operator_returns_search_range() -> None:
     cond = _make_condition(
         "year", vector_search_pb2.FILTER_OPERATOR_RANGE, _range_value(gte=2020.0)
     )
@@ -204,7 +204,7 @@ def test_map_range_condition() -> None:
     assert result[0].value.gte == 2020
 
 
-def test_map_must_not_clause() -> None:
+def test_map_filter_conditions_must_not_clause_keeps_must_not() -> None:
     cond = _make_condition(
         "status",
         vector_search_pb2.FILTER_OPERATOR_NE,
@@ -215,7 +215,7 @@ def test_map_must_not_clause() -> None:
     assert result[0].clause == "must_not"
 
 
-def test_map_should_clause() -> None:
+def test_map_filter_conditions_should_clause_keeps_should() -> None:
     cond = _make_condition(
         "type",
         vector_search_pb2.FILTER_OPERATOR_EQ,
@@ -226,7 +226,7 @@ def test_map_should_clause() -> None:
     assert result[0].clause == "should"
 
 
-def test_map_unspecified_clause_defaults_to_must() -> None:
+def test_map_filter_conditions_unspecified_clause_returns_must() -> None:
     cond = _make_condition(
         "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
     )
@@ -234,7 +234,7 @@ def test_map_unspecified_clause_defaults_to_must() -> None:
     assert result[0].clause == "must"
 
 
-def test_map_unspecified_operator_raises() -> None:
+def test_map_filter_conditions_unspecified_operator_raises_invalid_filters() -> None:
     cond = _make_condition(
         "status", vector_search_pb2.FILTER_OPERATOR_UNSPECIFIED, _str_value("x")
     )
@@ -248,7 +248,7 @@ def test_map_unspecified_operator_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_with_unknown_filter_field_returns_invalid_filters() -> None:
+async def test_search_unknown_filter_field_returns_invalid_filters_error() -> None:
     runtime = _runtime()
     request = vector_search_pb2.SearchRequest(
         query_text="action anime",
@@ -264,7 +264,7 @@ async def test_search_with_unknown_filter_field_returns_invalid_filters() -> Non
 
 
 @pytest.mark.asyncio
-async def test_search_with_valid_filters_passes_through() -> None:
+async def test_search_valid_filters_returns_results() -> None:
     hits = [SimpleNamespace(id="1", score=0.9, payload={"title": "Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(
@@ -281,7 +281,7 @@ async def test_search_with_valid_filters_passes_through() -> None:
 
 
 @pytest.mark.asyncio
-async def test_image_value_error_returns_invalid_image_input() -> None:
+async def test_search_unreadable_image_returns_invalid_image_input_error() -> None:
     runtime = _runtime()
     request = vector_search_pb2.SearchRequest(image=b"not-a-real-image")
     with patch(
@@ -294,7 +294,7 @@ async def test_image_value_error_returns_invalid_image_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_qdrant_value_error_not_labeled_invalid_image_input() -> None:
+async def test_search_qdrant_value_error_returns_search_failed_error() -> None:
     runtime = _runtime()
     runtime.qdrant_client.search = AsyncMock(
         side_effect=ValueError("qdrant value error")
@@ -305,7 +305,7 @@ async def test_qdrant_value_error_not_labeled_invalid_image_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_text_search_returns_data() -> None:
+async def test_search_text_query_returns_results() -> None:
     hits = [SimpleNamespace(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(query_text="space western")
@@ -317,7 +317,7 @@ async def test_successful_text_search_returns_data() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_returns_payloads_when_not_asked() -> None:
+async def test_search_payload_choice_unset_returns_payloads() -> None:
     hits = [SimpleNamespace(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(query_text="space western")
@@ -329,7 +329,7 @@ async def test_search_returns_payloads_when_not_asked() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_without_payload_returns_ids_and_scores_only() -> None:
+async def test_search_payload_turned_off_returns_ids_and_scores_only() -> None:
     hits = [SimpleNamespace(id="1", score=0.95, payload={})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(
@@ -344,7 +344,7 @@ async def test_search_without_payload_returns_ids_and_scores_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_query_input_returns_error() -> None:
+async def test_search_no_text_or_image_returns_missing_query_input_error() -> None:
     runtime = _runtime()
     request = vector_search_pb2.SearchRequest()
     response = await search_route.search(runtime, request, context=None)
@@ -363,7 +363,7 @@ async def _search_in_span(
 
 
 @pytest.mark.asyncio
-async def test_search_span_records_request_parameters(
+async def test_search_filtered_request_records_parameters_on_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     request = vector_search_pb2.SearchRequest(
@@ -394,7 +394,7 @@ async def test_search_span_records_request_parameters(
 
 
 @pytest.mark.asyncio
-async def test_search_span_has_no_query_text_by_default(
+async def test_search_query_text_recording_off_omits_query_text_from_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     request = vector_search_pb2.SearchRequest(query_text="space western")
@@ -405,7 +405,7 @@ async def test_search_span_has_no_query_text_by_default(
 
 
 @pytest.mark.asyncio
-async def test_search_span_records_query_text_when_enabled(
+async def test_search_query_text_recording_on_records_trimmed_query_text(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     request = vector_search_pb2.SearchRequest(query_text="  space western  ")
@@ -418,7 +418,7 @@ async def test_search_span_records_query_text_when_enabled(
 
 
 @pytest.mark.asyncio
-async def test_rejected_search_still_records_its_parameters(
+async def test_search_rejected_request_records_parameters_on_span(
     span_exporter: InMemorySpanExporter,
 ) -> None:
     request = vector_search_pb2.SearchRequest(limit=3)

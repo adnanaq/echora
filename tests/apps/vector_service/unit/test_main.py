@@ -8,7 +8,9 @@ from grpc_health.v1 import health_pb2
 from vector_service import main
 
 
-def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
+def test_setup_observability_otel_enabled_passes_settings_to_setup_telemetry(
+    monkeypatch,
+) -> None:
     captured: dict[str, object] = {}
 
     def _fake_setup_telemetry(**kwargs) -> None:
@@ -52,7 +54,7 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_initial_readiness_serving_when_healthy() -> None:
+async def test_publish_initial_readiness_healthy_qdrant_sets_serving() -> None:
     runtime = SimpleNamespace(
         qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=True))
     )
@@ -72,7 +74,7 @@ async def test_initial_readiness_serving_when_healthy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_initial_readiness_not_serving_when_unhealthy() -> None:
+async def test_publish_initial_readiness_unhealthy_qdrant_sets_not_serving() -> None:
     runtime = SimpleNamespace(
         qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=False))
     )

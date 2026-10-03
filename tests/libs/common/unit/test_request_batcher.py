@@ -29,7 +29,7 @@ class RecordingBatchFunction:
         return [([float(len(text))], {"text": text}) for text in texts]
 
 
-async def test_concurrent_requests_share_one_batch_call():
+async def test_submit_concurrent_requests_share_one_batch_call():
     batch_function = RecordingBatchFunction()
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
@@ -48,7 +48,7 @@ async def test_concurrent_requests_share_one_batch_call():
     await batcher.close()
 
 
-async def test_batches_never_exceed_maximum_size():
+async def test_submit_many_requests_never_exceeds_maximum_batch_size():
     batch_function = RecordingBatchFunction()
     batcher = RequestBatcher(
         batch_function, max_batch_size=4, max_wait_seconds=0.005, concurrency=1
@@ -65,7 +65,7 @@ async def test_batches_never_exceed_maximum_size():
     await batcher.close()
 
 
-async def test_lone_request_is_not_delayed_without_wait():
+async def test_submit_lone_request_without_wait_runs_at_once():
     batch_function = RecordingBatchFunction(delay_seconds=0)
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0, concurrency=1
@@ -80,7 +80,7 @@ async def test_lone_request_is_not_delayed_without_wait():
     await batcher.close()
 
 
-async def test_requests_queued_during_call_form_next_batch():
+async def test_submit_requests_queued_during_call_form_next_batch():
     batch_function = RecordingBatchFunction(delay_seconds=0.05)
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0, concurrency=1
@@ -95,7 +95,7 @@ async def test_requests_queued_during_call_form_next_batch():
     await batcher.close()
 
 
-async def test_failed_batch_call_fails_every_request_in_it():
+async def test_submit_failed_batch_call_fails_every_request_in_batch():
     batch_function = RecordingBatchFunction(failure=RuntimeError("batch failed"))
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
@@ -109,7 +109,7 @@ async def test_failed_batch_call_fails_every_request_in_it():
     await batcher.close()
 
 
-async def test_batch_calls_run_concurrently_up_to_concurrency_limit():
+async def test_submit_batch_calls_run_concurrently_up_to_concurrency_limit():
     batch_function = RecordingBatchFunction(delay_seconds=0.05)
     batcher = RequestBatcher(
         batch_function, max_batch_size=1, max_wait_seconds=0, concurrency=2
@@ -123,7 +123,7 @@ async def test_batch_calls_run_concurrently_up_to_concurrency_limit():
     await batcher.close()
 
 
-async def test_close_rejects_new_requests():
+async def test_close_new_request_after_close_raises_batcher_closed():
     batcher = RequestBatcher(
         RecordingBatchFunction(), max_batch_size=8, max_wait_seconds=0, concurrency=2
     )
@@ -163,7 +163,7 @@ async def _slow_echo(items: list[str]) -> list[str]:
     return items
 
 
-async def test_batch_size_is_recorded_per_batch_call(
+async def test_submit_each_batch_call_records_batch_size(
     metric_reader: InMemoryMetricReader,
 ):
     batcher = RequestBatcher(
@@ -179,7 +179,7 @@ async def test_batch_size_is_recorded_per_batch_call(
     await batcher.close()
 
 
-async def test_queue_wait_is_recorded_for_every_request(
+async def test_submit_each_request_records_queue_wait(
     metric_reader: InMemoryMetricReader,
 ):
     batcher = RequestBatcher(
@@ -196,7 +196,7 @@ async def test_queue_wait_is_recorded_for_every_request(
     await batcher.close()
 
 
-async def test_queue_wait_includes_waiting_for_free_call_slot(
+async def test_submit_busy_call_slot_counts_toward_queue_wait(
     metric_reader: InMemoryMetricReader,
 ):
     batcher = RequestBatcher(
@@ -213,7 +213,7 @@ async def test_queue_wait_includes_waiting_for_free_call_slot(
     await batcher.close()
 
 
-async def test_each_batcher_records_under_its_own_name(
+async def test_submit_separate_batchers_record_metrics_under_own_names(
     metric_reader: InMemoryMetricReader,
 ):
     first = RequestBatcher(
@@ -259,7 +259,7 @@ def _span(spans: InMemorySpanExporter, name: str) -> ReadableSpan:
     return span
 
 
-async def test_batch_call_runs_in_its_own_span_linked_to_each_caller(
+async def test_submit_batch_call_runs_in_own_trace_linked_to_each_caller(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
@@ -293,7 +293,9 @@ async def test_batch_call_runs_in_its_own_span_linked_to_each_caller(
     await batcher.close()
 
 
-async def test_each_caller_links_back_to_its_batch(span_exporter: InMemorySpanExporter):
+async def test_submit_each_caller_span_links_back_to_its_batch(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _traced_echo,
         max_batch_size=8,
@@ -314,7 +316,7 @@ async def test_each_caller_links_back_to_its_batch(span_exporter: InMemorySpanEx
         ]
 
 
-async def test_work_inside_batch_call_is_child_of_batch_span(
+async def test_submit_work_inside_batch_call_becomes_child_of_batch_span(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
@@ -330,7 +332,7 @@ async def test_work_inside_batch_call_is_child_of_batch_span(
     )
 
 
-async def test_later_batches_do_not_join_first_callers_trace(
+async def test_submit_later_batches_stay_out_of_first_callers_trace(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
@@ -350,7 +352,7 @@ async def test_later_batches_do_not_join_first_callers_trace(
     assert first_trace not in batch_traces
 
 
-async def test_failed_batch_call_marks_batch_span_as_error(
+async def test_submit_failed_batch_call_marks_batch_span_as_error(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
@@ -365,7 +367,7 @@ async def test_failed_batch_call_marks_batch_span_as_error(
     assert [event.name for event in batch.events] == ["exception"]
 
 
-async def test_requests_without_trace_still_get_batch_span(
+async def test_submit_untraced_request_still_gets_batch_span(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
@@ -381,7 +383,7 @@ async def _returns_too_few(items: list[str]) -> list[str]:
     return items[:-1]
 
 
-async def test_wrong_result_count_fails_every_request():
+async def test_submit_wrong_result_count_fails_every_request():
     batcher = RequestBatcher(
         _returns_too_few, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
     )
@@ -398,7 +400,7 @@ async def test_wrong_result_count_fails_every_request():
     await batcher.close()
 
 
-async def test_wrong_result_count_marks_batch_span_as_error(
+async def test_submit_wrong_result_count_marks_batch_span_as_error(
     span_exporter: InMemorySpanExporter,
 ):
     batcher = RequestBatcher(
