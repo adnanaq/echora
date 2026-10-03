@@ -95,7 +95,7 @@ def fake_load_runner(results_dir: Path, latencies: list[float]):
     return run
 
 
-def test_sweep_file_gives_each_variant_its_settings(tmp_path: Path) -> None:
+def test_load_sweep_gives_each_variant_its_settings(tmp_path: Path) -> None:
     sweep = load_sweep(write_sweep(tmp_path))
 
     assert sweep.name == "embed_concurrency"
@@ -116,17 +116,17 @@ def test_sweep_file_gives_each_variant_its_settings(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("duration", "seconds"), [("60s", 60), ("2m", 120), ("1h", 3600), ("90", 90)]
 )
-def test_durations_are_read_like_k6(duration: str, seconds: int) -> None:
+def test_seconds_from_duration_reads_k6_durations(duration: str, seconds: int) -> None:
     assert seconds_from_duration(duration) == seconds
 
 
-def test_steady_range_of_a_load_test_skips_ramp_and_settle(tmp_path: Path) -> None:
+def test_steady_range_load_test_skips_ramp_and_settle(tmp_path: Path) -> None:
     sweep = load_sweep(write_sweep(tmp_path))
 
     assert steady_range(sweep) == (135, 180)
 
 
-def test_sweep_runs_every_variant_and_stops_each_service(tmp_path: Path) -> None:
+def test_run_sweep_runs_every_variant_and_stops_each_service(tmp_path: Path) -> None:
     environment = load_environment("laptop", [f"results_dir={tmp_path}"])
     sweep = load_sweep(write_sweep(tmp_path))
     log: list[str] = []
@@ -154,7 +154,7 @@ def test_sweep_runs_every_variant_and_stops_each_service(tmp_path: Path) -> None
     assert "| two calls |" in table
 
 
-def test_a_variant_that_fails_to_start_is_reported_and_the_sweep_goes_on(
+def test_run_sweep_variant_failing_to_start_is_reported_and_sweep_continues(
     tmp_path: Path,
 ) -> None:
     environment = load_environment("laptop", [f"results_dir={tmp_path}"])
@@ -182,7 +182,7 @@ def test_a_variant_that_fails_to_start_is_reported_and_the_sweep_goes_on(
     assert "failed" in report_table(results)
 
 
-def test_a_variant_can_change_k6_settings(tmp_path: Path) -> None:
+def test_k6_arguments_variant_changes_k6_settings(tmp_path: Path) -> None:
     path = tmp_path / "sweep.toml"
     path.write_text(
         SWEEP.replace(

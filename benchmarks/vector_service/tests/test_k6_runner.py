@@ -9,13 +9,13 @@ from benchmarks.vector_service.toolkit.k6_runner import (
 from benchmarks.vector_service.toolkit.settings import REPOSITORY_ROOT, load_environment
 
 
-def test_run_id_keeps_the_existing_format() -> None:
+def test_new_run_id_returns_type_and_timestamp_format() -> None:
     assert new_run_id("breakpoint", datetime(2026, 9, 27, 13, 59, 9)) == (
         "breakpoint-20260927-135909"
     )
 
 
-def test_command_matches_the_original_shell_script() -> None:
+def test_k6_command_default_settings_matches_shell_script() -> None:
     environment = load_environment("laptop", ["k6.html_report=false"])
 
     command = k6_command(
@@ -46,7 +46,7 @@ def test_command_matches_the_original_shell_script() -> None:
     ]  # fmt: skip
 
 
-def test_html_report_and_target_are_added_when_asked() -> None:
+def test_k6_command_html_report_and_target_asked_adds_them() -> None:
     environment = load_environment("laptop")
 
     command = k6_command(
@@ -68,7 +68,7 @@ def test_html_report_and_target_are_added_when_asked() -> None:
     ]  # fmt: skip
 
 
-def test_results_outside_the_repository_get_their_own_mount(tmp_path: Path) -> None:
+def test_k6_command_results_outside_repository_get_own_mount(tmp_path: Path) -> None:
     environment = load_environment(
         "laptop", [f"results_dir={tmp_path}", "k6.html_report=false"]
     )
@@ -81,7 +81,7 @@ def test_results_outside_the_repository_get_their_own_mount(tmp_path: Path) -> N
     assert "csv=/results/smoke-1-samples.csv.gz" in command
 
 
-def test_load_run_names_its_files(tmp_path: Path) -> None:
+def test_load_run_names_samples_resources_and_summary_files(tmp_path: Path) -> None:
     run = LoadRun(run_id="smoke-1", results_dir=tmp_path)
 
     assert run.samples_file == tmp_path / "smoke-1-samples.csv.gz"

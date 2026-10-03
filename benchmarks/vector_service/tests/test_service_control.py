@@ -1,5 +1,6 @@
+import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -41,7 +42,7 @@ def test_service_environment_adds_port_collection_and_qdrant() -> None:
     assert variables["QDRANT_URL"] == "http://localhost:6333"
 
 
-def test_run_settings_override_the_environment() -> None:
+def test_service_environment_run_settings_override_environment() -> None:
     environment = load_environment("laptop")
 
     variables = service_environment(environment, {"ENABLE_GPU": "false"})
@@ -49,14 +50,16 @@ def test_run_settings_override_the_environment() -> None:
     assert variables["ENABLE_GPU"] == "false"
 
 
-def test_a_run_cannot_point_the_service_at_a_protected_collection() -> None:
+def test_service_environment_protected_collection_raises_protected_collection() -> None:
     environment = load_environment("laptop")
 
     with pytest.raises(ProtectedCollectionError):
         service_environment(environment, {"QDRANT_COLLECTION_NAME": "anime_database"})
 
 
-def test_local_process_runs_the_service_module_with_library_paths() -> None:
+def test_local_process_controller_command_runs_service_module_with_library_paths() -> (
+    None
+):
     controller = LocalProcessController(load_environment("laptop"))
 
     command = controller.command()
@@ -73,18 +76,20 @@ def test_local_process_runs_the_service_module_with_library_paths() -> None:
     assert variables["VECTOR_SERVICE_PORT"] == "8011"
 
 
-def test_timed_local_process_runs_the_diagnostic_launcher() -> None:
+def test_local_process_controller_timed_command_runs_diagnostic_launcher() -> None:
     controller = LocalProcessController(load_environment("laptop"), timed=True)
 
     assert controller.command()[-1].endswith("diagnostics/run_timed_vector_service.py")
 
 
-def test_docker_needs_the_qdrant_address_seen_from_the_container() -> None:
+def test_docker_controller_without_container_qdrant_address_raises_missing_setting() -> (
+    None
+):
     with pytest.raises(MissingSettingError):
         DockerController(load_environment("laptop", ["service_start.kind=docker"]))
 
 
-def test_docker_command_uses_its_own_container_and_limits() -> None:
+def test_docker_controller_docker_command_uses_own_container_and_limits() -> None:
     environment = load_environment(
         "laptop",
         [
@@ -113,7 +118,7 @@ def test_docker_command_uses_its_own_container_and_limits() -> None:
     assert command[-1] == "echora-vector-service:dev"
 
 
-def test_docker_refuses_the_dev_container_name() -> None:
+def test_docker_controller_dev_container_name_raises_value_error() -> None:
     with pytest.raises(ValueError):
         DockerController(
             load_environment(
@@ -127,7 +132,7 @@ def test_docker_refuses_the_dev_container_name() -> None:
         )
 
 
-def test_wait_returns_once_the_service_is_serving() -> None:
+def test_wait_until_serving_returns_once_service_is_serving() -> None:
     answers = iter([False, False, True])
 
     wait_until_serving(
@@ -139,7 +144,9 @@ def test_wait_returns_once_the_service_is_serving() -> None:
     )
 
 
-def test_wait_fails_when_the_service_exits(tmp_path: Path) -> None:
+def test_wait_until_serving_service_exits_raises_service_start_error(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(ServiceStartError):
         wait_until_serving(
             "localhost:8011",
@@ -150,7 +157,7 @@ def test_wait_fails_when_the_service_exits(tmp_path: Path) -> None:
         )
 
 
-def test_wait_fails_after_the_timeout() -> None:
+def test_wait_until_serving_timeout_raises_service_start_error() -> None:
     clock = iter(range(100))
 
     with pytest.raises(ServiceStartError):
@@ -164,28 +171,31 @@ def test_wait_fails_after_the_timeout() -> None:
         )
 
 
-def test_gpu_check_passes_when_the_service_is_on_the_gpu(tmp_path: Path) -> None:
+def test_check_gpu_use_service_on_gpu_passes(tmp_path: Path) -> None:
     service = RunningService(process_ids=frozenset({42}), log_file=tmp_path / "log")
 
     check_gpu_use(service, {"ENABLE_GPU": "true"}, FakeGpuReader({7, 42}))
 
 
-def test_gpu_check_fails_when_the_service_is_not_on_the_gpu(tmp_path: Path) -> None:
+def test_check_gpu_use_service_off_gpu_raises_gpu_not_used(tmp_path: Path) -> None:
     service = RunningService(process_ids=frozenset({42}), log_file=tmp_path / "log")
 
     with pytest.raises(GpuNotUsedError):
         check_gpu_use(service, {"ENABLE_GPU": "true"}, FakeGpuReader({7}))
 
 
-def test_gpu_check_is_skipped_for_cpu_runs(tmp_path: Path) -> None:
+def test_check_gpu_use_cpu_run_skips_check(tmp_path: Path) -> None:
     service = RunningService(process_ids=frozenset({42}), log_file=tmp_path / "log")
 
     check_gpu_use(service, {"ENABLE_GPU": "false"}, FakeGpuReader(set()))
 
 
-def test_local_service_starts_outside_the_repository_root(tmp_path: Path) -> None:
+def test_local_process_controller_start_runs_outside_repository_root(
+    tmp_path: Path,
+) -> None:
     environment = load_environment("laptop", [f"results_dir={tmp_path}"])
-    popen = MagicMock(return_value=MagicMock(pid=42))
+    popen = create_autospec(subprocess.Popen)
+    popen.return_value.pid = 42
     controller = LocalProcessController(environment, popen=popen)
 
     controller.start({}, tmp_path / "service.log")

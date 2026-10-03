@@ -21,7 +21,7 @@ def write_samples(tmp_path: Path, rows: list[tuple[str, int, float]]) -> Path:
     return path
 
 
-def test_windows_group_samples_by_seconds_since_start(tmp_path: Path) -> None:
+def test_read_windows_groups_samples_by_seconds_since_start(tmp_path: Path) -> None:
     path = write_samples(
         tmp_path,
         [
@@ -46,7 +46,9 @@ def test_windows_group_samples_by_seconds_since_start(tmp_path: Path) -> None:
     assert windows[1].failed == 1
 
 
-def test_millisecond_timestamps_give_the_same_windows(tmp_path: Path) -> None:
+def test_read_windows_millisecond_timestamps_returns_same_windows(
+    tmp_path: Path,
+) -> None:
     path = write_samples(
         tmp_path,
         [
@@ -62,7 +64,7 @@ def test_millisecond_timestamps_give_the_same_windows(tmp_path: Path) -> None:
     assert windows[1].completed == 1
 
 
-def test_steady_summary_covers_only_the_chosen_windows(tmp_path: Path) -> None:
+def test_steady_summary_covers_only_chosen_windows(tmp_path: Path) -> None:
     rows = []
     for second in range(60):
         rows.append(("iterations", 1000 + second, 1.0))
@@ -92,7 +94,9 @@ def test_mean_resources_reads_percent_and_mebibyte_columns(tmp_path: Path) -> No
     )
 
 
-def test_mean_resources_accepts_files_without_qdrant_column(tmp_path: Path) -> None:
+def test_mean_resources_file_without_qdrant_column_returns_no_qdrant_cpu(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "run-resources.csv"
     path.write_text(
         "time,service_cpu,service_memory,k6_cpu,gpu_util,gpu_memory_mib\n"
@@ -102,7 +106,7 @@ def test_mean_resources_accepts_files_without_qdrant_column(tmp_path: Path) -> N
     assert mean_resources(path).qdrant_cpu is None
 
 
-def test_profile_splits_event_loop_from_other_threads(tmp_path: Path) -> None:
+def test_read_profile_splits_event_loop_from_other_threads(tmp_path: Path) -> None:
     path = tmp_path / "profile.txt"
     path.write_text(
         "_run_module_as_main (runpy.py:198);_run (asyncio/events.py:94) 30\n"

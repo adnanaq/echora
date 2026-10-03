@@ -39,7 +39,7 @@ def write_environment(tmp_path: Path, text: str = ENVIRONMENT) -> Path:
     return path
 
 
-def test_reads_every_section(tmp_path: Path) -> None:
+def test_load_environment_reads_every_section(tmp_path: Path) -> None:
     environment = load_environment(write_environment(tmp_path))
 
     assert environment.name == "test"
@@ -52,7 +52,7 @@ def test_reads_every_section(tmp_path: Path) -> None:
     assert environment.collections.load == "load_collection"
 
 
-def test_missing_sections_use_defaults(tmp_path: Path) -> None:
+def test_load_environment_missing_sections_use_defaults(tmp_path: Path) -> None:
     environment = load_environment(write_environment(tmp_path, 'name = "bare"\n'))
 
     assert environment.k6.image == "grafana/k6:2.3.0"
@@ -60,14 +60,16 @@ def test_missing_sections_use_defaults(tmp_path: Path) -> None:
     assert environment.collections.protected == ("anime_database",)
 
 
-def test_results_dir_is_relative_to_repository_root(tmp_path: Path) -> None:
+def test_load_environment_results_dir_is_relative_to_repository_root(
+    tmp_path: Path,
+) -> None:
     environment = load_environment(write_environment(tmp_path))
 
     assert environment.results_dir.is_absolute()
     assert environment.results_dir.name == "results"
 
 
-def test_overrides_are_converted_to_the_field_type(tmp_path: Path) -> None:
+def test_load_environment_overrides_are_converted_to_field_type(tmp_path: Path) -> None:
     environment = load_environment(
         write_environment(tmp_path),
         [
@@ -84,7 +86,9 @@ def test_overrides_are_converted_to_the_field_type(tmp_path: Path) -> None:
     assert environment.collections.protected == ("one", "two")
 
 
-def test_override_can_set_a_service_environment_variable(tmp_path: Path) -> None:
+def test_load_environment_override_sets_service_environment_variable(
+    tmp_path: Path,
+) -> None:
     environment = load_environment(
         write_environment(tmp_path), ["service_start.env.EMBED_MAX_CONCURRENCY=1"]
     )
@@ -95,39 +99,47 @@ def test_override_can_set_a_service_environment_variable(tmp_path: Path) -> None
     }
 
 
-def test_unknown_setting_is_refused(tmp_path: Path) -> None:
+def test_load_environment_unknown_override_raises_unknown_setting(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(UnknownSettingError):
         load_environment(write_environment(tmp_path), ["service_start.prot=1"])
 
 
-def test_unknown_key_in_file_is_refused(tmp_path: Path) -> None:
+def test_load_environment_unknown_key_in_file_raises_unknown_setting(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(UnknownSettingError):
         load_environment(
             write_environment(tmp_path, "[qdrant]\nadress = 'x'\n"),
         )
 
 
-def test_protected_collection_is_refused(tmp_path: Path) -> None:
+def test_load_environment_protected_collection_raises_protected_collection(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(ProtectedCollectionError):
         load_environment(
             write_environment(tmp_path), ["collections.load=anime_database"]
         )
 
 
-def test_protected_image_collection_is_refused(tmp_path: Path) -> None:
+def test_load_environment_protected_image_collection_raises_protected_collection(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(ProtectedCollectionError):
         load_environment(
             write_environment(tmp_path), ["collections.image_load=anime_database"]
         )
 
 
-def test_image_collection_has_its_own_default_name(tmp_path: Path) -> None:
+def test_load_environment_image_collection_has_own_default_name(tmp_path: Path) -> None:
     environment = load_environment(write_environment(tmp_path))
 
     assert environment.collections.image_load == "anime_image_load_test"
 
 
-def test_api_key_comes_from_the_named_variable(
+def test_load_environment_api_key_read_from_named_variable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     environment = load_environment(write_environment(tmp_path))

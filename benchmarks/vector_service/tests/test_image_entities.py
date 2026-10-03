@@ -13,7 +13,9 @@ def write_lines(path: Path, rows: list[dict]) -> None:
     path.write_text("\n".join(json.dumps(row) for row in rows))
 
 
-def test_characters_from_several_providers_merge_by_name(tmp_path: Path):
+def test_collect_agent_entities_characters_from_several_providers_merge_by_name(
+    tmp_path: Path,
+):
     folder = tmp_path / "One_agent5"
     folder.mkdir()
     write_lines(
@@ -36,7 +38,9 @@ def test_characters_from_several_providers_merge_by_name(tmp_path: Path):
     ]
 
 
-def test_agent_folders_of_one_anime_share_entities_and_drop_repeats(tmp_path: Path):
+def test_collect_agent_entities_folders_of_one_anime_share_entities_without_repeats(
+    tmp_path: Path,
+):
     for name in ("One_agent1", "One_refresh"):
         folder = tmp_path / name
         folder.mkdir()
@@ -60,7 +64,9 @@ def test_agent_folders_of_one_anime_share_entities_and_drop_repeats(tmp_path: Pa
     ]
 
 
-def test_episodes_are_keyed_by_number_and_uncached_images_dropped(tmp_path: Path):
+def test_collect_agent_entities_episodes_keyed_by_number_without_uncached_images(
+    tmp_path: Path,
+):
     folder = tmp_path / "Death_agent6"
     folder.mkdir()
     write_lines(
@@ -80,7 +86,9 @@ def test_episodes_are_keyed_by_number_and_uncached_images_dropped(tmp_path: Path
     ]
 
 
-def test_database_file_gives_anime_and_their_characters(tmp_path: Path):
+def test_collect_database_entities_database_file_returns_anime_and_characters(
+    tmp_path: Path,
+):
     path = tmp_path / "anime_database.json"
     path.write_text(
         json.dumps(
@@ -110,7 +118,7 @@ def test_database_file_gives_anime_and_their_characters(tmp_path: Path):
     ]
 
 
-def test_one_image_per_multi_image_entity_becomes_the_query():
+def test_hold_out_queries_multi_image_entity_gives_one_query_image():
     entities = [
         ImageEntity("a", "anime", ("a1", "a2", "a3")),
         ImageEntity("b", "character", ("b1",)),
@@ -127,7 +135,7 @@ def test_one_image_per_multi_image_entity_becomes_the_query():
     }
 
 
-def test_same_seed_holds_out_the_same_images():
+def test_hold_out_queries_same_seed_holds_out_same_images():
     entities = [
         ImageEntity(str(n), "character", (f"{n}x", f"{n}y", f"{n}z")) for n in range(20)
     ]

@@ -9,7 +9,7 @@ from benchmarks.vector_service.test_data.build_image_load_test_collection import
 )
 
 
-def test_points_carry_their_entity_type_and_one_to_max_images():
+def test_image_points_mixed_kinds_returns_entity_type_and_one_to_max_images():
     kinds = [EntityImages("anime", 5, 6), EntityImages("character", 7, 2)]
     points = list(image_points(kinds, dimensions=8, seed=1, first_id=100))
 
@@ -19,7 +19,7 @@ def test_points_carry_their_entity_type_and_one_to_max_images():
     assert all(1 <= len(point.images) <= 2 for point in points[5:])
 
 
-def test_image_vectors_are_unit_length():
+def test_image_points_vectors_have_unit_length():
     points = list(image_points([EntityImages("anime", 3, 4)], dimensions=16, seed=2))
 
     for point in points:
@@ -27,13 +27,13 @@ def test_image_vectors_are_unit_length():
         assert np.allclose(norms, 1.0, atol=1e-5)
 
 
-def test_same_seed_gives_the_same_points():
+def test_image_points_same_seed_returns_same_points():
     kinds = [EntityImages("anime", 4, 6)]
 
     assert list(image_points(kinds, 8, seed=3)) == list(image_points(kinds, 8, seed=3))
 
 
-def test_qdrant_point_holds_the_images_under_the_vector_name():
+def test_to_qdrant_point_images_stored_under_vector_name():
     point = to_qdrant_point(ImagePoint(7, "anime", [[1.0, 0.0]]), "image_vector")
 
     assert point.id == 7
@@ -41,7 +41,7 @@ def test_qdrant_point_holds_the_images_under_the_vector_name():
     assert point.payload == {"entity_type": "anime"}
 
 
-def test_qdrant_point_can_carry_the_average_of_its_images():
+def test_to_qdrant_point_average_name_adds_normalized_average():
     point = to_qdrant_point(
         ImagePoint(3, "character", [[1.0, 0.0], [0.0, 1.0]]),
         "image_vector",
@@ -53,7 +53,7 @@ def test_qdrant_point_can_carry_the_average_of_its_images():
     assert point.vector["image_vector"] == [[1.0, 0.0], [0.0, 1.0]]
 
 
-def test_without_an_average_name_only_the_images_are_stored():
+def test_to_qdrant_point_without_average_name_stores_only_images():
     point = to_qdrant_point(ImagePoint(4, "anime", [[1.0, 0.0]]), "image_vector")
 
     assert isinstance(point.vector, dict)

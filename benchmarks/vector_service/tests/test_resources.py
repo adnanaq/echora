@@ -28,7 +28,7 @@ def write_process(proc_root: Path, pid: int, ticks: int, rss_kib: int) -> None:
     (directory / "status").write_text(f"Name:\tpython\nVmRSS:\t{rss_kib} kB\n")
 
 
-def test_process_cpu_is_measured_between_two_reads(tmp_path: Path) -> None:
+def test_process_reader_two_reads_returns_cpu_between_them(tmp_path: Path) -> None:
     clock = FakeClock()
     write_process(tmp_path, 42, ticks=100, rss_kib=2048 * 1024)
     reader = ProcessReader(42, proc_root=tmp_path, clock=clock, ticks_per_second=100)
@@ -44,7 +44,7 @@ def test_process_cpu_is_measured_between_two_reads(tmp_path: Path) -> None:
     assert second["service_main_thread_cpu"] == "150.0%"
 
 
-def test_docker_stats_reader_keeps_docker_formats() -> None:
+def test_docker_stats_reader_returns_docker_formats() -> None:
     reader = DockerStatsReader(
         "service", runner=lambda command: "31.25%,1.2GiB / 15GiB\n"
     )
@@ -52,7 +52,7 @@ def test_docker_stats_reader_keeps_docker_formats() -> None:
     assert reader.read() == {"service_cpu": "31.25%", "service_memory": "1.2GiB"}
 
 
-def test_cgroup_reader_turns_usage_into_percent(tmp_path: Path) -> None:
+def test_container_cgroup_reader_two_reads_returns_cpu_percent(tmp_path: Path) -> None:
     clock = FakeClock()
     stat_file = tmp_path / "docker-abc.scope" / "cpu.stat"
     stat_file.parent.mkdir()
@@ -71,7 +71,9 @@ def test_cgroup_reader_turns_usage_into_percent(tmp_path: Path) -> None:
     assert reader.cpu_seconds() == 5.0
 
 
-def test_cgroup_reader_without_container_reports_nothing(tmp_path: Path) -> None:
+def test_container_cgroup_reader_without_container_returns_empty(
+    tmp_path: Path,
+) -> None:
     reader = ContainerCgroupReader(
         "missing", runner=lambda command: "", cgroup_root=tmp_path
     )
@@ -80,7 +82,7 @@ def test_cgroup_reader_without_container_reports_nothing(tmp_path: Path) -> None
     assert reader.cpu_seconds() is None
 
 
-def test_gpu_reader_parses_utilisation_and_processes() -> None:
+def test_nvidia_gpu_reader_returns_utilisation_and_process_ids() -> None:
     outputs = {
         "--query-gpu=utilization.gpu,memory.used": "34, 5089\n",
         "--query-compute-apps=pid": "8128\n1693722\n",
@@ -95,7 +97,7 @@ def test_gpu_reader_parses_utilisation_and_processes() -> None:
     assert reader.compute_process_ids() == {8128, 1693722}
 
 
-def test_sample_row_keeps_the_original_columns_first() -> None:
+def test_sample_row_keeps_original_columns_first() -> None:
     row = sample_row(
         "10:00:00",
         {"service_cpu": "12.5%", "gpu_util": "40", "qdrant_cpu": "300.0%"},
