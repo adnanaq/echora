@@ -9,8 +9,6 @@ import pytest
 import pytest_asyncio
 from common.config import get_settings
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -32,11 +30,6 @@ from qdrant_db.contracts import (
 )
 from qdrant_db.errors import DuplicateUpdateError, PermanentQdrantError, ValidationError
 from vector_db_interface import VectorDocument
-
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 
 
 @pytest_asyncio.fixture
@@ -571,15 +564,15 @@ async def test_update_vectors_sparse_data_normalized(
     ids=["single_vector", "fusion"],
 )
 async def test_search_records_qdrant_query_span(
-    mock_client: QdrantClient, request_args: dict
+    mock_client: QdrantClient, request_args: dict, span_exporter: InMemorySpanExporter
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.query_points.return_value = SimpleNamespace(points=[])
-    _SPANS.clear()
+    span_exporter.clear()
 
     await mock_client.search(SearchRequest(limit=5, **request_args))
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.name == "qdrant.query_points"
     assert span.kind is trace.SpanKind.CLIENT
     assert span.attributes["db.system"] == "qdrant"
@@ -646,18 +639,19 @@ async def test_concurrent_searches_share_one_query_batch_call(
 @pytest.mark.asyncio
 async def test_query_batch_span_records_the_batch_size(
     batching_client: QdrantClient,
+    span_exporter: InMemorySpanExporter,
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
     async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
         SimpleNamespace(points=[]) for _ in requests
     ]
-    _SPANS.clear()
+    span_exporter.clear()
 
     await asyncio.gather(
         *(batching_client.search(_hybrid_request(point_id)) for point_id in (1, 2))
     )
 
-    spans = {span.name: span for span in _SPANS.get_finished_spans()}
+    spans = {span.name: span for span in span_exporter.get_finished_spans()}
     span = spans["qdrant.query_batch_points"]
     assert span.attributes["db.operation.batch.size"] == 2
     assert span.parent is not None
@@ -667,16 +661,17 @@ async def test_query_batch_span_records_the_batch_size(
 @pytest.mark.asyncio
 async def test_single_search_in_a_batch_call_has_no_batch_size(
     batching_client: QdrantClient,
+    span_exporter: InMemorySpanExporter,
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
     async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
         SimpleNamespace(points=[]) for _ in requests
     ]
-    _SPANS.clear()
+    span_exporter.clear()
 
     await batching_client.search(_hybrid_request(1))
 
-    spans = {span.name: span for span in _SPANS.get_finished_spans()}
+    spans = {span.name: span for span in span_exporter.get_finished_spans()}
     assert (
         "db.operation.batch.size" not in spans["qdrant.query_batch_points"].attributes
     )
@@ -689,14 +684,15 @@ def test_query_batching_is_off_by_default() -> None:
 @pytest.mark.asyncio
 async def test_get_by_id_records_qdrant_retrieve_span(
     mock_client: QdrantClient,
+    span_exporter: InMemorySpanExporter,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     async_mock.retrieve.return_value = []
-    _SPANS.clear()
+    span_exporter.clear()
 
     await mock_client.get_by_id("abc")
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.name == "qdrant.retrieve"
     assert span.attributes["db.collection.name"] == mock_client.collection_name
 

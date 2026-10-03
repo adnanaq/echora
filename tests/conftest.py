@@ -6,6 +6,7 @@ Provides isolated test collection to avoid touching production data.
 
 from __future__ import annotations
 
+import functools
 import os
 from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING
@@ -13,6 +14,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from pydantic_settings import BaseSettings
 
 
@@ -87,6 +96,38 @@ if TYPE_CHECKING:
         TextProcessor,
         VisionProcessor,
     )
+
+
+@functools.cache
+def _test_telemetry() -> tuple[InMemorySpanExporter, InMemoryMetricReader]:
+    """Install the process-wide tracer and meter providers, once.
+
+    OpenTelemetry accepts only the first provider set in a process, so tests
+    must share one; a test file that set its own would collect nothing when
+    pytest runs it after another one.
+    """
+    span_exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    trace.set_tracer_provider(tracer_provider)
+    metric_reader = InMemoryMetricReader()
+    metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
+    return span_exporter, metric_reader
+
+
+@pytest.fixture
+def span_exporter() -> InMemorySpanExporter:
+    """Spans finished during this test; earlier tests' spans are cleared."""
+    exporter, _ = _test_telemetry()
+    exporter.clear()
+    return exporter
+
+
+@pytest.fixture
+def metric_reader() -> InMemoryMetricReader:
+    """Metrics recorded in this process; values add up across tests."""
+    _, reader = _test_telemetry()
+    return reader
 
 
 @pytest.fixture(scope="session")

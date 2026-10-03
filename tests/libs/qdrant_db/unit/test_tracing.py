@@ -6,8 +6,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from common.config import get_settings
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -18,11 +16,6 @@ from qdrant_db.contracts import BatchPayloadUpdateItem, BatchVectorUpdateItem
 from qdrant_db.errors import PermanentQdrantError
 from qdrant_db.tracing import qdrant_span
 from vector_db_interface import VectorDocument
-
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 
 COLLECTION = "span_test_collection"
 
@@ -58,13 +51,13 @@ def _document() -> VectorDocument:
     )
 
 
-def test_qdrant_span_names_call_and_collection() -> None:
-    _SPANS.clear()
-
+def test_qdrant_span_names_call_and_collection(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     with qdrant_span("scroll", COLLECTION):
         pass
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.name == "qdrant.scroll"
     assert span.kind is trace.SpanKind.CLIENT
     assert span.attributes == {
@@ -74,34 +67,34 @@ def test_qdrant_span_names_call_and_collection() -> None:
     }
 
 
-def test_qdrant_span_without_collection_has_no_collection_attribute() -> None:
-    _SPANS.clear()
-
+def test_qdrant_span_without_collection_has_no_collection_attribute(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     with qdrant_span("get_collections"):
         pass
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert "db.collection.name" not in span.attributes
 
 
-def test_qdrant_span_marks_failed_calls_as_errors() -> None:
-    _SPANS.clear()
-
+def test_qdrant_span_marks_failed_calls_as_errors(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     with pytest.raises(RuntimeError), qdrant_span("upsert", COLLECTION):
         raise RuntimeError("qdrant down")
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.status.status_code is StatusCode.ERROR
 
 
 @pytest.mark.asyncio
-async def test_qdrant_span_covers_awaited_call() -> None:
-    _SPANS.clear()
-
+async def test_qdrant_span_covers_awaited_call(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     with qdrant_span("query_points", COLLECTION):
         await asyncio.sleep(0.02)
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert (span.end_time - span.start_time) / 1e9 >= 0.02
 
 
@@ -150,28 +143,32 @@ CLIENT_CALLS: list[
     ids=[name for name, _, _ in CLIENT_CALLS],
 )
 async def test_client_calls_record_one_span_per_qdrant_call(
-    call: Callable[[QdrantClient], Awaitable[object]], expected_spans: list[str]
+    call: Callable[[QdrantClient], Awaitable[object]],
+    expected_spans: list[str],
+    span_exporter: InMemorySpanExporter,
 ) -> None:
     client = _client(_async_client())
-    _SPANS.clear()
+    span_exporter.clear()
 
     await call(client)
 
-    spans = _SPANS.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == expected_spans
     assert all(span.kind is trace.SpanKind.CLIENT for span in spans)
 
 
 @pytest.mark.asyncio
-async def test_each_upsert_retry_records_its_own_span() -> None:
+async def test_each_upsert_retry_records_its_own_span(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     async_client = _async_client()
     async_client.upsert.side_effect = [ConnectionError("reset"), None]
     client = _client(async_client)
-    _SPANS.clear()
+    span_exporter.clear()
 
     await client.add_documents([_document()], retry_delay=0)
 
-    spans = _SPANS.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == ["qdrant.upsert", "qdrant.upsert"]
     assert [span.status.status_code for span in spans] == [
         StatusCode.ERROR,
@@ -180,16 +177,18 @@ async def test_each_upsert_retry_records_its_own_span() -> None:
 
 
 @pytest.mark.asyncio
-async def test_failed_stats_call_records_error_span() -> None:
+async def test_failed_stats_call_records_error_span(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     async_client = _async_client()
     async_client.get_collection.side_effect = RuntimeError("qdrant down")
     client = _client(async_client)
-    _SPANS.clear()
+    span_exporter.clear()
 
     with pytest.raises(PermanentQdrantError):
         await client.get_stats()
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.name == "qdrant.get_collection"
     assert span.status.status_code is StatusCode.ERROR
 
@@ -224,14 +223,15 @@ MANAGER_CALLS: list[
 async def test_manager_calls_record_one_span_per_qdrant_call(
     call: Callable[[QdrantCollectionManager], Awaitable[object]],
     expected_spans: list[str],
+    span_exporter: InMemorySpanExporter,
 ) -> None:
     manager = _manager(_async_client())
-    _SPANS.clear()
+    span_exporter.clear()
 
     with patch.object(manager, "setup_payload_indexes", new=AsyncMock()):
         await call(manager)
 
-    spans = _SPANS.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == expected_spans
     assert all(
         span.attributes["db.collection.name"] == COLLECTION
@@ -241,13 +241,15 @@ async def test_manager_calls_record_one_span_per_qdrant_call(
 
 
 @pytest.mark.asyncio
-async def test_payload_index_setup_records_span_per_index() -> None:
+async def test_payload_index_setup_records_span_per_index(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     manager = _manager(_async_client())
-    _SPANS.clear()
+    span_exporter.clear()
 
     await manager.setup_payload_indexes()
 
-    spans = _SPANS.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     indexed_fields = get_settings().qdrant.qdrant_indexed_payload_fields
     assert [span.name for span in spans] == ["qdrant.create_payload_index"] * len(
         indexed_fields
@@ -255,15 +257,17 @@ async def test_payload_index_setup_records_span_per_index() -> None:
 
 
 @pytest.mark.asyncio
-async def test_compatibility_check_records_get_collection_span() -> None:
+async def test_compatibility_check_records_get_collection_span(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     async_client = _async_client()
     async_client.get_collection.side_effect = RuntimeError("qdrant down")
     manager = _manager(async_client)
-    _SPANS.clear()
+    span_exporter.clear()
 
     with pytest.raises(RuntimeError):
         await manager._validate_compatibility()
 
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = span_exporter.get_finished_spans()
     assert span.name == "qdrant.get_collection"
     assert span.status.status_code is StatusCode.ERROR

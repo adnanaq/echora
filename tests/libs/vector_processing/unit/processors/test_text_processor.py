@@ -8,19 +8,11 @@ import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from vector_processing.cache import EmbeddingCache
 from vector_processing.processors.text_processor import TextProcessor
-
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 
 # Fixtures mock_text_model and mock_settings are provided by conftest.py
 
@@ -397,7 +389,13 @@ class TestEncodingSpans:
         ],
     )
     async def test_records_one_encoding_span(
-        self, mock_text_model, mock_settings, method, argument, span_name
+        self,
+        mock_text_model,
+        mock_settings,
+        method,
+        argument,
+        span_name,
+        span_exporter: InMemorySpanExporter,
     ):
         mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
         mock_text_model.encode_with_sparse.return_value = (
@@ -405,11 +403,11 @@ class TestEncodingSpans:
             [None, None],
         )
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
-        _SPANS.clear()
+        span_exporter.clear()
 
         await getattr(processor, method)(argument)
 
-        (span,) = _SPANS.get_finished_spans()
+        (span,) = span_exporter.get_finished_spans()
         assert span.name == span_name
         assert span.attributes["embedding.model"] == "test-text-model"
         assert span.attributes["embedding.sparse"] == method.endswith("_with_sparse")

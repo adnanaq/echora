@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from google.protobuf import struct_pb2
 from opentelemetry import trace
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -27,10 +26,6 @@ from vector_service.routes.search import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 _TRACER = trace.get_tracer("test")
 
 _INDEXED_FIELDS: frozenset[str] = frozenset(
@@ -357,17 +352,20 @@ async def test_missing_query_input_returns_error() -> None:
 
 
 async def _search_in_span(
-    runtime: SimpleNamespace, request: vector_search_pb2.SearchRequest
+    spans: InMemorySpanExporter,
+    runtime: SimpleNamespace,
+    request: vector_search_pb2.SearchRequest,
 ) -> ReadableSpan:
-    _SPANS.clear()
     with _TRACER.start_as_current_span("rpc.server.Search"):
         await search_route.search(runtime, request, context=None)
-    (span,) = _SPANS.get_finished_spans()
+    (span,) = spans.get_finished_spans()
     return span
 
 
 @pytest.mark.asyncio
-async def test_search_span_records_request_parameters() -> None:
+async def test_search_span_records_request_parameters(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     request = vector_search_pb2.SearchRequest(
         query_text="space western",
         entity_type="anime",
@@ -385,7 +383,7 @@ async def test_search_span_records_request_parameters() -> None:
         ],
     )
 
-    span = await _search_in_span(_runtime(), request)
+    span = await _search_in_span(span_exporter, _runtime(), request)
 
     assert span.attributes["search.has_text"] is True
     assert span.attributes["search.has_image"] is False
@@ -396,28 +394,38 @@ async def test_search_span_records_request_parameters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_span_has_no_query_text_by_default() -> None:
+async def test_search_span_has_no_query_text_by_default(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     request = vector_search_pb2.SearchRequest(query_text="space western")
 
-    span = await _search_in_span(_runtime(), request)
+    span = await _search_in_span(span_exporter, _runtime(), request)
 
     assert "search.query_text" not in span.attributes
 
 
 @pytest.mark.asyncio
-async def test_search_span_records_query_text_when_enabled() -> None:
+async def test_search_span_records_query_text_when_enabled(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     request = vector_search_pb2.SearchRequest(query_text="  space western  ")
 
-    span = await _search_in_span(_runtime(record_query_text=True), request)
+    span = await _search_in_span(
+        span_exporter, _runtime(record_query_text=True), request
+    )
 
     assert span.attributes["search.query_text"] == "space western"
 
 
 @pytest.mark.asyncio
-async def test_rejected_search_still_records_its_parameters() -> None:
+async def test_rejected_search_still_records_its_parameters(
+    span_exporter: InMemorySpanExporter,
+) -> None:
     request = vector_search_pb2.SearchRequest(limit=3)
 
-    span = await _search_in_span(_runtime(record_query_text=True), request)
+    span = await _search_in_span(
+        span_exporter, _runtime(record_query_text=True), request
+    )
 
     assert span.attributes["search.has_text"] is False
     assert span.attributes["search.has_image"] is False

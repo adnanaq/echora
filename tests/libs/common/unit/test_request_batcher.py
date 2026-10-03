@@ -2,23 +2,14 @@ import asyncio
 
 import pytest
 from common.utils.request_batcher import BatchResultCountError, RequestBatcher
-from opentelemetry import metrics, trace
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry import trace
 from opentelemetry.sdk.metrics.export import HistogramDataPoint, InMemoryMetricReader
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
 
-_READER = InMemoryMetricReader()
-metrics.set_meter_provider(MeterProvider(metric_readers=[_READER]))
-
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 _TRACER = trace.get_tracer("test")
 
 
@@ -144,8 +135,10 @@ async def test_close_rejects_new_requests():
         await batcher.submit("b")
 
 
-def _histogram_points(metric_name: str, batcher: str) -> list[HistogramDataPoint]:
-    data = _READER.get_metrics_data()
+def _histogram_points(
+    reader: InMemoryMetricReader, metric_name: str, batcher: str
+) -> list[HistogramDataPoint]:
+    data = reader.get_metrics_data()
     if data is None:
         return []
     return [
@@ -170,7 +163,9 @@ async def _slow_echo(items: list[str]) -> list[str]:
     return items
 
 
-async def test_batch_size_is_recorded_per_batch_call():
+async def test_batch_size_is_recorded_per_batch_call(
+    metric_reader: InMemoryMetricReader,
+):
     batcher = RequestBatcher(
         _echo, max_batch_size=8, max_wait_seconds=0.005, concurrency=1, name="sizes"
     )
@@ -178,39 +173,49 @@ async def test_batch_size_is_recorded_per_batch_call():
     await asyncio.gather(*(batcher.submit(text) for text in ["a", "b", "c"]))
     await batcher.submit("d")
 
-    (point,) = _histogram_points("echora_batcher_batch_size", "sizes")
+    (point,) = _histogram_points(metric_reader, "echora_batcher_batch_size", "sizes")
     assert point.count == 2
     assert point.sum == 4
     await batcher.close()
 
 
-async def test_queue_wait_is_recorded_for_every_request():
+async def test_queue_wait_is_recorded_for_every_request(
+    metric_reader: InMemoryMetricReader,
+):
     batcher = RequestBatcher(
         _echo, max_batch_size=8, max_wait_seconds=0.005, concurrency=1, name="waits"
     )
 
     await asyncio.gather(*(batcher.submit(text) for text in ["a", "b", "c"]))
 
-    (point,) = _histogram_points("echora_batcher_queue_wait_seconds", "waits")
+    (point,) = _histogram_points(
+        metric_reader, "echora_batcher_queue_wait_seconds", "waits"
+    )
     assert point.count == 3
     assert point.min >= 0
     await batcher.close()
 
 
-async def test_queue_wait_includes_waiting_for_free_call_slot():
+async def test_queue_wait_includes_waiting_for_free_call_slot(
+    metric_reader: InMemoryMetricReader,
+):
     batcher = RequestBatcher(
         _slow_echo, max_batch_size=1, max_wait_seconds=0, concurrency=1, name="slots"
     )
 
     await asyncio.gather(batcher.submit("first"), batcher.submit("second"))
 
-    (point,) = _histogram_points("echora_batcher_queue_wait_seconds", "slots")
+    (point,) = _histogram_points(
+        metric_reader, "echora_batcher_queue_wait_seconds", "slots"
+    )
     assert point.count == 2
     assert point.max >= 0.04
     await batcher.close()
 
 
-async def test_each_batcher_records_under_its_own_name():
+async def test_each_batcher_records_under_its_own_name(
+    metric_reader: InMemoryMetricReader,
+):
     first = RequestBatcher(
         _echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -222,8 +227,12 @@ async def test_each_batcher_records_under_its_own_name():
     await second.submit("b")
     await second.submit("c")
 
-    (model_point,) = _histogram_points("echora_batcher_batch_size", "model")
-    (qdrant_point,) = _histogram_points("echora_batcher_batch_size", "qdrant")
+    (model_point,) = _histogram_points(
+        metric_reader, "echora_batcher_batch_size", "model"
+    )
+    (qdrant_point,) = _histogram_points(
+        metric_reader, "echora_batcher_batch_size", "qdrant"
+    )
     assert model_point.count == 1
     assert qdrant_point.count == 2
     await first.close()
@@ -245,17 +254,14 @@ async def _submit_in_span(batcher: RequestBatcher, name: str, item: str) -> str:
         return await batcher.submit(item)
 
 
-def _span(name: str) -> ReadableSpan:
-    (span,) = [span for span in _SPANS.get_finished_spans() if span.name == name]
+def _span(spans: InMemorySpanExporter, name: str) -> ReadableSpan:
+    (span,) = [span for span in spans.get_finished_spans() if span.name == name]
     return span
 
 
-@pytest.fixture(autouse=True)
-def _clear_spans() -> None:
-    _SPANS.clear()
-
-
-async def test_batch_call_runs_in_its_own_span_linked_to_each_caller():
+async def test_batch_call_runs_in_its_own_span_linked_to_each_caller(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _traced_echo,
         max_batch_size=8,
@@ -269,8 +275,11 @@ async def test_batch_call_runs_in_its_own_span_linked_to_each_caller():
         _submit_in_span(batcher, "search.second", "b"),
     )
 
-    batch = _span("batch.model")
-    first, second = _span("search.first"), _span("search.second")
+    batch = _span(span_exporter, "batch.model")
+    first, second = (
+        _span(span_exporter, "search.first"),
+        _span(span_exporter, "search.second"),
+    )
     assert batch.parent is None
     assert batch.context.trace_id not in {
         first.context.trace_id,
@@ -284,7 +293,7 @@ async def test_batch_call_runs_in_its_own_span_linked_to_each_caller():
     await batcher.close()
 
 
-async def test_each_caller_links_back_to_its_batch():
+async def test_each_caller_links_back_to_its_batch(span_exporter: InMemorySpanExporter):
     batcher = RequestBatcher(
         _traced_echo,
         max_batch_size=8,
@@ -298,26 +307,32 @@ async def test_each_caller_links_back_to_its_batch():
         _submit_in_span(batcher, "search.second", "b"),
     )
 
-    batch_context = _span("batch.model").context
+    batch_context = _span(span_exporter, "batch.model").context
     for name in ("search.first", "search.second"):
-        assert [link.context.span_id for link in _span(name).links] == [
+        assert [link.context.span_id for link in _span(span_exporter, name).links] == [
             batch_context.span_id
         ]
 
 
-async def test_work_inside_batch_call_is_child_of_batch_span():
+async def test_work_inside_batch_call_is_child_of_batch_span(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
 
     await _submit_in_span(batcher, "search.only", "a")
 
-    downstream = _span("downstream.call")
+    downstream = _span(span_exporter, "downstream.call")
     assert downstream.parent is not None
-    assert downstream.parent.span_id == _span("batch.model").context.span_id
+    assert (
+        downstream.parent.span_id == _span(span_exporter, "batch.model").context.span_id
+    )
 
 
-async def test_later_batches_do_not_join_first_callers_trace():
+async def test_later_batches_do_not_join_first_callers_trace(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -325,17 +340,19 @@ async def test_later_batches_do_not_join_first_callers_trace():
     await _submit_in_span(batcher, "search.first", "a")
     await _submit_in_span(batcher, "search.second", "b")
 
-    first_trace = _span("search.first").context.trace_id
+    first_trace = _span(span_exporter, "search.first").context.trace_id
     batch_traces = [
         span.context.trace_id
-        for span in _SPANS.get_finished_spans()
+        for span in span_exporter.get_finished_spans()
         if span.name == "batch.model"
     ]
     assert len(batch_traces) == 2
     assert first_trace not in batch_traces
 
 
-async def test_failed_batch_call_marks_batch_span_as_error():
+async def test_failed_batch_call_marks_batch_span_as_error(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _failing_call, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -343,19 +360,21 @@ async def test_failed_batch_call_marks_batch_span_as_error():
     with pytest.raises(RuntimeError, match="downstream failed"):
         await _submit_in_span(batcher, "search.only", "a")
 
-    batch = _span("batch.model")
+    batch = _span(span_exporter, "batch.model")
     assert batch.status.status_code is StatusCode.ERROR
     assert [event.name for event in batch.events] == ["exception"]
 
 
-async def test_requests_without_trace_still_get_batch_span():
+async def test_requests_without_trace_still_get_batch_span(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
 
     assert await batcher.submit("a") == "a"
 
-    assert _span("batch.model").links == ()
+    assert _span(span_exporter, "batch.model").links == ()
 
 
 async def _returns_too_few(items: list[str]) -> list[str]:
@@ -379,7 +398,9 @@ async def test_wrong_result_count_fails_every_request():
     await batcher.close()
 
 
-async def test_wrong_result_count_marks_batch_span_as_error():
+async def test_wrong_result_count_marks_batch_span_as_error(
+    span_exporter: InMemorySpanExporter,
+):
     batcher = RequestBatcher(
         _returns_too_few,
         max_batch_size=8,
@@ -391,5 +412,5 @@ async def test_wrong_result_count_marks_batch_span_as_error():
     with pytest.raises(BatchResultCountError):
         await asyncio.wait_for(_submit_in_span(batcher, "search.only", "a"), timeout=2)
 
-    assert _span("batch.model").status.status_code is StatusCode.ERROR
+    assert _span(span_exporter, "batch.model").status.status_code is StatusCode.ERROR
     await batcher.close()
