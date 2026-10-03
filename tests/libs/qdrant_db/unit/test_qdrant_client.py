@@ -637,7 +637,7 @@ async def test_concurrent_searches_share_one_query_batch_call(
 
 
 @pytest.mark.asyncio
-async def test_query_batch_span_records_the_batch_size(
+async def test_query_batch_span_records_batch_size(
     batching_client: QdrantClient,
     span_exporter: InMemorySpanExporter,
 ) -> None:
@@ -659,7 +659,7 @@ async def test_query_batch_span_records_the_batch_size(
 
 
 @pytest.mark.asyncio
-async def test_single_search_in_a_batch_call_has_no_batch_size(
+async def test_single_search_in_batch_call_has_no_batch_size(
     batching_client: QdrantClient,
     span_exporter: InMemorySpanExporter,
 ) -> None:

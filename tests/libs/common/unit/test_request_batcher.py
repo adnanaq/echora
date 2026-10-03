@@ -48,7 +48,7 @@ async def test_concurrent_requests_share_one_batch_call():
     await batcher.close()
 
 
-async def test_batches_never_exceed_the_maximum_size():
+async def test_batches_never_exceed_maximum_size():
     batch_function = RecordingBatchFunction()
     batcher = RequestBatcher(
         batch_function, max_batch_size=4, max_wait_seconds=0.005, concurrency=1
@@ -65,7 +65,7 @@ async def test_batches_never_exceed_the_maximum_size():
     await batcher.close()
 
 
-async def test_a_lone_request_is_not_delayed_without_a_wait():
+async def test_lone_request_is_not_delayed_without_wait():
     batch_function = RecordingBatchFunction(delay_seconds=0)
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0, concurrency=1
@@ -80,7 +80,7 @@ async def test_a_lone_request_is_not_delayed_without_a_wait():
     await batcher.close()
 
 
-async def test_requests_queued_during_a_call_form_the_next_batch():
+async def test_requests_queued_during_call_form_next_batch():
     batch_function = RecordingBatchFunction(delay_seconds=0.05)
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0, concurrency=1
@@ -95,7 +95,7 @@ async def test_requests_queued_during_a_call_form_the_next_batch():
     await batcher.close()
 
 
-async def test_a_failed_batch_call_fails_every_request_in_it():
+async def test_failed_batch_call_fails_every_request_in_it():
     batch_function = RecordingBatchFunction(failure=RuntimeError("batch failed"))
     batcher = RequestBatcher(
         batch_function, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
@@ -109,7 +109,7 @@ async def test_a_failed_batch_call_fails_every_request_in_it():
     await batcher.close()
 
 
-async def test_batch_calls_run_at_the_same_time_up_to_the_concurrency():
+async def test_batch_calls_run_concurrently_up_to_concurrency_limit():
     batch_function = RecordingBatchFunction(delay_seconds=0.05)
     batcher = RequestBatcher(
         batch_function, max_batch_size=1, max_wait_seconds=0, concurrency=2
