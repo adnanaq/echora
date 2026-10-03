@@ -70,6 +70,26 @@ _CACHE_OP_DURATION_BUCKETS = [
     1.0,
 ]
 
+# Batcher queue wait: 0.5 ms → 2.5 s — a lone request starts at once; under
+# load requests wait for a free model or Qdrant call (~100 ms at 600 searches/s).
+_BATCHER_QUEUE_WAIT_BUCKETS = [
+    0.0005,
+    0.001,
+    0.0025,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+]
+
+# Batch size: 1 → 256 requests — powers of two up to the largest batch setting.
+_BATCHER_BATCH_SIZE_BUCKETS = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+
 _METRICS_LOCK = threading.Lock()
 _METRICS_CONFIGURED = False
 
@@ -118,6 +138,18 @@ _HISTOGRAM_VIEWS = [
         instrument_name="echora_cache_operation_duration_seconds",
         aggregation=ExplicitBucketHistogramAggregation(
             boundaries=_CACHE_OP_DURATION_BUCKETS
+        ),
+    ),
+    View(
+        instrument_name="echora_batcher_queue_wait_seconds",
+        aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=_BATCHER_QUEUE_WAIT_BUCKETS
+        ),
+    ),
+    View(
+        instrument_name="echora_batcher_batch_size",
+        aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=_BATCHER_BATCH_SIZE_BUCKETS
         ),
     ),
 ]

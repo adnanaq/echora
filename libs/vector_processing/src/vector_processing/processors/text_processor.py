@@ -80,6 +80,7 @@ class TextProcessor:
                 max_batch_size=config.embed_batch_max_size,
                 max_wait_seconds=config.embed_batch_max_wait_ms / 1000,
                 concurrency=config.embed_max_concurrency,
+                name="text_embedding",
             )
 
         logger.info(f"Initialized TextProcessor with model: {model.model_name}")

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import inspect
+
 import observability
+from observability.metrics import _HISTOGRAM_VIEWS
 
 
 def _reset_telemetry_state(monkeypatch) -> None:
@@ -67,6 +70,23 @@ def test_setup_telemetry_initializes_all_signal_pipelines(monkeypatch) -> None:
 def test_no_grpc_server_hook_is_exported() -> None:
     assert "instrument_grpc_server" not in observability.__all__
     assert not hasattr(observability, "instrument_grpc_server")
+
+
+def test_no_qdrant_client_auto_instrumentation_is_offered() -> None:
+    assert "instrument_qdrant_client" not in observability.__all__
+    assert not hasattr(observability, "instrument_qdrant_client")
+    assert (
+        "enable_qdrant_client_instrumentation"
+        not in inspect.signature(observability.setup_telemetry).parameters
+    )
+
+
+def test_batcher_histograms_have_explicit_buckets() -> None:
+    names = {view._instrument_name for view in _HISTOGRAM_VIEWS}
+    assert {
+        "echora_batcher_queue_wait_seconds",
+        "echora_batcher_batch_size",
+    } <= names
 
 
 def test_setup_telemetry_respects_signal_toggles(monkeypatch) -> None:

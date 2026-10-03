@@ -3,12 +3,30 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from opentelemetry import metrics
+
+_meter = metrics.get_meter("echora.request_batcher")
+_queue_wait = _meter.create_histogram(
+    "echora_batcher_queue_wait_seconds",
+    unit="s",
+    description="Time a request waited in a batcher's queue before its batch call started",
+)
+_batch_size = _meter.create_histogram(
+    "echora_batcher_batch_size",
+    unit="{request}",
+    description="Requests in each batch call",
+)
+
 
 class BatcherClosedError(RuntimeError):
     """Raised for a request made after, or still waiting when, the batcher closed."""
 
     def __init__(self) -> None:
         super().__init__("RequestBatcher is closed")
+
+
+type _QueuedItem[ItemT, ResultT] = tuple[ItemT, asyncio.Future[ResultT], float]
+"""A queued request: the item, the future for its result, and when it was queued."""
 
 
 class RequestBatcher[ItemT, ResultT]:
@@ -20,6 +38,10 @@ class RequestBatcher[ItemT, ResultT]:
     at once. While every call slot is busy, items keep queueing, so batches grow
     by themselves under load. With ``max_wait_seconds`` at 0 a lone request is
     processed at once; a small wait lets the dispatcher gather more items first.
+
+    Each batch call records its size, and each request the time it waited
+    before its batch call started (``echora_batcher_batch_size`` and
+    ``echora_batcher_queue_wait_seconds``, labelled with the batcher's name).
     """
 
     def __init__(
@@ -28,6 +50,7 @@ class RequestBatcher[ItemT, ResultT]:
         max_batch_size: int,
         max_wait_seconds: float,
         concurrency: int,
+        name: str = "unnamed",
     ) -> None:
         """Create the batcher; the dispatcher starts on first use.
 
@@ -38,12 +61,14 @@ class RequestBatcher[ItemT, ResultT]:
             max_wait_seconds: How long the dispatcher waits for more items
                 before starting a batch that is not full.
             concurrency: Batch calls that may run at the same time.
+            name: Label for this batcher's metrics, e.g. ``"text_embedding"``.
         """
         self._process_batch = process_batch
         self._max_batch_size = max_batch_size
         self._max_wait_seconds = max_wait_seconds
         self._concurrency = concurrency
-        self._queue: asyncio.Queue[tuple[ItemT, asyncio.Future[ResultT]]] | None = None
+        self._metric_attributes = {"batcher": name}
+        self._queue: asyncio.Queue[_QueuedItem[ItemT, ResultT]] | None = None
         self._call_slots: asyncio.Semaphore | None = None
         self._dispatcher: asyncio.Task[None] | None = None
         self._running: set[asyncio.Task[None]] = set()
@@ -61,8 +86,9 @@ class RequestBatcher[ItemT, ResultT]:
         if self._closed:
             raise BatcherClosedError()
         queue = self._start_dispatcher()
-        result: asyncio.Future[ResultT] = asyncio.get_running_loop().create_future()
-        queue.put_nowait((item, result))
+        loop = asyncio.get_running_loop()
+        result: asyncio.Future[ResultT] = loop.create_future()
+        queue.put_nowait((item, result, loop.time()))
         return await result
 
     async def close(self) -> None:
@@ -74,11 +100,11 @@ class RequestBatcher[ItemT, ResultT]:
         await asyncio.gather(*tasks, return_exceptions=True)
         self._running.clear()
         while self._queue is not None and not self._queue.empty():
-            _, result = self._queue.get_nowait()
+            _, result, _ = self._queue.get_nowait()
             if not result.done():
                 result.set_exception(BatcherClosedError())
 
-    def _start_dispatcher(self) -> asyncio.Queue[tuple[ItemT, asyncio.Future[ResultT]]]:
+    def _start_dispatcher(self) -> asyncio.Queue[_QueuedItem[ItemT, ResultT]]:
         """Create the queue and dispatcher inside the running event loop."""
         if self._queue is None:
             self._queue = asyncio.Queue()
@@ -91,7 +117,7 @@ class RequestBatcher[ItemT, ResultT]:
 
     async def _dispatch(
         self,
-        queue: asyncio.Queue[tuple[ItemT, asyncio.Future[ResultT]]],
+        queue: asyncio.Queue[_QueuedItem[ItemT, ResultT]],
         call_slots: asyncio.Semaphore,
     ) -> None:
         """Form batches from the queue and start a batch call for each."""
@@ -108,16 +134,24 @@ class RequestBatcher[ItemT, ResultT]:
             call.add_done_callback(lambda _: call_slots.release())
 
     async def _process_and_deliver(
-        self, batch: list[tuple[ItemT, asyncio.Future[ResultT]]]
+        self, batch: list[_QueuedItem[ItemT, ResultT]]
     ) -> None:
         """Process a batch and hand each caller its own result or the error."""
+        self._record_batch_start(batch)
         try:
-            results = await self._process_batch([item for item, _ in batch])
+            results = await self._process_batch([item for item, _, _ in batch])
         except Exception as exc:
-            for _, result in batch:
+            for _, result, _ in batch:
                 if not result.done():
                     result.set_exception(exc)
             return
-        for (_, result), value in zip(batch, results, strict=True):
+        for (_, result, _), value in zip(batch, results, strict=True):
             if not result.done():
                 result.set_result(value)
+
+    def _record_batch_start(self, batch: list[_QueuedItem[ItemT, ResultT]]) -> None:
+        """Record the batch size and how long each request waited for it."""
+        started = asyncio.get_running_loop().time()
+        _batch_size.record(len(batch), self._metric_attributes)
+        for _, _, queued_at in batch:
+            _queue_wait.record(started - queued_at, self._metric_attributes)
