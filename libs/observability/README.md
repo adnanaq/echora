@@ -103,6 +103,9 @@ gRPC call arrives
 │    vector_processing.text.encode_batch              │
 │    vector_processing.vision.encode                  │
 │    vector_processing.vision.encode_batch            │
+│    qdrant.<call>  (every Qdrant call, qdrant_db)    │
+│    batch.<batcher> (one per batch call, linked to   │
+│      each request it served; common.utils)          │
 │  Metrics (via opentelemetry.get_meter):             │
 │    echora_embedding_duration_seconds  {modality}   │
 │    echora_embedding_cache_total                     │
@@ -111,6 +114,8 @@ gRPC call arrives
 │    echora_image_download_failures_total             │
 │    echora_enrichment_api_requests_total             │
 │    echora_enrichment_api_duration_seconds           │
+│    echora_batcher_queue_wait_seconds  {batcher}     │
+│    echora_batcher_batch_size          {batcher}     │
 │  Metrics (via the registry passed to QdrantClient): │
 │    echora_db_query_duration_seconds                 │
 │    echora_db_errors_total                           │
@@ -144,7 +149,6 @@ setup_telemetry(
     enable_metrics=True,                 # MeterProvider + OTLP metric exporter
     enable_grpc_client_instrumentation=False,   # auto-instrument gRPC client stubs
     enable_aiohttp_client_instrumentation=False, # auto-instrument aiohttp sessions
-    enable_qdrant_client_instrumentation=False,  # auto-instrument Qdrant SDK
     metric_export_interval_millis=15000, # push interval (15 s minimum for SLO alerting)
     trace_sample_ratio=1.0,             # 1.0 = keep all (dev); 0.05–0.10 for prod
     log_sample_rate=1.0,                # 1.0 = keep all (dev); 0.1 for high-throughput prod
@@ -168,7 +172,6 @@ from observability import (
     AioServerInterceptor,           # gRPC async server interceptor
     instrument_grpc_client,         # enable auto-instrumentation
     instrument_aiohttp_client,
-    instrument_qdrant_client,
     registry,                       # metric instrument singleton
     setup_logging, stop_logging,    # standalone log setup / teardown
     setup_tracing,                  # standalone trace setup
@@ -215,6 +218,8 @@ Library code records these through its own `get_meter()` instruments:
 | `echora_image_download_failures_total` | Counter | _(none)_ | Vision processor; downloads failed after all retries |
 | `echora_enrichment_api_requests_total` | Counter | `service`, `status` (`success`\|`error`) | Enrichment API fetcher |
 | `echora_enrichment_api_duration_seconds` | Histogram | `service` | Enrichment API fetcher |
+| `echora_batcher_queue_wait_seconds` | Histogram | `batcher` (`text_embedding`\|`qdrant_query`) | Request batcher; time from a request's arrival to the start of its batch call, including the wait for a free call slot |
+| `echora_batcher_batch_size` | Histogram | `batcher` | Request batcher; requests in each batch call |
 
 Every metric also carries `deployment_environment`, which the collector copies from
 the service's `deployment.environment`.
@@ -511,7 +516,7 @@ docker compose -f docker/docker-compose.obs.yml down -v
 - Echora folder: `http://localhost:3000/dashboards/f/ffe8d6w3ayk1sd/echora`
 - Vector Service overview: `http://localhost:3000/d/echora-vector-service-overview`
 - Enrichment Service overview: `http://localhost:3000/d/echora-enrichment-service-overview`
-- Trace journey: `http://localhost:3000/d/echora-trace-journey/echora-trace-journey`
+- Qdrant overview: `http://localhost:3000/d/echora-qdrant-overview`
 
 One observability stack serves every environment. Services tag all telemetry with
 `deployment.environment` (from `ENVIRONMENT`), and each dashboard has an

@@ -7,6 +7,7 @@
 # export fails with StatusCode.UNAVAILABLE (non-fatal, but telemetry is lost).
 #
 # This overlay turns telemetry on and joins both services to that network.
+# It also joins Qdrant, so Prometheus can scrape Qdrant's /metrics.
 #
 # Usage:
 #   1. Create the shared network (once per machine):
@@ -26,6 +27,11 @@
 name: echora-dev
 
 services:
+  qdrant:
+    networks:
+      - echora-network
+      - observability-network
+
   vector-service:
     environment:
       - OTEL_ENABLED=true

@@ -40,6 +40,7 @@ class VectorRuntime:
     vision_processor: VisionProcessor
     embedding_manager: MultiVectorEmbeddingManager
     embedding_cache: EmbeddingCache | None
+    record_query_text: bool = False
 
 
 class GpuUnavailableError(RuntimeError):
@@ -232,6 +233,7 @@ async def build_runtime(settings: Settings) -> VectorRuntime:
             vision_processor=vision_processor,
             embedding_manager=embedding_manager,
             embedding_cache=embedding_cache,
+            record_query_text=settings.observability.otel_record_query_text,
         )
     except Exception:
         if async_qdrant_client is not None:

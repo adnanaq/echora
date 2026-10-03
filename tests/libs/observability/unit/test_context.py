@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from observability.context import (
     extract_trace_context,
     inject_context_into_nats_headers,
@@ -9,27 +10,17 @@ from observability.context import (
     inject_trace_context,
 )
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-_TRACER: trace.Tracer | None = None
+
+@pytest.fixture
+def tracer(span_exporter: InMemorySpanExporter) -> trace.Tracer:
+    return trace.get_tracer(__name__)
 
 
-def _setup_tracer() -> trace.Tracer:
-    global _TRACER
-    if _TRACER is not None:
-        return _TRACER
-
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))
-    trace.set_tracer_provider(provider)
-    _TRACER = trace.get_tracer(__name__)
-    return _TRACER
-
-
-def test_trace_context_round_trip_parent_child() -> None:
-    tracer = _setup_tracer()
+def test_extract_trace_context_injected_headers_returns_parent_context(
+    tracer: trace.Tracer,
+) -> None:
 
     with tracer.start_as_current_span("parent") as parent_span:
         headers = inject_trace_context({})
@@ -45,24 +36,27 @@ def test_trace_context_round_trip_parent_child() -> None:
         assert parent.span_id == parent_context.span_id
 
 
-def test_extract_trace_context_handles_missing_headers() -> None:
-    tracer = _setup_tracer()
+def test_extract_trace_context_missing_headers_returns_no_parent(
+    tracer: trace.Tracer,
+) -> None:
     extracted_context = extract_trace_context({})
 
     with tracer.start_as_current_span("root", context=extracted_context) as span:
         assert cast(Any, span).parent is None
 
 
-def test_extract_trace_context_handles_invalid_traceparent() -> None:
-    tracer = _setup_tracer()
+def test_extract_trace_context_invalid_traceparent_returns_no_parent(
+    tracer: trace.Tracer,
+) -> None:
     extracted_context = extract_trace_context({"traceparent": "invalid"})
 
     with tracer.start_as_current_span("root", context=extracted_context) as span:
         assert cast(Any, span).parent is None
 
 
-def test_nats_and_temporal_helpers_inject_traceparent() -> None:
-    tracer = _setup_tracer()
+def test_inject_context_into_nats_and_temporal_headers_active_span_adds_traceparent(
+    tracer: trace.Tracer,
+) -> None:
 
     with tracer.start_as_current_span("producer"):
         nats_headers = inject_context_into_nats_headers({})

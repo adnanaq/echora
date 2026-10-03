@@ -5,7 +5,6 @@ import logging
 logger = logging.getLogger(__name__)
 _GRPC_CLIENT_INSTRUMENTED = False
 _AIOHTTP_CLIENT_INSTRUMENTED = False
-_QDRANT_CLIENT_INSTRUMENTED = False
 _REDIS_INSTRUMENTED = False
 
 
@@ -50,27 +49,6 @@ def instrument_aiohttp_client() -> None:
 
     AioHttpClientInstrumentor().instrument()
     _AIOHTTP_CLIENT_INSTRUMENTED = True
-
-
-def instrument_qdrant_client() -> None:
-    """Enable OpenTelemetry auto-instrumentation for the Qdrant client.
-
-    Installs ``QdrantInstrumentor`` which creates spans for Qdrant operations
-    (search, upsert, delete, etc.) and records query metadata as span
-    attributes. Idempotent.
-    """
-    global _QDRANT_CLIENT_INSTRUMENTED
-    if _QDRANT_CLIENT_INSTRUMENTED:
-        return
-
-    try:
-        from opentelemetry.instrumentation.qdrant import QdrantInstrumentor
-    except ImportError:
-        logger.warning("Qdrant client instrumentation is unavailable")
-        return
-
-    QdrantInstrumentor().instrument()
-    _QDRANT_CLIENT_INSTRUMENTED = True
 
 
 def instrument_redis() -> None:

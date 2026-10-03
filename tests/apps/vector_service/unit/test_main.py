@@ -1,91 +1,97 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import create_autospec, patch
 
 import pytest
-from grpc_health.v1 import health_pb2
+from common.config.settings import Settings
+from grpc_health.v1 import health, health_pb2
+from qdrant_client import AsyncQdrantClient
+from qdrant_db import QdrantClient
+from vector_processing import (
+    MultiVectorEmbeddingManager,
+    TextProcessor,
+    VisionProcessor,
+)
 from vector_service import main
+from vector_service.runtime import VectorRuntime
+
+_HEALTH_SERVICES = (
+    "",
+    "vector_service.v1.VectorAdminService",
+    "vector_service.v1.VectorSearchService",
+)
 
 
-def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def _fake_setup_telemetry(**kwargs) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr(main, "setup_telemetry", _fake_setup_telemetry)
-
-    settings = SimpleNamespace(
-        service=SimpleNamespace(
-            api_version="9.9.9",
-            log_level="INFO",
-        ),
-        observability=SimpleNamespace(
-            otel_enabled=True,
-            otel_exporter_otlp_endpoint="http://localhost:4317",
-            otel_enable_metrics=True,
-            otel_enable_tracing=True,
-            otel_enable_logging=True,
-            otel_enable_grpc_server_instrumentation=True,
-            otel_enable_grpc_client_instrumentation=True,
-            otel_enable_aiohttp_client_instrumentation=False,
-            otel_enable_qdrant_client_instrumentation=True,
-            otel_enable_redis_instrumentation=True,
-        ),
-        environment=SimpleNamespace(value="development"),
+def _runtime(*, qdrant_healthy: bool) -> VectorRuntime:
+    qdrant_client = create_autospec(QdrantClient, instance=True)
+    qdrant_client.health_check.return_value = qdrant_healthy
+    return VectorRuntime(
+        qdrant_client=qdrant_client,
+        async_qdrant_client=create_autospec(AsyncQdrantClient, instance=True),
+        text_processor=create_autospec(TextProcessor, instance=True),
+        vision_processor=create_autospec(VisionProcessor, instance=True),
+        embedding_manager=create_autospec(MultiVectorEmbeddingManager, instance=True),
+        embedding_cache=None,
     )
 
-    main._setup_observability(settings)
 
-    assert captured["service_name"] == "echora-vector-service"
-    assert captured["version"] == "9.9.9"
-    assert captured["environment"] == "development"
-    assert captured["endpoint"] == "http://localhost:4317"
-    assert captured["enable_logging"] is True
-    assert captured["enable_tracing"] is True
-    assert captured["enable_metrics"] is True
-    assert "enable_grpc_server_instrumentation" not in captured
-    assert captured["enable_grpc_client_instrumentation"] is True
-    assert captured["enable_aiohttp_client_instrumentation"] is False
-    assert captured["enable_qdrant_client_instrumentation"] is True
-    assert captured["enable_redis_instrumentation"] is True
+async def _published_statuses(servicer: health.aio.HealthServicer) -> dict[str, int]:
+    return {
+        service: (
+            await servicer.Check(health_pb2.HealthCheckRequest(service=service), None)
+        ).status
+        for service in _HEALTH_SERVICES
+    }
+
+
+def test_setup_observability_otel_enabled_passes_settings_to_setup_telemetry() -> None:
+    with patch.dict(
+        "os.environ",
+        {
+            "ENVIRONMENT": "development",
+            "OTEL_ENABLED": "true",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4317",
+            "OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION": "false",
+            "OTEL_ENABLE_REDIS_INSTRUMENTATION": "true",
+        },
+        clear=True,
+    ):
+        settings = Settings()
+
+    with patch.object(main, "setup_telemetry", autospec=True) as setup_telemetry:
+        main._setup_observability(settings)
+
+    arguments = setup_telemetry.call_args.kwargs
+    assert arguments["service_name"] == "echora-vector-service"
+    assert arguments["version"] == settings.service.api_version
+    assert arguments["environment"] == "development"
+    assert arguments["endpoint"] == "http://collector:4317"
+    assert arguments["log_level"] == settings.service.log_level
+    assert arguments["enable_logging"] is True
+    assert arguments["enable_tracing"] is True
+    assert arguments["enable_metrics"] is True
+    assert arguments["enable_grpc_client_instrumentation"] is True
+    assert arguments["enable_aiohttp_client_instrumentation"] is False
+    assert arguments["enable_redis_instrumentation"] is True
 
 
 @pytest.mark.asyncio
-async def test_initial_readiness_serving_when_healthy() -> None:
-    runtime = SimpleNamespace(
-        qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=True))
-    )
-    health_servicer = AsyncMock()
+async def test_publish_initial_readiness_healthy_qdrant_sets_serving() -> None:
+    servicer = health.aio.HealthServicer()
 
-    await main._publish_initial_readiness(runtime, health_servicer)
+    await main._publish_initial_readiness(_runtime(qdrant_healthy=True), servicer)
 
-    expected_status = health_pb2.HealthCheckResponse.SERVING
-    assert health_servicer.set.await_count == 3
-    health_servicer.set.assert_any_await("", expected_status)
-    health_servicer.set.assert_any_await(
-        "vector_service.v1.VectorAdminService", expected_status
-    )
-    health_servicer.set.assert_any_await(
-        "vector_service.v1.VectorSearchService", expected_status
+    assert await _published_statuses(servicer) == dict.fromkeys(
+        _HEALTH_SERVICES, health_pb2.HealthCheckResponse.SERVING
     )
 
 
 @pytest.mark.asyncio
-async def test_initial_readiness_not_serving_when_unhealthy() -> None:
-    runtime = SimpleNamespace(
-        qdrant_client=SimpleNamespace(health_check=AsyncMock(return_value=False))
-    )
-    health_servicer = AsyncMock()
+async def test_publish_initial_readiness_unhealthy_qdrant_sets_not_serving() -> None:
+    servicer = health.aio.HealthServicer()
 
-    await main._publish_initial_readiness(runtime, health_servicer)
+    await main._publish_initial_readiness(_runtime(qdrant_healthy=False), servicer)
 
-    expected_status = health_pb2.HealthCheckResponse.NOT_SERVING
-    health_servicer.set.assert_any_await("", expected_status)
-    health_servicer.set.assert_any_await(
-        "vector_service.v1.VectorAdminService", expected_status
-    )
-    health_servicer.set.assert_any_await(
-        "vector_service.v1.VectorSearchService", expected_status
+    assert await _published_statuses(servicer) == dict.fromkeys(
+        _HEALTH_SERVICES, health_pb2.HealthCheckResponse.NOT_SERVING
     )

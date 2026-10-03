@@ -5,22 +5,16 @@ batch processing, embedding cache integration, and edge cases.
 """
 
 import hashlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import create_autospec
 
 import pytest
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from common.config import EmbeddingConfig
+from opentelemetry.sdk.metrics.export import HistogramDataPoint, InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from vector_processing.cache import EmbeddingCache
 from vector_processing.processors.text_processor import TextProcessor
-
-_SPANS = InMemorySpanExporter()
-_TRACER_PROVIDER = TracerProvider()
-_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
-trace.set_tracer_provider(_TRACER_PROVIDER)
 
 # Fixtures mock_text_model and mock_settings are provided by conftest.py
 
@@ -28,27 +22,20 @@ trace.set_tracer_provider(_TRACER_PROVIDER)
 class TestTextProcessorInit:
     """Tests for TextProcessor initialization."""
 
-    def test_init_with_settings(self, mock_text_model, mock_settings):
+    def test_init_with_config_stores_model_and_config(
+        self, mock_text_model, mock_settings
+    ):
         """Test initialization with provided settings."""
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
         assert processor.model == mock_text_model
         assert processor.config == mock_settings
 
-    def test_init_without_settings_uses_defaults(self, mock_text_model):
+    def test_init_without_config_uses_default_config(self, mock_text_model):
         """Test initialization without config uses default EmbeddingConfig."""
-        with patch(
-            "vector_processing.processors.text_processor.EmbeddingConfig"
-        ) as mock_config_class:
-            mock_default_config = MagicMock()
-            mock_default_config.embed_max_concurrency = 2
-            mock_default_config.embed_batch_max_size = 1
-            mock_config_class.return_value = mock_default_config
+        processor = TextProcessor(model=mock_text_model)
 
-            processor = TextProcessor(model=mock_text_model)
-
-            mock_config_class.assert_called_once()
-            assert processor.config == mock_default_config
+        assert processor.config == EmbeddingConfig()
 
     def test_init_logs_model_name(self, mock_text_model, mock_settings, caplog):
         """Test that initialization logs the model name."""
@@ -62,7 +49,9 @@ class TestEncodeText:
     """Tests for encode_text method."""
 
     @pytest.mark.asyncio
-    async def test_encode_text_success(self, mock_text_model, mock_settings):
+    async def test_encode_text_valid_text_returns_embedding(
+        self, mock_text_model, mock_settings
+    ):
         """Test successful text encoding."""
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
@@ -96,7 +85,7 @@ class TestEncodeText:
         mock_text_model.encode.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_encode_text_model_returns_empty_list(
+    async def test_encode_text_model_returns_empty_list_returns_none(
         self, mock_text_model, mock_settings
     ):
         """Test when model returns empty list."""
@@ -108,7 +97,7 @@ class TestEncodeText:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_encode_text_model_raises_exception(
+    async def test_encode_text_model_raises_returns_none_and_logs_error(
         self, mock_text_model, mock_settings, caplog
     ):
         """Test when model raises exception."""
@@ -126,7 +115,9 @@ class TestEncodeTextsBatch:
     """Tests for encode_texts_batch method."""
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_success(self, mock_text_model, mock_settings):
+    async def test_encode_texts_batch_valid_texts_returns_embeddings(
+        self, mock_text_model, mock_settings
+    ):
         """Test successful batch encoding."""
         mock_text_model.encode.return_value = [
             [0.1] * 1024,
@@ -144,7 +135,9 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.assert_called_once_with(["text1", "text2", "text3"])
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_empty_list(self, mock_text_model, mock_settings):
+    async def test_encode_texts_batch_empty_list_returns_empty_list(
+        self, mock_text_model, mock_settings
+    ):
         """Test batch encoding with empty list."""
         mock_text_model.encode.return_value = []
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
@@ -154,7 +147,7 @@ class TestEncodeTextsBatch:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_model_raises_exception(
+    async def test_encode_texts_batch_model_raises_returns_none_per_text(
         self, mock_text_model, mock_settings, caplog
     ):
         """Test when model raises exception during batch encoding."""
@@ -168,7 +161,7 @@ class TestEncodeTextsBatch:
         assert "Batch text encoding failed" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_with_empty_strings(
+    async def test_encode_texts_batch_empty_strings_returns_zero_vectors_for_them(
         self, mock_text_model, mock_settings
     ):
         """Test batch encoding filters out empty strings and returns zero vectors."""
@@ -188,7 +181,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.assert_called_once_with(["valid text"])
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_with_whitespace_strings(
+    async def test_encode_texts_batch_whitespace_strings_returns_zero_vectors_for_them(
         self, mock_text_model, mock_settings
     ):
         """Test batch encoding filters out whitespace-only strings."""
@@ -206,7 +199,9 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.assert_called_once_with(["real content"])
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_all_empty(self, mock_text_model, mock_settings):
+    async def test_encode_texts_batch_all_empty_returns_zero_vectors(
+        self, mock_text_model, mock_settings
+    ):
         """Test batch encoding when all inputs are empty/whitespace."""
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
@@ -218,7 +213,7 @@ class TestEncodeTextsBatch:
         mock_text_model.encode.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_mixed_content(
+    async def test_encode_texts_batch_mixed_content_keeps_input_order(
         self, mock_text_model, mock_settings
     ):
         """Test batch encoding with realistic mixed content."""
@@ -254,7 +249,9 @@ class TestEncodeTextsBatch:
         )
 
     @pytest.mark.asyncio
-    async def test_zero_vectors_independent(self, mock_text_model, mock_settings):
+    async def test_encode_texts_batch_some_empty_texts_returns_independent_zero_vectors(
+        self, mock_text_model, mock_settings
+    ):
         """Test that zero vectors are independent copies, not the same object.
 
         Regression test for issue where all empty inputs shared the same
@@ -284,7 +281,7 @@ class TestEncodeTextsBatch:
         assert result[3][0] == 0.0  # Should NOT be affected
 
     @pytest.mark.asyncio
-    async def test_all_empty_batch_produces_independent_vectors(
+    async def test_encode_texts_batch_all_empty_returns_independent_zero_vectors(
         self, mock_text_model, mock_settings
     ):
         """Test all-empty case produces independent zero vectors.
@@ -314,7 +311,7 @@ class TestEncodeTextsBatch:
         assert result[3][0] == 0.0
 
     @pytest.mark.asyncio
-    async def test_encode_texts_batch_large_batch_correctness(
+    async def test_encode_texts_batch_large_batch_returns_embedding_per_text(
         self, mock_text_model, mock_settings
     ):
         """Test correctness with large batch (regression test for O(n^2) complexity).
@@ -347,6 +344,22 @@ class TestEncodeTextsBatch:
                 assert vec == [0.0] * 1024
 
 
+def _text_inference_duration_count(reader: InMemoryMetricReader) -> int:
+    data = reader.get_metrics_data()
+    if data is None:
+        return 0
+    return sum(
+        point.count
+        for resource_metrics in data.resource_metrics
+        for scope_metrics in resource_metrics.scope_metrics
+        for metric in scope_metrics.metrics
+        if metric.name == "echora_embedding_duration_seconds"
+        for point in metric.data.data_points
+        if isinstance(point, HistogramDataPoint)
+        and point.attributes.get("modality") == "text"
+    )
+
+
 class TestEmbeddingDurationMetric:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -358,8 +371,13 @@ class TestEmbeddingDurationMetric:
             ("encode_texts_batch_with_sparse", ["Hello", "world"]),
         ],
     )
-    async def test_records_one_inference_duration(
-        self, mock_text_model, mock_settings, method, argument
+    async def test_text_processor_each_encode_method_records_one_text_inference_duration(
+        self,
+        mock_text_model,
+        mock_settings,
+        method,
+        argument,
+        metric_reader: InMemoryMetricReader,
     ):
         mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
         mock_text_model.encode_with_sparse.return_value = (
@@ -367,14 +385,11 @@ class TestEmbeddingDurationMetric:
             [None, None],
         )
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
+        recorded_before = _text_inference_duration_count(metric_reader)
 
-        with patch(
-            "vector_processing.processors.text_processor._embedding_duration"
-        ) as duration:
-            await getattr(processor, method)(argument)
+        await getattr(processor, method)(argument)
 
-        duration.record.assert_called_once()
-        assert duration.record.call_args.args[1] == {"modality": "text"}
+        assert _text_inference_duration_count(metric_reader) == recorded_before + 1
 
 
 class TestEncodingSpans:
@@ -396,8 +411,14 @@ class TestEncodingSpans:
             ),
         ],
     )
-    async def test_records_one_encoding_span(
-        self, mock_text_model, mock_settings, method, argument, span_name
+    async def test_text_processor_each_encode_method_records_one_encoding_span(
+        self,
+        mock_text_model,
+        mock_settings,
+        method,
+        argument,
+        span_name,
+        span_exporter: InMemorySpanExporter,
     ):
         mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
         mock_text_model.encode_with_sparse.return_value = (
@@ -405,11 +426,11 @@ class TestEncodingSpans:
             [None, None],
         )
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
-        _SPANS.clear()
+        span_exporter.clear()
 
         await getattr(processor, method)(argument)
 
-        (span,) = _SPANS.get_finished_spans()
+        (span,) = span_exporter.get_finished_spans()
         assert span.name == span_name
         assert span.attributes["embedding.model"] == "test-text-model"
         assert span.attributes["embedding.sparse"] == method.endswith("_with_sparse")
@@ -418,7 +439,9 @@ class TestEncodingSpans:
 class TestGetZeroEmbedding:
     """Tests for get_zero_embedding method."""
 
-    def test_get_zero_embedding_correct_size(self, mock_text_model, mock_settings):
+    def test_get_zero_embedding_model_size_returns_zeros_of_that_size(
+        self, mock_text_model, mock_settings
+    ):
         """Test zero embedding has correct dimensions."""
         mock_text_model.embedding_size = 512
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
@@ -428,7 +451,9 @@ class TestGetZeroEmbedding:
         assert len(result) == 512
         assert all(x == 0.0 for x in result)
 
-    def test_get_zero_embedding_different_sizes(self, mock_text_model, mock_settings):
+    def test_get_zero_embedding_any_model_size_returns_matching_length(
+        self, mock_text_model, mock_settings
+    ):
         """Test zero embedding works for different model sizes."""
         for size in [256, 768, 1024, 1536]:
             mock_text_model.embedding_size = size
@@ -462,9 +487,9 @@ class TestGetModelInfo:
 
 
 @pytest.fixture
-def mock_embedding_cache():
+def embedding_cache():
     """Create a mock EmbeddingCache for unit tests."""
-    cache = AsyncMock(spec=EmbeddingCache)
+    cache = create_autospec(EmbeddingCache, instance=True)
     cache.get.return_value = None
     cache.set.return_value = None
     cache.get_batch.return_value = []
@@ -476,36 +501,36 @@ class TestEncodeTextWithCache:
     """Tests for encode_text with embedding cache."""
 
     @pytest.mark.asyncio
-    async def test_cache_hit_skips_model_inference(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_text_cache_hit_skips_model(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that a cache hit returns the cached embedding without calling the model."""
         cached_embedding = [0.5] * 1024
-        mock_embedding_cache.get.return_value = cached_embedding
+        embedding_cache.get.return_value = cached_embedding
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_text("Hello world")
 
         assert result == cached_embedding
         mock_text_model.encode.assert_not_called()
-        mock_embedding_cache.get.assert_awaited_once()
+        embedding_cache.get.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_cache_miss_runs_model_and_stores(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_text_cache_miss_runs_model_and_stores_result(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that a cache miss runs inference and writes the result back."""
-        mock_embedding_cache.get.return_value = None
+        embedding_cache.get.return_value = None
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_text("Hello world")
@@ -514,29 +539,31 @@ class TestEncodeTextWithCache:
         mock_text_model.encode.assert_called_once_with(["Hello world"])
         # Should write back to cache
         text_hash = hashlib.sha256(b"Hello world").hexdigest()
-        mock_embedding_cache.set.assert_awaited_once_with(
+        embedding_cache.set.assert_awaited_once_with(
             "test-text-model", text_hash, [0.1] * 1024
         )
 
     @pytest.mark.asyncio
-    async def test_empty_text_bypasses_cache(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_text_empty_text_bypasses_cache(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that empty text returns zero vector without checking cache."""
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_text("")
 
         assert result == [0.0] * 1024
-        mock_embedding_cache.get.assert_not_awaited()
-        mock_embedding_cache.set.assert_not_awaited()
+        embedding_cache.get.assert_not_awaited()
+        embedding_cache.set.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_no_cache_works_as_before(self, mock_text_model, mock_settings):
+    async def test_encode_text_without_cache_runs_model(
+        self, mock_text_model, mock_settings
+    ):
         """Test that cache=None path works identically to the original code."""
         processor = TextProcessor(model=mock_text_model, config=mock_settings)
 
@@ -550,38 +577,38 @@ class TestEncodeTextsBatchWithCache:
     """Tests for encode_texts_batch with embedding cache."""
 
     @pytest.mark.asyncio
-    async def test_all_cache_hits_skips_model(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_texts_batch_all_cache_hits_skips_model(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that all cache hits means no model inference at all."""
         cached = [[0.5] * 1024, [0.6] * 1024]
-        mock_embedding_cache.get_batch.return_value = cached
+        embedding_cache.get_batch.return_value = cached
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_texts_batch(["text1", "text2"])
 
         assert result == cached
         mock_text_model.encode.assert_not_called()
-        mock_embedding_cache.set_batch.assert_not_awaited()
+        embedding_cache.set_batch.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_partial_cache_hits_encodes_only_misses(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_texts_batch_partial_cache_hits_encodes_only_misses(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that only uncached texts are sent to the model."""
         cached_emb = [0.5] * 1024
-        mock_embedding_cache.get_batch.return_value = [cached_emb, None, None]
+        embedding_cache.get_batch.return_value = [cached_emb, None, None]
         mock_text_model.encode.return_value = [[0.2] * 1024, [0.3] * 1024]
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_texts_batch(["cached", "miss1", "miss2"])
@@ -593,40 +620,40 @@ class TestEncodeTextsBatchWithCache:
         # Model should only encode the 2 uncached texts
         mock_text_model.encode.assert_called_once_with(["miss1", "miss2"])
         # Should write back the 2 new embeddings
-        mock_embedding_cache.set_batch.assert_awaited_once()
+        embedding_cache.set_batch.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_all_cache_misses_encodes_all(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_texts_batch_all_cache_misses_encodes_every_text(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test that all misses sends everything to the model."""
-        mock_embedding_cache.get_batch.return_value = [None, None]
+        embedding_cache.get_batch.return_value = [None, None]
         mock_text_model.encode.return_value = [[0.1] * 1024, [0.2] * 1024]
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_texts_batch(["text1", "text2"])
 
         assert len(result) == 2
         mock_text_model.encode.assert_called_once_with(["text1", "text2"])
-        mock_embedding_cache.set_batch.assert_awaited_once()
+        embedding_cache.set_batch.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_mixed_empty_and_cached(
-        self, mock_text_model, mock_settings, mock_embedding_cache
+    async def test_encode_texts_batch_empty_and_cached_texts_returns_zero_and_cached_vectors(
+        self, mock_text_model, mock_settings, embedding_cache
     ):
         """Test batch with empty strings and cache hits — no model call needed."""
         cached_emb = [0.5] * 1024
-        mock_embedding_cache.get_batch.return_value = [cached_emb]
+        embedding_cache.get_batch.return_value = [cached_emb]
 
         processor = TextProcessor(
             model=mock_text_model,
             config=mock_settings,
-            embedding_cache=mock_embedding_cache,
+            embedding_cache=embedding_cache,
         )
 
         result = await processor.encode_texts_batch(["", "cached_text", "  "])

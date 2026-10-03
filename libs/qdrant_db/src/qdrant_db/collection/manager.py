@@ -17,6 +17,7 @@ from qdrant_db.collection.schema_builder import (
     validate_vector_config,
 )
 from qdrant_db.errors import CollectionCompatibilityError
+from qdrant_db.tracing import qdrant_span
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,15 @@ class QdrantCollectionManager:
             vectors_config = build_vector_config(self._config)
             validate_vector_config(self._config, vectors_config)
             try:
-                await self._async_client.create_collection(
-                    collection_name=self._collection_name,
-                    vectors_config=vectors_config,
-                    sparse_vectors_config=build_sparse_vector_config(self._config),
-                    quantization_config=build_quantization_config(self._config),
-                    optimizers_config=build_optimizers_config(self._config),
-                    wal_config=build_wal_config(self._config),
-                )
+                with qdrant_span("create_collection", self._collection_name):
+                    await self._async_client.create_collection(
+                        collection_name=self._collection_name,
+                        vectors_config=vectors_config,
+                        sparse_vectors_config=build_sparse_vector_config(self._config),
+                        quantization_config=build_quantization_config(self._config),
+                        optimizers_config=build_optimizers_config(self._config),
+                        wal_config=build_wal_config(self._config),
+                    )
             except UnexpectedResponse as exc:
                 if exc.status_code == 400 and b"already exists" in exc.content.lower():
                     # Concurrent instance created the collection between our existence
@@ -95,7 +97,8 @@ class QdrantCollectionManager:
             ``True`` when deletion succeeds, otherwise ``False``.
         """
         try:
-            await self._async_client.delete_collection(self._collection_name)
+            with qdrant_span("delete_collection", self._collection_name):
+                await self._async_client.delete_collection(self._collection_name)
         except Exception:
             logger.exception("Failed to delete collection")
             return False
@@ -108,7 +111,8 @@ class QdrantCollectionManager:
             ``True`` when collection is present, else ``False``.
         """
         try:
-            collections = (await self._async_client.get_collections()).collections
+            with qdrant_span("get_collections"):
+                collections = (await self._async_client.get_collections()).collections
         except Exception:
             logger.exception("Failed to check collection existence")
             return False
@@ -143,13 +147,14 @@ class QdrantCollectionManager:
         }
 
         for field_name, field_type in indexed_fields.items():
-            await self._async_client.create_payload_index(
-                collection_name=self._collection_name,
-                field_name=field_name,
-                field_schema=type_mapping.get(
-                    field_type.lower(), PayloadSchemaType.KEYWORD
-                ),
-            )
+            with qdrant_span("create_payload_index", self._collection_name):
+                await self._async_client.create_payload_index(
+                    collection_name=self._collection_name,
+                    field_name=field_name,
+                    field_schema=type_mapping.get(
+                        field_type.lower(), PayloadSchemaType.KEYWORD
+                    ),
+                )
 
     async def _validate_compatibility(self) -> None:
         """Validate vector schema compatibility against current configuration.
@@ -158,7 +163,10 @@ class QdrantCollectionManager:
             CollectionCompatibilityError: If vector names, dimensions, distance
                 metric, or multivector mode do not match expectations.
         """
-        collection_info = await self._async_client.get_collection(self._collection_name)
+        with qdrant_span("get_collection", self._collection_name):
+            collection_info = await self._async_client.get_collection(
+                self._collection_name
+            )
         existing_vectors = collection_info.config.params.vectors
 
         if not isinstance(existing_vectors, dict):

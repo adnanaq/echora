@@ -50,7 +50,6 @@ dependencies = [
     "opentelemetry-instrumentation-redis==0.66b0",
     "opentelemetry-instrumentation-grpc==0.66b0",
     "opentelemetry-instrumentation-aiohttp-client==0.66b0",
-    "opentelemetry-instrumentation-qdrant==0.62.3",
     "structlog>=26.1.0",
     "zendriver>=0.16.0",
 ]

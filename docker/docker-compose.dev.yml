@@ -142,6 +142,8 @@ services:
       - OTEL_ENABLE_TRACING=true
       - OTEL_ENABLE_METRICS=true
       - OTEL_ENABLE_LOGGING=true
+      # Dev only: put each search's query text on its trace span
+      - OTEL_RECORD_QUERY_TEXT=true
 
       # HTTP Cache Configuration
       - CACHE_ENABLED=true
