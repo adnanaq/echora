@@ -657,9 +657,11 @@ async def test_query_batch_span_records_the_batch_size(
         *(batching_client.search(_hybrid_request(point_id)) for point_id in (1, 2))
     )
 
-    (span,) = _SPANS.get_finished_spans()
-    assert span.name == "qdrant.query_batch_points"
+    spans = {span.name: span for span in _SPANS.get_finished_spans()}
+    span = spans["qdrant.query_batch_points"]
     assert span.attributes["db.operation.batch.size"] == 2
+    assert span.parent is not None
+    assert span.parent.span_id == spans["batch.qdrant_query"].context.span_id
 
 
 @pytest.mark.asyncio
@@ -674,8 +676,10 @@ async def test_single_search_in_a_batch_call_has_no_batch_size(
 
     await batching_client.search(_hybrid_request(1))
 
-    (span,) = _SPANS.get_finished_spans()
-    assert "db.operation.batch.size" not in span.attributes
+    spans = {span.name: span for span in _SPANS.get_finished_spans()}
+    assert (
+        "db.operation.batch.size" not in spans["qdrant.query_batch_points"].attributes
+    )
 
 
 def test_query_batching_is_off_by_default() -> None:
