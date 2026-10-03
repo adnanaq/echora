@@ -100,8 +100,8 @@ sequenceDiagram
 
     U->>V: SearchRequest (gRPC)
     Note over V: AioServerInterceptor starts span
-    V->>Q: search() (OTel instrumented)
-    Note over Q: Qdrant span nested under Search
+    V->>Q: query_points / query_batch_points
+    Note over Q: qdrant.<call> span nested under Search
     Q-->>V: results
     V-->>U: SearchResponse
 ```
@@ -131,6 +131,16 @@ The following metrics are tracked across the platform. Every metric also carries
 | `echora_image_download_duration_seconds` | Histogram | Image download and cache duration. |
 | `echora_image_download_failures_total` | Counter | Total image download failures. |
 | `echora_cache_operation_duration_seconds` | Histogram | Redis cache operation duration. |
+| `echora_batcher_queue_wait_seconds` | Histogram | Time a search waited in a request batcher's queue before its batch call started, by `batcher` (`text_embedding`, `qdrant_query`). |
+| `echora_batcher_batch_size` | Histogram | Searches in each batch call, by `batcher`. |
+
+Qdrant's own metrics (request latency inside Qdrant, CPU per collection, update
+queue length, running optimizations, memory) come from Qdrant's `/metrics`
+endpoint, which Prometheus scrapes as the `qdrant` job with
+`per_collection=true`. In dev, `docker-compose.obs-link.yml` joins Qdrant to the
+observability network so Prometheus can reach it. The "Echora Qdrant Overview"
+dashboard shows them. Once Qdrant has an API key, `/metrics` needs it in the
+`api-key` header (see the comment in `docker/observability/prometheus.yaml`).
 
 ### 4.3 Distributed Tracing
 
@@ -188,7 +198,10 @@ Services can be tuned via environment variables (see `ObservabilityConfig`):
 | `OTEL_ENABLE_GRPC_CLIENT_INSTRUMENTATION` | `true` | Enable gRPC client spans/headers. |
 | `OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION` | `false` | Enable HTTP client spans/headers. |
 | `OTEL_ENABLE_REDIS_INSTRUMENTATION` | `false` | Enable Redis client spans. |
-| `OTEL_ENABLE_QDRANT_CLIENT_INSTRUMENTATION` | `false` | Enable Qdrant client spans. |
+
+Every call the vector service makes to Qdrant gets a `qdrant.<call>` span from
+`libs/qdrant_db/src/qdrant_db/tracing.py` whenever tracing is on; there is no
+separate setting.
 
 ---
 
