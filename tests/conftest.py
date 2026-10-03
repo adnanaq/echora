@@ -1,16 +1,10 @@
-"""
-Root test configuration for all tests.
-
-Provides isolated test collection to avoid touching production data.
-"""
-
 from __future__ import annotations
 
 import functools
 import os
 from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -23,12 +17,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from pydantic_settings import BaseSettings
+from redis.asyncio import Redis
 
 
 def _ignore_local_env_file(
     settings_class: type[BaseSettings], **kwargs: object
 ) -> None:
-    """Stop a settings class from reading ``.env``, as soon as it is defined."""
     settings_class.model_config["env_file"] = None
 
 
@@ -57,13 +51,6 @@ _CLAIM_SECONDS = 2 * 60 * 60
 
 
 def _claim_test_redis_db() -> int:
-    """Claim a Redis database no other test process is using.
-
-    Returns:
-        The claimed database number. Without Redis, or with every database
-        claimed, one derived from the process id: tests that need Redis skip
-        when it is down, and the fallback is no worse than before.
-    """
     import atexit
 
     import redis
@@ -100,12 +87,6 @@ if TYPE_CHECKING:
 
 @functools.cache
 def _test_telemetry() -> tuple[InMemorySpanExporter, InMemoryMetricReader]:
-    """Install the process-wide tracer and meter providers, once.
-
-    OpenTelemetry accepts only the first provider set in a process, so tests
-    must share one; a test file that set its own would collect nothing when
-    pytest runs it after another one.
-    """
     span_exporter = InMemorySpanExporter()
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
@@ -117,7 +98,6 @@ def _test_telemetry() -> tuple[InMemorySpanExporter, InMemoryMetricReader]:
 
 @pytest.fixture
 def span_exporter() -> InMemorySpanExporter:
-    """Spans finished during this test; earlier tests' spans are cleared."""
     exporter, _ = _test_telemetry()
     exporter.clear()
     return exporter
@@ -125,64 +105,53 @@ def span_exporter() -> InMemorySpanExporter:
 
 @pytest.fixture
 def metric_reader() -> InMemoryMetricReader:
-    """Metrics recorded in this process; values add up across tests."""
     _, reader = _test_telemetry()
     return reader
 
 
 @pytest.fixture(scope="session")
 def field_mapper() -> AnimeFieldMapper:
-    """Create shared AnimeFieldMapper for tests."""
     from vector_processing import AnimeFieldMapper
 
     return AnimeFieldMapper()
 
 
+class CacheMissRedis(Redis):
+    async def get(self, name: object) -> None:
+        return None
+
+    async def mget(self, keys: object, *args: object) -> list[None]:
+        return [None] * len(keys) if isinstance(keys, list) else [None]
+
+    async def setex(self, name: object, time: object, value: object) -> bool:
+        return True
+
+
 @pytest.fixture
-def mock_redis_cache_miss() -> Generator[AsyncMock, None, None]:
-    """
-    Ensure any result cache lookup misses by patching the Redis client used by the result cache.
-
-    This pytest fixture patches http_cache.result_cache.get_result_cache_redis_client to return an AsyncMock Redis client whose `get` method always returns `None`, causing cached result lookups to behave as cache misses for the duration of the test.
-
-    Yields:
-        AsyncMock: The mocked Redis client, allowing tests to assert on call counts or behavior.
-    """
+def redis_cache_miss() -> Generator[CacheMissRedis]:
     with patch(
-        "http_cache.result_cache.get_result_cache_redis_client"
-    ) as mock_get_redis_client:
-        mock_redis_client = AsyncMock()
-        mock_redis_client.get.return_value = None  # Always return None for get
-        mock_get_redis_client.return_value = mock_redis_client
-        yield mock_redis_client
+        "http_cache.result_cache.get_result_cache_redis_client",
+        autospec=True,
+        return_value=CacheMissRedis(),
+    ) as get_redis_client:
+        yield get_redis_client.return_value
 
 
 @pytest.fixture(scope="session")
 def settings() -> Settings:
-    """
-    Provide application settings configured to use the test Qdrant collection.
-
-    Overrides `qdrant_collection_name` so tests never touch production data.
-    The name carries the process id because Pants runs each test file in its own
-    pytest process against the same Qdrant server: with one shared name, the
-    first process to finish deletes the collection the others are still using.
-
-    Returns:
-        settings: Settings instance pointing at this process's test collection.
-    """
     import os
 
     from common.config.settings import get_settings
 
     settings = get_settings()
-    # Override to use test collection for ALL tests
+    # Pants runs each test file in its own process against one Qdrant server, so
+    # each process needs its own collection or the first to finish deletes it.
     settings.qdrant.qdrant_collection_name = f"anime_database_test_{os.getpid()}"
     return settings
 
 
 @pytest_asyncio.fixture(scope="session")
 async def text_processor(settings: Settings) -> TextProcessor:
-    """Create TextProcessor for tests."""
     from vector_processing import TextProcessor
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
 
@@ -192,7 +161,6 @@ async def text_processor(settings: Settings) -> TextProcessor:
 
 @pytest_asyncio.fixture(scope="session")
 async def vision_processor(settings: Settings) -> VisionProcessor:
-    """Create VisionProcessor for tests."""
     from vector_processing import VisionProcessor
     from vector_processing.embedding_models.factory import EmbeddingModelFactory
     from vector_processing.utils.image_downloader import ImageDownloader
@@ -212,7 +180,6 @@ async def embedding_manager(
     vision_processor: VisionProcessor,
     field_mapper: AnimeFieldMapper,
 ) -> MultiVectorEmbeddingManager:
-    """Create MultiVectorEmbeddingManager for tests."""
     from vector_processing import MultiVectorEmbeddingManager
 
     return MultiVectorEmbeddingManager(
@@ -225,17 +192,8 @@ async def embedding_manager(
 @pytest_asyncio.fixture(scope="session")
 async def client(
     settings: Settings, embedding_manager: MultiVectorEmbeddingManager
-) -> AsyncGenerator[QdrantClient, None]:
-    """Create QdrantClient with test collection.
-
-    Collection is automatically created/validated during client initialization.
-    Uses session scope so collection persists across all tests.
-
-    Args:
-        settings: Application settings fixture
-        embedding_manager: Unused parameter, declared to ensure embedding models
-                          are loaded before client initialization (fixture dependency ordering)
-    """
+) -> AsyncGenerator[QdrantClient]:
+    # embedding_manager is unused; depending on it loads the models first.
     from qdrant_client import AsyncQdrantClient
     from qdrant_db import QdrantClient
 
