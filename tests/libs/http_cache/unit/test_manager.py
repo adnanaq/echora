@@ -1,444 +1,302 @@
-"""
-Unit tests for http_cache.manager.
+import asyncio
+import logging
+from unittest.mock import create_autospec, patch
 
-Tests cover:
-- HTTPCacheManager initialization (policy, filters, Redis client ownership)
-- get_aiohttp_session(): cached vs uncached, service TTL, Redis failure fallback
-- Service-specific TTL lookup
-- Async session and Redis client cleanup
-- Cache statistics
-"""
-
-from unittest.mock import AsyncMock, MagicMock, patch
-
+import aiohttp
 import pytest
-from hishel import FilterPolicy
+from hishel import FilterPolicy, Response
+from http_cache.aiohttp_adapter import CachedAiohttpSession
+from http_cache.async_redis_storage import AsyncRedisStorage
 from http_cache.config import CacheConfig
 from http_cache.exceptions import StorageConfigurationError
-from http_cache.manager import HTTPCacheManager, NeverCacheErrorsFilter
+from http_cache.manager import (
+    _MAX_ERROR_BODY_BYTES,
+    HTTPCacheManager,
+    NeverCacheErrorsFilter,
+)
+from redis.asyncio import Redis as AsyncRedis
 
 
-class TestHTTPCacheManagerInit:
-    """Test HTTPCacheManager initialization."""
+def _response(status: int) -> Response:
+    return Response(status_code=status)
 
-    def test_init_with_config_disabled(self) -> None:
-        """Test initialization with caching disabled."""
-        config = CacheConfig(cache_enabled=False)
+
+def _old_loop() -> asyncio.AbstractEventLoop:
+    return create_autospec(asyncio.AbstractEventLoop, instance=True)
+
+
+@pytest.mark.parametrize("cache_enabled", [False, True])
+def test_http_cache_manager_init_sets_error_filter_without_global_body_key(
+    cache_enabled: bool,
+) -> None:
+    config = CacheConfig(cache_enabled=cache_enabled, storage_type="redis")
+    manager = HTTPCacheManager(config)
+
+    assert manager.config == config
+    assert manager._async_redis_client is None
+    assert manager._redis_event_loop is None
+    assert isinstance(manager.policy, FilterPolicy)
+    assert manager.policy.use_body_key is False
+    assert len(manager.policy.response_filters) == 1
+    assert isinstance(manager.policy.response_filters[0], NeverCacheErrorsFilter)
+
+
+def test_http_cache_manager_init_redis_url_missing_logs_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url=None)
+
+    with caplog.at_level(logging.WARNING, logger="http_cache.manager"):
         manager = HTTPCacheManager(config)
 
-        assert manager.config == config
-        assert manager._async_redis_client is None
-        assert isinstance(manager.policy, FilterPolicy)
-        # Policy must NOT set use_body_key globally — body-key is opted in
-        # per-request via X-Hishel-Body-Key header (GraphQL/POST only).
-        assert manager.policy.use_body_key is False
-        # Policy should have error filter to prevent caching errors
-        assert len(manager.policy.response_filters) == 1
-        assert isinstance(manager.policy.response_filters[0], NeverCacheErrorsFilter)
-
-    def test_init_with_config_enabled_redis(self) -> None:
-        """Test initialization with Redis storage enabled (lazy initialization)."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-        manager = HTTPCacheManager(config)
-
-        assert manager.config == config
-        # Redis client is lazily initialized, not created during __init__
-        assert manager._async_redis_client is None
-        assert manager._redis_event_loop is None
-        assert isinstance(manager.policy, FilterPolicy)
-        # Policy must NOT set use_body_key globally — body-key is opted in
-        # per-request via X-Hishel-Body-Key header (GraphQL/POST only).
-        assert manager.policy.use_body_key is False
-        # Policy should have error filter to prevent caching errors
-        assert len(manager.policy.response_filters) == 1
-        assert isinstance(manager.policy.response_filters[0], NeverCacheErrorsFilter)
-
-    def test_init_redis_url_missing_logs_warning(self) -> None:
-        """Test that missing redis_url logs warning and does not crash."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url=None)
-
-        with patch("http_cache.manager.logger") as mock_logger:
-            manager = HTTPCacheManager(config)
-            # Should log warning and not crash - Redis client remains None
-            assert manager._async_redis_client is None
-            # Check for the warning message
-            assert any(
-                "redis_url required" in str(call)
-                for call in mock_logger.warning.call_args_list
-            )
-
-    def test_init_invalid_storage_type_raises_error(self) -> None:
-        """Test that invalid storage type raises ValueError."""
-        # We bypass Pydantic validation via MagicMock to test internal guard
-        config = MagicMock(spec=CacheConfig)
-        config.cache_enabled = True
-        config.storage_type = "invalid"
-        config.force_cache = False
-        config.always_revalidate = False
-
-        with pytest.raises(StorageConfigurationError, match="Unknown storage type"):
-            HTTPCacheManager(config)
-
-
-class TestGetAiohttpSession:
-    """Test get_aiohttp_session() method."""
-
-    def test_get_aiohttp_session_cache_disabled(self) -> None:
-        """Test that regular aiohttp session is returned when cache disabled."""
-        config = CacheConfig(cache_enabled=False)
-        manager = HTTPCacheManager(config)
-
-        with patch("http_cache.manager.aiohttp.ClientSession") as mock_session_class:
-            mock_session = MagicMock()
-            mock_session_class.return_value = mock_session
-
-            session = manager.get_aiohttp_session("mal")
-
-            assert session == mock_session
-            mock_session_class.assert_called_once()
-
-    def test_get_aiohttp_session_redis_connection_failure_fallback(self) -> None:
-        """Test graceful fallback to regular session when Redis connection fails."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            # Simulate Redis connection failure
-            mock_async_redis_class.from_url.side_effect = Exception("Redis error")
-
-            with patch(
-                "http_cache.manager.aiohttp.ClientSession"
-            ) as mock_session_class:
-                mock_session = MagicMock()
-                mock_session_class.return_value = mock_session
-
-                manager = HTTPCacheManager(config)
-                session = manager.get_aiohttp_session("mal")
-
-                # Should fall back to regular session
-                assert session == mock_session
-                assert manager._async_redis_client is None
-
-    @pytest.mark.asyncio
-    async def test_get_aiohttp_session_with_redis_success(self) -> None:
-        """Test aiohttp session creation with Redis caching."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = MagicMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            with patch(
-                "http_cache.async_redis_storage.AsyncRedisStorage"
-            ) as mock_async_storage:
-                with patch(
-                    "http_cache.aiohttp_adapter.CachedAiohttpSession"
-                ) as mock_cached_session:
-                    mock_session_instance = MagicMock()
-                    mock_cached_session.return_value = mock_session_instance
-
-                    manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("mal")
-
-                    # Should create cached session
-                    mock_cached_session.assert_called_once()
-                    mock_async_storage.assert_called_once()
-                    assert session == mock_session_instance
-
-    @pytest.mark.asyncio
-    async def test_get_aiohttp_session_service_specific_ttl(self) -> None:
-        """Test that service-specific TTL is used."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis", ttl_mal=7200)
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = MagicMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            with patch(
-                "http_cache.async_redis_storage.AsyncRedisStorage"
-            ) as mock_async_storage:
-                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
-                    manager = HTTPCacheManager(config)
-                    manager.get_aiohttp_session("mal")
-
-                    # Check TTL passed to AsyncRedisStorage
-                    call_kwargs = mock_async_storage.call_args[1]
-                    assert call_kwargs["default_ttl"] == 7200.0
-
-
-class TestServiceTTL:
-    """Test _get_service_ttl() method."""
-
-    def test_get_service_ttl_known_service(self) -> None:
-        """Test TTL retrieval for known services."""
-        config = CacheConfig(cache_enabled=True, ttl_mal=3600)
-        manager = HTTPCacheManager(config)
-        assert manager._get_service_ttl("mal") == 3600
-
-    def test_get_service_ttl_unknown_service_default(self) -> None:
-        """Test that unknown service returns default 24h TTL."""
-        config = CacheConfig(cache_enabled=True)
-        manager = HTTPCacheManager(config)
-        assert manager._get_service_ttl("unknown") == 86400
-
-
-class TestCacheManagerClose:
-    """Test close_async() method."""
-
-    @pytest.mark.asyncio
-    async def test_close_async_with_redis_client(self) -> None:
-        """Test async closing manager with Redis client."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = AsyncMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            with patch("http_cache.async_redis_storage.AsyncRedisStorage"):
-                with patch("http_cache.aiohttp_adapter.CachedAiohttpSession"):
-                    manager = HTTPCacheManager(config)
-                    manager.get_aiohttp_session("mal")
-                    await manager.close_async()
-
-                    mock_async_redis.aclose.assert_called_once()
-
-
-class TestGetStats:
-    """Test get_stats() method."""
-
-    def test_get_stats_disabled(self) -> None:
-        """Test stats when caching is disabled."""
-        config = CacheConfig(cache_enabled=False)
-        manager = HTTPCacheManager(config)
-        assert manager.get_stats() == {"cache_enabled": False}
-
-    def test_get_stats_redis(self) -> None:
-        """Test stats with Redis storage."""
-        config = CacheConfig(
-            cache_enabled=True, storage_type="redis", redis_url="redis://test"
-        )
-        manager = HTTPCacheManager(config)
-        stats = manager.get_stats()
-        assert stats["cache_enabled"] is True
-        assert stats["redis_url"] == "redis://test"
-
-
-class TestNeverCacheErrorsFilter:
-    """Test NeverCacheErrorsFilter methods directly."""
-
-    def test_needs_body_returns_true(self) -> None:
-        """needs_body() returns True — a 200 can still carry an error envelope."""
-        f = NeverCacheErrorsFilter()
-        assert f.needs_body() is True
-
-    def test_apply_caches_success(self) -> None:
-        """apply() returns True for 2xx/3xx responses."""
-        from unittest.mock import MagicMock
-
-        f = NeverCacheErrorsFilter()
-        for status in (200, 201, 301, 304):
-            item = MagicMock()
-            item.status_code = status
-            assert f.apply(item, None) is True
-
-    def test_apply_blocks_errors(self) -> None:
-        """apply() returns False for 4xx/5xx responses."""
-        from unittest.mock import MagicMock
-
-        f = NeverCacheErrorsFilter()
-        for status in (400, 401, 404, 429, 500, 503):
-            item = MagicMock()
-            item.status_code = status
-            assert f.apply(item, None) is False
-
-    def test_apply_blocks_xml_error_body_on_200(self) -> None:
-        """A 200 whose body is an XML error envelope is not cached.
-
-        AniDB answers a rate-limit ban this way, so a status check alone would
-        cache the ban and keep serving it long after it lifts.
-        """
-        from unittest.mock import MagicMock
-
-        f = NeverCacheErrorsFilter()
-        item = MagicMock()
-        item.status_code = 200
-        for body in (
-            b'<error code="500">banned</error>',
-            b'<?xml version="1.0" encoding="UTF-8"?><error code="302">Client Outdated</error>',
-            b"\n  <error>unknown</error>",
-        ):
-            assert f.apply(item, body) is False
-
-    def test_apply_caches_valid_body_on_200(self) -> None:
-        """A 200 carrying real data is cached, even if it mentions an error."""
-        from unittest.mock import MagicMock
-
-        f = NeverCacheErrorsFilter()
-        item = MagicMock()
-        item.status_code = 200
-        for body in (
-            b"<anime><titles><title>One Piece</title></titles></anime>",
-            b'{"data": {"error": null}}',
-            b"<html><body>no error here</body></html>",
-        ):
-            assert f.apply(item, body) is True
-
-    def test_apply_skips_scan_for_large_body(self) -> None:
-        """Bodies past the scan cap are cached without inspection."""
-        from unittest.mock import MagicMock
-
-        from http_cache.manager import _MAX_ERROR_BODY_BYTES
-
-        f = NeverCacheErrorsFilter()
-        item = MagicMock()
-        item.status_code = 200
-        body = b'<error code="500">banned</error>' + b"x" * _MAX_ERROR_BODY_BYTES
-        assert f.apply(item, body) is True
-
-
-class TestCloseAsyncException:
-    """Test close_async() error handling path."""
-
-    @pytest.mark.asyncio
-    async def test_close_async_logs_exception_on_aclose_failure(self) -> None:
-        """Exception during aclose() is logged as warning; client refs are cleared."""
-        config = CacheConfig(cache_enabled=False)
-        manager = HTTPCacheManager(config)
-
-        mock_client = AsyncMock()
-        mock_client.aclose.side_effect = RuntimeError("connection lost")
-        manager._async_redis_client = mock_client
-        manager._redis_event_loop = object()
-
-        with patch("http_cache.manager.logger") as mock_logger:
-            await manager.close_async()
-
-        assert manager._async_redis_client is None
-        assert manager._redis_event_loop is None
-        assert any(
-            "Error closing async Redis client" in str(call)
-            for call in mock_logger.warning.call_args_list
-        )
-
-
-class TestGetOrCreateRedisClient:
-    """Test _get_or_create_redis_client() edge cases."""
-
-    @pytest.mark.asyncio
-    async def test_returns_none_when_no_redis_url(self) -> None:
-        """Returns None if redis_url is unset (L282 guard)."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url=None)
-        manager = HTTPCacheManager(config)
-        # Simulate being inside a running event loop but with no URL
-        result = manager._get_or_create_redis_client()
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_creates_new_client_when_loop_changes(self) -> None:
-        """When the stored event loop differs from current, creates a new client (L262-276)."""
-        import asyncio
-
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_new = AsyncMock()
-            mock_async_redis_class.from_url.return_value = mock_new
-
-            manager = HTTPCacheManager(config)
-
-            # Simulate a first client created for a fake "old" event loop
-            old_loop = MagicMock()
-            old_loop.is_running.return_value = False
-            manager._async_redis_client = AsyncMock()  # old client, distinct object
-            manager._redis_event_loop = old_loop
-
-            # Now call inside real running loop — loop mismatch triggers switch
-            client = manager._get_or_create_redis_client()
-
-            assert client is mock_new
-            assert manager._redis_event_loop is asyncio.get_running_loop()
-
-    @pytest.mark.asyncio
-    async def test_creates_new_client_when_old_loop_still_running(self) -> None:
-        """When old event loop is still running, uses run_coroutine_threadsafe (L266)."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_new = AsyncMock()
-            mock_async_redis_class.from_url.return_value = mock_new
-
-            with patch(
-                "http_cache.manager.asyncio.run_coroutine_threadsafe"
-            ) as mock_threadsafe:
-                manager = HTTPCacheManager(config)
-
-                old_loop = MagicMock()
-                old_loop.is_running.return_value = True  # old loop still alive
-                manager._async_redis_client = AsyncMock()
-                manager._redis_event_loop = old_loop
-
-                client = manager._get_or_create_redis_client()
-
-                assert client is mock_new
-                mock_threadsafe.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_old_client_cleanup_exception_swallowed(self) -> None:
-        """Exception during old-client cleanup is caught and logged (L275-276)."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_new = AsyncMock()
-            mock_async_redis_class.from_url.return_value = mock_new
-
-            manager = HTTPCacheManager(config)
-
-            old_loop = MagicMock()
-            old_loop.is_running.side_effect = RuntimeError("loop gone")
-            manager._async_redis_client = AsyncMock()
-            manager._redis_event_loop = old_loop
-
-            # Should not raise despite cleanup failure
-            client = manager._get_or_create_redis_client()
-            assert client is mock_new
-
-    @pytest.mark.asyncio
-    async def test_get_aiohttp_session_import_error_fallback(self) -> None:
-        """ImportError in get_aiohttp_session() falls back to plain aiohttp.ClientSession."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = MagicMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            with patch(
-                "http_cache.async_redis_storage.AsyncRedisStorage",
-                side_effect=ImportError("missing dep"),
-            ):
-                with patch(
-                    "http_cache.manager.aiohttp.ClientSession"
-                ) as mock_session_class:
-                    mock_session_class.return_value = MagicMock()
-                    manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("mal")
-                    assert session == mock_session_class.return_value
-
-    @pytest.mark.asyncio
-    async def test_get_aiohttp_session_generic_exception_fallback(self) -> None:
-        """Generic Exception in get_aiohttp_session() falls back to plain aiohttp.ClientSession."""
-        config = CacheConfig(cache_enabled=True, storage_type="redis")
-
-        with patch("http_cache.manager.AsyncRedis") as mock_async_redis_class:
-            mock_async_redis = MagicMock()
-            mock_async_redis_class.from_url.return_value = mock_async_redis
-
-            with patch(
-                "http_cache.async_redis_storage.AsyncRedisStorage",
-                side_effect=RuntimeError("init failed"),
-            ):
-                with patch(
-                    "http_cache.manager.aiohttp.ClientSession"
-                ) as mock_session_class:
-                    mock_session_class.return_value = MagicMock()
-                    manager = HTTPCacheManager(config)
-                    session = manager.get_aiohttp_session("mal")
-                    assert session == mock_session_class.return_value
+    assert manager._async_redis_client is None
+    assert "redis_url required" in caplog.text
+
+
+def test_http_cache_manager_init_unknown_storage_type_raises_storage_configuration_error() -> (
+    None
+):
+    config = CacheConfig.model_construct(
+        cache_enabled=True,
+        storage_type="invalid",
+        force_cache=False,
+        always_revalidate=False,
+    )
+
+    with pytest.raises(StorageConfigurationError, match="Unknown storage type"):
+        HTTPCacheManager(config)
+
+
+async def test_get_aiohttp_session_cache_disabled_returns_plain_session() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=False))
+
+    session = manager.get_aiohttp_session("mal")
+
+    assert type(session) is aiohttp.ClientSession
+    await session.close()
+
+
+def test_get_aiohttp_session_no_running_event_loop_returns_plain_session() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+
+    with patch(
+        "http_cache.manager.aiohttp.ClientSession", autospec=True
+    ) as session_class:
+        session = manager.get_aiohttp_session("mal")
+
+    assert session is session_class.return_value
+    assert manager._async_redis_client is None
+
+
+async def test_get_aiohttp_session_redis_available_returns_cached_session_with_service_ttl() -> (
+    None
+):
+    config = CacheConfig(cache_enabled=True, storage_type="redis", ttl_mal=7200)
+    manager = HTTPCacheManager(config)
+
+    session = manager.get_aiohttp_session("mal")
+
+    assert isinstance(session, CachedAiohttpSession)
+    assert isinstance(session.storage, AsyncRedisStorage)
+    assert session.storage.default_ttl == 7200.0
+    assert session.policy is manager.policy
+    await session.close()
+    await manager.close_async()
+
+
+@pytest.mark.parametrize(
+    "storage_error",
+    [ImportError("missing dep"), RuntimeError("init failed")],
+    ids=["import_error", "other_error"],
+)
+async def test_get_aiohttp_session_storage_error_returns_plain_session(
+    storage_error: Exception,
+) -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+
+    with patch(
+        "http_cache.async_redis_storage.AsyncRedisStorage",
+        autospec=True,
+        side_effect=storage_error,
+    ):
+        session = manager.get_aiohttp_session("mal")
+
+    assert type(session) is aiohttp.ClientSession
+    await session.close()
+    await manager.close_async()
+
+
+def test_get_service_ttl_known_service_returns_configured_ttl() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, ttl_mal=3600))
+
+    assert manager._get_service_ttl("mal") == 3600
+
+
+def test_get_service_ttl_unknown_service_returns_one_day() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True))
+
+    assert manager._get_service_ttl("unknown") == 86400
+
+
+async def test_close_async_redis_client_open_closes_client_and_clears_it() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+    client = create_autospec(AsyncRedis, instance=True)
+    manager._async_redis_client = client
+    manager._redis_event_loop = asyncio.get_running_loop()
+
+    await manager.close_async()
+
+    client.aclose.assert_awaited_once_with()
+    assert manager._async_redis_client is None
+    assert manager._redis_event_loop is None
+
+
+async def test_close_async_aclose_failure_logs_warning_and_clears_client(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=False))
+    client = create_autospec(AsyncRedis, instance=True)
+    client.aclose.side_effect = RuntimeError("connection lost")
+    manager._async_redis_client = client
+    manager._redis_event_loop = asyncio.get_running_loop()
+
+    with caplog.at_level(logging.WARNING, logger="http_cache.manager"):
+        await manager.close_async()
+
+    assert manager._async_redis_client is None
+    assert manager._redis_event_loop is None
+    assert "Error closing async Redis client" in caplog.text
+
+
+def test_get_stats_cache_disabled_returns_only_disabled_flag() -> None:
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=False))
+
+    assert manager.get_stats() == {"cache_enabled": False}
+
+
+def test_get_stats_redis_storage_returns_redis_url() -> None:
+    config = CacheConfig(
+        cache_enabled=True, storage_type="redis", redis_url="redis://test"
+    )
+    stats = HTTPCacheManager(config).get_stats()
+
+    assert stats["cache_enabled"] is True
+    assert stats["redis_url"] == "redis://test"
+
+
+async def test_get_or_create_redis_client_no_redis_url_returns_none() -> None:
+    config = CacheConfig(cache_enabled=True, storage_type="redis", redis_url=None)
+
+    assert HTTPCacheManager(config)._get_or_create_redis_client() is None
+
+
+async def test_get_or_create_redis_client_event_loop_changed_creates_client_for_current_loop() -> (
+    None
+):
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+    old_client = create_autospec(AsyncRedis, instance=True)
+    old_loop = _old_loop()
+    old_loop.is_running.return_value = False
+    manager._async_redis_client = old_client
+    manager._redis_event_loop = old_loop
+
+    client = manager._get_or_create_redis_client()
+    await asyncio.sleep(0)
+
+    assert isinstance(client, AsyncRedis)
+    assert client is not old_client
+    assert manager._redis_event_loop is asyncio.get_running_loop()
+    old_client.aclose.assert_awaited_once_with()
+    await manager.close_async()
+
+
+async def test_get_or_create_redis_client_old_loop_running_closes_old_client_on_that_loop() -> (
+    None
+):
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+    old_client = create_autospec(AsyncRedis, instance=True)
+    old_loop = _old_loop()
+    old_loop.is_running.return_value = True
+    manager._async_redis_client = old_client
+    manager._redis_event_loop = old_loop
+
+    with patch(
+        "http_cache.manager.asyncio.run_coroutine_threadsafe", autospec=True
+    ) as run_on_loop:
+        client = manager._get_or_create_redis_client()
+
+    close_coroutine, target_loop = run_on_loop.call_args.args
+    close_coroutine.close()
+    assert target_loop is old_loop
+    assert client is not old_client
+    assert isinstance(client, AsyncRedis)
+    await manager.close_async()
+
+
+async def test_get_or_create_redis_client_old_client_cleanup_failure_creates_new_client() -> (
+    None
+):
+    manager = HTTPCacheManager(CacheConfig(cache_enabled=True, storage_type="redis"))
+    old_client = create_autospec(AsyncRedis, instance=True)
+    old_loop = _old_loop()
+    old_loop.is_running.side_effect = RuntimeError("loop gone")
+    manager._async_redis_client = old_client
+    manager._redis_event_loop = old_loop
+
+    client = manager._get_or_create_redis_client()
+
+    assert isinstance(client, AsyncRedis)
+    assert client is not old_client
+    await manager.close_async()
+
+
+def test_never_cache_errors_filter_needs_body_returns_true() -> None:
+    assert NeverCacheErrorsFilter().needs_body() is True
+
+
+@pytest.mark.parametrize("status", [200, 201, 301, 304])
+def test_never_cache_errors_filter_apply_success_status_returns_true(
+    status: int,
+) -> None:
+    assert NeverCacheErrorsFilter().apply(_response(status), None) is True
+
+
+@pytest.mark.parametrize("status", [400, 401, 404, 429, 500, 503])
+def test_never_cache_errors_filter_apply_error_status_returns_false(
+    status: int,
+) -> None:
+    assert NeverCacheErrorsFilter().apply(_response(status), None) is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'<error code="500">banned</error>',
+        b'<?xml version="1.0" encoding="UTF-8"?><error code="302">Client Outdated</error>',
+        b"\n  <error>unknown</error>",
+    ],
+)
+def test_never_cache_errors_filter_apply_xml_error_body_on_200_returns_false(
+    body: bytes,
+) -> None:
+    assert NeverCacheErrorsFilter().apply(_response(200), body) is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"<anime><titles><title>One Piece</title></titles></anime>",
+        b'{"data": {"error": null}}',
+        b"<html><body>no error here</body></html>",
+    ],
+)
+def test_never_cache_errors_filter_apply_valid_body_on_200_returns_true(
+    body: bytes,
+) -> None:
+    assert NeverCacheErrorsFilter().apply(_response(200), body) is True
+
+
+def test_never_cache_errors_filter_apply_body_past_scan_limit_returns_true() -> None:
+    body = b'<error code="500">banned</error>' + b"x" * _MAX_ERROR_BODY_BYTES
+
+    assert NeverCacheErrorsFilter().apply(_response(200), body) is True
