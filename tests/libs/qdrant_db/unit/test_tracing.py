@@ -95,7 +95,7 @@ def test_qdrant_span_marks_failed_calls_as_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_qdrant_span_lasts_as_long_as_awaited_call() -> None:
+async def test_qdrant_span_covers_awaited_call() -> None:
     _SPANS.clear()
 
     with qdrant_span("query_points", COLLECTION):
