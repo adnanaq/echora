@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import create_autospec, patch
 
 import pytest
 from google.protobuf import struct_pb2
@@ -12,7 +11,15 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
+from qdrant_client import AsyncQdrantClient
+from qdrant_db import QdrantClient
 from qdrant_db.contracts import SearchRange
+from vector_db_interface import SearchHit
+from vector_processing import (
+    MultiVectorEmbeddingManager,
+    TextProcessor,
+    VisionProcessor,
+)
 from vector_proto.v1 import vector_search_pb2
 from vector_service.routes import search as search_route
 from vector_service.routes.search import (
@@ -21,6 +28,7 @@ from vector_service.routes.search import (
     _proto_value_to_python,
     _validate_filter_fields,
 )
+from vector_service.runtime import VectorRuntime
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,19 +46,25 @@ def _runtime(
     text_embedding: list[float] | None = None,
     search_results: list | None = None,
     record_query_text: bool = False,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> VectorRuntime:
+    text_processor = create_autospec(TextProcessor, instance=True)
+    text_processor.encode_text_with_sparse.return_value = (
+        text_embedding or [0.1] * 4,
+        None,
+    )
+    vision_processor = create_autospec(VisionProcessor, instance=True)
+    vision_processor.encode_image.return_value = None
+    qdrant_client = create_autospec(QdrantClient, instance=True)
+    qdrant_client.search.return_value = search_results or []
+    qdrant_client.indexed_fields = _INDEXED_FIELDS
+    return VectorRuntime(
+        qdrant_client=qdrant_client,
+        async_qdrant_client=create_autospec(AsyncQdrantClient, instance=True),
+        text_processor=text_processor,
+        vision_processor=vision_processor,
+        embedding_manager=create_autospec(MultiVectorEmbeddingManager, instance=True),
+        embedding_cache=None,
         record_query_text=record_query_text,
-        text_processor=SimpleNamespace(
-            encode_text_with_sparse=AsyncMock(
-                return_value=(text_embedding or [0.1] * 4, None)
-            )
-        ),
-        vision_processor=SimpleNamespace(encode_image=AsyncMock(return_value=None)),
-        qdrant_client=SimpleNamespace(
-            search=AsyncMock(return_value=search_results or []),
-            indexed_fields=_INDEXED_FIELDS,
-        ),
     )
 
 
@@ -265,7 +279,7 @@ async def test_search_unknown_filter_field_returns_invalid_filters_error() -> No
 
 @pytest.mark.asyncio
 async def test_search_valid_filters_returns_results() -> None:
-    hits = [SimpleNamespace(id="1", score=0.9, payload={"title": "Bebop"})]
+    hits = [SearchHit(id="1", score=0.9, payload={"title": "Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(
         query_text="space western",
@@ -286,6 +300,7 @@ async def test_search_unreadable_image_returns_invalid_image_input_error() -> No
     request = vector_search_pb2.SearchRequest(image=b"not-a-real-image")
     with patch(
         "vector_service.routes.search._encode_image_bytes",
+        autospec=True,
         side_effect=ValueError("unsupported image format"),
     ):
         response = await search_route.search(runtime, request, context=None)
@@ -296,9 +311,7 @@ async def test_search_unreadable_image_returns_invalid_image_input_error() -> No
 @pytest.mark.asyncio
 async def test_search_qdrant_value_error_returns_search_failed_error() -> None:
     runtime = _runtime()
-    runtime.qdrant_client.search = AsyncMock(
-        side_effect=ValueError("qdrant value error")
-    )
+    runtime.qdrant_client.search.side_effect = ValueError("qdrant value error")
     request = vector_search_pb2.SearchRequest(query_text="action anime")
     response = await search_route.search(runtime, request, context=None)
     assert response.error.code == "SEARCH_FAILED"
@@ -306,7 +319,7 @@ async def test_search_qdrant_value_error_returns_search_failed_error() -> None:
 
 @pytest.mark.asyncio
 async def test_search_text_query_returns_results() -> None:
-    hits = [SimpleNamespace(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
+    hits = [SearchHit(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(query_text="space western")
     response = await search_route.search(runtime, request, context=None)
@@ -318,7 +331,7 @@ async def test_search_text_query_returns_results() -> None:
 
 @pytest.mark.asyncio
 async def test_search_payload_choice_unset_returns_payloads() -> None:
-    hits = [SimpleNamespace(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
+    hits = [SearchHit(id="1", score=0.95, payload={"title": "Cowboy Bebop"})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(query_text="space western")
 
@@ -330,7 +343,7 @@ async def test_search_payload_choice_unset_returns_payloads() -> None:
 
 @pytest.mark.asyncio
 async def test_search_payload_turned_off_returns_ids_and_scores_only() -> None:
-    hits = [SimpleNamespace(id="1", score=0.95, payload={})]
+    hits = [SearchHit(id="1", score=0.95, payload={})]
     runtime = _runtime(search_results=hits)
     request = vector_search_pb2.SearchRequest(
         query_text="space western", with_payload=False
@@ -353,7 +366,7 @@ async def test_search_no_text_or_image_returns_missing_query_input_error() -> No
 
 async def _search_in_span(
     spans: InMemorySpanExporter,
-    runtime: SimpleNamespace,
+    runtime: VectorRuntime,
     request: vector_search_pb2.SearchRequest,
 ) -> ReadableSpan:
     with _TRACER.start_as_current_span("rpc.server.Search"):

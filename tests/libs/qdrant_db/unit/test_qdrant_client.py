@@ -1,9 +1,8 @@
 """Unit tests for strict-contract QdrantClient."""
 
 import asyncio
-from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, create_autospec, patch
 
 import pytest
 import pytest_asyncio
@@ -11,6 +10,13 @@ from common.config import get_settings
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
+)
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import (
+    CollectionsResponse,
+    QueryResponse,
+    Record,
+    ScoredPoint,
 )
 from qdrant_client.models import (
     OverwritePayloadOperation,
@@ -35,14 +41,12 @@ from vector_db_interface import VectorDocument
 @pytest_asyncio.fixture
 async def mock_client() -> QdrantClient:
     settings = get_settings()
-    mock_async_client = AsyncMock()
+    async_client = create_autospec(AsyncQdrantClient, instance=True)
 
-    with patch.object(
-        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
-    ):
+    with patch.object(QdrantCollectionManager, "initialize_collection", autospec=True):
         client = await QdrantClient.create(
             config=settings.qdrant,
-            async_qdrant_client=mock_async_client,
+            async_qdrant_client=async_client,
         )
 
     return client
@@ -58,14 +62,12 @@ async def mock_sparse_client() -> QdrantClient:
             "primary_sparse_vector_name": "text_sparse_vector",
         },
     )
-    mock_async_client = AsyncMock()
+    async_client = create_autospec(AsyncQdrantClient, instance=True)
 
-    with patch.object(
-        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
-    ):
+    with patch.object(QdrantCollectionManager, "initialize_collection", autospec=True):
         client = await QdrantClient.create(
             config=sparse_config,
-            async_qdrant_client=mock_async_client,
+            async_qdrant_client=async_client,
         )
 
     return client
@@ -76,9 +78,10 @@ async def test_search_text_only_returns_hits_from_query_points(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(
+    async_mock.query_points.return_value = QueryResponse(
         points=[
-            SimpleNamespace(
+            ScoredPoint(
+                version=0,
                 id="anime-123",
                 payload={"title": "Naruto"},
                 score=0.91,
@@ -100,7 +103,7 @@ async def test_search_text_and_image_sends_prefetch_fusion_query(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     request = SearchRequest(
         text_embedding=[0.1] * 1024,
@@ -119,9 +122,10 @@ async def test_search_sparse_only_returns_hits_from_query_points(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(
+    async_mock.query_points.return_value = QueryResponse(
         points=[
-            SimpleNamespace(
+            ScoredPoint(
+                version=0,
                 id="anime-123",
                 payload={"title": "Naruto"},
                 score=0.83,
@@ -147,7 +151,7 @@ async def test_search_text_and_sparse_sends_two_prefetch_branches(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     request = SearchRequest(
         text_embedding=[0.1] * 1024,
@@ -326,16 +330,14 @@ async def test_initialize_collection_missing_collection_creates_it_with_sparse_v
             "primary_sparse_vector_name": "text_sparse_vector",
         },
     )
-    mock_async_client = AsyncMock()
-    mock_async_client.get_collections = AsyncMock(
-        return_value=SimpleNamespace(collections=[])
-    )
-    mock_async_client.create_collection = AsyncMock(return_value=True)
+    async_client = create_autospec(AsyncQdrantClient, instance=True)
+    async_client.get_collections.return_value = CollectionsResponse(collections=[])
+    async_client.create_collection.return_value = True
 
-    client = QdrantClient(config=sparse_config, async_qdrant_client=mock_async_client)
+    client = QdrantClient(config=sparse_config, async_qdrant_client=async_client)
     await client.create_collection()
 
-    call = mock_async_client.create_collection.call_args.kwargs
+    call = async_client.create_collection.call_args.kwargs
     assert call["sparse_vectors_config"] is not None
     assert "text_sparse_vector" in call["sparse_vectors_config"]
 
@@ -358,8 +360,10 @@ async def test_search_telemetry_raises_still_returns_hits(
     mock_client._telemetry = _ExplodingTelemetry()  # type: ignore[assignment]
 
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(
-        points=[SimpleNamespace(id="anime-1", payload={"title": "Naruto"}, score=0.9)]
+    async_mock.query_points.return_value = QueryResponse(
+        points=[
+            ScoredPoint(version=0, id="anime-1", payload={"title": "Naruto"}, score=0.9)
+        ]
     )
 
     from qdrant_db.contracts import SearchRequest
@@ -438,7 +442,7 @@ async def test_search_entity_type_adds_entity_type_filter(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await mock_client.search(
         SearchRequest(text_embedding=[0.1] * 1024, limit=5, entity_type="anime")
@@ -455,7 +459,7 @@ async def test_search_score_threshold_forwards_it_to_query_points(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await mock_client.search(
         SearchRequest(text_embedding=[0.1] * 1024, limit=5, score_threshold=0.75)
@@ -471,7 +475,7 @@ async def test_search_single_vector_forwards_payload_choice(
     mock_client: QdrantClient, with_payload: bool
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await mock_client.search(
         SearchRequest(text_embedding=[0.1] * 1024, limit=5, with_payload=with_payload)
@@ -486,7 +490,7 @@ async def test_search_fusion_forwards_payload_choice(
     mock_sparse_client: QdrantClient, with_payload: bool
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await mock_sparse_client.search(
         SearchRequest(
@@ -519,7 +523,7 @@ async def test_get_by_id_existing_point_returns_id_and_payload(
     mock_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    fake_point = SimpleNamespace(id="abc", payload={"title": "Bebop"}, vector=None)
+    fake_point = Record(id="abc", payload={"title": "Bebop"}, vector=None)
     async_mock.retrieve.return_value = [fake_point]
 
     result = await mock_client.get_by_id("abc")
@@ -536,9 +540,7 @@ async def test_get_by_id_with_vectors_includes_vector(
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
     fake_vector = {"text_vector": [0.1, 0.2]}
-    fake_point = SimpleNamespace(
-        id="abc", payload={"title": "Bebop"}, vector=fake_vector
-    )
+    fake_point = Record(id="abc", payload={"title": "Bebop"}, vector=fake_vector)
     async_mock.retrieve.return_value = [fake_point]
 
     result = await mock_client.get_by_id("abc", with_vectors=True)
@@ -583,7 +585,7 @@ async def test_search_unbatched_records_query_points_span(
     mock_client: QdrantClient, request_args: dict, span_exporter: InMemorySpanExporter
 ) -> None:
     async_mock = cast(AsyncMock, mock_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
     span_exporter.clear()
 
     await mock_client.search(SearchRequest(limit=5, **request_args))
@@ -607,11 +609,10 @@ async def batching_client() -> QdrantClient:
             "qdrant_query_batch_max_wait_ms": 5.0,
         },
     )
-    with patch.object(
-        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
-    ):
+    with patch.object(QdrantCollectionManager, "initialize_collection", autospec=True):
         client = await QdrantClient.create(
-            config=batching_config, async_qdrant_client=AsyncMock()
+            config=batching_config,
+            async_qdrant_client=create_autospec(AsyncQdrantClient, instance=True),
         )
     yield client
     await client.close()
@@ -632,10 +633,13 @@ async def test_search_concurrent_searches_share_one_query_batch_call(
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
     async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
-        SimpleNamespace(
+        QueryResponse(
             points=[
-                SimpleNamespace(
-                    id=request.prefetch[1].query.indices[0], score=0.5, payload=None
+                ScoredPoint(
+                    version=0,
+                    id=request.prefetch[1].query.indices[0],
+                    score=0.5,
+                    payload=None,
                 )
             ]
         )
@@ -659,7 +663,7 @@ async def test_search_batched_searches_record_batch_size_on_span(
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
     async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
-        SimpleNamespace(points=[]) for _ in requests
+        QueryResponse(points=[]) for _ in requests
     ]
     span_exporter.clear()
 
@@ -681,7 +685,7 @@ async def test_search_lone_batched_search_records_no_batch_size(
 ) -> None:
     async_mock = cast(AsyncMock, batching_client._async_client)
     async_mock.query_batch_points.side_effect = lambda collection_name, requests: [
-        SimpleNamespace(points=[]) for _ in requests
+        QueryResponse(points=[]) for _ in requests
     ]
     span_exporter.clear()
 
@@ -726,11 +730,10 @@ async def tuned_search_client() -> QdrantClient:
             "qdrant_search_oversampling": 4.0,
         },
     )
-    with patch.object(
-        QdrantCollectionManager, "initialize_collection", new=AsyncMock()
-    ):
+    with patch.object(QdrantCollectionManager, "initialize_collection", autospec=True):
         return await QdrantClient.create(
-            config=tuned_config, async_qdrant_client=AsyncMock()
+            config=tuned_config,
+            async_qdrant_client=create_autospec(AsyncQdrantClient, instance=True),
         )
 
 
@@ -745,7 +748,7 @@ async def test_search_hybrid_sends_search_params_on_dense_branch_only(
     tuned_search_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, tuned_search_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await tuned_search_client.search(
         SearchRequest(
@@ -767,7 +770,7 @@ async def test_search_text_only_sends_search_params(
     tuned_search_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, tuned_search_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await tuned_search_client.search(
         SearchRequest(text_embedding=[0.1] * 1024, limit=5)
@@ -783,7 +786,7 @@ async def test_search_default_settings_sends_no_search_params(
     mock_sparse_client: QdrantClient,
 ) -> None:
     async_mock = cast(AsyncMock, mock_sparse_client._async_client)
-    async_mock.query_points.return_value = SimpleNamespace(points=[])
+    async_mock.query_points.return_value = QueryResponse(points=[])
 
     await mock_sparse_client.search(
         SearchRequest(

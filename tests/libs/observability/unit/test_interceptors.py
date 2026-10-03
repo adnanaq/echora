@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 
 import grpc
 import pytest
@@ -8,19 +8,20 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
+from shared_proto.v1 import error_pb2
+from vector_proto.v1 import vector_search_pb2
 
 
-def _response(error_code: str | None = None) -> MagicMock:
-    response = MagicMock(spec=["HasField", "error"])
-    response.HasField.side_effect = lambda name: (
-        name == "error" and error_code is not None
+def _response(error_code: str | None = None) -> vector_search_pb2.SearchResponse:
+    if error_code is None:
+        return vector_search_pb2.SearchResponse()
+    return vector_search_pb2.SearchResponse(
+        error=error_pb2.ErrorDetails(code=error_code)
     )
-    response.error.code = error_code
-    return response
 
 
-def _context(code: grpc.StatusCode | None = None) -> MagicMock:
-    context = MagicMock()
+def _context(code: grpc.StatusCode | None = None) -> grpc.aio.ServicerContext:
+    context = create_autospec(grpc.aio.ServicerContext, instance=True)
     context.code.return_value = code
     context.invocation_metadata.return_value = ()
     return context

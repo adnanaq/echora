@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import create_autospec, patch
 
 import pytest
 from common.config import get_settings
@@ -10,6 +10,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import CollectionsResponse, CountResult
 from qdrant_db import QdrantClient
 from qdrant_db.collection.manager import QdrantCollectionManager
 from qdrant_db.contracts import BatchPayloadUpdateItem, BatchVectorUpdateItem
@@ -20,7 +22,7 @@ from vector_db_interface import VectorDocument
 COLLECTION = "span_test_collection"
 
 
-def _client(async_client: AsyncMock) -> QdrantClient:
+def _client(async_client: AsyncQdrantClient) -> QdrantClient:
     return QdrantClient(
         config=get_settings().qdrant,
         async_qdrant_client=async_client,
@@ -28,7 +30,7 @@ def _client(async_client: AsyncMock) -> QdrantClient:
     )
 
 
-def _manager(async_client: AsyncMock) -> QdrantCollectionManager:
+def _manager(async_client: AsyncQdrantClient) -> QdrantCollectionManager:
     return QdrantCollectionManager(
         config=get_settings().qdrant,
         async_client=async_client,
@@ -36,11 +38,11 @@ def _manager(async_client: AsyncMock) -> QdrantCollectionManager:
     )
 
 
-def _async_client() -> AsyncMock:
-    async_client = AsyncMock()
-    async_client.get_collections.return_value = SimpleNamespace(collections=[])
+def _async_client() -> AsyncQdrantClient:
+    async_client = create_autospec(AsyncQdrantClient, instance=True)
+    async_client.get_collections.return_value = CollectionsResponse(collections=[])
     async_client.get_collection.return_value = SimpleNamespace(model_dump=lambda: {})
-    async_client.count.return_value = SimpleNamespace(count=0)
+    async_client.count.return_value = CountResult(count=0)
     async_client.scroll.return_value = ([], None)
     return async_client
 
@@ -228,7 +230,7 @@ async def test_collection_manager_each_method_records_one_span_per_qdrant_call(
     manager = _manager(_async_client())
     span_exporter.clear()
 
-    with patch.object(manager, "setup_payload_indexes", new=AsyncMock()):
+    with patch.object(manager, "setup_payload_indexes", autospec=True):
         await call(manager)
 
     spans = span_exporter.get_finished_spans()
