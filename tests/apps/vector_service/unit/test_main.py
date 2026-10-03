@@ -30,7 +30,6 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
             otel_enable_grpc_server_instrumentation=True,
             otel_enable_grpc_client_instrumentation=True,
             otel_enable_aiohttp_client_instrumentation=False,
-            otel_enable_qdrant_client_instrumentation=True,
             otel_enable_redis_instrumentation=True,
         ),
         environment=SimpleNamespace(value="development"),
@@ -48,7 +47,7 @@ def test_setup_observability_calls_telemetry_bootstrap(monkeypatch) -> None:
     assert "enable_grpc_server_instrumentation" not in captured
     assert captured["enable_grpc_client_instrumentation"] is True
     assert captured["enable_aiohttp_client_instrumentation"] is False
-    assert captured["enable_qdrant_client_instrumentation"] is True
+    assert "enable_qdrant_client_instrumentation" not in captured
     assert captured["enable_redis_instrumentation"] is True
 
 

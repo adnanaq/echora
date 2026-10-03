@@ -32,6 +32,3 @@ class ObservabilityConfig(BaseModel):
     otel_enable_redis_instrumentation: bool = Field(
         default=False, description="Enable Redis auto-instrumentation"
     )
-    otel_enable_qdrant_client_instrumentation: bool = Field(
-        default=False, description="Enable Qdrant client auto-instrumentation"
-    )
