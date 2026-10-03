@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, create_autospec, patch
 import pytest
 import pytest_asyncio
 from common.config import get_settings
+from observability.registry import ObservabilityRegistry
 from opentelemetry import trace
+from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -346,18 +348,12 @@ async def test_initialize_collection_missing_collection_creates_it_with_sparse_v
 async def test_search_telemetry_raises_still_returns_hits(
     qdrant_client: QdrantClient,
 ) -> None:
-    class _ExplodingTelemetry:
-        class DB_QUERY_DURATION:
-            @staticmethod
-            def record(*_a: object, **_kw: object) -> None:
-                raise RuntimeError("telemetry boom")
-
-        class DB_ERRORS:
-            @staticmethod
-            def add(*_a: object, **_kw: object) -> None:
-                raise RuntimeError("telemetry boom")
-
-    qdrant_client._telemetry = _ExplodingTelemetry()  # type: ignore[assignment]
+    telemetry = create_autospec(ObservabilityRegistry, instance=True)
+    telemetry.DB_QUERY_DURATION = create_autospec(Histogram, instance=True)
+    telemetry.DB_QUERY_DURATION.record.side_effect = RuntimeError("telemetry boom")
+    telemetry.DB_ERRORS = create_autospec(Counter, instance=True)
+    telemetry.DB_ERRORS.add.side_effect = RuntimeError("telemetry boom")
+    qdrant_client._telemetry = telemetry
 
     async_client = cast(AsyncMock, qdrant_client._async_client)
     async_client.query_points.return_value = QueryResponse(
