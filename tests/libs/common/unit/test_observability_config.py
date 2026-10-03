@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from common.config.settings import Settings
 
 
@@ -39,3 +41,15 @@ def test_query_text_recording_can_be_turned_on() -> None:
         settings = Settings()
 
     assert settings.observability.otel_record_query_text is True
+
+
+def test_settings_ignore_local_env_file_in_tests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("OTEL_RECORD_QUERY_TEXT=true\n")
+    monkeypatch.chdir(tmp_path)
+
+    with patch.dict("os.environ", {"ENVIRONMENT": "development"}, clear=True):
+        settings = Settings()
+
+    assert settings.observability.otel_record_query_text is False

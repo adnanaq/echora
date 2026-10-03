@@ -13,6 +13,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from pydantic_settings import BaseSettings
+
+
+def _ignore_local_env_file(
+    settings_class: type[BaseSettings], **kwargs: object
+) -> None:
+    """Stop a settings class from reading ``.env``, as soon as it is defined."""
+    settings_class.model_config["env_file"] = None
+
+
+# Tests must not read the developer's .env: its tuned values (query batching,
+# rescoring) change defaults that tests assert, and Pants' sandbox has no .env.
+# Settings classes are defined when test modules import them, after this file
+# loads, and some crawlers build their settings at import, so the switch has to
+# be in place here rather than in a fixture. Environment variables still apply.
+BaseSettings.__pydantic_init_subclass__ = classmethod(_ignore_local_env_file)
 
 # Pants runs each test file in its own pytest process against one Redis server.
 # Integration tests clear the cache to measure hit/miss behaviour, so a shared
