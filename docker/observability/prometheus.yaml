@@ -19,3 +19,19 @@ scrape_configs:
   - job_name: otel-collector-internal
     static_configs:
       - targets: ["otel-collector:8888"]
+
+  # Qdrant's own metrics: request latency (rest_/grpc_responses_duration_seconds),
+  # CPU per collection, update queue length, optimizations, memory.
+  # per_collection=true labels request metrics with their collection.
+  # Reached through docker-compose.obs-link.yml, which joins Qdrant to this network.
+  # Once Qdrant has an API key, /metrics needs it in the api-key header; read it
+  # from a file so the key is not in this config:
+  #   http_headers:
+  #     api-key:
+  #       files: [/run/secrets/qdrant_api_key]
+  - job_name: qdrant
+    metrics_path: /metrics
+    params:
+      per_collection: ["true"]
+    static_configs:
+      - targets: ["qdrant:6333"]
