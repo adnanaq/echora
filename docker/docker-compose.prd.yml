@@ -1,7 +1,8 @@
 # Compose reads .env from this file's folder (docker/), not the repo root, so
-# pass the root .env explicitly. QDRANT_API_KEY and REDIS_PASSWORD must be set
-# there; REDIS_PASSWORD goes into a URL, so use letters and digits only
-# (for example `openssl rand -hex 32`).
+# pass the root .env explicitly. It must set QDRANT_API_KEY, REDIS_PASSWORD
+# and REDIS_URL; REDIS_URL is the address of the redis service below (port
+# 6379, database 0) carrying the same password, so use letters and digits only
+# for it (for example `openssl rand -hex 32`).
 #
 #   docker compose --env-file .env -f docker/docker-compose.prd.yml up -d
 name: echora
@@ -46,9 +47,13 @@ services:
     volumes:
       - redis-data:/data
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - REDIS_PASSWORD
     command:
-      ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+      [
+        "sh",
+        "-c",
+        'test -n "$$REDIS_PASSWORD" || { echo "REDIS_PASSWORD is not set" >&2; exit 1; }; exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"',
+      ]
     networks:
       - echora-network
     healthcheck:
@@ -151,7 +156,7 @@ services:
       # CACHE_ENABLED controls HTTP response caching (disabled for vector service).
       # REDIS_URL is used separately for the embedding vector cache — always active when set.
       - CACHE_ENABLED=false
-      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+      - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
 
       # Off until a production collector exists: with it on and no collector,
       # every export fails and retries, and telemetry costs throughput.
@@ -197,7 +202,7 @@ services:
       - ENRICHMENT_DEFAULT_FILE_PATH=/app/assets/seed_data/anime-offline-database.json
       - ENRICHMENT_OUTPUT_DIR=/app/assets/seed_data
       - CACHE_ENABLED=true
-      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+      - REDIS_URL=${REDIS_URL:?set REDIS_URL in .env}
       # Off until a production collector exists (see vector-service).
       - OTEL_ENABLED=false
     # The crawlers start Chrome: init reaps its exited processes, and Chrome
