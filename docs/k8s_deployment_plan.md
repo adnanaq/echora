@@ -460,8 +460,7 @@ echora-deploy/
 │       └── dashboards/              # Provisioned from echora-obs
 │           ├── vector-service-overview.json
 │           ├── enrichment-service-overview.json
-│           ├── service-overview.json
-│           └── trace-journey.json
+│           └── qdrant-overview.json
 │
 ├── values/                          # Environment-specific overrides
 │   ├── dev.yaml                     # k3d, local backends, 1 replica

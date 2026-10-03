@@ -514,7 +514,7 @@ docker compose -f docker/docker-compose.obs.yml down -v
 - Echora folder: `http://localhost:3000/dashboards/f/ffe8d6w3ayk1sd/echora`
 - Vector Service overview: `http://localhost:3000/d/echora-vector-service-overview`
 - Enrichment Service overview: `http://localhost:3000/d/echora-enrichment-service-overview`
-- Trace journey: `http://localhost:3000/d/echora-trace-journey/echora-trace-journey`
+- Qdrant overview: `http://localhost:3000/d/echora-qdrant-overview`
 
 One observability stack serves every environment. Services tag all telemetry with
 `deployment.environment` (from `ENVIRONMENT`), and each dashboard has an
