@@ -197,7 +197,7 @@ async def test_queue_wait_is_recorded_for_every_request():
     await batcher.close()
 
 
-async def test_queue_wait_includes_waiting_for_a_free_call_slot():
+async def test_queue_wait_includes_waiting_for_free_call_slot():
     batcher = RequestBatcher(
         _slow_echo, max_batch_size=1, max_wait_seconds=0, concurrency=1, name="slots"
     )
@@ -284,7 +284,7 @@ async def test_batch_call_runs_in_its_own_span_linked_to_each_caller():
     await batcher.close()
 
 
-async def test_each_caller_links_back_to_the_batch_that_served_it():
+async def test_each_caller_links_back_to_its_batch():
     batcher = RequestBatcher(
         _traced_echo,
         max_batch_size=8,
@@ -305,7 +305,7 @@ async def test_each_caller_links_back_to_the_batch_that_served_it():
         ]
 
 
-async def test_work_inside_the_batch_call_is_a_child_of_the_batch_span():
+async def test_work_inside_batch_call_is_child_of_batch_span():
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -317,7 +317,7 @@ async def test_work_inside_the_batch_call_is_a_child_of_the_batch_span():
     assert downstream.parent.span_id == _span("batch.model").context.span_id
 
 
-async def test_later_batches_do_not_join_the_first_callers_trace():
+async def test_later_batches_do_not_join_first_callers_trace():
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -335,7 +335,7 @@ async def test_later_batches_do_not_join_the_first_callers_trace():
     assert first_trace not in batch_traces
 
 
-async def test_a_failed_batch_call_marks_the_batch_span_as_an_error():
+async def test_failed_batch_call_marks_batch_span_as_error():
     batcher = RequestBatcher(
         _failing_call, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -348,7 +348,7 @@ async def test_a_failed_batch_call_marks_the_batch_span_as_an_error():
     assert [event.name for event in batch.events] == ["exception"]
 
 
-async def test_requests_without_a_trace_still_get_a_batch_span():
+async def test_requests_without_trace_still_get_batch_span():
     batcher = RequestBatcher(
         _traced_echo, max_batch_size=8, max_wait_seconds=0, concurrency=1, name="model"
     )
@@ -362,7 +362,7 @@ async def _returns_too_few(items: list[str]) -> list[str]:
     return items[:-1]
 
 
-async def test_a_wrong_result_count_fails_every_request_instead_of_hanging():
+async def test_wrong_result_count_fails_every_request():
     batcher = RequestBatcher(
         _returns_too_few, max_batch_size=8, max_wait_seconds=0.005, concurrency=1
     )
@@ -379,7 +379,7 @@ async def test_a_wrong_result_count_fails_every_request_instead_of_hanging():
     await batcher.close()
 
 
-async def test_a_wrong_result_count_marks_the_batch_span_as_an_error():
+async def test_wrong_result_count_marks_batch_span_as_error():
     batcher = RequestBatcher(
         _returns_too_few,
         max_batch_size=8,

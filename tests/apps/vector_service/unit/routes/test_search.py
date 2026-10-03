@@ -367,7 +367,7 @@ async def _search_in_span(
 
 
 @pytest.mark.asyncio
-async def test_search_span_records_the_request_parameters() -> None:
+async def test_search_span_records_request_parameters() -> None:
     request = vector_search_pb2.SearchRequest(
         query_text="space western",
         entity_type="anime",

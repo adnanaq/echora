@@ -58,7 +58,7 @@ def _document() -> VectorDocument:
     )
 
 
-def test_qdrant_span_names_the_call_and_collection() -> None:
+def test_qdrant_span_names_call_and_collection() -> None:
     _SPANS.clear()
 
     with qdrant_span("scroll", COLLECTION):
@@ -95,7 +95,7 @@ def test_qdrant_span_marks_failed_calls_as_errors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_qdrant_span_lasts_as_long_as_the_awaited_call() -> None:
+async def test_qdrant_span_lasts_as_long_as_awaited_call() -> None:
     _SPANS.clear()
 
     with qdrant_span("query_points", COLLECTION):
@@ -180,7 +180,7 @@ async def test_each_upsert_retry_records_its_own_span() -> None:
 
 
 @pytest.mark.asyncio
-async def test_failed_stats_call_records_an_error_span() -> None:
+async def test_failed_stats_call_records_error_span() -> None:
     async_client = _async_client()
     async_client.get_collection.side_effect = RuntimeError("qdrant down")
     client = _client(async_client)
@@ -241,7 +241,7 @@ async def test_manager_calls_record_one_span_per_qdrant_call(
 
 
 @pytest.mark.asyncio
-async def test_payload_index_setup_records_a_span_per_index() -> None:
+async def test_payload_index_setup_records_span_per_index() -> None:
     manager = _manager(_async_client())
     _SPANS.clear()
 
@@ -255,7 +255,7 @@ async def test_payload_index_setup_records_a_span_per_index() -> None:
 
 
 @pytest.mark.asyncio
-async def test_compatibility_check_records_a_get_collection_span() -> None:
+async def test_compatibility_check_records_get_collection_span() -> None:
     async_client = _async_client()
     async_client.get_collection.side_effect = RuntimeError("qdrant down")
     manager = _manager(async_client)
