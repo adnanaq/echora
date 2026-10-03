@@ -27,7 +27,9 @@ def model() -> FlagEmbeddingModel:
     return FlagEmbeddingModel("BAAI/bge-m3")
 
 
-def test_single_pass_matches_flagembedding_encode(model: FlagEmbeddingModel) -> None:
+def test_encode_with_sparse_one_pass_matches_flagembedding_encode(
+    model: FlagEmbeddingModel,
+) -> None:
     reference = model._model.encode(TEXTS, return_dense=True, return_sparse=True)
     dense, sparse = model.encode_with_sparse(TEXTS)
 
@@ -47,7 +49,7 @@ def test_single_pass_matches_flagembedding_encode(model: FlagEmbeddingModel) -> 
             assert actual_weights[token] == pytest.approx(weight, abs=1e-3)
 
 
-def test_dense_only_encode_matches_flagembedding_encode(
+def test_encode_dense_only_matches_flagembedding_encode(
     model: FlagEmbeddingModel,
 ) -> None:
     reference = model._model.encode(TEXTS, return_dense=True, return_sparse=False)
