@@ -428,3 +428,31 @@ Order class members top to bottom as follows:
 - **gRPC servicers**: Thin adapter classes — method order should mirror the proto service definition order, no reordering needed.
 
 > **Enforcement**: ruff has no class-member-order rule; enforce via PR review.
+
+### Test Conventions
+
+**Names** follow `test_<unit>_<scenario>_<expected_result>`:
+
+- `<unit>` is the function, method or class under test (without a leading underscore), so the name starts with what is tested.
+- `<scenario>` is the case being exercised; leave it out for the default case.
+- `<expected_result>` is the observable outcome.
+- No articles (`a`, `an`, `the`) and no hedging, contrast or filler words (`instead`, `maybe`, `could`, `would`, `might`, `probably`, `as long as`). Domain terms that match one, such as Qdrant's `should` clause, are fine.
+
+```python
+def test_submit_wrong_result_count_fails_every_request(): ...
+def test_get_by_id_missing_point_returns_none(): ...
+def test_encode_text_empty_string_returns_zero_embedding(): ...
+```
+
+**Files**
+
+- One test file per source module, named after it: `qdrant_db/tracing.py` is tested by `tests/libs/qdrant_db/unit/test_tracing.py`. Add tests to the existing file rather than splitting it.
+- The 500-line limit applies to source files only; test files have no line limit.
+- No comments or docstrings in test files; the test name says what it checks.
+
+**Shared setup** (`tests/conftest.py`)
+
+- Tests that check spans or metrics use the `span_exporter` and `metric_reader` fixtures. Never call `trace.set_tracer_provider` or `metrics.set_meter_provider` in a test file: OpenTelemetry keeps only the first provider set in a process, so a second one makes other files' tests collect nothing when pytest runs them together.
+- Settings classes ignore `.env` during tests, so tests see code defaults plus explicitly set environment variables. Set what a test needs with `patch.dict("os.environ", ...)`, never through `.env`.
+- Tests must pass both under Pants (one process per file) and in a single `pytest` process over many files.
+
