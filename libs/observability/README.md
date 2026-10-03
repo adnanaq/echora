@@ -104,6 +104,8 @@ gRPC call arrives
 │    vector_processing.vision.encode                  │
 │    vector_processing.vision.encode_batch            │
 │    qdrant.<call>  (every Qdrant call, qdrant_db)    │
+│    batch.<batcher> (one per batch call, linked to   │
+│      each request it served; common.utils)          │
 │  Metrics (via opentelemetry.get_meter):             │
 │    echora_embedding_duration_seconds  {modality}   │
 │    echora_embedding_cache_total                     │

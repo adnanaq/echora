@@ -198,10 +198,23 @@ Services can be tuned via environment variables (see `ObservabilityConfig`):
 | `OTEL_ENABLE_GRPC_CLIENT_INSTRUMENTATION` | `true` | Enable gRPC client spans/headers. |
 | `OTEL_ENABLE_AIOHTTP_CLIENT_INSTRUMENTATION` | `false` | Enable HTTP client spans/headers. |
 | `OTEL_ENABLE_REDIS_INSTRUMENTATION` | `false` | Enable Redis client spans. |
+| `OTEL_RECORD_QUERY_TEXT` | `false` | Put each search's query text on its span (`search.query_text`). It is user input, so keep it off where traces may hold personal data; dev compose turns it on. |
 
 Every call the vector service makes to Qdrant gets a `qdrant.<call>` span from
 `libs/qdrant_db/src/qdrant_db/tracing.py` whenever tracing is on; there is no
 separate setting.
+
+Each search span records what was asked: `search.has_text`, `search.has_image`,
+`search.entity_type`, `search.limit`, `search.with_payload`, `search.filter_fields`
+(field names only, once validated) and, when `OTEL_RECORD_QUERY_TEXT` is on,
+`search.query_text`.
+
+With batching on (`EMBED_BATCH_MAX_SIZE` or `QDRANT_QUERY_BATCH_MAX_SIZE` above 1),
+one model or Qdrant call serves several searches. That call runs in its own
+`batch.text_embedding` or `batch.qdrant_query` span, a separate trace with a link
+to every search it served; each search's span links back to it. The model or
+`qdrant.*` span sits under the batch span. In Tempo, open a search's span links
+to reach the batch that served it.
 
 ---
 

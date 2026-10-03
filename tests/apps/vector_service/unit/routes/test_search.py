@@ -7,6 +7,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from google.protobuf import struct_pb2
+from opentelemetry import trace
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from qdrant_db.contracts import SearchRange
 from vector_proto.v1 import vector_search_pb2
 from vector_service.routes import search as search_route
@@ -21,6 +27,12 @@ from vector_service.routes.search import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+_SPANS = InMemorySpanExporter()
+_TRACER_PROVIDER = TracerProvider()
+_TRACER_PROVIDER.add_span_processor(SimpleSpanProcessor(_SPANS))
+trace.set_tracer_provider(_TRACER_PROVIDER)
+_TRACER = trace.get_tracer("test")
+
 _INDEXED_FIELDS: frozenset[str] = frozenset(
     {"type", "status", "year", "genres", "entity_type", "score.mean", "score.weighted"}
 )
@@ -30,8 +42,10 @@ def _runtime(
     *,
     text_embedding: list[float] | None = None,
     search_results: list | None = None,
+    record_query_text: bool = False,
 ) -> SimpleNamespace:
     return SimpleNamespace(
+        record_query_text=record_query_text,
         text_processor=SimpleNamespace(
             encode_text_with_sparse=AsyncMock(
                 return_value=(text_embedding or [0.1] * 4, None)
@@ -340,3 +354,72 @@ async def test_missing_query_input_returns_error() -> None:
     request = vector_search_pb2.SearchRequest()
     response = await search_route.search(runtime, request, context=None)
     assert response.error.code == "MISSING_QUERY_INPUT"
+
+
+async def _search_in_span(
+    runtime: SimpleNamespace, request: vector_search_pb2.SearchRequest
+) -> ReadableSpan:
+    _SPANS.clear()
+    with _TRACER.start_as_current_span("rpc.server.Search"):
+        await search_route.search(runtime, request, context=None)
+    (span,) = _SPANS.get_finished_spans()
+    return span
+
+
+@pytest.mark.asyncio
+async def test_search_span_records_the_request_parameters() -> None:
+    request = vector_search_pb2.SearchRequest(
+        query_text="space western",
+        entity_type="anime",
+        limit=5,
+        with_payload=False,
+        filters=[
+            _make_condition(
+                "status", vector_search_pb2.FILTER_OPERATOR_EQ, _str_value("FINISHED")
+            ),
+            _make_condition(
+                "year",
+                vector_search_pb2.FILTER_OPERATOR_RANGE,
+                _range_value(gte=1998.0),
+            ),
+        ],
+    )
+
+    span = await _search_in_span(_runtime(), request)
+
+    assert span.attributes["search.has_text"] is True
+    assert span.attributes["search.has_image"] is False
+    assert span.attributes["search.entity_type"] == "anime"
+    assert span.attributes["search.limit"] == 5
+    assert span.attributes["search.with_payload"] is False
+    assert span.attributes["search.filter_fields"] == ("status", "year")
+
+
+@pytest.mark.asyncio
+async def test_search_span_has_no_query_text_by_default() -> None:
+    request = vector_search_pb2.SearchRequest(query_text="space western")
+
+    span = await _search_in_span(_runtime(), request)
+
+    assert "search.query_text" not in span.attributes
+
+
+@pytest.mark.asyncio
+async def test_search_span_records_query_text_when_enabled() -> None:
+    request = vector_search_pb2.SearchRequest(query_text="  space western  ")
+
+    span = await _search_in_span(_runtime(record_query_text=True), request)
+
+    assert span.attributes["search.query_text"] == "space western"
+
+
+@pytest.mark.asyncio
+async def test_rejected_search_still_records_its_parameters() -> None:
+    request = vector_search_pb2.SearchRequest(limit=3)
+
+    span = await _search_in_span(_runtime(record_query_text=True), request)
+
+    assert span.attributes["search.has_text"] is False
+    assert span.attributes["search.has_image"] is False
+    assert span.attributes["search.limit"] == 3
+    assert "search.query_text" not in span.attributes

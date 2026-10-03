@@ -21,3 +21,21 @@ def test_settings_routes_otel_env_vars_to_observability_config() -> None:
     assert settings.observability.otel_enabled is False
     assert settings.observability.otel_exporter_otlp_endpoint == "http://collector:4317"
     assert settings.observability.otel_enable_aiohttp_client_instrumentation is True
+
+
+def test_query_text_is_not_recorded_by_default() -> None:
+    with patch.dict("os.environ", {"ENVIRONMENT": "development"}, clear=True):
+        settings = Settings()
+
+    assert settings.observability.otel_record_query_text is False
+
+
+def test_query_text_recording_can_be_turned_on() -> None:
+    with patch.dict(
+        "os.environ",
+        {"ENVIRONMENT": "development", "OTEL_RECORD_QUERY_TEXT": "true"},
+        clear=True,
+    ):
+        settings = Settings()
+
+    assert settings.observability.otel_record_query_text is True

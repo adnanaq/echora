@@ -32,3 +32,10 @@ class ObservabilityConfig(BaseModel):
     otel_enable_redis_instrumentation: bool = Field(
         default=False, description="Enable Redis auto-instrumentation"
     )
+    otel_record_query_text: bool = Field(
+        default=False,
+        description=(
+            "Record each search's query text on its trace span. Search text is "
+            "user input, so keep this off where traces may hold personal data"
+        ),
+    )
